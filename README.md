@@ -1,2 +1,2 @@
-# gomoq  
-gomoq is an implementation of Media over QUIC Transport in Golang.
+# gomoqu  
+gomoqu is an implementation of Media over QUIC Transport in Golang.

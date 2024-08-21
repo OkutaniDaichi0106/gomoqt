@@ -10,25 +10,43 @@ type Publisher struct {
 	 * If this is not initialized, use default Client
 	 */
 	Client
-	// Bidirectional stream to send controll message
 
-	// Unidirectional stream to send object message
+	Namespace string
+
+	announcements []string
 
 	// A map of our announced tracks
 
 }
 
-func (p Publisher) Connect(url string) error {
+func (p *Publisher) Connect(url string) error {
 	// Check if the Client specify the Versions
-	if len(p.clientSetupMessage.Versions) < 1 {
+	if len(p.Versions) < 1 {
 		return errors.New("no versions is specifyed")
 	}
 
-	// Add role parameter as publisher
-	p.clientSetupMessage.Parameters.addIntParameter(role, uint64(pub))
-
 	// Connect to the server
-	err := p.connect(url)
+	return p.connect(url, pub)
+}
+
+/*
+ *
+ *
+ */
+func (p Publisher) Announce(trackNamespace string) error {
+	return p.sendAnnounceMessage(trackNamespace, Parameters{})
+}
+
+// func (p Publisher) AnnounceWithParams(trackNamespace string, params Parameters) error {
+// 	return p.sendAnnounceMessage(trackNamespace, params)
+// }
+
+func (p Publisher) sendAnnounceMessage(trackNamespace string, params Parameters) error {
+	a := AnnounceMessage{
+		TrackNamespace: trackNamespace,
+		Parameters:     params,
+	}
+	_, err := p.controlStream.Write(a.serialize())
 	if err != nil {
 		return err
 	}
@@ -36,28 +54,58 @@ func (p Publisher) Connect(url string) error {
 	return nil
 }
 
-func (p Publisher) ReceiveMessage() {
-	// handle each message
-}
-func (Publisher) receiveAnnounceOk() {
-	// turn state of announce to "ack"
-}
-func (Publisher) receiveAnnounceError() {
-	// turn state of announce to the error
-}
-func (Publisher) receiveSubscribe() {
-	// send SUBSCRIBE_OK
-}
-func (Publisher) receiveUnsubscribe() {}
-func (Publisher) SendMessages() {
-	// handle each message
+func (p Publisher) AllowSubscribe() error {
+	//
+	return p.sendSubscribeOk()
 }
 
-func (p Publisher) Announce(a AnnounceMessage) {
-	// send ANNOUNCE
-	// Send SETUP_CLIENT message
-	p.controlStream.Write(a.serialize())
+func (p Publisher) sendSubscribeOk() error {
+	return nil
 }
-func (Publisher) Subscribed() {
-	// send SUBSCRIBE_OK
+
+func (p Publisher) RejectSubscribe() error {
+	return p.sendSubscribeError()
+}
+
+func (p Publisher) sendSubscribeError() error {
+	return nil
+}
+
+/*
+ *
+ *
+ */
+func (p Publisher) Unannounce(trackNamespace string) error {
+	return p.sendUnannounceMessage(trackNamespace)
+}
+
+func (p Publisher) sendUnannounceMessage(trackNamespace string) error {
+	um := UnannounceMessage{
+		TrackNamespace: trackNamespace,
+	}
+	p.controlStream.Write(um.serialize())
+	return nil
+}
+
+/*
+ *
+ *
+ */
+func (p Publisher) SubscribeDone() error {
+	return nil
+}
+
+/*
+ * Response to a TRACK_STATUS_REQUEST
+ */
+func (p Publisher) sendTrackStatus() error {
+	ts := TrackStatusMessage{
+		TrackNamespace: p.Namespace,
+		TrackName:      "",
+		Code:           0,
+		LastGroupID:    GroupID(0),
+		LastObjectID:   ObjectID(0),
+	}
+	p.controlStream.Write(ts.serialize())
+	return nil
 }

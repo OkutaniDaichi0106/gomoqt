@@ -9,7 +9,8 @@ import (
 )
 
 /*
- * Server
+ * Server Agent
+ * You should use this in a goroutine such as http.HandlerFunc
  *
  * Server will perform the following operation
  * - Waiting connections by Client
@@ -26,26 +27,24 @@ type Server struct {
 	WebtransportServer *webtransport.Server
 
 	/*
-	 * Bidirectional stream to send control stream
-	 * Set this after connection to the server
+	 * Available versions for the server
 	 */
-	session *webtransport.Session
+	SupportedVersions []Version
+}
+
+type Agent struct {
+	Server
+	/*
+	 * Bidirectional stream to send control stream
+	 * Set this after connection to the server is completed
+	 */
+	Session *webtransport.Session
 
 	/*
 	 * Bidirectional stream to send control stream
 	 * Set the first bidirectional stream
 	 */
-	controlStream webtransport.Stream
-
-	/*
-	 * SERVER_SETUP message
-	 */
-	ServerSetup ServerSetupMessage
-
-	/*
-	 * Available versions for the server
-	 */
-	AvailableVersions []Version
+	controlStream *webtransport.Stream
 
 	/*
 	 * Using selectedVersion which is specifyed by the client and is selected by the server
@@ -59,21 +58,18 @@ type Server struct {
  * Accept bidirectional stream to send control message
  *
  */
-func (s *Server) Setup(sess *webtransport.Session) error {
+func (a *Agent) Setup() error {
 	//TODO: Check if the role and the versions is setted
 	var err error
 
-	s.session = sess
-
-	stream, err := sess.AcceptStream(context.Background())
+	stream, err := a.Session.AcceptStream(context.Background())
 	if err != nil {
 		return err
 	}
 
-	s.controlStream = stream
-
 	// Receive SETUP_CLIENT message
 	qvReader := quicvarint.NewReader(stream)
+
 	var cs ClientSetupMessage
 	err = cs.deserialize(qvReader)
 	if err != nil {
@@ -83,9 +79,9 @@ func (s *Server) Setup(sess *webtransport.Session) error {
 	// Select version
 	versionIsOK := false
 	for _, cv := range cs.Versions {
-		for _, sv := range s.AvailableVersions {
+		for _, sv := range a.SupportedVersions {
 			if cv == sv {
-				s.selectedVersion = sv
+				a.selectedVersion = sv
 				versionIsOK = true
 				break
 			}
@@ -97,15 +93,16 @@ func (s *Server) Setup(sess *webtransport.Session) error {
 	}
 
 	// Send SETUP_SERVER message
-	stream.Write(s.ServerSetup.serialize())
+	ssm := ServerSetupMessage{
+		SelectedVersion: a.selectedVersion,
+	}
+	_, err = stream.Write(ssm.serialize())
+	if err != nil {
+		return err
+	}
 
 	// If exchang of SETUP messages is complete, set the stream as control stream
-	s.controlStream = stream
+	a.controlStream = &stream
 
 	return nil
-}
-
-// TODO: should use sync.Once?
-func (s *Server) ListenAndServeTLS(certFile string, keyFile string) error {
-	return s.WebtransportServer.ListenAndServeTLS(certFile, keyFile)
 }

@@ -23,16 +23,13 @@ type SubscribeUpdateMessage struct {
 	 * EndGroupID used only for "AbsoluteRange"
 	 * EndObjectID used only for "AbsoluteRange". When it is 0, it means the entire group is required
 	 */
-	StartGroupID  GroupID
-	StartObjectID ObjectID
-	EndGroupID    GroupID
-	EndObjectID   ObjectID
+	SubscriptionFilter
 
 	/*
 	 * The priority of a subscription relative to other subscriptions in the same session
 	 * Lower numbers get higher priority
 	 */
-	SubscriberPriority SubscriberPriority
+	SubscriberPriority
 
 	/*
 	 * Subscribe Update Parameters
@@ -65,13 +62,13 @@ func (su SubscribeUpdateMessage) serialize() []byte {
 	// Append the Subscriber ID
 	b = quicvarint.Append(b, uint64(su.SubscribeID))
 	// Append the Start Group ID
-	b = quicvarint.Append(b, uint64(su.StartGroupID))
+	b = quicvarint.Append(b, uint64(su.startGroup))
 	// Append the Start Object ID
-	b = quicvarint.Append(b, uint64(su.StartObjectID))
+	b = quicvarint.Append(b, uint64(su.startObject))
 	// Append the End Group ID
-	b = quicvarint.Append(b, uint64(su.EndGroupID))
+	b = quicvarint.Append(b, uint64(su.endGroup))
 	// Append the End Object ID
-	b = quicvarint.Append(b, uint64(su.EndObjectID))
+	b = quicvarint.Append(b, uint64(su.endObject))
 	// Append the Publisher Priority
 	b = quicvarint.Append(b, uint64(su.SubscriberPriority))
 	// Append the Subscribe Update Priority
@@ -105,28 +102,28 @@ func (su *SubscribeUpdateMessage) deserialize(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	su.StartGroupID = GroupID(num)
+	su.startGroup = GroupID(num)
 
 	// Get Start Object ID
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	su.StartObjectID = ObjectID(num)
+	su.startObject = ObjectID(num)
 
 	// Get End Group ID
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	su.EndGroupID = GroupID(num)
+	su.endGroup = GroupID(num)
 
 	// Get End Object ID
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	su.EndObjectID = ObjectID(num)
+	su.endObject = ObjectID(num)
 
 	// Get Subscriber Priority
 	num, err = quicvarint.Read(r)
@@ -163,34 +160,8 @@ type SubscribeMessage struct {
 	 */
 	GroupOrder GroupOrder
 
-	/*
-	 * The type of filter
-	 * This indicates whether the StartGroup/StartObject and EndGroup/EndObject fields
-	 * will be present
-	 */
-	FilterType SubscriptionFilter
-
-	// Filter conditions
-	/*
-	 * StartGroupID used only for "AbsoluteStart" or "AbsoluteRange"
-	 */
-	StartGroupID GroupID
-
-	/*
-	 * StartObjectID used only for "AbsoluteStart" or "AbsoluteRange"
-	 */
-	StartObjectID ObjectID
-
-	/*
-	 * EndGroupID used only for "AbsoluteRange"
-	 */
-	EndGroupID GroupID
-
-	/*
-	 * EndObjectID used only for "AbsoluteRange".
-	 * When it is 0, it means the entire group is required
-	 */
-	EndObjectID ObjectID
+	/***/
+	SubscriptionFilter
 
 	/*
 	 * Subscribe Parameters
@@ -241,25 +212,8 @@ func (s SubscribeMessage) serialize() []byte {
 	// Append Group Order
 	b = quicvarint.Append(b, uint64(s.GroupOrder))
 
-	if s.FilterType == LATEST_GROUP {
-		b = quicvarint.Append(b, uint64(s.FilterType))
-	} else if s.FilterType == LATEST_OBJECT {
-		b = quicvarint.Append(b, uint64(s.FilterType))
-	} else if s.FilterType == ABSOLUTE_START {
-		// Append Filter Type, Start Group ID and Start Object ID
-		b = quicvarint.Append(b, uint64(s.FilterType))
-		b = quicvarint.Append(b, uint64(s.StartGroupID))
-		b = quicvarint.Append(b, uint64(s.StartObjectID))
-	} else if s.FilterType == ABSOLUTE_RANGE {
-		// Append Filter Type, Start Group ID, Start Object ID, End Group ID and End Object ID
-		b = quicvarint.Append(b, uint64(s.FilterType))
-		b = quicvarint.Append(b, uint64(s.StartGroupID))
-		b = quicvarint.Append(b, uint64(s.StartObjectID))
-		b = quicvarint.Append(b, uint64(s.EndGroupID))
-		b = quicvarint.Append(b, uint64(s.EndObjectID))
-	} else {
-		panic("invalid filter")
-	}
+	// Append the subscription filter
+	b = s.SubscriptionFilter.append(b)
 
 	// Append the Subscribe Update Priority
 	b = s.Parameters.append(b)
@@ -343,35 +297,35 @@ func (s *SubscribeMessage) deserialize(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	s.FilterType = SubscriptionFilter(num)
+	s.SubscriptionFilter.FilterCode = FilterCode(num)
 
 	// Get Start Group ID
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	s.StartGroupID = GroupID(num)
+	s.SubscriptionFilter.startGroup = GroupID(num)
 
 	// Get Start Object ID
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	s.StartObjectID = ObjectID(num)
+	s.SubscriptionFilter.startObject = ObjectID(num)
 
 	// Get End Group ID
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	s.EndGroupID = GroupID(num)
+	s.SubscriptionFilter.endGroup = GroupID(num)
 
 	// Get End Object ID
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	s.EndObjectID = ObjectID(num)
+	s.SubscriptionFilter.endObject = ObjectID(num)
 
 	// Get Subscribe Update Parameters
 	err = s.Parameters.parse(r)

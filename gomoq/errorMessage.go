@@ -23,31 +23,31 @@ type TerminateError struct {
  * GOAWAY_TIMEOUT
  */
 func (TerminateError) NO_ERROR() TerminateErrorCode {
-	return TerminateErrorCode(0x0)
+	return 0x0
 }
 
 func (TerminateError) INTERNAL_ERROR() TerminateErrorCode {
-	return TerminateErrorCode(0x1)
+	return 0x1
 }
 
 func (TerminateError) UNAUTHORIZED() TerminateErrorCode {
-	return TerminateErrorCode(0x2)
+	return 0x2
 }
 
 func (TerminateError) PROTOCOL_VIOLATION() TerminateErrorCode {
-	return TerminateErrorCode(0x3)
+	return 0x3
 }
 
 func (TerminateError) DUPLICATE_TRACK_ALIAS() TerminateErrorCode {
-	return TerminateErrorCode(0x4)
+	return 0x4
 }
 
 func (TerminateError) PARAMETER_LENGTH_MISMATCH() TerminateErrorCode {
-	return TerminateErrorCode(0x5)
+	return 0x5
 }
 
 func (TerminateError) GOAWAY_TIMEOUT() TerminateErrorCode {
-	return TerminateErrorCode(0x6)
+	return 0x6
 }
 
 /*
@@ -192,15 +192,15 @@ type SubscribeError struct {
 
 // Error codes defined at official document
 func (SubscribeError) INTERNAL_ERROR() SubscribeErrorCode {
-	return SubscribeErrorCode(0x0)
+	return 0x0
 }
 
 func (SubscribeError) INVALID_RANGE() SubscribeErrorCode {
-	return SubscribeErrorCode(0x1)
+	return 0x1
 }
 
 func (SubscribeError) RETRY_TRACK_ALIAS() SubscribeErrorCode {
-	return SubscribeErrorCode(0x2)
+	return 0x2
 }
 
 func (se SubscribeError) serialize() []byte {

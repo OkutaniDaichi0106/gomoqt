@@ -11,9 +11,9 @@ import (
 type ParameterKey uint64
 
 const (
-	role               ParameterKey = 0x00
-	path               ParameterKey = 0x01
-	authorization_info ParameterKey = 0x02
+	ROLE               ParameterKey = 0x00
+	PATH               ParameterKey = 0x01
+	AUTHORIZATION_INFO ParameterKey = 0x02
 )
 
 type WireType byte
@@ -107,7 +107,7 @@ type Parameters []Parameter
  */
 func (ps *Parameters) AddIntParameter(typeKey ParameterKey, num uint64) {
 	// Avoid to add Role Parameter
-	if typeKey == role {
+	if typeKey == ROLE {
 		panic("Role Parameter should not be added outside the internal system")
 	}
 
@@ -159,7 +159,7 @@ func (ps Parameters) append(b []byte) []byte {
 	 * }
 	 */
 	// Append the number of the paramters
-	quicvarint.Append(b, uint64(len(ps)))
+	b = quicvarint.Append(b, uint64(len(ps)))
 
 	// Append serialized parameters
 	for _, param := range ps {
@@ -174,19 +174,23 @@ func (params *Parameters) parse(r quicvarint.Reader) error {
 	var param Parameter
 
 	//Initialize parameters field
-	params = &Parameters{}
+	*params = Parameters{}
 	var (
 		typeKey  uint64
 		wireType uint64
 	)
 
-	//
-	for {
+	num, err := quicvarint.Read(r)
+	if err != nil {
+		return err
+	}
+
+	for i := uint64(0); i < num; i++ {
 		// Get parameter key
 		typeKey, err = quicvarint.Read(r)
 		if err != nil {
 			if err == io.EOF {
-				break
+				return nil
 			}
 			return err
 		}
@@ -228,7 +232,6 @@ func (params *Parameters) parse(r quicvarint.Reader) error {
 		}
 		*params = append(*params, param)
 	}
-
 	return nil
 }
 

@@ -56,14 +56,88 @@ type Messager interface {
  * ABSOLUTE_START
  * ABSOLUTE_RANGE
  */
-type SubscriptionFilter uint64
+type FilterCode uint64
+
+type SubscriptionFilter struct {
+	/*
+	 * Filter FilterCode indicates the type of filter
+	 * This indicates whether the StartGroup/StartObject and EndGroup/EndObject fields
+	 * will be present
+	 */
+	FilterCode
+
+	/*
+	 * StartGroupID used only for "AbsoluteStart" or "AbsoluteRange"
+	 */
+	startGroup GroupID
+
+	/*
+	 * StartObjectID used only for "AbsoluteStart" or "AbsoluteRange"
+	 */
+	startObject ObjectID
+
+	/*
+	 * EndGroupID used only for "AbsoluteRange"
+	 */
+	endGroup GroupID
+
+	/*
+	 * EndObjectID used only for "AbsoluteRange".
+	 * When it is 0, it means the entire group is required
+	 */
+	endObject ObjectID
+}
 
 const (
-	LATEST_GROUP   SubscriptionFilter = 0x01
-	LATEST_OBJECT  SubscriptionFilter = 0x02
-	ABSOLUTE_START SubscriptionFilter = 0x03
-	ABSOLUTE_RANGE SubscriptionFilter = 0x04
+	LATEST_GROUP   FilterCode = 0x01
+	LATEST_OBJECT  FilterCode = 0x02
+	ABSOLUTE_START FilterCode = 0x03
+	ABSOLUTE_RANGE FilterCode = 0x04
 )
+
+func (sf SubscriptionFilter) isOK() bool {
+	//TODO: Check if the Filter Code is valid and valid parameters is set
+	if sf.FilterCode == LATEST_GROUP {
+
+	} else if sf.FilterCode == LATEST_OBJECT {
+
+	} else if sf.FilterCode == ABSOLUTE_START {
+
+	} else if sf.FilterCode == ABSOLUTE_RANGE {
+		// Check if the Start Group ID is smaller than End Group ID
+		if sf.startGroup > sf.endGroup {
+			return false
+		}
+	} else {
+		return false
+	}
+	return true
+}
+
+func (sf SubscriptionFilter) append(b []byte) []byte {
+	if sf.FilterCode == LATEST_GROUP {
+		b = quicvarint.Append(b, uint64(sf.FilterCode))
+	} else if sf.FilterCode == LATEST_OBJECT {
+		b = quicvarint.Append(b, uint64(sf.FilterCode))
+	} else if sf.FilterCode == ABSOLUTE_START {
+		// Append Filter Type, Start Group ID and Start Object ID
+		b = quicvarint.Append(b, uint64(sf.FilterCode))
+		b = quicvarint.Append(b, uint64(sf.startGroup))
+		b = quicvarint.Append(b, uint64(sf.startObject))
+	} else if sf.FilterCode == ABSOLUTE_RANGE {
+		// Append Filter Type, Start Group ID, Start Object ID, End Group ID and End Object ID
+		b = quicvarint.Append(b, uint64(sf.FilterCode))
+		b = quicvarint.Append(b, uint64(sf.startGroup))
+		b = quicvarint.Append(b, uint64(sf.startObject))
+		b = quicvarint.Append(b, uint64(sf.endGroup))
+		b = quicvarint.Append(b, uint64(sf.endObject))
+	} else {
+		panic("invalid filter")
+	}
+	return b
+}
+
+func getFilter() {}
 
 type TrackStatusRequest struct {
 	/*

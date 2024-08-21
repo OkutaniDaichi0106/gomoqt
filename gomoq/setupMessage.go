@@ -36,7 +36,7 @@ func (cs ClientSetupMessage) serialize() []byte {
 		panic("no version is specifyed")
 	}
 	// 2. Parameters should conclude role parameter
-	if !cs.Parameters.Contain(role) {
+	if !cs.Parameters.Contain(ROLE) {
 		panic("no role is specifyed")
 	}
 
@@ -83,7 +83,6 @@ func (cs *ClientSetupMessage) deserialize(r quicvarint.Reader) error {
 		return err
 	}
 	count := num
-
 	// Get supported versions
 	for i := uint64(0); i < count; i++ {
 		num, err = quicvarint.Read(r)
@@ -97,6 +96,7 @@ func (cs *ClientSetupMessage) deserialize(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 

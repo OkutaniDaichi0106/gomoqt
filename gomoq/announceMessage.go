@@ -53,17 +53,20 @@ func (a AnnounceMessage) serialize() []byte {
 }
 
 func (a *AnnounceMessage) deserialize(r quicvarint.Reader) error {
-	var err error
-	var num uint64
-
 	// Get Message ID and check it
-	num, err = quicvarint.Read(r)
+	id, err := deserializeHeader(r)
 	if err != nil {
 		return err
 	}
-	if MessageID(num) != ANNOUNCE {
+	if id != ANNOUNCE {
 		return errors.New("unexpected message")
 	}
+
+	return a.deserializeBody(r)
+}
+func (a *AnnounceMessage) deserializeBody(r quicvarint.Reader) error {
+	var err error
+	var num uint64
 
 	// Get length of the track namespace
 	num, err = quicvarint.Read(r)
@@ -115,17 +118,21 @@ func (ao AnnounceOkMessage) serialize() []byte {
 }
 
 func (ao *AnnounceOkMessage) deserialize(r quicvarint.Reader) error {
-	var err error
-	var num uint64
-
 	// Get Message ID and check it
-	num, err = quicvarint.Read(r)
+	id, err := deserializeHeader(r)
 	if err != nil {
 		return err
 	}
-	if MessageID(num) != ANNOUNCE_OK {
+	if id != ANNOUNCE_OK { //TODO: this would means protocol violation
 		return errors.New("unexpected message")
 	}
+
+	return ao.deserializeBody(r)
+}
+
+func (ao *AnnounceOkMessage) deserializeBody(r quicvarint.Reader) error {
+	var err error
+	var num uint64
 
 	// Get length of the string of the track namespace
 	num, err = quicvarint.Read(r)
@@ -176,18 +183,21 @@ func (ua UnannounceMessage) serialize() []byte {
 }
 
 func (ua *UnannounceMessage) deserialize(r quicvarint.Reader) error {
-	var err error
-	var num uint64
-
 	// Get Message ID and check it
-	num, err = quicvarint.Read(r)
+	id, err := deserializeHeader(r)
 	if err != nil {
 		return err
 	}
-	if MessageID(num) != UNANNOUNCE {
+	if id != UNANNOUNCE {
 		return errors.New("unexpected message")
 	}
 
+	return ua.deserializeBody(r)
+}
+
+func (ua *UnannounceMessage) deserializeBody(r quicvarint.Reader) error {
+	var err error
+	var num uint64
 	// Get length of the string of the track namespace
 	num, err = quicvarint.Read(r)
 	if err != nil {
@@ -236,17 +246,21 @@ func (ua AnnounceCancelMessage) serialize() []byte {
 }
 
 func (ac *AnnounceCancelMessage) deserialize(r quicvarint.Reader) error {
-	var err error
-	var num uint64
-
 	// Get Message ID and check it
-	num, err = quicvarint.Read(r)
+	id, err := deserializeHeader(r)
 	if err != nil {
 		return err
 	}
-	if MessageID(num) != ANNOUNCE_CANCEL {
+	if id != ANNOUNCE_CANCEL {
 		return errors.New("unexpected message")
 	}
+
+	return ac.deserializeBody(r)
+}
+
+func (ac *AnnounceCancelMessage) deserializeBody(r quicvarint.Reader) error {
+	var err error
+	var num uint64
 
 	// Get length of the string of the namespace
 	num, err = quicvarint.Read(r)

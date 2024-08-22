@@ -18,9 +18,10 @@ func main() {
 		//CheckOrigin: func(r *http.Request) bool {},
 	}
 
-	moqs := gomoq.Server{
+	moqServer := gomoq.Server{
 		WebtransportServer: &ws,
 		SupportedVersions:  []gomoq.Version{gomoq.Draft05},
+		TrackNames:         []string{"audio"},
 	}
 	// moqs := gomoq.Server{
 	// 	WebtransportServer: &ws,
@@ -37,13 +38,25 @@ func main() {
 		}
 
 		// Set the session to a agent
-		moqa := gomoq.Agent{
+		moqAgent := gomoq.Agent{
 			Session: sess,
-			Server:  moqs,
 		}
 
 		// Exchange SETUP messages
-		err = moqa.Setup()
+		err = moqAgent.Setup(&moqServer)
+		if err != nil {
+			return
+		}
+
+		err = moqAgent.Advertise(moqServer)
+		if err != nil {
+			return
+		}
+		err = moqAgent.AcceptSubscribe()
+		if err != nil {
+			return
+		}
+		//moqa.AcceptAnnounce()
 
 		//Handle the session. Here goes the application logic
 		//sess.CloseWithError(1234, "stop connection!!!")

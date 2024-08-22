@@ -14,6 +14,7 @@ const (
 	ROLE               ParameterKey = 0x00
 	PATH               ParameterKey = 0x01
 	AUTHORIZATION_INFO ParameterKey = 0x02
+	TRACK_NAME         ParameterKey = 0xf3 // Original
 )
 
 type WireType byte
@@ -235,13 +236,19 @@ func (params *Parameters) parse(r quicvarint.Reader) error {
 	return nil
 }
 
-func (ps Parameters) Contain(key ParameterKey) bool {
+func (ps Parameters) Contain(key ParameterKey) (bool, any) {
 	var param Parameter
 	for _, param = range ps {
 		if param.Key == key {
-			return true
+			switch param.WireType {
+			case varint:
+				return true, param.value_int64
+			case length_delimited:
+				return true, param.value_string
+			}
+			// Anything else varint or length_delimited is unacceptable as Wire Type
+			return false, nil
 		}
-		continue
 	}
-	return false
+	return false, nil
 }

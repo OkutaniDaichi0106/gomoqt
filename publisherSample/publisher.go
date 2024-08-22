@@ -25,7 +25,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Print("Connected!!")
+	log.Print("Negotiated!!")
 
-	publisher.Announce("audio")
+	err = publisher.Announce("audio")
+	log.Print(err)
 }

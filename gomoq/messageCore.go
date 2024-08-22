@@ -2,7 +2,6 @@ package gomoq
 
 import (
 	"errors"
-	"io"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -137,188 +136,6 @@ func (sf SubscriptionFilter) append(b []byte) []byte {
 	return b
 }
 
-func getFilter() {}
-
-type TrackStatusRequest struct {
-	/*
-	 * Track namespace
-	 */
-	TrackNamespace string
-	/*
-	 * Track name
-	 */
-	TrackName string
-}
-
-func (tsr TrackStatusRequest) serialize() []byte {
-	/*
-	 * Serialize as following formatt
-	 *
-	 * TRACK_STATUS_REQUEST Message {
-	 *   Track Namespace ([]byte),
-	 *   Track Name ([]byte),
-	 * }
-	 */
-
-	// TODO?: Chech URI exists
-
-	// TODO: Tune the length of the "b"
-	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
-	// Append the type of the message
-	b = quicvarint.Append(b, uint64(TRACK_STATUS_REQUEST))
-	// Append Track Namespace
-	b = quicvarint.Append(b, uint64(len(tsr.TrackNamespace)))
-	b = append(b, []byte(tsr.TrackNamespace)...)
-	// Append Track Name
-	b = quicvarint.Append(b, uint64(len(tsr.TrackName)))
-	b = append(b, []byte(tsr.TrackName)...)
-
-	return b
-}
-
-func (tsr *TrackStatusRequest) deserialize(r quicvarint.Reader) error {
-	var err error
-	var num uint64
-	// Get length of the Track Namespace
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
-	}
-
-	// Get Track Namespace
-	buf := make([]byte, num)
-	_, err = r.Read(buf)
-	if err != nil {
-		return err
-	}
-	tsr.TrackNamespace = string(buf)
-
-	// Get Track Name
-	buf = make([]byte, num)
-	_, err = r.Read(buf)
-	if err != nil {
-		return err
-	}
-	tsr.TrackName = string(buf)
-
-	return nil
-}
-
-type TrackStatusMessage struct {
-	/*
-	 * Track namespace
-	 */
-	TrackNamespace string
-
-	/*
-	 * Track name
-	 */
-	TrackName string
-
-	/*
-	 * Status code
-	 */
-	Code         TrackStatusCode
-	LastGroupID  GroupID
-	LastObjectID ObjectID
-}
-
-func (ts TrackStatusMessage) serialize() []byte {
-	/*
-	 * Serialize as following formatt
-	 *
-	 * TRACK_STATUS Message {
-	 *   Track Namespace ([]byte),
-	 *   Track Name ([]byte),
-	 *   Status Code (varint),
-	 *   Last Group ID (varint),
-	 *   Last Object ID (varint),
-	 * }
-	 */
-
-	// TODO?: Chech URI exists
-
-	// TODO: Tune the length of the "b"
-	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
-
-	// Append the type of the message
-	b = quicvarint.Append(b, uint64(TRACK_STATUS))
-
-	// Append Track Namespace
-	b = quicvarint.Append(b, uint64(len(ts.TrackNamespace)))
-	b = append(b, []byte(ts.TrackNamespace)...)
-
-	// Append Track Name
-	b = quicvarint.Append(b, uint64(len(ts.TrackName)))
-	b = append(b, []byte(ts.TrackName)...)
-
-	// Append Status Code
-	b = quicvarint.Append(b, uint64(ts.Code))
-
-	// Last Group ID
-	b = quicvarint.Append(b, uint64(ts.LastGroupID))
-
-	// Last Object ID
-	b = quicvarint.Append(b, uint64(ts.LastObjectID))
-
-	return b
-}
-
-func (ts *TrackStatusMessage) deserialize(r quicvarint.Reader) error {
-	var err error
-	var num uint64
-	// Get length of the Track Namespace
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
-	}
-
-	// Get Track Namespace
-	buf := make([]byte, num)
-	_, err = r.Read(buf)
-	if err != nil {
-		return err
-	}
-	ts.TrackNamespace = string(buf)
-
-	// Get length of the Track Name
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
-	}
-
-	// Get Track Name
-	buf = make([]byte, num)
-	_, err = r.Read(buf)
-	if err != nil {
-		return err
-	}
-	ts.TrackName = string(buf)
-
-	// Get Status Code
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
-	}
-	ts.Code = TrackStatusCode(num)
-
-	// Get Last Group ID
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
-	}
-	ts.LastGroupID = GroupID(num)
-
-	// Get Last Object ID
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
-	}
-	ts.LastObjectID = ObjectID(num)
-
-	return nil
-}
-
 type GoAwayMessage struct {
 	/*
 	 * New session URI
@@ -350,8 +167,22 @@ func (ga GoAwayMessage) serialize() []byte {
 }
 
 func (ga *GoAwayMessage) deserialize(r quicvarint.Reader) error {
+
+	// Get Message ID and check it
+	id, err := deserializeHeader(r)
+	if err != nil {
+		return err
+	}
+	if id != GOAWAY { //TODO: this would means protocol violation
+		return errors.New("unexpected message")
+	}
+
+	return ga.deserializeBody(r)
+}
+func (ga *GoAwayMessage) deserializeBody(r quicvarint.Reader) error {
 	var err error
 	var num uint64
+
 	// Get length of the URI
 	num, err = quicvarint.Read(r)
 	if err != nil {
@@ -376,50 +207,42 @@ func (ga *GoAwayMessage) deserialize(r quicvarint.Reader) error {
 	return nil
 }
 
-/*
-	func readHeader(r quicvarint.Reader) (MessageID, error) {
-		var id MessageID
-		// Get the first number in the message expected to be MessageID
-		firstNum, err := quicvarint.Read(r)
-		if err != nil {
-			return 0xff, err
-		}
-		switch MessageID(firstNum) {
-		case SUBSCRIBE_UPDATE:
-		case SUBSCRIBE:
-		case SUBSCRIBE_OK:
-		case SUBSCRIBE_ERROR:
-		case ANNOUNCE:
-		case ANNOUNCE_OK:
-		case ANNOUNCE_ERROR:
-		case UNANNOUNCE:
-		case UNSUBSCRIBE:
-		case SUBSCRIBE_DONE:
-		case ANNOUNCE_CANCEL:
-		case TRACK_STATUS_REQUEST:
-		case TRACK_STATUS:
-		case GOAWAY:
-		case CLIENT_SETUP:
-		case SERVER_SETUP:
-		case STREAM_HEADER_TRACK:
-		case STREAM_HEADER_GROUP:
-		default:
-			return 0xff, errors.New("undefined Message ID")
-		}
-
-		return id, nil
-	}
-*/
-func GetMessage(r io.Reader) (Messager, error) {
-	var msg Messager
-	// Parse first parameter in a message which is expected to be
-	reader := quicvarint.NewReader(r)
-	id, err := quicvarint.Read(reader)
+func deserializeHeader(r quicvarint.Reader) (MessageID, error) {
+	// Get the first number in the message expected to be MessageID
+	num, err := quicvarint.Read(r)
 	if err != nil {
-		return nil, err
+		return 0xff, err
 	}
+	switch MessageID(num) {
+	case SUBSCRIBE_UPDATE,
+		SUBSCRIBE,
+		SUBSCRIBE_OK,
+		SUBSCRIBE_ERROR,
+		ANNOUNCE,
+		ANNOUNCE_OK,
+		ANNOUNCE_ERROR,
+		UNANNOUNCE,
+		UNSUBSCRIBE,
+		SUBSCRIBE_DONE,
+		ANNOUNCE_CANCEL,
+		TRACK_STATUS_REQUEST,
+		TRACK_STATUS,
+		GOAWAY,
+		CLIENT_SETUP,
+		SERVER_SETUP,
+		STREAM_HEADER_TRACK,
+		STREAM_HEADER_GROUP:
+		return MessageID(num), nil
+	default:
+		return 0xff, errors.New("undefined Message ID")
+	}
+}
 
-	switch MessageID(id) {
+/*
+func getMessageBody(r quicvarint.Reader, id MessageID) (Messager, error) {
+	var msg Messager
+	var err error
+	switch id {
 	case OBJECT_STREAM:
 		msg = &ObjectStream{}
 	case OBJECT_DATAGRAM:
@@ -465,9 +288,19 @@ func GetMessage(r io.Reader) (Messager, error) {
 		// return an error
 		return nil, errors.New("invalid MOQT message type")
 	}
-	err = msg.deserialize(reader)
+	err = msg.deserialize(r)
 	if err != nil {
 		return nil, err
 	}
 	return msg, nil
 }
+
+func getMessage(r io.Reader) (Messager, error) {
+	qvReader := quicvarint.NewReader(r)
+	id, err := getMessageID(qvReader)
+	if err != nil {
+		return nil, err
+	}
+	return getMessageBody(qvReader, id)
+}
+*/

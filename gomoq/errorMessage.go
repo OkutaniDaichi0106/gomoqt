@@ -96,17 +96,21 @@ func (ae AnnounceError) serialize() []byte {
 }
 
 func (ae *AnnounceError) deserialize(r quicvarint.Reader) error {
-	var err error
-	var num uint64
-
 	// Get Message ID and check it
-	num, err = quicvarint.Read(r)
+	id, err := deserializeHeader(r)
 	if err != nil {
 		return err
 	}
-	if MessageID(num) != ANNOUNCE_ERROR {
+	if id != ANNOUNCE_ERROR { //TODO: this would means protocol violation
 		return errors.New("unexpected message")
 	}
+
+	return ae.deserializeBody(r)
+}
+
+func (ae *AnnounceError) deserializeBody(r quicvarint.Reader) error {
+	var err error
+	var num uint64
 
 	// Get Track Namespace
 	num, err = quicvarint.Read(r)

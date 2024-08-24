@@ -30,7 +30,7 @@ func (s *Subscriber) Connect(url string) error {
 		panic("no versions are specified")
 	}
 
-	return s.connect(url, sub)
+	return s.connect(url, SUB)
 }
 
 type SubscribeConfig struct {

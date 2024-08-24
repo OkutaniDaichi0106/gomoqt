@@ -12,11 +12,6 @@ type Publisher struct {
 	Client
 
 	Namespace string
-
-	announcements []string
-
-	// A map of our announced tracks
-
 }
 
 func (p *Publisher) Connect(url string) error {
@@ -26,7 +21,7 @@ func (p *Publisher) Connect(url string) error {
 	}
 
 	// Connect to the server
-	return p.connect(url, pub)
+	return p.connect(url, PUB)
 }
 
 /*

@@ -65,7 +65,7 @@ func (shg *StreamHeaderGroup) deserialize(r quicvarint.Reader) error {
 		return err
 	}
 	if id != STREAM_HEADER_GROUP {
-		return errors.New("unexpected message")
+		return ErrUnexpectedMessage
 	}
 
 	return shg.deserializeBody(r)

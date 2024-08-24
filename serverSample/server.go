@@ -23,10 +23,6 @@ func main() {
 		SupportedVersions:  []gomoq.Version{gomoq.Draft05},
 		TrackNames:         []string{"audio"},
 	}
-	// moqs := gomoq.Server{
-	// 	WebtransportServer: &ws,
-	// 	SupportedVersions:  []gomoq.Version{gomoq.Draft05},
-	// }
 
 	http.HandleFunc("/setup", func(w http.ResponseWriter, r *http.Request) {
 		// Establish WebTransport connection after receive EXTEND CONNECT message
@@ -39,24 +35,51 @@ func main() {
 
 		// Set the session to a agent
 		moqAgent := gomoq.Agent{
+			Server:  moqServer,
 			Session: sess,
 		}
 
-		// Exchange SETUP messages
-		err = moqAgent.Setup(&moqServer)
-		if err != nil {
-			return
-		}
+		// When the Agent is connected with a Publisher, perform the configured operation
+		moqAgent.PublisherHandle(func() error {
+			// Negotiate SETUP messages
+			err = moqAgent.Setup()
+			if err != nil {
+				return err
+			}
 
-		err = moqAgent.Advertise(moqServer)
-		if err != nil {
-			return
-		}
-		err = moqAgent.AcceptSubscribe()
-		if err != nil {
-			return
-		}
-		//moqa.AcceptAnnounce()
+			// Advertise announcements
+			err = moqAgent.Advertise()
+			if err != nil {
+				return err
+			}
+
+			// Accept SUBSCRIBE message
+			err = moqAgent.AcceptSubscribe()
+			if err != nil {
+				return err
+			}
+			return nil
+		})
+
+		// When the Agent is connected with a Subscriber, perform the configured operation
+		moqAgent.SubscriberHandle(func() error {
+			err = moqAgent.Setup()
+			if err != nil {
+				return err
+			}
+
+			err = moqAgent.AcceptAnnounce()
+			if err != nil {
+				return err
+			}
+			return nil
+		})
+
+		// Exchange SETUP messages
+
+		// When the Client is a Subscriber
+
+		// When the Client is a Publisher
 
 		//Handle the session. Here goes the application logic
 		//sess.CloseWithError(1234, "stop connection!!!")

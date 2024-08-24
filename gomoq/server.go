@@ -42,14 +42,25 @@ type Server struct {
 	agents []*Agent
 
 	/*
+	 * Index for searching Agent by Namespace
+	 */
+	namespaceIndex map[string]*Agent
+
+	/*
+	 * Index for searching Agent by ID
+	 */
+	idIndex map[AgentID]*Agent
+
+	/*
 	 * Announcements received from publishers
 	 */
-	Announcements map[AgentID]AnnounceMessage
+	Announcements map[AgentID]*AnnounceMessage
 }
 
 type AgentID uint64
 
 type Agent struct {
+	Server
 	/*
 	 * Bidirectional stream to send control stream
 	 * Set this after connection to the server is completed
@@ -62,9 +73,9 @@ type Agent struct {
 	agentID AgentID
 
 	/*
-	 * Role of the Client connceted to the Agent
+	 * Role of the Client's Agent
 	 */
-	connectTo Role
+	agentOf Role
 
 	/*
 	 * Bidirectional stream to send control stream
@@ -77,8 +88,22 @@ type Agent struct {
 	 */
 	selectedVersion Version
 
-	//
-	acceptedTrackNamespace []string
+	/*
+	 * The operation performed on publishers
+	 */
+	onPublisher *func() error
+
+	/*
+	 * The operation performed on subscribers
+	 */
+	onSubscriber *func() error
+
+	/*
+	 * The operation performed on subscribers
+	 */
+	onPubSub *func() error
+
+	//acceptedTrackNamespace []string
 }
 
 /*
@@ -87,7 +112,7 @@ type Agent struct {
  * Accept bidirectional stream to send control message
  *
  */
-func (a *Agent) Setup(server *Server) error {
+func (a *Agent) Setup() error {
 	//TODO: Check if the role and the versions is setted
 	var err error
 
@@ -111,8 +136,8 @@ func (a *Agent) Setup(server *Server) error {
 		return errors.New("no role is specified")
 	}
 	switch Role(v.(uint64)) {
-	case pub, sub, pub_sub:
-		a.connectTo = Role(v.(uint64))
+	case PUB, SUB, PUB_SUB:
+		a.agentOf = Role(v.(uint64))
 	default:
 		return errors.New("invalid role is specified")
 	}
@@ -120,7 +145,7 @@ func (a *Agent) Setup(server *Server) error {
 	// Select version
 	versionIsOK := false
 	for _, cv := range cs.Versions {
-		for _, sv := range server.SupportedVersions {
+		for _, sv := range a.SupportedVersions {
 			if cv == sv {
 				a.selectedVersion = sv
 				versionIsOK = true
@@ -138,7 +163,7 @@ func (a *Agent) Setup(server *Server) error {
 	}
 
 	// Add Track Name defined in the Server to the SETUP_SERVER parameters
-	for _, v := range server.TrackNames {
+	for _, v := range a.TrackNames { // Original
 		ssm.AddStringParameter(TRACK_NAME, v)
 	}
 
@@ -152,9 +177,11 @@ func (a *Agent) Setup(server *Server) error {
 	a.controlStream = stream
 
 	// Assign an Agent ID
-	a.agentID = AgentID(len(server.agents))
-	// Register the agent to the server
-	server.agents = append(server.agents, a)
+	a.agentID = AgentID(len(a.agents))
+	// Register the Agent to the server
+	a.agents = append(a.agents, a)
+	// Register the Agent to an index
+	a.idIndex[a.agentID] = a
 
 	return nil
 }
@@ -162,10 +189,14 @@ func (a *Agent) Setup(server *Server) error {
 /*
  * Advertise announcements
  */
-func (a *Agent) Advertise(server Server) error {
+func (a *Agent) Advertise() error {
+	// Only Publiser's Agent perform this operation
+	if a.agentOf == SUB { //TODO: handle this as protocol violation
+		return ErrUnsuitableRole
+	}
 	var err error
 	// Send all ANNOUNCE messages
-	for _, am := range server.Announcements {
+	for _, am := range a.Announcements {
 		_, err = a.controlStream.Write(am.serialize())
 		if err != nil {
 			return err
@@ -176,6 +207,145 @@ func (a *Agent) Advertise(server Server) error {
 }
 
 func (a Agent) AcceptSubscribe() error {
-	//
+	// Only Publiser's Agent perform this operation
+	if a.agentOf == SUB { //TODO: handle this as protocol violation
+		return ErrUnsuitableRole
+	}
+
+	// Receive an ANNOUNCE message
+	sReader := quicvarint.NewReader(a.controlStream)
+	id, err := deserializeHeader(sReader)
+	if err != nil {
+		return err
+	}
+	if id != SUBSCRIBE {
+		return ErrUnexpectedMessage
+	}
+
+	// Command the Agent of the subscribed publisher to send the SUBSCRIBE message
+	s := SubscribeMessage{}
+	err = s.deserializeBody(sReader) //TODO: Transfer data as a raw byte stream?
+	if err != nil {
+		return err
+	}
+
+	// Find the Publisher's Agent which send the SUBSCRIBE message from specified Track Namespace
+	pAgent, ok := a.namespaceIndex[s.TrackNamespace]
+	if !ok {
+		//TODO: send SUBSCRIBE_ERROR message
+		return ErrNoAgent
+	}
+
+	// Send the SUBSCRIBE message to the publisher
+	_, err = pAgent.controlStream.Write(s.serialize())
+	if err != nil {
+		return err
+	}
+
+	// Receive SUBSCRIBE_OK message or SUBSCRIBE_ERROR message from Publisher
+	// and send it to Subscriber
+	pReader := quicvarint.NewReader(pAgent.controlStream)
+	id, err = deserializeHeader(pReader)
+	if err != nil {
+		return err
+	}
+	if id == SUBSCRIBE_OK {
+		so := SubscribeOkMessage{}
+		err = so.deserializeBody(pReader)
+		if err != nil {
+			return err
+		}
+		_, err = a.controlStream.Write(so.serialize())
+		if err != nil {
+			return err
+		}
+	} else if id == SUBSCRIBE_ERROR {
+		se := SubscribeError{}
+		err = se.deserializeBody(pReader)
+		if err != nil {
+			return err
+		}
+		_, err = a.controlStream.Write(se.serialize())
+		if err != nil {
+			return err
+		}
+	} else {
+		return ErrUnexpectedMessage // TODO: protocol violation
+	}
+
+	return nil
+}
+
+func (a *Agent) AcceptAnnounce() error {
+	// Only Publiser's Agent perform this operation
+	if a.agentOf == SUB { //TODO: handle this as protocol violation
+		return ErrUnsuitableRole
+	}
+
+	var err error
+
+	// Receive an ANNOUNCE message
+	qvReader := quicvarint.NewReader(a.controlStream)
+	id, err := deserializeHeader(qvReader)
+	if err != nil {
+		return err
+	}
+	if id != ANNOUNCE {
+		return ErrUnexpectedMessage
+	}
+
+	//TODO: handle error
+	an := AnnounceMessage{}
+	err = an.deserializeBody(qvReader)
+	if err != nil {
+		return err
+	} // TODO: handle the parameter
+
+	// Register the ANNOUNCE message
+	_, ok := a.namespaceIndex[an.TrackNamespace]
+	if ok {
+		return ErrDuplicatedNamespace
+	}
+	a.namespaceIndex[an.TrackNamespace] = a
+
+	// Send ANNOUNCE_OK message or ANNOUNCE_ERROR message as responce
+	aom := AnnounceOkMessage{
+		TrackNamespace: an.TrackNamespace,
+	}
+	_, err = a.controlStream.Write(aom.serialize())
+	if err != nil {
+		return err
+	}
+
+	// If failed to authorization ANNOUNCE_ERROR message
+	// ae := AnnounceError{}
+	// _, err = a.controlStream.Write(ae.serialize())
+	// if err != nil {
+	// 	return err
+	// }
+
+	return nil
+}
+
+var ErrUnsuitableRole = errors.New("the role cannot perform the operation ")
+var ErrUnexpectedMessage = errors.New("received message is not a expected message")
+var ErrInvalidRole = errors.New("given role is invalid")
+var ErrDuplicatedNamespace = errors.New("given namespace is already registered")
+var ErrNoAgent = errors.New("no agent")
+
+//TODO: can reduce the number of quicvarint.Reader?
+
+func (a *Agent) PublisherHandle(op func() error) error {
+	a.onPublisher = &op
+	return nil
+}
+
+func (a *Agent) SubscriberHandle(op func() error) error {
+	a.onSubscriber = &op
+	return nil
+}
+
+func (a *Agent) PubSubHandle(op func() error) error {
+	a.onPubSub = &op
 	return nil
 }

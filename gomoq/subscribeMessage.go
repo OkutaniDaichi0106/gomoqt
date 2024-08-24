@@ -87,17 +87,21 @@ func (s SubscribeMessage) serialize() []byte {
 }
 
 func (s *SubscribeMessage) deserialize(r quicvarint.Reader) error {
-	var err error
-	var num uint64
-
 	// Get Message ID and check it
-	num, err = quicvarint.Read(r)
+	id, err := deserializeHeader(r)
 	if err != nil {
 		return err
 	}
-	if MessageID(num) != SUBSCRIBE {
-		return errors.New("unexpected message")
+	if id != SUBSCRIBE {
+		return ErrUnexpectedMessage
 	}
+
+	return s.deserializeBody(r)
+}
+
+func (s *SubscribeMessage) deserializeBody(r quicvarint.Reader) error {
+	var err error
+	var num uint64
 
 	// Get Subscribe ID
 	num, err = quicvarint.Read(r)

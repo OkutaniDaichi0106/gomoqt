@@ -36,9 +36,9 @@ const (
 type Role byte
 
 const (
-	pub     Role = 0x00
-	sub     Role = 0x01
-	pub_sub Role = 0x02
+	PUB     Role = 0x00
+	SUB     Role = 0x01
+	PUB_SUB Role = 0x02
 )
 
 /*

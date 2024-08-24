@@ -44,6 +44,12 @@ type Messager interface {
 	 * and reflect the value to the fields
 	 */
 	deserialize(quicvarint.Reader) error
+
+	/*
+	 * Deserialize byte string to a value
+	 * and reflect the value to the fields
+	 */
+	deserializeBody(quicvarint.Reader) error
 }
 
 /*
@@ -238,69 +244,54 @@ func deserializeHeader(r quicvarint.Reader) (MessageID, error) {
 	}
 }
 
-/*
-func getMessageBody(r quicvarint.Reader, id MessageID) (Messager, error) {
-	var msg Messager
-	var err error
+func Deserialize(r quicvarint.Reader) (Messager, error) {
+	var message Messager
+	id, err := deserializeHeader(r)
+	if err != nil {
+		return nil, err
+	}
 	switch id {
-	case OBJECT_STREAM:
-		msg = &ObjectStream{}
-	case OBJECT_DATAGRAM:
-		msg = &ObjectDatagram{}
 	case SUBSCRIBE_UPDATE:
-		msg = &SubscribeUpdateMessage{}
+		message = &SubscribeUpdateMessage{}
 	case SUBSCRIBE:
-		msg = &SubscribeMessage{}
+		message = &SubscribeMessage{}
 	case SUBSCRIBE_OK:
-		msg = &SubscribeOkMessage{}
+		message = &SubscribeOkMessage{}
 	case SUBSCRIBE_ERROR:
-		msg = &SubscribeError{}
+		message = &SubscribeError{}
 	case ANNOUNCE:
-		msg = &AnnounceMessage{}
+		message = &AnnounceMessage{}
 	case ANNOUNCE_OK:
-		msg = &AnnounceOkMessage{}
+		message = &AnnounceOkMessage{}
 	case ANNOUNCE_ERROR:
-		msg = &AnnounceError{}
+		message = &AnnounceError{}
 	case UNANNOUNCE:
-		msg = &UnannounceMessage{}
+		message = &UnannounceMessage{}
 	case UNSUBSCRIBE:
-		msg = &UnsubscribeMessage{}
+		message = &UnsubscribeMessage{}
 	case SUBSCRIBE_DONE:
-		msg = &SubscribeDoneMessage{}
+		message = &SubscribeDoneMessage{}
 	case ANNOUNCE_CANCEL:
-		msg = &AnnounceCancelMessage{}
+		message = &AnnounceCancelMessage{}
 	case TRACK_STATUS_REQUEST:
-		msg = &TrackStatusRequest{}
+		message = &TrackStatusRequest{}
 	case TRACK_STATUS:
-		msg = &TrackStatusMessage{}
+		message = &TrackStatusMessage{}
 	case GOAWAY:
-		msg = &GoAwayMessage{}
+		message = &GoAwayMessage{}
 	case CLIENT_SETUP:
-		msg = &ClientSetupMessage{}
+		message = &ClientSetupMessage{}
 	case SERVER_SETUP:
-		msg = &ServerSetupMessage{}
+		message = &ServerSetupMessage{}
 	case STREAM_HEADER_TRACK:
-		msg = &StreamHeaderTrack{}
+		message = &StreamHeaderTrack{}
 	case STREAM_HEADER_GROUP:
-		msg = &StreamHeaderGroup{}
-	default:
-		// If the massage id is not of the moqt message
-		// return an error
-		return nil, errors.New("invalid MOQT message type")
+		message = &StreamHeaderGroup{}
 	}
-	err = msg.deserialize(r)
-	if err != nil {
-		return nil, err
-	}
-	return msg, nil
-}
 
-func getMessage(r io.Reader) (Messager, error) {
-	qvReader := quicvarint.NewReader(r)
-	id, err := getMessageID(qvReader)
+	err = message.deserializeBody(r)
 	if err != nil {
 		return nil, err
 	}
-	return getMessageBody(qvReader, id)
+	return message, nil
 }
-*/

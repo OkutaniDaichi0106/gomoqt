@@ -1,7 +1,6 @@
 package gomoq
 
 import (
-	"errors"
 	"io"
 
 	"github.com/quic-go/quic-go/quicvarint"
@@ -43,32 +42,32 @@ func (od ObjectDatagram) serialize() []byte {
 	// Append Track Alias
 	b = quicvarint.Append(b, uint64(od.TrackAlias))
 	// Append Group ID
-	b = quicvarint.Append(b, uint64(od.GroupID))
+	b = quicvarint.Append(b, uint64(od.GroupChunk.GroupID))
 	// Append Object ID
-	b = quicvarint.Append(b, uint64(od.ObjectID))
+	b = quicvarint.Append(b, uint64(od.GroupChunk.ObjectID))
 	// Append Object ID
 	b = quicvarint.Append(b, uint64(od.PublisherPriority))
 	// Append Object ID
 	b = quicvarint.Append(b, uint64(od.StatusCode))
 
 	// Append Object Payload
-	b = append(b, od.Payload...)
+	b = append(b, od.GroupChunk.Payload...)
 
 	return b
 }
 
-func (od *ObjectDatagram) deserialize(r quicvarint.Reader) error {
-	// Get Message ID and check it
-	id, err := deserializeHeader(r)
-	if err != nil {
-		return err
-	}
-	if id != OBJECT_DATAGRAM {
-		return errors.New("unexpected message")
-	}
+// func (od *ObjectDatagram) deserialize(r quicvarint.Reader) error {
+// 	// Get Message ID and check it
+// 	id, err := deserializeHeader(r)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	if id != OBJECT_DATAGRAM {
+// 		return errors.New("unexpected message")
+// 	}
 
-	return od.deserializeBody(r)
-}
+// 	return od.deserializeBody(r)
+// }
 
 func (od *ObjectDatagram) deserializeBody(r quicvarint.Reader) error {
 	var err error
@@ -95,14 +94,14 @@ func (od *ObjectDatagram) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	od.GroupID = GroupID(num)
+	od.GroupChunk.GroupID = GroupID(num)
 
 	// Get Object ID
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	od.ObjectID = ObjectID(num)
+	od.GroupChunk.ObjectID = ObjectID(num)
 
 	// Get Publisher Priority
 	num, err = quicvarint.Read(r)
@@ -123,7 +122,7 @@ func (od *ObjectDatagram) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	od.Payload = buf
+	od.GroupChunk.Payload = buf
 
 	return nil
 }

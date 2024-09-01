@@ -73,18 +73,18 @@ func (su SubscribeUpdateMessage) serialize() []byte {
 	return b
 }
 
-func (su *SubscribeUpdateMessage) deserialize(r quicvarint.Reader) error {
-	// Get Message ID and check it
-	id, err := deserializeHeader(r)
-	if err != nil {
-		return err
-	}
-	if id != SUBSCRIBE_UPDATE {
-		return errors.New("unexpected message")
-	}
+// func (su *SubscribeUpdateMessage) deserialize(r quicvarint.Reader) error {
+// 	// Get Message ID and check it
+// 	id, err := deserializeHeader(r)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	if id != SUBSCRIBE_UPDATE {
+// 		return errors.New("unexpected message")
+// 	}
 
-	return su.deserializeBody(r)
-}
+// 	return su.deserializeBody(r)
+// }
 
 func (su *SubscribeUpdateMessage) deserializeBody(r quicvarint.Reader) error {
 	var err error

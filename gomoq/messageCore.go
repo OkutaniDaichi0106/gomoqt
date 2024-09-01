@@ -43,7 +43,7 @@ type Messager interface {
 	 * Deserialize byte string to a value
 	 * and reflect the value to the fields
 	 */
-	deserialize(quicvarint.Reader) error
+	//deserialize(quicvarint.Reader) error
 
 	/*
 	 * Deserialize byte string to a value
@@ -172,19 +172,20 @@ func (ga GoAwayMessage) serialize() []byte {
 	return b
 }
 
-func (ga *GoAwayMessage) deserialize(r quicvarint.Reader) error {
+// func (ga *GoAwayMessage) deserialize(r quicvarint.Reader) error {
 
-	// Get Message ID and check it
-	id, err := deserializeHeader(r)
-	if err != nil {
-		return err
-	}
-	if id != GOAWAY { //TODO: this would means protocol violation
-		return errors.New("unexpected message")
-	}
+// 	// Get Message ID and check it
+// 	id, err := deserializeHeader(r)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	if id != GOAWAY { //TODO: this would means protocol violation
+// 		return errors.New("unexpected message")
+// 	}
 
-	return ga.deserializeBody(r)
-}
+// 	return ga.deserializeBody(r)
+// }
+
 func (ga *GoAwayMessage) deserializeBody(r quicvarint.Reader) error {
 	var err error
 	var num uint64

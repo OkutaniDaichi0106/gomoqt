@@ -51,18 +51,18 @@ func (sht StreamHeaderTrack) serialize() []byte {
 	return b
 }
 
-func (sht *StreamHeaderTrack) deserialize(r quicvarint.Reader) error {
-	// Get Message ID and check it
-	id, err := deserializeHeader(r)
-	if err != nil {
-		return err
-	}
-	if id != STREAM_HEADER_TRACK {
-		return errors.New("unexpected message")
-	}
+// func (sht *StreamHeaderTrack) deserialize(r quicvarint.Reader) error {
+// 	// Get Message ID and check it
+// 	id, err := deserializeHeader(r)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	if id != STREAM_HEADER_TRACK {
+// 		return errors.New("unexpected message")
+// 	}
 
-	return sht.deserializeBody(r)
-}
+// 	return sht.deserializeBody(r)
+// }
 
 func (sht *StreamHeaderTrack) deserializeBody(r quicvarint.Reader) error {
 	var err error

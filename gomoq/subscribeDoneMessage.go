@@ -62,18 +62,18 @@ func (sd SubscribeDoneMessage) serialize() []byte {
 	return b
 }
 
-func (sd *SubscribeDoneMessage) deserialize(r quicvarint.Reader) error {
-	// Get Message ID and check it
-	id, err := deserializeHeader(r)
-	if err != nil {
-		return err
-	}
-	if id != SUBSCRIBE_DONE {
-		return errors.New("unexpected message")
-	}
+// func (sd *SubscribeDoneMessage) deserialize(r quicvarint.Reader) error {
+// 	// Get Message ID and check it
+// 	id, err := deserializeHeader(r)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	if id != SUBSCRIBE_DONE {
+// 		return errors.New("unexpected message")
+// 	}
 
-	return sd.deserializeBody(r)
-}
+// 	return sd.deserializeBody(r)
+// }
 
 func (sd *SubscribeDoneMessage) deserializeBody(r quicvarint.Reader) error {
 	var err error

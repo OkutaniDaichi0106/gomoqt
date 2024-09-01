@@ -11,6 +11,8 @@ type Subscriber struct {
 	 */
 	Client
 
+	SubscriberHandler
+
 	/*
 	 * Map of the Track Alias
 	 * The key is the Track Full Name
@@ -22,6 +24,11 @@ type Subscriber struct {
 	 * The index is
 	 */
 	subscriptions []SubscribeMessage
+}
+
+type SubscriberHandler interface {
+	SubscribeParameters() Parameters
+	SubscribeUpdateParameters() Parameters
 }
 
 func (s *Subscriber) Connect(url string) error {
@@ -49,8 +56,6 @@ type SubscribeConfig struct {
 	 * No value is set by default
 	 */
 	SubscriptionFilter
-
-	Parameters
 }
 
 func (s *Subscriber) Subscribe(trackNamespace, trackName string, config SubscribeConfig) error {
@@ -178,7 +183,7 @@ func (s *Subscriber) SubscribeUpdate(id SubscribeID, config SubscribeConfig) err
 		existingSubscription.SubscriptionFilter = config.SubscriptionFilter
 	}
 
-	existingSubscription.Parameters = config.Parameters
+	existingSubscription.Parameters = s.SubscribeParameters()
 
 	return s.sendSubscribeUpdateMessage(id, config)
 }
@@ -189,7 +194,7 @@ func (s Subscriber) sendSubscribeUpdateMessage(id SubscribeID, config SubscribeC
 		SubscribeID:        id,
 		SubscriptionFilter: config.SubscriptionFilter,
 		SubscriberPriority: config.SubscriberPriority,
-		Parameters:         config.Parameters,
+		Parameters:         s.SubscribeUpdateParameters(),
 	}
 
 	// Send SUBSCRIBE_UPDATE message

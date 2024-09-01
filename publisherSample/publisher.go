@@ -17,8 +17,8 @@ func main() {
 
 	// Set subscriber
 	publisher := gomoq.Publisher{
-		Client:    client,
-		Namespace: "localhost/daichi/",
+		Client:         client,
+		TrackNamespace: "localhost/daichi/",
 	}
 
 	err := publisher.Connect("https://localhost:8443/setup")

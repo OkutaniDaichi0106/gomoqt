@@ -58,18 +58,18 @@ func (shg StreamHeaderGroup) serialize() []byte {
 	return b
 }
 
-func (shg *StreamHeaderGroup) deserialize(r quicvarint.Reader) error {
-	// Get Message ID and check it
-	id, err := deserializeHeader(r)
-	if err != nil {
-		return err
-	}
-	if id != STREAM_HEADER_GROUP {
-		return ErrUnexpectedMessage
-	}
+// func (shg *StreamHeaderGroup) deserialize(r quicvarint.Reader) error {
+// 	// Get Message ID and check it
+// 	id, err := deserializeHeader(r)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	if id != STREAM_HEADER_GROUP {
+// 		return ErrUnexpectedMessage
+// 	}
 
-	return shg.deserializeBody(r)
-}
+// 	return shg.deserializeBody(r)
+// }
 
 func (shg *StreamHeaderGroup) deserializeBody(r quicvarint.Reader) error {
 	var err error

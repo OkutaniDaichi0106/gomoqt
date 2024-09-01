@@ -1,7 +1,6 @@
 package gomoq
 
 import (
-	"errors"
 	"io"
 
 	"github.com/quic-go/quic-go/quicvarint"
@@ -76,7 +75,7 @@ type Object struct {
 	 */
 	StatusCode ObjectStatusCode
 
-	GroupChunk
+	GroupChunk GroupChunk
 }
 
 /*
@@ -115,32 +114,32 @@ func (os ObjectStream) serialize() []byte {
 	// Append Track Alias
 	b = quicvarint.Append(b, uint64(os.TrackAlias))
 	// Append Group ID
-	b = quicvarint.Append(b, uint64(os.GroupID))
+	b = quicvarint.Append(b, uint64(os.GroupChunk.GroupID))
 	// Append Object ID
-	b = quicvarint.Append(b, uint64(os.ObjectID))
+	b = quicvarint.Append(b, uint64(os.GroupChunk.ObjectID))
 	// Append Publisher Priority
 	b = quicvarint.Append(b, uint64(os.PublisherPriority))
 	// Append Object Status Code
 	b = quicvarint.Append(b, uint64(os.StatusCode))
 
 	// Append Object Payload
-	b = append(b, os.Payload...)
+	b = append(b, os.GroupChunk.Payload...)
 
 	return b
 }
 
-func (os *ObjectStream) deserialize(r quicvarint.Reader) error {
-	// Get Message ID and check it
-	id, err := deserializeHeader(r)
-	if err != nil {
-		return err
-	}
-	if id != OBJECT_STREAM {
-		return errors.New("unexpected message")
-	}
+// func (os *ObjectStream) deserialize(r quicvarint.Reader) error {
+// 	// Get Message ID and check it
+// 	id, err := deserializeHeader(r)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	if id != OBJECT_STREAM {
+// 		return errors.New("unexpected message")
+// 	}
 
-	return os.deserializeBody(r)
-}
+// 	return os.deserializeBody(r)
+// }
 
 func (os *ObjectStream) deserializeBody(r quicvarint.Reader) error {
 	var err error
@@ -170,14 +169,14 @@ func (os *ObjectStream) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	os.GroupID = GroupID(num)
+	os.GroupChunk.GroupID = GroupID(num)
 
 	// Get Object ID
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	os.ObjectID = ObjectID(num)
+	os.GroupChunk.ObjectID = ObjectID(num)
 
 	// Get Publisher Priority
 	num, err = quicvarint.Read(r)
@@ -198,7 +197,7 @@ func (os *ObjectStream) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	os.Payload = buf
+	os.GroupChunk.Payload = buf
 
 	return nil
 }

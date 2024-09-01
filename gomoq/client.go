@@ -48,10 +48,17 @@ type Client struct {
 	 */
 	selectedVersion Version
 
+	ClientParameterHandler
+
 	/*
 	 * CLIENT_SETUP message
 	 */
 	//clientSetupMessage ClientSetupMessage
+}
+
+type ClientParameterHandler interface {
+	ClientSetupParameters() Parameters
+	AnnounceParameters() Parameters
 }
 
 /*
@@ -91,7 +98,8 @@ func (c *Client) connect(url string, role Role) error {
 
 	// Send SETUP_CLIENT message
 	csm := ClientSetupMessage{
-		Versions: c.Versions,
+		Versions:   c.Versions,
+		Parameters: c.ClientSetupParameters(),
 	}
 	csm.addIntParameter(ROLE, uint64(role))
 
@@ -102,8 +110,15 @@ func (c *Client) connect(url string, role Role) error {
 
 	// Receive SETUP_SERVER message
 	qvReader := quicvarint.NewReader(stream)
+	id, err := deserializeHeader(qvReader)
+	if err != nil {
+		return err
+	}
+	if id != SERVER_SETUP {
+		return ErrProtocolViolation
+	}
 	var ss ServerSetupMessage
-	err = ss.deserialize(qvReader)
+	err = ss.deserializeBody(qvReader)
 	if err != nil {
 		return err
 	}
@@ -128,27 +143,11 @@ func (c *Client) connect(url string, role Role) error {
 	return nil
 }
 
-/*
-func (c *Client) Reconnect() error {
-	// Client connect to the server with the same settings as previouse one
+func (c *Client) terminate() error {
+	// Send Error message to the server before close the stream
 
-	// Set header
-	var headers http.Header
-
-	// Dial to the server with Extended CONNECT request
-	_, sess, err := c.dialer.Dial(context.Background(), c.url, headers)
-	if err != nil {
-		return err
-	}
-	c.session = sess
-
-	// Open first stream to send control messages
-	stream, err := sess.OpenStreamSync(context.Background())
-	if err != nil {
-		return err
-	}
-	c.controlStream = stream
-
+	// Close the controll stream
+	c.controlStream.Close() //TODO: must it be closed?
+	//c.session.CloseWithError() //TODO:
 	return nil
 }
-*/

@@ -17,7 +17,8 @@ func main() {
 
 	// Set subscriber
 	subscriber := gomoq.Subscriber{
-		Client: client,
+		Client:            client,
+		SubscriberHandler: SubscriberHandler{},
 	}
 
 	err := subscriber.Connect("https://localhost:8443/setup")
@@ -37,4 +38,18 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Print("Subscribed!!")
+}
+
+type SubscriberHandler struct {
+}
+
+func (SubscriberHandler) ClientSetupParameters() gomoq.Parameters {
+	return gomoq.Parameters{}
+}
+
+func (SubscriberHandler) SubscribeParameters() gomoq.Parameters {
+	return gomoq.Parameters{}
+}
+func (SubscriberHandler) SubscribeUpdateParameters() gomoq.Parameters {
+	return gomoq.Parameters{}
 }

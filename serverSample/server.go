@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"go-moq/gomoq"
 	"log"
 	"net/http"
@@ -18,10 +19,8 @@ func main() {
 		//CheckOrigin: func(r *http.Request) bool {},
 	}
 
-	moqServer := gomoq.Server{
-		WebtransportServer: &ws,
-		SupportedVersions:  []gomoq.Version{gomoq.Draft05},
-		TrackNames:         []string{"audio"},
+	ms := gomoq.Server{
+		SupportedVersions: []gomoq.Version{gomoq.Draft05},
 	}
 
 	http.HandleFunc("/setup", func(w http.ResponseWriter, r *http.Request) {
@@ -33,47 +32,36 @@ func main() {
 			return
 		}
 
-		// Set the session to a agent
-		moqAgent := gomoq.Agent{
-			Server:  moqServer,
-			Session: sess,
-		}
+		agent := ms.NewAgent(sess)
 
-		// When the Agent is connected with a Publisher, perform the configured operation
-		moqAgent.PublisherHandle(func() error {
-			// Negotiate SETUP messages
-			err = moqAgent.Setup()
+		ms.OnPublisher(func(agent *gomoq.Agent) {
+			err := gomoq.AcceptAnnounce(agent)
 			if err != nil {
-				return err
+				return
 			}
 
-			// Advertise announcements
-			err = moqAgent.Advertise()
+			err = gomoq.AcceptObjects(agent, context.Background())
 			if err != nil {
-				return err
+				return
 			}
-
-			// Accept SUBSCRIBE message
-			err = moqAgent.AcceptSubscribe()
-			if err != nil {
-				return err
-			}
-			return nil
 		})
 
-		// When the Agent is connected with a Subscriber, perform the configured operation
-		moqAgent.SubscriberHandle(func() error {
-			err = moqAgent.Setup()
+		ms.OnSubscriber(func(agent *gomoq.Agent) {
+			// Send ANNOUNCE messages to Subscribers and let them know available Track Namespace
+			err := gomoq.Advertise(agent, ms.Announcements)
 			if err != nil {
-				return err
+				return
 			}
 
-			err = moqAgent.AcceptAnnounce()
+			err = gomoq.AcceptSubscription(agent)
 			if err != nil {
-				return err
+				return
 			}
-			return nil
+
+			gomoq.MediateObjects(agent)
 		})
+
+		gomoq.Activate(agent)
 
 		// Exchange SETUP messages
 

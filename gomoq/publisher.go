@@ -11,7 +11,16 @@ type Publisher struct {
 	 */
 	Client
 
-	Namespace string
+	/*
+	 * Track Namespace the publisher uses
+	 */
+	TrackNamespace string
+
+	/***/
+	TrackNames []string
+
+	/***/
+	subscriptions []SubscribeMessage
 }
 
 func (p *Publisher) Connect(url string) error {
@@ -24,6 +33,11 @@ func (p *Publisher) Connect(url string) error {
 	return p.connect(url, PUB)
 }
 
+type PublisherHandler interface {
+	AnnounceParameters() Parameters
+	OnPublisher()
+}
+
 /*
  *
  *
@@ -31,10 +45,6 @@ func (p *Publisher) Connect(url string) error {
 func (p Publisher) Announce(trackNamespace string) error {
 	return p.sendAnnounceMessage(trackNamespace, Parameters{})
 }
-
-// func (p Publisher) AnnounceWithParams(trackNamespace string, params Parameters) error {
-// 	return p.sendAnnounceMessage(trackNamespace, params)
-// }
 
 func (p Publisher) sendAnnounceMessage(trackNamespace string, params Parameters) error {
 	a := AnnounceMessage{
@@ -47,6 +57,36 @@ func (p Publisher) sendAnnounceMessage(trackNamespace string, params Parameters)
 	}
 
 	return nil
+}
+
+func (p Publisher) sendObjectStream(trackName string) error {
+	// Open a unidirectional stream
+	stream, err := p.session.OpenUniStream()
+	if err != nil {
+		return err
+	}
+
+	// Close the stream after a single object was sent on the stream
+	defer stream.Close()
+
+	// Send an OBJECT_STREAM message
+	os := ObjectStream{
+		Object: Object{
+			TrackNameSpace: p.TrackNamespace,
+			TrackName:      trackName,
+		},
+	} // TODO: configure the fields
+	_, err = stream.Write(os.serialize())
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (p Publisher) sendObjectDatagram() error { //TODO:
+	var od ObjectDatagram
+	return p.session.SendDatagram(od.serialize())
 }
 
 func (p Publisher) AllowSubscribe() error {
@@ -78,7 +118,10 @@ func (p Publisher) sendUnannounceMessage(trackNamespace string) error {
 	um := UnannounceMessage{
 		TrackNamespace: trackNamespace,
 	}
-	p.controlStream.Write(um.serialize())
+	_, err := p.controlStream.Write(um.serialize())
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -86,7 +129,20 @@ func (p Publisher) sendUnannounceMessage(trackNamespace string) error {
  *
  *
  */
-func (p Publisher) SubscribeDone() error {
+func (p Publisher) SubscribeDone() error { //TODO:
+	sd := SubscribeDoneMessage{
+		//SubscribeID: ,
+		//StatusCode:,
+		//Reason:,
+		//ContentExists:,
+		//FinalGroupID:,
+		//FinalObjectID:,
+	}
+	_, err := p.controlStream.Write(sd.serialize())
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -95,7 +151,7 @@ func (p Publisher) SubscribeDone() error {
  */
 func (p Publisher) sendTrackStatus() error {
 	ts := TrackStatusMessage{
-		TrackNamespace: p.Namespace,
+		TrackNamespace: p.TrackNamespace,
 		TrackName:      "",
 		Code:           0,
 		LastGroupID:    GroupID(0),

@@ -1,8 +1,6 @@
 package gomoq
 
 import (
-	"errors"
-
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -32,18 +30,18 @@ func (ao AnnounceOkMessage) serialize() []byte {
 	return b
 }
 
-func (ao *AnnounceOkMessage) deserialize(r quicvarint.Reader) error {
-	// Get Message ID and check it
-	id, err := deserializeHeader(r)
-	if err != nil {
-		return err
-	}
-	if id != ANNOUNCE_OK { //TODO: this would means protocol violation
-		return errors.New("unexpected message")
-	}
+// func (ao *AnnounceOkMessage) deserialize(r quicvarint.Reader) error {
+// 	// Get Message ID and check it
+// 	id, err := deserializeHeader(r)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	if id != ANNOUNCE_OK { //TODO: this would means protocol violation
+// 		return errors.New("unexpected message")
+// 	}
 
-	return ao.deserializeBody(r)
-}
+// 	return ao.deserializeBody(r)
+// }
 
 func (ao *AnnounceOkMessage) deserializeBody(r quicvarint.Reader) error {
 	var err error

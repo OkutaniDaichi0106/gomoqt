@@ -6,6 +6,11 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
+type StreamHeader interface {
+	Messager
+	StreamType() ForwardingPreference
+}
+
 type StreamHeaderTrack struct {
 	/*
 	 * A number to identify the subscribe session
@@ -51,19 +56,6 @@ func (sht StreamHeaderTrack) serialize() []byte {
 	return b
 }
 
-// func (sht *StreamHeaderTrack) deserialize(r quicvarint.Reader) error {
-// 	// Get Message ID and check it
-// 	id, err := deserializeHeader(r)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	if id != STREAM_HEADER_TRACK {
-// 		return errors.New("unexpected message")
-// 	}
-
-// 	return sht.deserializeBody(r)
-// }
-
 func (sht *StreamHeaderTrack) deserializeBody(r quicvarint.Reader) error {
 	var err error
 	var num uint64
@@ -93,6 +85,10 @@ func (sht *StreamHeaderTrack) deserializeBody(r quicvarint.Reader) error {
 	sht.PublisherPriority = PublisherPriority(num)
 
 	return nil
+}
+
+func (sht StreamHeaderTrack) StreamType() ForwardingPreference {
+	return TRACK
 }
 
 type GroupChunk struct {
@@ -128,6 +124,10 @@ func (gc GroupChunk) serialize() []byte {
 	// Append Object Payload
 	b = append(b, gc.Payload...)
 
+	if len(gc.Payload) == 0 {
+		b = quicvarint.Append(b, uint64(gc.StatusCode))
+	}
+
 	return b
 }
 
@@ -154,14 +154,22 @@ func (gc *GroupChunk) deserialize(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-
-	// Get Object Payload
-	buf := make([]byte, num)
-	_, err = r.Read(buf)
-	if err != nil {
-		return err
+	if num > 0 {
+		// Get Object Payload
+		buf := make([]byte, num)
+		_, err = r.Read(buf)
+		if err != nil {
+			return err
+		}
+		gc.Payload = buf
+	} else if num == 0 {
+		// Get Object Status Code
+		num, err = quicvarint.Read(r)
+		if err != nil {
+			return err
+		}
+		gc.StatusCode = ObjectStatusCode(num)
 	}
-	gc.Payload = buf
 
 	return nil
 }

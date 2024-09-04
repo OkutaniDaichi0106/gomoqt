@@ -195,14 +195,6 @@ type subscriberMap struct {
 	mu    sync.Mutex
 }
 
-// func (sMap *subscriberMap) getValue(trackNamespace string) (*Agent, error) {
-// 	agent, ok := sMap.index[trackNamespace]
-// 	if !ok || agent == nil {
-// 		return nil, ErrNoAgent
-// 	}
-// 	return agent, nil
-// }
-
 func (sMap *subscriberMap) add(trackNamespace string, agent *Agent) error {
 	sMap.mu.Lock()
 	defer sMap.mu.Unlock()

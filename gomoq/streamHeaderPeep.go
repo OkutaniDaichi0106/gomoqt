@@ -17,6 +17,12 @@ type StreamHeaderPeep struct {
 	 * This is referenced instead of the Track Name and Track Namespace
 	 */
 	TrackAlias
+
+	/*
+	 * Group ID
+	 */
+	GroupID
+
 	/*
 	 * Peep ID
 	 */
@@ -58,19 +64,6 @@ func (shg StreamHeaderPeep) serialize() []byte {
 	return b
 }
 
-// func (shg *StreamHeaderPeep) deserialize(r quicvarint.Reader) error {
-// 	// Get Message ID and check it
-// 	id, err := deserializeHeader(r)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	if id != STREAM_HEADER_Peep {
-// 		return ErrUnexpectedMessage
-// 	}
-
-// 	return shg.deserializeBody(r)
-// }
-
 func (shg *StreamHeaderPeep) deserializeBody(r quicvarint.Reader) error {
 	var err error
 	var num uint64
@@ -109,9 +102,24 @@ func (shg *StreamHeaderPeep) deserializeBody(r quicvarint.Reader) error {
 	return nil
 }
 
+func (sht StreamHeaderPeep) StreamType() ForwardingPreference {
+	return PEEP
+}
+
 type ObjectChunk struct {
+	/*
+	 * Object ID
+	 */
 	ObjectID
+
 	Payload []byte
+
+	/*
+	 * A number indicating the status of this object
+	 * This is only sent if the length of the Object Payload is zero
+	 * This indicates missing objects or mark the end of a group or track
+	 */
+	StatusCode ObjectStatusCode
 }
 
 func (oc ObjectChunk) serialize() []byte {
@@ -139,10 +147,15 @@ func (oc ObjectChunk) serialize() []byte {
 	// Append Object Payload
 	b = append(b, oc.Payload...)
 
+	// Append Object Status if the length of the Object Payload is zero
+	if len(oc.Payload) == 0 {
+		b = quicvarint.Append(b, uint64(oc.StatusCode))
+	}
+
 	return b
 }
 
-func (oc *ObjectChunk) deserialize(r quicvarint.Reader) error {
+func (oc *ObjectChunk) deserializeBody(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 
@@ -159,13 +172,22 @@ func (oc *ObjectChunk) deserialize(r quicvarint.Reader) error {
 		return err
 	}
 
-	// Get Object Payload
-	buf := make([]byte, num)
-	_, err = r.Read(buf)
-	if err != nil {
-		return err
+	if num > 0 {
+		// Get Object Payload
+		buf := make([]byte, num)
+		_, err = r.Read(buf)
+		if err != nil {
+			return err
+		}
+		oc.Payload = buf
+	} else if num == 0 {
+		// Get Object Status if the length of the Object Payload is zero
+		num, err = quicvarint.Read(r)
+		if err != nil {
+			return err
+		}
+		oc.StatusCode = ObjectStatusCode(num)
 	}
-	oc.Payload = buf
 
 	return nil
 }

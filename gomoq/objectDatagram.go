@@ -1,8 +1,6 @@
 package gomoq
 
 import (
-	"io"
-
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -11,9 +9,10 @@ import (
  * and must be the only message on the unidirectional stream
  */
 type ObjectDatagram struct {
-	Object
 	SubscribeID
 	TrackAlias
+	GroupChunk
+	PublisherPriority
 }
 
 func (od ObjectDatagram) serialize() []byte {
@@ -31,7 +30,7 @@ func (od ObjectDatagram) serialize() []byte {
 	 *}
 	 */
 
-	// TODO?: Chech URI exists
+	// TODO?: Check URI exists
 
 	// TODO: Tune the length of the "b"
 	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
@@ -42,16 +41,20 @@ func (od ObjectDatagram) serialize() []byte {
 	// Append Track Alias
 	b = quicvarint.Append(b, uint64(od.TrackAlias))
 	// Append Group ID
-	b = quicvarint.Append(b, uint64(od.GroupChunk.GroupID))
+	b = quicvarint.Append(b, uint64(od.GroupID))
 	// Append Object ID
-	b = quicvarint.Append(b, uint64(od.GroupChunk.ObjectID))
-	// Append Object ID
+	b = quicvarint.Append(b, uint64(od.ObjectID))
+	// Append Publisher Priority
 	b = quicvarint.Append(b, uint64(od.PublisherPriority))
-	// Append Object ID
-	b = quicvarint.Append(b, uint64(od.StatusCode))
-
+	// Append Object Payload Length
+	b = quicvarint.Append(b, uint64(len(od.Payload)))
 	// Append Object Payload
-	b = append(b, od.GroupChunk.Payload...)
+	b = append(b, od.Payload...)
+
+	if len(od.Payload) == 0 {
+		// Append Object Status Code
+		b = quicvarint.Append(b, uint64(od.StatusCode))
+	}
 
 	return b
 }
@@ -110,19 +113,28 @@ func (od *ObjectDatagram) deserializeBody(r quicvarint.Reader) error {
 	}
 	od.PublisherPriority = PublisherPriority(num)
 
-	// Get Object Status Code
+	// Get Object Payload Length
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	od.StatusCode = ObjectStatusCode(num)
 
-	// Get Object Payload
-	buf, err := io.ReadAll(r)
-	if err != nil {
-		return err
+	if num > 0 {
+		// Get Object Payload
+		buf := make([]byte, num)
+		_, err := r.Read(buf)
+		if err != nil {
+			return err
+		}
+		od.Payload = buf
+	} else if num == 0 {
+		// Get Object Status Code
+		num, err = quicvarint.Read(r)
+		if err != nil {
+			return err
+		}
+		od.StatusCode = ObjectStatusCode(num)
 	}
-	od.GroupChunk.Payload = buf
 
 	return nil
 }

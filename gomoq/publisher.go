@@ -11,6 +11,9 @@ type Publisher struct {
 	 */
 	Client
 
+	/***/
+	PublisherHandler
+
 	/*
 	 * Track Namespace the publisher uses
 	 */
@@ -23,6 +26,12 @@ type Publisher struct {
 	subscriptions []SubscribeMessage
 }
 
+type PublisherHandler interface {
+	AnnounceParameters() Parameters
+}
+
+var _ PublisherHandler = Publisher{}
+
 func (p *Publisher) Connect(url string) error {
 	// Check if the Client specify the Versions
 	if len(p.Versions) < 1 {
@@ -33,50 +42,20 @@ func (p *Publisher) Connect(url string) error {
 	return p.connect(url, PUB)
 }
 
-type PublisherHandler interface {
-	AnnounceParameters() Parameters
-	OnPublisher()
-}
-
 /*
  *
  *
  */
 func (p Publisher) Announce(trackNamespace string) error {
-	return p.sendAnnounceMessage(trackNamespace, Parameters{})
+	return p.sendAnnounceMessage(trackNamespace)
 }
 
-func (p Publisher) sendAnnounceMessage(trackNamespace string, params Parameters) error {
+func (p Publisher) sendAnnounceMessage(trackNamespace string) error {
 	a := AnnounceMessage{
 		TrackNamespace: trackNamespace,
-		Parameters:     params,
+		Parameters:     p.AnnounceParameters(),
 	}
 	_, err := p.controlStream.Write(a.serialize())
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (p Publisher) sendObjectStream(trackName string) error {
-	// Open a unidirectional stream
-	stream, err := p.session.OpenUniStream()
-	if err != nil {
-		return err
-	}
-
-	// Close the stream after a single object was sent on the stream
-	defer stream.Close()
-
-	// Send an OBJECT_STREAM message
-	os := ObjectStream{
-		Object: Object{
-			TrackNameSpace: p.TrackNamespace,
-			TrackName:      trackName,
-		},
-	} // TODO: configure the fields
-	_, err = stream.Write(os.serialize())
 	if err != nil {
 		return err
 	}
@@ -89,21 +68,9 @@ func (p Publisher) sendObjectDatagram() error { //TODO:
 	return p.session.SendDatagram(od.serialize())
 }
 
-func (p Publisher) AllowSubscribe() error {
-	//
-	return p.sendSubscribeOk()
-}
-
-func (p Publisher) sendSubscribeOk() error {
-	return nil
-}
-
-func (p Publisher) RejectSubscribe() error {
-	return p.sendSubscribeError()
-}
-
-func (p Publisher) sendSubscribeError() error {
-	return nil
+func (p Publisher) sendObjects() chan error {
+	errCh := make(chan error, 1)
+	return errCh
 }
 
 /*
@@ -160,3 +127,6 @@ func (p Publisher) sendTrackStatus() error {
 	p.controlStream.Write(ts.serialize())
 	return nil
 }
+
+type TrackStream struct{}
+type PeepStream struct{}

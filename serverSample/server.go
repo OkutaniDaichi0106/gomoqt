@@ -40,15 +40,17 @@ func main() {
 				return
 			}
 
-			err = gomoq.AcceptObjects(agent, context.Background())
-			if err != nil {
-				return
+			errCh := gomoq.AcceptObjects(agent, context.Background())
+
+			select {
+			case <-errCh:
+				log.Fatal(<-errCh)
 			}
 		})
 
 		ms.OnSubscriber(func(agent *gomoq.Agent) {
 			// Send ANNOUNCE messages to Subscribers and let them know available Track Namespace
-			err := gomoq.Advertise(agent, ms.Announcements)
+			err := gomoq.Advertise(agent, ms.Announcements())
 			if err != nil {
 				return
 			}
@@ -58,7 +60,7 @@ func main() {
 				return
 			}
 
-			gomoq.MediateObjects(agent)
+			gomoq.DeliverObjects(agent)
 		})
 
 		gomoq.Activate(agent)

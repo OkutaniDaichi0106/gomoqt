@@ -1,13 +1,10 @@
 package gomoq
 
-import (
-	"io"
-
-	"github.com/quic-go/quic-go/quicvarint"
-)
-
 // Group ID
 type GroupID uint64
+
+// Peep ID
+type PeepID uint64
 
 // Object ID
 type ObjectID uint64
@@ -31,8 +28,9 @@ type ForwardingPreference uint64
 
 const (
 	TRACK ForwardingPreference = iota
-	GROUP
-	OBJECT
+	//GROUP
+	//OBJECT
+	PEEP
 	DATAGRAM
 )
 
@@ -82,51 +80,51 @@ type Object struct {
  * OBJECT_STREAM is single object on a unidirectional stream
  * and must be the only message on the unidirectional stream
  */
-type ObjectStream struct {
-	Object
-	SubscribeID
-	TrackAlias
-}
+// type ObjectStream struct {
+// 	Object
+// 	SubscribeID
+// 	TrackAlias
+// }
 
-func (os ObjectStream) serialize() []byte {
-	/*
-	 * Serialize as following formatt
-	 *
-	 * OBJECT_STREAM Message {
-	 *   Subscribe ID (varint),
-	 *   Track Alias (varint),
-	 *   Group ID (varint),
-	 *   Object ID (varint),
-	 *   Publisher Priority (8),
-	 *   Object Status (varint),
-	 *   Object Payload (..),
-	 *}
-	 */
+// func (os ObjectStream) serialize() []byte {
+// 	/*
+// 	 * Serialize as following formatt
+// 	 *
+// 	 * OBJECT_STREAM Message {
+// 	 *   Subscribe ID (varint),
+// 	 *   Track Alias (varint),
+// 	 *   Group ID (varint),
+// 	 *   Object ID (varint),
+// 	 *   Publisher Priority (8),
+// 	 *   Object Status (varint),
+// 	 *   Object Payload (..),
+// 	 *}
+// 	 */
 
-	// TODO?: Chech URI exists
+// 	// TODO?: Chech URI exists
 
-	// TODO: Tune the length of the "b"
-	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
-	// Append the type of the message
-	b = quicvarint.Append(b, uint64(OBJECT_STREAM))
-	// Append Subscribe ID
-	b = quicvarint.Append(b, uint64(os.SubscribeID))
-	// Append Track Alias
-	b = quicvarint.Append(b, uint64(os.TrackAlias))
-	// Append Group ID
-	b = quicvarint.Append(b, uint64(os.GroupChunk.GroupID))
-	// Append Object ID
-	b = quicvarint.Append(b, uint64(os.GroupChunk.ObjectID))
-	// Append Publisher Priority
-	b = quicvarint.Append(b, uint64(os.PublisherPriority))
-	// Append Object Status Code
-	b = quicvarint.Append(b, uint64(os.StatusCode))
+// 	// TODO: Tune the length of the "b"
+// 	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
+// 	// Append the type of the message
+// 	b = quicvarint.Append(b, uint64(OBJECT_STREAM))
+// 	// Append Subscribe ID
+// 	b = quicvarint.Append(b, uint64(os.SubscribeID))
+// 	// Append Track Alias
+// 	b = quicvarint.Append(b, uint64(os.TrackAlias))
+// 	// Append Group ID
+// 	b = quicvarint.Append(b, uint64(os.GroupChunk.GroupID))
+// 	// Append Object ID
+// 	b = quicvarint.Append(b, uint64(os.GroupChunk.ObjectID))
+// 	// Append Publisher Priority
+// 	b = quicvarint.Append(b, uint64(os.PublisherPriority))
+// 	// Append Object Status Code
+// 	b = quicvarint.Append(b, uint64(os.StatusCode))
 
-	// Append Object Payload
-	b = append(b, os.GroupChunk.Payload...)
+// 	// Append Object Payload
+// 	b = append(b, os.GroupChunk.Payload...)
 
-	return b
-}
+// 	return b
+// }
 
 // func (os *ObjectStream) deserialize(r quicvarint.Reader) error {
 // 	// Get Message ID and check it
@@ -141,63 +139,63 @@ func (os ObjectStream) serialize() []byte {
 // 	return os.deserializeBody(r)
 // }
 
-func (os *ObjectStream) deserializeBody(r quicvarint.Reader) error {
-	var err error
-	var num uint64
+// func (os *ObjectStream) deserializeBody(r quicvarint.Reader) error {
+// 	var err error
+// 	var num uint64
 
-	// Stream
-	os.ForwardingPreference = OBJECT
+// 	// Stream
+// 	os.ForwardingPreference = OBJECT
 
-	// Get Subscribe ID
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
-	}
-	os.SubscribeID = SubscribeID(num)
+// 	// Get Subscribe ID
+// 	num, err = quicvarint.Read(r)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	os.SubscribeID = SubscribeID(num)
 
-	// Get Track Alias
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
-	}
-	os.TrackAlias = TrackAlias(num)
+// 	// Get Track Alias
+// 	num, err = quicvarint.Read(r)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	os.TrackAlias = TrackAlias(num)
 
-	// TODO?: Get Track Namespace and Track Name from Track Alias
+// 	// TODO?: Get Track Namespace and Track Name from Track Alias
 
-	// Get Group ID
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
-	}
-	os.GroupChunk.GroupID = GroupID(num)
+// 	// Get Group ID
+// 	num, err = quicvarint.Read(r)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	os.GroupChunk.GroupID = GroupID(num)
 
-	// Get Object ID
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
-	}
-	os.GroupChunk.ObjectID = ObjectID(num)
+// 	// Get Object ID
+// 	num, err = quicvarint.Read(r)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	os.GroupChunk.ObjectID = ObjectID(num)
 
-	// Get Publisher Priority
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
-	}
-	os.PublisherPriority = PublisherPriority(num)
+// 	// Get Publisher Priority
+// 	num, err = quicvarint.Read(r)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	os.PublisherPriority = PublisherPriority(num)
 
-	// Get Object Status Code
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
-	}
-	os.StatusCode = ObjectStatusCode(num)
+// 	// Get Object Status Code
+// 	num, err = quicvarint.Read(r)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	os.StatusCode = ObjectStatusCode(num)
 
-	// Get Object Payload
-	buf, err := io.ReadAll(r)
-	if err != nil {
-		return err
-	}
-	os.GroupChunk.Payload = buf
+// 	// Get Object Payload
+// 	buf, err := io.ReadAll(r)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	os.GroupChunk.Payload = buf
 
-	return nil
-}
+// 	return nil
+// }

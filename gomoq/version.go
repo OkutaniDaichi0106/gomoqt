@@ -9,7 +9,8 @@ const (
 	Draft02         Version = 0xff000002 /* Not implemented */
 	Draft03         Version = 0xff000003 /* Not implemented */
 	Draft04         Version = 0xff000004 /* Not implemented */
-	Draft05         Version = 0xff000005 /* Implemented */
+	Draft05         Version = 0xff000005 /* Partly Implemented */
+	LATEST          Version = 0xffffffff /* Partly Implemented */
 	Stable01        Version = 0x00000001 /* Not implemented */
 )
 

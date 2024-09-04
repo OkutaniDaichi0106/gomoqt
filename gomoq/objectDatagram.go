@@ -36,7 +36,7 @@ func (od ObjectDatagram) serialize() []byte {
 	// TODO: Tune the length of the "b"
 	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
 	// Append the type of the message
-	b = quicvarint.Append(b, uint64(OBJECT_STREAM))
+	b = quicvarint.Append(b, uint64(OBJECT_DATAGRAM))
 	// Append Subscribe ID
 	b = quicvarint.Append(b, uint64(od.SubscribeID))
 	// Append Track Alias

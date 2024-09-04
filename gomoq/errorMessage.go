@@ -20,37 +20,34 @@ type TerminateError struct {
  * PARAMETER_LENGTH_MISMATCH
  * GOAWAY_TIMEOUT
  */
-func (TerminateError) NO_ERROR() TerminateErrorCode {
-	return 0x0
-}
-
-func (TerminateError) INTERNAL_ERROR() TerminateErrorCode {
-	return 0x1
-}
-
-func (TerminateError) UNAUTHORIZED() TerminateErrorCode {
-	return 0x2
-}
-
-func (TerminateError) PROTOCOL_VIOLATION() TerminateErrorCode {
-	return 0x3
-}
-
-func (TerminateError) DUPLICATE_TRACK_ALIAS() TerminateErrorCode {
-	return 0x4
-}
-
-func (TerminateError) PARAMETER_LENGTH_MISMATCH() TerminateErrorCode {
-	return 0x5
-}
-
-func (TerminateError) GOAWAY_TIMEOUT() TerminateErrorCode {
-	return 0x6
-}
+const (
+	TERMINATION_NO_ERROR                  AnnounceErrorCode = 0x0
+	TERMINATION_INTERNAL_ERROR            AnnounceErrorCode = 0x1
+	TERMINATION_UNAUTHORIZED              AnnounceErrorCode = 0x2
+	TERMINATION_PROTOCOL_VIOLATION        AnnounceErrorCode = 0x3
+	TERMINATION_DUPLICATE_TRACK_ALIAS     AnnounceErrorCode = 0x4
+	TERMINATION_PARAMETER_LENGTH_MISMATCH AnnounceErrorCode = 0x5
+	TERMINATION_GOAWAY_TIMEOUT            AnnounceErrorCode = 0x6
+)
 
 /*
- * Subscribe Error
+ * Error codes for annoncement failure
+ *
+ * The following error codes are defined in the official document
+ * INTERNAL_ERROR
+ * INVALID_RANGE
+ * RETRY_TRACK_ALIAS
  */
+const (
+	ANNOUNCE_INTERNAL_ERROR   AnnounceErrorCode = 0x0 // Original
+	DUPLICATE_TRACK_NAMESPACE AnnounceErrorCode = 0x1 // Original
+)
+
+var ANNOUNCE_ERROR_REASON = map[AnnounceErrorCode]string{
+	ANNOUNCE_INTERNAL_ERROR:   "Internal Error",
+	DUPLICATE_TRACK_NAMESPACE: "Duplicate Track Namespace",
+}
+
 type AnnounceErrorCode int
 
 /*
@@ -145,26 +142,6 @@ func (ae *AnnounceError) deserializeBody(r quicvarint.Reader) error {
 }
 
 /*
- * Error codes for annoncement failure
- *
- * The following error codes are defined in the official document
- * INTERNAL_ERROR
- * INVALID_RANGE
- * RETRY_TRACK_ALIAS
- */
-func (AnnounceError) INTERNAL_ERROR() SubscribeErrorCode {
-	return SubscribeErrorCode(0x0)
-}
-
-func (AnnounceError) INVALID_RANGE() SubscribeErrorCode {
-	return SubscribeErrorCode(0x1)
-}
-
-func (AnnounceError) RETRY_TRACK_ALIAS() SubscribeErrorCode {
-	return SubscribeErrorCode(0x2)
-}
-
-/*
  * Subscribe Error
  */
 type SubscribeErrorCode int
@@ -193,16 +170,16 @@ type SubscribeError struct {
 }
 
 // Error codes defined at official document
-func (SubscribeError) INTERNAL_ERROR() SubscribeErrorCode {
-	return 0x0
-}
+const (
+	SUBSCRIBE_INTERNAL_ERROR SubscribeErrorCode = 0x0
+	INVALID_RANGE            SubscribeErrorCode = 0x1
+	RETRY_TRACK_ALIAS        SubscribeErrorCode = 0x2
+)
 
-func (SubscribeError) INVALID_RANGE() SubscribeErrorCode {
-	return 0x1
-}
-
-func (SubscribeError) RETRY_TRACK_ALIAS() SubscribeErrorCode {
-	return 0x2
+var SUBSCRIBE_ERROR_REASON = map[SubscribeErrorCode]string{
+	SUBSCRIBE_INTERNAL_ERROR: "Internal Error",
+	INVALID_RANGE:            "Invalid Range",
+	RETRY_TRACK_ALIAS:        "Retry Track Alias",
 }
 
 func (se SubscribeError) serialize() []byte {

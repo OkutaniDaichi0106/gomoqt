@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"go-moq/gomoq"
 	"log"
@@ -25,7 +26,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Print("Connected!!")
 
 	subscriptionConfig := gomoq.SubscribeConfig{
 		GroupOrder: gomoq.NOT_SPECIFY,
@@ -37,7 +37,18 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Print("Subscribed!!")
+
+	//ctx, _ := context.WithCancel(context.Background()) // TODO: use cancel function
+	dataCh, errCh := subscriber.AcceptObjects(context.TODO())
+
+	for _, chunk := range <-dataCh {
+		log.Println(chunk)
+	}
+
+	log.Fatal(<-errCh)
+	// TODO: handle error
+	// cancel()
+
 }
 
 type SubscriberHandler struct {

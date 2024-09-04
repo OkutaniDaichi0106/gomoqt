@@ -49,10 +49,25 @@ type Server struct {
 	 */
 	announcements announcementMap
 
+	/*
+	 *
+	 */
+	subscriptionCondition func(SubscribeMessage) bool
+
 	/****/
 	onPublisher  func(*Agent)
 	onSubscriber func(*Agent)
 	onPubSub     func(*Agent)
+}
+
+func (s *Server) Announcements() []AnnounceMessage {
+	// Copy the current value for safety
+	annnounceMap := s.announcements.index
+	announcements := make([]AnnounceMessage, 0, len(annnounceMap))
+	for _, announcement := range annnounceMap {
+		announcements = append(announcements, announcement)
+	}
+	return announcements
 }
 
 func (s *Server) OnPublisher(op func(*Agent)) {
@@ -176,7 +191,7 @@ func (pMap *publisherMap) delete(trackNamespace string) error {
 }
 
 type subscriberMap struct {
-	index map[string]*Agent
+	index map[string][]*Agent
 	mu    sync.Mutex
 }
 
@@ -196,7 +211,7 @@ func (sMap *subscriberMap) add(trackNamespace string, agent *Agent) error {
 	if ok {
 		return errors.New("duplicate announcement") //TODO: Is duplicating announcements considered an error?
 	}
-	sMap.index[trackNamespace] = agent
+	sMap.index[trackNamespace] = append(sMap.index[trackNamespace], agent)
 
 	return nil
 }

@@ -14,6 +14,9 @@ const (
 	ROLE               ParameterKey = 0x00
 	PATH               ParameterKey = 0x01
 	AUTHORIZATION_INFO ParameterKey = 0x02
+	DELIVERY_TIMEOUT   ParameterKey = 0x03
+	MAX_CACHE_DURATION ParameterKey = 0x04
+	MAX_SUBSCRIBE_ID   ParameterKey = 0x05
 	TRACK_NAME         ParameterKey = 0xf3 // Original
 )
 

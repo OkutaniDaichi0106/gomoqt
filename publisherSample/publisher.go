@@ -30,3 +30,9 @@ func main() {
 	err = publisher.Announce("audio")
 	log.Print(err)
 }
+
+type PublisherHandle struct{}
+
+func (PublisherHandle) AnnounceParameters() gomoq.Parameters {
+	return gomoq.Parameters{}
+}

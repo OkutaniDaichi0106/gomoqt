@@ -6,7 +6,7 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-type StreamHeaderGroup struct {
+type StreamHeaderPeep struct {
 	/*
 	 * A number to identify the subscribe session
 	 */
@@ -18,9 +18,9 @@ type StreamHeaderGroup struct {
 	 */
 	TrackAlias
 	/*
-	 * Group ID
+	 * Peep ID
 	 */
-	GroupID
+	PeepID
 
 	/*
 	 * An 8 bit integer indicating the publisher's priority for the object
@@ -28,14 +28,14 @@ type StreamHeaderGroup struct {
 	PublisherPriority
 }
 
-func (shg StreamHeaderGroup) serialize() []byte {
+func (shg StreamHeaderPeep) serialize() []byte {
 	/*
 	 * Serialize as following formatt
 	 *
-	 * STREAM_HEADER_GROUP Message {
+	 * STREAM_HEADER_Peep Message {
 	 *   Subscribe ID (varint),
 	 *   Track Alias (varint),
-	 *   Group ID (varint),
+	 *   Peep ID (varint),
 	 *   Publisher Priority (8),
 	 * }
 	 */
@@ -45,33 +45,33 @@ func (shg StreamHeaderGroup) serialize() []byte {
 	// TODO: Tune the length of the "b"
 	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
 	// Append the type of the message
-	b = quicvarint.Append(b, uint64(STREAM_HEADER_GROUP))
+	b = quicvarint.Append(b, uint64(STREAM_HEADER_PEEP))
 	// Append the Subscriber ID
 	b = quicvarint.Append(b, uint64(shg.SubscribeID))
 	// Append the Track Alias
 	b = quicvarint.Append(b, uint64(shg.TrackAlias))
-	// Append the Group ID
-	b = quicvarint.Append(b, uint64(shg.GroupID))
+	// Append the Peep ID
+	b = quicvarint.Append(b, uint64(shg.PeepID))
 	// Append the Publisher Priority
 	b = quicvarint.Append(b, uint64(shg.PublisherPriority))
 
 	return b
 }
 
-// func (shg *StreamHeaderGroup) deserialize(r quicvarint.Reader) error {
+// func (shg *StreamHeaderPeep) deserialize(r quicvarint.Reader) error {
 // 	// Get Message ID and check it
 // 	id, err := deserializeHeader(r)
 // 	if err != nil {
 // 		return err
 // 	}
-// 	if id != STREAM_HEADER_GROUP {
+// 	if id != STREAM_HEADER_Peep {
 // 		return ErrUnexpectedMessage
 // 	}
 
 // 	return shg.deserializeBody(r)
 // }
 
-func (shg *StreamHeaderGroup) deserializeBody(r quicvarint.Reader) error {
+func (shg *StreamHeaderPeep) deserializeBody(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 
@@ -94,7 +94,7 @@ func (shg *StreamHeaderGroup) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	shg.GroupID = GroupID(num)
+	shg.PeepID = PeepID(num)
 
 	// Get Subscribe ID
 	num, err = quicvarint.Read(r)

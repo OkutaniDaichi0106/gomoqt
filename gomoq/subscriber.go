@@ -1,7 +1,9 @@
 package gomoq
 
 import (
+	"context"
 	"errors"
+	"io"
 )
 
 type Subscriber struct {
@@ -11,6 +13,7 @@ type Subscriber struct {
 	 */
 	Client
 
+	/***/
 	SubscriberHandler
 
 	/*
@@ -30,6 +33,8 @@ type SubscriberHandler interface {
 	SubscribeParameters() Parameters
 	SubscribeUpdateParameters() Parameters
 }
+
+var _ SubscriberHandler = Subscriber{}
 
 func (s *Subscriber) Connect(url string) error {
 	// Check if the Client specify the Versions
@@ -93,6 +98,7 @@ func (s *Subscriber) sendSubscribeMessage(trackNamespace, trackName string, conf
 		SubscriberPriority: config.SubscriberPriority,
 		GroupOrder:         config.GroupOrder,
 		SubscriptionFilter: config.SubscriptionFilter,
+		Parameters:         s.SubscribeParameters(),
 	}
 
 	// Send SUBSCRIBE message
@@ -105,6 +111,63 @@ func (s *Subscriber) sendSubscribeMessage(trackNamespace, trackName string, conf
 
 	return nil
 }
+
+func (s *Subscriber) AcceptObjects(ctx context.Context) (<-chan []byte, <-chan error) {
+	dataCh := make(chan []byte, 1<<8) // TODO: Tune the size
+	errCh := make(chan error, 1)      // TODO: Consider the buffer size
+
+	buf := make([]byte, 1<<8)
+	// Receive data on a stream in a goroutine
+	go func() {
+		// Close the data channel and the error channel when
+		defer close(dataCh)
+		defer close(errCh)
+
+		for {
+			// Catch the cancel call
+			select {
+			case <-ctx.Done():
+				// Cancel the current process
+				errCh <- ctx.Err()
+				return
+			default:
+				// Create a unidirectional stream
+				stream, err := s.session.AcceptUniStream(ctx)
+				if err != nil {
+					errCh <- err
+				}
+
+				// Read whole data on the stream
+				data := make([]byte, 0, 1<<8)
+				for {
+					n, err := stream.Read(buf)
+					if err != nil {
+						if err == io.EOF {
+							break
+						}
+						errCh <- err
+						// Stop to read chunk when some error is detected
+						// but continue to receive data if any error was detected
+						break
+					}
+					data = append(data, buf[:n]...)
+				}
+				// Send data to the channel, If any data exists
+				if len(data) > 0 {
+					dataCh <- data
+				}
+			}
+		}
+	}()
+
+	// Return the channels as read only channel
+	return dataCh, errCh
+}
+
+// TODO: Consider a function for streaming processing
+// func streamChunk(ch <-chan []byte, op func()) {
+
+// }
 
 func (s *Subscriber) Unsubscribe(id SubscribeID) error {
 	// Check if the updated subscription is narrower than the existing subscription
@@ -203,32 +266,6 @@ func (s Subscriber) sendSubscribeUpdateMessage(id SubscribeID, config SubscribeC
 		return err
 	}
 
-	return nil
-}
-
-/*
- * Accept the announce from the publisher
- * when authorization is succeeded
- */
-func (s Subscriber) AcceptAnnounce() error {
-
-	return s.sendAnnounceOkMessage()
-}
-
-func (s Subscriber) sendAnnounceOkMessage() error {
-	return nil
-}
-
-/*
- * Reject the announce from the publisher
- * when authorization is failed
- */
-func (s Subscriber) RejectAnnounce() error {
-
-	return s.sendAnnounceError()
-}
-
-func (s Subscriber) sendAnnounceError() error {
 	return nil
 }
 

@@ -10,8 +10,15 @@ import (
 type MessageID byte
 
 const (
-	OBJECT_STREAM        MessageID = 0x00
-	OBJECT_DATAGRAM      MessageID = 0x01
+	//OBJECT_STREAM       MessageID = 0x00 // Deprecated
+	OBJECT_DATAGRAM     MessageID = 0x01
+	STREAM_HEADER_TRACK MessageID = 0x50
+	//STREAM_HEADER_GROUP MessageID = 0x51 // Deprecated
+	STREAM_HEADER_PEEP MessageID = 0x52
+)
+
+// Control Messages
+const (
 	SUBSCRIBE_UPDATE     MessageID = 0x02
 	SUBSCRIBE            MessageID = 0x03
 	SUBSCRIBE_OK         MessageID = 0x04
@@ -28,8 +35,6 @@ const (
 	GOAWAY               MessageID = 0x10
 	CLIENT_SETUP         MessageID = 0x40
 	SERVER_SETUP         MessageID = 0x41
-	STREAM_HEADER_TRACK  MessageID = 0x50
-	STREAM_HEADER_GROUP  MessageID = 0x51
 )
 
 type Messager interface {
@@ -238,7 +243,7 @@ func deserializeHeader(r quicvarint.Reader) (MessageID, error) {
 		CLIENT_SETUP,
 		SERVER_SETUP,
 		STREAM_HEADER_TRACK,
-		STREAM_HEADER_GROUP:
+		STREAM_HEADER_PEEP:
 		return MessageID(num), nil
 	default:
 		return 0xff, errors.New("undefined Message ID")
@@ -286,8 +291,8 @@ func Deserialize(r quicvarint.Reader) (Messager, error) {
 		message = &ServerSetupMessage{}
 	case STREAM_HEADER_TRACK:
 		message = &StreamHeaderTrack{}
-	case STREAM_HEADER_GROUP:
-		message = &StreamHeaderGroup{}
+	case STREAM_HEADER_PEEP:
+		message = &StreamHeaderPeep{}
 	}
 
 	err = message.deserializeBody(r)

@@ -1,4 +1,4 @@
-package gomoq
+package moqtransport
 
 import (
 	"github.com/quic-go/quic-go/quicvarint"

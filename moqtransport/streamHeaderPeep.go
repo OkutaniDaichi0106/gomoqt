@@ -1,4 +1,4 @@
-package gomoq
+package moqtransport
 
 import (
 	"errors"
@@ -10,7 +10,7 @@ type StreamHeaderPeep struct {
 	/*
 	 * A number to identify the subscribe session
 	 */
-	SubscribeID
+	subscribeID
 
 	/*
 	 * An number indicates a track
@@ -21,12 +21,12 @@ type StreamHeaderPeep struct {
 	/*
 	 * Group ID
 	 */
-	GroupID
+	groupID
 
 	/*
 	 * Peep ID
 	 */
-	PeepID
+	peepID
 
 	/*
 	 * An 8 bit integer indicating the publisher's priority for the object
@@ -53,11 +53,11 @@ func (shg StreamHeaderPeep) serialize() []byte {
 	// Append the type of the message
 	b = quicvarint.Append(b, uint64(STREAM_HEADER_PEEP))
 	// Append the Subscriber ID
-	b = quicvarint.Append(b, uint64(shg.SubscribeID))
+	b = quicvarint.Append(b, uint64(shg.subscribeID))
 	// Append the Track Alias
 	b = quicvarint.Append(b, uint64(shg.TrackAlias))
 	// Append the Peep ID
-	b = quicvarint.Append(b, uint64(shg.PeepID))
+	b = quicvarint.Append(b, uint64(shg.peepID))
 	// Append the Publisher Priority
 	b = quicvarint.Append(b, uint64(shg.PublisherPriority))
 
@@ -73,7 +73,7 @@ func (shg *StreamHeaderPeep) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	shg.SubscribeID = SubscribeID(num)
+	shg.subscribeID = subscribeID(num)
 
 	// Get Subscribe ID
 	num, err = quicvarint.Read(r)
@@ -87,7 +87,7 @@ func (shg *StreamHeaderPeep) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	shg.PeepID = PeepID(num)
+	shg.peepID = peepID(num)
 
 	// Get Subscribe ID
 	num, err = quicvarint.Read(r)
@@ -102,7 +102,7 @@ func (shg *StreamHeaderPeep) deserializeBody(r quicvarint.Reader) error {
 	return nil
 }
 
-func (sht StreamHeaderPeep) StreamType() ForwardingPreference {
+func (sht StreamHeaderPeep) ForwardingPreference() ForwardingPreference {
 	return PEEP
 }
 
@@ -110,7 +110,7 @@ type ObjectChunk struct {
 	/*
 	 * Object ID
 	 */
-	ObjectID
+	objectID
 
 	Payload []byte
 
@@ -139,7 +139,7 @@ func (oc ObjectChunk) serialize() []byte {
 	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
 
 	// Append Subscribe ID
-	b = quicvarint.Append(b, uint64(oc.ObjectID))
+	b = quicvarint.Append(b, uint64(oc.objectID))
 
 	// Append length of the Payload
 	b = quicvarint.Append(b, uint64(len(oc.Payload)))
@@ -164,7 +164,7 @@ func (oc *ObjectChunk) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	oc.ObjectID = ObjectID(num)
+	oc.objectID = objectID(num)
 
 	// Get length of the Object Payload
 	num, err = quicvarint.Read(r)

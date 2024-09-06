@@ -1,4 +1,4 @@
-package gomoq
+package moqtransport
 
 import (
 	"errors"
@@ -6,14 +6,14 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-type SubscribeID uint64
+type subscribeID uint64
 type SubscriberPriority byte
 
 type SubscribeMessage struct {
 	/*
 	 * A number to identify the subscribe session
 	 */
-	SubscribeID
+	subscribeID
 	TrackAlias
 	TrackNamespace string
 	TrackName      string
@@ -63,7 +63,7 @@ func (s SubscribeMessage) serialize() []byte {
 	// Append the type of the message
 	b = quicvarint.Append(b, uint64(SUBSCRIBE))
 	// Append Subscriber ID
-	b = quicvarint.Append(b, uint64(s.SubscribeID))
+	b = quicvarint.Append(b, uint64(s.subscribeID))
 	// Append Subscriber ID
 	b = quicvarint.Append(b, uint64(s.TrackAlias))
 	// Append Track Namespace
@@ -95,7 +95,7 @@ func (s *SubscribeMessage) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	s.SubscribeID = SubscribeID(num)
+	s.subscribeID = subscribeID(num)
 
 	// Get Track Alias
 	num, err = quicvarint.Read(r)
@@ -160,28 +160,28 @@ func (s *SubscribeMessage) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	s.SubscriptionFilter.startGroup = GroupID(num)
+	s.SubscriptionFilter.startGroup = groupID(num)
 
 	// Get Start Object ID
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	s.SubscriptionFilter.startObject = ObjectID(num)
+	s.SubscriptionFilter.startObject = objectID(num)
 
 	// Get End Group ID
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	s.SubscriptionFilter.endGroup = GroupID(num)
+	s.SubscriptionFilter.endGroup = groupID(num)
 
 	// Get End Object ID
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	s.SubscriptionFilter.endObject = ObjectID(num)
+	s.SubscriptionFilter.endObject = objectID(num)
 
 	// Get Subscribe Update Parameters
 	err = s.Parameters.parse(r)

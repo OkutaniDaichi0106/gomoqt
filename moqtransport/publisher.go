@@ -1,13 +1,13 @@
-package gomoq
+package moqtransport
 
 import (
 	"errors"
+	"log"
 )
 
 type Publisher struct {
 	/*
 	 * Client
-	 * If this is not initialized, use default Client
 	 */
 	Client
 
@@ -21,41 +21,29 @@ type Publisher struct {
 
 	/***/
 	TrackNames []string
-
-	/***/
-	subscriptions []SubscribeMessage
 }
 
 type PublisherHandler interface {
 	AnnounceParameters() Parameters
 }
 
+// Check the Publisher inplement Publisher Handler
 var _ PublisherHandler = Publisher{}
 
-func (p *Publisher) Connect(url string) error {
+func (p *Publisher) ConnectAndSetup(url string) error {
 	// Check if the Client specify the Versions
 	if len(p.Versions) < 1 {
 		return errors.New("no versions is specifyed")
 	}
 
-	// Connect to the server
-	return p.connect(url, PUB)
-}
-
-/*
- *
- *
- */
-func (p Publisher) Announce(trackNamespace string) error {
-	return p.sendAnnounceMessage(trackNamespace)
-}
-
-func (p Publisher) sendAnnounceMessage(trackNamespace string) error {
-	a := AnnounceMessage{
-		TrackNamespace: trackNamespace,
-		Parameters:     p.AnnounceParameters(),
+	// Connect
+	err := p.connect(url)
+	if err != nil {
+		return err
 	}
-	_, err := p.controlStream.Write(a.serialize())
+
+	// Setup
+	err = p.setup(PUB)
 	if err != nil {
 		return err
 	}
@@ -63,20 +51,147 @@ func (p Publisher) sendAnnounceMessage(trackNamespace string) error {
 	return nil
 }
 
-func (p Publisher) sendObjectDatagram() error { //TODO:
-	var od ObjectDatagram
+/*
+ *
+ *
+ */
+func (p *Publisher) Announce(trackNamespace string) error {
+	// Send ANNOUNCE message
+	am := AnnounceMessage{
+		TrackNamespace: trackNamespace,
+		Parameters:     p.AnnounceParameters(),
+	}
+
+	_, err := p.controlStream.Write(am.serialize())
+	if err != nil {
+		return err
+	}
+
+	//Receive ANNOUNCE_OK message or ANNOUNCE_ERROR message
+	id, err := deserializeHeader(p.controlReader)
+	if err != nil {
+		return err
+	}
+	switch id {
+	case ANNOUNCE_OK:
+		var ao AnnounceOkMessage
+		err = ao.deserializeBody(p.controlReader)
+		if err != nil {
+			return err
+		}
+		// Check if the Track Namespace is accepted by the server
+		if trackNamespace != ao.TrackNamespace {
+			return errors.New("unexpected Track Namespace")
+		}
+
+		// Register the Track Namespace
+		p.TrackNamespace = ao.TrackNamespace
+
+	case ANNOUNCE_ERROR:
+		var ae AnnounceError // TODO: Handle Error Code
+		err = ae.deserializeBody(p.controlReader)
+		if err != nil {
+			return err
+		}
+		// Check if the Track Namespace is rejected by the server
+		if trackNamespace != ae.TrackNamespace {
+			return errors.New("unexpected Track Namespace")
+		}
+
+		return errors.New(ae.Reason)
+	default:
+		return ErrUnexpectedMessage
+	}
+
+	return nil
+}
+
+func (p Publisher) SendObjectDatagram(od ObjectDatagram) error { //TODO:
 	return p.session.SendDatagram(od.serialize())
 }
 
-func (p Publisher) sendSingleObject(payload []byte) <-chan error {
-	header := StreamHeaderTrack{}
-	payloadCh := make(chan []byte, 1)
-	defer close(payloadCh)
-	payloadCh <- payload
-	return p.sendMultipleObject(&header, payloadCh)
+func (p Publisher) SendSingleObject(priority PublisherPriority, payload []byte) <-chan error {
+
+	header := StreamHeaderTrack{
+		//subscribeID: ,
+		//TrackAlias: ,
+		PublisherPriority: priority,
+	}
+	return p.sendSingleObject(header, payload)
 }
 
-func (p Publisher) sendMultipleObject(header StreamHeader, payloadCh <-chan []byte) <-chan error {
+func (p Publisher) sendSingleObject(header StreamHeaderTrack, payload []byte) <-chan error {
+	errCh := make(chan error, 1)
+
+	go func() {
+		// Close the error channel when the goroutine ends
+		defer close(errCh)
+
+		stream, err := p.session.OpenUniStream()
+		if err != nil {
+			errCh <- err
+			return
+		}
+		log.Println("Opened!!", stream)
+		defer stream.Close()
+
+		/*
+		 * STREAM_HEADER_TRACK {
+		 * }
+		 * Group Chunk {
+		 *   Group Chunk {
+		 *     Group ID (0)
+		 *     Ojbect Chunk
+		 *   }
+		 * }
+		 */
+
+		// Send the header
+		_, err = stream.Write(header.serialize())
+		if err != nil {
+			errCh <- err
+			return
+		}
+
+		//Send a Group chunk
+		chunk := GroupChunk{
+			groupID: 0,
+			ObjectChunk: ObjectChunk{
+				objectID: 0,
+				Payload:  payload,
+			},
+		}
+		_, err = stream.Write(chunk.serialize())
+		if err != nil {
+			errCh <- err
+			return
+		}
+
+		// Send final chunk
+		finalChunk := GroupChunk{
+			groupID: 1,
+			ObjectChunk: ObjectChunk{
+				objectID:   0,
+				Payload:    []byte{},
+				StatusCode: END_OF_TRACK,
+			},
+		}
+
+		_, err = stream.Write(finalChunk.serialize())
+		if err != nil {
+			errCh <- err
+			return
+		}
+
+		log.Println("FINISH SENDING!!")
+
+		errCh <- nil
+	}()
+
+	return errCh
+}
+
+func (p *Publisher) sendMultipleObject(header StreamHeader, payloadCh <-chan []byte) <-chan error {
 
 	errCh := make(chan error, 1)
 	stream, err := p.session.OpenUniStream()
@@ -102,23 +217,19 @@ func (p Publisher) sendMultipleObject(header StreamHeader, payloadCh <-chan []by
 			 * }
 			 */
 			defer close(errCh)
-			headerTrack, ok := header.(*StreamHeaderTrack)
-			if !ok {
-				errCh <- err
-			}
 			// Send the header
-			stream.Write(headerTrack.serialize())
+			stream.Write(header.serialize())
 
 			// Send chunks
 			var chunk GroupChunk
-			var groupID GroupID = 0
-			var objectID ObjectID = 0
+			var groupID groupID = 0
+			var objectID objectID = 0
 			for payload := range payloadCh {
 				//Send a Group chunk
 				chunk = GroupChunk{
-					GroupID: groupID,
+					groupID: groupID,
 					ObjectChunk: ObjectChunk{
-						ObjectID: objectID,
+						objectID: objectID,
 						Payload:  payload,
 					},
 				}
@@ -133,9 +244,9 @@ func (p Publisher) sendMultipleObject(header StreamHeader, payloadCh <-chan []by
 
 			// Send final chunk
 			chunk = GroupChunk{
-				GroupID: groupID,
+				groupID: groupID,
 				ObjectChunk: ObjectChunk{
-					ObjectID:   objectID,
+					objectID:   objectID,
 					Payload:    []byte{},
 					StatusCode: END_OF_TRACK,
 				},
@@ -162,20 +273,16 @@ func (p Publisher) sendMultipleObject(header StreamHeader, payloadCh <-chan []by
 			 * }
 			 */
 			defer close(errCh)
-			headerPeep, ok := header.(*StreamHeaderPeep)
-			if !ok {
-				errCh <- err
-			}
 			// Send the header
-			stream.Write(headerPeep.serialize())
+			stream.Write(header.serialize())
 
 			// Send chunks
 			var chunk ObjectChunk
-			var objectID ObjectID = 0
+			var objectID objectID = 0
 			for payload := range payloadCh {
 				//Send a Object chunk
 				chunk = ObjectChunk{
-					ObjectID: objectID,
+					objectID: objectID,
 					Payload:  payload,
 				}
 				_, err = stream.Write(chunk.serialize())
@@ -189,7 +296,7 @@ func (p Publisher) sendMultipleObject(header StreamHeader, payloadCh <-chan []by
 
 			// Send final chunk
 			chunk = ObjectChunk{
-				ObjectID:   objectID,
+				objectID:   objectID,
 				Payload:    []byte{},
 				StatusCode: END_OF_PEEP,
 			}
@@ -253,8 +360,8 @@ func (p Publisher) sendTrackStatus() error {
 		TrackNamespace: p.TrackNamespace,
 		TrackName:      "",
 		Code:           0,
-		LastGroupID:    GroupID(0),
-		LastObjectID:   ObjectID(0),
+		LastGroupID:    groupID(0),
+		LastObjectID:   objectID(0),
 	}
 	p.controlStream.Write(ts.serialize())
 	return nil

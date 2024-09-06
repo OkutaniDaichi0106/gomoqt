@@ -1,4 +1,4 @@
-package gomoq
+package moqtransport
 
 import (
 	"github.com/quic-go/quic-go/quicvarint"
@@ -150,7 +150,7 @@ type SubscribeError struct {
 	/*
 	 * A number to identify the subscribe session
 	 */
-	SubscribeID
+	subscribeID
 
 	/*
 	 * Error code
@@ -201,7 +201,7 @@ func (se SubscribeError) serialize() []byte {
 	b = quicvarint.Append(b, uint64(SUBSCRIBE))
 
 	// Append Subscriber ID
-	b = quicvarint.Append(b, uint64(se.SubscribeID))
+	b = quicvarint.Append(b, uint64(se.subscribeID))
 
 	// Append Error Code
 	b = quicvarint.Append(b, uint64(se.Code))
@@ -238,7 +238,7 @@ func (se *SubscribeError) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	se.SubscribeID = SubscribeID(num)
+	se.subscribeID = subscribeID(num)
 
 	// Get Error Code
 	num, err = quicvarint.Read(r)

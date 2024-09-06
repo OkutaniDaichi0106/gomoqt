@@ -1,9 +1,8 @@
-package gomoq
+package moqtransport
 
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"net/http"
 
 	"github.com/quic-go/quic-go/quicvarint"
@@ -43,12 +42,16 @@ type Client struct {
 	 * Set the first bidirectional stream
 	 */
 	controlStream webtransport.Stream
+
+	/***/
+	controlReader quicvarint.Reader
+
 	/*
 	 * Using selectedVersion which is specifyed by the client and is selected by the server
 	 */
 	selectedVersion Version
 
-	ClientParameterHandler
+	ClientHandler
 
 	/*
 	 * CLIENT_SETUP message
@@ -56,10 +59,12 @@ type Client struct {
 	//clientSetupMessage ClientSetupMessage
 }
 
-type ClientParameterHandler interface {
+type ClientHandler interface {
 	ClientSetupParameters() Parameters
-	AnnounceParameters() Parameters
 }
+
+// Check the Publisher inplement Publisher Handler
+var _ ClientHandler = Client{}
 
 /*
  * Client connect to the server
@@ -67,7 +72,7 @@ type ClientParameterHandler interface {
  * Open bidirectional stream to send control message
  *
  */
-func (c *Client) connect(url string, role Role) error {
+func (c *Client) connect(url string) error {
 	//TODO: Check if the role and the versions is setted
 	var err error
 	// Define new Dialer
@@ -90,8 +95,12 @@ func (c *Client) connect(url string, role Role) error {
 	// Register the session to the client
 	c.session = sess
 
+	return nil
+}
+
+func (c *Client) setup(role Role) error {
 	// Open first stream to send control messages
-	stream, err := sess.OpenStreamSync(context.Background())
+	stream, err := c.session.OpenStreamSync(context.Background())
 	if err != nil {
 		return err
 	}
@@ -109,36 +118,34 @@ func (c *Client) connect(url string, role Role) error {
 	}
 
 	// Receive SETUP_SERVER message
-	qvReader := quicvarint.NewReader(stream)
-	id, err := deserializeHeader(qvReader)
+	reader := quicvarint.NewReader(stream)
+	id, err := deserializeHeader(reader)
 	if err != nil {
 		return err
 	}
 	if id != SERVER_SETUP {
-		return ErrProtocolViolation
+		return ErrUnexpectedMessage
 	}
 	var ss ServerSetupMessage
-	err = ss.deserializeBody(qvReader)
+	err = ss.deserializeBody(reader)
 	if err != nil {
 		return err
 	}
 
 	// Check specified version is selected
-	versionIsOK := false
-	for _, v := range c.Versions {
-		if v == ss.SelectedVersion {
-			versionIsOK = true
-			break
-		}
+	err = contain(ss.SelectedVersion, c.Versions)
+	if err != nil {
+		return err
 	}
-	if !versionIsOK {
-		return errors.New("unexcepted version is selected")
-	}
+
+	// Register the selected version
 	c.selectedVersion = ss.SelectedVersion
 	// TODO: Handle ServerSetup Parameters
 
-	// If exchang of SETUP messages is complete, set the stream as control stream
+	// Set the stream as control stream, After SETUP messages exchang is complete
 	c.controlStream = stream
+	// Set the quicvarint.Reader as control reader, After SETUP messages exchang is complete
+	c.controlReader = reader
 
 	return nil
 }

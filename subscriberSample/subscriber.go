@@ -7,9 +7,14 @@ import (
 	"log"
 )
 
+const (
+	URL = "https://localhost:8443/"
+)
+
 func main() {
 	// Set client
 	client := gomoq.Client{
+		ClientHandler: ClientHandle{},
 		TLSConfig: &tls.Config{
 			InsecureSkipVerify: true,
 		},
@@ -19,10 +24,10 @@ func main() {
 	// Set subscriber
 	subscriber := gomoq.Subscriber{
 		Client:            client,
-		SubscriberHandler: SubscriberHandler{},
+		SubscriberHandler: SubscriberHandle{},
 	}
 
-	err := subscriber.Connect("https://localhost:8443/setup")
+	err := subscriber.ConnectAndSetup(URL + "setup")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -51,16 +56,19 @@ func main() {
 
 }
 
-type SubscriberHandler struct {
+type ClientHandle struct {
 }
 
-func (SubscriberHandler) ClientSetupParameters() gomoq.Parameters {
+func (ClientHandle) ClientSetupParameters() gomoq.Parameters {
 	return gomoq.Parameters{}
 }
 
-func (SubscriberHandler) SubscribeParameters() gomoq.Parameters {
+type SubscriberHandle struct {
+}
+
+func (SubscriberHandle) SubscribeParameters() gomoq.Parameters {
 	return gomoq.Parameters{}
 }
-func (SubscriberHandler) SubscribeUpdateParameters() gomoq.Parameters {
+func (SubscriberHandle) SubscribeUpdateParameters() gomoq.Parameters {
 	return gomoq.Parameters{}
 }

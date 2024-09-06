@@ -1,4 +1,4 @@
-package gomoq
+package moqtransport
 
 import (
 	"github.com/quic-go/quic-go/quicvarint"
@@ -8,7 +8,7 @@ type UnsubscribeMessage struct {
 	/*
 	 * A number to identify the subscribe session
 	 */
-	SubscribeID
+	subscribeID
 }
 
 func (us UnsubscribeMessage) serialize() []byte {
@@ -28,7 +28,7 @@ func (us UnsubscribeMessage) serialize() []byte {
 	b = quicvarint.Append(b, uint64(UNSUBSCRIBE))
 
 	// Append Subscirbe ID
-	b = quicvarint.Append(b, uint64(us.SubscribeID))
+	b = quicvarint.Append(b, uint64(us.subscribeID))
 
 	return b
 }
@@ -55,7 +55,7 @@ func (us *UnsubscribeMessage) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	us.SubscribeID = SubscribeID(num)
+	us.subscribeID = subscribeID(num)
 
 	return nil
 }

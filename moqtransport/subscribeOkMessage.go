@@ -1,4 +1,4 @@
-package gomoq
+package moqtransport
 
 import (
 	"errors"
@@ -19,7 +19,7 @@ type SubscribeOkMessage struct {
 	/*
 	 * A number to identify the subscribe session
 	 */
-	SubscribeID
+	subscribeID
 
 	/*
 	 * Duration in which the permission for subscription is valid
@@ -38,8 +38,8 @@ type SubscribeOkMessage struct {
 	 * A flag indicating if the specifyed contents
 	 */
 	ContentExists   bool
-	LargestGroupID  GroupID
-	LargestObjectID ObjectID
+	LargestGroupID  groupID
+	LargestObjectID objectID
 }
 
 func (so SubscribeOkMessage) serialize() []byte {
@@ -63,7 +63,7 @@ func (so SubscribeOkMessage) serialize() []byte {
 	// Append the type of the message
 	b = quicvarint.Append(b, uint64(SUBSCRIBE_OK))
 	// Append Subscriber ID
-	b = quicvarint.Append(b, uint64(so.SubscribeID))
+	b = quicvarint.Append(b, uint64(so.subscribeID))
 	// Append Expire
 	if so.Expires.Microseconds() < 0 {
 		so.Expires = 0
@@ -109,7 +109,7 @@ func (so *SubscribeOkMessage) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	so.SubscribeID = SubscribeID(num)
+	so.subscribeID = subscribeID(num)
 
 	// Get Expire
 	num, err = quicvarint.Read(r)
@@ -150,14 +150,14 @@ func (so *SubscribeOkMessage) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	so.LargestGroupID = GroupID(num)
+	so.LargestGroupID = groupID(num)
 
 	// Get Largest Object ID
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	so.LargestObjectID = ObjectID(num)
+	so.LargestObjectID = objectID(num)
 
 	return nil
 }

@@ -1,4 +1,4 @@
-package gomoq
+package moqtransport
 
 // Status Codes
 /*

@@ -20,9 +20,39 @@ func main() {
 	}
 
 	ms := gomoq.Server{
-		SupportedVersions: []gomoq.Version{gomoq.Draft05},
+		WebTransportServer: &ws,
+		SupportedVersions:  []gomoq.Version{gomoq.Draft05},
 	}
 
+	gomoq.OnPublisher(&ms, func(agent gomoq.PublisherAgent) {
+		err := gomoq.AcceptAnnounce(agent)
+		if err != nil {
+			return
+		}
+
+		ctx, cancel := context.WithCancel(context.TODO())
+		defer cancel()
+		err = gomoq.AcceptObjects(agent, ctx)
+		if err != nil {
+			log.Fatal(err)
+			return
+		}
+	})
+
+	gomoq.OnSubscriber(&ms, func(agent gomoq.SubscriberAgent) {
+		// Send ANNOUNCE messages to Subscribers and let them know available Track Namespace
+		err := gomoq.Advertise(agent, ms.Announcements())
+		if err != nil {
+			return
+		}
+
+		err = gomoq.AcceptSubscription(agent)
+		if err != nil {
+			return
+		}
+
+		gomoq.DeliverObjects(agent)
+	})
 	http.HandleFunc("/setup", func(w http.ResponseWriter, r *http.Request) {
 		// Establish WebTransport connection after receive EXTEND CONNECT message
 		sess, err := ws.Upgrade(w, r)
@@ -32,36 +62,12 @@ func main() {
 			return
 		}
 
-		agent := ms.NewAgent(sess)
-
-		ms.OnPublisher(func(agent *gomoq.Agent) {
-			err := gomoq.AcceptAnnounce(agent)
-			if err != nil {
-				return
-			}
-
-			errCh := gomoq.AcceptObjects(agent, context.Background())
-
-			select {
-			case <-errCh:
-				log.Fatal(<-errCh)
-			}
-		})
-
-		ms.OnSubscriber(func(agent *gomoq.Agent) {
-			// Send ANNOUNCE messages to Subscribers and let them know available Track Namespace
-			err := gomoq.Advertise(agent, ms.Announcements())
-			if err != nil {
-				return
-			}
-
-			err = gomoq.AcceptSubscription(agent)
-			if err != nil {
-				return
-			}
-
-			gomoq.DeliverObjects(agent)
-		})
+		agent, err := gomoq.Setup(sess)
+		if err != nil {
+			log.Fatal(err)
+			return
+		}
+		//		agent := ms.NewAgent(sess)
 
 		gomoq.Activate(agent)
 
@@ -75,5 +81,5 @@ func main() {
 		//sess.CloseWithError(1234, "stop connection!!!")
 	})
 
-	ws.ListenAndServeTLS("localhost.pem", "localhost-key.pem")
+	ms.ListenAndServeTLS("localhost.pem", "localhost-key.pem")
 }

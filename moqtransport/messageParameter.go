@@ -1,4 +1,4 @@
-package gomoq
+package moqtransport
 
 import (
 	"errors"
@@ -239,19 +239,19 @@ func (params *Parameters) parse(r quicvarint.Reader) error {
 	return nil
 }
 
-func (ps Parameters) Contain(key ParameterKey) (bool, any) {
+func (ps Parameters) Contain(key ParameterKey) (any, bool) {
 	var param Parameter
 	for _, param = range ps {
 		if param.Key == key {
 			switch param.WireType {
 			case varint:
-				return true, param.value_int64
+				return param.value_int64, true
 			case length_delimited:
-				return true, param.value_string
+				return param.value_string, true
 			}
 			// Anything else varint or length_delimited is unacceptable as Wire Type
-			return false, nil
+			return nil, false
 		}
 	}
-	return false, nil
+	return nil, false
 }

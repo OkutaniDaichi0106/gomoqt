@@ -1,4 +1,4 @@
-package gomoq
+package moqtransport
 
 import (
 	"errors"
@@ -8,14 +8,14 @@ import (
 
 type StreamHeader interface {
 	Messager
-	StreamType() ForwardingPreference
+	ForwardingPreference() ForwardingPreference
 }
 
 type StreamHeaderTrack struct {
 	/*
 	 * A number to identify the subscribe session
 	 */
-	SubscribeID
+	subscribeID
 
 	/*
 	 * An number indicates a track
@@ -47,7 +47,7 @@ func (sht StreamHeaderTrack) serialize() []byte {
 	// Append the type of the message
 	b = quicvarint.Append(b, uint64(STREAM_HEADER_TRACK))
 	// Append the Subscriber ID
-	b = quicvarint.Append(b, uint64(sht.SubscribeID))
+	b = quicvarint.Append(b, uint64(sht.subscribeID))
 	// Append the Track Alias
 	b = quicvarint.Append(b, uint64(sht.TrackAlias))
 	// Append the Publisher Priority
@@ -65,7 +65,7 @@ func (sht *StreamHeaderTrack) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	sht.SubscribeID = SubscribeID(num)
+	sht.subscribeID = subscribeID(num)
 
 	// Get Track Alias
 	num, err = quicvarint.Read(r)
@@ -87,12 +87,12 @@ func (sht *StreamHeaderTrack) deserializeBody(r quicvarint.Reader) error {
 	return nil
 }
 
-func (sht StreamHeaderTrack) StreamType() ForwardingPreference {
+func (sht StreamHeaderTrack) ForwardingPreference() ForwardingPreference {
 	return TRACK
 }
 
 type GroupChunk struct {
-	GroupID
+	groupID
 	ObjectChunk
 }
 
@@ -113,10 +113,10 @@ func (gc GroupChunk) serialize() []byte {
 	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
 
 	// Append Subscribe ID
-	b = quicvarint.Append(b, uint64(gc.GroupID))
+	b = quicvarint.Append(b, uint64(gc.groupID))
 
 	// Append Subscribe ID
-	b = quicvarint.Append(b, uint64(gc.ObjectID))
+	b = quicvarint.Append(b, uint64(gc.objectID))
 
 	// Append length of the Payload
 	b = quicvarint.Append(b, uint64(len(gc.Payload)))
@@ -131,7 +131,7 @@ func (gc GroupChunk) serialize() []byte {
 	return b
 }
 
-func (gc *GroupChunk) deserialize(r quicvarint.Reader) error {
+func (gc *GroupChunk) deserializeBody(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 
@@ -140,36 +140,9 @@ func (gc *GroupChunk) deserialize(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	gc.GroupID = GroupID(num)
+	gc.groupID = groupID(num)
 
-	// Get Object ID
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
-	}
-	gc.ObjectID = ObjectID(num)
-
-	// Get length of the Object Payload
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
-	}
-	if num > 0 {
-		// Get Object Payload
-		buf := make([]byte, num)
-		_, err = r.Read(buf)
-		if err != nil {
-			return err
-		}
-		gc.Payload = buf
-	} else if num == 0 {
-		// Get Object Status Code
-		num, err = quicvarint.Read(r)
-		if err != nil {
-			return err
-		}
-		gc.StatusCode = ObjectStatusCode(num)
-	}
+	gc.ObjectChunk.deserializeBody(r)
 
 	return nil
 }

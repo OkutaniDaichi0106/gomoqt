@@ -1,4 +1,4 @@
-package gomoq
+package moqtransport
 
 import (
 	"errors"
@@ -19,22 +19,26 @@ const (
 
 // Control Messages
 const (
-	SUBSCRIBE_UPDATE     MessageID = 0x02
-	SUBSCRIBE            MessageID = 0x03
-	SUBSCRIBE_OK         MessageID = 0x04
-	SUBSCRIBE_ERROR      MessageID = 0x05
-	ANNOUNCE             MessageID = 0x06
-	ANNOUNCE_OK          MessageID = 0x07
-	ANNOUNCE_ERROR       MessageID = 0x08
-	UNANNOUNCE           MessageID = 0x09
-	UNSUBSCRIBE          MessageID = 0x0A
-	SUBSCRIBE_DONE       MessageID = 0x0B
-	ANNOUNCE_CANCEL      MessageID = 0x0C
-	TRACK_STATUS_REQUEST MessageID = 0x0D
-	TRACK_STATUS         MessageID = 0x0E
-	GOAWAY               MessageID = 0x10
-	CLIENT_SETUP         MessageID = 0x40
-	SERVER_SETUP         MessageID = 0x41
+	SUBSCRIBE_UPDATE          MessageID = 0x02
+	SUBSCRIBE                 MessageID = 0x03
+	SUBSCRIBE_OK              MessageID = 0x04
+	SUBSCRIBE_ERROR           MessageID = 0x05
+	ANNOUNCE                  MessageID = 0x06
+	ANNOUNCE_OK               MessageID = 0x07
+	ANNOUNCE_ERROR            MessageID = 0x08
+	UNANNOUNCE                MessageID = 0x09
+	UNSUBSCRIBE               MessageID = 0x0A
+	SUBSCRIBE_DONE            MessageID = 0x0B
+	ANNOUNCE_CANCEL           MessageID = 0x0C
+	TRACK_STATUS_REQUEST      MessageID = 0x0D
+	TRACK_STATUS              MessageID = 0x0E
+	GOAWAY                    MessageID = 0x10
+	SUBSCRIBE_NAMESPACE       MessageID = 0x11 //TODO
+	SUBSCRIBE_NAMESPACE_OK    MessageID = 0x12 //TODO
+	SUBSCRIBE_NAMESPACE_ERROR MessageID = 0x13 //TODO
+	UNSUBSCRIBE_NAMESPACE     MessageID = 0x14 //TODO
+	CLIENT_SETUP              MessageID = 0x40
+	SERVER_SETUP              MessageID = 0x41
 )
 
 type Messager interface {
@@ -79,23 +83,23 @@ type SubscriptionFilter struct {
 	/*
 	 * StartGroupID used only for "AbsoluteStart" or "AbsoluteRange"
 	 */
-	startGroup GroupID
+	startGroup groupID
 
 	/*
 	 * StartObjectID used only for "AbsoluteStart" or "AbsoluteRange"
 	 */
-	startObject ObjectID
+	startObject objectID
 
 	/*
 	 * EndGroupID used only for "AbsoluteRange"
 	 */
-	endGroup GroupID
+	endGroup groupID
 
 	/*
 	 * EndObjectID used only for "AbsoluteRange".
 	 * When it is 0, it means the entire group is required
 	 */
-	endObject ObjectID
+	endObject objectID
 }
 
 const (
@@ -106,22 +110,19 @@ const (
 )
 
 func (sf SubscriptionFilter) isOK() bool {
-	//TODO: Check if the Filter Code is valid and valid parameters is set
-	if sf.FilterCode == LATEST_GROUP {
-
-	} else if sf.FilterCode == LATEST_OBJECT {
-
-	} else if sf.FilterCode == ABSOLUTE_START {
-
-	} else if sf.FilterCode == ABSOLUTE_RANGE {
+	switch sf.FilterCode {
+	case LATEST_GROUP, LATEST_OBJECT, ABSOLUTE_START:
+		return true
+	case ABSOLUTE_RANGE:
 		// Check if the Start Group ID is smaller than End Group ID
 		if sf.startGroup > sf.endGroup {
 			return false
 		}
-	} else {
+		return true
+	default:
 		return false
 	}
-	return true
+	//TODO: Check if the Filter Code is valid and valid parameters is set
 }
 
 func (sf SubscriptionFilter) append(b []byte) []byte {

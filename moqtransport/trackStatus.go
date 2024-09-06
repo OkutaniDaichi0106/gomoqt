@@ -1,8 +1,6 @@
-package gomoq
+package moqtransport
 
 import (
-	"errors"
-
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -41,19 +39,6 @@ func (tsr TrackStatusRequest) serialize() []byte {
 	b = append(b, []byte(tsr.TrackName)...)
 
 	return b
-}
-
-func (tsr *TrackStatusRequest) deserialize(r quicvarint.Reader) error {
-	// Get Message ID and check it
-	id, err := deserializeHeader(r)
-	if err != nil {
-		return err
-	}
-	if id != TRACK_STATUS_REQUEST { //TODO: this would means protocol violation
-		return errors.New("unexpected message")
-	}
-
-	return tsr.deserializeBody(r)
 }
 
 func (tsr *TrackStatusRequest) deserializeBody(r quicvarint.Reader) error {
@@ -99,8 +84,8 @@ type TrackStatusMessage struct {
 	 * Status code
 	 */
 	Code         TrackStatusCode
-	LastGroupID  GroupID
-	LastObjectID ObjectID
+	LastGroupID  groupID
+	LastObjectID objectID
 }
 
 func (ts TrackStatusMessage) serialize() []byte {
@@ -142,19 +127,6 @@ func (ts TrackStatusMessage) serialize() []byte {
 	b = quicvarint.Append(b, uint64(ts.LastObjectID))
 
 	return b
-}
-
-func (ts *TrackStatusMessage) deserialize(r quicvarint.Reader) error {
-	// Get Message ID and check it
-	id, err := deserializeHeader(r)
-	if err != nil {
-		return err
-	}
-	if id != TRACK_STATUS { //TODO: this would means protocol violation
-		return errors.New("unexpected message")
-	}
-
-	return ts.deserializeBody(r)
 }
 
 func (ts *TrackStatusMessage) deserializeBody(r quicvarint.Reader) error {
@@ -201,14 +173,14 @@ func (ts *TrackStatusMessage) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	ts.LastGroupID = GroupID(num)
+	ts.LastGroupID = groupID(num)
 
 	// Get Last Object ID
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	ts.LastObjectID = ObjectID(num)
+	ts.LastObjectID = objectID(num)
 
 	return nil
 }

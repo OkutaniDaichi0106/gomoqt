@@ -1,4 +1,4 @@
-package gomoq
+package moqtransport
 
 import (
 	"errors"
@@ -7,7 +7,7 @@ import (
 	"github.com/quic-go/webtransport-go"
 )
 
-var server Server
+var SERVER *Server
 
 /*
  * Server Agent
@@ -22,6 +22,8 @@ var server Server
  */
 
 type Server struct {
+	WebTransportServer *webtransport.Server
+
 	/*
 	 * Supported versions by the server
 	 */
@@ -30,7 +32,7 @@ type Server struct {
 	/*
 	 * Agents runs on the server
 	 */
-	agents []*Agent
+	agents []AgenterWithRole
 
 	setupParameters Parameters
 
@@ -55,9 +57,38 @@ type Server struct {
 	subscriptionCondition func(SubscribeMessage) bool
 
 	/****/
-	onPublisher  func(*Agent)
-	onSubscriber func(*Agent)
-	onPubSub     func(*Agent)
+	handle ServerHandler
+	//onPublisher  func(publisherAgenter)
+	//onSubscriber func(subscriberAgenter)
+}
+
+func (s *Server) init() error {
+	SERVER = s
+	return nil
+}
+
+func (s *Server) ListenAndServeTLS(cert, key string) error {
+	err := s.init()
+	if err != nil {
+		return err
+	}
+	return s.WebTransportServer.ListenAndServeTLS(cert, key)
+}
+
+type ServerHandler interface {
+	OnPublisher()
+}
+
+func (s *Server) OnPublisher(op func(publisherAgenter)) {
+	s.handle.OnPublisher = op
+}
+
+func (s *Server) OnSubscriber(op func(subscriberAgenter)) {
+	s.onSubscriber = op
+}
+
+func Handle(handler ServerHandler) {
+	SERVER.onPublisher = handler.OnPublisher
 }
 
 func (s *Server) Announcements() []AnnounceMessage {
@@ -70,47 +101,11 @@ func (s *Server) Announcements() []AnnounceMessage {
 	return announcements
 }
 
-func (s *Server) OnPublisher(op func(*Agent)) {
-	s.onPublisher = func(agent *Agent) {
-		if agent.role != PUB {
-			panic("unsuitable role")
-		}
-		op(agent)
-	}
-}
-
-func (s *Server) OnSubscriber(op func(*Agent)) {
-	s.onSubscriber = func(agent *Agent) {
-		if agent.role != SUB {
-			panic("unsuitable role")
-		}
-		op(agent)
-	}
-}
-
-func (s *Server) OnPubSub(op func(*Agent)) {
-	s.onPubSub = func(agent *Agent) {
-		if agent.role != PUB_SUB {
-			panic("unsuitable role")
-		}
-		op(agent)
-	}
-}
-
 func (s *Server) SetupParameters(params Parameters) {
 	s.setupParameters = params
 }
 
-func (s *Server) NewAgent(sess *webtransport.Session) *Agent {
-	a := Agent{
-		session: sess,
-	}
-	s.agents = append(s.agents, &a)
-
-	return &a
-}
-
-func (s *Server) getPublisherAgent(trackNamespace string) (*Agent, error) {
+func (s *Server) getOriginAgent(trackNamespace string) (publisherAgenter, error) {
 	agent, ok := s.publishers.index[trackNamespace]
 	if !ok || agent == nil {
 		return nil, ErrNoAgent
@@ -124,6 +119,11 @@ type announcementMap struct {
 }
 
 func (aMap *announcementMap) add(am AnnounceMessage) error {
+	// Initialize if the map is nil
+	if aMap.index == nil {
+		aMap.index = make(map[string]AnnounceMessage, 1<<10)
+	}
+
 	aMap.mu.Lock()
 	defer aMap.mu.Unlock()
 
@@ -151,7 +151,7 @@ func (aMap *announcementMap) delete(am AnnounceMessage) error {
 }
 
 type publisherMap struct {
-	index map[string]*Agent
+	index map[string]publisherAgenter
 	mu    sync.Mutex
 }
 
@@ -164,6 +164,11 @@ type publisherMap struct {
 // }
 
 func (pMap *publisherMap) add(trackNamespace string, agent *Agent) error {
+	// Initialize if the map is nil
+	if pMap.index == nil {
+		pMap.index = make(map[string]*Agent, 1<<10)
+	}
+
 	pMap.mu.Lock()
 	defer pMap.mu.Unlock()
 
@@ -196,6 +201,11 @@ type subscriberMap struct {
 }
 
 func (sMap *subscriberMap) add(trackNamespace string, agent *Agent) error {
+	// Initialize if the map is nil
+	if sMap.index == nil {
+		sMap.index = make(map[string][]*Agent, 1<<10)
+	}
+
 	sMap.mu.Lock()
 	defer sMap.mu.Unlock()
 

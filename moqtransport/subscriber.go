@@ -1,4 +1,4 @@
-package gomoq
+package moqtransport
 
 import (
 	"context"
@@ -36,13 +36,25 @@ type SubscriberHandler interface {
 
 var _ SubscriberHandler = Subscriber{}
 
-func (s *Subscriber) Connect(url string) error {
+func (s *Subscriber) ConnectAndSetup(url string) error {
 	// Check if the Client specify the Versions
 	if len(s.Versions) < 1 {
-		panic("no versions are specified")
+		panic("no versions is specified")
 	}
 
-	return s.connect(url, SUB)
+	// Connect
+	err := s.connect(url)
+	if err != nil {
+		return err
+	}
+
+	// Setup
+	err = s.setup(SUB)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 type SubscribeConfig struct {
@@ -65,17 +77,17 @@ type SubscribeConfig struct {
 
 func (s *Subscriber) Subscribe(trackNamespace, trackName string, config SubscribeConfig) error {
 	// Check Subscribe Configuration
-	// Check if the Track Namespace is empty
+	// Check if the Track Namespace is not empty
 	if len(trackNamespace) == 0 {
 		return errors.New("no track namespace is specifyed")
 	}
-	// Check if the Track Name is empty
+	// Check if the Track Name is not empty
 	if len(trackName) == 0 {
 		return errors.New("no track name is specifyed")
 	}
 	// Check if the Filter is valid
-	if config.SubscriptionFilter.isOK() {
-		return errors.New("invalid filter type")
+	if !config.SubscriptionFilter.isOK() {
+		return ErrInvalidFilter
 	}
 	// Check if the track is already subscribed
 	// and add track alias
@@ -87,11 +99,13 @@ func (s *Subscriber) Subscribe(trackNamespace, trackName string, config Subscrib
 	return s.sendSubscribeMessage(trackNamespace, trackName, config)
 }
 
+var ErrInvalidFilter = errors.New("invalid filter type")
+
 /*****/
 func (s *Subscriber) sendSubscribeMessage(trackNamespace, trackName string, config SubscribeConfig) error {
 
 	sm := SubscribeMessage{
-		SubscribeID:        SubscribeID(len(s.subscriptions)),
+		subscribeID:        subscribeID(len(s.subscriptions)),
 		TrackAlias:         s.trackAliases[trackNamespace+trackName],
 		TrackNamespace:     trackNamespace,
 		TrackName:          trackName,
@@ -107,6 +121,7 @@ func (s *Subscriber) sendSubscribeMessage(trackNamespace, trackName string, conf
 		return err
 	}
 
+	// Register the SUBSCRIBE message
 	s.subscriptions = append(s.subscriptions, sm)
 
 	return nil
@@ -169,7 +184,7 @@ func (s *Subscriber) AcceptObjects(ctx context.Context) (<-chan []byte, <-chan e
 
 // }
 
-func (s *Subscriber) Unsubscribe(id SubscribeID) error {
+func (s *Subscriber) Unsubscribe(id subscribeID) error {
 	// Check if the updated subscription is narrower than the existing subscription
 	if int(id) > len(s.subscriptions) {
 		//This means the specifyed subscription does not exist in the subscriptions
@@ -180,9 +195,9 @@ func (s *Subscriber) Unsubscribe(id SubscribeID) error {
 }
 
 /******/
-func (s Subscriber) sendUnsubscribeMessage(id SubscribeID) error {
+func (s Subscriber) sendUnsubscribeMessage(id subscribeID) error {
 	um := UnsubscribeMessage{
-		SubscribeID: id,
+		subscribeID: id,
 	}
 
 	// Send UNSUBSCRIBE message
@@ -195,7 +210,7 @@ func (s Subscriber) sendUnsubscribeMessage(id SubscribeID) error {
 }
 
 // TODO:
-func (s *Subscriber) SubscribeUpdate(id SubscribeID, config SubscribeConfig) error {
+func (s *Subscriber) SubscribeUpdate(id subscribeID, config SubscribeConfig) error {
 	// Check if the updated subscription is narrower than the existing subscription
 	if int(id) > len(s.subscriptions) {
 		//This means the specifyed subscription does not exist in the subscriptions
@@ -252,9 +267,9 @@ func (s *Subscriber) SubscribeUpdate(id SubscribeID, config SubscribeConfig) err
 }
 
 /****/
-func (s Subscriber) sendSubscribeUpdateMessage(id SubscribeID, config SubscribeConfig) error {
+func (s Subscriber) sendSubscribeUpdateMessage(id subscribeID, config SubscribeConfig) error {
 	sum := SubscribeUpdateMessage{
-		SubscribeID:        id,
+		subscribeID:        id,
 		SubscriptionFilter: config.SubscriptionFilter,
 		SubscriberPriority: config.SubscriberPriority,
 		Parameters:         s.SubscribeUpdateParameters(),

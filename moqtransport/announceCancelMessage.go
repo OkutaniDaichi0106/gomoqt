@@ -1,67 +1,66 @@
-package gomoq
+package moqtransport
 
 import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-type AnnounceOkMessage struct {
+type AnnounceCancelMessage struct {
 	TrackNamespace string
 }
 
-func (ao AnnounceOkMessage) serialize() []byte {
+func (ac AnnounceCancelMessage) serialize() []byte {
 	/*
 	 * Serialize as following formatt
 	 *
-	 * ANNOUNCE_OK Payload {
+	 * ANNOUNCE_CANCEL Payload {
 	 *   Track Namespace ([]byte),
 	 * }
 	 */
 
-	// TODO?: Chech track namespace exists
+	// TODO?: Check track namespace exists
 
 	// TODO: Tune the length of the "b"
 	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
 	// Append the type of the message
-	b = quicvarint.Append(b, uint64(ANNOUNCE_OK))
+	b = quicvarint.Append(b, uint64(ANNOUNCE_CANCEL))
 	// Append the supported versions
-	b = quicvarint.Append(b, uint64(len(ao.TrackNamespace)))
-	b = append(b, []byte(ao.TrackNamespace)...)
+	b = quicvarint.Append(b, uint64(len(ac.TrackNamespace)))
+	b = append(b, []byte(ac.TrackNamespace)...)
 
 	return b
 }
 
-// func (ao *AnnounceOkMessage) deserialize(r quicvarint.Reader) error {
+// func (ac *AnnounceCancelMessage) deserialize(r quicvarint.Reader) error {
 // 	// Get Message ID and check it
 // 	id, err := deserializeHeader(r)
 // 	if err != nil {
 // 		return err
 // 	}
-// 	if id != ANNOUNCE_OK { //TODO: this would means protocol violation
+// 	if id != ANNOUNCE_CANCEL {
 // 		return errors.New("unexpected message")
 // 	}
 
-// 	return ao.deserializeBody(r)
+// 	return ac.deserializeBody(r)
 // }
 
-func (ao *AnnounceOkMessage) deserializeBody(r quicvarint.Reader) error {
+func (ac *AnnounceCancelMessage) deserializeBody(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 
-	// Get length of the string of the track namespace
+	// Get length of the string of the namespace
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
 
-	// Get track namespace
 	buf := make([]byte, num)
-
+	// Get track namespace
 	_, err = r.Read(buf)
 	if err != nil {
 		return err
 	}
 
-	ao.TrackNamespace = string(buf)
+	ac.TrackNamespace = string(buf)
 
 	// Just one track namespace supposed to be detected
 	// Over one track namespace will not be detected

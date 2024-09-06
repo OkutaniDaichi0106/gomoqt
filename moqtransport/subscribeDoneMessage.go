@@ -1,4 +1,4 @@
-package gomoq
+package moqtransport
 
 import (
 	"errors"
@@ -10,12 +10,12 @@ type SubscribeDoneMessage struct {
 	/*
 	 * A number to identify the subscribe session
 	 */
-	SubscribeID
+	subscribeID
 	StatusCode    SubscribeDoneStatusCode
 	Reason        string
 	ContentExists bool
-	FinalGroupID  GroupID
-	FinalObjectID ObjectID
+	FinalGroupID  groupID
+	FinalObjectID objectID
 }
 
 func (sd SubscribeDoneMessage) serialize() []byte {
@@ -38,7 +38,7 @@ func (sd SubscribeDoneMessage) serialize() []byte {
 	b = quicvarint.Append(b, uint64(SUBSCRIBE_DONE))
 
 	// Append Subscirbe ID
-	b = quicvarint.Append(b, uint64(sd.SubscribeID))
+	b = quicvarint.Append(b, uint64(sd.subscribeID))
 
 	// Append Status Code
 	b = quicvarint.Append(b, uint64(sd.StatusCode))
@@ -84,7 +84,7 @@ func (sd *SubscribeDoneMessage) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	sd.SubscribeID = SubscribeID(num)
+	sd.subscribeID = subscribeID(num)
 
 	// Get Subscribe ID
 	num, err = quicvarint.Read(r)
@@ -125,14 +125,14 @@ func (sd *SubscribeDoneMessage) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	sd.FinalGroupID = GroupID(num)
+	sd.FinalGroupID = groupID(num)
 
 	// Get Largest Object ID
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	sd.FinalObjectID = ObjectID(num)
+	sd.FinalObjectID = objectID(num)
 
 	return nil
 }

@@ -1,13 +1,13 @@
-package gomoq
+package moqtransport
 
 // Group ID
-type GroupID uint64
+type groupID uint64
 
 // Peep ID
-type PeepID uint64
+type peepID uint64
 
 // Object ID
-type ObjectID uint64
+type objectID uint64
 
 /*
  * Track Alias

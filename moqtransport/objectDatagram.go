@@ -1,4 +1,4 @@
-package gomoq
+package moqtransport
 
 import (
 	"github.com/quic-go/quic-go/quicvarint"
@@ -9,7 +9,7 @@ import (
  * and must be the only message on the unidirectional stream
  */
 type ObjectDatagram struct {
-	SubscribeID
+	subscribeID
 	TrackAlias
 	GroupChunk
 	PublisherPriority
@@ -37,13 +37,13 @@ func (od ObjectDatagram) serialize() []byte {
 	// Append the type of the message
 	b = quicvarint.Append(b, uint64(OBJECT_DATAGRAM))
 	// Append Subscribe ID
-	b = quicvarint.Append(b, uint64(od.SubscribeID))
+	b = quicvarint.Append(b, uint64(od.subscribeID))
 	// Append Track Alias
 	b = quicvarint.Append(b, uint64(od.TrackAlias))
 	// Append Group ID
-	b = quicvarint.Append(b, uint64(od.GroupID))
+	b = quicvarint.Append(b, uint64(od.groupID))
 	// Append Object ID
-	b = quicvarint.Append(b, uint64(od.ObjectID))
+	b = quicvarint.Append(b, uint64(od.objectID))
 	// Append Publisher Priority
 	b = quicvarint.Append(b, uint64(od.PublisherPriority))
 	// Append Object Payload Length
@@ -81,7 +81,7 @@ func (od *ObjectDatagram) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	od.SubscribeID = SubscribeID(num)
+	od.subscribeID = subscribeID(num)
 
 	// Get Track Alias
 	num, err = quicvarint.Read(r)
@@ -97,14 +97,14 @@ func (od *ObjectDatagram) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	od.GroupChunk.GroupID = GroupID(num)
+	od.GroupChunk.groupID = groupID(num)
 
 	// Get Object ID
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	od.GroupChunk.ObjectID = ObjectID(num)
+	od.GroupChunk.objectID = objectID(num)
 
 	// Get Publisher Priority
 	num, err = quicvarint.Read(r)

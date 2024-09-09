@@ -10,7 +10,7 @@ type StreamHeaderPeep struct {
 	/*
 	 * A number to identify the subscribe session
 	 */
-	subscribeID
+	id subscribeID
 
 	/*
 	 * An number indicates a track
@@ -34,7 +34,7 @@ type StreamHeaderPeep struct {
 	PublisherPriority
 }
 
-func (shg StreamHeaderPeep) serialize() []byte {
+func (shp StreamHeaderPeep) serialize() []byte {
 	/*
 	 * Serialize as following formatt
 	 *
@@ -53,18 +53,18 @@ func (shg StreamHeaderPeep) serialize() []byte {
 	// Append the type of the message
 	b = quicvarint.Append(b, uint64(STREAM_HEADER_PEEP))
 	// Append the Subscriber ID
-	b = quicvarint.Append(b, uint64(shg.subscribeID))
+	b = quicvarint.Append(b, uint64(shp.id))
 	// Append the Track Alias
-	b = quicvarint.Append(b, uint64(shg.TrackAlias))
+	b = quicvarint.Append(b, uint64(shp.TrackAlias))
 	// Append the Peep ID
-	b = quicvarint.Append(b, uint64(shg.peepID))
+	b = quicvarint.Append(b, uint64(shp.peepID))
 	// Append the Publisher Priority
-	b = quicvarint.Append(b, uint64(shg.PublisherPriority))
+	b = quicvarint.Append(b, uint64(shp.PublisherPriority))
 
 	return b
 }
 
-func (shg *StreamHeaderPeep) deserializeBody(r quicvarint.Reader) error {
+func (shp *StreamHeaderPeep) deserializeBody(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 
@@ -73,21 +73,21 @@ func (shg *StreamHeaderPeep) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	shg.subscribeID = subscribeID(num)
+	shp.id = subscribeID(num)
 
 	// Get Subscribe ID
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	shg.TrackAlias = TrackAlias(num)
+	shp.TrackAlias = TrackAlias(num)
 
 	// Get Subscribe ID
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	shg.peepID = peepID(num)
+	shp.peepID = peepID(num)
 
 	// Get Subscribe ID
 	num, err = quicvarint.Read(r)
@@ -97,13 +97,17 @@ func (shg *StreamHeaderPeep) deserializeBody(r quicvarint.Reader) error {
 	if num >= 1<<8 {
 		return errors.New("publiser priority is not an 8 bit integer")
 	}
-	shg.PublisherPriority = PublisherPriority(num)
+	shp.PublisherPriority = PublisherPriority(num)
 
 	return nil
 }
 
-func (sht StreamHeaderPeep) ForwardingPreference() ForwardingPreference {
+func (StreamHeaderPeep) forwardingPreference() ForwardingPreference {
 	return PEEP
+}
+
+func (shp StreamHeaderPeep) subscriptionID() subscribeID {
+	return shp.id
 }
 
 type ObjectChunk struct {

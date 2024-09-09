@@ -2,7 +2,7 @@ package moqtransport
 
 import (
 	"errors"
-	"io"
+	"reflect"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -48,210 +48,231 @@ const (
  *
  *
  */
-type Parameter struct {
-	Key ParameterKey
-	/*
-	 * when WireType is VARINT,
-	 *
-	 * when WireType is VARINT,
-	 */
-	WireType
 
-	// values
-	/*
-	 * value_int is only used when this WireType equals VARINT
-	 * It not just means integer but also means flag with boolean
-	 */
-	value_int64 uint64
-
-	/*
-	 * value_string is only used when this WireType equals LENGTH_DELIMITED
-	 */
-	value_string string
+func (params Parameters) Role() (Role, error) {
+	num, err := params.AsUint(ROLE)
+	if errors.Is(err, ErrParameterNotFound) {
+		return 0, ErrRoleNotFound
+	}
+	switch Role(num) {
+	case PUB, SUB, PUB_SUB:
+		return Role(num), nil
+	default:
+		return 0, ErrInvalidRole
+	}
 }
 
-func (p Parameter) append(b []byte) []byte {
-	/*
-	 * Integer Parameter {
-	 *   Parameter Type (varint),
-	 *   Number (varint),
-	 * }
-	 *
-	 * String Parameter {
-	 *   Parameter Type (varint),
-	 *   Parameter Length (varint),
-	 *   Parameter String ([]byte),
-	 * }
-	 */
-	b = quicvarint.Append(b, uint64(p.Key))
-	switch p.WireType {
-	case varint:
-		b = quicvarint.Append(b, uint64(varint))
-		b = quicvarint.Append(b, p.value_int64)
-	case length_delimited:
-		b = quicvarint.Append(b, uint64(length_delimited))
-		b = quicvarint.Append(b, uint64(len(p.value_string)))
-		b = append(b, []byte(p.value_string)...)
+func (params Parameters) Path() (string, error) {
+	num, err := params.AsString(PATH)
+	if errors.Is(err, ErrParameterNotFound) {
+		return "", ErrPathNotFound
+	}
+	return num, nil
+}
+
+func (params Parameters) MaxSubscribeID() (subscribeID, error) {
+	num, err := params.AsUint(MAX_SUBSCRIBE_ID)
+	if errors.Is(err, ErrParameterNotFound) {
+		return 0, ErrMaxSubscribeIDNotFound
 	}
 
-	return b
+	return subscribeID(num), nil
 }
+
+var ErrParameterNotFound = errors.New("parameter not found")
+
+var ErrRoleNotFound = errors.New("role not found")
+var ErrPathNotFound = errors.New("path not found")
+var ErrMaxSubscribeIDNotFound = errors.New("max subscribe id not found")
+
+func (params Parameters) AsBool(key ParameterKey) (bool, error) {
+	value, ok := params[key]
+	if !ok {
+		return false, ErrParameterNotFound
+	}
+	switch v := value.(type) {
+	case uint64:
+		if v == 0 {
+			return false, nil
+		} else if v == 1 {
+			return true, nil
+		} else {
+			return false, ErrNotBoolParameter
+		}
+	default:
+		return false, ErrNotBoolParameter
+	}
+}
+
+func (params Parameters) AsInt(key ParameterKey) (int64, error) {
+	value, ok := params[key]
+	if !ok {
+		return 0, ErrParameterNotFound
+	}
+	switch v := value.(type) {
+	case uint64:
+		return int64(v), nil
+	default:
+		return 0, ErrNotIntParameter
+	}
+}
+
+func (params Parameters) AsUint(key ParameterKey) (uint64, error) {
+	value, ok := params[key]
+	if !ok {
+		return 0, ErrParameterNotFound
+	}
+	switch v := value.(type) {
+	case uint64:
+		return v, nil
+	default:
+		return 0, ErrNotUintParameter
+	}
+}
+
+func (params Parameters) AsString(key ParameterKey) (string, error) {
+	value, err := params.AsByteArray(key)
+	if value == nil || err != nil {
+		if errors.Is(err, ErrNotByteArrayParameter) {
+			err = ErrNotStringParameter
+		}
+		return "", err
+	}
+	return string(value), nil
+}
+
+func (params Parameters) AsByteArray(key ParameterKey) ([]byte, error) {
+	value, ok := params[key]
+	if !ok {
+		return nil, ErrParameterNotFound
+	}
+	switch v := value.(type) {
+	case []byte:
+		return v, nil
+	default:
+		return nil, ErrNotByteArrayParameter
+	}
+}
+
+var ErrNotBoolParameter = errors.New("it is assumed to not be a bool")
+var ErrNotIntParameter = errors.New("it is assumed to not be a integer")
+var ErrNotUintParameter = errors.New("it is assumed to not be a unsigned integer")
+var ErrNotStringParameter = errors.New("it is assumed to not be a unsigned integer")
+var ErrNotByteArrayParameter = errors.New("it is assumed to not be a unsigned integer")
 
 /*
  * Parameters
  * Keys of the maps should not be duplicated
  */
-type Parameters []Parameter
+type Parameters map[ParameterKey]any
 
-/*
- * Add an int parameter to the Parameters
- * This function should not be used within the library
- * You should not add any role parameter in this function
- * because Role Parameter are automatically added by the Publiser or the Subscriber
- */
-func (ps *Parameters) AddIntParameter(typeKey ParameterKey, num uint64) {
-	// Avoid to add Role Parameter
-	if typeKey == ROLE {
-		panic("Role Parameter should not be added outside the internal system")
+func (params Parameters) AddParameter(key ParameterKey, value any) error {
+	v, ok := params[key]
+
+	// Check if the type of the existing value is the type of given value
+	if ok && reflect.TypeOf(value) != reflect.TypeOf(v) {
+		errors.New("you attempted to change an existing value to a different type ")
 	}
 
-	ps.addIntParameter(typeKey, num)
-}
-
-/*
- * This function should be used within the library
- */
-func (ps *Parameters) addIntParameter(typeKey ParameterKey, num uint64) {
-	*ps = append(*ps, Parameter{
-		Key:         typeKey,
-		WireType:    varint,
-		value_int64: num,
-	})
-}
-
-func (ps *Parameters) AddStringParameter(typeKey ParameterKey, str string) {
-	*ps = append(*ps, Parameter{
-		Key:          typeKey,
-		WireType:     length_delimited,
-		value_string: str,
-	})
-}
-
-func (ps *Parameters) AddBoolParameter(typeKey ParameterKey, flag bool) {
-	/*
-	 * Value {
-	 *   Flag (0 or 1),
-	 * }
-	 *
-	 * false is stored as 0, true is stored as 1 in Parameter.Value
-	 */
-	if !flag {
-		ps.AddIntParameter(typeKey, 0)
-	} else if flag {
-		ps.AddIntParameter(typeKey, 1)
-	} else {
-		panic("the flag is neither false nor true")
-	}
-}
-
-func (ps Parameters) append(b []byte) []byte {
-	/*
-	 * Parameters {
-	 *   Number of Parameters (varint),
-	 *   Parameter (..),
-	 *   ...
-	 * }
-	 */
-	// Append the number of the paramters
-	b = quicvarint.Append(b, uint64(len(ps)))
-
-	// Append serialized parameters
-	for _, param := range ps {
-		b = param.append(b)
-	}
-
-	return b
-}
-
-func (params *Parameters) parse(r quicvarint.Reader) error {
-	var err error
-	var param Parameter
-
-	//Initialize parameters field
-	*params = Parameters{}
-	var (
-		typeKey  uint64
-		wireType uint64
-	)
-
-	num, err := quicvarint.Read(r)
-	if err != nil {
-		return err
-	}
-
-	for i := uint64(0); i < num; i++ {
-		// Get parameter key
-		typeKey, err = quicvarint.Read(r)
-		if err != nil {
-			if err == io.EOF {
-				return nil
-			}
-			return err
+	switch v := value.(type) {
+	case int64:
+		params[key] = uint64(v)
+	case int32:
+		params[key] = uint64(v)
+	case int16:
+		params[key] = uint64(v)
+	case int8:
+		params[key] = uint64(v)
+	case uint32:
+		params[key] = uint64(v)
+	case uint16:
+		params[key] = uint64(v)
+	case uint8:
+		params[key] = uint64(v)
+	case uint64:
+		params[key] = v
+	case bool:
+		if v {
+			params[key] = 1
+		} else if !v {
+			params[key] = 0
 		}
-
-		// Get wire type
-		wireType, err = quicvarint.Read(r)
-		if err != nil {
-			return err
-		}
-		// Parse the parameters
-		switch WireType(wireType) {
-		case varint:
-			numv, err := quicvarint.Read(r)
-			if err != nil {
-				return err
-			}
-			param = Parameter{
-				Key:         ParameterKey(typeKey),
-				WireType:    WireType(wireType),
-				value_int64: numv,
-			}
-		case length_delimited:
-			length, err := quicvarint.Read(r)
-			if err != nil {
-				return err
-			}
-			buf := make([]byte, length)
-			_, err = r.Read(buf)
-			if err != nil {
-				return err
-			}
-			param = Parameter{
-				Key:          ParameterKey(typeKey),
-				WireType:     WireType(wireType),
-				value_string: string(buf),
-			}
-		default:
-			return errors.New("invalid wire type")
-		}
-		*params = append(*params, param)
+	case string:
+		params[key] = []byte(v)
+	case []byte:
+		params[key] = v
+	default:
+		panic("invalid type")
 	}
+
 	return nil
 }
 
-func (ps Parameters) Contain(key ParameterKey) (any, bool) {
-	var param Parameter
-	for _, param = range ps {
-		if param.Key == key {
-			switch param.WireType {
-			case varint:
-				return param.value_int64, true
-			case length_delimited:
-				return param.value_string, true
-			}
-			// Anything else varint or length_delimited is unacceptable as Wire Type
-			return nil, false
+func (params Parameters) serialize() []byte {
+	data := make([]byte, 1<<4)
+
+	for key, value := range params {
+		switch v := value.(type) {
+		case uint64:
+			data = quicvarint.Append(data, uint64(key))
+			data = quicvarint.Append(data, uint64(varint))
+			data = quicvarint.Append(data, v)
+		case []byte:
+			data = quicvarint.Append(data, uint64(key))
+			data = quicvarint.Append(data, uint64(length_delimited))
+			data = quicvarint.Append(data, uint64(len(v)))
+			data = append(data, v...)
+		default:
+			panic("invalid type")
 		}
 	}
-	return nil, false
+
+	return data
+}
+
+func (params Parameters) parse(r quicvarint.Reader) error {
+	var num uint64
+	var err error
+	num, err = quicvarint.Read(r)
+	if err != nil {
+		return err
+	}
+	key := ParameterKey(num)
+
+	num, err = quicvarint.Read(r)
+	if err != nil {
+		return err
+	}
+	wireType := WireType(num)
+	switch wireType {
+	case varint:
+		// Get the uint64 data
+		num, err = quicvarint.Read(r)
+		if err != nil {
+			return err
+		}
+
+		// Register the data
+		params[key] = num
+	case length_delimited:
+		// Get length of the byte array data
+		num, err = quicvarint.Read(r)
+		if err != nil {
+			return err
+		}
+
+		// Get byte array data
+		buf := make([]byte, num)
+		n, err := r.Read(buf)
+		if err != nil {
+			return err
+		}
+
+		// Register the data
+		params[key] = buf[:n]
+	default:
+		return errors.New("invalid wire type")
+	}
+
+	return nil
 }

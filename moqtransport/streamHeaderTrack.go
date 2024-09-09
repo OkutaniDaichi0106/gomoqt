@@ -8,7 +8,8 @@ import (
 
 type StreamHeader interface {
 	Messager
-	ForwardingPreference() ForwardingPreference
+	forwardingPreference() ForwardingPreference
+	subscriptionID() subscribeID
 }
 
 type StreamHeaderTrack struct {
@@ -87,8 +88,12 @@ func (sht *StreamHeaderTrack) deserializeBody(r quicvarint.Reader) error {
 	return nil
 }
 
-func (sht StreamHeaderTrack) ForwardingPreference() ForwardingPreference {
+func (sht StreamHeaderTrack) forwardingPreference() ForwardingPreference {
 	return TRACK
+}
+
+func (sht StreamHeaderTrack) subscriptionID() subscribeID {
+	return sht.subscribeID
 }
 
 type GroupChunk struct {

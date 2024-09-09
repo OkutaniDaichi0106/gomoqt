@@ -2,12 +2,54 @@ package moqtransport
 
 import (
 	"errors"
+	"log"
+	"net/http"
 	"sync"
 
 	"github.com/quic-go/webtransport-go"
 )
 
-var SERVER *Server
+/*
+ * Index for searching a Publisher's Agent by Namespace
+ */
+var publishers publishersIndex
+
+type publishersIndex struct {
+	mu    sync.Mutex
+	index map[string]*SessionWithPublisher
+}
+
+func (pi *publishersIndex) add(session *SessionWithPublisher) {
+	publishers.mu.Lock()
+	defer publishers.mu.Unlock()
+	pi.index[session.latestAnnounceMessage.TrackNamespace] = session
+}
+func (pi *publishersIndex) delete(trackNamespace string) {
+	publishers.mu.Lock()
+	defer publishers.mu.Unlock()
+	delete(pi.index, trackNamespace)
+}
+
+/*
+ * Announcements received from publishers
+ */
+var announcements announcementIndex
+
+type announcementIndex struct {
+	mu    sync.Mutex
+	index map[string]AnnounceMessage
+}
+
+func (ai *announcementIndex) add(am AnnounceMessage) {
+	announcements.mu.Lock()
+	defer announcements.mu.Unlock()
+	ai.index[am.TrackNamespace] = am
+}
+func (ai *announcementIndex) delete(trackNamespace string) {
+	announcements.mu.Lock()
+	defer announcements.mu.Unlock()
+	delete(ai.index, trackNamespace)
+}
 
 /*
  * Server Agent
@@ -23,47 +65,28 @@ var SERVER *Server
 
 type Server struct {
 	WebTransportServer *webtransport.Server
+}
 
-	/*
-	 * Supported versions by the server
-	 */
-	SupportedVersions []Version
+func (s *Server) ConnectAndSetup(w http.ResponseWriter, r *http.Request) (*Session, error) {
+	// Establish HTTP/3 Connection
+	wtSession, err := s.WebTransportServer.Upgrade(w, r)
+	if err != nil {
+		log.Printf("upgrading failed: %s", err)
+		w.WriteHeader(500)
+		return nil, err
+	}
 
-	/*
-	 * Agents runs on the server
-	 */
-	agents []AgenterWithRole
+	moqtSession := Session{
+		wtSession: wtSession,
+	}
 
-	setupParameters Parameters
+	//moqtSession.setup(s.SupportedVersions)
 
-	/*
-	 * Index for searching a Publisher's Agent by Namespace
-	 */
-	publishers publisherMap
-
-	/*
-	 * Index for searching Subscriber's Agents by Namespace
-	 */
-	subscribers subscriberMap
-
-	/*
-	 * Announcements received from publishers
-	 */
-	announcements announcementMap
-
-	/*
-	 *
-	 */
-	subscriptionCondition func(SubscribeMessage) bool
-
-	/****/
-	handle ServerHandler
-	//onPublisher  func(publisherAgenter)
-	//onSubscriber func(subscriberAgenter)
+	return &moqtSession, nil
 }
 
 func (s *Server) init() error {
-	SERVER = s
+	//TODO
 	return nil
 }
 
@@ -75,161 +98,14 @@ func (s *Server) ListenAndServeTLS(cert, key string) error {
 	return s.WebTransportServer.ListenAndServeTLS(cert, key)
 }
 
-type ServerHandler interface {
-	OnPublisher()
-}
+func Announcements() []AnnounceMessage {
+	allAnnouncements := make([]AnnounceMessage, len(announcements.index))
 
-func (s *Server) OnPublisher(op func(publisherAgenter)) {
-	s.handle.OnPublisher = op
-}
-
-func (s *Server) OnSubscriber(op func(subscriberAgenter)) {
-	s.onSubscriber = op
-}
-
-func Handle(handler ServerHandler) {
-	SERVER.onPublisher = handler.OnPublisher
-}
-
-func (s *Server) Announcements() []AnnounceMessage {
-	// Copy the current value for safety
-	annnounceMap := s.announcements.index
-	announcements := make([]AnnounceMessage, 0, len(annnounceMap))
-	for _, announcement := range annnounceMap {
-		announcements = append(announcements, announcement)
-	}
-	return announcements
-}
-
-func (s *Server) SetupParameters(params Parameters) {
-	s.setupParameters = params
-}
-
-func (s *Server) getOriginAgent(trackNamespace string) (publisherAgenter, error) {
-	agent, ok := s.publishers.index[trackNamespace]
-	if !ok || agent == nil {
-		return nil, ErrNoAgent
-	}
-	return agent, nil
-}
-
-type announcementMap struct {
-	mu    sync.Mutex
-	index map[string]AnnounceMessage
-}
-
-func (aMap *announcementMap) add(am AnnounceMessage) error {
-	// Initialize if the map is nil
-	if aMap.index == nil {
-		aMap.index = make(map[string]AnnounceMessage, 1<<10)
+	for _, am := range announcements.index {
+		allAnnouncements = append(allAnnouncements, am)
 	}
 
-	aMap.mu.Lock()
-	defer aMap.mu.Unlock()
-
-	_, ok := aMap.index[am.TrackNamespace]
-	if ok {
-		return errors.New("duplicate announcement") //TODO: Is duplicating announcements considered an error?
-	}
-	aMap.index[am.TrackNamespace] = am
-
-	return nil
-}
-
-func (aMap *announcementMap) delete(am AnnounceMessage) error {
-	aMap.mu.Lock()
-	defer aMap.mu.Unlock()
-
-	_, ok := aMap.index[am.TrackNamespace]
-	if !ok {
-		return errors.New("no such announcement")
-	}
-
-	delete(aMap.index, am.TrackNamespace)
-
-	return nil
-}
-
-type publisherMap struct {
-	index map[string]publisherAgenter
-	mu    sync.Mutex
-}
-
-// func (pMap *publisherMap) getValue(trackNamespace string) (*Agent, error) {
-// 	agent, ok := pMap.index[trackNamespace]
-// 	if !ok || agent == nil {
-// 		return nil, ErrNoAgent
-// 	}
-// 	return agent, nil
-// }
-
-func (pMap *publisherMap) add(trackNamespace string, agent *Agent) error {
-	// Initialize if the map is nil
-	if pMap.index == nil {
-		pMap.index = make(map[string]*Agent, 1<<10)
-	}
-
-	pMap.mu.Lock()
-	defer pMap.mu.Unlock()
-
-	_, ok := pMap.index[trackNamespace]
-	if ok {
-		return errors.New("duplicate announcement") //TODO: Is duplicating announcements considered an error?
-	}
-	pMap.index[trackNamespace] = agent
-
-	return nil
-}
-
-func (pMap *publisherMap) delete(trackNamespace string) error {
-	pMap.mu.Lock()
-	defer pMap.mu.Unlock()
-
-	_, ok := pMap.index[trackNamespace]
-	if !ok {
-		return errors.New("no such announcement")
-	}
-
-	delete(pMap.index, trackNamespace)
-
-	return nil
-}
-
-type subscriberMap struct {
-	index map[string][]*Agent
-	mu    sync.Mutex
-}
-
-func (sMap *subscriberMap) add(trackNamespace string, agent *Agent) error {
-	// Initialize if the map is nil
-	if sMap.index == nil {
-		sMap.index = make(map[string][]*Agent, 1<<10)
-	}
-
-	sMap.mu.Lock()
-	defer sMap.mu.Unlock()
-
-	_, ok := sMap.index[trackNamespace]
-	if ok {
-		return errors.New("duplicate announcement") //TODO: Is duplicating announcements considered an error?
-	}
-	sMap.index[trackNamespace] = append(sMap.index[trackNamespace], agent)
-
-	return nil
-}
-
-func (sMap *subscriberMap) delete(trackNamespace string) error {
-	sMap.mu.Lock()
-	defer sMap.mu.Unlock()
-
-	_, ok := sMap.index[trackNamespace]
-	if !ok {
-		return errors.New("no such announcement")
-	}
-
-	delete(sMap.index, trackNamespace)
-
-	return nil
+	return allAnnouncements
 }
 
 var ErrUnsuitableRole = errors.New("the role cannot perform the operation ")

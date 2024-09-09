@@ -45,7 +45,7 @@ func (a AnnounceMessage) serialize() []byte {
 	 *   [Optional Patameters(..)],
 	 * }
 	 */
-	b = a.Parameters.append(b)
+	b = append(b, a.Parameters.serialize()...)
 
 	return b
 }

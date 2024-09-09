@@ -1,8 +1,7 @@
 package main
 
 import (
-	"context"
-	"go-moq/gomoq"
+	"go-moq/moqtransport"
 	"log"
 	"net/http"
 
@@ -19,57 +18,74 @@ func main() {
 		//CheckOrigin: func(r *http.Request) bool {},
 	}
 
-	ms := gomoq.Server{
+	ms := moqtransport.Server{
 		WebTransportServer: &ws,
-		SupportedVersions:  []gomoq.Version{gomoq.Draft05},
 	}
 
-	gomoq.OnPublisher(&ms, func(agent gomoq.PublisherAgent) {
-		err := gomoq.AcceptAnnounce(agent)
-		if err != nil {
-			return
-		}
-
-		ctx, cancel := context.WithCancel(context.TODO())
-		defer cancel()
-		err = gomoq.AcceptObjects(agent, ctx)
-		if err != nil {
-			log.Fatal(err)
-			return
-		}
-	})
-
-	gomoq.OnSubscriber(&ms, func(agent gomoq.SubscriberAgent) {
-		// Send ANNOUNCE messages to Subscribers and let them know available Track Namespace
-		err := gomoq.Advertise(agent, ms.Announcements())
-		if err != nil {
-			return
-		}
-
-		err = gomoq.AcceptSubscription(agent)
-		if err != nil {
-			return
-		}
-
-		gomoq.DeliverObjects(agent)
-	})
 	http.HandleFunc("/setup", func(w http.ResponseWriter, r *http.Request) {
+		versions := []moqtransport.Version{moqtransport.LATEST}
+
 		// Establish WebTransport connection after receive EXTEND CONNECT message
-		sess, err := ws.Upgrade(w, r)
+		sess, err := ms.ConnectAndSetup(w, r)
 		if err != nil {
-			log.Printf("upgrading failed: %s", err)
-			w.WriteHeader(500)
+			log.Println(err)
 			return
 		}
 
-		agent, err := gomoq.Setup(sess)
+		// Receive SETUP_CLIENT message
+		params, err := sess.ReceiveClientSetup(versions)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		log.Println(params)
+
+		// Send  SETUP_SERVER message
+		err = sess.SendServerSetup(moqtransport.Parameters{})
 		if err != nil {
 			log.Fatal(err)
 			return
 		}
+
+		sess.OnPublisher(func(swp *moqtransport.SessionWithPublisher) {
+			params, err := swp.ReceiveAnnounce()
+			if err != nil {
+				log.Println(err)
+				err = swp.SendAnnounceError()
+				log.Println(err)
+				return
+			}
+			log.Println(params)
+
+			err = swp.SendAnnounceOk()
+
+		})
+
+		sess.OnSubscriber(func(sws *moqtransport.SessionWithSubscriber) {
+			err := sws.Advertise(moqtransport.Announcements())
+			if err != nil {
+				log.Println(err)
+			}
+
+			params, err := sws.ReceiveSubscribe()
+			if err != nil {
+				log.Println(err)
+				return
+			}
+			log.Println(params)
+
+			err = sws.SendSubscribeResponce()
+			if err != nil {
+				log.Println(err)
+				return
+			}
+
+			sws.DeliverObjects()
+		})
+
 		//		agent := ms.NewAgent(sess)
 
-		gomoq.Activate(agent)
+		//moqtransport.Activate(agent)
 
 		// Exchange SETUP messages
 

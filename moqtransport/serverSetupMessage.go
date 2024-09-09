@@ -40,7 +40,8 @@ func (ss ServerSetupMessage) serialize() []byte {
 	 *   [Optional Patameters(..)],
 	 * }
 	 */
-	b = ss.Parameters.append(b)
+	b = quicvarint.Append(b, uint64(len(ss.Parameters)))
+	b = append(b, ss.Parameters.serialize()...)
 
 	return b
 }

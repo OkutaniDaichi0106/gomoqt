@@ -81,7 +81,7 @@ func (s SubscribeMessage) serialize() []byte {
 	b = s.SubscriptionFilter.append(b)
 
 	// Append the Subscribe Update Priority
-	b = s.Parameters.append(b)
+	b = append(b, s.Parameters.serialize()...)
 
 	return b
 }

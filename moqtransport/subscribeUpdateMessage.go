@@ -68,7 +68,7 @@ func (su SubscribeUpdateMessage) serialize() []byte {
 	// Append the Publisher Priority
 	b = quicvarint.Append(b, uint64(su.SubscriberPriority))
 	// Append the Subscribe Update Priority
-	b = su.Parameters.append(b)
+	b = append(b, su.Parameters.serialize()...)
 
 	return b
 }

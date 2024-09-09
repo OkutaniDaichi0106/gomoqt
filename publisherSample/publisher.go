@@ -2,7 +2,7 @@ package main
 
 import (
 	"crypto/tls"
-	"go-moq/gomoq"
+	"go-moq/moqtransport"
 	"log"
 	"time"
 )
@@ -13,25 +13,26 @@ const (
 
 func main() {
 	// Set client
-	client := gomoq.Client{
+	client := moqtransport.Client{
 		TLSConfig: &tls.Config{
 			InsecureSkipVerify: true,
 		},
-		Versions:      []gomoq.Version{gomoq.Draft05},
+		Versions:      []moqtransport.Version{moqtransport.Draft05},
 		ClientHandler: ClientHandle{},
 	}
 
 	// Set subscriber
-	publisher := gomoq.Publisher{
+	publisher := moqtransport.Publisher{
 		Client:           client,
 		PublisherHandler: PublisherHandle{},
 		TrackNamespace:   "localhost/daichi/",
 	}
 
-	err := publisher.ConnectAndSetup(URL + "setup")
+	params, err := publisher.ConnectAndSetup(URL + "setup")
 	if err != nil {
 		log.Fatal(err)
 	}
+	log.Println(params)
 
 	err = publisher.Announce(URL + "daichi0106")
 	if err != nil {
@@ -53,12 +54,12 @@ func main() {
 
 type PublisherHandle struct{}
 
-func (PublisherHandle) AnnounceParameters() gomoq.Parameters {
-	return gomoq.Parameters{}
+func (PublisherHandle) AnnounceParameters() moqtransport.Parameters {
+	return moqtransport.Parameters{}
 }
 
 type ClientHandle struct{}
 
-func (ClientHandle) ClientSetupParameters() gomoq.Parameters {
-	return gomoq.Parameters{}
+func (ClientHandle) ClientSetupParameters() moqtransport.Parameters {
+	return moqtransport.Parameters{}
 }

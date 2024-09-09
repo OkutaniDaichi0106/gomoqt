@@ -3,7 +3,8 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"go-moq/gomoq"
+	"go-moq/moqtransport"
+	"io"
 	"log"
 )
 
@@ -13,29 +14,30 @@ const (
 
 func main() {
 	// Set client
-	client := gomoq.Client{
+	client := moqtransport.Client{
 		ClientHandler: ClientHandle{},
 		TLSConfig: &tls.Config{
 			InsecureSkipVerify: true,
 		},
-		Versions: []gomoq.Version{gomoq.Draft05},
+		Versions: []moqtransport.Version{moqtransport.Draft05},
 	}
 
 	// Set subscriber
-	subscriber := gomoq.Subscriber{
+	subscriber := moqtransport.Subscriber{
 		Client:            client,
 		SubscriberHandler: SubscriberHandle{},
 	}
 
-	err := subscriber.ConnectAndSetup(URL + "setup")
+	params, err := subscriber.ConnectAndSetup(URL + "setup")
 	if err != nil {
 		log.Fatal(err)
 	}
+	log.Println(params)
 
-	subscriptionConfig := gomoq.SubscribeConfig{
-		GroupOrder: gomoq.NOT_SPECIFY,
-		SubscriptionFilter: gomoq.SubscriptionFilter{
-			FilterCode: gomoq.LATEST_OBJECT,
+	subscriptionConfig := moqtransport.SubscribeConfig{
+		GroupOrder: moqtransport.NOT_SPECIFY,
+		SubscriptionFilter: moqtransport.SubscriptionFilter{
+			FilterCode: moqtransport.LATEST_OBJECT,
 		},
 	}
 	err = subscriber.Subscribe("localhost/daichi/", "audio", subscriptionConfig)
@@ -44,31 +46,40 @@ func main() {
 	}
 
 	//ctx, _ := context.WithCancel(context.Background()) // TODO: use cancel function
-	dataCh, errCh := subscriber.AcceptObjects(context.TODO())
-
-	for _, chunk := range <-dataCh {
-		log.Println(chunk)
+	dataCh, err := subscriber.AcceptObjects(context.TODO())
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	log.Fatal(<-errCh)
-	// TODO: handle error
-	// cancel()
+	dataStream := <-dataCh
+	buf := make([]byte, 1<<8)
+	for {
+		n, err := dataStream.Read(buf)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			log.Fatal(err)
+		}
+
+		log.Println(buf[:n])
+	}
 
 }
 
 type ClientHandle struct {
 }
 
-func (ClientHandle) ClientSetupParameters() gomoq.Parameters {
-	return gomoq.Parameters{}
+func (ClientHandle) ClientSetupParameters() moqtransport.Parameters {
+	return moqtransport.Parameters{}
 }
 
 type SubscriberHandle struct {
 }
 
-func (SubscriberHandle) SubscribeParameters() gomoq.Parameters {
-	return gomoq.Parameters{}
+func (SubscriberHandle) SubscribeParameters() moqtransport.Parameters {
+	return moqtransport.Parameters{}
 }
-func (SubscriberHandle) SubscribeUpdateParameters() gomoq.Parameters {
-	return gomoq.Parameters{}
+func (SubscriberHandle) SubscribeUpdateParameters() moqtransport.Parameters {
+	return moqtransport.Parameters{}
 }

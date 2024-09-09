@@ -1,9 +1,14 @@
 package moqtransport
 
 import (
+	"container/heap"
 	"context"
 	"errors"
 	"io"
+	"log"
+
+	"github.com/quic-go/quic-go/quicvarint"
+	"github.com/quic-go/webtransport-go"
 )
 
 type Subscriber struct {
@@ -15,6 +20,8 @@ type Subscriber struct {
 
 	/***/
 	SubscriberHandler
+
+	maxSubscribeID subscribeID
 
 	/*
 	 * Map of the Track Alias
@@ -36,7 +43,7 @@ type SubscriberHandler interface {
 
 var _ SubscriberHandler = Subscriber{}
 
-func (s *Subscriber) ConnectAndSetup(url string) error {
+func (s *Subscriber) ConnectAndSetup(url string) (Parameters, error) {
 	// Check if the Client specify the Versions
 	if len(s.Versions) < 1 {
 		panic("no versions is specified")
@@ -45,16 +52,24 @@ func (s *Subscriber) ConnectAndSetup(url string) error {
 	// Connect
 	err := s.connect(url)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Setup
-	err = s.setup(SUB)
+	params, err := s.setup(SUB)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	// Check if the ROLE parameter is valid
+	s.maxSubscribeID, err = params.MaxSubscribeID()
+	if err != nil {
+		return nil, err
+	}
+	// Delete the Parameter after getting it
+	delete(params, MAX_SUBSCRIBE_ID)
+
+	return params, nil
 }
 
 type SubscribeConfig struct {
@@ -76,43 +91,42 @@ type SubscribeConfig struct {
 }
 
 func (s *Subscriber) Subscribe(trackNamespace, trackName string, config SubscribeConfig) error {
-	// Check Subscribe Configuration
-	// Check if the Track Namespace is not empty
-	if len(trackNamespace) == 0 {
-		return errors.New("no track namespace is specifyed")
+	err := s.sendSubscribe(trackNamespace, trackName, config)
+	if err != nil {
+		return err
 	}
-	// Check if the Track Name is not empty
-	if len(trackName) == 0 {
-		return errors.New("no track name is specifyed")
+
+	err = s.receiveSubscribeResponce()
+	if err != nil {
+		return err
 	}
+
+	return nil
+}
+
+func (s Subscriber) sendSubscribe(trackNamespace, trackName string, config SubscribeConfig) error {
 	// Check if the Filter is valid
 	if !config.SubscriptionFilter.isOK() {
 		return ErrInvalidFilter
 	}
 	// Check if the track is already subscribed
 	// and add track alias
-	_, ok := s.trackAliases[trackNamespace+trackName]
+	trackAlias, ok := s.trackAliases[trackNamespace+trackName]
+
+	// Get new Track Alias, if the Track does not already exist
 	if !ok {
-		s.trackAliases[trackNamespace+trackName] = TrackAlias(len(s.trackAliases))
+		trackAlias = TrackAlias(len(s.trackAliases))
+		s.trackAliases[trackNamespace+trackName] = trackAlias
 	}
-
-	return s.sendSubscribeMessage(trackNamespace, trackName, config)
-}
-
-var ErrInvalidFilter = errors.New("invalid filter type")
-
-/*****/
-func (s *Subscriber) sendSubscribeMessage(trackNamespace, trackName string, config SubscribeConfig) error {
-
 	sm := SubscribeMessage{
 		subscribeID:        subscribeID(len(s.subscriptions)),
-		TrackAlias:         s.trackAliases[trackNamespace+trackName],
+		TrackAlias:         trackAlias,
 		TrackNamespace:     trackNamespace,
 		TrackName:          trackName,
 		SubscriberPriority: config.SubscriberPriority,
 		GroupOrder:         config.GroupOrder,
 		SubscriptionFilter: config.SubscriptionFilter,
-		Parameters:         s.SubscribeParameters(),
+		Parameters:         s.SubscribeParameters(), //TODO
 	}
 
 	// Send SUBSCRIBE message
@@ -127,62 +141,158 @@ func (s *Subscriber) sendSubscribeMessage(trackNamespace, trackName string, conf
 	return nil
 }
 
-func (s *Subscriber) AcceptObjects(ctx context.Context) (<-chan []byte, <-chan error) {
-	dataCh := make(chan []byte, 1<<8) // TODO: Tune the size
-	errCh := make(chan error, 1)      // TODO: Consider the buffer size
+func (s Subscriber) receiveSubscribeResponce() error {
+	// Receive SUBSCRIBE_OK message or SUBSCRIBE_ERROR message
+	id, err := deserializeHeader(s.controlReader)
+	if err != nil {
+		return err
+	}
+	switch id {
+	case SUBSCRIBE_OK:
+		so := SubscribeOkMessage{}
+		so.deserializeBody(s.controlReader)
+		return nil
+	case SUBSCRIBE_ERROR:
+		se := SubscribeError{}
+		se.deserializeBody(s.controlReader)
+		log.Println(se)
 
-	buf := make([]byte, 1<<8)
+		return errors.New(se.Reason)
+	default:
+		return ErrUnexpectedMessage
+	}
+}
+
+var ErrInvalidFilter = errors.New("invalid filter type")
+
+func (s *Subscriber) AcceptObjects(ctx context.Context) (<-chan DataStream, <-chan error) {
+	dataCh := make(chan DataStream, 1<<4)
+	errCh := make(chan error, 1) // TODO: Consider the buffer size
+	defer close(errCh)
+
 	// Receive data on a stream in a goroutine
 	go func() {
-		// Close the data channel and the error channel when
-		defer close(dataCh)
-		defer close(errCh)
-
 		for {
-			// Catch the cancel call
+			// Accept a new unidirectional stream
+			stream, err := s.session.AcceptUniStream(ctx)
+			// Until the new stream is opened, proccess stops here
+			if err != nil {
+				errCh <- err
+			}
+
+			// Get data on the stream in a goroutine
+			go proccessStream(stream, dataCh, errCh)
+
 			select {
 			case <-ctx.Done():
-				// Cancel the current process
 				errCh <- ctx.Err()
 				return
+			case <-errCh:
+				return
 			default:
-				// Create a unidirectional stream
-				stream, err := s.session.AcceptUniStream(ctx)
-				if err != nil {
-					errCh <- err
-				}
-
-				// Read whole data on the stream
-				data := make([]byte, 0, 1<<8)
-				for {
-					n, err := stream.Read(buf)
-					if err != nil {
-						if err == io.EOF {
-							break
-						}
-						errCh <- err
-						// Stop to read chunk when some error is detected
-						// but continue to receive data if any error was detected
-						break
-					}
-					data = append(data, buf[:n]...)
-				}
-				// Send data to the channel, If any data exists
-				if len(data) > 0 {
-					dataCh <- data
-				}
+				continue
 			}
 		}
 	}()
 
-	// Return the channels as read only channel
 	return dataCh, errCh
 }
 
-// TODO: Consider a function for streaming processing
-// func streamChunk(ch <-chan []byte, op func()) {
+func proccessStream(stream webtransport.ReceiveStream, dataCh chan<- DataStream, errCh chan<- error) {
+	reader := quicvarint.NewReader(stream)
+	// Read the first object
+	id, err := deserializeHeader(reader)
+	if err != nil {
+		errCh <- err
+		return
+	}
 
-// }
+	var dataStream DataStream
+
+	switch id {
+	case STREAM_HEADER_TRACK:
+		sht := StreamHeaderTrack{}
+		err = sht.deserializeBody(reader)
+		if err != nil {
+			errCh <- err
+			return
+		}
+
+		// Create new data stream
+		dataStream = newDataStream(&sht) //TODO: pass
+
+		// Register the stream
+		dataCh <- dataStream
+
+		// Read and write chunks to the data stream
+		chunk := GroupChunk{}
+		for {
+			err = chunk.deserializeBody(reader)
+			if err != nil {
+				if err == io.EOF {
+					return
+				}
+				errCh <- err
+				return
+			}
+			// Check if the chunk is the end of the stream
+			// if chunk.StatusCode == END_OF_TRACK {
+			// 	return
+			// }
+
+			// Skip queueing, if there is no payload
+			if len(chunk.Payload) == 0 {
+				continue
+			}
+
+			// Queue the data
+			heap.Push(dataStream, chunk)
+		}
+
+	case STREAM_HEADER_PEEP:
+		shp := StreamHeaderPeep{}
+		err = shp.deserializeBody(reader)
+		if err != nil {
+			errCh <- err
+			return
+		}
+
+		// Create new data stream
+		dataStream = newDataStream(&shp)
+
+		// Register the stream
+		dataCh <- dataStream
+
+		// Read and write chunks to the data stream
+		chunk := ObjectChunk{}
+		for {
+			err = chunk.deserializeBody(reader)
+			if err != nil {
+				if err == io.EOF {
+					return
+				}
+				errCh <- err
+				return
+			}
+			// Check if the chunk is the end of the stream
+			// if chunk.StatusCode == END_OF_PEEP { // TODO: wait till all data have been sent
+			// 	return
+			// }
+
+			// Skip queueing, if there is no payload
+			if len(chunk.Payload) == 0 {
+				continue
+			}
+
+			// Queue the data
+			heap.Push(dataStream, chunk)
+		}
+	default:
+		errCh <- ErrUnexpectedMessage
+		return
+	}
+
+}
 
 func (s *Subscriber) Unsubscribe(id subscribeID) error {
 	// Check if the updated subscription is narrower than the existing subscription
@@ -190,12 +300,6 @@ func (s *Subscriber) Unsubscribe(id subscribeID) error {
 		//This means the specifyed subscription does not exist in the subscriptions
 		return errors.New("invalid Subscribe ID")
 	}
-
-	return s.sendUnsubscribeMessage(id)
-}
-
-/******/
-func (s Subscriber) sendUnsubscribeMessage(id subscribeID) error {
 	um := UnsubscribeMessage{
 		subscribeID: id,
 	}
@@ -207,12 +311,13 @@ func (s Subscriber) sendUnsubscribeMessage(id subscribeID) error {
 	}
 
 	return nil
+
 }
 
 // TODO:
 func (s *Subscriber) SubscribeUpdate(id subscribeID, config SubscribeConfig) error {
 	// Check if the updated subscription is narrower than the existing subscription
-	if int(id) > len(s.subscriptions) {
+	if id > subscribeID(len(s.subscriptions)) {
 		//This means the specifyed subscription does not exist in the subscriptions
 		return errors.New("invalid Subscribe ID")
 	}
@@ -221,7 +326,7 @@ func (s *Subscriber) SubscribeUpdate(id subscribeID, config SubscribeConfig) err
 		return errors.New("invalid Subscription Filter")
 	}
 
-	existingSubscription := &s.subscriptions[int(id)]
+	existingSubscription := s.subscriptions[int(id)]
 
 	// When Filter Code is ABSOLUTE_START
 	if existingSubscription.FilterCode != ABSOLUTE_START {

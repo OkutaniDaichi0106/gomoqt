@@ -98,56 +98,69 @@ func (c *Client) connect(url string) error {
 	return nil
 }
 
-func (c *Client) setup(role Role) error {
+func (c *Client) setup(role Role) (Parameters, error) {
+	var err error
+
 	// Open first stream to send control messages
-	stream, err := c.session.OpenStreamSync(context.Background())
+	c.controlStream, err = c.session.OpenStreamSync(context.Background())
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Send SETUP_CLIENT message
+	err = c.sendSetupMessage(role)
+	if err != nil {
+		return nil, err
+	}
+
+	// Initialize control reader
+	c.controlReader = quicvarint.NewReader(c.controlStream)
+
+	// Receive SETUP_SERVER message
+	return c.receiveServerSetup()
+}
+
+func (c Client) sendSetupMessage(role Role) error {
+	// Initialize SETUP_CLIENT message
 	csm := ClientSetupMessage{
 		Versions:   c.Versions,
 		Parameters: c.ClientSetupParameters(),
 	}
-	csm.addIntParameter(ROLE, uint64(role))
+	csm.AddParameter(ROLE, uint64(role))
 
-	_, err = stream.Write(csm.serialize())
+	_, err := c.controlStream.Write(csm.serialize())
 	if err != nil {
 		return err
 	}
 
+	return nil
+}
+func (c *Client) receiveServerSetup() (Parameters, error) {
 	// Receive SETUP_SERVER message
-	reader := quicvarint.NewReader(stream)
-	id, err := deserializeHeader(reader)
+
+	id, err := deserializeHeader(c.controlReader)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if id != SERVER_SETUP {
-		return ErrUnexpectedMessage
+		return nil, ErrUnexpectedMessage
 	}
 	var ss ServerSetupMessage
-	err = ss.deserializeBody(reader)
+	err = ss.deserializeBody(c.controlReader)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Check specified version is selected
 	err = contain(ss.SelectedVersion, c.Versions)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Register the selected version
 	c.selectedVersion = ss.SelectedVersion
-	// TODO: Handle ServerSetup Parameters
 
-	// Set the stream as control stream, After SETUP messages exchang is complete
-	c.controlStream = stream
-	// Set the quicvarint.Reader as control reader, After SETUP messages exchang is complete
-	c.controlReader = reader
-
-	return nil
+	return ss.Parameters, nil
 }
 
 func (c *Client) terminate() error {

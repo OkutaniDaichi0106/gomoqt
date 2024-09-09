@@ -30,25 +30,26 @@ type PublisherHandler interface {
 // Check the Publisher inplement Publisher Handler
 var _ PublisherHandler = Publisher{}
 
-func (p *Publisher) ConnectAndSetup(url string) error {
+func (p *Publisher) ConnectAndSetup(url string) (Parameters, error) {
 	// Check if the Client specify the Versions
 	if len(p.Versions) < 1 {
-		return errors.New("no versions is specifyed")
+		return nil, errors.New("no versions is specifyed")
 	}
 
 	// Connect
 	err := p.connect(url)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Setup
-	err = p.setup(PUB)
+	params, err := p.setup(PUB)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	// TODO: handle params
 
-	return nil
+	return params, nil
 }
 
 /*

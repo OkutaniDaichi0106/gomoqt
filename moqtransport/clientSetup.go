@@ -33,9 +33,10 @@ func (cs ClientSetupMessage) serialize() []byte {
 	if len(cs.Versions) == 0 {
 		panic("no version is specifyed")
 	}
+
 	// 2. Parameters should conclude role parameter
-	ok, _ := cs.Parameters.Contain(ROLE)
-	if !ok {
+	_, err := cs.Parameters.Role()
+	if err != nil {
 		panic("no role is specifyed")
 	}
 
@@ -58,7 +59,7 @@ func (cs ClientSetupMessage) serialize() []byte {
 	 *   [Optional Patameters(..)],
 	 * }
 	 */
-	b = cs.Parameters.append(b)
+	b = append(b, cs.Parameters.serialize()...)
 
 	return b
 }

@@ -178,20 +178,6 @@ func (ga GoAwayMessage) serialize() []byte {
 	return b
 }
 
-// func (ga *GoAwayMessage) deserialize(r quicvarint.Reader) error {
-
-// 	// Get Message ID and check it
-// 	id, err := deserializeHeader(r)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	if id != GOAWAY { //TODO: this would means protocol violation
-// 		return errors.New("unexpected message")
-// 	}
-
-// 	return ga.deserializeBody(r)
-// }
-
 func (ga *GoAwayMessage) deserializeBody(r quicvarint.Reader) error {
 	var err error
 	var num uint64

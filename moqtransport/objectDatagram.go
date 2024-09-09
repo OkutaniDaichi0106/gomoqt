@@ -138,3 +138,11 @@ func (od *ObjectDatagram) deserializeBody(r quicvarint.Reader) error {
 
 	return nil
 }
+
+func (ObjectDatagram) forwardingPreference() ForwardingPreference {
+	return DATAGRAM
+}
+
+func (od ObjectDatagram) subscriptionID() subscribeID {
+	return od.subscribeID
+}

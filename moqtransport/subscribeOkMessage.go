@@ -10,9 +10,8 @@ import (
 type GroupOrder byte
 
 const (
-	NOT_SPECIFY GroupOrder = 0x0
-	ASCENDING   GroupOrder = 0x1
-	DESCENDING  GroupOrder = 0x2
+	ASCENDING  GroupOrder = 0x1
+	DESCENDING GroupOrder = 0x2
 )
 
 type SubscribeOkMessage struct {
@@ -40,6 +39,8 @@ type SubscribeOkMessage struct {
 	ContentExists   bool
 	LargestGroupID  groupID
 	LargestObjectID objectID
+
+	Parameters Parameters
 }
 
 func (so SubscribeOkMessage) serialize() []byte {

@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"go-moq/moqtransport"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
@@ -17,28 +19,26 @@ func main() {
 		},
 		//CheckOrigin: func(r *http.Request) bool {},
 	}
-
 	ms := moqtransport.Server{
 		WebTransportServer: &ws,
+		Versions:           []moqtransport.Version{moqtransport.LATEST},
 	}
 
 	http.HandleFunc("/setup", func(w http.ResponseWriter, r *http.Request) {
-		versions := []moqtransport.Version{moqtransport.LATEST}
 
 		// Establish WebTransport connection after receive EXTEND CONNECT message
-		sess, err := ms.ConnectAndSetup(w, r)
+		sess, err := ms.Upgrade(w, r)
 		if err != nil {
 			log.Println(err)
 			return
 		}
 
 		// Receive SETUP_CLIENT message
-		params, err := sess.ReceiveClientSetup(versions)
+		_, err = sess.ReceiveClientSetup()
 		if err != nil {
 			log.Println(err)
 			return
 		}
-		log.Println(params)
 
 		// Send  SETUP_SERVER message
 		err = sess.SendServerSetup(moqtransport.Parameters{})
@@ -47,51 +47,38 @@ func main() {
 			return
 		}
 
-		sess.OnPublisher(func(swp *moqtransport.SessionWithPublisher) {
-			params, err := swp.ReceiveAnnounce()
+		//
+		sess.OnPublisher(func(sess *moqtransport.PublisherSession) {
+			_, err := sess.ReceiveAnnounce()
 			if err != nil {
-				log.Println(err)
-				err = swp.SendAnnounceError()
-				log.Println(err)
-				return
+				log.Fatal(err)
 			}
-			log.Println(params)
 
-			err = swp.SendAnnounceOk()
+			err = sess.SendAnnounceOk()
+			if err != nil {
+				log.Fatal(err)
+			}
 
+			err = sess.ReceiveObjects(context.TODO())
+			if err != nil {
+				log.Fatal(err)
+			}
 		})
 
-		sess.OnSubscriber(func(sws *moqtransport.SessionWithSubscriber) {
-			err := sws.Advertise(moqtransport.Announcements())
+		//
+		sess.OnSubscriber(func(sess *moqtransport.SubscriberSession) {
+			_, err = sess.ReceiveSubscribe()
 			if err != nil {
-				log.Println(err)
+				log.Fatal(err)
 			}
 
-			params, err := sws.ReceiveSubscribe()
+			err = sess.SendSubscribeOk(30 * time.Minute)
 			if err != nil {
-				log.Println(err)
-				return
-			}
-			log.Println(params)
-
-			err = sws.SendSubscribeResponce()
-			if err != nil {
-				log.Println(err)
-				return
+				log.Fatal(err)
 			}
 
-			sws.DeliverObjects()
+			sess.DeliverObjects()
 		})
-
-		//		agent := ms.NewAgent(sess)
-
-		//moqtransport.Activate(agent)
-
-		// Exchange SETUP messages
-
-		// When the Client is a Subscriber
-
-		// When the Client is a Publisher
 
 		//Handle the session. Here goes the application logic
 		//sess.CloseWithError(1234, "stop connection!!!")

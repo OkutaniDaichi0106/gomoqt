@@ -1,66 +1,43 @@
 package moqtransport
 
 import (
-	"container/heap"
 	"errors"
 	"io"
 	"sync"
 )
 
-type DataStream interface {
-	//Close()
-	StreamReader
-	StreamWriter
-	heap.Interface
-}
-
-type StreamReader interface {
+type ObjectStream interface {
 	io.Reader
+	Header() StreamHeader
+	// CancelReader()
+	// SetReadDeadline(time.Time) error
 }
 
-type StreamWriter interface {
-	//Write(objectID, []byte) error
-}
-
-func newDataStream(header StreamHeader) DataStream {
-	switch h := header.(type) {
-	case *StreamHeaderTrack:
-		stream := &TrackStream{
-			header: *h,
-			queue:  make([]GroupChunk, 0, 1<<3),
-		}
-		return stream
-	case *StreamHeaderPeep:
-		stream := &PeepStream{
-			header: *h,
-			queue:  make([]ObjectChunk, 0, 1<<3),
-		}
-		return stream
-	default:
-		return nil
-	}
-
-}
-
-type TrackStream struct {
-	mu     sync.Mutex
+type trackStream struct {
+	mu     sync.RWMutex
 	header StreamHeaderTrack
-	queue  []GroupChunk
+	chunks []GroupChunk
+	closed bool
 }
 
-// func (TrackStream) Close() {} //TODO
+func (stream *trackStream) Close() {
+	stream.closed = true
+}
 
-func (stream *TrackStream) Read(buf []byte) (int, error) {
-	stream.mu.Lock()
-	defer stream.mu.Unlock()
+func (stream *trackStream) Read(buf []byte) (int, error) {
+	if stream.closed {
+		return 0, io.EOF
+	}
+	stream.mu.RLock()
+	defer stream.mu.RUnlock()
 
 	// Check if the next objext exists
-	if len(stream.queue) == 0 {
+	if len(stream.chunks) == 0 {
 		return 0, io.EOF
 	}
 
 	// Get Data as Group Chunk
-	chunk := stream.Pop().(GroupChunk)
+	chunk := stream.chunks[0]
 
 	if len(buf) < len(chunk.Payload) {
 		return 0, errors.New("too small buffer")
@@ -69,47 +46,23 @@ func (stream *TrackStream) Read(buf []byte) (int, error) {
 	// Set to the buffer
 	n := copy(buf, chunk.Payload)
 
+	//Remove the chunk from the queue
+	stream.chunks = stream.chunks[1:]
+
 	// Return the size of the data
 	return n, nil
 }
 
-func (stream *TrackStream) Len() int {
-	return len(stream.queue)
+func (stream *trackStream) Header() StreamHeader {
+	return &stream.header
 }
 
-func (stream *TrackStream) Less(i, j int) bool {
-	if stream.queue[i].groupID == stream.queue[j].groupID {
-		return stream.queue[i].objectID < stream.queue[j].objectID
-	}
-
-	return stream.queue[i].groupID < stream.queue[j].groupID
-}
-
-func (stream *TrackStream) Swap(i, j int) {
+func (stream *trackStream) write(chunk GroupChunk) {
 	stream.mu.Lock()
 	defer stream.mu.Unlock()
 
-	// Swap
-	stream.queue[i], stream.queue[j] = stream.queue[j], stream.queue[i]
-}
-
-func (stream *TrackStream) Push(x any) {
-	stream.mu.Lock()
-	defer stream.mu.Unlock()
-
-	chunk := x.(GroupChunk)
-	stream.queue = append(stream.queue, chunk)
-}
-
-func (stream *TrackStream) Pop() any {
-	stream.mu.Lock()
-	defer stream.mu.Unlock()
-
-	old := stream.queue
-	n := len(old)
-	chunk := stream.queue[n-1]
-	stream.queue = old[:n-1]
-	return chunk
+	// Queue the chunk
+	stream.chunks = append(stream.chunks, chunk)
 }
 
 // func (writer *TrackStream) Write(data []byte) error {
@@ -117,86 +70,55 @@ func (stream *TrackStream) Pop() any {
 // 	return nil
 // }
 
-type PeepStream struct {
-	mu     sync.Mutex
+type peepStream struct {
+	mu     sync.RWMutex
 	header StreamHeaderPeep
-	queue  []ObjectChunk
+	chunks []ObjectChunk
+	closed bool
 }
 
-//func (PeepStream) Close() {} //TODO
+func (stream *peepStream) Close() {
+	stream.closed = true
+}
 
-func (stream *PeepStream) Read(buf []byte) (int, error) {
+func (stream *peepStream) Read(buf []byte) (int, error) {
+	if stream.closed {
+		return 0, io.EOF
+	}
+	stream.mu.RLock()
+	defer stream.mu.RUnlock()
+
 	// Check if the next objext exists
-	if len(stream.queue) == 0 {
-		return 0, errors.New("no data")
+	if len(stream.chunks) == 0 {
+		return 0, io.EOF
 	}
 
-	// Get Data as Group Chunk
-	chunk, ok := stream.Pop().(ObjectChunk)
-	if !ok {
-		return 0, errors.New("obtained data is not object chunk")
+	// Get the first chunk
+	chunk := stream.chunks[0]
+
+	// Check if the buffer has enough size
+	if len(buf) < len(chunk.Payload) {
+		return 0, errors.New("too small buffer")
 	}
 
 	// Set to the buffer
-	buf = chunk.Payload
+	n := copy(buf, chunk.Payload)
 
-	// Clean the read data
-	stream.queue = stream.queue[1:]
+	// Remove the chunk from the queue
+	stream.chunks = stream.chunks[1:]
 
 	// Return the size of the data
-	return len(chunk.Payload), nil
+	return n, nil
 }
 
-func (stream *PeepStream) Len() int {
-	return len(stream.queue)
+func (stream *peepStream) Header() StreamHeader {
+	return &stream.header
 }
 
-func (stream *PeepStream) Less(i, j int) bool {
+func (stream *peepStream) write(chunk ObjectChunk) {
 	stream.mu.Lock()
 	defer stream.mu.Unlock()
 
-	return stream.queue[i].objectID < stream.queue[j].objectID
+	// Queue the chunk
+	stream.chunks = append(stream.chunks, chunk)
 }
-
-func (stream *PeepStream) Swap(i, j int) {
-	stream.mu.Lock()
-	defer stream.mu.Unlock()
-
-	stream.queue[i], stream.queue[j] = stream.queue[j], stream.queue[i]
-}
-
-func (stream *PeepStream) Push(x any) {
-	chunk := x.(ObjectChunk)
-	stream.queue = append(stream.queue, chunk)
-}
-
-func (stream *PeepStream) Pop() any {
-	stream.mu.Lock()
-	defer stream.mu.Unlock()
-
-	old := stream.queue
-	n := len(old)
-	chunk := stream.queue[n-1]
-	stream.queue = old[:n-1]
-	return chunk
-}
-
-// type TrackReader interface {
-// 	io.Reader
-// }
-
-// type trackReader struct {
-// 	subscribeID
-// 	index []GroupStream
-// }
-
-// func newTrackReader(id subscribeID) TrackReader {
-// 	return trackReader{
-// 		subscribeID: id,
-// 		index:       []GroupStream{newDataStream()},
-// 	}
-// }
-
-// func (trackReader) Read(buf []byte) (int, error) {
-
-// }

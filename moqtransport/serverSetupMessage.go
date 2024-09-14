@@ -40,8 +40,7 @@ func (ss ServerSetupMessage) serialize() []byte {
 	 *   [Optional Patameters(..)],
 	 * }
 	 */
-	b = quicvarint.Append(b, uint64(len(ss.Parameters)))
-	b = append(b, ss.Parameters.serialize()...)
+	b = ss.Parameters.append(b)
 
 	return b
 }
@@ -69,7 +68,8 @@ func (ss *ServerSetupMessage) deserializeBody(r quicvarint.Reader) error {
 	}
 	ss.SelectedVersion = Version(num)
 
-	err = ss.Parameters.parse(r)
+	err = ss.Parameters.deserialize(r)
+
 	if err != nil {
 		return err
 	}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/quic-go/webtransport-go"
@@ -16,14 +17,24 @@ var publishers publishersIndex
 
 type publishersIndex struct {
 	mu    sync.Mutex
-	index map[string]*SessionWithPublisher
+	index map[string]*PublisherSession
 }
 
-func (pi *publishersIndex) add(session *SessionWithPublisher) {
+func (pi *publishersIndex) init() {
+	pi.index = make(map[string]*PublisherSession)
+}
+
+func (pi *publishersIndex) add(session *PublisherSession) {
+	if pi.index == nil {
+		pi.init()
+	}
+
 	publishers.mu.Lock()
 	defer publishers.mu.Unlock()
-	pi.index[session.latestAnnounceMessage.TrackNamespace] = session
+	fullTrackNamespace := strings.Join(session.latestAnnounceMessage.TrackNamespace, "")
+	pi.index[fullTrackNamespace] = session
 }
+
 func (pi *publishersIndex) delete(trackNamespace string) {
 	publishers.mu.Lock()
 	defer publishers.mu.Unlock()
@@ -41,13 +52,20 @@ type announcementIndex struct {
 }
 
 func (ai *announcementIndex) add(am AnnounceMessage) {
+	if ai.index == nil {
+		ai.index = make(map[string]AnnounceMessage)
+	}
 	announcements.mu.Lock()
 	defer announcements.mu.Unlock()
-	ai.index[am.TrackNamespace] = am
+	fullTrackNamespace := strings.Join(am.TrackNamespace, "")
+	ai.index[fullTrackNamespace] = am
 }
+
 func (ai *announcementIndex) delete(trackNamespace string) {
 	announcements.mu.Lock()
 	defer announcements.mu.Unlock()
+
+	// Delete
 	delete(ai.index, trackNamespace)
 }
 
@@ -65,9 +83,10 @@ func (ai *announcementIndex) delete(trackNamespace string) {
 
 type Server struct {
 	WebTransportServer *webtransport.Server
+	Versions           []Version
 }
 
-func (s *Server) ConnectAndSetup(w http.ResponseWriter, r *http.Request) (*Session, error) {
+func (s *Server) Upgrade(w http.ResponseWriter, r *http.Request) (*ClientSession, error) {
 	// Establish HTTP/3 Connection
 	wtSession, err := s.WebTransportServer.Upgrade(w, r)
 	if err != nil {
@@ -76,8 +95,9 @@ func (s *Server) ConnectAndSetup(w http.ResponseWriter, r *http.Request) (*Sessi
 		return nil, err
 	}
 
-	moqtSession := Session{
-		wtSession: wtSession,
+	moqtSession := ClientSession{
+		wtSession:         wtSession,
+		supportedVersions: s.Versions,
 	}
 
 	//moqtSession.setup(s.SupportedVersions)

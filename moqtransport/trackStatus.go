@@ -73,7 +73,7 @@ type TrackStatusMessage struct {
 	/*
 	 * Track namespace
 	 */
-	TrackNamespace string
+	TrackNamespace TrackNamespace
 
 	/*
 	 * Track name
@@ -110,8 +110,7 @@ func (ts TrackStatusMessage) serialize() []byte {
 	b = quicvarint.Append(b, uint64(TRACK_STATUS))
 
 	// Append Track Namespace
-	b = quicvarint.Append(b, uint64(len(ts.TrackNamespace)))
-	b = append(b, []byte(ts.TrackNamespace)...)
+	b = ts.TrackNamespace.append(b)
 
 	// Append Track Name
 	b = quicvarint.Append(b, uint64(len(ts.TrackName)))
@@ -133,19 +132,13 @@ func (ts *TrackStatusMessage) deserializeBody(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 
-	// Get length of the Track Namespace
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
-	}
-
 	// Get Track Namespace
-	buf := make([]byte, num)
-	_, err = r.Read(buf)
+	var tns TrackNamespace
+	err = tns.deserialize(r)
 	if err != nil {
 		return err
 	}
-	ts.TrackNamespace = string(buf)
+	ts.TrackNamespace = tns
 
 	// Get length of the Track Name
 	num, err = quicvarint.Read(r)
@@ -154,7 +147,7 @@ func (ts *TrackStatusMessage) deserializeBody(r quicvarint.Reader) error {
 	}
 
 	// Get Track Name
-	buf = make([]byte, num)
+	buf := make([]byte, num)
 	_, err = r.Read(buf)
 	if err != nil {
 		return err

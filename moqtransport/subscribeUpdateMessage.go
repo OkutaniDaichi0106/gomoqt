@@ -19,7 +19,7 @@ type SubscribeUpdateMessage struct {
 	 * EndGroupID used only for "AbsoluteRange"
 	 * EndObjectID used only for "AbsoluteRange". When it is 0, it means the entire group is required
 	 */
-	SubscriptionFilter
+	FilterRange
 
 	/*
 	 * The priority of a subscription relative to other subscriptions in the same session
@@ -68,7 +68,7 @@ func (su SubscribeUpdateMessage) serialize() []byte {
 	// Append the Publisher Priority
 	b = quicvarint.Append(b, uint64(su.SubscriberPriority))
 	// Append the Subscribe Update Priority
-	b = append(b, su.Parameters.serialize()...)
+	b = su.Parameters.append(b)
 
 	return b
 }
@@ -136,7 +136,7 @@ func (su *SubscribeUpdateMessage) deserializeBody(r quicvarint.Reader) error {
 	su.SubscriberPriority = SubscriberPriority(num)
 
 	// Get Subscribe Update Parameters
-	err = su.Parameters.parse(r)
+	err = su.Parameters.deserialize(r)
 	if err != nil {
 		return err
 	}

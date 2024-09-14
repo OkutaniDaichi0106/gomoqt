@@ -2,12 +2,125 @@ package moqtransport
 
 import (
 	"errors"
+	"log"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
+/*
+ * Subscribe ID
+ *
+ * An integer that is unique and monotonically increasing within a session
+ * and is less than the session's Maximum Subscriber ID
+ */
 type subscribeID uint64
+
+/*
+ * Priority of a subscription
+ *
+ * A priority of a subscription relative to other subscriptions in the same session.
+ * Lower numbers get higher priority.
+ */
 type SubscriberPriority byte
+
+/*
+ * Filter of the subscription
+ *
+ * Following type are defined in the official document
+ * LATEST_GROUP
+ * LATEST_OBJECT
+ * ABSOLUTE_START
+ * ABSOLUTE_RANGE
+ */
+type FilterCode uint64
+
+const (
+	LATEST_GROUP   FilterCode = 0x01
+	LATEST_OBJECT  FilterCode = 0x02
+	ABSOLUTE_START FilterCode = 0x03
+	ABSOLUTE_RANGE FilterCode = 0x04
+)
+
+type SubscriptionFilter struct {
+	/*
+	 * Filter FilterCode indicates the type of filter
+	 * This indicates whether the StartGroup/StartObject and EndGroup/EndObject fields
+	 * will be present
+	 */
+	FilterCode
+
+	/*
+	 * Range of the Filter
+	 */
+	FilterRange
+}
+
+/*
+ * Range of the filter
+ *
+ * This consist of start group ID, start object ID, end group ID and end object ID
+ */
+type FilterRange struct {
+	/*
+	 * StartGroupID used only for "AbsoluteStart" or "AbsoluteRange"
+	 */
+	startGroup groupID
+
+	/*
+	 * StartObjectID used only for "AbsoluteStart" or "AbsoluteRange"
+	 */
+	startObject objectID
+
+	/*
+	 * EndGroupID used only for "AbsoluteRange"
+	 */
+	endGroup groupID
+
+	/*
+	 * EndObjectID used only for "AbsoluteRange".
+	 * When it is 0, it means the entire group is required
+	 */
+	endObject objectID
+}
+
+func (sf SubscriptionFilter) isOK() error { //TODO
+	switch sf.FilterCode {
+	case LATEST_GROUP, LATEST_OBJECT, ABSOLUTE_START:
+		return nil
+	case ABSOLUTE_RANGE:
+		// Check if the Start Group ID is smaller than End Group ID
+		if sf.startGroup > sf.endGroup {
+			return ErrInvalidFilter
+		}
+		return nil
+	default:
+		return ErrInvalidFilter
+	}
+	//TODO: Check if the Filter Code is valid and valid parameters is set
+}
+
+func (sf SubscriptionFilter) append(b []byte) []byte {
+	if sf.FilterCode == LATEST_GROUP {
+		b = quicvarint.Append(b, uint64(sf.FilterCode))
+	} else if sf.FilterCode == LATEST_OBJECT {
+		b = quicvarint.Append(b, uint64(sf.FilterCode))
+	} else if sf.FilterCode == ABSOLUTE_START {
+		// Append Filter Type, Start Group ID and Start Object ID
+		b = quicvarint.Append(b, uint64(sf.FilterCode))
+		b = quicvarint.Append(b, uint64(sf.startGroup))
+		b = quicvarint.Append(b, uint64(sf.startObject))
+	} else if sf.FilterCode == ABSOLUTE_RANGE {
+		// Append Filter Type, Start Group ID, Start Object ID, End Group ID and End Object ID
+		b = quicvarint.Append(b, uint64(sf.FilterCode))
+		b = quicvarint.Append(b, uint64(sf.startGroup))
+		b = quicvarint.Append(b, uint64(sf.startObject))
+		b = quicvarint.Append(b, uint64(sf.endGroup))
+		b = quicvarint.Append(b, uint64(sf.endObject))
+	} else {
+		panic("invalid filter")
+	}
+	return b
+}
 
 type SubscribeMessage struct {
 	/*
@@ -81,7 +194,7 @@ func (s SubscribeMessage) serialize() []byte {
 	b = s.SubscriptionFilter.append(b)
 
 	// Append the Subscribe Update Priority
-	b = append(b, s.Parameters.serialize()...)
+	b = s.Parameters.append(b)
 
 	return b
 }
@@ -127,7 +240,7 @@ func (s *SubscribeMessage) deserializeBody(r quicvarint.Reader) error {
 		return err
 	}
 	s.TrackName = string(buf)
-
+	log.Println("REACH 131", s.TrackName)
 	// Get Subscriber Priority
 	num, err = quicvarint.Read(r)
 	if err != nil {
@@ -153,38 +266,57 @@ func (s *SubscribeMessage) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	s.SubscriptionFilter.FilterCode = FilterCode(num)
+	s.FilterCode = FilterCode(num)
 
-	// Get Start Group ID
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
-	}
-	s.SubscriptionFilter.startGroup = groupID(num)
+	switch s.FilterCode {
+	case LATEST_GROUP, LATEST_OBJECT:
+		//Skip
+	case ABSOLUTE_START:
+		// Get Start Group ID
+		num, err = quicvarint.Read(r)
+		if err != nil {
+			return err
+		}
+		s.SubscriptionFilter.startGroup = groupID(num)
 
-	// Get Start Object ID
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
-	}
-	s.SubscriptionFilter.startObject = objectID(num)
+		// Get Start Object ID
+		num, err = quicvarint.Read(r)
+		if err != nil {
+			return err
+		}
+		s.SubscriptionFilter.startObject = objectID(num)
+	case ABSOLUTE_RANGE:
+		// Get Start Group ID
+		num, err = quicvarint.Read(r)
+		if err != nil {
+			return err
+		}
+		s.SubscriptionFilter.startGroup = groupID(num)
 
-	// Get End Group ID
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
-	}
-	s.SubscriptionFilter.endGroup = groupID(num)
+		// Get Start Object ID
+		num, err = quicvarint.Read(r)
+		if err != nil {
+			return err
+		}
+		s.SubscriptionFilter.startObject = objectID(num)
 
-	// Get End Object ID
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
+		// Get End Group ID
+		num, err = quicvarint.Read(r)
+		if err != nil {
+			return err
+		}
+		s.SubscriptionFilter.endGroup = groupID(num)
+
+		// Get End Object ID
+		num, err = quicvarint.Read(r)
+		if err != nil {
+			return err
+		}
+		s.SubscriptionFilter.endObject = objectID(num)
 	}
-	s.SubscriptionFilter.endObject = objectID(num)
 
 	// Get Subscribe Update Parameters
-	err = s.Parameters.parse(r)
+	err = s.Parameters.deserialize(r)
 	if err != nil {
 		return err
 	}

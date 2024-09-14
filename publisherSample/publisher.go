@@ -17,24 +17,22 @@ func main() {
 		TLSConfig: &tls.Config{
 			InsecureSkipVerify: true,
 		},
-		Versions:      []moqtransport.Version{moqtransport.Draft05},
-		ClientHandler: ClientHandle{},
+		Versions: []moqtransport.Version{moqtransport.LATEST},
 	}
 
 	// Set subscriber
 	publisher := moqtransport.Publisher{
-		Client:           client,
-		PublisherHandler: PublisherHandle{},
-		TrackNamespace:   "localhost/daichi/",
+		Client:         client,
+		TrackNamespace: []string{"localhost/daichi/"},
+		MaxSubscribeID: 1 << 4,
 	}
 
-	params, err := publisher.ConnectAndSetup(URL + "setup")
+	_, err := publisher.ConnectAndSetup(URL + "setup")
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Println(params)
 
-	err = publisher.Announce(URL + "daichi0106")
+	err = publisher.Announce("localhost/daichi/")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -50,16 +48,4 @@ func main() {
 		}
 		time.Sleep(5 * time.Second)
 	}
-}
-
-type PublisherHandle struct{}
-
-func (PublisherHandle) AnnounceParameters() moqtransport.Parameters {
-	return moqtransport.Parameters{}
-}
-
-type ClientHandle struct{}
-
-func (ClientHandle) ClientSetupParameters() moqtransport.Parameters {
-	return moqtransport.Parameters{}
 }

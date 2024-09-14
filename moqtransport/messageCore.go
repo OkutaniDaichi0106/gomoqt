@@ -13,8 +13,8 @@ const (
 	//OBJECT_STREAM       MessageID = 0x00 // Deprecated
 	OBJECT_DATAGRAM     MessageID = 0x01
 	STREAM_HEADER_TRACK MessageID = 0x50
-	//STREAM_HEADER_GROUP MessageID = 0x51 // Deprecated
-	STREAM_HEADER_PEEP MessageID = 0x52
+	STREAM_HEADER_GROUP MessageID = 0x51
+	STREAM_HEADER_PEEP  MessageID = 0x52
 )
 
 // Control Messages
@@ -62,150 +62,8 @@ type Messager interface {
 }
 
 /*
- * Subscription Filter
- *
- * Following type are defined in the official document
- * LATEST_GROUP
- * LATEST_OBJECT
- * ABSOLUTE_START
- * ABSOLUTE_RANGE
+ * Deserialize the header of the message which is message id
  */
-type FilterCode uint64
-
-type SubscriptionFilter struct {
-	/*
-	 * Filter FilterCode indicates the type of filter
-	 * This indicates whether the StartGroup/StartObject and EndGroup/EndObject fields
-	 * will be present
-	 */
-	FilterCode
-
-	/*
-	 * StartGroupID used only for "AbsoluteStart" or "AbsoluteRange"
-	 */
-	startGroup groupID
-
-	/*
-	 * StartObjectID used only for "AbsoluteStart" or "AbsoluteRange"
-	 */
-	startObject objectID
-
-	/*
-	 * EndGroupID used only for "AbsoluteRange"
-	 */
-	endGroup groupID
-
-	/*
-	 * EndObjectID used only for "AbsoluteRange".
-	 * When it is 0, it means the entire group is required
-	 */
-	endObject objectID
-}
-
-const (
-	LATEST_GROUP   FilterCode = 0x01
-	LATEST_OBJECT  FilterCode = 0x02
-	ABSOLUTE_START FilterCode = 0x03
-	ABSOLUTE_RANGE FilterCode = 0x04
-)
-
-func (sf SubscriptionFilter) isOK() bool {
-	switch sf.FilterCode {
-	case LATEST_GROUP, LATEST_OBJECT, ABSOLUTE_START:
-		return true
-	case ABSOLUTE_RANGE:
-		// Check if the Start Group ID is smaller than End Group ID
-		if sf.startGroup > sf.endGroup {
-			return false
-		}
-		return true
-	default:
-		return false
-	}
-	//TODO: Check if the Filter Code is valid and valid parameters is set
-}
-
-func (sf SubscriptionFilter) append(b []byte) []byte {
-	if sf.FilterCode == LATEST_GROUP {
-		b = quicvarint.Append(b, uint64(sf.FilterCode))
-	} else if sf.FilterCode == LATEST_OBJECT {
-		b = quicvarint.Append(b, uint64(sf.FilterCode))
-	} else if sf.FilterCode == ABSOLUTE_START {
-		// Append Filter Type, Start Group ID and Start Object ID
-		b = quicvarint.Append(b, uint64(sf.FilterCode))
-		b = quicvarint.Append(b, uint64(sf.startGroup))
-		b = quicvarint.Append(b, uint64(sf.startObject))
-	} else if sf.FilterCode == ABSOLUTE_RANGE {
-		// Append Filter Type, Start Group ID, Start Object ID, End Group ID and End Object ID
-		b = quicvarint.Append(b, uint64(sf.FilterCode))
-		b = quicvarint.Append(b, uint64(sf.startGroup))
-		b = quicvarint.Append(b, uint64(sf.startObject))
-		b = quicvarint.Append(b, uint64(sf.endGroup))
-		b = quicvarint.Append(b, uint64(sf.endObject))
-	} else {
-		panic("invalid filter")
-	}
-	return b
-}
-
-type GoAwayMessage struct {
-	/*
-	 * New session URI
-	 * If this is 0 byte, this should be set to current session URI
-	 */
-	NewSessionURI string
-}
-
-func (ga GoAwayMessage) serialize() []byte {
-	/*
-	 * Serialize as following formatt
-	 *
-	 * GOAWAY Payload {
-	 *   New Session URI ([]byte),
-	 * }
-	 */
-
-	// TODO?: Chech URI exists
-
-	// TODO: Tune the length of the "b"
-	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
-	// Append the type of the message
-	b = quicvarint.Append(b, uint64(GOAWAY))
-	// Append the supported versions
-	b = quicvarint.Append(b, uint64(len(ga.NewSessionURI)))
-	b = append(b, []byte(ga.NewSessionURI)...)
-
-	return b
-}
-
-func (ga *GoAwayMessage) deserializeBody(r quicvarint.Reader) error {
-	var err error
-	var num uint64
-
-	// Get length of the URI
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
-	}
-
-	// if num == 0 {
-	// 	// TODO: Reuse currenct URI
-	// }
-
-	// Get URI
-	buf := make([]byte, num)
-	_, err = r.Read(buf)
-	if err != nil {
-		return err
-	}
-	ga.NewSessionURI = string(buf)
-
-	// Just one URI supposed to be detected
-	// Over one URI will not be detected
-
-	return nil
-}
-
 func deserializeHeader(r quicvarint.Reader) (MessageID, error) {
 	// Get the first number in the message expected to be MessageID
 	num, err := quicvarint.Read(r)
@@ -235,56 +93,4 @@ func deserializeHeader(r quicvarint.Reader) (MessageID, error) {
 	default:
 		return 0xff, errors.New("undefined Message ID")
 	}
-}
-
-func Deserialize(r quicvarint.Reader) (Messager, error) {
-	var message Messager
-	id, err := deserializeHeader(r)
-	if err != nil {
-		return nil, err
-	}
-	switch id {
-	case SUBSCRIBE_UPDATE:
-		message = &SubscribeUpdateMessage{}
-	case SUBSCRIBE:
-		message = &SubscribeMessage{}
-	case SUBSCRIBE_OK:
-		message = &SubscribeOkMessage{}
-	case SUBSCRIBE_ERROR:
-		message = &SubscribeError{}
-	case ANNOUNCE:
-		message = &AnnounceMessage{}
-	case ANNOUNCE_OK:
-		message = &AnnounceOkMessage{}
-	case ANNOUNCE_ERROR:
-		message = &AnnounceError{}
-	case UNANNOUNCE:
-		message = &UnannounceMessage{}
-	case UNSUBSCRIBE:
-		message = &UnsubscribeMessage{}
-	case SUBSCRIBE_DONE:
-		message = &SubscribeDoneMessage{}
-	case ANNOUNCE_CANCEL:
-		message = &AnnounceCancelMessage{}
-	case TRACK_STATUS_REQUEST:
-		message = &TrackStatusRequest{}
-	case TRACK_STATUS:
-		message = &TrackStatusMessage{}
-	case GOAWAY:
-		message = &GoAwayMessage{}
-	case CLIENT_SETUP:
-		message = &ClientSetupMessage{}
-	case SERVER_SETUP:
-		message = &ServerSetupMessage{}
-	case STREAM_HEADER_TRACK:
-		message = &StreamHeaderTrack{}
-	case STREAM_HEADER_PEEP:
-		message = &StreamHeaderPeep{}
-	}
-
-	err = message.deserializeBody(r)
-	if err != nil {
-		return nil, err
-	}
-	return message, nil
 }

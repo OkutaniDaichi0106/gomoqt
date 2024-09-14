@@ -8,7 +8,7 @@ type AnnounceMessage struct {
 	/*
 	 * Track Namespace
 	 */
-	TrackNamespace string
+	TrackNamespace TrackNamespace
 
 	/*
 	 * Announce Parameters
@@ -22,21 +22,20 @@ func (a AnnounceMessage) serialize() []byte {
 	 * Serialize as following formatt
 	 *
 	 * ANNOUNCE Payload {
-	 *   Track Namespace ([]byte),
+	 *   Track Namespace (tuple),
 	 *   Number of Parameters (),
 	 *   Announce Parameters(..)
 	 * }
 	 */
 
-	// TODO?: Chech track namespace exists
+	// TODO: Tune the size of the slice
+	b := make([]byte, 0, 1<<8)
 
-	// TODO: Tune the length of the "b"
-	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
 	// Append the type of the message
 	b = quicvarint.Append(b, uint64(ANNOUNCE))
-	// Append the supported versions
-	b = quicvarint.Append(b, uint64(len(a.TrackNamespace)))
-	b = append(b, []byte(a.TrackNamespace)...)
+
+	// Append the Track Namespace
+	b = a.TrackNamespace.append(b)
 
 	// Serialize the parameters and append it
 	/*
@@ -45,44 +44,21 @@ func (a AnnounceMessage) serialize() []byte {
 	 *   [Optional Patameters(..)],
 	 * }
 	 */
-	b = append(b, a.Parameters.serialize()...)
+	b = a.Parameters.append(b)
 
 	return b
 }
 
-// func (a *AnnounceMessage) deserialize(r quicvarint.Reader) error {
-// 	// Get Message ID and check it
-// 	id, err := deserializeHeader(r)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	if id != ANNOUNCE {
-// 		return errors.New("unexpected message")
-// 	}
-
-// 	return a.deserializeBody(r)
-// }
-
 func (a *AnnounceMessage) deserializeBody(r quicvarint.Reader) error {
-	var err error
-	var num uint64
-
-	// Get length of the track namespace
-	num, err = quicvarint.Read(r)
+	var tns TrackNamespace
+	err := tns.deserialize(r)
 	if err != nil {
 		return err
 	}
 
-	// Get track namespace
-	buf := make([]byte, num)
-	_, err = r.Read(buf)
-	if err != nil {
-		return err
-	}
+	a.TrackNamespace = tns
 
-	a.TrackNamespace = string(buf)
-
-	err = a.Parameters.parse(r)
+	err = a.Parameters.deserialize(r)
 	if err != nil {
 		return err
 	}

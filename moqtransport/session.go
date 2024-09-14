@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,17 +13,17 @@ import (
 	"github.com/quic-go/webtransport-go"
 )
 
-type Session struct {
-	wtSession      *webtransport.Session
-	controlStream  webtransport.Stream
-	controlReader  quicvarint.Reader
-	controlChannel chan []byte
+type ClientSession struct {
+	wtSession     *webtransport.Session
+	controlStream webtransport.Stream
+	controlReader quicvarint.Reader
 
-	selectedVersion Version
-	role            Role
+	supportedVersions []Version
+	selectedVersion   Version
+	role              Role
 }
 
-func (s *Session) ReceiveClientSetup(supportedVersions []Version) (Parameters, error) {
+func (s *ClientSession) ReceiveClientSetup() (Parameters, error) {
 	// Create bidirectional stream to send control messages
 	stream, err := s.wtSession.AcceptStream(context.TODO())
 	if err != nil {
@@ -54,18 +55,19 @@ func (s *Session) ReceiveClientSetup(supportedVersions []Version) (Parameters, e
 	delete(cs.Parameters, ROLE)
 
 	// Select a version
-	s.selectedVersion, err = selectVersion(cs.Versions, supportedVersions)
+	s.selectedVersion, err = selectVersion(cs.Versions, s.supportedVersions)
 	if err != nil {
 		return nil, err
 	}
+
+	s.controlStream = stream
 
 	s.controlReader = reader
 
 	return cs.Parameters, nil
 }
 
-func (s *Session) SendServerSetup(params Parameters) error {
-
+func (s *ClientSession) SendServerSetup(params Parameters) error {
 	// Initialise SETUP_SERVER message
 	ssm := ServerSetupMessage{
 		SelectedVersion: s.selectedVersion,
@@ -78,23 +80,45 @@ func (s *Session) SendServerSetup(params Parameters) error {
 		return err
 	}
 
-	switch s.role {
-	case PUB:
+	// switch s.role {//TODO
+	// case PUB:
 
-	case SUB:
-	}
+	// case SUB:
+	// }
 
 	return nil
 }
 
-func (s *Session) OnPublisher(op func(*SessionWithPublisher)) {
+func (cs ClientSession) OnPublisher(op func(sess *PublisherSession)) {
+	if cs.role != PUB {
+		return
+	}
+	sess := &PublisherSession{
+		wtSession:      cs.wtSession,
+		controlStream:  cs.controlStream,
+		controlReader:  cs.controlReader,
+		controlChannel: make(chan []byte, 1<<3), // TOOD: tune the size
+
+	}
+
+	op(sess)
+}
+
+func (cs ClientSession) OnSubscriber(op func(sess *SubscriberSession)) {
+	if cs.role != SUB {
+		return
+	}
+	sess := &SubscriberSession{
+		wtSession:     cs.wtSession,
+		controlStream: cs.controlStream,
+		controlReader: cs.controlReader,
+	}
+
+	op(sess)
 
 }
-func (s *Session) OnSubscriber(op func(*SessionWithSubscriber)) {
 
-}
-
-type SessionWithPublisher struct {
+type PublisherSession struct {
 	wtSession      *webtransport.Session
 	controlStream  webtransport.Stream
 	controlReader  quicvarint.Reader
@@ -102,20 +126,18 @@ type SessionWithPublisher struct {
 
 	latestAnnounceMessage AnnounceMessage
 
+	maxSubscriberID subscribeID
+
 	trackAlias TrackAlias
+
+	contentExists   bool
+	largestGroupID  groupID
+	largestObjectID objectID
 
 	destinations
 }
 
-func newSessionWithPublisher(sess Session) SessionWithPublisher {
-	return SessionWithPublisher{
-		wtSession:     sess.wtSession,
-		controlStream: sess.controlStream,
-		controlReader: sess.controlReader,
-	}
-}
-
-func (s *SessionWithPublisher) ReceiveAnnounce() (Parameters, error) {
+func (s *PublisherSession) ReceiveAnnounce() (Parameters, error) {
 	var err error
 	// Receive an ANNOUNCE message
 	id, err := deserializeHeader(s.controlReader)
@@ -131,7 +153,10 @@ func (s *SessionWithPublisher) ReceiveAnnounce() (Parameters, error) {
 	err = am.deserializeBody(s.controlReader)
 	if err != nil {
 		return nil, err
-	} // TODO: handle the parameter
+	}
+
+	// Register the ANNOUNCE message
+	announcements.add(am)
 
 	// Register the Track Namespace
 	s.latestAnnounceMessage.TrackNamespace = am.TrackNamespace
@@ -140,9 +165,10 @@ func (s *SessionWithPublisher) ReceiveAnnounce() (Parameters, error) {
 	return am.Parameters, nil
 }
 
-func (s *SessionWithPublisher) SendAnnounceOk() error {
+func (s *PublisherSession) SendAnnounceOk() error {
 	// Check if receiving announcement is succeeded and the Track Namespace is exist
-	if s.latestAnnounceMessage.TrackNamespace == "" {
+	fullTrackNamespace := strings.Join(s.latestAnnounceMessage.TrackNamespace, "")
+	if fullTrackNamespace == "" {
 		return errors.New("no track namespace")
 	}
 
@@ -157,24 +183,20 @@ func (s *SessionWithPublisher) SendAnnounceOk() error {
 	return err
 }
 
-func (s *SessionWithPublisher) SendAnnounceError() error {
-	// Check if receiving announcement is succeeded and the Track Namespace is exist
-	if s.latestAnnounceMessage.TrackNamespace == "" {
-		return errors.New("no track namespace")
-	}
-
+func (s *PublisherSession) SendAnnounceError(code uint, reason string) error {
 	// Send ANNOUNCE_ERROR message
 	ae := AnnounceError{
 		TrackNamespace: s.latestAnnounceMessage.TrackNamespace,
-		Code:           ANNOUNCE_INTERNAL_ERROR,
-		Reason:         ANNOUNCE_ERROR_REASON[ANNOUNCE_INTERNAL_ERROR],
+		Code:           AnnounceErrorCode(code),
+		Reason:         reason,
 	}
-	_, err := s.controlStream.Write(ae.serialize()) // Handle the error when wrinting message
+
+	_, err := s.controlStream.Write(ae.serialize())
 
 	return err
 }
 
-func (s *SessionWithPublisher) ReceiveObjects(ctx context.Context) error {
+func (s *PublisherSession) ReceiveObjects(ctx context.Context) error {
 	errCh := make(chan error, 1)
 
 	for {
@@ -183,28 +205,9 @@ func (s *SessionWithPublisher) ReceiveObjects(ctx context.Context) error {
 		if err != nil {
 			errCh <- err
 		}
-		go func(stream webtransport.ReceiveStream) {
-			buf := make([]byte, 1<<8)
-			data := make([]byte, 0, 1<<8)
-			for {
-				n, err := stream.Read(buf)
-				if err != nil {
-					if err == io.EOF {
-						// Append final data
-						data = append(data, buf[:n]...)
-						break
-					}
-					errCh <- err
-					return
-				}
-				// Append read data
-				data = append(data, buf[:n]...)
-			}
 
-			// Distribute the data to all Subscribers
-			go s.distribute(data, ctx)
-
-		}(stream)
+		// Distribute the data to all Subscribers
+		go s.distribute(stream, errCh)
 
 		select {
 		case <-ctx.Done():
@@ -217,33 +220,57 @@ func (s *SessionWithPublisher) ReceiveObjects(ctx context.Context) error {
 	}
 }
 
-func (s *SessionWithPublisher) distribute(b []byte, ctx context.Context) {
+func (s *PublisherSession) distribute(src webtransport.ReceiveStream, errCh chan<- error) {
 	var wg sync.WaitGroup
-	for _, sess := range s.destinations.sessions {
+	dataCh := make(chan []byte, 1<<4)
+	buf := make([]byte, 1<<8)
 
+	go func(src webtransport.ReceiveStream) {
+		for {
+			n, err := src.Read(buf)
+			if err != nil {
+				if err == io.EOF {
+					// Send final data chunk
+					dataCh <- buf[:n]
+					return
+				}
+				log.Println(err)
+				errCh <- err
+				return
+			}
+			// Send data chunk
+			dataCh <- buf[:n]
+		}
+	}(src)
+
+	for _, sess := range s.destinations.sessions {
 		// Increment the wait group by 1 and count the number of current processes
 		wg.Add(1)
-		go func(sess *webtransport.Session) {
+
+		go func(sess *SubscriberSession) {
 			defer wg.Done()
-			// Set context to terminate the operation upon timeout
-			ctx, cancel := context.WithTimeout(context.TODO(), 2*time.Second) // TODO: Left the duration to the user's implementation
-			defer cancel()
 
 			// Open a unidirectional stream
-			stream, err := sess.OpenStreamSync(ctx)
+			dst, err := sess.wtSession.OpenUniStream()
 			if err != nil {
 				log.Println(err)
+				errCh <- err
 				return //TODO: handle the error
 			}
 
 			// Close the stream after whole data was sent
-			defer stream.Close()
+			defer dst.Close()
 
-			// Send data on the stream
-			_, err = stream.Write(b)
-			if err != nil {
-				log.Println(err)
-				return //TODO: handle the error
+			for data := range dataCh {
+				if len(data) == 0 {
+					continue
+				}
+				_, err := dst.Write(data)
+				if err != nil {
+					log.Println(err)
+					errCh <- err
+					return
+				}
 			}
 		}(sess)
 	}
@@ -253,52 +280,38 @@ func (s *SessionWithPublisher) distribute(b []byte, ctx context.Context) {
 }
 
 type destinations struct {
-	sessions []*webtransport.Session
+	sessions []*SubscriberSession
 	mu       sync.Mutex
 }
 
-func (dest *destinations) add(sess *webtransport.Session) {
+func (dest *destinations) add(sess *SubscriberSession) {
 	dest.mu.Lock()
 	defer dest.mu.Unlock()
 	dest.sessions = append(dest.sessions, sess)
 }
 
-type SessionWithSubscriber struct {
-	wtSession      *webtransport.Session
-	controlStream  webtransport.Stream
-	controlReader  quicvarint.Reader
-	controlChannel chan []byte
+func (dest *destinations) delete(sess *SubscriberSession) {
+	dest.mu.Lock()
+	defer dest.mu.Unlock()
+	dest.sessions = append(dest.sessions, sess)
+}
+
+type SubscriberSession struct {
+	wtSession     *webtransport.Session
+	controlStream webtransport.Stream
+	controlReader quicvarint.Reader
+	//controlChannel chan []byte
 
 	//subscribedPublisher SessionWithPublisher
 
 	latestSubscribeMessage SubscribeMessage
 
-	origin *SessionWithPublisher
+	maxSubscriberID subscribeID
+
+	origin *PublisherSession
 }
 
-func newSessionWithSubscriber(sess Session) SessionWithSubscriber {
-	return SessionWithSubscriber{
-		wtSession:      sess.wtSession,
-		controlStream:  sess.controlStream,
-		controlReader:  sess.controlReader,
-		controlChannel: sess.controlChannel,
-	}
-}
-
-func (s *SessionWithSubscriber) Advertise(announcements []AnnounceMessage) error {
-	var err error
-	// Send all ANNOUNCE messages
-	for _, am := range announcements {
-		_, err = s.controlStream.Write(am.serialize())
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (s *SessionWithSubscriber) ReceiveSubscribe() (Parameters, error) {
+func (s *SubscriberSession) ReceiveSubscribe() (Parameters, error) {
 	// Receive a SUBSCRIBE message
 	id, err := deserializeHeader(s.controlReader)
 	if err != nil {
@@ -307,6 +320,7 @@ func (s *SessionWithSubscriber) ReceiveSubscribe() (Parameters, error) {
 	if id != SUBSCRIBE {
 		return nil, ErrUnexpectedMessage //TODO: handle as protocol violation
 	}
+
 	sm := SubscribeMessage{}
 	err = sm.deserializeBody(s.controlReader)
 	if err != nil {
@@ -325,44 +339,42 @@ func (s *SessionWithSubscriber) ReceiveSubscribe() (Parameters, error) {
 	return sm.Parameters, nil
 }
 
-func (s *SessionWithSubscriber) SendSubscribeResponce() error {
-	var err error
-	data := <-s.controlChannel
-	switch MessageID(data[0]) {
-	case SUBSCRIBE_OK:
-		_, err = s.controlStream.Write(data)
-		if err != nil {
-			return err
-		}
+func (s *SubscriberSession) SendSubscribeOk(expires time.Duration) error {
+	so := SubscribeOkMessage{
+		subscribeID:     s.latestSubscribeMessage.subscribeID,
+		Expires:         expires,
+		GroupOrder:      s.latestSubscribeMessage.GroupOrder,
+		ContentExists:   s.origin.contentExists,
+		LargestGroupID:  s.origin.largestGroupID,
+		LargestObjectID: s.origin.largestObjectID,
+		Parameters:      s.latestSubscribeMessage.Parameters,
+	}
 
-		//TODO: handle
-	case SUBSCRIBE_ERROR:
-		_, err = s.controlStream.Write(data)
-		if err != nil {
-			return err
-		}
-		// TODO: Handle the error
-	default:
-		return ErrUnexpectedMessage
+	_, err := s.controlStream.Write(so.serialize())
+	if err != nil {
+		return err
 	}
 
 	return nil
 }
 
-func (s *SessionWithSubscriber) SendSubscribeInternalError() error {
-	sm := s.latestSubscribeMessage
+func (s *SubscriberSession) SendSubscribeError(code uint, reason string) error {
 	se := SubscribeError{
-		subscribeID: sm.subscribeID,
-		Code:        SUBSCRIBE_INTERNAL_ERROR,
-		Reason:      SUBSCRIBE_ERROR_REASON[SUBSCRIBE_INTERNAL_ERROR],
-		TrackAlias:  sm.TrackAlias,
+		subscribeID: s.latestSubscribeMessage.subscribeID,
+		Code:        SubscribeErrorCode(code),
+		Reason:      reason,
+		TrackAlias:  s.origin.trackAlias,
 	}
-	_, err := s.controlStream.Write(se.serialize()) // TODO: handle the error
 
-	return err
+	_, err := s.controlStream.Write(se.serialize())
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func (s *SessionWithSubscriber) DeliverObjects() {
-	s.origin.destinations.add(s.wtSession)
-	return
+func (s *SubscriberSession) DeliverObjects() {
+	// Add the subscriber session to the publisher's destinations
+	s.origin.destinations.add(s)
 }

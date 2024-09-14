@@ -5,7 +5,7 @@ import (
 )
 
 type AnnounceOkMessage struct {
-	TrackNamespace string
+	TrackNamespace TrackNamespace
 }
 
 func (ao AnnounceOkMessage) serialize() []byte {
@@ -17,54 +17,27 @@ func (ao AnnounceOkMessage) serialize() []byte {
 	 * }
 	 */
 
-	// TODO?: Chech track namespace exists
-
 	// TODO: Tune the length of the "b"
 	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
+
 	// Append the type of the message
 	b = quicvarint.Append(b, uint64(ANNOUNCE_OK))
+
 	// Append the supported versions
-	b = quicvarint.Append(b, uint64(len(ao.TrackNamespace)))
-	b = append(b, []byte(ao.TrackNamespace)...)
+	b = ao.TrackNamespace.append(b)
 
 	return b
 }
 
-// func (ao *AnnounceOkMessage) deserialize(r quicvarint.Reader) error {
-// 	// Get Message ID and check it
-// 	id, err := deserializeHeader(r)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	if id != ANNOUNCE_OK { //TODO: this would means protocol violation
-// 		return errors.New("unexpected message")
-// 	}
-
-// 	return ao.deserializeBody(r)
-// }
-
 func (ao *AnnounceOkMessage) deserializeBody(r quicvarint.Reader) error {
-	var err error
-	var num uint64
-
-	// Get length of the string of the track namespace
-	num, err = quicvarint.Read(r)
+	// Get Track Namespace
+	var tns TrackNamespace
+	err := tns.deserialize(r)
 	if err != nil {
 		return err
 	}
 
-	// Get track namespace
-	buf := make([]byte, num)
-
-	_, err = r.Read(buf)
-	if err != nil {
-		return err
-	}
-
-	ao.TrackNamespace = string(buf)
-
-	// Just one track namespace supposed to be detected
-	// Over one track namespace will not be detected
+	ao.TrackNamespace = tns
 
 	return nil
 }

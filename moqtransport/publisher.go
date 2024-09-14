@@ -1,8 +1,12 @@
 package moqtransport
 
 import (
+	"context"
 	"errors"
 	"log"
+	"strings"
+
+	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type Publisher struct {
@@ -11,24 +15,18 @@ type Publisher struct {
 	 */
 	Client
 
-	/***/
-	PublisherHandler
-
 	/*
 	 * Track Namespace the publisher uses
 	 */
-	TrackNamespace string
+	TrackNamespace TrackNamespace
 
 	/***/
 	TrackNames []string
-}
 
-type PublisherHandler interface {
-	AnnounceParameters() Parameters
-}
+	MaxSubscribeID subscribeID
 
-// Check the Publisher inplement Publisher Handler
-var _ PublisherHandler = Publisher{}
+	announceParameters Parameters
+}
 
 func (p *Publisher) ConnectAndSetup(url string) (Parameters, error) {
 	// Check if the Client specify the Versions
@@ -43,24 +41,72 @@ func (p *Publisher) ConnectAndSetup(url string) (Parameters, error) {
 	}
 
 	// Setup
-	params, err := p.setup(PUB)
+	params, err := p.setup()
 	if err != nil {
 		return nil, err
 	}
-	// TODO: handle params
 
 	return params, nil
+}
+
+func (p *Publisher) setup() (Parameters, error) {
+	var err error
+
+	// Open first stream to send control messages
+	p.controlStream, err = p.session.OpenStreamSync(context.Background())
+	if err != nil {
+		return nil, err
+	}
+
+	// Get control reader
+	p.controlReader = quicvarint.NewReader(p.controlStream)
+
+	// Send SETUP_CLIENT message
+	err = p.sendClientSetup()
+	if err != nil {
+		return nil, err
+	}
+
+	// Receive SETUP_SERVER message
+	return p.receiveServerSetup()
+}
+
+func (p Publisher) sendClientSetup() error {
+	// Initialize SETUP_CLIENT message
+	csm := ClientSetupMessage{
+		Versions:   p.Versions,
+		Parameters: make(Parameters),
+	}
+
+	// Add role parameter
+	err := csm.AddParameter(ROLE, PUB)
+	if err != nil {
+		return err
+	}
+
+	// Add max subscribe id parameter
+	err = csm.AddParameter(MAX_SUBSCRIBE_ID, p.MaxSubscribeID)
+	if err != nil {
+		return err
+	}
+
+	_, err = p.controlStream.Write(csm.serialize())
+
+	return err
 }
 
 /*
  *
  *
  */
-func (p *Publisher) Announce(trackNamespace string) error {
+func (p *Publisher) Announce(trackNamespace ...string) error {
+	if p.announceParameters == nil {
+		p.announceParameters = make(Parameters)
+	}
 	// Send ANNOUNCE message
 	am := AnnounceMessage{
 		TrackNamespace: trackNamespace,
-		Parameters:     p.AnnounceParameters(),
+		Parameters:     p.announceParameters,
 	}
 
 	_, err := p.controlStream.Write(am.serialize())
@@ -73,6 +119,7 @@ func (p *Publisher) Announce(trackNamespace string) error {
 	if err != nil {
 		return err
 	}
+
 	switch id {
 	case ANNOUNCE_OK:
 		var ao AnnounceOkMessage
@@ -80,8 +127,11 @@ func (p *Publisher) Announce(trackNamespace string) error {
 		if err != nil {
 			return err
 		}
+
 		// Check if the Track Namespace is accepted by the server
-		if trackNamespace != ao.TrackNamespace {
+		givenFullTrackNamespace := strings.Join(trackNamespace, "")
+		receivedFullTrackNamespace := strings.Join(ao.TrackNamespace, "")
+		if givenFullTrackNamespace != receivedFullTrackNamespace {
 			return errors.New("unexpected Track Namespace")
 		}
 
@@ -94,8 +144,11 @@ func (p *Publisher) Announce(trackNamespace string) error {
 		if err != nil {
 			return err
 		}
+
 		// Check if the Track Namespace is rejected by the server
-		if trackNamespace != ae.TrackNamespace {
+		givenFullTrackNamespace := strings.Join(trackNamespace, "")
+		receivedFullTrackNamespace := strings.Join(ae.TrackNamespace, "")
+		if givenFullTrackNamespace != receivedFullTrackNamespace {
 			return errors.New("unexpected Track Namespace")
 		}
 

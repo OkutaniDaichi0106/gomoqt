@@ -50,21 +50,7 @@ type Client struct {
 	 * Using selectedVersion which is specifyed by the client and is selected by the server
 	 */
 	selectedVersion Version
-
-	ClientHandler
-
-	/*
-	 * CLIENT_SETUP message
-	 */
-	//clientSetupMessage ClientSetupMessage
 }
-
-type ClientHandler interface {
-	ClientSetupParameters() Parameters
-}
-
-// Check the Publisher inplement Publisher Handler
-var _ ClientHandler = Client{}
 
 /*
  * Client connect to the server
@@ -73,15 +59,15 @@ var _ ClientHandler = Client{}
  *
  */
 func (c *Client) connect(url string) error {
-	//TODO: Check if the role and the versions is setted
-	var err error
-	// Define new Dialer
-	var d webtransport.Dialer
 	// Set tls configuration
 	if c.TLSConfig == nil {
 		panic("no TLS configuration")
 	}
-	d.TLSClientConfig = c.TLSConfig
+
+	// Define new Dialer
+	d := webtransport.Dialer{
+		TLSClientConfig: c.TLSConfig,
+	}
 
 	// Set header //TODO: How to handle header
 	var headers http.Header
@@ -98,46 +84,8 @@ func (c *Client) connect(url string) error {
 	return nil
 }
 
-func (c *Client) setup(role Role) (Parameters, error) {
-	var err error
-
-	// Open first stream to send control messages
-	c.controlStream, err = c.session.OpenStreamSync(context.Background())
-	if err != nil {
-		return nil, err
-	}
-
-	// Send SETUP_CLIENT message
-	err = c.sendSetupMessage(role)
-	if err != nil {
-		return nil, err
-	}
-
-	// Initialize control reader
-	c.controlReader = quicvarint.NewReader(c.controlStream)
-
-	// Receive SETUP_SERVER message
-	return c.receiveServerSetup()
-}
-
-func (c Client) sendSetupMessage(role Role) error {
-	// Initialize SETUP_CLIENT message
-	csm := ClientSetupMessage{
-		Versions:   c.Versions,
-		Parameters: c.ClientSetupParameters(),
-	}
-	csm.AddParameter(ROLE, uint64(role))
-
-	_, err := c.controlStream.Write(csm.serialize())
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
 func (c *Client) receiveServerSetup() (Parameters, error) {
 	// Receive SETUP_SERVER message
-
 	id, err := deserializeHeader(c.controlReader)
 	if err != nil {
 		return nil, err
@@ -145,6 +93,7 @@ func (c *Client) receiveServerSetup() (Parameters, error) {
 	if id != SERVER_SETUP {
 		return nil, ErrUnexpectedMessage
 	}
+
 	var ss ServerSetupMessage
 	err = ss.deserializeBody(c.controlReader)
 	if err != nil {

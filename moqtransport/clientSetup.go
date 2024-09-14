@@ -59,23 +59,10 @@ func (cs ClientSetupMessage) serialize() []byte {
 	 *   [Optional Patameters(..)],
 	 * }
 	 */
-	b = append(b, cs.Parameters.serialize()...)
+	b = cs.Parameters.append(b)
 
 	return b
 }
-
-// func (cs *ClientSetupMessage) deserialize(r quicvarint.Reader) error {
-// 	// Get Message ID and check it
-// 	id, err := deserializeHeader(r)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	if id != CLIENT_SETUP {
-// 		return errors.New("unexpected message")
-// 	}
-
-// 	return cs.deserializeBody(r)
-// }
 
 func (cs *ClientSetupMessage) deserializeBody(r quicvarint.Reader) error {
 	var err error
@@ -96,7 +83,7 @@ func (cs *ClientSetupMessage) deserializeBody(r quicvarint.Reader) error {
 		cs.Versions = append(cs.Versions, Version(num))
 	}
 
-	err = cs.Parameters.parse(r)
+	err = cs.Parameters.deserialize(r)
 	if err != nil {
 		return err
 	}

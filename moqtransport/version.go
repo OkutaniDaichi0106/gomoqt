@@ -14,7 +14,8 @@ const (
 	Draft03         Version = 0xff000003 /* Not implemented */
 	Draft04         Version = 0xff000004 /* Not implemented */
 	Draft05         Version = 0xff000005 /* Partly Implemented */
-	LATEST          Version = 0xffffffff /* Partly Implemented */
+	LATEST          Version = 0x00ffffff /* Partly Implemented */
+	EXPERIMENTAL    Version = 0xffffffff /* Use For Development */
 	Stable01        Version = 0x00000001 /* Not implemented */
 )
 

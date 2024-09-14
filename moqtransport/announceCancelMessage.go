@@ -5,7 +5,7 @@ import (
 )
 
 type AnnounceCancelMessage struct {
-	TrackNamespace string
+	TrackNamespace TrackNamespace
 }
 
 func (ac AnnounceCancelMessage) serialize() []byte {
@@ -21,11 +21,12 @@ func (ac AnnounceCancelMessage) serialize() []byte {
 
 	// TODO: Tune the length of the "b"
 	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
+
 	// Append the type of the message
 	b = quicvarint.Append(b, uint64(ANNOUNCE_CANCEL))
+
 	// Append the supported versions
-	b = quicvarint.Append(b, uint64(len(ac.TrackNamespace)))
-	b = append(b, []byte(ac.TrackNamespace)...)
+	b = ac.TrackNamespace.append(b)
 
 	return b
 }
@@ -44,26 +45,12 @@ func (ac AnnounceCancelMessage) serialize() []byte {
 // }
 
 func (ac *AnnounceCancelMessage) deserializeBody(r quicvarint.Reader) error {
-	var err error
-	var num uint64
-
-	// Get length of the string of the namespace
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
+	// Get Track Namespace
+	if ac.TrackNamespace == nil {
+		ac.TrackNamespace = make(TrackNamespace, 0, 1)
 	}
 
-	buf := make([]byte, num)
-	// Get track namespace
-	_, err = r.Read(buf)
-	if err != nil {
-		return err
-	}
+	err := ac.TrackNamespace.deserialize(r)
 
-	ac.TrackNamespace = string(buf)
-
-	// Just one track namespace supposed to be detected
-	// Over one track namespace will not be detected
-
-	return nil
+	return err
 }

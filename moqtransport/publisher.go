@@ -79,18 +79,12 @@ func (p Publisher) sendClientSetup() error {
 	}
 
 	// Add role parameter
-	err := csm.AddParameter(ROLE, PUB)
-	if err != nil {
-		return err
-	}
+	csm.AddParameter(ROLE, PUB)
 
 	// Add max subscribe id parameter
-	err = csm.AddParameter(MAX_SUBSCRIBE_ID, p.MaxSubscribeID)
-	if err != nil {
-		return err
-	}
+	csm.AddParameter(MAX_SUBSCRIBE_ID, p.MaxSubscribeID)
 
-	_, err = p.controlStream.Write(csm.serialize())
+	_, err := p.controlStream.Write(csm.serialize())
 
 	return err
 }
@@ -139,7 +133,7 @@ func (p *Publisher) Announce(trackNamespace ...string) error {
 		p.TrackNamespace = ao.TrackNamespace
 
 	case ANNOUNCE_ERROR:
-		var ae AnnounceError // TODO: Handle Error Code
+		var ae AnnounceErrorMessage // TODO: Handle Error Code
 		err = ae.deserializeBody(p.controlReader)
 		if err != nil {
 			return err

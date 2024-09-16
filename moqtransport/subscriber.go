@@ -101,12 +101,9 @@ func (s Subscriber) sendClientSetup() error {
 	}
 
 	// Add role parameter
-	err := csm.AddParameter(ROLE, SUB)
-	if err != nil {
-		return err
-	}
+	csm.AddParameter(ROLE, SUB)
 
-	_, err = s.controlStream.Write(csm.serialize())
+	_, err := s.controlStream.Write(csm.serialize())
 
 	return err
 }

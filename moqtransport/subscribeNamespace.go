@@ -10,8 +10,13 @@ type SubscribeNamespace struct {
 func (sn SubscribeNamespace) serialize() []byte {
 	b := make([]byte, 0, 1<<8)
 
+	// Append
+	b = quicvarint.Append(b, uint64(SUBSCRIBE_NAMESPACE))
+
+	// Append Track Namespace Prefix
 	b = sn.TrackNamespacePrefix.append(b)
 
+	// Append the Parameters
 	b = sn.Parameters.append(b)
 
 	return b

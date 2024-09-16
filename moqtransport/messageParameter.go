@@ -2,7 +2,6 @@ package moqtransport
 
 import (
 	"errors"
-	"reflect"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -17,7 +16,6 @@ const (
 	DELIVERY_TIMEOUT   ParameterKey = 0x03
 	MAX_CACHE_DURATION ParameterKey = 0x04
 	MAX_SUBSCRIBE_ID   ParameterKey = 0x05
-	TRACK_NAME         ParameterKey = 0xf3 // Original
 )
 
 type WireType byte
@@ -197,14 +195,7 @@ var ErrNotUintParameter = errors.New("it is assumed to not be a unsigned integer
 var ErrNotStringParameter = errors.New("it is assumed to not be a unsigned integer")
 var ErrNotByteArrayParameter = errors.New("it is assumed to not be a unsigned integer")
 
-func (params Parameters) AddParameter(key ParameterKey, value any) error {
-	v, ok := params[key]
-
-	// Check if the type of the existing value is the type of given value
-	if ok && reflect.TypeOf(value) != reflect.TypeOf(v) {
-		errors.New("you attempted to change an existing value to a different type ")
-	}
-
+func (params Parameters) AddParameter(key ParameterKey, value any) {
 	switch v := value.(type) {
 	case int64:
 		params[key] = uint64(v)
@@ -240,7 +231,6 @@ func (params Parameters) AddParameter(key ParameterKey, value any) error {
 		panic("invalid type")
 	}
 
-	return nil
 }
 
 func (params Parameters) append(b []byte) []byte {

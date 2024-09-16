@@ -31,7 +31,7 @@ func (a AnnounceMessage) serialize() []byte {
 	// TODO: Tune the size of the slice
 	b := make([]byte, 0, 1<<8)
 
-	// Append the type of the message
+	// Append message ID
 	b = quicvarint.Append(b, uint64(ANNOUNCE))
 
 	// Append the Track Namespace

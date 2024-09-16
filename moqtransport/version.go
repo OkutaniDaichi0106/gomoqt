@@ -26,7 +26,7 @@ func DefaultVersion() Version {
 /*
  * Select a newest moqt version from a pair of version sets
  */
-func selectVersion(vs1, vs2 []Version) (Version, error) {
+func selectLaterVersion(vs1, vs2 []Version) (Version, error) {
 	// Register a slice of Versions as map
 	versionMap := make(map[Version]bool, len(vs1))
 	for _, v := range vs1 {

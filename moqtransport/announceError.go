@@ -2,6 +2,10 @@ package moqtransport
 
 import "github.com/quic-go/quic-go/quicvarint"
 
+var (
+	ErrAnnounceFailed = AnnounceInternalError{}
+)
+
 /*
  * Error codes for annoncement failure
  *
@@ -11,13 +15,35 @@ import "github.com/quic-go/quic-go/quicvarint"
  * RETRY_TRACK_ALIAS
  */
 const (
-	ANNOUNCE_INTERNAL_ERROR   AnnounceErrorCode = 0x0 // Original
-	DUPLICATE_TRACK_NAMESPACE AnnounceErrorCode = 0x1 // Original
+	ANNOUNCE_INTERNAL_ERROR            AnnounceErrorCode = 0x0 // Original
+	ANNOUNCE_DUPLICATE_TRACK_NAMESPACE AnnounceErrorCode = 0x1 // Original
 )
 
-var ANNOUNCE_ERROR_REASON = map[AnnounceErrorCode]string{
-	ANNOUNCE_INTERNAL_ERROR:   "Internal Error",
-	DUPLICATE_TRACK_NAMESPACE: "Duplicate Track Namespace",
+type AnnounceError interface {
+	error
+	Code() AnnounceErrorCode
+}
+
+type AnnounceInternalError struct {
+}
+
+func (AnnounceInternalError) Error() string {
+	return "internal error"
+}
+
+func (AnnounceInternalError) Code() AnnounceErrorCode {
+	return ANNOUNCE_INTERNAL_ERROR
+}
+
+type AnnounceDuplicateTrackNamespace struct {
+}
+
+func (AnnounceDuplicateTrackNamespace) Error() string {
+	return "duplicate track namespace"
+}
+
+func (AnnounceDuplicateTrackNamespace) Code() AnnounceErrorCode {
+	return ANNOUNCE_DUPLICATE_TRACK_NAMESPACE
 }
 
 type AnnounceErrorCode int
@@ -25,13 +51,13 @@ type AnnounceErrorCode int
 /*
  * Subscribers sends ANNOUNCE_ERROR control message for tracks that failed authorization
  */
-type AnnounceError struct {
+type AnnounceErrorMessage struct {
 	TrackNamespace TrackNamespace
 	Code           AnnounceErrorCode
 	Reason         string
 }
 
-func (ae AnnounceError) serialize() []byte {
+func (ae AnnounceErrorMessage) serialize() []byte {
 	/*
 	 * Serialize as following formatt
 	 *
@@ -43,7 +69,7 @@ func (ae AnnounceError) serialize() []byte {
 	 */
 
 	// TODO: Tune the length of the "b"
-	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
+	b := make([]byte, 0, 1<<8) /* Byte slice storing whole data */
 
 	// Append the type of the message
 	b = quicvarint.Append(b, uint64(ANNOUNCE_ERROR))
@@ -61,7 +87,7 @@ func (ae AnnounceError) serialize() []byte {
 	return b
 }
 
-func (ae *AnnounceError) deserializeBody(r quicvarint.Reader) error {
+func (ae *AnnounceErrorMessage) deserializeBody(r quicvarint.Reader) error {
 	var num uint64
 
 	// Get Track Namespace

@@ -24,6 +24,39 @@ func main() {
 		Versions:           []moqtransport.Version{moqtransport.LATEST},
 	}
 
+	// Handle the Publisher
+	ms.OnPublisher(func(sess moqtransport.PublisherSession) {
+		_, err := sess.ReceiveAnnounce()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		err = sess.SendAnnounceOk()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		err = sess.ReceiveObjects(context.TODO())
+		if err != nil {
+			log.Fatal(err)
+		}
+	})
+
+	// Handle the Subscriber
+	ms.OnSubscriber(func(sess moqtransport.SubscriberSession) {
+		_, err := sess.ReceiveSubscribe()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		err = sess.SendSubscribeOk(30 * time.Minute)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		sess.DeliverObjects()
+	})
+
 	http.HandleFunc("/setup", func(w http.ResponseWriter, r *http.Request) {
 
 		// Establish WebTransport connection after receive EXTEND CONNECT message
@@ -33,52 +66,7 @@ func main() {
 			return
 		}
 
-		// Receive SETUP_CLIENT message
-		_, err = sess.ReceiveClientSetup()
-		if err != nil {
-			log.Println(err)
-			return
-		}
-
-		// Send  SETUP_SERVER message
-		err = sess.SendServerSetup(moqtransport.Parameters{})
-		if err != nil {
-			log.Fatal(err)
-			return
-		}
-
-		//
-		sess.OnPublisher(func(sess *moqtransport.PublisherSession) {
-			_, err := sess.ReceiveAnnounce()
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			err = sess.SendAnnounceOk()
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			err = sess.ReceiveObjects(context.TODO())
-			if err != nil {
-				log.Fatal(err)
-			}
-		})
-
-		//
-		sess.OnSubscriber(func(sess *moqtransport.SubscriberSession) {
-			_, err = sess.ReceiveSubscribe()
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			err = sess.SendSubscribeOk(30 * time.Minute)
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			sess.DeliverObjects()
-		})
+		sess.HandleRole()
 
 		//Handle the session. Here goes the application logic
 		//sess.CloseWithError(1234, "stop connection!!!")

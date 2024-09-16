@@ -2,11 +2,22 @@ package moqtransport
 
 import (
 	"errors"
+
+	"github.com/quic-go/webtransport-go"
 )
 
 type TerminateErrorCode int
-type TerminateError struct {
-}
+
+var (
+	NoTerminateErr             TerminateNoError
+	ErrTerminationFailed       TerminateInternalError
+	ErrUnauthorized            terminateUnauthorized
+	ErrProtocolViolation       TerminateProtocolViolation
+	ErrDuplicatedTrackAlias    terminateDuplicateTrackAlias
+	ErrParameterLengthMismatch terminateParameterLengthMismatch
+	ErrTooManySubscribes       terminateTooManySubscribes
+	ErrGoAwayTimeout           terminateGoAwayTimeout
+)
 
 /*
  * Error codes and status codes for termination of the session
@@ -21,14 +32,103 @@ type TerminateError struct {
  * GOAWAY_TIMEOUT
  */
 const (
-	TERMINATION_NO_ERROR                  AnnounceErrorCode = 0x0
-	TERMINATION_INTERNAL_ERROR            AnnounceErrorCode = 0x1
-	TERMINATION_UNAUTHORIZED              AnnounceErrorCode = 0x2
-	TERMINATION_PROTOCOL_VIOLATION        AnnounceErrorCode = 0x3
-	TERMINATION_DUPLICATE_TRACK_ALIAS     AnnounceErrorCode = 0x4
-	TERMINATION_PARAMETER_LENGTH_MISMATCH AnnounceErrorCode = 0x5
-	TERMINATION_GOAWAY_TIMEOUT            AnnounceErrorCode = 0x6
+	TERMINATE_NO_ERROR                  TerminateErrorCode = 0x0
+	TERMINATE_INTERNAL_ERROR            TerminateErrorCode = 0x1
+	TERMINATE_UNAUTHORIZED              TerminateErrorCode = 0x2
+	TERMINATE_PROTOCOL_VIOLATION        TerminateErrorCode = 0x3
+	TERMINATE_DUPLICATE_TRACK_ALIAS     TerminateErrorCode = 0x4
+	TERMINATE_PARAMETER_LENGTH_MISMATCH TerminateErrorCode = 0x5
+	TERMINATE_TOO_MANY_SUBSCRIBES       TerminateErrorCode = 0x6
+	TERMINATE_GOAWAY_TIMEOUT            TerminateErrorCode = 0x10
 )
 
-var ErrProtocolViolation = errors.New("protocol violation")
+type TerminateError interface {
+	error
+	Code() TerminateErrorCode
+}
+
+type TerminateNoError struct{}
+
+func (TerminateNoError) Error() string {
+	return "no error"
+}
+
+func (TerminateNoError) Code() TerminateErrorCode {
+	return TERMINATE_NO_ERROR
+}
+
+type TerminateInternalError struct{}
+
+func (TerminateInternalError) Error() string {
+	return "internal error"
+}
+
+func (TerminateInternalError) Code() TerminateErrorCode {
+	return TERMINATE_INTERNAL_ERROR
+}
+
+type terminateUnauthorized struct{}
+
+func (terminateUnauthorized) Error() string {
+	return "unauthorized"
+}
+
+func (terminateUnauthorized) Code() TerminateErrorCode {
+	return TERMINATE_UNAUTHORIZED
+}
+
+type TerminateProtocolViolation struct{}
+
+func (TerminateProtocolViolation) Error() string {
+	return "protocol violation"
+}
+
+func (TerminateProtocolViolation) Code() TerminateErrorCode {
+	return TERMINATE_PROTOCOL_VIOLATION
+}
+
+type terminateDuplicateTrackAlias struct{}
+
+func (terminateDuplicateTrackAlias) Error() string {
+	return "duplicate track alias"
+}
+
+func (terminateDuplicateTrackAlias) Code() TerminateErrorCode {
+	return TERMINATE_DUPLICATE_TRACK_ALIAS
+}
+
+type terminateParameterLengthMismatch struct{}
+
+func (terminateParameterLengthMismatch) Error() string {
+	return "parameter length mismatch"
+}
+
+func (terminateParameterLengthMismatch) Code() TerminateErrorCode {
+	return TERMINATE_PARAMETER_LENGTH_MISMATCH
+}
+
+type terminateTooManySubscribes struct{}
+
+func (terminateTooManySubscribes) Error() string {
+	return "too many subscribes"
+}
+
+func (terminateTooManySubscribes) Code() TerminateErrorCode {
+	return TERMINATE_TOO_MANY_SUBSCRIBES
+}
+
+type terminateGoAwayTimeout struct{}
+
+func (terminateGoAwayTimeout) Error() string {
+	return "goaway timeout"
+}
+
+func (terminateGoAwayTimeout) Code() TerminateErrorCode {
+	return TERMINATE_GOAWAY_TIMEOUT
+}
+
+func GetSessionError(err TerminateError) (webtransport.SessionErrorCode, string) {
+	return webtransport.SessionErrorCode(err.Code()), err.Error()
+}
+
 var ErrInvalidFilter = errors.New("invalid filter type")

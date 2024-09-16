@@ -112,11 +112,10 @@ func (c *Client) receiveServerSetup() (Parameters, error) {
 	return ss.Parameters, nil
 }
 
-func (c *Client) terminate() error {
-	// Send Error message to the server before close the stream
+// func (c *Client) Terminate(code TerminateErrorCode, reason string) error {
+// 	// Send Error message to the server before close the stream
+// 	c.session.CloseWithError(webtransport.SessionErrorCode(code), reason)
 
-	// Close the controll stream
-	c.controlStream.Close() //TODO: must it be closed?
-	//c.session.CloseWithError() //TODO:
-	return nil
-}
+// 	//c.session.CloseWithError() //TODO:
+// 	return nil
+// }

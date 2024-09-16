@@ -2,6 +2,7 @@ package moqtransport
 
 import (
 	"io"
+	"strings"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -95,6 +96,10 @@ func (tns TrackNamespace) deserialize(r quicvarint.Reader) error {
 	}
 
 	return nil
+}
+
+func (tns TrackNamespace) getFullName() string {
+	return strings.Join(tns, "")
 }
 
 type TrackNamespacePrefix []string

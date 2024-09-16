@@ -13,17 +13,42 @@ import (
 	"github.com/quic-go/webtransport-go"
 )
 
-type ClientSession struct {
+type Session interface {
+	getWebtransportSession() *webtransport.Session
+	getControlStream() webtransport.Stream
+	getControlReader() quicvarint.Reader
+	HandleRole()
+}
+
+type clientSession struct {
 	wtSession     *webtransport.Session
 	controlStream webtransport.Stream
 	controlReader quicvarint.Reader
 
-	supportedVersions []Version
-	selectedVersion   Version
-	role              Role
+	roleHandler func()
+
+	setupParameters Parameters
+
+	selectedVersion Version
+
+	// Parameters
+	role           Role
+	maxSubscribeID subscribeID
 }
 
-func (s *ClientSession) ReceiveClientSetup() (Parameters, error) {
+func (s clientSession) getWebtransportSession() *webtransport.Session {
+	return s.wtSession
+}
+
+func (s clientSession) getControlStream() webtransport.Stream {
+	return s.controlStream
+}
+
+func (s clientSession) getControlReader() quicvarint.Reader {
+	return s.controlReader
+}
+
+func (s *clientSession) receiveClientSetup() ([]Version, error) {
 	// Create bidirectional stream to send control messages
 	stream, err := s.wtSession.AcceptStream(context.TODO())
 	if err != nil {
@@ -54,24 +79,28 @@ func (s *ClientSession) ReceiveClientSetup() (Parameters, error) {
 	// Delete the Role Parameter after getting it
 	delete(cs.Parameters, ROLE)
 
-	// Select a version
-	s.selectedVersion, err = selectVersion(cs.Versions, s.supportedVersions)
-	if err != nil {
-		return nil, err
+	if s.role == PUB {
+		// Check if the MAX_SUBSCRIBE_ID parameter is valid
+		s.maxSubscribeID, err = cs.Parameters.MaxSubscribeID()
+		if err != nil {
+			return nil, err
+		}
+		// Delete the Parameter after getting it
+		delete(cs.Parameters, MAX_SUBSCRIBE_ID)
 	}
 
 	s.controlStream = stream
 
 	s.controlReader = reader
 
-	return cs.Parameters, nil
+	return cs.Versions, nil
 }
 
-func (s *ClientSession) SendServerSetup(params Parameters) error {
+func (s *clientSession) sendServerSetup() error {
 	// Initialise SETUP_SERVER message
 	ssm := ServerSetupMessage{
 		SelectedVersion: s.selectedVersion,
-		Parameters:      params,
+		Parameters:      s.setupParameters,
 	}
 
 	// Send SETUP_SERVER message
@@ -89,58 +118,31 @@ func (s *ClientSession) SendServerSetup(params Parameters) error {
 	return nil
 }
 
-func (cs ClientSession) OnPublisher(op func(sess *PublisherSession)) {
-	if cs.role != PUB {
-		return
-	}
-	sess := &PublisherSession{
-		wtSession:      cs.wtSession,
-		controlStream:  cs.controlStream,
-		controlReader:  cs.controlReader,
-		controlChannel: make(chan []byte, 1<<3), // TOOD: tune the size
-
-	}
-
-	op(sess)
-}
-
-func (cs ClientSession) OnSubscriber(op func(sess *SubscriberSession)) {
-	if cs.role != SUB {
-		return
-	}
-	sess := &SubscriberSession{
-		wtSession:     cs.wtSession,
-		controlStream: cs.controlStream,
-		controlReader: cs.controlReader,
-	}
-
-	op(sess)
-
+func (s clientSession) HandleRole() {
+	s.roleHandler()
 }
 
 type PublisherSession struct {
-	wtSession      *webtransport.Session
-	controlStream  webtransport.Stream
-	controlReader  quicvarint.Reader
+	Session
 	controlChannel chan []byte
 
 	latestAnnounceMessage AnnounceMessage
 
 	maxSubscriberID subscribeID
 
+	trackNamespace TrackNamespace
+
 	trackAlias TrackAlias
 
 	contentExists   bool
 	largestGroupID  groupID
 	largestObjectID objectID
-
-	destinations
 }
 
 func (s *PublisherSession) ReceiveAnnounce() (Parameters, error) {
 	var err error
 	// Receive an ANNOUNCE message
-	id, err := deserializeHeader(s.controlReader)
+	id, err := deserializeHeader(s.getControlReader())
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +152,7 @@ func (s *PublisherSession) ReceiveAnnounce() (Parameters, error) {
 
 	//TODO: handle error
 	am := AnnounceMessage{}
-	err = am.deserializeBody(s.controlReader)
+	err = am.deserializeBody(s.getControlReader())
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +178,7 @@ func (s *PublisherSession) SendAnnounceOk() error {
 	ao := AnnounceOkMessage{
 		TrackNamespace: s.latestAnnounceMessage.TrackNamespace,
 	}
-	_, err := s.controlStream.Write(ao.serialize()) // Handle the error when wrinting message
+	_, err := s.getControlStream().Write(ao.serialize()) // Handle the error when wrinting message
 
 	publishers.add(s)
 
@@ -185,13 +187,13 @@ func (s *PublisherSession) SendAnnounceOk() error {
 
 func (s *PublisherSession) SendAnnounceError(code uint, reason string) error {
 	// Send ANNOUNCE_ERROR message
-	ae := AnnounceError{
+	ae := AnnounceErrorMessage{
 		TrackNamespace: s.latestAnnounceMessage.TrackNamespace,
 		Code:           AnnounceErrorCode(code),
 		Reason:         reason,
 	}
 
-	_, err := s.controlStream.Write(ae.serialize())
+	_, err := s.getControlStream().Write(ae.serialize())
 
 	return err
 }
@@ -201,7 +203,7 @@ func (s *PublisherSession) ReceiveObjects(ctx context.Context) error {
 
 	for {
 		// Accept a new unidirectional stream
-		stream, err := s.wtSession.AcceptUniStream(ctx)
+		stream, err := s.getWebtransportSession().AcceptUniStream(ctx)
 		if err != nil {
 			errCh <- err
 		}
@@ -243,7 +245,15 @@ func (s *PublisherSession) distribute(src webtransport.ReceiveStream, errCh chan
 		}
 	}(src)
 
-	for _, sess := range s.destinations.sessions {
+	fullTrackNamespace := s.trackNamespace.getFullName()
+
+	dests, ok := subscribers[fullTrackNamespace]
+	if !ok {
+		//TODO: handle this as internal error
+		panic("destinations not found")
+	}
+
+	for _, sess := range dests.sessions {
 		// Increment the wait group by 1 and count the number of current processes
 		wg.Add(1)
 
@@ -251,7 +261,7 @@ func (s *PublisherSession) distribute(src webtransport.ReceiveStream, errCh chan
 			defer wg.Done()
 
 			// Open a unidirectional stream
-			dst, err := sess.wtSession.OpenUniStream()
+			dst, err := sess.getWebtransportSession().OpenUniStream()
 			if err != nil {
 				log.Println(err)
 				errCh <- err
@@ -279,41 +289,23 @@ func (s *PublisherSession) distribute(src webtransport.ReceiveStream, errCh chan
 	wg.Wait()
 }
 
-type destinations struct {
-	sessions []*SubscriberSession
-	mu       sync.Mutex
-}
-
-func (dest *destinations) add(sess *SubscriberSession) {
-	dest.mu.Lock()
-	defer dest.mu.Unlock()
-	dest.sessions = append(dest.sessions, sess)
-}
-
-func (dest *destinations) delete(sess *SubscriberSession) {
-	dest.mu.Lock()
-	defer dest.mu.Unlock()
-	dest.sessions = append(dest.sessions, sess)
-}
-
 type SubscriberSession struct {
-	wtSession     *webtransport.Session
-	controlStream webtransport.Stream
-	controlReader quicvarint.Reader
-	//controlChannel chan []byte
-
-	//subscribedPublisher SessionWithPublisher
+	Session
+	controlChannel chan []byte
 
 	latestSubscribeMessage SubscribeMessage
 
-	maxSubscriberID subscribeID
+	subscriptions map[TrackAlias]struct {
+		maxSubscribeID   subscribeID
+		trackSubscribeID subscribeID
+	}
 
 	origin *PublisherSession
 }
 
 func (s *SubscriberSession) ReceiveSubscribe() (Parameters, error) {
 	// Receive a SUBSCRIBE message
-	id, err := deserializeHeader(s.controlReader)
+	id, err := deserializeHeader(s.getControlReader())
 	if err != nil {
 		return nil, err
 	}
@@ -322,18 +314,50 @@ func (s *SubscriberSession) ReceiveSubscribe() (Parameters, error) {
 	}
 
 	sm := SubscribeMessage{}
-	err = sm.deserializeBody(s.controlReader)
+	err = sm.deserializeBody(s.getControlReader())
 	if err != nil {
 		return nil, err
 	}
 
-	originSession, ok := publishers.index[sm.TrackNamespace]
+	pubSess, ok := publishers.index[sm.TrackNamespace]
 	if !ok {
 		return nil, errors.New("publisher not found")
 	}
 
-	s.origin = originSession
+	// Initialize the map of subscriptions if not exists
+	if s.subscriptions == nil {
+		s.subscriptions = make(map[TrackAlias]struct {
+			maxSubscribeID   subscribeID
+			trackSubscribeID subscribeID
+		})
+	}
 
+	// Check if the Track is already subscirbed
+	trackSubscription, ok := s.subscriptions[sm.TrackAlias]
+
+	if !ok {
+		// Initialize the structure if the Track is not already subscirbed
+		s.subscriptions[sm.TrackAlias] = struct {
+			maxSubscribeID   subscribeID
+			trackSubscribeID subscribeID
+		}{
+			maxSubscribeID:   pubSess.maxSubscriberID,
+			trackSubscribeID: 0,
+		}
+	} else if ok {
+		// Increment the Subscribe ID in a Track by 1 if the Track is already subscribed
+		trackSubscription.trackSubscribeID++
+
+		// Check if the Subscribe ID is not over the Max Subscribe ID
+		if trackSubscription.maxSubscribeID == trackSubscription.trackSubscribeID {
+			return nil, ErrTooManySubscribes
+		}
+	}
+
+	// Register the Publisher Session
+	s.origin = pubSess
+
+	// Register the SUBSCRIBE message
 	s.latestSubscribeMessage = sm
 
 	return sm.Parameters, nil
@@ -350,7 +374,7 @@ func (s *SubscriberSession) SendSubscribeOk(expires time.Duration) error {
 		Parameters:      s.latestSubscribeMessage.Parameters,
 	}
 
-	_, err := s.controlStream.Write(so.serialize())
+	_, err := s.getControlStream().Write(so.serialize())
 	if err != nil {
 		return err
 	}
@@ -366,7 +390,7 @@ func (s *SubscriberSession) SendSubscribeError(code uint, reason string) error {
 		TrackAlias:  s.origin.trackAlias,
 	}
 
-	_, err := s.controlStream.Write(se.serialize())
+	_, err := s.getControlStream().Write(se.serialize())
 	if err != nil {
 		return err
 	}
@@ -376,5 +400,7 @@ func (s *SubscriberSession) SendSubscribeError(code uint, reason string) error {
 
 func (s *SubscriberSession) DeliverObjects() {
 	// Add the subscriber session to the publisher's destinations
-	s.origin.destinations.add(s)
+	fullTrackNamespace := s.origin.trackNamespace.getFullName()
+
+	subscribers[fullTrackNamespace].add(s)
 }

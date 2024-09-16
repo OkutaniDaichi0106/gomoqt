@@ -1,4 +1,4 @@
-package moqtransport
+package moqtmessage
 
 // type MaxSubscribeID struct {
 // 	subscribeID

@@ -1,4 +1,4 @@
-package moqtransport
+package moqtmessage
 
 import (
 	"errors"
@@ -50,15 +50,10 @@ type Parameters map[ParameterKey]any
 
 func (params Parameters) Role() (Role, error) {
 	num, err := params.AsUint(ROLE)
-	if errors.Is(err, ErrParameterNotFound) {
+	if err == ErrParameterNotFound {
 		return 0, ErrRoleNotFound
 	}
-	switch Role(num) {
-	case PUB, SUB, PUB_SUB:
-		return Role(num), nil
-	default:
-		return 0, ErrInvalidRole
-	}
+	return Role(num), nil
 }
 
 func (params Parameters) Path() (string, error) {
@@ -69,13 +64,13 @@ func (params Parameters) Path() (string, error) {
 	return num, nil
 }
 
-func (params Parameters) MaxSubscribeID() (subscribeID, error) {
+func (params Parameters) MaxSubscribeID() (SubscribeID, error) {
 	num, err := params.AsUint(MAX_SUBSCRIBE_ID)
 	if errors.Is(err, ErrParameterNotFound) {
 		return 0, ErrMaxSubscribeIDNotFound
 	}
 
-	return subscribeID(num), nil
+	return SubscribeID(num), nil
 }
 
 var ErrParameterNotFound = errors.New("parameter not found")
@@ -225,7 +220,7 @@ func (params Parameters) AddParameter(key ParameterKey, value any) {
 		params[key] = v
 	case Role:
 		params[key] = uint64(v)
-	case subscribeID:
+	case SubscribeID:
 		params[key] = uint64(v)
 	default:
 		panic("invalid type")
@@ -257,7 +252,7 @@ func (params Parameters) append(b []byte) []byte {
 	return b
 }
 
-func (params *Parameters) deserialize(r quicvarint.Reader) error {
+func (params *Parameters) Deserialize(r quicvarint.Reader) error {
 	var num uint64
 	var err error
 

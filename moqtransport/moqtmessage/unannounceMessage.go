@@ -1,4 +1,4 @@
-package moqtransport
+package moqtmessage
 
 import (
 	"github.com/quic-go/quic-go/quicvarint"
@@ -8,7 +8,7 @@ type UnannounceMessage struct {
 	TrackNamespace string
 }
 
-func (ua UnannounceMessage) serialize() []byte {
+func (ua UnannounceMessage) Serialize() []byte {
 	/*
 	 * Serialize as following formatt
 	 *
@@ -43,7 +43,7 @@ func (ua UnannounceMessage) serialize() []byte {
 // 	return ua.deserializeBody(r)
 // }
 
-func (ua *UnannounceMessage) deserializeBody(r quicvarint.Reader) error {
+func (ua *UnannounceMessage) DeserializeBody(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 	// Get length of the string of the track namespace

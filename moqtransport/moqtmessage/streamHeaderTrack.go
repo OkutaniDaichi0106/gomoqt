@@ -1,4 +1,4 @@
-package moqtransport
+package moqtmessage
 
 import (
 	"errors"
@@ -7,16 +7,18 @@ import (
 )
 
 type StreamHeader interface {
-	Messager
+	Serialize() []byte
+	DeserializeStreamHeader(quicvarint.Reader) error
 	forwardingPreference() ForwardingPreference
-	subscriptionID() subscribeID
+	subscriptionID() SubscribeID
+	newChunkStream() ChunkStream
 }
 
 type StreamHeaderTrack struct {
 	/*
 	 * A number to identify the subscribe session
 	 */
-	subscribeID
+	SubscribeID
 
 	/*
 	 * An number indicates a track
@@ -30,7 +32,7 @@ type StreamHeaderTrack struct {
 	PublisherPriority
 }
 
-func (sht StreamHeaderTrack) serialize() []byte {
+func (sht StreamHeaderTrack) Serialize() []byte {
 	/*
 	 * Serialize as following formatt
 	 *
@@ -48,7 +50,7 @@ func (sht StreamHeaderTrack) serialize() []byte {
 	// Append the type of the message
 	b = quicvarint.Append(b, uint64(STREAM_HEADER_TRACK))
 	// Append the Subscriber ID
-	b = quicvarint.Append(b, uint64(sht.subscribeID))
+	b = quicvarint.Append(b, uint64(sht.SubscribeID))
 	// Append the Track Alias
 	b = quicvarint.Append(b, uint64(sht.TrackAlias))
 	// Append the Publisher Priority
@@ -57,7 +59,7 @@ func (sht StreamHeaderTrack) serialize() []byte {
 	return b
 }
 
-func (sht *StreamHeaderTrack) deserializeBody(r quicvarint.Reader) error {
+func (sht *StreamHeaderTrack) DeserializeStreamHeader(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 
@@ -66,7 +68,7 @@ func (sht *StreamHeaderTrack) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	sht.subscribeID = subscribeID(num)
+	sht.SubscribeID = SubscribeID(num)
 
 	// Get Track Alias
 	num, err = quicvarint.Read(r)
@@ -92,16 +94,62 @@ func (sht StreamHeaderTrack) forwardingPreference() ForwardingPreference {
 	return TRACK
 }
 
-func (sht StreamHeaderTrack) subscriptionID() subscribeID {
-	return sht.subscribeID
+func (sht StreamHeaderTrack) subscriptionID() SubscribeID {
+	return sht.SubscribeID
+}
+
+func (sht StreamHeaderTrack) newChunkStream() ChunkStream {
+	return chunkStreamTrack{}
+}
+
+type ChunkStream interface {
+	CreateChunk([]byte) Chunk
+	CreateFinalChunk() Chunk
+}
+
+type Chunk interface {
+	chunkType() string
+	Serialize() []byte
+	DeserializeBody(quicvarint.Reader) error
+}
+
+type chunkStreamTrack struct {
+	chunkCounter uint64
+}
+
+func (cst chunkStreamTrack) CreateChunk(payload []byte) Chunk {
+	chunk := GroupChunk{
+		GroupID: GroupID(cst.chunkCounter),
+		ObjectChunk: ObjectChunk{
+			ObjectID: 0,
+			Payload:  payload,
+		},
+	}
+
+	cst.chunkCounter++
+
+	return &chunk
+}
+
+func (cst chunkStreamTrack) CreateFinalChunk() Chunk {
+	chunk := GroupChunk{
+		GroupID: GroupID(cst.chunkCounter),
+		ObjectChunk: ObjectChunk{
+			ObjectID:   0,
+			Payload:    []byte{},
+			StatusCode: END_OF_TRACK,
+		},
+	}
+
+	return &chunk
 }
 
 type GroupChunk struct {
-	groupID
+	GroupID
 	ObjectChunk
 }
 
-func (gc GroupChunk) serialize() []byte {
+func (gc GroupChunk) Serialize() []byte {
 	/*
 	 * Serialize as following formatt
 	 *
@@ -118,10 +166,10 @@ func (gc GroupChunk) serialize() []byte {
 	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
 
 	// Append Subscribe ID
-	b = quicvarint.Append(b, uint64(gc.groupID))
+	b = quicvarint.Append(b, uint64(gc.GroupID))
 
 	// Append Subscribe ID
-	b = quicvarint.Append(b, uint64(gc.objectID))
+	b = quicvarint.Append(b, uint64(gc.ObjectID))
 
 	// Append length of the Payload
 	b = quicvarint.Append(b, uint64(len(gc.Payload)))
@@ -136,7 +184,7 @@ func (gc GroupChunk) serialize() []byte {
 	return b
 }
 
-func (gc *GroupChunk) deserializeBody(r quicvarint.Reader) error {
+func (gc *GroupChunk) DeserializeBody(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 
@@ -145,9 +193,17 @@ func (gc *GroupChunk) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	gc.groupID = groupID(num)
+	gc.GroupID = GroupID(num)
 
-	gc.ObjectChunk.deserializeBody(r)
+	gc.ObjectChunk.DeserializeBody(r)
 
 	return nil
+}
+
+func (chunkStreamTrack) chunkType() string {
+	return "group"
+}
+
+func NewChunkStream(header StreamHeader) ChunkStream {
+	return header.newChunkStream()
 }

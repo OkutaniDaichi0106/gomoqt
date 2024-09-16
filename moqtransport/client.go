@@ -3,6 +3,8 @@ package moqtransport
 import (
 	"context"
 	"crypto/tls"
+	"go-moq/moqtransport/moqtmessage"
+	"go-moq/moqtransport/moqtversion"
 	"net/http"
 
 	"github.com/quic-go/quic-go/quicvarint"
@@ -29,7 +31,7 @@ type Client struct {
 	/*
 	 * Versions supported by the client
 	 */
-	Versions []Version
+	Versions []moqtversion.Version
 
 	/*
 	 * Bidirectional stream to send control stream
@@ -49,7 +51,7 @@ type Client struct {
 	/*
 	 * Using selectedVersion which is specifyed by the client and is selected by the server
 	 */
-	selectedVersion Version
+	selectedVersion moqtversion.Version
 }
 
 /*
@@ -84,24 +86,24 @@ func (c *Client) connect(url string) error {
 	return nil
 }
 
-func (c *Client) receiveServerSetup() (Parameters, error) {
+func (c *Client) receiveServerSetup() (moqtmessage.Parameters, error) {
 	// Receive SETUP_SERVER message
-	id, err := deserializeHeader(c.controlReader)
+	id, err := moqtmessage.DeserializeMessageID(c.controlReader)
 	if err != nil {
 		return nil, err
 	}
-	if id != SERVER_SETUP {
+	if id != moqtmessage.SERVER_SETUP {
 		return nil, ErrUnexpectedMessage
 	}
 
-	var ss ServerSetupMessage
-	err = ss.deserializeBody(c.controlReader)
+	var ss moqtmessage.ServerSetupMessage
+	err = ss.DeserializeBody(c.controlReader)
 	if err != nil {
 		return nil, err
 	}
 
 	// Check specified version is selected
-	err = contain(ss.SelectedVersion, c.Versions)
+	err = moqtversion.Contain(ss.SelectedVersion, c.Versions)
 	if err != nil {
 		return nil, err
 	}

@@ -1,10 +1,4 @@
-package moqtransport
-
-import (
-	"errors"
-
-	"github.com/quic-go/webtransport-go"
-)
+package moqterror
 
 type TerminateErrorCode int
 
@@ -126,9 +120,3 @@ func (terminateGoAwayTimeout) Error() string {
 func (terminateGoAwayTimeout) Code() TerminateErrorCode {
 	return TERMINATE_GOAWAY_TIMEOUT
 }
-
-func GetSessionError(err TerminateError) (webtransport.SessionErrorCode, string) {
-	return webtransport.SessionErrorCode(err.Code()), err.Error()
-}
-
-var ErrInvalidFilter = errors.New("invalid filter type")

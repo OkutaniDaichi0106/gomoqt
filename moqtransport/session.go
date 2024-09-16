@@ -3,6 +3,9 @@ package moqtransport
 import (
 	"context"
 	"errors"
+	"go-moq/moqtransport/moqterror"
+	"go-moq/moqtransport/moqtmessage"
+	"go-moq/moqtransport/moqtversion"
 	"io"
 	"log"
 	"strings"
@@ -17,6 +20,7 @@ type Session interface {
 	getWebtransportSession() *webtransport.Session
 	getControlStream() webtransport.Stream
 	getControlReader() quicvarint.Reader
+	getMaxSubscribeID() moqtmessage.SubscribeID
 	HandleRole()
 }
 
@@ -27,13 +31,13 @@ type clientSession struct {
 
 	roleHandler func()
 
-	setupParameters Parameters
+	setupParameters moqtmessage.Parameters
 
-	selectedVersion Version
+	selectedVersion moqtversion.Version
 
 	// Parameters
-	role           Role
-	maxSubscribeID subscribeID
+	role           moqtmessage.Role
+	maxSubscribeID moqtmessage.SubscribeID
 }
 
 func (s clientSession) getWebtransportSession() *webtransport.Session {
@@ -48,7 +52,11 @@ func (s clientSession) getControlReader() quicvarint.Reader {
 	return s.controlReader
 }
 
-func (s *clientSession) receiveClientSetup() ([]Version, error) {
+func (s clientSession) getMaxSubscribeID() moqtmessage.SubscribeID {
+	return s.maxSubscribeID
+}
+
+func (s *clientSession) receiveClientSetup() ([]moqtversion.Version, error) {
 	// Create bidirectional stream to send control messages
 	stream, err := s.wtSession.AcceptStream(context.TODO())
 	if err != nil {
@@ -58,15 +66,15 @@ func (s *clientSession) receiveClientSetup() ([]Version, error) {
 	reader := quicvarint.NewReader(stream)
 
 	// Receive SETUP_CLIENT message
-	id, err := deserializeHeader(reader)
+	id, err := moqtmessage.DeserializeMessageID(reader)
 	if err != nil {
 		return nil, err
 	}
-	if id != CLIENT_SETUP {
-		return nil, ErrProtocolViolation
+	if id != moqtmessage.CLIENT_SETUP {
+		return nil, moqterror.ErrProtocolViolation
 	}
-	var cs ClientSetupMessage
-	err = cs.deserializeBody(reader)
+	var cs moqtmessage.ClientSetupMessage
+	err = cs.DeserializeBody(reader)
 	if err != nil {
 		return nil, err
 	}
@@ -77,16 +85,16 @@ func (s *clientSession) receiveClientSetup() ([]Version, error) {
 		return nil, err
 	}
 	// Delete the Role Parameter after getting it
-	delete(cs.Parameters, ROLE)
+	delete(cs.Parameters, moqtmessage.ROLE)
 
-	if s.role == PUB {
+	if s.role == moqtmessage.PUB {
 		// Check if the MAX_SUBSCRIBE_ID parameter is valid
 		s.maxSubscribeID, err = cs.Parameters.MaxSubscribeID()
 		if err != nil {
 			return nil, err
 		}
 		// Delete the Parameter after getting it
-		delete(cs.Parameters, MAX_SUBSCRIBE_ID)
+		delete(cs.Parameters, moqtmessage.MAX_SUBSCRIBE_ID)
 	}
 
 	s.controlStream = stream
@@ -98,13 +106,13 @@ func (s *clientSession) receiveClientSetup() ([]Version, error) {
 
 func (s *clientSession) sendServerSetup() error {
 	// Initialise SETUP_SERVER message
-	ssm := ServerSetupMessage{
+	ssm := moqtmessage.ServerSetupMessage{
 		SelectedVersion: s.selectedVersion,
 		Parameters:      s.setupParameters,
 	}
 
 	// Send SETUP_SERVER message
-	_, err := s.controlStream.Write(ssm.serialize())
+	_, err := s.controlStream.Write(ssm.Serialize())
 	if err != nil {
 		return err
 	}
@@ -126,33 +134,33 @@ type PublisherSession struct {
 	Session
 	controlChannel chan []byte
 
-	latestAnnounceMessage AnnounceMessage
+	latestAnnounceMessage moqtmessage.AnnounceMessage
 
-	maxSubscriberID subscribeID
+	maxSubscriberID moqtmessage.SubscribeID
 
-	trackNamespace TrackNamespace
+	trackNamespace moqtmessage.TrackNamespace
 
-	trackAlias TrackAlias
+	trackAlias moqtmessage.TrackAlias
 
 	contentExists   bool
 	largestGroupID  groupID
 	largestObjectID objectID
 }
 
-func (s *PublisherSession) ReceiveAnnounce() (Parameters, error) {
+func (s *PublisherSession) ReceiveAnnounce() (moqtmessage.Parameters, error) {
 	var err error
 	// Receive an ANNOUNCE message
-	id, err := deserializeHeader(s.getControlReader())
+	id, err := moqtmessage.DeserializeMessageID(s.getControlReader())
 	if err != nil {
 		return nil, err
 	}
-	if id != ANNOUNCE {
+	if id != moqtmessage.ANNOUNCE {
 		return nil, ErrUnexpectedMessage
 	}
 
 	//TODO: handle error
-	am := AnnounceMessage{}
-	err = am.deserializeBody(s.getControlReader())
+	am := moqtmessage.AnnounceMessage{}
+	err = am.DeserializeBody(s.getControlReader())
 	if err != nil {
 		return nil, err
 	}
@@ -175,10 +183,10 @@ func (s *PublisherSession) SendAnnounceOk() error {
 	}
 
 	// Send ANNOUNCE_OK message
-	ao := AnnounceOkMessage{
+	ao := moqtmessage.AnnounceOkMessage{
 		TrackNamespace: s.latestAnnounceMessage.TrackNamespace,
 	}
-	_, err := s.getControlStream().Write(ao.serialize()) // Handle the error when wrinting message
+	_, err := s.getControlStream().Write(ao.Serialize()) // Handle the error when wrinting message
 
 	publishers.add(s)
 
@@ -187,13 +195,13 @@ func (s *PublisherSession) SendAnnounceOk() error {
 
 func (s *PublisherSession) SendAnnounceError(code uint, reason string) error {
 	// Send ANNOUNCE_ERROR message
-	ae := AnnounceErrorMessage{
+	ae := moqterror.AnnounceErrorMessage{
 		TrackNamespace: s.latestAnnounceMessage.TrackNamespace,
-		Code:           AnnounceErrorCode(code),
+		Code:           moqterror.AnnounceErrorCode(code),
 		Reason:         reason,
 	}
 
-	_, err := s.getControlStream().Write(ae.serialize())
+	_, err := s.getControlStream().Write(ae.Serialize())
 
 	return err
 }
@@ -245,7 +253,7 @@ func (s *PublisherSession) distribute(src webtransport.ReceiveStream, errCh chan
 		}
 	}(src)
 
-	fullTrackNamespace := s.trackNamespace.getFullName()
+	fullTrackNamespace := s.trackNamespace.GetFullName()
 
 	dests, ok := subscribers[fullTrackNamespace]
 	if !ok {
@@ -293,28 +301,23 @@ type SubscriberSession struct {
 	Session
 	controlChannel chan []byte
 
-	latestSubscribeMessage SubscribeMessage
-
-	subscriptions map[TrackAlias]struct {
-		maxSubscribeID   subscribeID
-		trackSubscribeID subscribeID
-	}
+	latestSubscribeMessage moqtmessage.SubscribeMessage
 
 	origin *PublisherSession
 }
 
-func (s *SubscriberSession) ReceiveSubscribe() (Parameters, error) {
+func (s *SubscriberSession) ReceiveSubscribe() (moqtmessage.Parameters, error) {
 	// Receive a SUBSCRIBE message
-	id, err := deserializeHeader(s.getControlReader())
+	id, err := moqtmessage.DeserializeMessageID(s.getControlReader())
 	if err != nil {
 		return nil, err
 	}
-	if id != SUBSCRIBE {
+	if id != moqtmessage.SUBSCRIBE {
 		return nil, ErrUnexpectedMessage //TODO: handle as protocol violation
 	}
 
-	sm := SubscribeMessage{}
-	err = sm.deserializeBody(s.getControlReader())
+	sm := moqtmessage.SubscribeMessage{}
+	err = sm.DeserializeBody(s.getControlReader())
 	if err != nil {
 		return nil, err
 	}
@@ -322,36 +325,6 @@ func (s *SubscriberSession) ReceiveSubscribe() (Parameters, error) {
 	pubSess, ok := publishers.index[sm.TrackNamespace]
 	if !ok {
 		return nil, errors.New("publisher not found")
-	}
-
-	// Initialize the map of subscriptions if not exists
-	if s.subscriptions == nil {
-		s.subscriptions = make(map[TrackAlias]struct {
-			maxSubscribeID   subscribeID
-			trackSubscribeID subscribeID
-		})
-	}
-
-	// Check if the Track is already subscirbed
-	trackSubscription, ok := s.subscriptions[sm.TrackAlias]
-
-	if !ok {
-		// Initialize the structure if the Track is not already subscirbed
-		s.subscriptions[sm.TrackAlias] = struct {
-			maxSubscribeID   subscribeID
-			trackSubscribeID subscribeID
-		}{
-			maxSubscribeID:   pubSess.maxSubscriberID,
-			trackSubscribeID: 0,
-		}
-	} else if ok {
-		// Increment the Subscribe ID in a Track by 1 if the Track is already subscribed
-		trackSubscription.trackSubscribeID++
-
-		// Check if the Subscribe ID is not over the Max Subscribe ID
-		if trackSubscription.maxSubscribeID == trackSubscription.trackSubscribeID {
-			return nil, ErrTooManySubscribes
-		}
 	}
 
 	// Register the Publisher Session
@@ -364,8 +337,8 @@ func (s *SubscriberSession) ReceiveSubscribe() (Parameters, error) {
 }
 
 func (s *SubscriberSession) SendSubscribeOk(expires time.Duration) error {
-	so := SubscribeOkMessage{
-		subscribeID:     s.latestSubscribeMessage.subscribeID,
+	so := moqtmessage.SubscribeOkMessage{
+		SubscribeID:     s.latestSubscribeMessage.SubscribeID,
 		Expires:         expires,
 		GroupOrder:      s.latestSubscribeMessage.GroupOrder,
 		ContentExists:   s.origin.contentExists,
@@ -374,7 +347,7 @@ func (s *SubscriberSession) SendSubscribeOk(expires time.Duration) error {
 		Parameters:      s.latestSubscribeMessage.Parameters,
 	}
 
-	_, err := s.getControlStream().Write(so.serialize())
+	_, err := s.getControlStream().Write(so.Serialize())
 	if err != nil {
 		return err
 	}
@@ -383,14 +356,14 @@ func (s *SubscriberSession) SendSubscribeOk(expires time.Duration) error {
 }
 
 func (s *SubscriberSession) SendSubscribeError(code uint, reason string) error {
-	se := SubscribeError{
-		subscribeID: s.latestSubscribeMessage.subscribeID,
-		Code:        SubscribeErrorCode(code),
+	se := moqterror.SubscribeError{
+		SubscribeID: s.latestSubscribeMessage.SubscribeID,
+		Code:        moqterror.SubscribeErrorCode(code),
 		Reason:      reason,
 		TrackAlias:  s.origin.trackAlias,
 	}
 
-	_, err := s.getControlStream().Write(se.serialize())
+	_, err := s.getControlStream().Write(se.Serialize())
 	if err != nil {
 		return err
 	}
@@ -400,7 +373,7 @@ func (s *SubscriberSession) SendSubscribeError(code uint, reason string) error {
 
 func (s *SubscriberSession) DeliverObjects() {
 	// Add the subscriber session to the publisher's destinations
-	fullTrackNamespace := s.origin.trackNamespace.getFullName()
+	fullTrackNamespace := s.origin.trackNamespace.GetFullName()
 
 	subscribers[fullTrackNamespace].add(s)
 }

@@ -1,6 +1,10 @@
-package moqtransport
+package moqterror
 
-import "github.com/quic-go/quic-go/quicvarint"
+import (
+	"go-moq/moqtransport/moqtmessage"
+
+	"github.com/quic-go/quic-go/quicvarint"
+)
 
 /*
  * Subscribe Error
@@ -11,7 +15,7 @@ type SubscribeError struct {
 	/*
 	 * A number to identify the subscribe session
 	 */
-	subscribeID
+	moqtmessage.SubscribeID
 
 	/*
 	 * Error code
@@ -27,7 +31,7 @@ type SubscribeError struct {
 	 * An number indicates a track
 	 * This is referenced instead of the Track Name and Track Namespace
 	 */
-	TrackAlias
+	moqtmessage.TrackAlias
 }
 
 // Error codes defined at official document
@@ -43,7 +47,7 @@ var SUBSCRIBE_ERROR_REASON = map[SubscribeErrorCode]string{
 	RETRY_TRACK_ALIAS:        "Retry Track Alias",
 }
 
-func (se SubscribeError) serialize() []byte {
+func (se SubscribeError) Serialize() []byte {
 	/*
 	 * Serialize as following formatt
 	 *
@@ -59,10 +63,10 @@ func (se SubscribeError) serialize() []byte {
 	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
 
 	// Append the type of the message
-	b = quicvarint.Append(b, uint64(SUBSCRIBE))
+	b = quicvarint.Append(b, uint64(moqtmessage.SUBSCRIBE))
 
 	// Append Subscriber ID
-	b = quicvarint.Append(b, uint64(se.subscribeID))
+	b = quicvarint.Append(b, uint64(se.SubscribeID))
 
 	// Append Error Code
 	b = quicvarint.Append(b, uint64(se.Code))
@@ -77,7 +81,7 @@ func (se SubscribeError) serialize() []byte {
 	return b
 }
 
-func (se *SubscribeError) deserializeBody(r quicvarint.Reader) error {
+func (se *SubscribeError) DeserializeBody(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 
@@ -86,7 +90,7 @@ func (se *SubscribeError) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	se.subscribeID = subscribeID(num)
+	se.SubscribeID = moqtmessage.SubscribeID(num)
 
 	// Get Error Code
 	num, err = quicvarint.Read(r)
@@ -112,7 +116,7 @@ func (se *SubscribeError) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	se.TrackAlias = TrackAlias(num)
+	se.TrackAlias = moqtmessage.TrackAlias(num)
 
 	return nil
 }

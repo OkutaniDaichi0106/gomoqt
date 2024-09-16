@@ -1,6 +1,8 @@
-package moqtransport
+package moqtmessage
 
 import (
+	"go-moq/moqtransport/moqtversion"
+
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -8,7 +10,7 @@ type ServerSetupMessage struct {
 	/*
 	 * Versions selected by the server
 	 */
-	SelectedVersion Version
+	SelectedVersion moqtversion.Version
 
 	/*
 	 * Setup Parameters
@@ -17,7 +19,7 @@ type ServerSetupMessage struct {
 	Parameters
 }
 
-func (ss ServerSetupMessage) serialize() []byte {
+func (ss ServerSetupMessage) Serialize() []byte {
 	/*
 	 * Serialize as following formatt
 	 *
@@ -58,7 +60,7 @@ func (ss ServerSetupMessage) serialize() []byte {
 // 	return ss.deserializeBody(r)
 // }
 
-func (ss *ServerSetupMessage) deserializeBody(r quicvarint.Reader) error {
+func (ss *ServerSetupMessage) DeserializeBody(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 
@@ -66,9 +68,9 @@ func (ss *ServerSetupMessage) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	ss.SelectedVersion = Version(num)
+	ss.SelectedVersion = moqtversion.Version(num)
 
-	err = ss.Parameters.deserialize(r)
+	err = ss.Parameters.Deserialize(r)
 
 	if err != nil {
 		return err

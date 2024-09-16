@@ -1,4 +1,4 @@
-package moqtransport
+package moqtmessage
 
 import (
 	"github.com/quic-go/quic-go/quicvarint"
@@ -17,7 +17,7 @@ type AnnounceMessage struct {
 	Parameters Parameters
 }
 
-func (a AnnounceMessage) serialize() []byte {
+func (a AnnounceMessage) Serialize() []byte {
 	/*
 	 * Serialize as following formatt
 	 *
@@ -35,7 +35,7 @@ func (a AnnounceMessage) serialize() []byte {
 	b = quicvarint.Append(b, uint64(ANNOUNCE))
 
 	// Append the Track Namespace
-	b = a.TrackNamespace.append(b)
+	b = a.TrackNamespace.Append(b)
 
 	// Serialize the parameters and append it
 	/*
@@ -49,16 +49,16 @@ func (a AnnounceMessage) serialize() []byte {
 	return b
 }
 
-func (a *AnnounceMessage) deserializeBody(r quicvarint.Reader) error {
+func (a *AnnounceMessage) DeserializeBody(r quicvarint.Reader) error {
 	var tns TrackNamespace
-	err := tns.deserialize(r)
+	err := tns.Deserialize(r)
 	if err != nil {
 		return err
 	}
 
 	a.TrackNamespace = tns
 
-	err = a.Parameters.deserialize(r)
+	err = a.Parameters.Deserialize(r)
 	if err != nil {
 		return err
 	}

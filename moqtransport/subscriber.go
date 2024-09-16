@@ -3,6 +3,8 @@ package moqtransport
 import (
 	"context"
 	"errors"
+	"go-moq/moqtransport/moqterror"
+	"go-moq/moqtransport/moqtmessage"
 	"io"
 	"log"
 	"strings"
@@ -17,35 +19,34 @@ type Subscriber struct {
 	 * Subscriber is an extention of Client
 	 */
 	Client
-
 	/***/
 
-	maxSubscribeID subscribeID
+	maxSubscribeID moqtmessage.SubscribeID
 
 	/*
 	 * Map of the Track Alias
 	 * The key is the Track Full Name
 	 */
-	trackAliases map[string]TrackAlias
+	trackAliases map[string]moqtmessage.TrackAlias
 
 	/*
 	 * The number of the subscriptions
 	 * The key is the Subscribe ID
 	 */
-	subscriptions map[subscribeID]SubscribeMessage
+	subscriptions map[moqtmessage.SubscribeID]moqtmessage.SubscribeMessage
 
-	subscribeParameters       Parameters
-	subscribeUpdateParameters Parameters
+	subscribeParameters       moqtmessage.Parameters
+	subscribeUpdateParameters moqtmessage.Parameters
 }
 
-func (s *Subscriber) SubscribeParameters(params Parameters) {
+func (s *Subscriber) SubscribeParameters(params moqtmessage.Parameters) {
 	s.subscribeParameters = params
 }
-func (s *Subscriber) SubscribeUpdateParameters(params Parameters) {
+func (s *Subscriber) SubscribeUpdateParameters(params moqtmessage.Parameters) {
 	s.subscribeUpdateParameters = params
 }
 
-func (s *Subscriber) ConnectAndSetup(url string) (Parameters, error) {
+func (s *Subscriber) ConnectAndSetup(url string) (moqtmessage.Parameters, error) {
 	// Check if the Client specify the Versions
 	if len(s.Versions) < 1 {
 		panic("no versions is specified")
@@ -71,7 +72,7 @@ func (s *Subscriber) ConnectAndSetup(url string) (Parameters, error) {
 	return params, nil
 }
 
-func (s *Subscriber) setup() (Parameters, error) {
+func (s *Subscriber) setup() (moqtmessage.Parameters, error) {
 	var err error
 
 	// Open first stream to send control messages
@@ -95,15 +96,15 @@ func (s *Subscriber) setup() (Parameters, error) {
 
 func (s Subscriber) sendClientSetup() error {
 	// Initialize SETUP_CLIENT csm
-	csm := ClientSetupMessage{
+	csm := moqtmessage.ClientSetupMessage{
 		Versions:   s.Versions,
-		Parameters: make(Parameters),
+		Parameters: make(moqtmessage.Parameters),
 	}
 
 	// Add role parameter
-	csm.AddParameter(ROLE, SUB)
+	csm.AddParameter(moqtmessage.ROLE, moqtmessage.SUB)
 
-	_, err := s.controlStream.Write(csm.serialize())
+	_, err := s.controlStream.Write(csm.Serialize())
 
 	return err
 }
@@ -112,18 +113,18 @@ type SubscribeConfig struct {
 	/*
 	 * 0 is set by default
 	 */
-	SubscriberPriority
+	moqtmessage.SubscriberPriority
 
 	/*
 	 * NOT_SPECIFY (= 0) is set by default
 	 * If not specifyed, the value is set to 0 which means NOT_SPECIFY
 	 */
-	GroupOrder
+	moqtmessage.GroupOrder
 
 	/*
 	 * No value is set by default
 	 */
-	SubscriptionFilter
+	moqtmessage.SubscriptionFilter
 }
 
 func (s *Subscriber) Subscribe(trackNamespace, trackName string, config *SubscribeConfig) error {
@@ -131,10 +132,10 @@ func (s *Subscriber) Subscribe(trackNamespace, trackName string, config *Subscri
 		config = &SubscribeConfig{}
 	}
 	if config.GroupOrder == 0 {
-		config.GroupOrder = ASCENDING
+		config.GroupOrder = moqtmessage.ASCENDING
 	}
 	if config.FilterCode == 0 {
-		config.FilterCode = LATEST_GROUP
+		config.FilterCode = moqtmessage.LATEST_GROUP
 	}
 
 	err := s.sendSubscribe(trackNamespace, trackName, *config)
@@ -158,10 +159,10 @@ func (s *Subscriber) sendSubscribe(trackNamespace, trackName string, config Subs
 	}
 
 	if s.subscribeParameters == nil {
-		s.subscribeParameters = make(Parameters)
+		s.subscribeParameters = make(moqtmessage.Parameters)
 	}
 	if s.trackAliases == nil {
-		s.trackAliases = make(map[string]TrackAlias)
+		s.trackAliases = make(map[string]moqtmessage.TrackAlias)
 	}
 
 	// Check if the track is already subscribed
@@ -170,14 +171,14 @@ func (s *Subscriber) sendSubscribe(trackNamespace, trackName string, config Subs
 
 	// Get new Track Alias, if the Track did not already exist
 	if !ok {
-		trackAlias = TrackAlias(len(s.trackAliases))
+		trackAlias = moqtmessage.TrackAlias(len(s.trackAliases))
 		s.trackAliases[trackNamespace+trackName] = trackAlias
 	}
 
-	subscribeID := subscribeID(len(s.subscriptions))
+	subscribeID := moqtmessage.SubscribeID(len(s.subscriptions))
 
-	sm := SubscribeMessage{
-		subscribeID:        subscribeID,
+	sm := moqtmessage.SubscribeMessage{
+		SubscribeID:        subscribeID,
 		TrackAlias:         trackAlias,
 		TrackNamespace:     trackNamespace,
 		TrackName:          trackName,
@@ -188,7 +189,7 @@ func (s *Subscriber) sendSubscribe(trackNamespace, trackName string, config Subs
 	}
 
 	// Send SUBSCRIBE message
-	_, err = s.controlStream.Write(sm.serialize())
+	_, err = s.controlStream.Write(sm.Serialize())
 	if err != nil {
 		return err
 	}
@@ -201,19 +202,19 @@ func (s *Subscriber) sendSubscribe(trackNamespace, trackName string, config Subs
 
 func (s Subscriber) receiveSubscribeResponce() error {
 	// Receive SUBSCRIBE_OK message or SUBSCRIBE_ERROR message
-	id, err := deserializeHeader(s.controlReader)
+	id, err := moqtmessage.DeserializeMessageID(s.controlReader)
 	if err != nil {
 		return err
 	}
 
 	switch id {
-	case SUBSCRIBE_OK:
-		so := SubscribeOkMessage{}
-		so.deserializeBody(s.controlReader)
+	case moqtmessage.SUBSCRIBE_OK:
+		so := moqtmessage.SubscribeOkMessage{}
+		so.DeserializeBody(s.controlReader)
 		return nil
-	case SUBSCRIBE_ERROR:
-		se := SubscribeError{}
-		se.deserializeBody(s.controlReader)
+	case moqtmessage.SUBSCRIBE_ERROR:
+		se := moqterror.SubscribeError{}
+		se.DeserializeBody(s.controlReader)
 
 		return errors.New(se.Reason)
 	default:
@@ -241,15 +242,15 @@ func (s *Subscriber) AcceptObjects(ctx context.Context) (ObjectStream, error) {
 func newObjectStream(stream webtransport.ReceiveStream) (ObjectStream, error) {
 	reader := quicvarint.NewReader(stream)
 	// Read the first object
-	id, err := deserializeHeader(reader)
+	id, err := moqtobject.DeserializeStreamType(reader)
 	if err != nil {
 		return nil, err
 	}
 	//var dataStream DataStream
 
 	switch id {
-	case STREAM_HEADER_TRACK:
-		sht := StreamHeaderTrack{}
+	case moqtmessage.STREAM_HEADER_TRACK:
+		sht := moqtmessage.StreamHeaderTrack{}
 		err = sht.deserializeBody(reader)
 		if err != nil {
 			return nil, err
@@ -258,13 +259,13 @@ func newObjectStream(stream webtransport.ReceiveStream) (ObjectStream, error) {
 		// Create new data stream
 		stream := &trackStream{
 			header: sht,
-			chunks: make([]GroupChunk, 0, 1<<3),
+			chunks: make([]moqtmessage.GroupChunk, 0, 1<<3),
 			closed: false,
 		}
 
 		go func() {
 			// Read and write chunks to the data stream
-			var chunk GroupChunk
+			var chunk moqtmessage.GroupChunk
 			for {
 				err = chunk.deserializeBody(reader)
 				if err != nil {
@@ -275,7 +276,7 @@ func newObjectStream(stream webtransport.ReceiveStream) (ObjectStream, error) {
 					return
 				}
 				// Check if the chunk is the end of the stream
-				if chunk.StatusCode == END_OF_TRACK {
+				if chunk.StatusCode == moqtmessage.END_OF_TRACK {
 					break
 				}
 
@@ -285,23 +286,23 @@ func newObjectStream(stream webtransport.ReceiveStream) (ObjectStream, error) {
 		}()
 
 		return stream, nil
-	case STREAM_HEADER_PEEP:
-		shp := StreamHeaderPeep{}
+	case moqtmessage.STREAM_HEADER_PEEP:
+		shp := moqtmessage.StreamHeaderPeep{}
 		err = shp.deserializeBody(reader)
 		if err != nil {
 			return nil, err
 		}
 
 		// Create new data stream
-		stream := &peepStream{
+		stream := &moqtmessage.PeepStream{
 			header: shp,
-			chunks: make([]ObjectChunk, 0, 1<<3),
+			chunks: make([]moqtmessage.ObjectChunk, 0, 1<<3),
 			closed: false,
 		}
 
 		go func() {
 			// Read and write chunks to the data stream
-			var chunk ObjectChunk
+			var chunk moqtmessage.ObjectChunk
 			for {
 				err = chunk.deserializeBody(reader)
 				if err != nil {
@@ -313,7 +314,7 @@ func newObjectStream(stream webtransport.ReceiveStream) (ObjectStream, error) {
 					return
 				}
 				// Check if the chunk is the end of the stream
-				if chunk.StatusCode == END_OF_PEEP {
+				if chunk.StatusCode == moqtmessage.END_OF_PEEP {
 					stream.Close()
 					return
 				}
@@ -329,7 +330,7 @@ func newObjectStream(stream webtransport.ReceiveStream) (ObjectStream, error) {
 
 }
 
-func (s *Subscriber) Unsubscribe(id subscribeID) error {
+func (s *Subscriber) Unsubscribe(id moqtmessage.SubscribeID) error {
 	_, ok := s.subscriptions[id]
 	if !ok {
 		return errors.New("subscription not found")
@@ -339,7 +340,7 @@ func (s *Subscriber) Unsubscribe(id subscribeID) error {
 	delete(s.subscriptions, id)
 
 	// Send UNSUBSCRIBE message
-	um := UnsubscribeMessage{
+	um := moqtmessage.UnsubscribeMessage{
 		subscribeID: id,
 	}
 
@@ -351,7 +352,7 @@ func (s *Subscriber) Unsubscribe(id subscribeID) error {
 /*
  * Update the specifyed subscription
  */
-func (s *Subscriber) SubscribeUpdate(id subscribeID, config SubscribeUpdateConfig) error {
+func (s *Subscriber) SubscribeUpdate(id moqtmessage.SubscribeID, config SubscribeUpdateConfig) error {
 	// Retrieve the old subscription
 	old, ok := s.subscriptions[id]
 	if !ok {
@@ -359,7 +360,7 @@ func (s *Subscriber) SubscribeUpdate(id subscribeID, config SubscribeUpdateConfi
 	}
 
 	// Validate filter configuration
-	filter := SubscriptionFilter{
+	filter := moqtmessage.SubscriptionFilter{
 		FilterCode:  old.FilterCode,
 		FilterRange: config.FilterRange,
 	}
@@ -373,69 +374,69 @@ func (s *Subscriber) SubscribeUpdate(id subscribeID, config SubscribeUpdateConfi
 
 	// Check if the updated subscription is narrower than the existing subscription
 	switch old.GroupOrder {
-	case ASCENDING:
+	case moqtmessage.ASCENDING:
 		switch old.FilterCode {
-		case ABSOLUTE_START:
+		case moqtmessage.ABSOLUTE_START:
 			// Check if the update is valid
-			if config.startGroup < old.startGroup {
+			if config.StartGroup < old.StartGroup {
 				return ErrInvalidUpdate
 			}
-			if old.startGroup == config.startGroup && config.startObject < old.startObject {
+			if old.StartGroup == config.StartGroup && config.StartObject < old.StartObject {
 				return ErrInvalidUpdate
 			}
 
-		case ABSOLUTE_RANGE:
+		case moqtmessage.ABSOLUTE_RANGE:
 			// Check if the update is valid
 
 			// Check if the new Start Group ID is larger than old Start Group ID
-			if config.startGroup < old.startGroup {
+			if config.StartGroup < old.StartGroup {
 				return ErrInvalidUpdate
 			}
 
 			// Check if the new Start Object ID is larger than old Start Object ID
-			if old.startGroup == config.startGroup && config.startObject < old.startObject {
+			if old.StartGroup == config.StartGroup && config.StartObject < old.StartObject {
 				return ErrInvalidUpdate
 			}
 
 			// Check if the new End Group ID is smaller than old End Group ID
-			if old.endGroup < config.endGroup {
+			if old.EndGroup < config.EndGroup {
 				return ErrInvalidUpdate
 			}
 
 			// Check if the End Object ID is smaller than old End Object ID
-			if old.startGroup == config.startGroup && old.endObject < config.endObject {
+			if old.StartGroup == config.StartGroup && old.EndObject < config.EndObject {
 				return ErrInvalidUpdate
 			}
 		}
 	case DESCENDING:
 		switch old.FilterCode {
-		case ABSOLUTE_START:
+		case moqtmessage.ABSOLUTE_START:
 			// Check if the update is valid
-			if old.startGroup < config.startGroup {
+			if old.StartGroup < config.StartGroup {
 				return ErrInvalidUpdate
 			}
-			if old.startGroup == config.startGroup && old.startObject < config.startObject {
+			if old.StartGroup == config.StartGroup && old.StartObject < config.StartObject {
 				return ErrInvalidUpdate
 			}
 
-		case ABSOLUTE_RANGE:
+		case moqtmessage.ABSOLUTE_RANGE:
 			// Check if the new Start Group ID is larger than old Start Group ID
-			if old.startGroup < config.startGroup {
+			if old.StartGroup < config.StartGroup {
 				return ErrInvalidUpdate
 			}
 
 			// Check if the new Start Object ID is larger than old Start Object ID
-			if old.startGroup == config.startGroup && old.startObject < config.startObject {
+			if old.StartGroup == config.StartGroup && old.StartObject < config.StartObject {
 				return ErrInvalidUpdate
 			}
 
 			// Check if the new End Group ID is smaller than old End Group ID
-			if config.endGroup < old.endGroup {
+			if config.EndGroup < old.EndGroup {
 				return ErrInvalidUpdate
 			}
 
 			// Check if the End Object ID is smaller than old End Object ID
-			if old.startGroup == config.startGroup && config.endObject < old.endObject {
+			if old.StartGroup == config.StartGroup && config.EndObject < old.EndObject {
 				return ErrInvalidUpdate
 			}
 		}
@@ -455,8 +456,8 @@ func (s *Subscriber) SubscribeUpdate(id subscribeID, config SubscribeUpdateConfi
 /*
  * Send SUBSCRIBE_UPDATE message
  */
-func (s Subscriber) sendSubscribeUpdateMessage(id subscribeID, config SubscribeUpdateConfig) error {
-	sum := SubscribeUpdateMessage{
+func (s Subscriber) sendSubscribeUpdateMessage(id moqtmessage.SubscribeID, config SubscribeUpdateConfig) error {
+	sum := moqtmessage.SubscribeUpdateMessage{
 		subscribeID:        id,
 		FilterRange:        config.FilterRange,
 		SubscriberPriority: config.SubscriberPriority,
@@ -469,9 +470,9 @@ func (s Subscriber) sendSubscribeUpdateMessage(id subscribeID, config SubscribeU
 }
 
 type SubscribeUpdateConfig struct {
-	SubscriberPriority
-	FilterRange
-	Parameters Parameters
+	moqtmessage.SubscriberPriority
+	moqtmessage.FilterRange
+	Parameters moqtmessage.Parameters
 }
 
 func (s Subscriber) CancelAnnounce(trackNamespace ...string) error {
@@ -489,7 +490,7 @@ func (s Subscriber) CancelAnnounce(trackNamespace ...string) error {
 		return errors.New("track not found")
 	}
 
-	acm := AnnounceCancelMessage{
+	acm := moqtmessage.AnnounceCancelMessage{
 		TrackNamespace: trackNamespace,
 	}
 
@@ -502,7 +503,7 @@ func (s Subscriber) GetTrackStatus(trackNamespace, trackName string) error {
 	return s.sendTrackStatusRequest(trackNamespace, trackName)
 }
 func (s Subscriber) sendTrackStatusRequest(trackNamespace, trackName string) error {
-	tsr := TrackStatusRequest{
+	tsr := moqtmessage.TrackStatusRequest{
 		TrackNamespace: trackNamespace,
 		TrackName:      trackName,
 	}

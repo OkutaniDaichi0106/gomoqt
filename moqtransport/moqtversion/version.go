@@ -1,4 +1,4 @@
-package moqtransport
+package moqtversion
 
 import (
 	"errors"
@@ -20,13 +20,13 @@ const (
 )
 
 func DefaultVersion() Version {
-	return Draft05
+	return LATEST
 }
 
 /*
  * Select a newest moqt version from a pair of version sets
  */
-func selectLaterVersion(vs1, vs2 []Version) (Version, error) {
+func SelectLaterVersion(vs1, vs2 []Version) (Version, error) {
 	// Register a slice of Versions as map
 	versionMap := make(map[Version]bool, len(vs1))
 	for _, v := range vs1 {
@@ -58,7 +58,7 @@ func selectLaterVersion(vs1, vs2 []Version) (Version, error) {
 	return latestVersion, nil
 }
 
-func contain(version Version, versions []Version) error {
+func Contain(version Version, versions []Version) error {
 	for _, v := range versions {
 		if v != version {
 			continue

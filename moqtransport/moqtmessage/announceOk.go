@@ -1,4 +1,4 @@
-package moqtransport
+package moqtmessage
 
 import (
 	"github.com/quic-go/quic-go/quicvarint"
@@ -8,7 +8,7 @@ type AnnounceOkMessage struct {
 	TrackNamespace TrackNamespace
 }
 
-func (ao AnnounceOkMessage) serialize() []byte {
+func (ao AnnounceOkMessage) Serialize() []byte {
 	/*
 	 * Serialize as following formatt
 	 *
@@ -24,15 +24,15 @@ func (ao AnnounceOkMessage) serialize() []byte {
 	b = quicvarint.Append(b, uint64(ANNOUNCE_OK))
 
 	// Append the supported versions
-	b = ao.TrackNamespace.append(b)
+	b = ao.TrackNamespace.Append(b)
 
 	return b
 }
 
-func (ao *AnnounceOkMessage) deserializeBody(r quicvarint.Reader) error {
+func (ao *AnnounceOkMessage) DeserializeBody(r quicvarint.Reader) error {
 	// Get Track Namespace
 	var tns TrackNamespace
-	err := tns.deserialize(r)
+	err := tns.Deserialize(r)
 	if err != nil {
 		return err
 	}

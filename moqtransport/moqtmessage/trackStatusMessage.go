@@ -1,73 +1,8 @@
-package moqtransport
+package moqtmessage
 
 import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
-
-type TrackStatusRequest struct {
-	/*
-	 * Track namespace
-	 */
-	TrackNamespace string
-	/*
-	 * Track name
-	 */
-	TrackName string
-}
-
-func (tsr TrackStatusRequest) serialize() []byte {
-	/*
-	 * Serialize as following formatt
-	 *
-	 * TRACK_STATUS_REQUEST Message {
-	 *   Track Namespace ([]byte),
-	 *   Track Name ([]byte),
-	 * }
-	 */
-
-	// TODO?: Chech URI exists
-
-	// TODO: Tune the length of the "b"
-	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
-	// Append the type of the message
-	b = quicvarint.Append(b, uint64(TRACK_STATUS_REQUEST))
-	// Append Track Namespace
-	b = quicvarint.Append(b, uint64(len(tsr.TrackNamespace)))
-	b = append(b, []byte(tsr.TrackNamespace)...)
-	// Append Track Name
-	b = quicvarint.Append(b, uint64(len(tsr.TrackName)))
-	b = append(b, []byte(tsr.TrackName)...)
-
-	return b
-}
-
-func (tsr *TrackStatusRequest) deserializeBody(r quicvarint.Reader) error {
-	var err error
-	var num uint64
-	// Get length of the Track Namespace
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
-	}
-
-	// Get Track Namespace
-	buf := make([]byte, num)
-	_, err = r.Read(buf)
-	if err != nil {
-		return err
-	}
-	tsr.TrackNamespace = string(buf)
-
-	// Get Track Name
-	buf = make([]byte, num)
-	_, err = r.Read(buf)
-	if err != nil {
-		return err
-	}
-	tsr.TrackName = string(buf)
-
-	return nil
-}
 
 type TrackStatusMessage struct {
 	/*
@@ -84,11 +19,11 @@ type TrackStatusMessage struct {
 	 * Status code
 	 */
 	Code         TrackStatusCode
-	LastGroupID  groupID
-	LastObjectID objectID
+	LastGroupID  GroupID
+	LastObjectID ObjectID
 }
 
-func (ts TrackStatusMessage) serialize() []byte {
+func (ts TrackStatusMessage) Serialize() []byte {
 	/*
 	 * Serialize as following formatt
 	 *
@@ -110,7 +45,7 @@ func (ts TrackStatusMessage) serialize() []byte {
 	b = quicvarint.Append(b, uint64(TRACK_STATUS))
 
 	// Append Track Namespace
-	b = ts.TrackNamespace.append(b)
+	b = ts.TrackNamespace.Append(b)
 
 	// Append Track Name
 	b = quicvarint.Append(b, uint64(len(ts.TrackName)))
@@ -128,13 +63,13 @@ func (ts TrackStatusMessage) serialize() []byte {
 	return b
 }
 
-func (ts *TrackStatusMessage) deserializeBody(r quicvarint.Reader) error {
+func (ts *TrackStatusMessage) DeserializeBody(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 
 	// Get Track Namespace
 	var tns TrackNamespace
-	err = tns.deserialize(r)
+	err = tns.Deserialize(r)
 	if err != nil {
 		return err
 	}
@@ -166,14 +101,14 @@ func (ts *TrackStatusMessage) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	ts.LastGroupID = groupID(num)
+	ts.LastGroupID = GroupID(num)
 
 	// Get Last Object ID
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	ts.LastObjectID = objectID(num)
+	ts.LastObjectID = ObjectID(num)
 
 	return nil
 }

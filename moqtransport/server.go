@@ -2,6 +2,10 @@ package moqtransport
 
 import (
 	"errors"
+	"go-moq/moqtransport/moqterror"
+	"go-moq/moqtransport/moqtmessage"
+	"go-moq/moqtransport/moqtversion"
+
 	"log"
 	"net/http"
 	"strings"
@@ -16,7 +20,7 @@ import (
  */
 type Server struct {
 	WebTransportServer *webtransport.Server
-	Versions           []Version
+	Versions           []moqtversion.Version
 	onPublisher        func(PublisherSession)
 	onSubscriber       func(SubscriberSession)
 }
@@ -42,7 +46,7 @@ func (s *Server) Upgrade(w http.ResponseWriter, r *http.Request) (Session, error
 	}
 
 	// Select later version
-	selectedVersion, err := selectLaterVersion(versions, s.Versions)
+	selectedVersion, err := moqtversion.SelectLaterVersion(versions, s.Versions)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +56,7 @@ func (s *Server) Upgrade(w http.ResponseWriter, r *http.Request) (Session, error
 
 	//
 	switch cs.role {
-	case PUB:
+	case moqtmessage.PUB:
 
 		cs.roleHandler = func() {
 			sess := PublisherSession{
@@ -62,20 +66,16 @@ func (s *Server) Upgrade(w http.ResponseWriter, r *http.Request) (Session, error
 			}
 			s.onPublisher(sess)
 		}
-	case SUB:
+	case moqtmessage.SUB:
 
 		cs.roleHandler = func() {
 			sess := SubscriberSession{
 				Session:        cs,
 				controlChannel: make(chan []byte, 1<<4),
-				subscriptions: make(map[TrackAlias]struct {
-					maxSubscribeID   subscribeID
-					trackSubscribeID subscribeID
-				}),
 			}
 			s.onSubscriber(sess)
 		}
-	case PUB_SUB:
+	case moqtmessage.PUB_SUB:
 		//TODO
 	default:
 		return nil, ErrInvalidRole
@@ -101,25 +101,25 @@ func (s *Server) ListenAndServeTLS(cert, key string) error {
 }
 
 func (s Server) GoAway(url string, duration time.Duration) {
-	gm := GoAwayMessage{
+	gm := moqtmessage.GoAwayMessage{
 		NewSessionURI: url,
 	}
 	for trackNamespace, pubSess := range publishers.index {
 		// Send GO_AWAY message to the publisher
 		go func(pubSess *PublisherSession) {
 
-			_, err := pubSess.getControlStream().Write(gm.serialize())
+			_, err := pubSess.getControlStream().Write(gm.Serialize())
 			if err != nil {
 				log.Println(err)
 			}
 
 			time.Sleep(duration)
 
-			err = pubSess.getWebtransportSession().CloseWithError(GetSessionError(ErrGoAwayTimeout))
+			err = pubSess.getWebtransportSession().CloseWithError(GetSessionError(moqterror.ErrGoAwayTimeout))
 			if err != nil {
 				log.Println(err)
 				// Send Terminate Internal Error, if sending prior error was failed
-				err = pubSess.getWebtransportSession().CloseWithError(GetSessionError(ErrTerminationFailed))
+				err = pubSess.getWebtransportSession().CloseWithError(GetSessionError(moqterror.ErrTerminationFailed))
 				if err != nil {
 					log.Println(err)
 				}
@@ -129,7 +129,7 @@ func (s Server) GoAway(url string, duration time.Duration) {
 		// Send GO_AWAY message to the subscribers
 		for _, subSess := range subscribers[trackNamespace].sessions {
 			go func(subSess *SubscriberSession) {
-				_, err := subSess.getControlStream().Write(gm.serialize())
+				_, err := subSess.getControlStream().Write(gm.Serialize())
 				if err != nil {
 					// TODO: Handle this error
 					log.Println(err)
@@ -202,12 +202,12 @@ var announcements announcementIndex
 
 type announcementIndex struct {
 	mu    sync.Mutex
-	index map[string]AnnounceMessage
+	index map[string]moqtmessage.AnnounceMessage
 }
 
-func (ai *announcementIndex) add(am AnnounceMessage) {
+func (ai *announcementIndex) add(am moqtmessage.AnnounceMessage) {
 	if ai.index == nil {
-		ai.index = make(map[string]AnnounceMessage)
+		ai.index = make(map[string]moqtmessage.AnnounceMessage)
 	}
 	announcements.mu.Lock()
 	defer announcements.mu.Unlock()
@@ -221,6 +221,10 @@ func (ai *announcementIndex) delete(trackNamespace string) {
 
 	// Delete
 	delete(ai.index, trackNamespace)
+}
+
+func GetSessionError(err moqterror.TerminateError) (webtransport.SessionErrorCode, string) {
+	return webtransport.SessionErrorCode(err.Code()), err.Error()
 }
 
 var ErrUnsuitableRole = errors.New("the role cannot perform the operation ")

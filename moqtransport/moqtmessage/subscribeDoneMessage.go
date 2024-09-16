@@ -1,4 +1,4 @@
-package moqtransport
+package moqtmessage
 
 import (
 	"errors"
@@ -10,15 +10,15 @@ type SubscribeDoneMessage struct {
 	/*
 	 * A number to identify the subscribe session
 	 */
-	subscribeID
+	SubscribeID
 	StatusCode    SubscribeDoneStatusCode
 	Reason        string
 	ContentExists bool
-	FinalGroupID  groupID
-	FinalObjectID objectID
+	FinalGroupID  GroupID
+	FinalObjectID ObjectID
 }
 
-func (sd SubscribeDoneMessage) serialize() []byte {
+func (sd SubscribeDoneMessage) Serialize() []byte {
 	/*
 	 * Serialize as following formatt
 	 *
@@ -38,7 +38,7 @@ func (sd SubscribeDoneMessage) serialize() []byte {
 	b = quicvarint.Append(b, uint64(SUBSCRIBE_DONE))
 
 	// Append Subscirbe ID
-	b = quicvarint.Append(b, uint64(sd.subscribeID))
+	b = quicvarint.Append(b, uint64(sd.SubscribeID))
 
 	// Append Status Code
 	b = quicvarint.Append(b, uint64(sd.StatusCode))
@@ -62,20 +62,7 @@ func (sd SubscribeDoneMessage) serialize() []byte {
 	return b
 }
 
-// func (sd *SubscribeDoneMessage) deserialize(r quicvarint.Reader) error {
-// 	// Get Message ID and check it
-// 	id, err := deserializeHeader(r)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	if id != SUBSCRIBE_DONE {
-// 		return errors.New("unexpected message")
-// 	}
-
-// 	return sd.deserializeBody(r)
-// }
-
-func (sd *SubscribeDoneMessage) deserializeBody(r quicvarint.Reader) error {
+func (sd *SubscribeDoneMessage) DeserializeBody(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 
@@ -84,7 +71,7 @@ func (sd *SubscribeDoneMessage) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	sd.subscribeID = subscribeID(num)
+	sd.SubscribeID = SubscribeID(num)
 
 	// Get Subscribe ID
 	num, err = quicvarint.Read(r)
@@ -125,14 +112,14 @@ func (sd *SubscribeDoneMessage) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	sd.FinalGroupID = groupID(num)
+	sd.FinalGroupID = GroupID(num)
 
 	// Get Largest Object ID
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	sd.FinalObjectID = objectID(num)
+	sd.FinalObjectID = ObjectID(num)
 
 	return nil
 }

@@ -1,4 +1,4 @@
-package moqtransport
+package moqtmessage
 
 import (
 	"errors"
@@ -10,7 +10,7 @@ type SubscribeUpdateMessage struct {
 	/*
 	 * A number to identify the subscribe session
 	 */
-	subscribeID
+	SubscribeID
 
 	/*
 	 * Filter conditions
@@ -33,7 +33,7 @@ type SubscribeUpdateMessage struct {
 	Parameters Parameters
 }
 
-func (su SubscribeUpdateMessage) serialize() []byte {
+func (su SubscribeUpdateMessage) Serialize() []byte {
 	/*
 	 * Serialize as following formatt
 	 *
@@ -56,15 +56,15 @@ func (su SubscribeUpdateMessage) serialize() []byte {
 	// Append the type of the message
 	b = quicvarint.Append(b, uint64(SUBSCRIBE_UPDATE))
 	// Append the Subscriber ID
-	b = quicvarint.Append(b, uint64(su.subscribeID))
+	b = quicvarint.Append(b, uint64(su.SubscribeID))
 	// Append the Start Group ID
-	b = quicvarint.Append(b, uint64(su.startGroup))
+	b = quicvarint.Append(b, uint64(su.StartGroup))
 	// Append the Start Object ID
-	b = quicvarint.Append(b, uint64(su.startObject))
+	b = quicvarint.Append(b, uint64(su.StartObject))
 	// Append the End Group ID
-	b = quicvarint.Append(b, uint64(su.endGroup))
+	b = quicvarint.Append(b, uint64(su.EndGroup))
 	// Append the End Object ID
-	b = quicvarint.Append(b, uint64(su.endObject))
+	b = quicvarint.Append(b, uint64(su.EndObject))
 	// Append the Publisher Priority
 	b = quicvarint.Append(b, uint64(su.SubscriberPriority))
 	// Append the Subscribe Update Priority
@@ -86,7 +86,7 @@ func (su SubscribeUpdateMessage) serialize() []byte {
 // 	return su.deserializeBody(r)
 // }
 
-func (su *SubscribeUpdateMessage) deserializeBody(r quicvarint.Reader) error {
+func (su *SubscribeUpdateMessage) DeserializeBody(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 
@@ -95,35 +95,35 @@ func (su *SubscribeUpdateMessage) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	su.subscribeID = subscribeID(num)
+	su.SubscribeID = SubscribeID(num)
 
 	// Get Start Group ID
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	su.startGroup = groupID(num)
+	su.StartGroup = GroupID(num)
 
 	// Get Start Object ID
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	su.startObject = objectID(num)
+	su.StartObject = ObjectID(num)
 
 	// Get End Group ID
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	su.endGroup = groupID(num)
+	su.EndGroup = GroupID(num)
 
 	// Get End Object ID
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	su.endObject = objectID(num)
+	su.EndObject = ObjectID(num)
 
 	// Get Subscriber Priority
 	num, err = quicvarint.Read(r)
@@ -136,7 +136,7 @@ func (su *SubscribeUpdateMessage) deserializeBody(r quicvarint.Reader) error {
 	su.SubscriberPriority = SubscriberPriority(num)
 
 	// Get Subscribe Update Parameters
-	err = su.Parameters.deserialize(r)
+	err = su.Parameters.Deserialize(r)
 	if err != nil {
 		return err
 	}

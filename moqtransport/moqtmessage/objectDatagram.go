@@ -1,4 +1,4 @@
-package moqtransport
+package moqtmessage
 
 import (
 	"github.com/quic-go/quic-go/quicvarint"
@@ -9,13 +9,13 @@ import (
  * and must be the only message on the unidirectional stream
  */
 type ObjectDatagram struct {
-	subscribeID
+	SubscribeID
 	TrackAlias
 	GroupChunk
 	PublisherPriority
 }
 
-func (od ObjectDatagram) serialize() []byte {
+func (od ObjectDatagram) Serialize() []byte {
 	/*
 	 * Serialize as following formatt
 	 *
@@ -37,13 +37,13 @@ func (od ObjectDatagram) serialize() []byte {
 	// Append the type of the message
 	b = quicvarint.Append(b, uint64(OBJECT_DATAGRAM))
 	// Append Subscribe ID
-	b = quicvarint.Append(b, uint64(od.subscribeID))
+	b = quicvarint.Append(b, uint64(od.SubscribeID))
 	// Append Track Alias
 	b = quicvarint.Append(b, uint64(od.TrackAlias))
 	// Append Group ID
-	b = quicvarint.Append(b, uint64(od.groupID))
+	b = quicvarint.Append(b, uint64(od.GroupID))
 	// Append Object ID
-	b = quicvarint.Append(b, uint64(od.objectID))
+	b = quicvarint.Append(b, uint64(od.ObjectID))
 	// Append Publisher Priority
 	b = quicvarint.Append(b, uint64(od.PublisherPriority))
 	// Append Object Payload Length
@@ -72,7 +72,7 @@ func (od ObjectDatagram) serialize() []byte {
 // 	return od.deserializeBody(r)
 // }
 
-func (od *ObjectDatagram) deserializeBody(r quicvarint.Reader) error {
+func (od *ObjectDatagram) DeserializeBody(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 
@@ -81,7 +81,7 @@ func (od *ObjectDatagram) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	od.subscribeID = subscribeID(num)
+	od.SubscribeID = SubscribeID(num)
 
 	// Get Track Alias
 	num, err = quicvarint.Read(r)
@@ -97,14 +97,14 @@ func (od *ObjectDatagram) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	od.GroupChunk.groupID = groupID(num)
+	od.GroupChunk.GroupID = GroupID(num)
 
 	// Get Object ID
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	od.GroupChunk.objectID = objectID(num)
+	od.GroupChunk.ObjectID = ObjectID(num)
 
 	// Get Publisher Priority
 	num, err = quicvarint.Read(r)
@@ -143,6 +143,6 @@ func (ObjectDatagram) forwardingPreference() ForwardingPreference {
 	return DATAGRAM
 }
 
-func (od ObjectDatagram) subscriptionID() subscribeID {
-	return od.subscribeID
+func (od ObjectDatagram) subscriptionID() SubscribeID {
+	return od.SubscribeID
 }

@@ -1,4 +1,4 @@
-package moqtransport
+package moqtmessage
 
 import (
 	"errors"
@@ -10,7 +10,7 @@ type StreamHeaderPeep struct {
 	/*
 	 * A number to identify the subscribe session
 	 */
-	id subscribeID
+	SubscribeID
 
 	/*
 	 * An number indicates a track
@@ -21,12 +21,12 @@ type StreamHeaderPeep struct {
 	/*
 	 * Group ID
 	 */
-	groupID
+	GroupID
 
 	/*
 	 * Peep ID
 	 */
-	peepID
+	PeepID
 
 	/*
 	 * An 8 bit integer indicating the publisher's priority for the object
@@ -34,7 +34,7 @@ type StreamHeaderPeep struct {
 	PublisherPriority
 }
 
-func (shp StreamHeaderPeep) serialize() []byte {
+func (shp StreamHeaderPeep) Serialize() []byte {
 	/*
 	 * Serialize as following formatt
 	 *
@@ -53,18 +53,18 @@ func (shp StreamHeaderPeep) serialize() []byte {
 	// Append the type of the message
 	b = quicvarint.Append(b, uint64(STREAM_HEADER_PEEP))
 	// Append the Subscriber ID
-	b = quicvarint.Append(b, uint64(shp.id))
+	b = quicvarint.Append(b, uint64(shp.SubscribeID))
 	// Append the Track Alias
 	b = quicvarint.Append(b, uint64(shp.TrackAlias))
 	// Append the Peep ID
-	b = quicvarint.Append(b, uint64(shp.peepID))
+	b = quicvarint.Append(b, uint64(shp.PeepID))
 	// Append the Publisher Priority
 	b = quicvarint.Append(b, uint64(shp.PublisherPriority))
 
 	return b
 }
 
-func (shp *StreamHeaderPeep) deserializeBody(r quicvarint.Reader) error {
+func (shp *StreamHeaderPeep) DeserializeStreamHeader(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 
@@ -73,7 +73,7 @@ func (shp *StreamHeaderPeep) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	shp.id = subscribeID(num)
+	shp.SubscribeID = SubscribeID(num)
 
 	// Get Subscribe ID
 	num, err = quicvarint.Read(r)
@@ -87,7 +87,7 @@ func (shp *StreamHeaderPeep) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	shp.peepID = peepID(num)
+	shp.PeepID = PeepID(num)
 
 	// Get Subscribe ID
 	num, err = quicvarint.Read(r)
@@ -106,15 +106,44 @@ func (StreamHeaderPeep) forwardingPreference() ForwardingPreference {
 	return PEEP
 }
 
-func (shp StreamHeaderPeep) subscriptionID() subscribeID {
-	return shp.id
+func (shp StreamHeaderPeep) subscriptionID() SubscribeID {
+	return shp.SubscribeID
+}
+
+func (sht StreamHeaderPeep) newChunkStream() ChunkStream {
+	return chunkStreamPeep{}
+}
+
+type chunkStreamPeep struct {
+	chunkCounter uint64
+}
+
+func (csp chunkStreamPeep) CreateChunk(payload []byte) Chunk {
+	chunk := ObjectChunk{
+		ObjectID: ObjectID(csp.chunkCounter),
+		Payload:  payload,
+	}
+
+	csp.chunkCounter++
+
+	return &chunk
+}
+
+func (csp chunkStreamPeep) CreateFinalChunk() Chunk {
+	chunk := ObjectChunk{
+		ObjectID:   ObjectID(csp.chunkCounter),
+		Payload:    []byte{},
+		StatusCode: END_OF_TRACK,
+	}
+
+	return &chunk
 }
 
 type ObjectChunk struct {
 	/*
 	 * Object ID
 	 */
-	objectID
+	ObjectID
 
 	Payload []byte
 
@@ -126,7 +155,7 @@ type ObjectChunk struct {
 	StatusCode ObjectStatusCode
 }
 
-func (oc ObjectChunk) serialize() []byte {
+func (oc ObjectChunk) Serialize() []byte {
 	/*
 	 * Serialize as following formatt
 	 *
@@ -143,7 +172,7 @@ func (oc ObjectChunk) serialize() []byte {
 	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
 
 	// Append Subscribe ID
-	b = quicvarint.Append(b, uint64(oc.objectID))
+	b = quicvarint.Append(b, uint64(oc.ObjectID))
 
 	// Append length of the Payload
 	b = quicvarint.Append(b, uint64(len(oc.Payload)))
@@ -159,7 +188,7 @@ func (oc ObjectChunk) serialize() []byte {
 	return b
 }
 
-func (oc *ObjectChunk) deserializeBody(r quicvarint.Reader) error {
+func (oc *ObjectChunk) DeserializeBody(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 
@@ -168,7 +197,7 @@ func (oc *ObjectChunk) deserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	oc.objectID = objectID(num)
+	oc.ObjectID = ObjectID(num)
 
 	// Get length of the Object Payload
 	num, err = quicvarint.Read(r)
@@ -194,4 +223,8 @@ func (oc *ObjectChunk) deserializeBody(r quicvarint.Reader) error {
 	}
 
 	return nil
+}
+
+func (ObjectChunk) chunkType() string {
+	return "object"
 }

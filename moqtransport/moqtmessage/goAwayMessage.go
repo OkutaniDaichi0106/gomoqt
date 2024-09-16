@@ -1,4 +1,4 @@
-package moqtransport
+package moqtmessage
 
 import "github.com/quic-go/quic-go/quicvarint"
 
@@ -10,7 +10,7 @@ type GoAwayMessage struct {
 	NewSessionURI string
 }
 
-func (ga GoAwayMessage) serialize() []byte {
+func (ga GoAwayMessage) Serialize() []byte {
 	/*
 	 * Serialize as following formatt
 	 *
@@ -32,7 +32,7 @@ func (ga GoAwayMessage) serialize() []byte {
 	return b
 }
 
-func (ga *GoAwayMessage) deserializeBody(r quicvarint.Reader) error {
+func (ga *GoAwayMessage) DeserializeBody(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 

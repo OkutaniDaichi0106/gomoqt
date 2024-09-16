@@ -1,22 +1,23 @@
-package moqtmessage
+package moqtransport
 
 import (
 	"errors"
+	"go-moq/moqtransport/moqtmessage"
 	"io"
 	"sync"
 )
 
 type ObjectStream interface {
 	io.Reader
-	Header() StreamHeader
+	Header() moqtmessage.StreamHeader
 	// CancelReader()
 	// SetReadDeadline(time.Time) error
 }
 
 type trackStream struct {
 	mu     sync.RWMutex
-	header StreamHeaderTrack
-	chunks []GroupChunk
+	header moqtmessage.StreamHeaderTrack
+	chunks []moqtmessage.GroupChunk
 	closed bool
 }
 
@@ -53,11 +54,11 @@ func (stream *trackStream) Read(buf []byte) (int, error) {
 	return n, nil
 }
 
-func (stream *trackStream) Header() StreamHeader {
+func (stream *trackStream) Header() moqtmessage.StreamHeader {
 	return &stream.header
 }
 
-func (stream *trackStream) write(chunk GroupChunk) {
+func (stream *trackStream) write(chunk moqtmessage.GroupChunk) {
 	stream.mu.Lock()
 	defer stream.mu.Unlock()
 
@@ -72,8 +73,8 @@ func (stream *trackStream) write(chunk GroupChunk) {
 
 type peepStream struct {
 	mu     sync.RWMutex
-	header StreamHeaderPeep
-	chunks []ObjectChunk
+	header moqtmessage.StreamHeaderPeep
+	chunks []moqtmessage.ObjectChunk
 	closed bool
 }
 
@@ -111,11 +112,11 @@ func (stream *peepStream) Read(buf []byte) (int, error) {
 	return n, nil
 }
 
-func (stream *peepStream) Header() StreamHeader {
+func (stream *peepStream) Header() moqtmessage.StreamHeader {
 	return &stream.header
 }
 
-func (stream *peepStream) write(chunk ObjectChunk) {
+func (stream *peepStream) write(chunk moqtmessage.ObjectChunk) {
 	stream.mu.Lock()
 	defer stream.mu.Unlock()
 

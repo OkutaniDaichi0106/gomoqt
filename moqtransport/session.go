@@ -143,8 +143,8 @@ type PublisherSession struct {
 	trackAlias moqtmessage.TrackAlias
 
 	contentExists   bool
-	largestGroupID  groupID
-	largestObjectID objectID
+	largestGroupID  moqtmessage.GroupID
+	largestObjectID moqtmessage.ObjectID
 }
 
 func (s *PublisherSession) ReceiveAnnounce() (moqtmessage.Parameters, error) {

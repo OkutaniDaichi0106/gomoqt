@@ -5,7 +5,6 @@ import (
 	"errors"
 	"go-moq/moqtransport/moqterror"
 	"go-moq/moqtransport/moqtmessage"
-	"go-moq/moqtransport/moqtobject"
 	"log"
 	"strings"
 
@@ -161,11 +160,11 @@ func (p Publisher) SendObjectDatagram(od moqtmessage.ObjectDatagram) error { //T
 	return p.session.SendDatagram(od.Serialize())
 }
 
-func (p Publisher) SendSingleObject(priority moqtobject.PublisherPriority, payload []byte) <-chan error {
+func (p Publisher) SendSingleObject(priority moqtmessage.PublisherPriority, payload []byte) <-chan error {
 	dataCh := make(chan []byte, 1)
 	defer close(dataCh)
 
-	header := moqtobject.StreamHeaderTrack{
+	header := moqtmessage.StreamHeaderTrack{
 		//subscribeID: ,
 		//TrackAlias: ,
 		PublisherPriority: priority,
@@ -176,8 +175,8 @@ func (p Publisher) SendSingleObject(priority moqtobject.PublisherPriority, paylo
 	return p.sendMultipleObject(&header, dataCh)
 }
 
-func (p Publisher) SendMultipleObject(priority moqtobject.PublisherPriority, payload <-chan []byte) <-chan error {
-	header := moqtobject.StreamHeaderTrack{
+func (p Publisher) SendMultipleObject(priority moqtmessage.PublisherPriority, payload <-chan []byte) <-chan error {
+	header := moqtmessage.StreamHeaderTrack{
 		//subscribeID: ,
 		//TrackAlias: ,
 		PublisherPriority: priority,
@@ -185,7 +184,7 @@ func (p Publisher) SendMultipleObject(priority moqtobject.PublisherPriority, pay
 	return p.sendMultipleObject(&header, payload) // TODO:
 }
 
-func (p *Publisher) sendMultipleObject(header moqtobject.StreamHeader, payloadCh <-chan []byte) <-chan error {
+func (p *Publisher) sendMultipleObject(header moqtmessage.StreamHeader, payloadCh <-chan []byte) <-chan error {
 
 	errCh := make(chan error, 1)
 	stream, err := p.session.OpenUniStream()
@@ -203,7 +202,7 @@ func (p *Publisher) sendMultipleObject(header moqtobject.StreamHeader, payloadCh
 		}
 
 		// Get chunk stream to get chunks
-		chunkStream := moqtobject.NewChunkStream(header)
+		chunkStream := moqtmessage.NewChunkStream(header)
 		var chunk moqtmessage.Chunk
 		for payload := range payloadCh {
 			chunk = chunkStream.CreateChunk(payload)

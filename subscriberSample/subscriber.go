@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"go-moq/moqtransport"
+	"go-moq/moqtransport/moqtversion"
 	"io"
 	"log"
 )
@@ -18,7 +19,7 @@ func main() {
 		TLSConfig: &tls.Config{
 			InsecureSkipVerify: true,
 		},
-		Versions: []moqtransport.Version{moqtransport.LATEST},
+		Versions: []moqtversion.Version{moqtversion.LATEST},
 	}
 
 	// Set subscriber

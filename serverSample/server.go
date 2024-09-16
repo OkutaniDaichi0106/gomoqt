@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"go-moq/moqtransport"
+	"go-moq/moqtransport/moqtversion"
 	"log"
 	"net/http"
 	"time"
@@ -21,7 +22,7 @@ func main() {
 	}
 	ms := moqtransport.Server{
 		WebTransportServer: &ws,
-		Versions:           []moqtransport.Version{moqtransport.LATEST},
+		Versions:           []moqtversion.Version{moqtversion.LATEST},
 	}
 
 	// Handle the Publisher

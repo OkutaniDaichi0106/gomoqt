@@ -83,7 +83,7 @@ type FilterRange struct {
 	EndObject ObjectID
 }
 
-func (sf SubscriptionFilter) isOK() error { //TODO
+func (sf SubscriptionFilter) IsOK() error { //TODO
 	switch sf.FilterCode {
 	case LATEST_GROUP, LATEST_OBJECT, ABSOLUTE_START:
 		return nil

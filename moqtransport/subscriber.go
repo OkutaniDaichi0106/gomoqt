@@ -153,7 +153,7 @@ func (s *Subscriber) Subscribe(trackNamespace, trackName string, config *Subscri
 
 func (s *Subscriber) sendSubscribe(trackNamespace, trackName string, config SubscribeConfig) error {
 	// Check if the Filter is valid
-	err := config.SubscriptionFilter.isOK()
+	err := config.SubscriptionFilter.IsOK()
 	if err != nil {
 		return err
 	}
@@ -242,7 +242,7 @@ func (s *Subscriber) AcceptObjects(ctx context.Context) (ObjectStream, error) {
 func newObjectStream(stream webtransport.ReceiveStream) (ObjectStream, error) {
 	reader := quicvarint.NewReader(stream)
 	// Read the first object
-	id, err := moqtobject.DeserializeStreamType(reader)
+	id, err := moqtmessage.DeserializeStreamType(reader)
 	if err != nil {
 		return nil, err
 	}
@@ -251,7 +251,7 @@ func newObjectStream(stream webtransport.ReceiveStream) (ObjectStream, error) {
 	switch id {
 	case moqtmessage.STREAM_HEADER_TRACK:
 		sht := moqtmessage.StreamHeaderTrack{}
-		err = sht.deserializeBody(reader)
+		err = sht.DeserializeStreamHeader(reader)
 		if err != nil {
 			return nil, err
 		}
@@ -267,7 +267,7 @@ func newObjectStream(stream webtransport.ReceiveStream) (ObjectStream, error) {
 			// Read and write chunks to the data stream
 			var chunk moqtmessage.GroupChunk
 			for {
-				err = chunk.deserializeBody(reader)
+				err = chunk.DeserializeBody(reader)
 				if err != nil {
 					if err == io.EOF {
 						break
@@ -288,13 +288,13 @@ func newObjectStream(stream webtransport.ReceiveStream) (ObjectStream, error) {
 		return stream, nil
 	case moqtmessage.STREAM_HEADER_PEEP:
 		shp := moqtmessage.StreamHeaderPeep{}
-		err = shp.deserializeBody(reader)
+		err = shp.DeserializeStreamHeader(reader)
 		if err != nil {
 			return nil, err
 		}
 
 		// Create new data stream
-		stream := &moqtmessage.PeepStream{
+		stream := &peepStream{
 			header: shp,
 			chunks: make([]moqtmessage.ObjectChunk, 0, 1<<3),
 			closed: false,
@@ -304,7 +304,7 @@ func newObjectStream(stream webtransport.ReceiveStream) (ObjectStream, error) {
 			// Read and write chunks to the data stream
 			var chunk moqtmessage.ObjectChunk
 			for {
-				err = chunk.deserializeBody(reader)
+				err = chunk.DeserializeBody(reader)
 				if err != nil {
 					if err == io.EOF {
 						stream.Close()
@@ -341,10 +341,10 @@ func (s *Subscriber) Unsubscribe(id moqtmessage.SubscribeID) error {
 
 	// Send UNSUBSCRIBE message
 	um := moqtmessage.UnsubscribeMessage{
-		subscribeID: id,
+		SubscribeID: id,
 	}
 
-	_, err := s.controlStream.Write(um.serialize())
+	_, err := s.controlStream.Write(um.Serialize())
 
 	return err
 }
@@ -365,7 +365,7 @@ func (s *Subscriber) SubscribeUpdate(id moqtmessage.SubscribeID, config Subscrib
 		FilterRange: config.FilterRange,
 	}
 
-	err := filter.isOK()
+	err := filter.IsOK()
 	if err != nil {
 		return err
 	}
@@ -408,7 +408,7 @@ func (s *Subscriber) SubscribeUpdate(id moqtmessage.SubscribeID, config Subscrib
 				return ErrInvalidUpdate
 			}
 		}
-	case DESCENDING:
+	case moqtmessage.DESCENDING:
 		switch old.FilterCode {
 		case moqtmessage.ABSOLUTE_START:
 			// Check if the update is valid
@@ -458,13 +458,13 @@ func (s *Subscriber) SubscribeUpdate(id moqtmessage.SubscribeID, config Subscrib
  */
 func (s Subscriber) sendSubscribeUpdateMessage(id moqtmessage.SubscribeID, config SubscribeUpdateConfig) error {
 	sum := moqtmessage.SubscribeUpdateMessage{
-		subscribeID:        id,
+		SubscribeID:        id,
 		FilterRange:        config.FilterRange,
 		SubscriberPriority: config.SubscriberPriority,
 		Parameters:         config.Parameters,
 	}
 	// Send SUBSCRIBE_UPDATE message
-	_, err := s.controlStream.Write(sum.serialize())
+	_, err := s.controlStream.Write(sum.Serialize())
 
 	return err
 }
@@ -494,7 +494,7 @@ func (s Subscriber) CancelAnnounce(trackNamespace ...string) error {
 		TrackNamespace: trackNamespace,
 	}
 
-	_, err := s.controlStream.Write(acm.serialize())
+	_, err := s.controlStream.Write(acm.Serialize())
 	return err
 }
 
@@ -508,7 +508,7 @@ func (s Subscriber) sendTrackStatusRequest(trackNamespace, trackName string) err
 		TrackName:      trackName,
 	}
 
-	_, err := s.controlStream.Write(tsr.serialize())
+	_, err := s.controlStream.Write(tsr.Serialize())
 
 	return err
 }

@@ -8,15 +8,14 @@ import (
 type Version int
 
 const (
-	INVALID_VERSION Version = 0x0
-	Draft01         Version = 0xff000001 /* Not implemented */
-	Draft02         Version = 0xff000002 /* Not implemented */
-	Draft03         Version = 0xff000003 /* Not implemented */
-	Draft04         Version = 0xff000004 /* Not implemented */
-	Draft05         Version = 0xff000005 /* Partly Implemented */
-	LATEST          Version = 0x00ffffff /* Partly Implemented */
-	EXPERIMENTAL    Version = 0xffffffff /* Use For Development */
-	Stable01        Version = 0x00000001 /* Not implemented */
+	Draft01      Version = 0xff000001 /* Not implemented */
+	Draft02      Version = 0xff000002 /* Not implemented */
+	Draft03      Version = 0xff000003 /* Not implemented */
+	Draft04      Version = 0xff000004 /* Not implemented */
+	Draft05      Version = 0xff000005 /* Partly Implemented */
+	LATEST       Version = 0x00ffffff /* Partly Implemented */
+	EXPERIMENTAL Version = 0xffffffff /* Use For Development */
+	Stable01     Version = 0x00000001 /* Not implemented */
 )
 
 func DefaultVersion() Version {
@@ -42,7 +41,7 @@ func SelectLaterVersion(vs1, vs2 []Version) (Version, error) {
 	}
 	if len(commonVersions) < 1 {
 		// Throw an error if there are no common versions between the sets
-		return INVALID_VERSION, errors.New("no valid versions")
+		return 0, errors.New("no valid versions")
 	}
 
 	// Set the first Version as the latest version

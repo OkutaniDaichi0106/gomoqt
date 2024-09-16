@@ -2,7 +2,6 @@ package moqtransport
 
 import (
 	"errors"
-	"go-moq/moqtransport/moqterror"
 	"go-moq/moqtransport/moqtmessage"
 	"go-moq/moqtransport/moqtversion"
 
@@ -115,11 +114,11 @@ func (s Server) GoAway(url string, duration time.Duration) {
 
 			time.Sleep(duration)
 
-			err = pubSess.getWebtransportSession().CloseWithError(GetSessionError(moqterror.ErrGoAwayTimeout))
+			err = pubSess.getWebtransportSession().CloseWithError(GetSessionError(ErrGoAwayTimeout))
 			if err != nil {
 				log.Println(err)
 				// Send Terminate Internal Error, if sending prior error was failed
-				err = pubSess.getWebtransportSession().CloseWithError(GetSessionError(moqterror.ErrTerminationFailed))
+				err = pubSess.getWebtransportSession().CloseWithError(GetSessionError(ErrTerminationFailed))
 				if err != nil {
 					log.Println(err)
 				}
@@ -223,7 +222,7 @@ func (ai *announcementIndex) delete(trackNamespace string) {
 	delete(ai.index, trackNamespace)
 }
 
-func GetSessionError(err moqterror.TerminateError) (webtransport.SessionErrorCode, string) {
+func GetSessionError(err TerminateError) (webtransport.SessionErrorCode, string) {
 	return webtransport.SessionErrorCode(err.Code()), err.Error()
 }
 

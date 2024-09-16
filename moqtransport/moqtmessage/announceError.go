@@ -1,62 +1,21 @@
-package moqterror
+package moqtmessage
 
 import (
-	"go-moq/moqtransport/moqtmessage"
-
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-var (
-	ErrAnnounceFailed = AnnounceInternalError{}
-)
-
-/*
- * Error codes for annoncement failure
- *
- * The following error codes are defined in the official document
- * INTERNAL_ERROR
- * INVALID_RANGE
- * RETRY_TRACK_ALIAS
- */
-const (
-	ANNOUNCE_INTERNAL_ERROR            AnnounceErrorCode = 0x0 // Original
-	ANNOUNCE_DUPLICATE_TRACK_NAMESPACE AnnounceErrorCode = 0x1 // Original
-)
-
-type AnnounceError interface {
-	error
-	Code() AnnounceErrorCode
-}
-
-type AnnounceInternalError struct {
-}
-
-func (AnnounceInternalError) Error() string {
-	return "internal error"
-}
-
-func (AnnounceInternalError) Code() AnnounceErrorCode {
-	return ANNOUNCE_INTERNAL_ERROR
-}
-
-type AnnounceDuplicateTrackNamespace struct {
-}
-
-func (AnnounceDuplicateTrackNamespace) Error() string {
-	return "duplicate track namespace"
-}
-
-func (AnnounceDuplicateTrackNamespace) Code() AnnounceErrorCode {
-	return ANNOUNCE_DUPLICATE_TRACK_NAMESPACE
-}
-
 type AnnounceErrorCode int
+
+const (
+	ANNOUNCE_INTERNAL_ERROR   AnnounceErrorCode = 0x0 // Original
+	DUPLICATE_TRACK_NAMESPACE AnnounceErrorCode = 0x1 // Original
+)
 
 /*
  * Subscribers sends ANNOUNCE_ERROR control message for tracks that failed authorization
  */
 type AnnounceErrorMessage struct {
-	TrackNamespace moqtmessage.TrackNamespace
+	TrackNamespace TrackNamespace
 	Code           AnnounceErrorCode
 	Reason         string
 }
@@ -76,7 +35,7 @@ func (ae AnnounceErrorMessage) Serialize() []byte {
 	b := make([]byte, 0, 1<<8) /* Byte slice storing whole data */
 
 	// Append the type of the message
-	b = quicvarint.Append(b, uint64(moqtmessage.ANNOUNCE_ERROR))
+	b = quicvarint.Append(b, uint64(ANNOUNCE_ERROR))
 
 	// Append Subscriber ID
 	b = ae.TrackNamespace.Append(b)
@@ -96,7 +55,7 @@ func (ae *AnnounceErrorMessage) DeserializeBody(r quicvarint.Reader) error {
 
 	// Get Track Namespace
 	if ae.TrackNamespace == nil {
-		ae.TrackNamespace = make(moqtmessage.TrackNamespace, 0, 1)
+		ae.TrackNamespace = make(TrackNamespace, 0, 1)
 	}
 	err := ae.TrackNamespace.Deserialize(r)
 	if err != nil {

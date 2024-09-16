@@ -1,4 +1,4 @@
-package moqterror
+package moqtransport
 
 type TerminateErrorCode int
 

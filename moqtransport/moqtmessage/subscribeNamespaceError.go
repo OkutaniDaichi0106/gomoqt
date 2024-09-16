@@ -1,17 +1,16 @@
-package moqterror
+package moqtmessage
 
 import (
-	"go-moq/moqtransport/moqtmessage"
-
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type SubscribeNamespaceError struct {
-	TrackNamespacePrefix moqtmessage.TrackNamespacePrefix
+	TrackNamespacePrefix TrackNamespacePrefix
 	Code                 SubscribeNamespaceErrorCode
 	Reason               string
 }
-type SubscribeNamespaceErrorCode int
+
+type SubscribeNamespaceErrorCode uint
 
 func (sne SubscribeNamespaceError) Serialize() []byte {
 	/*
@@ -26,7 +25,7 @@ func (sne SubscribeNamespaceError) Serialize() []byte {
 	b := make([]byte, 0, 1<<8)
 
 	//Append message ID
-	b = quicvarint.Append(b, uint64(moqtmessage.SUBSCRIBE_NAMESPACE_ERROR))
+	b = quicvarint.Append(b, uint64(SUBSCRIBE_NAMESPACE_ERROR))
 
 	// Append Track Namespace Prefix
 	b = sne.TrackNamespacePrefix.Append(b)
@@ -43,7 +42,7 @@ func (sne SubscribeNamespaceError) Serialize() []byte {
 
 func (sne *SubscribeNamespaceError) Deserialize(r quicvarint.Reader) error {
 	if sne.TrackNamespacePrefix == nil {
-		sne.TrackNamespacePrefix = make(moqtmessage.TrackNamespacePrefix, 0, 1)
+		sne.TrackNamespacePrefix = make(TrackNamespacePrefix, 0, 1)
 	}
 	err := sne.TrackNamespacePrefix.Deserialize(r)
 	if err != nil {

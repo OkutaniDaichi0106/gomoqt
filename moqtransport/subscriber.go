@@ -3,7 +3,6 @@ package moqtransport
 import (
 	"context"
 	"errors"
-	"go-moq/moqtransport/moqterror"
 	"go-moq/moqtransport/moqtmessage"
 	"io"
 	"log"
@@ -213,7 +212,7 @@ func (s Subscriber) receiveSubscribeResponce() error {
 		so.DeserializeBody(s.controlReader)
 		return nil
 	case moqtmessage.SUBSCRIBE_ERROR:
-		se := moqterror.SubscribeError{}
+		se := moqtmessage.SubscribeError{}
 		se.DeserializeBody(s.controlReader)
 
 		return errors.New(se.Reason)

@@ -3,7 +3,6 @@ package moqtransport
 import (
 	"context"
 	"errors"
-	"go-moq/moqtransport/moqterror"
 	"go-moq/moqtransport/moqtmessage"
 	"log"
 	"strings"
@@ -135,7 +134,7 @@ func (p *Publisher) Announce(trackNamespace ...string) error {
 		p.TrackNamespace = ao.TrackNamespace
 
 	case moqtmessage.ANNOUNCE_ERROR:
-		var ae moqterror.AnnounceErrorMessage // TODO: Handle Error Code
+		var ae moqtmessage.AnnounceErrorMessage // TODO: Handle Error Code
 		err = ae.DeserializeBody(p.controlReader)
 		if err != nil {
 			return err

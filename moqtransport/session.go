@@ -3,7 +3,6 @@ package moqtransport
 import (
 	"context"
 	"errors"
-	"go-moq/moqtransport/moqterror"
 	"go-moq/moqtransport/moqtmessage"
 	"go-moq/moqtransport/moqtversion"
 	"io"
@@ -71,7 +70,7 @@ func (s *clientSession) receiveClientSetup() ([]moqtversion.Version, error) {
 		return nil, err
 	}
 	if id != moqtmessage.CLIENT_SETUP {
-		return nil, moqterror.ErrProtocolViolation
+		return nil, ErrProtocolViolation
 	}
 	var cs moqtmessage.ClientSetupMessage
 	err = cs.DeserializeBody(reader)
@@ -193,12 +192,12 @@ func (s *PublisherSession) SendAnnounceOk() error {
 	return err
 }
 
-func (s *PublisherSession) SendAnnounceError(code uint, reason string) error {
+func (s *PublisherSession) SendAnnounceError(aerr AnnounceError) error {
 	// Send ANNOUNCE_ERROR message
-	ae := moqterror.AnnounceErrorMessage{
+	ae := moqtmessage.AnnounceErrorMessage{
 		TrackNamespace: s.latestAnnounceMessage.TrackNamespace,
-		Code:           moqterror.AnnounceErrorCode(code),
-		Reason:         reason,
+		Code:           aerr.Code(),
+		Reason:         aerr.Error(),
 	}
 
 	_, err := s.getControlStream().Write(ae.Serialize())
@@ -355,11 +354,11 @@ func (s *SubscriberSession) SendSubscribeOk(expires time.Duration) error {
 	return nil
 }
 
-func (s *SubscriberSession) SendSubscribeError(code uint, reason string) error {
-	se := moqterror.SubscribeError{
+func (s *SubscriberSession) SendSubscribeError(serr SubscribeError) error {
+	se := moqtmessage.SubscribeError{
 		SubscribeID: s.latestSubscribeMessage.SubscribeID,
-		Code:        moqterror.SubscribeErrorCode(code),
-		Reason:      reason,
+		Code:        serr.Code(),
+		Reason:      serr.Error(),
 		TrackAlias:  s.origin.trackAlias,
 	}
 

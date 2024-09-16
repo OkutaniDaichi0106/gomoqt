@@ -1,8 +1,6 @@
-package moqterror
+package moqtmessage
 
 import (
-	"go-moq/moqtransport/moqtmessage"
-
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -15,7 +13,7 @@ type SubscribeError struct {
 	/*
 	 * A number to identify the subscribe session
 	 */
-	moqtmessage.SubscribeID
+	SubscribeID
 
 	/*
 	 * Error code
@@ -31,7 +29,7 @@ type SubscribeError struct {
 	 * An number indicates a track
 	 * This is referenced instead of the Track Name and Track Namespace
 	 */
-	moqtmessage.TrackAlias
+	TrackAlias
 }
 
 // Error codes defined at official document
@@ -40,12 +38,6 @@ const (
 	INVALID_RANGE            SubscribeErrorCode = 0x1
 	RETRY_TRACK_ALIAS        SubscribeErrorCode = 0x2
 )
-
-var SUBSCRIBE_ERROR_REASON = map[SubscribeErrorCode]string{
-	SUBSCRIBE_INTERNAL_ERROR: "Internal Error",
-	INVALID_RANGE:            "Invalid Range",
-	RETRY_TRACK_ALIAS:        "Retry Track Alias",
-}
 
 func (se SubscribeError) Serialize() []byte {
 	/*
@@ -63,7 +55,7 @@ func (se SubscribeError) Serialize() []byte {
 	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
 
 	// Append the type of the message
-	b = quicvarint.Append(b, uint64(moqtmessage.SUBSCRIBE))
+	b = quicvarint.Append(b, uint64(SUBSCRIBE))
 
 	// Append Subscriber ID
 	b = quicvarint.Append(b, uint64(se.SubscribeID))
@@ -90,7 +82,7 @@ func (se *SubscribeError) DeserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	se.SubscribeID = moqtmessage.SubscribeID(num)
+	se.SubscribeID = SubscribeID(num)
 
 	// Get Error Code
 	num, err = quicvarint.Read(r)
@@ -116,7 +108,7 @@ func (se *SubscribeError) DeserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	se.TrackAlias = moqtmessage.TrackAlias(num)
+	se.TrackAlias = TrackAlias(num)
 
 	return nil
 }

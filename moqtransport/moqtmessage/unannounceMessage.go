@@ -5,7 +5,7 @@ import (
 )
 
 type UnannounceMessage struct {
-	TrackNamespace string
+	TrackNamespace
 }
 
 func (ua UnannounceMessage) Serialize() []byte {
@@ -23,9 +23,8 @@ func (ua UnannounceMessage) Serialize() []byte {
 	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
 	// Append the type of the message
 	b = quicvarint.Append(b, uint64(UNANNOUNCE))
-	// Append the supported versions
-	b = quicvarint.Append(b, uint64(len(ua.TrackNamespace)))
-	b = append(b, []byte(ua.TrackNamespace)...)
+	// Append the Track Namespace
+	b = ua.TrackNamespace.Append(b)
 
 	return b
 }
@@ -44,25 +43,13 @@ func (ua UnannounceMessage) Serialize() []byte {
 // }
 
 func (ua *UnannounceMessage) DeserializeBody(r quicvarint.Reader) error {
-	var err error
-	var num uint64
-	// Get length of the string of the track namespace
-	num, err = quicvarint.Read(r)
+	var tns TrackNamespace
+	err := tns.Deserialize(r)
 	if err != nil {
 		return err
 	}
 
-	// Get track namespace
-	buf := make([]byte, num)
-	_, err = r.Read(buf)
-	if err != nil {
-		return err
-	}
-
-	ua.TrackNamespace = string(buf)
-
-	// Just one track namespace supposed to be detected
-	// Over one track namespace will not be detected
+	ua.TrackNamespace = tns
 
 	return nil
 }

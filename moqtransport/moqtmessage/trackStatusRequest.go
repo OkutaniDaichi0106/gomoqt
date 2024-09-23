@@ -10,18 +10,18 @@ import (
 type TrackStatusCode byte
 
 const (
-	TRACK_STATUS_IN_PROGRESS   TrackStatusCode = 0x00
-	TRACK_STATUS_NOT_EXIST     TrackStatusCode = 0x01
-	TRACK_STATUS_NOT_BEGUN_YET TrackStatusCode = 0x02
-	TRACK_STATUS_FINISHED      TrackStatusCode = 0x03
-	TRACK_STATUS_RELAY         TrackStatusCode = 0x04
+	TRACK_STATUS_IN_PROGRESS       TrackStatusCode = 0x00
+	TRACK_STATUS_NOT_EXIST         TrackStatusCode = 0x01
+	TRACK_STATUS_NOT_BEGUN_YET     TrackStatusCode = 0x02
+	TRACK_STATUS_FINISHED          TrackStatusCode = 0x03
+	TRACK_STATUS_UNTRACEABLE_RELAY TrackStatusCode = 0x04
 )
 
 type TrackStatusRequest struct {
 	/*
 	 * Track namespace
 	 */
-	TrackNamespace string
+	TrackNamespace TrackNamespace
 	/*
 	 * Track name
 	 */
@@ -45,8 +45,7 @@ func (tsr TrackStatusRequest) Serialize() []byte {
 	// Append the type of the message
 	b = quicvarint.Append(b, uint64(TRACK_STATUS_REQUEST))
 	// Append Track Namespace
-	b = quicvarint.Append(b, uint64(len(tsr.TrackNamespace)))
-	b = append(b, []byte(tsr.TrackNamespace)...)
+	b = tsr.TrackNamespace.Append(b)
 	// Append Track Name
 	b = quicvarint.Append(b, uint64(len(tsr.TrackName)))
 	b = append(b, []byte(tsr.TrackName)...)
@@ -64,15 +63,13 @@ func (tsr *TrackStatusRequest) DeserializeBody(r quicvarint.Reader) error {
 	}
 
 	// Get Track Namespace
-	buf := make([]byte, num)
-	_, err = r.Read(buf)
+	err = tsr.DeserializeBody(r)
 	if err != nil {
 		return err
 	}
-	tsr.TrackNamespace = string(buf)
 
 	// Get Track Name
-	buf = make([]byte, num)
+	buf := make([]byte, num)
 	_, err = r.Read(buf)
 	if err != nil {
 		return err

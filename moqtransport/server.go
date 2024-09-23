@@ -1,233 +1,498 @@
 package moqtransport
 
 import (
+	"context"
+	"crypto/tls"
 	"errors"
 	"go-moq/moqtransport/moqtmessage"
 	"go-moq/moqtransport/moqtversion"
+	"strings"
 
 	"log"
 	"net/http"
-	"strings"
-	"sync"
+	"net/url"
 	"time"
 
+	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
+	"github.com/quic-go/quic-go/quicvarint"
 	"github.com/quic-go/webtransport-go"
 )
+
+var pathes map[string]struct{}
+
+var DefaultPublishingHandler map[string]func(PublishingSession)
+var DefaultSubscribingHandler map[string]func(SubscribingSession)
+var DefaultPubSubHandler map[string]func(PubSubSession)
+
+func HandlePublishingFunc(pattern string, op func(PublishingSession)) {
+	_, ok := DefaultPublishingHandler[pattern]
+	if ok {
+		panic("the path is already in use")
+	}
+
+	DefaultPublishingHandler[pattern] = op
+}
+
+func HandleSubscribingFunc(pattern string, op func(SubscribingSession)) {
+	_, ok := DefaultSubscribingHandler[pattern]
+	if ok {
+		panic("the path is already in use")
+	}
+
+	DefaultSubscribingHandler[pattern] = op
+}
+
+func HandleRelayFunc(pattern string, op func(PubSubSession)) {
+	_, ok := DefaultPubSubHandler[pattern]
+	if ok {
+		panic("the path is already in use")
+	}
+
+	DefaultPubSubHandler[pattern] = op
+}
 
 /*
  * Server
  */
 type Server struct {
-	WebTransportServer *webtransport.Server
-	Versions           []moqtversion.Version
-	onPublisher        func(PublisherSession)
-	onSubscriber       func(SubscriberSession)
+	Addr string
+
+	Port int
+
+	TLSConfig *tls.Config
+
+	QUICConfig *quic.Config
+
+	Versions []moqtversion.Version
+
+	WTConfig struct {
+		ReorderingTimeout time.Duration
+
+		CheckOrigin func(r *http.Request) bool
+
+		EnableDatagrams bool
+	}
+
+	HijackSetup func(moqtmessage.ClientSetupMessage) (moqtmessage.ServerSetupMessage, error)
 }
 
-func (s *Server) Upgrade(w http.ResponseWriter, r *http.Request) (Session, error) {
-	// Establish HTTP/3 Connection
-	wtSession, err := s.WebTransportServer.Upgrade(w, r)
+func (s Server) ListenAndServe() error {
+	errCh := make(chan error, 1)
+
+	if s.TLSConfig == nil {
+		panic("TLS configuration not found")
+	}
+
+	go func(srv Server) {
+		err := srv.listenWebTransport()
+		if err != nil {
+			errCh <- err
+		}
+	}(s)
+
+	go func(srv Server) {
+		err := s.listenRawQUIC()
+		if err != nil {
+			errCh <- err
+		}
+	}(s)
+
+	return <-errCh
+}
+
+func (s Server) listenWebTransport() error {
+	wtServer := webtransport.Server{
+		H3: http3.Server{
+			Addr:            s.Addr,
+			Port:            s.Port,
+			TLSConfig:       s.TLSConfig,
+			QUICConfig:      s.QUICConfig,
+			EnableDatagrams: s.WTConfig.EnableDatagrams,
+		},
+		ReorderingTimeout: s.WTConfig.ReorderingTimeout,
+		CheckOrigin:       s.WTConfig.CheckOrigin,
+	}
+
+	for path := range pathes {
+		http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+			/*
+			 * Establish WebTransport session
+			 */
+			// Upgrade the HTTP session to a WebTransport session
+			sess, err := wtServer.Upgrade(w, r)
+			if err != nil {
+				log.Printf("upgrading failed: %s", err)
+				w.WriteHeader(500)
+				return
+			}
+
+			err = s.handleWebTransport(path, sess)
+
+			switch e := err.(type) {
+			case TerminateError:
+				sess.CloseWithError(webtransport.SessionErrorCode(e.Code()), e.Error())
+			default:
+				sess.CloseWithError(webtransport.SessionErrorCode(TERMINATE_INTERNAL_ERROR), e.Error())
+			}
+		})
+	}
+
+	return wtServer.ListenAndServe()
+}
+
+func (s Server) listenRawQUIC() error {
+	ln, err := quic.ListenAddrEarly(s.Addr, s.TLSConfig, s.QUICConfig)
 	if err != nil {
-		log.Printf("upgrading failed: %s", err)
-		w.WriteHeader(500)
-		return nil, err
+		return err
 	}
 
-	cs := clientSession{
-		wtSession: wtSession,
-	}
+	go func() {
+		for {
+			conn, err := ln.Accept(context.TODO()) // TODO:
+			if err != nil {
+				log.Println(err)
+			}
 
-	// Receive CLIENT_SETUP message
-	// Get versions supported by the client
-	versions, err := cs.receiveClientSetup()
+			go func(conn quic.Connection) {
+				err := s.handleRawQUIC(conn)
+				switch e := err.(type) {
+				case TerminateError:
+					conn.CloseWithError(quic.ApplicationErrorCode(e.Code()), e.Error())
+				default:
+					conn.CloseWithError(quic.ApplicationErrorCode(TERMINATE_INTERNAL_ERROR), e.Error())
+				}
+			}(conn)
+		}
+	}()
+
+	return nil
+}
+
+func (s Server) handleWebTransport(path string, sess *webtransport.Session) error {
+	// Accept bidirectional stream to exchange control messages
+	controlStream, err := sess.AcceptStream(context.TODO())
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	// Select later version
-	selectedVersion, err := moqtversion.SelectLaterVersion(versions, s.Versions)
+	controlReader := quicvarint.NewReader(controlStream)
+
+	// Receive a SETUP_CLIENT message
+	var csm moqtmessage.ClientSetupMessage
+	err = csm.DeserializeBody(controlReader)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	// Set the selected version to the version of the session
-	cs.selectedVersion = selectedVersion
+	// Select the later version of the moqtransport
+	version, err := moqtversion.SelectLaterVersion(s.Versions, csm.Versions)
 
-	//
-	switch cs.role {
+	// Get the ROLE parameter
+	role, err := csm.Parameters.Role()
+	if err != nil {
+		return err
+	}
+
+	// Get the MAX_SUBSCRIBE_ID parameter
+	maxSubscribeID, err := csm.Parameters.MaxSubscribeID()
+	if err != nil {
+		return err
+	}
+
+	// Send a SERVER_SETUP message
+	var ssm moqtmessage.ServerSetupMessage
+
+	if s.HijackSetup != nil {
+		// Get a costimized SERVER_SETUP
+		ssm, err = s.HijackSetup(csm)
+		if err != nil {
+			return err
+		}
+	} else {
+		// Get the default SERVER_SETUP
+		ssm = moqtmessage.ServerSetupMessage{
+			SelectedVersion: version,
+			Parameters:      make(moqtmessage.Parameters),
+		}
+	}
+
+	_, err = controlStream.Write(ssm.Serialize())
+	if err != nil {
+		return err
+	}
+
+	sessionCore := sessionCore{
+		trSess:          &webtransportSessionWrapper{innerSession: sess},
+		controlStream:   webtransportStreamWrapper{innerStream: controlStream},
+		controlReader:   controlReader,
+		selectedVersion: version,
+	}
+
+	switch role {
 	case moqtmessage.PUB:
-
-		cs.roleHandler = func() {
-			sess := PublisherSession{
-				Session:         cs,
-				controlChannel:  make(chan []byte, 1<<4),
-				maxSubscriberID: cs.maxSubscribeID,
-			}
-			s.onPublisher(sess)
+		sess := SubscribingSession{
+			sessionCore: sessionCore,
 		}
+
+		op, ok := DefaultSubscribingHandler[path]
+		if !ok {
+			return ErrInternalError
+		}
+
+		op(sess)
+
+		return nil
 	case moqtmessage.SUB:
-
-		cs.roleHandler = func() {
-			sess := SubscriberSession{
-				Session:        cs,
-				controlChannel: make(chan []byte, 1<<4),
-			}
-			s.onSubscriber(sess)
+		sess := PublishingSession{
+			sessionCore:    sessionCore,
+			maxSubscribeID: maxSubscribeID,
 		}
+
+		op, ok := DefaultPublishingHandler[path]
+		if !ok {
+			return ErrInternalError
+		}
+
+		op(sess)
+
+		return nil
 	case moqtmessage.PUB_SUB:
-		//TODO
+		sess := PubSubSession{
+			sessionCore:    sessionCore,
+			maxSubscribeID: maxSubscribeID,
+		}
+
+		op, ok := DefaultPubSubHandler[path]
+		if !ok {
+			return ErrInternalError
+		}
+
+		op(sess)
+
+		return nil
 	default:
-		return nil, ErrInvalidRole
+		return ErrInternalError
 	}
+}
 
-	// Send SERVER_SETUP message
-	err = cs.sendServerSetup()
+func (s Server) handleRawQUIC(conn quic.Connection) error {
+	controlStream, err := conn.AcceptStream(context.Background())
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return &cs, nil
-}
+	controlReader := quicvarint.NewReader(controlStream)
 
-func (s *Server) OnPublisher(op func(PublisherSession)) {
-	s.onPublisher = op
-}
-func (s *Server) OnSubscriber(op func(SubscriberSession)) {
-	s.onSubscriber = op
-}
-func (s *Server) ListenAndServeTLS(cert, key string) error {
-	return s.WebTransportServer.ListenAndServeTLS(cert, key)
+	id, err := moqtmessage.DeserializeMessageID(controlReader)
+	if err != nil {
+		return err
+	}
+
+	// Verify the received message is a CLIENT_SETUP message
+	if id != moqtmessage.CLIENT_SETUP {
+		return err
+	}
+
+	var csm moqtmessage.ClientSetupMessage
+	err = csm.DeserializeBody(controlReader)
+	if err != nil {
+		return err
+	}
+
+	// Select the later version of the moqtransport
+	version, err := moqtversion.SelectLaterVersion(s.Versions, csm.Versions)
+
+	// Get the Role parameter
+	role, err := csm.Parameters.Role()
+	if err != nil {
+		return err
+	}
+
+	// Get the MAX_SUBSCRIBE_ID parameter
+	maxSubscribeID, err := csm.Parameters.MaxSubscribeID()
+
+	// Get the Path parameter
+	path, err := csm.Parameters.Path()
+	if err != nil {
+		return err
+	}
+
+	// Verify the path is valid
+	ops, ok := DefaultMOQTRoutes[path]
+	if !ok {
+		return err
+	}
+
+	var ssm moqtmessage.ServerSetupMessage
+
+	if s.HijackSetup != nil {
+		ssm, err = s.HijackSetup(csm)
+		if err != nil {
+			return err
+		}
+	}
+
+	_, err = controlStream.Write(ssm.Serialize())
+	if err != nil {
+		return err
+	}
+
+	sessionCore := sessionCore{
+		trSess:          &rawQuicConnectionWrapper{innerSession: conn},
+		controlStream:   rawQuicStreamWrapper{innerStream: controlStream},
+		controlReader:   controlReader,
+		selectedVersion: version,
+	}
+
+	switch role {
+	case moqtmessage.PUB:
+		sess := SubscribingSession{
+			sessionCore: sessionCore,
+		}
+		if ops.subscribing == nil {
+			return ErrInternalError
+		}
+
+		ops.subscribing(sess)
+
+	case moqtmessage.SUB:
+		sess := PublishingSession{
+			sessionCore:    sessionCore,
+			maxSubscribeID: maxSubscribeID,
+		}
+
+		if ops.publishing == nil {
+			return ErrInternalError
+		}
+
+		ops.publishing(sess)
+
+	case moqtmessage.PUB_SUB:
+		sess := PubSubSession{
+			sessionCore:    sessionCore,
+			maxSubscribeID: maxSubscribeID,
+		}
+		if ops.pubsub == nil {
+			return ErrInternalError
+		}
+
+		ops.pubsub(sess)
+
+	default:
+		return ErrInternalError
+	}
+
+	return nil
 }
 
 func (s Server) GoAway(url string, duration time.Duration) {
-	gm := moqtmessage.GoAwayMessage{
-		NewSessionURI: url,
+	// 	gm := moqtmessage.GoAwayMessage{
+	// 		NewSessionURI: url,
+	// 	}
+	// 	for trackNamespace, pubSess := range publishers.index {
+	// 		// Send GO_AWAY message to the publisher
+	// 		go func(pubSess *PublisherSession) {
+
+	// 			_, err := pubSess.getControlStream().Write(gm.Serialize())
+	// 			if err != nil {
+	// 				log.Println(err)
+	// 			}
+
+	// 			time.Sleep(duration)
+
+	// 			err = pubSess.getWebtransportSession().CloseWithError(GetSessionError(ErrGoAwayTimeout))
+	// 			if err != nil {
+	// 				log.Println(err)
+	// 				// Send Terminate Internal Error, if sending prior error was failed
+	// 				err = pubSess.getWebtransportSession().CloseWithError(GetSessionError(ErrTerminationFailed))
+	// 				if err != nil {
+	// 					log.Println(err)
+	// 				}
+	// 			}
+	// 		}(pubSess)
+
+	// 		// Send GO_AWAY message to the subscribers
+	// 		for _, subSess := range subscribers[trackNamespace].sessions {
+	// 			go func(subSess *SubscriberSession) {
+	// 				_, err := subSess.getControlStream().Write(gm.Serialize())
+	// 				if err != nil {
+	// 					// TODO: Handle this error
+	// 					log.Println(err)
+	// 				}
+
+	// 				// Wait for the duration
+	// 				time.Sleep(duration)
+
+	// 			}(subSess)
+	// 		}
+	// 	}
+
+}
+
+type Agent struct {
+	selectedVersion moqtversion.Version
+	trSess          TransportSession
+}
+
+// func (a Agent) AcceptPublishingSession() (*PublishingSession, error) {
+// 	// Accept bidirectional stream to exchange control messages
+// 	controlStream, err := a.trSess.AcceptStream(context.TODO())
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	controlReader := quicvarint.NewReader(controlStream)
+
+// 	// Receive a SETUP_CLIENT message
+// 	var csm moqtmessage.ClientSetupMessage
+// 	err = csm.DeserializeBody(controlReader)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	// Select the later version of the moqtransport
+// 	version, err := moqtversion.SelectLaterVersion(n.SupportedVersions, csm.Versions)
+
+// 	// Get the MAX_SUBSCRIBE_ID parameter
+// 	maxSubscribeID, err := csm.Parameters.MaxSubscribeID()
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	if _, ok := a.trSess.(quic.Connection); ok {
+// 		path, err := csm.Parameters.Path()
+// 		if err != nil {
+// 			return nil, err
+// 		}
+
+// 		//op, ok := DefaultQUICRoutes[path]
+// 	}
+
+// 	session := PublishingSession{
+// 		session: session{
+// 			trSess:          a.trSess,
+// 			controlStream:   controlStream,
+// 			controlReader:   controlReader,
+// 			selectedVersion: version,
+// 		},
+// 		maxSubscribeID: moqtmessage.SubscribeID(maxSubscribeID),
+// 	}
+
+//		return &session, nil
+//	}
+func isValidPath(pattern string) bool {
+	// Verify the pattern starts with "/"
+	if !strings.HasPrefix(pattern, "/") {
+		return false
 	}
-	for trackNamespace, pubSess := range publishers.index {
-		// Send GO_AWAY message to the publisher
-		go func(pubSess *PublisherSession) {
 
-			_, err := pubSess.getControlStream().Write(gm.Serialize())
-			if err != nil {
-				log.Println(err)
-			}
+	_, err := url.ParseRequestURI(pattern)
 
-			time.Sleep(duration)
-
-			err = pubSess.getWebtransportSession().CloseWithError(GetSessionError(ErrGoAwayTimeout))
-			if err != nil {
-				log.Println(err)
-				// Send Terminate Internal Error, if sending prior error was failed
-				err = pubSess.getWebtransportSession().CloseWithError(GetSessionError(ErrTerminationFailed))
-				if err != nil {
-					log.Println(err)
-				}
-			}
-		}(pubSess)
-
-		// Send GO_AWAY message to the subscribers
-		for _, subSess := range subscribers[trackNamespace].sessions {
-			go func(subSess *SubscriberSession) {
-				_, err := subSess.getControlStream().Write(gm.Serialize())
-				if err != nil {
-					// TODO: Handle this error
-					log.Println(err)
-				}
-
-				// Wait for the duration
-				time.Sleep(duration)
-
-			}(subSess)
-		}
-	}
-
-}
-
-/*
- * The key is the Track Namespace
- */
-var subscribers subscribersIndex
-
-type subscribersIndex map[string]*destinations
-
-type destinations struct {
-	sessions []*SubscriberSession
-	mu       sync.Mutex
-}
-
-func (dest *destinations) add(sess *SubscriberSession) {
-	dest.mu.Lock()
-	defer dest.mu.Unlock()
-	dest.sessions = append(dest.sessions, sess)
-}
-
-func (dest *destinations) delete(sess *SubscriberSession) {
-	dest.mu.Lock()
-	defer dest.mu.Unlock()
-	dest.sessions = append(dest.sessions, sess)
-}
-
-/*
- * Index for searching a Publisher's Agent by Namespace
- */
-var publishers publishersIndex
-
-type publishersIndex struct {
-	mu    sync.Mutex
-	index map[string]*PublisherSession
-}
-
-func (pi *publishersIndex) add(session *PublisherSession) {
-	if pi.index == nil {
-		pi.index = make(map[string]*PublisherSession)
-	}
-
-	publishers.mu.Lock()
-	defer publishers.mu.Unlock()
-	fullTrackNamespace := strings.Join(session.latestAnnounceMessage.TrackNamespace, "")
-	pi.index[fullTrackNamespace] = session
-}
-
-func (pi *publishersIndex) delete(trackNamespace string) {
-	publishers.mu.Lock()
-	defer publishers.mu.Unlock()
-	delete(pi.index, trackNamespace)
-}
-
-/*
- * Announcements received from publishers
- */
-var announcements announcementIndex
-
-type announcementIndex struct {
-	mu    sync.Mutex
-	index map[string]moqtmessage.AnnounceMessage
-}
-
-func (ai *announcementIndex) add(am moqtmessage.AnnounceMessage) {
-	if ai.index == nil {
-		ai.index = make(map[string]moqtmessage.AnnounceMessage)
-	}
-	announcements.mu.Lock()
-	defer announcements.mu.Unlock()
-	fullTrackNamespace := strings.Join(am.TrackNamespace, "")
-	ai.index[fullTrackNamespace] = am
-}
-
-func (ai *announcementIndex) delete(trackNamespace string) {
-	announcements.mu.Lock()
-	defer announcements.mu.Unlock()
-
-	// Delete
-	delete(ai.index, trackNamespace)
-}
-
-func GetSessionError(err TerminateError) (webtransport.SessionErrorCode, string) {
-	return webtransport.SessionErrorCode(err.Code()), err.Error()
+	return err == nil
 }
 
 var ErrUnsuitableRole = errors.New("the role cannot perform the operation ")
-var ErrUnexpectedMessage = errors.New("received message is not a expected message")
 var ErrInvalidRole = errors.New("given role is invalid")
 var ErrDuplicatedNamespace = errors.New("given namespace is already registered")
 var ErrNoAgent = errors.New("no agent")

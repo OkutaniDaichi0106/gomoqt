@@ -1,9 +1,7 @@
 package main
 
 import (
-	"crypto/tls"
 	"go-moq/moqtransport"
-	"go-moq/moqtransport/moqtversion"
 	"log"
 	"time"
 )
@@ -13,25 +11,17 @@ const (
 )
 
 func main() {
-	// Set client
-	client := moqtransport.Client{
-		TLSConfig: &tls.Config{
-			InsecureSkipVerify: true,
-		},
-		Versions: []moqtversion.Version{moqtversion.LATEST},
-	}
-
 	// Set subscriber
 	publisher := moqtransport.Publisher{
-		Client:         client,
-		TrackNamespace: []string{"localhost/daichi/"},
 		MaxSubscribeID: 1 << 4,
 	}
 
-	_, err := publisher.ConnectAndSetup(URL + "setup")
+	sess, err := publisher.ConnectAndSetup(URL + "setup")
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	sess.Announce()
 
 	err = publisher.Announce("localhost/daichi/")
 	if err != nil {

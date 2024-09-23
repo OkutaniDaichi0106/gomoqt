@@ -15,7 +15,7 @@ type ClientSetupMessage struct {
 	/*
 	 * Setup Parameters
 	 */
-	Parameters
+	Parameters Parameters
 }
 
 func (cs ClientSetupMessage) Serialize() []byte {

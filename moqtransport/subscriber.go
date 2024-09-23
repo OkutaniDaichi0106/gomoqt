@@ -67,6 +67,7 @@ func (s *Subscriber) ConnectAndSetup(url string) (moqtmessage.Parameters, error)
 	if err != nil {
 		return nil, err
 	}
+	delete(params, moqtmessage.MAX_SUBSCRIBE_ID)
 
 	return params, nil
 }
@@ -108,97 +109,6 @@ func (s Subscriber) sendClientSetup() error {
 	return err
 }
 
-type SubscribeConfig struct {
-	/*
-	 * 0 is set by default
-	 */
-	moqtmessage.SubscriberPriority
-
-	/*
-	 * NOT_SPECIFY (= 0) is set by default
-	 * If not specifyed, the value is set to 0 which means NOT_SPECIFY
-	 */
-	moqtmessage.GroupOrder
-
-	/*
-	 * No value is set by default
-	 */
-	moqtmessage.SubscriptionFilter
-}
-
-func (s *Subscriber) Subscribe(trackNamespace, trackName string, config *SubscribeConfig) error {
-	if config == nil {
-		config = &SubscribeConfig{}
-	}
-	if config.GroupOrder == 0 {
-		config.GroupOrder = moqtmessage.ASCENDING
-	}
-	if config.FilterCode == 0 {
-		config.FilterCode = moqtmessage.LATEST_GROUP
-	}
-
-	err := s.sendSubscribe(trackNamespace, trackName, *config)
-	if err != nil {
-		return err
-	}
-
-	err = s.receiveSubscribeResponce()
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (s *Subscriber) sendSubscribe(trackNamespace, trackName string, config SubscribeConfig) error {
-	// Check if the Filter is valid
-	err := config.SubscriptionFilter.IsOK()
-	if err != nil {
-		return err
-	}
-
-	if s.subscribeParameters == nil {
-		s.subscribeParameters = make(moqtmessage.Parameters)
-	}
-	if s.trackAliases == nil {
-		s.trackAliases = make(map[string]moqtmessage.TrackAlias)
-	}
-
-	// Check if the track is already subscribed
-	// and add track alias
-	trackAlias, ok := s.trackAliases[trackNamespace+trackName]
-
-	// Get new Track Alias, if the Track did not already exist
-	if !ok {
-		trackAlias = moqtmessage.TrackAlias(len(s.trackAliases))
-		s.trackAliases[trackNamespace+trackName] = trackAlias
-	}
-
-	subscribeID := moqtmessage.SubscribeID(len(s.subscriptions))
-
-	sm := moqtmessage.SubscribeMessage{
-		SubscribeID:        subscribeID,
-		TrackAlias:         trackAlias,
-		TrackNamespace:     trackNamespace,
-		TrackName:          trackName,
-		SubscriberPriority: config.SubscriberPriority,
-		GroupOrder:         config.GroupOrder,
-		SubscriptionFilter: config.SubscriptionFilter,
-		Parameters:         s.subscribeParameters, //TODO
-	}
-
-	// Send SUBSCRIBE message
-	_, err = s.controlStream.Write(sm.Serialize())
-	if err != nil {
-		return err
-	}
-
-	// Register the SUBSCRIBE message
-	s.subscriptions[subscribeID] = sm
-
-	return nil
-}
-
 func (s Subscriber) receiveSubscribeResponce() error {
 	// Receive SUBSCRIBE_OK message or SUBSCRIBE_ERROR message
 	id, err := moqtmessage.DeserializeMessageID(s.controlReader)
@@ -212,7 +122,7 @@ func (s Subscriber) receiveSubscribeResponce() error {
 		so.DeserializeBody(s.controlReader)
 		return nil
 	case moqtmessage.SUBSCRIBE_ERROR:
-		se := moqtmessage.SubscribeError{}
+		se := moqtmessage.SubscribeErrorMessage{}
 		se.DeserializeBody(s.controlReader)
 
 		return errors.New(se.Reason)

@@ -128,7 +128,7 @@ type SubscribeMessage struct {
 	 */
 	SubscribeID
 	TrackAlias
-	TrackNamespace string
+	TrackNamespace TrackNamespace
 	TrackName      string
 	SubscriberPriority
 
@@ -139,7 +139,7 @@ type SubscribeMessage struct {
 	GroupOrder GroupOrder
 
 	/***/
-	SubscriptionFilter
+	SubscriptionFilter SubscriptionFilter
 
 	/*
 	 * Subscribe Parameters
@@ -180,8 +180,7 @@ func (s SubscribeMessage) Serialize() []byte {
 	// Append Subscriber ID
 	b = quicvarint.Append(b, uint64(s.TrackAlias))
 	// Append Track Namespace
-	b = quicvarint.Append(b, uint64(len(s.TrackNamespace)))
-	b = append(b, []byte(s.TrackNamespace)...)
+	b = s.TrackNamespace.Append(b)
 	// Append Track Name
 	b = quicvarint.Append(b, uint64(len(s.TrackName)))
 	b = append(b, []byte(s.TrackName)...)
@@ -218,23 +217,14 @@ func (s *SubscribeMessage) DeserializeBody(r quicvarint.Reader) error {
 	s.TrackAlias = TrackAlias(num)
 
 	// Get Track Namespace
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
-	}
-	buf := make([]byte, num)
-	_, err = r.Read(buf)
-	if err != nil {
-		return err
-	}
-	s.TrackNamespace = string(buf)
+	s.TrackNamespace.Deserialize(r)
 
 	// Get Track Name
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	buf = make([]byte, num)
+	buf := make([]byte, num)
 	_, err = r.Read(buf)
 	if err != nil {
 		return err
@@ -266,9 +256,9 @@ func (s *SubscribeMessage) DeserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	s.FilterCode = FilterCode(num)
+	s.SubscriptionFilter.FilterCode = FilterCode(num)
 
-	switch s.FilterCode {
+	switch s.SubscriptionFilter.FilterCode {
 	case LATEST_GROUP, LATEST_OBJECT:
 		//Skip
 	case ABSOLUTE_START:

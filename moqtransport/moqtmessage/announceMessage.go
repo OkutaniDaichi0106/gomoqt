@@ -14,7 +14,7 @@ type AnnounceMessage struct {
 	 * Announce Parameters
 	 * Parameters should include track authorization information
 	 */
-	Parameters Parameters
+	Parameters
 }
 
 func (a AnnounceMessage) Serialize() []byte {

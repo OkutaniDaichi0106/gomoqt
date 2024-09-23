@@ -59,10 +59,9 @@ func SelectLaterVersion(vs1, vs2 []Version) (Version, error) {
 
 func Contain(version Version, versions []Version) error {
 	for _, v := range versions {
-		if v != version {
-			continue
+		if v == version {
+			return nil
 		}
-		return nil
 	}
 	return ErrVersionNotFound
 }

@@ -4,7 +4,7 @@ type TerminateErrorCode int
 
 var (
 	NoTerminateErr             TerminateNoError
-	ErrTerminationFailed       TerminateInternalError
+	ErrInternalError           TerminateInternalError
 	ErrUnauthorized            terminateUnauthorized
 	ErrProtocolViolation       TerminateProtocolViolation
 	ErrDuplicatedTrackAlias    terminateDuplicateTrackAlias

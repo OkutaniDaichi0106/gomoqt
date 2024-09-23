@@ -9,7 +9,7 @@ import (
  */
 type SubscribeErrorCode uint
 
-type SubscribeError struct {
+type SubscribeErrorMessage struct {
 	/*
 	 * A number to identify the subscribe session
 	 */
@@ -39,7 +39,7 @@ const (
 	RETRY_TRACK_ALIAS        SubscribeErrorCode = 0x2
 )
 
-func (se SubscribeError) Serialize() []byte {
+func (se SubscribeErrorMessage) Serialize() []byte {
 	/*
 	 * Serialize as following formatt
 	 *
@@ -73,7 +73,7 @@ func (se SubscribeError) Serialize() []byte {
 	return b
 }
 
-func (se *SubscribeError) DeserializeBody(r quicvarint.Reader) error {
+func (se *SubscribeErrorMessage) DeserializeBody(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 

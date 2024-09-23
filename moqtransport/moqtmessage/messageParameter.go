@@ -2,20 +2,33 @@ package moqtmessage
 
 import (
 	"errors"
+	"time"
 
 	"github.com/quic-go/quic-go/quicvarint"
+)
+
+type Role byte
+
+const (
+	PUB     Role = 0x00
+	SUB     Role = 0x01
+	PUB_SUB Role = 0x02
 )
 
 // Parameter
 type ParameterKey uint64
 
+// Setup Parameters
 const (
-	ROLE               ParameterKey = 0x00
-	PATH               ParameterKey = 0x01
+	ROLE             ParameterKey = 0x00
+	PATH             ParameterKey = 0x01
+	MAX_SUBSCRIBE_ID ParameterKey = 0x02
+)
+
+const (
 	AUTHORIZATION_INFO ParameterKey = 0x02
 	DELIVERY_TIMEOUT   ParameterKey = 0x03
 	MAX_CACHE_DURATION ParameterKey = 0x04
-	MAX_SUBSCRIBE_ID   ParameterKey = 0x05
 )
 
 type WireType byte
@@ -30,16 +43,6 @@ const (
 	 * length_delimited indicates the following b is byte array or string
 	 */
 	length_delimited WireType = 2
-)
-
-// Roles
-
-type Role byte
-
-const (
-	PUB     Role = 0x00
-	SUB     Role = 0x01
-	PUB_SUB Role = 0x02
 )
 
 /*
@@ -58,7 +61,7 @@ func (params Parameters) Role() (Role, error) {
 
 func (params Parameters) Path() (string, error) {
 	num, err := params.AsString(PATH)
-	if errors.Is(err, ErrParameterNotFound) {
+	if err == ErrParameterNotFound {
 		return "", ErrPathNotFound
 	}
 	return num, nil
@@ -66,11 +69,38 @@ func (params Parameters) Path() (string, error) {
 
 func (params Parameters) MaxSubscribeID() (SubscribeID, error) {
 	num, err := params.AsUint(MAX_SUBSCRIBE_ID)
-	if errors.Is(err, ErrParameterNotFound) {
+	if err == ErrParameterNotFound {
 		return 0, ErrMaxSubscribeIDNotFound
 	}
 
 	return SubscribeID(num), nil
+}
+
+func (params Parameters) MaxCacheDuration() (time.Duration, error) {
+	num, err := params.AsUint(MAX_CACHE_DURATION)
+	if err == ErrParameterNotFound {
+		return 0, ErrMaxCacheDurationNotFound
+	}
+
+	return time.Duration(num), nil
+}
+
+func (params Parameters) AuthorizationInfo() (string, error) {
+	str, err := params.AsString(AUTHORIZATION_INFO)
+	if err == ErrParameterNotFound {
+		return "", ErrAuthorizationInfoNotFound
+	}
+
+	return str, err
+}
+
+func (params Parameters) DeliveryTimeout() (time.Duration, error) {
+	num, err := params.AsUint(DELIVERY_TIMEOUT)
+	if err == ErrParameterNotFound {
+		return 0, ErrDeliveryTimeoutNotFound
+	}
+
+	return time.Duration(num), nil
 }
 
 var ErrParameterNotFound = errors.New("parameter not found")
@@ -78,6 +108,9 @@ var ErrParameterNotFound = errors.New("parameter not found")
 var ErrRoleNotFound = errors.New("role not found")
 var ErrPathNotFound = errors.New("path not found")
 var ErrMaxSubscribeIDNotFound = errors.New("max subscribe id not found")
+var ErrMaxCacheDurationNotFound = errors.New("max cache duration not found")
+var ErrAuthorizationInfoNotFound = errors.New("authorization info not found")
+var ErrDeliveryTimeoutNotFound = errors.New("delivery timeout not found")
 
 func (params Parameters) AsBool(key ParameterKey) (bool, error) {
 	value, ok := params[key]

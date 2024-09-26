@@ -75,7 +75,7 @@ func (shp *StreamHeaderPeep) DeserializeStreamHeaderBody(r quicvarint.Reader) er
 	if err != nil {
 		return err
 	}
-	shp.subscribeID = SubscribeID(num)
+	shp.SubscribeID = SubscribeID(num)
 
 	// Get Subscribe ID
 	num, err = quicvarint.Read(r)

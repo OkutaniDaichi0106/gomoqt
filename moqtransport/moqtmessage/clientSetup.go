@@ -37,8 +37,8 @@ func (cs ClientSetupMessage) Serialize() []byte {
 	}
 
 	// 2. Parameters should conclude role parameter
-	_, err := cs.Parameters.Role()
-	if err != nil {
+	_, ok := cs.Parameters.Role()
+	if !ok {
 		panic("no role is specifyed")
 	}
 

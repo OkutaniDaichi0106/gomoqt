@@ -34,10 +34,11 @@ func main() {
 		},
 	}
 
-	moqtransport.HandlePublishingFunc("/", func(ps moqtransport.PublishingSession) {
+	moqtransport.HandlePublishingFunc("/", func(ps *moqtransport.PublishingSession) {
 
 	})
-	moqtransport.HandlePublishingFunc("/", func(ps moqtransport.PublishingSession) {
+
+	moqtransport.HandlePublishingFunc("/", func(ps *moqtransport.PublishingSession) {
 
 	})
 

@@ -22,13 +22,26 @@ type TrackManager struct {
 	//router map[moqtmessage.TrackAlias]moqtmessage.TrackAlias
 }
 
+func (tm *TrackManager) addAnnouncement(announcement moqtmessage.AnnounceMessage) {
+	node := tm.trackNamespaceTree.insert(announcement.TrackNamespace)
+
+	node.mu.Lock()
+	defer node.mu.Unlock()
+
+	node.params = &announcement.Parameters
+}
+
+func (tm *TrackManager) findTrackNamespace(trackNamespace moqtmessage.TrackNamespace) (*trackNamespaceNode, bool) {
+	return tm.trackNamespaceTree.trace(trackNamespace)
+}
+
 type TrackNamespaceTree struct {
-	root *trackNamespaceNode
+	rootNode *trackNamespaceNode
 }
 
 func newTrackNamespaceTree() *TrackNamespaceTree {
 	return &TrackNamespaceTree{
-		root: &trackNamespaceNode{
+		rootNode: &trackNamespaceNode{
 			value:    "",
 			children: make(map[string]*trackNamespaceNode),
 		},
@@ -36,7 +49,7 @@ func newTrackNamespaceTree() *TrackNamespaceTree {
 }
 
 func (tree TrackNamespaceTree) insert(tns moqtmessage.TrackNamespace) *trackNamespaceNode {
-	currentNode := tree.root
+	currentNode := tree.rootNode
 	for _, nodeValue := range tns {
 		// Verify the node has a child with the node value
 		child, exists := currentNode.children[nodeValue]
@@ -58,12 +71,12 @@ func (tree TrackNamespaceTree) insert(tns moqtmessage.TrackNamespace) *trackName
 }
 
 func (tree TrackNamespaceTree) remove(tns moqtmessage.TrackNamespace) error {
-	_, err := tree.root.remove(tns, 0)
+	_, err := tree.rootNode.remove(tns, 0)
 	return err
 }
 
 func (tree TrackNamespaceTree) trace(tns moqtmessage.TrackNamespace) (*trackNamespaceNode, bool) {
-	return tree.root.trace(tns...)
+	return tree.rootNode.trace(tns...)
 }
 
 type trackNamespaceNode struct {
@@ -97,6 +110,11 @@ type trackNameNode struct {
 	value string
 
 	/*
+	 * Object Forwarding Preference
+	 */
+	forwarding moqtmessage.ObjectForwardingPreference
+
+	/*
 	 * Session with the publisher
 	 */
 	sessionWithPublisher *SubscribingSession
@@ -104,7 +122,7 @@ type trackNameNode struct {
 	/*
 	 * Session with subscribers
 	 */
-	sessionWithSubscriber []*PublishingSession
+	sessionWithSubscriber map[publishingSessionID]*PublishingSession
 }
 
 func (node *trackNamespaceNode) remove(tns moqtmessage.TrackNamespace, depth int) (bool, error) {
@@ -178,15 +196,6 @@ func (node *trackNamespaceNode) trace(values ...string) (*trackNamespaceNode, bo
 
 // 	return nil, errors.New("track not found")
 // }
-
-func (tm *TrackManager) addAnnouncement(announcement moqtmessage.AnnounceMessage) {
-	node := tm.trackNamespaceTree.insert(announcement.TrackNamespace)
-
-	node.mu.Lock()
-	defer node.mu.Unlock()
-
-	node.params = &announcement.Parameters
-}
 
 // func (tm *TrackManager) addTrack(tns moqtmessage.TrackNamespace, tn string) error {
 // 	node, err := tm.trackNamespaceTree.trace(tns)

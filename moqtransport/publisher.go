@@ -1,12 +1,90 @@
 package moqtransport
 
+import (
+	"errors"
+	"go-moq/moqtransport/moqtmessage"
+)
+
 type Publisher struct {
-	node           node
+	node    node
+	session *PublishingSession
+
 	MaxSubscribeID uint64
 }
 
 func (p *Publisher) ConnectAndSetup(url string) (*PublishingSession, error) {
-	return p.node.EstablishPubSession(url, p.MaxSubscribeID)
+	sess, err := p.node.EstablishPubSession(url, p.MaxSubscribeID)
+	if err != nil {
+		return nil, err
+	}
+
+	p.session = sess
+
+	return sess, nil
+}
+
+func (p *Publisher) NewTrack(subscription Subscription, forwardingPreference moqtmessage.ObjectForwardingPreference, priority moqtmessage.PublisherPriority) (SendDataStream, error) {
+	// Get the Transport Session
+	if p.session.trSess == nil {
+		return nil, errors.New("no connection")
+	}
+
+	switch forwardingPreference {
+	case moqtmessage.DATAGRAM:
+		return &sendDataStreamDatagram{
+			closed:            false,
+			trSess:            p.session.trSess,
+			SubscribeID:       subscription.subscribeID,
+			TrackAlias:        subscription.trackAlias,
+			PublisherPriority: priority,
+			groupID:           0,
+			objectID:          0,
+		}, nil
+
+	case moqtmessage.TRACK:
+		header := moqtmessage.StreamHeaderTrack{
+			SubscribeID:       subscription.subscribeID,
+			TrackAlias:        subscription.trackAlias,
+			PublisherPriority: priority,
+		}
+
+		writer, err := p.session.trSess.OpenUniStream()
+		if err != nil {
+			return nil, err
+		}
+		return &sendDataStreamTrack{
+			closed:       false,
+			writerClosed: false,
+			trSess:       p.session.trSess,
+			writer:       writer,
+			header:       header,
+			groupID:      0,
+			objectID:     0,
+		}, nil
+	case moqtmessage.PEEP:
+		header := moqtmessage.StreamHeaderPeep{
+			SubscribeID:       subscription.subscribeID,
+			TrackAlias:        subscription.trackAlias,
+			PublisherPriority: priority,
+			GroupID:           0,
+			PeepID:            0,
+		}
+
+		writer, err := p.session.trSess.OpenUniStream()
+		if err != nil {
+			return nil, err
+		}
+
+		return &sendDataStreamPeep{
+			closed:   false,
+			trSess:   p.session.trSess,
+			writer:   writer,
+			header:   header,
+			objectID: 0,
+		}, nil
+	default:
+		panic("invalid forwarding preference")
+	}
 }
 
 // func (p Publisher) SendObjectDatagram(od moqtmessage.ObjectDatagram) error { //TODO:
@@ -35,49 +113,6 @@ func (p *Publisher) ConnectAndSetup(url string) (*PublishingSession, error) {
 // 		PublisherPriority: priority,
 // 	}
 // 	return p.sendMultipleObject(&header, payload) // TODO:
-// }
-
-// func (p *Publisher) sendMultipleObject(header moqtmessage.StreamHeader, payloadCh <-chan []byte) <-chan error {
-
-// 	errCh := make(chan error, 1)
-// 	stream, err := p.session.OpenUniStream()
-// 	if err != nil {
-// 		errCh <- err
-// 	}
-
-// 	go func() {
-// 		// Send the header
-// 		_, err := stream.Write(header.Serialize())
-// 		if err != nil {
-// 			log.Println(err)
-// 			errCh <- err
-// 			return
-// 		}
-
-// 		// Get chunk stream to get chunks
-// 		chunkStream := moqtmessage.NewChunkStream(header)
-// 		var chunk moqtmessage.Chunk
-// 		for payload := range payloadCh {
-// 			chunk = chunkStream.CreateChunk(payload)
-// 			_, err = stream.Write(chunk.Serialize())
-// 			if err != nil {
-// 				log.Println(err)
-// 				errCh <- err
-// 				return
-// 			}
-// 		}
-
-// 		// Send final chunk as end of the stream
-// 		chunk = chunkStream.CreateFinalChunk()
-// 		_, err = stream.Write(chunk.Serialize())
-// 		if err != nil {
-// 			log.Println(err)
-// 			errCh <- err
-// 			return
-// 		}
-// 	}()
-
-// 	return errCh
 // }
 
 /*

@@ -6,6 +6,8 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
+var _ StreamHeader = (*StreamHeaderPeep)(nil)
+
 type StreamHeaderPeep struct {
 	/*
 	 * A number to identify the subscribe session
@@ -51,7 +53,7 @@ func (shp StreamHeaderPeep) Serialize() []byte {
 	// TODO: Tune the length of the "b"
 	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
 	// Append the type of the message
-	b = quicvarint.Append(b, uint64(STREAM_HEADER_PEEP))
+	b = quicvarint.Append(b, uint64(PEEP.ID()))
 	// Append the Subscriber ID
 	b = quicvarint.Append(b, uint64(shp.SubscribeID))
 	// Append the Track Alias
@@ -64,7 +66,7 @@ func (shp StreamHeaderPeep) Serialize() []byte {
 	return b
 }
 
-func (shp *StreamHeaderPeep) DeserializeStreamHeader(r quicvarint.Reader) error {
+func (shp *StreamHeaderPeep) DeserializeStreamHeaderBody(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 
@@ -73,7 +75,7 @@ func (shp *StreamHeaderPeep) DeserializeStreamHeader(r quicvarint.Reader) error 
 	if err != nil {
 		return err
 	}
-	shp.SubscribeID = SubscribeID(num)
+	shp.subscribeID = SubscribeID(num)
 
 	// Get Subscribe ID
 	num, err = quicvarint.Read(r)
@@ -102,41 +104,12 @@ func (shp *StreamHeaderPeep) DeserializeStreamHeader(r quicvarint.Reader) error 
 	return nil
 }
 
-func (StreamHeaderPeep) forwardingPreference() ForwardingPreference {
+func (StreamHeaderPeep) ForwardingPreference() ObjectForwardingPreference {
 	return PEEP
 }
 
-func (shp StreamHeaderPeep) subscriptionID() SubscribeID {
+func (shp *StreamHeaderPeep) GetSubscribeID() SubscribeID {
 	return shp.SubscribeID
-}
-
-func (sht StreamHeaderPeep) newChunkStream() ChunkStream {
-	return chunkStreamPeep{}
-}
-
-type chunkStreamPeep struct {
-	chunkCounter uint64
-}
-
-func (csp chunkStreamPeep) CreateChunk(payload []byte) Chunk {
-	chunk := ObjectChunk{
-		ObjectID: ObjectID(csp.chunkCounter),
-		Payload:  payload,
-	}
-
-	csp.chunkCounter++
-
-	return &chunk
-}
-
-func (csp chunkStreamPeep) CreateFinalChunk() Chunk {
-	chunk := ObjectChunk{
-		ObjectID:   ObjectID(csp.chunkCounter),
-		Payload:    []byte{},
-		StatusCode: END_OF_TRACK,
-	}
-
-	return &chunk
 }
 
 type ObjectChunk struct {
@@ -223,8 +196,4 @@ func (oc *ObjectChunk) DeserializeBody(r quicvarint.Reader) error {
 	}
 
 	return nil
-}
-
-func (ObjectChunk) chunkType() string {
-	return "object"
 }

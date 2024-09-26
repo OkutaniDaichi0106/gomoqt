@@ -78,13 +78,18 @@ func (n node) EstablishPubSession(URL string, maxSubscribeID uint64) (*Publishin
 		return nil, err
 	}
 
+	sessionCore := sessionCore{
+		trSess:          trSess,
+		controlStream:   controlStream,
+		controlReader:   controlReader,
+		selectedVersion: version,
+	}
+
+	// Register the session
+	sessions = append(sessions, &sessionCore)
+
 	session := PublishingSession{
-		sessionCore: sessionCore{
-			trSess:          trSess,
-			controlStream:   controlStream,
-			controlReader:   controlReader,
-			selectedVersion: version,
-		},
+		sessionCore:    sessionCore,
 		maxSubscribeID: moqtmessage.SubscribeID(maxSubscribeID),
 	}
 
@@ -130,12 +135,18 @@ func (n node) EstablishSubSession(URL string) (*SubscribingSession, error) {
 		return nil, err
 	}
 
-	session := SubscribingSession{sessionCore: sessionCore{
+	sessionCore := sessionCore{
 		trSess:          trSess,
 		controlStream:   controlStream,
 		controlReader:   controlReader,
 		selectedVersion: version,
-	}}
+	}
+
+	sessions = append(sessions, &sessionCore)
+
+	session := SubscribingSession{
+		sessionCore: sessionCore,
+	}
 
 	return &session, nil
 }
@@ -187,13 +198,17 @@ func (n node) EstablishPubSubSession(URL string, maxSubscribeID uint64) (*PubSub
 		return nil, err
 	}
 
+	sessionCore := sessionCore{
+		trSess:          trSess,
+		controlStream:   controlStream,
+		controlReader:   controlReader,
+		selectedVersion: version,
+	}
+
+	sessions = append(sessions, &sessionCore)
+
 	session := PubSubSession{
-		sessionCore: sessionCore{
-			trSess:          trSess,
-			controlStream:   controlStream,
-			controlReader:   controlReader,
-			selectedVersion: version,
-		},
+		sessionCore: sessionCore,
 	}
 
 	return &session, nil

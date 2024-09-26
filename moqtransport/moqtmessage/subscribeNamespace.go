@@ -2,12 +2,12 @@ package moqtmessage
 
 import "github.com/quic-go/quic-go/quicvarint"
 
-type SubscribeNamespace struct {
+type SubscribeNamespaceMessage struct {
 	TrackNamespacePrefix
-	Parameters
+	Parameters Parameters
 }
 
-func (sn SubscribeNamespace) Serialize() []byte {
+func (sn SubscribeNamespaceMessage) Serialize() []byte {
 	b := make([]byte, 0, 1<<8)
 
 	// Append
@@ -22,7 +22,7 @@ func (sn SubscribeNamespace) Serialize() []byte {
 	return b
 }
 
-func (sn *SubscribeNamespace) Deserialize(r quicvarint.Reader) error {
+func (sn *SubscribeNamespaceMessage) Deserialize(r quicvarint.Reader) error {
 	// Get Track Namespace Prefix
 	if sn.TrackNamespacePrefix == nil {
 		sn.TrackNamespacePrefix = make(TrackNamespacePrefix, 0, 1)

@@ -1,6 +1,8 @@
 package moqtmessage
 
 import (
+	"errors"
+
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -35,7 +37,7 @@ func (od ObjectDatagram) Serialize() []byte {
 	// TODO: Tune the length of the "b"
 	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
 	// Append the type of the message
-	b = quicvarint.Append(b, uint64(OBJECT_DATAGRAM))
+	b = quicvarint.Append(b, uint64(DATAGRAM.ID()))
 	// Append Subscribe ID
 	b = quicvarint.Append(b, uint64(od.SubscribeID))
 	// Append Track Alias
@@ -59,90 +61,41 @@ func (od ObjectDatagram) Serialize() []byte {
 	return b
 }
 
-// func (od *ObjectDatagram) deserialize(r quicvarint.Reader) error {
-// 	// Get Message ID and check it
-// 	id, err := deserializeHeader(r)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	if id != OBJECT_DATAGRAM {
-// 		return errors.New("unexpected message")
-// 	}
-
-// 	return od.deserializeBody(r)
-// }
-
-func (od *ObjectDatagram) DeserializeBody(r quicvarint.Reader) error {
+func (od *ObjectDatagram) DeserializeStreamHeader(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 
-	// Get Subscribe ID
+	// Get a Subscribe ID
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
 	od.SubscribeID = SubscribeID(num)
 
-	// Get Track Alias
+	// Get a Track Alias
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
 	od.TrackAlias = TrackAlias(num)
 
-	// TODO?: Get Track Namespace and Track Name from Track Alias
-
-	// Get Group ID
+	// Get a Publisher Priority
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	od.GroupChunk.GroupID = GroupID(num)
-
-	// Get Object ID
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
-	}
-	od.GroupChunk.ObjectID = ObjectID(num)
-
-	// Get Publisher Priority
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
+	if num >= 1<<8 {
+		return errors.New("publiser priority is not an 8 bit integer")
 	}
 	od.PublisherPriority = PublisherPriority(num)
-
-	// Get Object Payload Length
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
-	}
-
-	if num > 0 {
-		// Get Object Payload
-		buf := make([]byte, num)
-		_, err := r.Read(buf)
-		if err != nil {
-			return err
-		}
-		od.Payload = buf
-	} else if num == 0 {
-		// Get Object Status Code
-		num, err = quicvarint.Read(r)
-		if err != nil {
-			return err
-		}
-		od.StatusCode = ObjectStatusCode(num)
-	}
 
 	return nil
 }
 
-func (ObjectDatagram) forwardingPreference() ForwardingPreference {
-	return DATAGRAM
+func (od *ObjectDatagram) DeserializeBody(r quicvarint.Reader) error {
+	return od.GroupChunk.DeserializeBody(r)
 }
 
-func (od ObjectDatagram) subscriptionID() SubscribeID {
-	return od.SubscribeID
+func (ObjectDatagram) ForwardingPreference() ObjectForwardingPreference {
+	return DATAGRAM
 }

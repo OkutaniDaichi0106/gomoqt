@@ -41,6 +41,19 @@ type TerminateError interface {
 	Code() TerminateErrorCode
 }
 
+type DefaultTerminateNoError struct {
+	code   TerminateErrorCode
+	reason string
+}
+
+func (err DefaultTerminateNoError) Error() string {
+	return err.reason
+}
+
+func (err DefaultTerminateNoError) Code() TerminateErrorCode {
+	return err.code
+}
+
 type TerminateNoError struct{}
 
 func (TerminateNoError) Error() string {
@@ -110,6 +123,8 @@ func (terminateTooManySubscribes) Error() string {
 func (terminateTooManySubscribes) Code() TerminateErrorCode {
 	return TERMINATE_TOO_MANY_SUBSCRIBES
 }
+
+var _ TerminateError = (*terminateGoAwayTimeout)(nil)
 
 type terminateGoAwayTimeout struct{}
 

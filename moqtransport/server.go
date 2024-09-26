@@ -21,11 +21,11 @@ import (
 
 var pathes map[string]struct{}
 
-var DefaultPublishingHandler map[string]func(PublishingSession)
-var DefaultSubscribingHandler map[string]func(SubscribingSession)
-var DefaultPubSubHandler map[string]func(PubSubSession)
+var DefaultPublishingHandler map[string]func(*PublishingSession)
+var DefaultSubscribingHandler map[string]func(*SubscribingSession)
+var DefaultPubSubHandler map[string]func(*PubSubSession)
 
-func HandlePublishingFunc(pattern string, op func(PublishingSession)) {
+func HandlePublishingFunc(pattern string, op func(*PublishingSession)) {
 	_, ok := DefaultPublishingHandler[pattern]
 	if ok {
 		panic("the path is already in use")
@@ -34,7 +34,7 @@ func HandlePublishingFunc(pattern string, op func(PublishingSession)) {
 	DefaultPublishingHandler[pattern] = op
 }
 
-func HandleSubscribingFunc(pattern string, op func(SubscribingSession)) {
+func HandleSubscribingFunc(pattern string, op func(*SubscribingSession)) {
 	_, ok := DefaultSubscribingHandler[pattern]
 	if ok {
 		panic("the path is already in use")
@@ -43,7 +43,7 @@ func HandleSubscribingFunc(pattern string, op func(SubscribingSession)) {
 	DefaultSubscribingHandler[pattern] = op
 }
 
-func HandleRelayFunc(pattern string, op func(PubSubSession)) {
+func HandleRelayFunc(pattern string, op func(*PubSubSession)) {
 	_, ok := DefaultPubSubHandler[pattern]
 	if ok {
 		panic("the path is already in use")
@@ -78,6 +78,8 @@ type Server struct {
 }
 
 func (s Server) ListenAndServe() error {
+	initSessionCounter()
+
 	errCh := make(chan error, 1)
 
 	if s.TLSConfig == nil {
@@ -189,16 +191,13 @@ func (s Server) handleWebTransport(path string, sess *webtransport.Session) erro
 	version, err := moqtversion.SelectLaterVersion(s.Versions, csm.Versions)
 
 	// Get the ROLE parameter
-	role, err := csm.Parameters.Role()
-	if err != nil {
-		return err
+	role, ok := csm.Parameters.Role()
+	if !ok {
+		return ErrProtocolViolation
 	}
 
 	// Get the MAX_SUBSCRIBE_ID parameter
-	maxSubscribeID, err := csm.Parameters.MaxSubscribeID()
-	if err != nil {
-		return err
-	}
+	maxSubscribeID, ok := csm.Parameters.MaxSubscribeID()
 
 	// Send a SERVER_SETUP message
 	var ssm moqtmessage.ServerSetupMessage
@@ -229,6 +228,8 @@ func (s Server) handleWebTransport(path string, sess *webtransport.Session) erro
 		selectedVersion: version,
 	}
 
+	sessions = append(sessions, &sessionCore)
+
 	switch role {
 	case moqtmessage.PUB:
 		sess := SubscribingSession{
@@ -240,7 +241,7 @@ func (s Server) handleWebTransport(path string, sess *webtransport.Session) erro
 			return ErrInternalError
 		}
 
-		op(sess)
+		op(&sess)
 
 		return nil
 	case moqtmessage.SUB:
@@ -254,7 +255,7 @@ func (s Server) handleWebTransport(path string, sess *webtransport.Session) erro
 			return ErrInternalError
 		}
 
-		op(sess)
+		op(&sess)
 
 		return nil
 	case moqtmessage.PUB_SUB:
@@ -268,7 +269,7 @@ func (s Server) handleWebTransport(path string, sess *webtransport.Session) erro
 			return ErrInternalError
 		}
 
-		op(sess)
+		op(&sess)
 
 		return nil
 	default:
@@ -304,24 +305,18 @@ func (s Server) handleRawQUIC(conn quic.Connection) error {
 	version, err := moqtversion.SelectLaterVersion(s.Versions, csm.Versions)
 
 	// Get the Role parameter
-	role, err := csm.Parameters.Role()
-	if err != nil {
-		return err
+	role, ok := csm.Parameters.Role()
+	if ok {
+		return ErrProtocolViolation
 	}
 
 	// Get the MAX_SUBSCRIBE_ID parameter
-	maxSubscribeID, err := csm.Parameters.MaxSubscribeID()
+	maxSubscribeID, ok := csm.Parameters.MaxSubscribeID()
 
 	// Get the Path parameter
-	path, err := csm.Parameters.Path()
-	if err != nil {
-		return err
-	}
-
-	// Verify the path is valid
-	ops, ok := DefaultMOQTRoutes[path]
+	path, ok := csm.Parameters.Path()
 	if !ok {
-		return err
+		return ErrProtocolViolation
 	}
 
 	var ssm moqtmessage.ServerSetupMessage
@@ -345,142 +340,77 @@ func (s Server) handleRawQUIC(conn quic.Connection) error {
 		selectedVersion: version,
 	}
 
+	sessions = append(sessions, &sessionCore)
+
 	switch role {
 	case moqtmessage.PUB:
 		sess := SubscribingSession{
 			sessionCore: sessionCore,
 		}
-		if ops.subscribing == nil {
+
+		op, ok := DefaultSubscribingHandler[path]
+		if !ok {
 			return ErrInternalError
 		}
 
-		ops.subscribing(sess)
+		op(&sess)
 
+		return nil
 	case moqtmessage.SUB:
 		sess := PublishingSession{
 			sessionCore:    sessionCore,
 			maxSubscribeID: maxSubscribeID,
 		}
 
-		if ops.publishing == nil {
+		op, ok := DefaultPublishingHandler[path]
+		if !ok {
 			return ErrInternalError
 		}
 
-		ops.publishing(sess)
+		op(&sess)
 
+		return nil
 	case moqtmessage.PUB_SUB:
 		sess := PubSubSession{
 			sessionCore:    sessionCore,
 			maxSubscribeID: maxSubscribeID,
 		}
-		if ops.pubsub == nil {
+
+		op, ok := DefaultPubSubHandler[path]
+		if !ok {
 			return ErrInternalError
 		}
 
-		ops.pubsub(sess)
+		op(&sess)
 
+		return nil
 	default:
 		return ErrInternalError
 	}
-
-	return nil
 }
+
+var sessions []*sessionCore
 
 func (s Server) GoAway(url string, duration time.Duration) {
-	// 	gm := moqtmessage.GoAwayMessage{
-	// 		NewSessionURI: url,
-	// 	}
-	// 	for trackNamespace, pubSess := range publishers.index {
-	// 		// Send GO_AWAY message to the publisher
-	// 		go func(pubSess *PublisherSession) {
+	gm := moqtmessage.GoAwayMessage{
+		NewSessionURI: url,
+	}
 
-	// 			_, err := pubSess.getControlStream().Write(gm.Serialize())
-	// 			if err != nil {
-	// 				log.Println(err)
-	// 			}
+	for _, session := range sessions {
+		go func(session *sessionCore) {
+			// Send the GoAway message
+			_, err := session.controlStream.Write(gm.Serialize())
+			if err != nil {
+				log.Println(err)
+			}
 
-	// 			time.Sleep(duration)
+			time.Sleep(duration)
 
-	// 			err = pubSess.getWebtransportSession().CloseWithError(GetSessionError(ErrGoAwayTimeout))
-	// 			if err != nil {
-	// 				log.Println(err)
-	// 				// Send Terminate Internal Error, if sending prior error was failed
-	// 				err = pubSess.getWebtransportSession().CloseWithError(GetSessionError(ErrTerminationFailed))
-	// 				if err != nil {
-	// 					log.Println(err)
-	// 				}
-	// 			}
-	// 		}(pubSess)
-
-	// 		// Send GO_AWAY message to the subscribers
-	// 		for _, subSess := range subscribers[trackNamespace].sessions {
-	// 			go func(subSess *SubscriberSession) {
-	// 				_, err := subSess.getControlStream().Write(gm.Serialize())
-	// 				if err != nil {
-	// 					// TODO: Handle this error
-	// 					log.Println(err)
-	// 				}
-
-	// 				// Wait for the duration
-	// 				time.Sleep(duration)
-
-	// 			}(subSess)
-	// 		}
-	// 	}
-
+			session.Terminate(ErrGoAwayTimeout)
+		}(session)
+	}
 }
 
-type Agent struct {
-	selectedVersion moqtversion.Version
-	trSess          TransportSession
-}
-
-// func (a Agent) AcceptPublishingSession() (*PublishingSession, error) {
-// 	// Accept bidirectional stream to exchange control messages
-// 	controlStream, err := a.trSess.AcceptStream(context.TODO())
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	controlReader := quicvarint.NewReader(controlStream)
-
-// 	// Receive a SETUP_CLIENT message
-// 	var csm moqtmessage.ClientSetupMessage
-// 	err = csm.DeserializeBody(controlReader)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	// Select the later version of the moqtransport
-// 	version, err := moqtversion.SelectLaterVersion(n.SupportedVersions, csm.Versions)
-
-// 	// Get the MAX_SUBSCRIBE_ID parameter
-// 	maxSubscribeID, err := csm.Parameters.MaxSubscribeID()
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	if _, ok := a.trSess.(quic.Connection); ok {
-// 		path, err := csm.Parameters.Path()
-// 		if err != nil {
-// 			return nil, err
-// 		}
-
-// 		//op, ok := DefaultQUICRoutes[path]
-// 	}
-
-// 	session := PublishingSession{
-// 		session: session{
-// 			trSess:          a.trSess,
-// 			controlStream:   controlStream,
-// 			controlReader:   controlReader,
-// 			selectedVersion: version,
-// 		},
-// 		maxSubscribeID: moqtmessage.SubscribeID(maxSubscribeID),
-// 	}
-
-//		return &session, nil
-//	}
 func isValidPath(pattern string) bool {
 	// Verify the pattern starts with "/"
 	if !strings.HasPrefix(pattern, "/") {

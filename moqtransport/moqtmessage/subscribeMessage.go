@@ -32,27 +32,27 @@ type SubscriberPriority byte
  * ABSOLUTE_START
  * ABSOLUTE_RANGE
  */
-type FilterCode uint64
+type Code uint64
 
 const (
-	LATEST_GROUP   FilterCode = 0x01
-	LATEST_OBJECT  FilterCode = 0x02
-	ABSOLUTE_START FilterCode = 0x03
-	ABSOLUTE_RANGE FilterCode = 0x04
+	LATEST_GROUP   Code = 0x01
+	LATEST_OBJECT  Code = 0x02
+	ABSOLUTE_START Code = 0x03
+	ABSOLUTE_RANGE Code = 0x04
 )
 
 type SubscriptionFilter struct {
 	/*
-	 * Filter FilterCode indicates the type of filter
-	 * This indicates whether the StartGroup/StartObject and EndGroup/EndObject fields
+	 * Filter Code indicates the type of filter
+	 * This indicates whether the Range.StartGroup/StartObject and EndGroup/EndObject fields
 	 * will be present
 	 */
-	FilterCode
+	Code Code
 
 	/*
 	 * Range of the Filter
 	 */
-	FilterRange
+	Range FilterRange
 }
 
 /*
@@ -84,12 +84,12 @@ type FilterRange struct {
 }
 
 func (sf SubscriptionFilter) IsOK() error { //TODO
-	switch sf.FilterCode {
+	switch sf.Code {
 	case LATEST_GROUP, LATEST_OBJECT, ABSOLUTE_START:
 		return nil
 	case ABSOLUTE_RANGE:
 		// Check if the Start Group ID is smaller than End Group ID
-		if sf.StartGroup > sf.EndGroup {
+		if sf.Range.StartGroup > sf.Range.EndGroup {
 			return ErrInvalidFilter
 		}
 		return nil
@@ -100,22 +100,22 @@ func (sf SubscriptionFilter) IsOK() error { //TODO
 }
 
 func (sf SubscriptionFilter) append(b []byte) []byte {
-	if sf.FilterCode == LATEST_GROUP {
-		b = quicvarint.Append(b, uint64(sf.FilterCode))
-	} else if sf.FilterCode == LATEST_OBJECT {
-		b = quicvarint.Append(b, uint64(sf.FilterCode))
-	} else if sf.FilterCode == ABSOLUTE_START {
+	if sf.Code == LATEST_GROUP {
+		b = quicvarint.Append(b, uint64(sf.Code))
+	} else if sf.Code == LATEST_OBJECT {
+		b = quicvarint.Append(b, uint64(sf.Code))
+	} else if sf.Code == ABSOLUTE_START {
 		// Append Filter Type, Start Group ID and Start Object ID
-		b = quicvarint.Append(b, uint64(sf.FilterCode))
-		b = quicvarint.Append(b, uint64(sf.StartGroup))
-		b = quicvarint.Append(b, uint64(sf.StartObject))
-	} else if sf.FilterCode == ABSOLUTE_RANGE {
+		b = quicvarint.Append(b, uint64(sf.Code))
+		b = quicvarint.Append(b, uint64(sf.Range.StartGroup))
+		b = quicvarint.Append(b, uint64(sf.Range.StartObject))
+	} else if sf.Code == ABSOLUTE_RANGE {
 		// Append Filter Type, Start Group ID, Start Object ID, End Group ID and End Object ID
-		b = quicvarint.Append(b, uint64(sf.FilterCode))
-		b = quicvarint.Append(b, uint64(sf.StartGroup))
-		b = quicvarint.Append(b, uint64(sf.StartObject))
-		b = quicvarint.Append(b, uint64(sf.EndGroup))
-		b = quicvarint.Append(b, uint64(sf.EndObject))
+		b = quicvarint.Append(b, uint64(sf.Code))
+		b = quicvarint.Append(b, uint64(sf.Range.StartGroup))
+		b = quicvarint.Append(b, uint64(sf.Range.StartObject))
+		b = quicvarint.Append(b, uint64(sf.Range.EndGroup))
+		b = quicvarint.Append(b, uint64(sf.Range.EndObject))
 	} else {
 		panic("invalid filter")
 	}
@@ -256,9 +256,9 @@ func (s *SubscribeMessage) DeserializeBody(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	s.SubscriptionFilter.FilterCode = FilterCode(num)
+	s.SubscriptionFilter.Code = Code(num)
 
-	switch s.SubscriptionFilter.FilterCode {
+	switch s.SubscriptionFilter.Code {
 	case LATEST_GROUP, LATEST_OBJECT:
 		//Skip
 	case ABSOLUTE_START:
@@ -267,42 +267,42 @@ func (s *SubscribeMessage) DeserializeBody(r quicvarint.Reader) error {
 		if err != nil {
 			return err
 		}
-		s.SubscriptionFilter.StartGroup = GroupID(num)
+		s.SubscriptionFilter.Range.StartGroup = GroupID(num)
 
 		// Get Start Object ID
 		num, err = quicvarint.Read(r)
 		if err != nil {
 			return err
 		}
-		s.SubscriptionFilter.StartObject = ObjectID(num)
+		s.SubscriptionFilter.Range.StartObject = ObjectID(num)
 	case ABSOLUTE_RANGE:
 		// Get Start Group ID
 		num, err = quicvarint.Read(r)
 		if err != nil {
 			return err
 		}
-		s.SubscriptionFilter.StartGroup = GroupID(num)
+		s.SubscriptionFilter.Range.StartGroup = GroupID(num)
 
 		// Get Start Object ID
 		num, err = quicvarint.Read(r)
 		if err != nil {
 			return err
 		}
-		s.SubscriptionFilter.StartObject = ObjectID(num)
+		s.SubscriptionFilter.Range.StartObject = ObjectID(num)
 
 		// Get End Group ID
 		num, err = quicvarint.Read(r)
 		if err != nil {
 			return err
 		}
-		s.SubscriptionFilter.EndGroup = GroupID(num)
+		s.SubscriptionFilter.Range.EndGroup = GroupID(num)
 
 		// Get End Object ID
 		num, err = quicvarint.Read(r)
 		if err != nil {
 			return err
 		}
-		s.SubscriptionFilter.EndObject = ObjectID(num)
+		s.SubscriptionFilter.Range.EndObject = ObjectID(num)
 	}
 
 	// Get Subscribe Update Parameters

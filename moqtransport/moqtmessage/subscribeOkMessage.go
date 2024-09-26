@@ -34,9 +34,13 @@ type SubscribeOkMessage struct {
 	GroupOrder
 
 	/*
-	 * A flag indicating if the specifyed contents
+	 * Whether contents exist in the track or not
 	 */
-	ContentExists   bool
+	ContentExists bool
+
+	/*
+	 * Largest Group ID and Largest Object ID available for this track
+	 */
 	LargestGroupID  GroupID
 	LargestObjectID ObjectID
 

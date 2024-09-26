@@ -2,8 +2,8 @@ package main
 
 import (
 	"go-moq/moqtransport"
+	"go-moq/moqtransport/moqtmessage"
 	"log"
-	"time"
 )
 
 const (
@@ -16,27 +16,32 @@ func main() {
 		MaxSubscribeID: 1 << 4,
 	}
 
-	sess, err := publisher.ConnectAndSetup(URL + "setup")
+	sess, err := publisher.ConnectAndSetup(URL)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	sess.Announce()
-
-	err = publisher.Announce("localhost/daichi/")
+	err = sess.Announce(moqtmessage.NewTrackNamespace("localhost", "daichi"), moqtransport.AnnounceConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	data := []byte("hello world")
-
-	for i := 0; i < 10; i++ {
-		errCh := publisher.SendSingleObject(0, data)
-		err = <-errCh
-		if err != nil {
-			log.Fatal(err)
-			return
-		}
-		time.Sleep(5 * time.Second)
+	subscription, err := sess.WaitSubscribe()
+	if err != nil {
+		log.Fatal(err)
 	}
+
+	err = sess.AllowSubscribe(subscription, 0)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	stream, err := publisher.NewTrack(*subscription, moqtmessage.TRACK, 0)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	data := []byte("hello")
+
+	stream.Write(data)
 }

@@ -1,40 +1,5 @@
 package moqtmessage
 
-import (
-	"errors"
-
-	"github.com/quic-go/quic-go/quicvarint"
-)
-
-type StreamType uint
-
-const (
-	//OBJECT_STREAM       MessageID = 0x00 // Deprecated
-	OBJECT_DATAGRAM     StreamType = 0x01
-	STREAM_HEADER_TRACK StreamType = 0x50
-	STREAM_HEADER_GROUP StreamType = 0x51
-	STREAM_HEADER_PEEP  StreamType = 0x52
-)
-
-/*
- * Deserialize the header of the message which is message id
- */
-func DeserializeStreamType(r quicvarint.Reader) (StreamType, error) {
-	// Get the first number in the message expected to be MessageID
-	num, err := quicvarint.Read(r)
-	if err != nil {
-		return 0xff, err
-	}
-	switch StreamType(num) {
-	case
-		STREAM_HEADER_TRACK,
-		STREAM_HEADER_PEEP:
-		return StreamType(num), nil
-	default:
-		return 0xff, errors.New("undefined Message ID")
-	}
-}
-
 // Group ID
 type GroupID uint64
 
@@ -55,18 +20,64 @@ type TrackAlias uint64
 type PublisherPriority byte
 
 /*
- * Forwarding Preference
- * Following type are defined in the official document
- * TRACK, GROUP, OBJECT, DATAGRAM
+ *
  */
-type ForwardingPreference uint64
+type StreamTypeID uint32
 
 const (
-	TRACK ForwardingPreference = iota
-	//GROUP
-	//OBJECT
-	PEEP
-	DATAGRAM
+	DATAGRAM_ID StreamTypeID = 0x01
+	TRACK_ID    StreamTypeID = 0x02
+	PEEP_ID     StreamTypeID = 0x04
+)
+
+/*
+ * Forwarding Preference
+ * Following type are defined in the official document
+ * TRACK, PEEP, DATAGRAM
+ */
+type ObjectForwardingPreference interface {
+	ID() StreamTypeID
+	StreamType() string
+}
+
+var _ ObjectForwardingPreference = (*datagram)(nil)
+
+type datagram struct{}
+
+func (datagram) ID() StreamTypeID {
+	return DATAGRAM_ID
+}
+func (datagram) StreamType() string {
+	return "DATAGRAM"
+}
+
+var _ ObjectForwardingPreference = (*track)(nil)
+
+type track struct{}
+
+func (track) ID() StreamTypeID {
+	return TRACK_ID
+}
+
+func (track) StreamType() string {
+	return "TRACK"
+}
+
+var _ ObjectForwardingPreference = (*peep)(nil)
+
+type peep struct{}
+
+func (peep) ID() StreamTypeID {
+	return PEEP_ID
+}
+func (peep) StreamType() string {
+	return "PEEP"
+}
+
+var (
+	DATAGRAM datagram
+	TRACK    track
+	PEEP     peep
 )
 
 // Object Status

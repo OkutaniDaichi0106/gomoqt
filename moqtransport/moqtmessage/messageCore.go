@@ -56,13 +56,13 @@ type Messager interface {
 }
 
 /*
- * Deserialize the header of the message which is message id
+ * Deserialize the Message ID
  */
 func DeserializeMessageID(r quicvarint.Reader) (MessageID, error) {
-	// Get the first number in the message expected to be MessageID
+	// Get the first number expected to be Message ID
 	num, err := quicvarint.Read(r)
 	if err != nil {
-		return 0xff, err
+		return 0, err
 	}
 	switch MessageID(num) {
 	case SUBSCRIBE_UPDATE,
@@ -83,8 +83,12 @@ func DeserializeMessageID(r quicvarint.Reader) (MessageID, error) {
 		SERVER_SETUP:
 		return MessageID(num), nil
 	default:
-		return 0xff, errors.New("undefined Message ID")
+		return 0, errors.New("undefined Message ID")
 	}
+}
+
+func NewTrackNamespace(values ...string) TrackNamespace {
+	return values
 }
 
 type TrackNamespace []string

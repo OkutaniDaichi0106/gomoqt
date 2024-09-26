@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"go-moq/moqtransport"
 	"go-moq/moqtransport/moqtversion"
-	"log"
 	"net/http"
 	"time"
 
@@ -35,30 +34,10 @@ func main() {
 		},
 	}
 
-	/*
-	 * Handle Raw QUIC
-	 */
-	moqtransport.HandleQUICFunc("/setup", func(conn quic.Connection) {
-		sess, err := ms.QUICUpgrade(conn)
-		if err != nil {
-			log.Println(err)
-			return
-		}
+	moqtransport.HandlePublishingFunc("/", func(ps moqtransport.PublishingSession) {
 
 	})
-
-	/*
-	 * Handle WebTransport
-	 */
-
-	moqtransport.HandleHTTPFunc("/setup", func(w http.ResponseWriter, r *http.Request) {
-
-		// Establish WebTransport connection after receive EXTEND CONNECT message
-		sess, err := ms.WTUpgrade(w, r)
-		if err != nil {
-			log.Println(err)
-			return
-		}
+	moqtransport.HandlePublishingFunc("/", func(ps moqtransport.PublishingSession) {
 
 	})
 

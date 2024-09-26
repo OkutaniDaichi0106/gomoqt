@@ -4,8 +4,16 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
+type AnnounceCancelCode uint64
+
+const (
+	ANNOUNCE_CANCEL_NO_ERROR AnnounceCancelCode = 0x0
+)
+
 type AnnounceCancelMessage struct {
 	TrackNamespace TrackNamespace
+	ErrorCode      AnnounceCancelCode
+	Reason         string
 }
 
 func (ac AnnounceCancelMessage) Serialize() []byte {
@@ -24,6 +32,13 @@ func (ac AnnounceCancelMessage) Serialize() []byte {
 
 	// Append the type of the message
 	b = quicvarint.Append(b, uint64(ANNOUNCE_CANCEL))
+
+	// Append the error code of the cancel
+	b = quicvarint.Append(b, uint64(ac.ErrorCode))
+
+	// Append the reason of the cancel
+	b = quicvarint.Append(b, uint64(len(ac.Reason)))
+	b = append(b, []byte(ac.Reason)...)
 
 	// Append the supported versions
 	b = ac.TrackNamespace.Append(b)

@@ -2,11 +2,11 @@ package moqtmessage
 
 import "github.com/quic-go/quic-go/quicvarint"
 
-type SubscribeNamespaceOk struct {
+type SubscribeNamespaceOkMessage struct {
 	TrackNamespacePrefix TrackNamespacePrefix
 }
 
-func (sno SubscribeNamespaceOk) Serialize() []byte {
+func (sno SubscribeNamespaceOkMessage) Serialize() []byte {
 	b := make([]byte, 0, 1<<8)
 
 	// Append message ID
@@ -18,10 +18,11 @@ func (sno SubscribeNamespaceOk) Serialize() []byte {
 	return b
 }
 
-func (sno *SubscribeNamespaceOk) Deserialize(r quicvarint.Reader) error {
+func (sno *SubscribeNamespaceOkMessage) DeserializeBody(r quicvarint.Reader) error {
 	if sno.TrackNamespacePrefix == nil {
 		sno.TrackNamespacePrefix = make(TrackNamespacePrefix, 0, 1)
 	}
+
 	err := sno.TrackNamespacePrefix.Deserialize(r)
 
 	return err

@@ -42,108 +42,66 @@ func (AnnounceDuplicateTrackNamespace) Code() moqtmessage.AnnounceErrorCode {
  * Subscribe Error
  */
 var (
-	ErrDefaultSubscribeFailed SubscribeInternalError
-	ErrDefaultInvalidRange    InvalidRangeError
-	ErrDefaultRetryTrackAlias RetryTrackAlias
-	//ErrDefaultDuplicatedSubscribeID DuplicatedSubscribeID
+	ErrSubscribeFailed = DefaultSubscribeError{
+		code:   moqtmessage.SUBSCRIBE_INTERNAL_ERROR,
+		reason: "internal error",
+	}
+
+	ErrDefaultInvalidRange = DefaultSubscribeError{
+		code:   moqtmessage.INVALID_RANGE,
+		reason: "invalid range",
+	}
 )
+
+func GetSubscribeError(message moqtmessage.SubscribeErrorMessage) SubscribeError {
+	if message.Code == moqtmessage.RETRY_TRACK_ALIAS {
+		return RetryTrackAliasError{
+			reason:     message.Reason,
+			trackAlias: message.TrackAlias,
+		}
+	}
+
+	return DefaultSubscribeError{
+		code:   message.Code,
+		reason: message.Reason,
+	}
+}
 
 type SubscribeError interface {
 	error
 	Code() moqtmessage.SubscribeErrorCode
-	SubscribeID() moqtmessage.SubscribeID
 }
 
-type SubscribeInternalError struct {
-	subscribeID moqtmessage.SubscribeID
+type DefaultSubscribeError struct {
+	code   moqtmessage.SubscribeErrorCode
+	reason string
 }
 
-func (SubscribeInternalError) Error() string {
-	return "internal error"
+func (err DefaultSubscribeError) Error() string {
+	return err.reason
 }
 
-func (SubscribeInternalError) Code() moqtmessage.SubscribeErrorCode {
-	return moqtmessage.SUBSCRIBE_INTERNAL_ERROR
+func (err DefaultSubscribeError) Code() moqtmessage.SubscribeErrorCode {
+	return err.code
 }
 
-func (subErr SubscribeInternalError) SubscribeID() moqtmessage.SubscribeID {
-	return subErr.subscribeID
+type RetryTrackAliasError struct {
+	//code       moqtmessage.SubscribeErrorCode
+	reason     string
+	trackAlias moqtmessage.TrackAlias
 }
 
-func (subErr SubscribeInternalError) NewSubscribeID(id moqtmessage.SubscribeID) SubscribeInternalError {
-	subErr.subscribeID = id
-	return subErr
+func (err RetryTrackAliasError) Error() string {
+	return err.reason
 }
 
-type InvalidRangeError struct {
-	subscribeID moqtmessage.SubscribeID
-}
-
-func (InvalidRangeError) Error() string {
-	return "duplicated track namespace"
-}
-
-func (InvalidRangeError) Code() moqtmessage.SubscribeErrorCode {
-	return moqtmessage.INVALID_RANGE
-}
-
-func (subErr InvalidRangeError) SubscribeID() moqtmessage.SubscribeID {
-	return subErr.subscribeID
-}
-
-func (subErr InvalidRangeError) NewSubscribeID(id moqtmessage.SubscribeID) InvalidRangeError {
-	subErr.subscribeID = id
-	return subErr
-}
-
-type RetryTrackAlias struct {
-	subscribeID   moqtmessage.SubscribeID
-	newTrackAlias moqtmessage.TrackAlias
-}
-
-func (RetryTrackAlias) Error() string {
-	return "retry track alias"
-}
-
-func (RetryTrackAlias) Code() moqtmessage.SubscribeErrorCode {
+func (err RetryTrackAliasError) Code() moqtmessage.SubscribeErrorCode {
 	return moqtmessage.RETRY_TRACK_ALIAS
 }
 
-func (subErr RetryTrackAlias) SubscribeID() moqtmessage.SubscribeID {
-	return subErr.subscribeID
+func (err RetryTrackAliasError) TrackAlias() moqtmessage.TrackAlias {
+	return err.trackAlias
 }
-
-func (subErr RetryTrackAlias) NewTrackAlias(alias moqtmessage.TrackAlias) RetryTrackAlias {
-	subErr.newTrackAlias = alias
-	return subErr
-}
-
-func (subErr RetryTrackAlias) NewSubscribeID(id moqtmessage.SubscribeID) RetryTrackAlias {
-	subErr.subscribeID = id
-	return subErr
-}
-
-// Original Subscribe Error
-// type DuplicatedSubscribeID struct {
-// 	subscribeID moqtmessage.SubscribeID
-// }
-
-// func (DuplicatedSubscribeID) Error() string {
-// 	return "dublicated subscribe id"
-// }
-
-// func (DuplicatedSubscribeID) Code() moqtmessage.SubscribeErrorCode {
-// 	return 0x03
-// }
-
-// func (subErr DuplicatedSubscribeID) SubscribeID() moqtmessage.SubscribeID {
-// 	return subErr.subscribeID
-// }
-
-// func (subErr DuplicatedSubscribeID) NewSubscribeID(id moqtmessage.SubscribeID) DuplicatedSubscribeID {
-// 	subErr.subscribeID = id
-// 	return subErr
-// }
 
 /*
  *
@@ -159,85 +117,69 @@ type SubscribeDoneError interface {
 }
 
 var (
-	ErrUnexpectedSubscribeDone SubscribeDoneInternalError
-	ErrSubscribeUnauthorized   SubscribeDoneUnauthorized
-	ErrSubscribeExpired        SubscribeDoneExpired
+	ErrSubscribeDoneInternalError = DefaultSubscribeDoneError{
+		code:   moqtmessage.SUBSCRIBE_DONE_INTERNAL_ERROR,
+		reason: "internal error",
+	}
+	ErrSubscribeUnauthorized = DefaultSubscribeDoneError{
+		code:   moqtmessage.SUBSCRIBE_DONE_UNAUTHORIZED,
+		reason: "unauthorized",
+	}
+	ErrSubscribeExpired = DefaultSubscribeDoneError{
+		code:   moqtmessage.SUBSCRIBE_DONE_EXPIRED,
+		reason: "expired",
+	}
 )
 
-type SubscribeDoneUnsubscribed struct{}
-
-func (SubscribeDoneUnsubscribed) Reason() string {
-	return "unsubscribed"
+type DefaultSubscribeDoneError struct {
+	code   moqtmessage.SubscribeDoneStatusCode
+	reason string
 }
 
-func (SubscribeDoneUnsubscribed) Code() moqtmessage.SubscribeDoneStatusCode {
-	return moqtmessage.SUBSCRIBE_DONE_UNSUBSCRIBED
+func (err DefaultSubscribeDoneError) Error() string {
+	return err.reason
 }
 
-type SubscribeDoneInternalError struct{}
-
-func (err SubscribeDoneInternalError) Error() string {
-	return err.Reason()
-}
-func (SubscribeDoneInternalError) Reason() string {
-	return "unsubscribed"
+func (err DefaultSubscribeDoneError) Code() moqtmessage.SubscribeDoneStatusCode {
+	return err.code
 }
 
-func (SubscribeDoneInternalError) Code() moqtmessage.SubscribeDoneStatusCode {
-	return moqtmessage.SUBSCRIBE_DONE_INTERNAL_ERROR
+/***/
+
+type AnnounceCancelError interface {
+	Code() moqtmessage.AnnounceCancelCode
+	Reason() string
 }
 
-type SubscribeDoneUnauthorized struct{}
+var _ AnnounceCancelError = (*DefaultAnnounceCancelError)(nil)
 
-func (err SubscribeDoneUnauthorized) Error() string {
-	return err.Reason()
+type DefaultAnnounceCancelError struct {
+	code   moqtmessage.AnnounceCancelCode
+	reason string
 }
 
-func (SubscribeDoneUnauthorized) Reason() string {
-	return "unauthorized"
+func (cancel DefaultAnnounceCancelError) Code() moqtmessage.AnnounceCancelCode {
+	return cancel.code
 }
 
-func (SubscribeDoneUnauthorized) Code() moqtmessage.SubscribeDoneStatusCode {
-	return moqtmessage.SUBSCRIBE_DONE_UNAUTHORIZED
+func (cancel DefaultAnnounceCancelError) Reason() string {
+	return cancel.reason
 }
 
-type SubscribeDoneTrackEnded struct{}
-
-func (SubscribeDoneTrackEnded) Reason() string {
-	return "track ended"
+type SubscribeNamespaceError interface {
+	error
+	Code() uint64
 }
 
-func (SubscribeDoneTrackEnded) Code() moqtmessage.SubscribeDoneStatusCode {
-	return moqtmessage.SUBSCRIBE_DONE_TRACK_ENDED
+type DefaultSubscribeNamespaceError struct {
+	code   moqtmessage.SubscribeNamespaceErrorCode
+	reason string
 }
 
-type SubscribeDoneSubscriptionEnded struct{}
-
-func (SubscribeDoneSubscriptionEnded) Reason() string {
-	return "subscription ended"
+func (err DefaultSubscribeNamespaceError) Error() string {
+	return err.reason
 }
 
-func (SubscribeDoneSubscriptionEnded) Code() moqtmessage.SubscribeDoneStatusCode {
-	return moqtmessage.SUBSCRIBE_DONE_SUBSCRIPTION_ENDED
-}
-
-type SubscribeDoneGoingAway struct{}
-
-func (SubscribeDoneGoingAway) Reason() string {
-	return "going away"
-}
-func (SubscribeDoneGoingAway) Code() moqtmessage.SubscribeDoneStatusCode {
-	return moqtmessage.SUBSCRIBE_DONE_GOING_AWAY
-}
-
-type SubscribeDoneExpired struct{}
-
-func (err SubscribeDoneExpired) Error() string {
-	return err.Reason()
-}
-func (SubscribeDoneExpired) Reason() string {
-	return "expired"
-}
-func (SubscribeDoneExpired) Code() moqtmessage.SubscribeDoneStatusCode {
-	return moqtmessage.SUBSCRIBE_DONE_EXPIRED
+func (err DefaultSubscribeNamespaceError) Code() moqtmessage.SubscribeNamespaceErrorCode {
+	return err.code
 }

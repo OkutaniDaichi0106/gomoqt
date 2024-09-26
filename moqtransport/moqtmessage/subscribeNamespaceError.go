@@ -4,7 +4,7 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-type SubscribeNamespaceError struct {
+type SubscribeNamespaceErrorMessage struct {
 	TrackNamespacePrefix TrackNamespacePrefix
 	Code                 SubscribeNamespaceErrorCode
 	Reason               string
@@ -12,7 +12,7 @@ type SubscribeNamespaceError struct {
 
 type SubscribeNamespaceErrorCode uint
 
-func (sne SubscribeNamespaceError) Serialize() []byte {
+func (sne SubscribeNamespaceErrorMessage) Serialize() []byte {
 	/*
 	 * Serialize as following formatt
 	 *
@@ -40,7 +40,7 @@ func (sne SubscribeNamespaceError) Serialize() []byte {
 	return b
 }
 
-func (sne *SubscribeNamespaceError) Deserialize(r quicvarint.Reader) error {
+func (sne *SubscribeNamespaceErrorMessage) DeserializeBody(r quicvarint.Reader) error {
 	if sne.TrackNamespacePrefix == nil {
 		sne.TrackNamespacePrefix = make(TrackNamespacePrefix, 0, 1)
 	}

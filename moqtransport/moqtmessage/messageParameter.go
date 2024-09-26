@@ -51,56 +51,56 @@ const (
  */
 type Parameters map[ParameterKey]any
 
-func (params Parameters) Role() (Role, error) {
+func (params Parameters) Role() (Role, bool) {
 	num, err := params.AsUint(ROLE)
 	if err == ErrParameterNotFound {
-		return 0, ErrRoleNotFound
+		return 0, false
 	}
-	return Role(num), nil
+	return Role(num), true
 }
 
-func (params Parameters) Path() (string, error) {
+func (params Parameters) Path() (string, bool) {
 	num, err := params.AsString(PATH)
 	if err == ErrParameterNotFound {
-		return "", ErrPathNotFound
+		return "", false
 	}
-	return num, nil
+	return num, true
 }
 
-func (params Parameters) MaxSubscribeID() (SubscribeID, error) {
+func (params Parameters) MaxSubscribeID() (SubscribeID, bool) {
 	num, err := params.AsUint(MAX_SUBSCRIBE_ID)
 	if err == ErrParameterNotFound {
-		return 0, ErrMaxSubscribeIDNotFound
+		return 0, false
 	}
 
-	return SubscribeID(num), nil
+	return SubscribeID(num), true
 }
 
-func (params Parameters) MaxCacheDuration() (time.Duration, error) {
+func (params Parameters) MaxCacheDuration() (time.Duration, bool) {
 	num, err := params.AsUint(MAX_CACHE_DURATION)
 	if err == ErrParameterNotFound {
-		return 0, ErrMaxCacheDurationNotFound
+		return 0, false
 	}
 
-	return time.Duration(num), nil
+	return time.Duration(num), true
 }
 
-func (params Parameters) AuthorizationInfo() (string, error) {
+func (params Parameters) AuthorizationInfo() (string, bool) {
 	str, err := params.AsString(AUTHORIZATION_INFO)
 	if err == ErrParameterNotFound {
-		return "", ErrAuthorizationInfoNotFound
+		return "", false
 	}
 
-	return str, err
+	return str, true
 }
 
-func (params Parameters) DeliveryTimeout() (time.Duration, error) {
+func (params Parameters) DeliveryTimeout() (time.Duration, bool) {
 	num, err := params.AsUint(DELIVERY_TIMEOUT)
 	if err == ErrParameterNotFound {
-		return 0, ErrDeliveryTimeoutNotFound
+		return 0, false
 	}
 
-	return time.Duration(num), nil
+	return time.Duration(num), true
 }
 
 var ErrParameterNotFound = errors.New("parameter not found")

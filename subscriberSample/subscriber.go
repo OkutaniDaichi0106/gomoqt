@@ -1,11 +1,7 @@
 package main
 
 import (
-	"context"
-	"crypto/tls"
 	"go-moq/moqtransport"
-	"go-moq/moqtransport/moqtversion"
-	"io"
 	"log"
 )
 
@@ -14,45 +10,39 @@ const (
 )
 
 func main() {
-	// Set client
-	client := moqtransport.Client{
-		TLSConfig: &tls.Config{
-			InsecureSkipVerify: true,
-		},
-		Versions: []moqtversion.Version{moqtversion.LATEST},
-	}
-
 	// Set subscriber
-	subscriber := moqtransport.Subscriber{
-		Client: client,
-	}
+	subscriber := moqtransport.Subscriber{}
 
-	_, err := subscriber.ConnectAndSetup(URL + "setup")
+	sess, err := subscriber.ConnectAndSetup(URL)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	err = subscriber.Subscribe("localhost/daichi/", "audio", nil)
+	announcement, err := sess.WaitAnnounce()
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+
+	err = sess.AllowAnnounce(*announcement)
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+
+	stream, err := sess.Subscribe(*announcement, "audio", moqtransport.SubscribeConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	//ctx, _ := context.WithCancel(context.Background()) // TODO: use cancel function
-	stream, _ := subscriber.AcceptObjects(context.TODO())
-	log.Println(stream.Header())
 
 	buf := make([]byte, 1<<8)
 
-	for {
-		n, err := stream.Read(buf)
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			log.Fatal(err)
-		}
+	n, err := stream.Read(buf)
 
-		log.Println(buf[:n])
+	if err != nil {
+		log.Fatal(err)
+		return
 	}
 
+	log.Println("data: ", buf[:n])
 }

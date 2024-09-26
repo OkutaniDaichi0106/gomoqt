@@ -1,5 +1,5 @@
-# gomoqu  
-gomoqu is an implementation of Media over QUIC Transport in Golang.
+# gomoqt  
+gomoqt is an implementation of Media over QUIC Transport in Golang.
 
 
 | Section                                      | Implemented        | Tested     |

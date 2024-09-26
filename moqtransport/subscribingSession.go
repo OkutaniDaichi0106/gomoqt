@@ -388,7 +388,8 @@ func (sess *SubscribingSession) subscribe(announcement Announcement, trackName s
 		retryErr, ok := err.(RetryTrackAliasError)
 		if ok {
 			sm.TrackAlias = retryErr.trackAlias
-			ctx, _ := context.WithTimeout(context.Background(), 30*time.Second) //TODO
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second) //TODO
+			defer cancel()
 
 			return sess.retrySubscribe(subscription, ctx)
 		}

@@ -91,3 +91,7 @@ func (sht StreamHeaderDatagram) ForwardingPreference() ObjectForwardingPreferenc
 func (shd StreamHeaderDatagram) GetSubscribeID() SubscribeID {
 	return shd.SubscribeID
 }
+
+func (shd *StreamHeaderDatagram) GetTrackAlias() TrackAlias {
+	return shd.TrackAlias
+}

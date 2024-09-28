@@ -47,7 +47,7 @@ type StreamHeader interface {
 	DeserializeStreamHeaderBody(quicvarint.Reader) error
 	ForwardingPreference() ObjectForwardingPreference
 	GetSubscribeID() SubscribeID
-	// TrackAlias() TrackAlias
+	GetTrackAlias() TrackAlias
 }
 
 /*
@@ -153,6 +153,10 @@ func (sht StreamHeaderTrack) ForwardingPreference() ObjectForwardingPreference {
 
 func (sht *StreamHeaderTrack) GetSubscribeID() SubscribeID {
 	return sht.SubscribeID
+}
+
+func (sht *StreamHeaderTrack) GetTrackAlias() TrackAlias {
+	return sht.TrackAlias
 }
 
 type GroupChunk struct {

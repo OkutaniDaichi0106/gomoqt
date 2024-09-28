@@ -197,3 +197,7 @@ func (oc *ObjectChunk) DeserializeBody(r quicvarint.Reader) error {
 
 	return nil
 }
+
+func (shp *StreamHeaderPeep) GetTrackAlias() TrackAlias {
+	return shp.TrackAlias
+}

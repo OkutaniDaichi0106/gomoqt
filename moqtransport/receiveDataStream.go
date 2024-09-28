@@ -1,463 +1,467 @@
 package moqtransport
 
 import (
-	"errors"
 	"go-moq/moqtransport/moqtmessage"
 	"io"
-	"log"
-	"sync"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-type ReceiveDataStream interface {
-	ForwardingPreference() moqtmessage.ObjectForwardingPreference
-	io.Reader
-	NextGroup() (ReceiveDataStream, error)
-	NextStream() (ReceiveDataStream, error)
-}
-
-var _ ReceiveDataStream = (*receiveDataStreamDatagram)(nil)
-
-type receiveDataStreamDatagram struct {
-	closed   bool
-	mu       sync.Mutex
-	header   moqtmessage.StreamHeaderDatagram
-	groupID  moqtmessage.GroupID
-	objectID moqtmessage.ObjectID
-
-	readerCh <-chan struct {
-		moqtmessage.StreamHeaderDatagram
-		quicvarint.Reader
-	}
-
-	dataMap map[moqtmessage.GroupID]map[moqtmessage.ObjectID]chan []byte
-}
-
-func (stream *receiveDataStreamDatagram) init() error {
-	if stream.closed {
-		return io.EOF
-	}
-
-	go func() {
-		var chunk moqtmessage.GroupChunk
-		for {
-			// Receive a group chunk
-			reader := <-stream.readerCh
-
-			err := chunk.DeserializeBody(reader.Reader)
-			if err != nil {
-				log.Println(err)
-				return //err
-			}
-
-			_, ok := stream.dataMap[chunk.GroupID]
-			if !ok {
-				stream.dataMap[chunk.GroupID] = make(map[moqtmessage.ObjectID]chan []byte)
-			}
-
-			_, ok = stream.dataMap[chunk.GroupID][chunk.ObjectID]
-			if !ok {
-				stream.dataMap[chunk.GroupID][stream.objectID] = make(chan []byte, 1)
-			}
-
-			stream.dataMap[chunk.GroupID][chunk.ObjectID] <- chunk.Payload
-		}
-	}()
-
-	return nil
-}
-
-func (stream *receiveDataStreamDatagram) ForwardingPreference() moqtmessage.ObjectForwardingPreference {
-	return moqtmessage.DATAGRAM
-}
-
-func (stream *receiveDataStreamDatagram) Read(buf []byte) (int, error) {
-	if stream.closed {
-		return 0, io.EOF
-	}
-
-	stream.mu.Lock()
-	defer stream.mu.Unlock()
-
-	// Increment the Object ID by 1
-	stream.objectID++
-
-	_, ok := stream.dataMap[stream.groupID]
-
-	if !ok {
-		stream.dataMap[stream.groupID] = make(map[moqtmessage.ObjectID]chan []byte)
-	}
-
-	_, ok = stream.dataMap[stream.groupID][stream.objectID]
-
-	if !ok {
-		stream.dataMap[stream.groupID][stream.objectID] = make(chan []byte)
-	}
-
-	payloadCh := stream.dataMap[stream.groupID][stream.objectID]
-
-	payload, ok := <-payloadCh
-	if !ok {
-		return 0, errors.New("no data")
-	}
-
-	n := copy(buf, payload)
-
-	return n, nil
-}
-
-func (stream *receiveDataStreamDatagram) NextGroup() (ReceiveDataStream, error) {
-	if stream.closed {
-		return nil, ErrClosedStream
-	}
-
-	// Delete
-	delete(stream.dataMap, stream.groupID)
-
-	// Increment the Group ID by 1
-	stream.groupID++
-	return stream, nil
-}
-
-func (stream *receiveDataStreamDatagram) NextStream() (ReceiveDataStream, error) {
-	if stream.closed {
-		return nil, ErrClosedStream
-	}
-
-	newStream := receiveDataStreamDatagram{
-		closed:   false,
-		header:   stream.header,
-		readerCh: stream.readerCh,
-		groupID:  0,
-		objectID: 0,
-	}
-
-	newStream.init()
-
-	return &newStream, nil
-}
-
-var _ ReceiveDataStream = (*receiveDataStreamTrack)(nil)
-
 type receiveDataStreamTrack struct {
-	mu       sync.Mutex
-	closed   bool
-	header   moqtmessage.StreamHeaderTrack
-	groupID  moqtmessage.GroupID
-	objectID moqtmessage.ObjectID
-
-	readerCh chan struct {
-		moqtmessage.StreamHeaderTrack
-		quicvarint.Reader
-	}
-
-	dataMap map[moqtmessage.GroupID]map[moqtmessage.ObjectID]chan []byte
+	header moqtmessage.StreamHeaderTrack
+	reader quicvarint.Reader
 }
 
-func (stream *receiveDataStreamTrack) init() error {
-	if stream.closed {
-		return io.EOF
-	}
+func (stream receiveDataStreamTrack) Read(buf []byte) (int, error) {
 
-	// Receive a receive reader
-	reader := <-stream.readerCh
-
-	stream.header.PublisherPriority = reader.PublisherPriority
-
-	go func(qvReader quicvarint.Reader) {
-
-		var chunk moqtmessage.GroupChunk
-
-		for {
-			// Get a Group Chunk
-			err := chunk.DeserializeBody(qvReader)
-			if err != nil {
-				log.Println(err)
-				return
-			}
-
-			stream.mu.Lock()
-
-			_, ok := stream.dataMap[chunk.GroupID]
-			if !ok {
-				stream.dataMap[chunk.GroupID] = make(map[moqtmessage.ObjectID]chan []byte)
-			}
-
-			_, ok = stream.dataMap[chunk.GroupID][chunk.ObjectID]
-			if !ok {
-				stream.dataMap[chunk.GroupID][stream.objectID] = make(chan []byte, 1)
-			}
-
-			stream.dataMap[chunk.GroupID][chunk.ObjectID] <- chunk.Payload
-
-			stream.mu.Unlock()
-		}
-
-	}(reader.Reader)
-
-	return nil
 }
 
-func (stream *receiveDataStreamTrack) ForwardingPreference() moqtmessage.ObjectForwardingPreference {
-	return moqtmessage.TRACK
+type ReceiveDataStream interface {
+	moqtmessage.StreamHeader
+	io.Reader
 }
 
-func (stream *receiveDataStreamTrack) Read(buf []byte) (int, error) {
-	if stream.closed {
-		return 0, io.EOF
-	}
+// var _ ReceiveDataStream = (*receiveDataStreamDatagram)(nil)
+
+// type receiveDataStreamDatagram struct {
+// 	closed   bool
+// 	mu       sync.Mutex
+// 	header   moqtmessage.StreamHeaderDatagram
+// 	groupID  moqtmessage.GroupID
+// 	objectID moqtmessage.ObjectID
 
-	stream.mu.Lock()
-	defer stream.mu.Unlock()
+// 	readerCh <-chan struct {
+// 		moqtmessage.StreamHeaderDatagram
+// 		quicvarint.Reader
+// 	}
+
+// 	dataMap map[moqtmessage.GroupID]map[moqtmessage.ObjectID]chan []byte
+// }
+
+// func (stream *receiveDataStreamDatagram) init() error {
+// 	if stream.closed {
+// 		return io.EOF
+// 	}
+
+// 	go func() {
+// 		var chunk moqtmessage.GroupChunk
+// 		for {
+// 			// Receive a group chunk
+// 			reader := <-stream.readerCh
+
+// 			err := chunk.DeserializeBody(reader.Reader)
+// 			if err != nil {
+// 				log.Println(err)
+// 				return //err
+// 			}
+
+// 			_, ok := stream.dataMap[chunk.GroupID]
+// 			if !ok {
+// 				stream.dataMap[chunk.GroupID] = make(map[moqtmessage.ObjectID]chan []byte)
+// 			}
+
+// 			_, ok = stream.dataMap[chunk.GroupID][chunk.ObjectID]
+// 			if !ok {
+// 				stream.dataMap[chunk.GroupID][stream.objectID] = make(chan []byte, 1)
+// 			}
+
+// 			stream.dataMap[chunk.GroupID][chunk.ObjectID] <- chunk.Payload
+// 		}
+// 	}()
+
+// 	return nil
+// }
 
-	// Increment the Object ID by 1
-	stream.objectID++
+// func (stream *receiveDataStreamDatagram) ForwardingPreference() moqtmessage.ObjectForwardingPreference {
+// 	return moqtmessage.DATAGRAM
+// }
 
-	_, ok := stream.dataMap[stream.groupID]
+// func (stream *receiveDataStreamDatagram) Read(buf []byte) (int, error) {
+// 	if stream.closed {
+// 		return 0, io.EOF
+// 	}
+
+// 	stream.mu.Lock()
+// 	defer stream.mu.Unlock()
 
-	if !ok {
-		stream.dataMap[stream.groupID] = make(map[moqtmessage.ObjectID]chan []byte)
-	}
+// 	// Increment the Object ID by 1
+// 	stream.objectID++
+
+// 	_, ok := stream.dataMap[stream.groupID]
 
-	_, ok = stream.dataMap[stream.groupID][stream.objectID]
+// 	if !ok {
+// 		stream.dataMap[stream.groupID] = make(map[moqtmessage.ObjectID]chan []byte)
+// 	}
+
+// 	_, ok = stream.dataMap[stream.groupID][stream.objectID]
+
+// 	if !ok {
+// 		stream.dataMap[stream.groupID][stream.objectID] = make(chan []byte)
+// 	}
 
-	if !ok {
-		stream.dataMap[stream.groupID][stream.objectID] = make(chan []byte)
-	}
+// 	payloadCh := stream.dataMap[stream.groupID][stream.objectID]
 
-	payloadCh := stream.dataMap[stream.groupID][stream.objectID]
+// 	payload, ok := <-payloadCh
+// 	if !ok {
+// 		return 0, errors.New("no data")
+// 	}
 
-	payload, ok := <-payloadCh
-	if !ok {
-		return 0, errors.New("no data")
-	}
+// 	n := copy(buf, payload)
 
-	n := copy(buf, payload)
+// 	return n, nil
+// }
 
-	return n, nil
-}
+// func (stream *receiveDataStreamDatagram) NextGroup() (ReceiveDataStream, error) {
+// 	if stream.closed {
+// 		return nil, ErrClosedStream
+// 	}
 
-func (stream *receiveDataStreamTrack) NextGroup() (ReceiveDataStream, error) {
-	if stream.closed {
-		return nil, ErrClosedStream
-	}
+// 	// Delete
+// 	delete(stream.dataMap, stream.groupID)
 
-	// Delete
-	delete(stream.dataMap, stream.groupID)
+// 	// Increment the Group ID by 1
+// 	stream.groupID++
+// 	return stream, nil
+// }
 
-	// Increment the Group ID by 1
-	stream.groupID++
-	return stream, nil
-}
+// func (stream *receiveDataStreamDatagram) NextStream() (ReceiveDataStream, error) {
+// 	if stream.closed {
+// 		return nil, ErrClosedStream
+// 	}
 
-func (stream *receiveDataStreamTrack) NextStream() (ReceiveDataStream, error) {
-	if stream.closed {
-		return nil, ErrClosedStream
-	}
+// 	newStream := receiveDataStreamDatagram{
+// 		closed:   false,
+// 		header:   stream.header,
+// 		readerCh: stream.readerCh,
+// 		groupID:  0,
+// 		objectID: 0,
+// 	}
 
-	stream.init()
+// 	newStream.init()
 
-	return stream, nil
-}
+// 	return &newStream, nil
+// }
 
-var _ ReceiveDataStream = (*receiveDataStreamPeep)(nil)
+// var _ ReceiveDataStream = (*receiveDataStreamTrack)(nil)
 
-type receiveDataStreamPeep struct {
-	mu       sync.Mutex
-	closed   bool
-	header   moqtmessage.StreamHeaderPeep
-	objectID moqtmessage.ObjectID
+// type receiveDataStreamTrack struct {
+// 	mu       sync.Mutex
+// 	closed   bool
+// 	header   moqtmessage.StreamHeaderTrack
+// 	groupID  moqtmessage.GroupID
+// 	objectID moqtmessage.ObjectID
 
-	readerCh chan struct {
-		moqtmessage.StreamHeaderPeep
-		quicvarint.Reader
-	}
+// 	readerCh chan struct {
+// 		moqtmessage.StreamHeaderTrack
+// 		quicvarint.Reader
+// 	}
 
-	readerMap map[moqtmessage.GroupID]map[moqtmessage.PeepID]chan struct {
-		moqtmessage.PublisherPriority
-		quicvarint.Reader
-	}
+// 	dataMap map[moqtmessage.GroupID]map[moqtmessage.ObjectID]chan []byte
+// }
 
-	dataMap map[moqtmessage.GroupID]map[moqtmessage.PeepID]map[moqtmessage.ObjectID]chan []byte
-}
+// func (stream *receiveDataStreamTrack) init() error {
+// 	if stream.closed {
+// 		return io.EOF
+// 	}
 
-func (stream *receiveDataStreamPeep) init() error {
-	if stream.closed {
-		return io.EOF
-	}
+// 	// Receive a receive reader
+// 	reader := <-stream.readerCh
 
-	_, ok := stream.readerMap[stream.header.GroupID]
-	if !ok {
-		stream.readerMap[stream.header.GroupID] = make(map[moqtmessage.PeepID]chan struct {
-			moqtmessage.PublisherPriority
-			quicvarint.Reader
-		})
-	}
+// 	stream.header.PublisherPriority = reader.PublisherPriority
 
-	_, ok = stream.readerMap[stream.header.GroupID][stream.header.PeepID]
-	if !ok {
-		stream.readerMap[stream.header.GroupID][stream.header.PeepID] = make(chan struct {
-			moqtmessage.PublisherPriority
-			quicvarint.Reader
-		}, 1)
-	}
+// 	go func(qvReader quicvarint.Reader) {
 
-	reader := <-stream.readerMap[stream.header.GroupID][stream.header.PeepID]
+// 		var chunk moqtmessage.GroupChunk
 
-	stream.header.PublisherPriority = reader.PublisherPriority
+// 		for {
+// 			// Get a Group Chunk
+// 			err := chunk.DeserializeBody(qvReader)
+// 			if err != nil {
+// 				log.Println(err)
+// 				return
+// 			}
 
-	go func(reader quicvarint.Reader) {
-		qvReader := quicvarint.NewReader(reader)
+// 			stream.mu.Lock()
 
-		var chunk moqtmessage.ObjectChunk
+// 			_, ok := stream.dataMap[chunk.GroupID]
+// 			if !ok {
+// 				stream.dataMap[chunk.GroupID] = make(map[moqtmessage.ObjectID]chan []byte)
+// 			}
 
-		for {
-			// Get a Group Chunk
-			err := chunk.DeserializeBody(qvReader)
-			if err != nil {
-				log.Println(err)
-				return
-			}
+// 			_, ok = stream.dataMap[chunk.GroupID][chunk.ObjectID]
+// 			if !ok {
+// 				stream.dataMap[chunk.GroupID][stream.objectID] = make(chan []byte, 1)
+// 			}
 
-			stream.mu.Lock()
+// 			stream.dataMap[chunk.GroupID][chunk.ObjectID] <- chunk.Payload
 
-			_, ok = stream.dataMap[stream.header.GroupID]
-			if !ok {
-				stream.dataMap[stream.header.GroupID] = make(map[moqtmessage.PeepID]map[moqtmessage.ObjectID]chan []byte)
-			}
+// 			stream.mu.Unlock()
+// 		}
 
-			_, ok = stream.dataMap[stream.header.GroupID][stream.header.PeepID]
-			if !ok {
-				stream.dataMap[stream.header.GroupID][stream.header.PeepID] = make(map[moqtmessage.ObjectID]chan []byte)
-			}
+// 	}(reader.Reader)
 
-			_, ok = stream.dataMap[stream.header.GroupID][stream.header.PeepID][stream.objectID]
-			if !ok {
-				stream.dataMap[stream.header.GroupID][stream.header.PeepID][stream.objectID] = make(chan []byte, 1)
-			}
+// 	return nil
+// }
 
-			stream.dataMap[stream.header.GroupID][stream.header.PeepID][chunk.ObjectID] <- chunk.Payload
+// func (stream *receiveDataStreamTrack) ForwardingPreference() moqtmessage.ObjectForwardingPreference {
+// 	return moqtmessage.TRACK
+// }
 
-			stream.mu.Unlock()
-		}
+// func (stream *receiveDataStreamTrack) Read(buf []byte) (int, error) {
+// 	if stream.closed {
+// 		return 0, io.EOF
+// 	}
 
-	}(reader.Reader)
+// 	stream.mu.Lock()
+// 	defer stream.mu.Unlock()
 
-	return nil
-}
-func (stream *receiveDataStreamPeep) ForwardingPreference() moqtmessage.ObjectForwardingPreference {
-	return moqtmessage.PEEP
-}
+// 	// Increment the Object ID by 1
+// 	stream.objectID++
 
-func (stream *receiveDataStreamPeep) Read(buf []byte) (int, error) {
-	if stream.closed {
-		return 0, io.EOF
-	}
+// 	_, ok := stream.dataMap[stream.groupID]
 
-	stream.mu.Lock()
-	defer stream.mu.Unlock()
+// 	if !ok {
+// 		stream.dataMap[stream.groupID] = make(map[moqtmessage.ObjectID]chan []byte)
+// 	}
 
-	// Increment the Object ID by 1
-	stream.objectID++
+// 	_, ok = stream.dataMap[stream.groupID][stream.objectID]
 
-	_, ok := stream.dataMap[stream.header.GroupID]
+// 	if !ok {
+// 		stream.dataMap[stream.groupID][stream.objectID] = make(chan []byte)
+// 	}
 
-	if !ok {
-		stream.dataMap[stream.header.GroupID] = make(map[moqtmessage.PeepID]map[moqtmessage.ObjectID]chan []byte)
-	}
+// 	payloadCh := stream.dataMap[stream.groupID][stream.objectID]
 
-	_, ok = stream.dataMap[stream.header.GroupID][stream.header.PeepID]
+// 	payload, ok := <-payloadCh
+// 	if !ok {
+// 		return 0, errors.New("no data")
+// 	}
 
-	if !ok {
-		stream.dataMap[stream.header.GroupID][stream.header.PeepID] = make(map[moqtmessage.ObjectID]chan []byte)
-	}
+// 	n := copy(buf, payload)
 
-	_, ok = stream.dataMap[stream.header.GroupID][stream.header.PeepID][stream.objectID]
+// 	return n, nil
+// }
 
-	if !ok {
-		stream.dataMap[stream.header.GroupID][stream.header.PeepID][stream.objectID] = make(chan []byte, 1)
-	}
+// func (stream *receiveDataStreamTrack) NextGroup() (ReceiveDataStream, error) {
+// 	if stream.closed {
+// 		return nil, ErrClosedStream
+// 	}
 
-	payloadCh := stream.dataMap[stream.header.GroupID][stream.header.PeepID][stream.objectID]
+// 	// Delete
+// 	delete(stream.dataMap, stream.groupID)
 
-	payload, ok := <-payloadCh
-	if !ok {
-		return 0, errors.New("no data")
-	}
+// 	// Increment the Group ID by 1
+// 	stream.groupID++
+// 	return stream, nil
+// }
 
-	n := copy(buf, payload)
+// func (stream *receiveDataStreamTrack) NextStream() (ReceiveDataStream, error) {
+// 	if stream.closed {
+// 		return nil, ErrClosedStream
+// 	}
 
-	return n, nil
-}
+// 	stream.init()
 
-func (stream *receiveDataStreamPeep) NextGroup() (ReceiveDataStream, error) {
-	if stream.closed {
-		return nil, ErrClosedStream
-	}
+// 	return stream, nil
+// }
 
-	//Delete
-	delete(stream.readerMap, stream.header.GroupID)
+// var _ ReceiveDataStream = (*receiveDataStreamPeep)(nil)
 
-	// Delete
-	delete(stream.dataMap, stream.header.GroupID)
+// type receiveDataStreamPeep struct {
+// 	mu       sync.Mutex
+// 	closed   bool
+// 	header   moqtmessage.StreamHeaderPeep
+// 	objectID moqtmessage.ObjectID
 
-	// Increment the Group ID by 1
-	stream.header.GroupID++
+// 	readerCh chan struct {
+// 		moqtmessage.StreamHeaderPeep
+// 		quicvarint.Reader
+// 	}
 
-	// Set the Peep ID to -1
-	stream.header.PeepID = 1<<64 - 1
+// 	readerMap map[moqtmessage.GroupID]map[moqtmessage.PeepID]chan struct {
+// 		moqtmessage.PublisherPriority
+// 		quicvarint.Reader
+// 	}
 
-	stream.closed = true
+// 	dataMap map[moqtmessage.GroupID]map[moqtmessage.PeepID]map[moqtmessage.ObjectID]chan []byte
+// }
 
-	return stream, nil
-}
+// func (stream *receiveDataStreamPeep) init() error {
+// 	if stream.closed {
+// 		return io.EOF
+// 	}
 
-func (stream *receiveDataStreamPeep) NextStream() (ReceiveDataStream, error) {
-	for {
-		// Receive a receive reader
-		reader := <-stream.readerCh
-		_, ok := stream.readerMap[reader.GroupID]
-		if !ok {
-			stream.readerMap[reader.GroupID] = make(map[moqtmessage.PeepID]chan struct {
-				moqtmessage.PublisherPriority
-				quicvarint.Reader
-			})
-		}
+// 	_, ok := stream.readerMap[stream.header.GroupID]
+// 	if !ok {
+// 		stream.readerMap[stream.header.GroupID] = make(map[moqtmessage.PeepID]chan struct {
+// 			moqtmessage.PublisherPriority
+// 			quicvarint.Reader
+// 		})
+// 	}
 
-		_, ok = stream.readerMap[reader.GroupID][reader.PeepID]
-		if !ok {
-			stream.readerMap[reader.GroupID][reader.PeepID] = make(chan struct {
-				moqtmessage.PublisherPriority
-				quicvarint.Reader
-			}, 1)
-		}
+// 	_, ok = stream.readerMap[stream.header.GroupID][stream.header.PeepID]
+// 	if !ok {
+// 		stream.readerMap[stream.header.GroupID][stream.header.PeepID] = make(chan struct {
+// 			moqtmessage.PublisherPriority
+// 			quicvarint.Reader
+// 		}, 1)
+// 	}
 
-		stream.readerMap[reader.GroupID][reader.PeepID] <- struct {
-			moqtmessage.PublisherPriority
-			quicvarint.Reader
-		}{
-			PublisherPriority: reader.PublisherPriority,
-			Reader:            reader.Reader,
-		}
+// 	reader := <-stream.readerMap[stream.header.GroupID][stream.header.PeepID]
 
-		_, ok = stream.dataMap[reader.GroupID]
-		if !ok {
-			stream.dataMap[reader.GroupID] = make(map[moqtmessage.PeepID]map[moqtmessage.ObjectID]chan []byte)
-		}
+// 	stream.header.PublisherPriority = reader.PublisherPriority
 
-		_, ok = stream.dataMap[reader.GroupID][reader.PeepID]
-		if !ok {
-			stream.dataMap[reader.GroupID][reader.PeepID] = make(map[moqtmessage.ObjectID]chan []byte)
-		}
+// 	go func(reader quicvarint.Reader) {
+// 		qvReader := quicvarint.NewReader(reader)
 
-		_, ok = stream.readerMap[stream.header.GroupID][stream.header.PeepID]
-		if ok {
-			break
-		}
-	}
+// 		var chunk moqtmessage.ObjectChunk
 
-	stream.init()
+// 		for {
+// 			// Get a Group Chunk
+// 			err := chunk.DeserializeBody(qvReader)
+// 			if err != nil {
+// 				log.Println(err)
+// 				return
+// 			}
 
-	return stream, nil
-}
+// 			stream.mu.Lock()
+
+// 			_, ok = stream.dataMap[stream.header.GroupID]
+// 			if !ok {
+// 				stream.dataMap[stream.header.GroupID] = make(map[moqtmessage.PeepID]map[moqtmessage.ObjectID]chan []byte)
+// 			}
+
+// 			_, ok = stream.dataMap[stream.header.GroupID][stream.header.PeepID]
+// 			if !ok {
+// 				stream.dataMap[stream.header.GroupID][stream.header.PeepID] = make(map[moqtmessage.ObjectID]chan []byte)
+// 			}
+
+// 			_, ok = stream.dataMap[stream.header.GroupID][stream.header.PeepID][stream.objectID]
+// 			if !ok {
+// 				stream.dataMap[stream.header.GroupID][stream.header.PeepID][stream.objectID] = make(chan []byte, 1)
+// 			}
+
+// 			stream.dataMap[stream.header.GroupID][stream.header.PeepID][chunk.ObjectID] <- chunk.Payload
+
+// 			stream.mu.Unlock()
+// 		}
+
+// 	}(reader.Reader)
+
+// 	return nil
+// }
+// func (stream *receiveDataStreamPeep) ForwardingPreference() moqtmessage.ObjectForwardingPreference {
+// 	return moqtmessage.PEEP
+// }
+
+// func (stream *receiveDataStreamPeep) Read(buf []byte) (int, error) {
+// 	if stream.closed {
+// 		return 0, io.EOF
+// 	}
+
+// 	stream.mu.Lock()
+// 	defer stream.mu.Unlock()
+
+// 	// Increment the Object ID by 1
+// 	stream.objectID++
+
+// 	_, ok := stream.dataMap[stream.header.GroupID]
+
+// 	if !ok {
+// 		stream.dataMap[stream.header.GroupID] = make(map[moqtmessage.PeepID]map[moqtmessage.ObjectID]chan []byte)
+// 	}
+
+// 	_, ok = stream.dataMap[stream.header.GroupID][stream.header.PeepID]
+
+// 	if !ok {
+// 		stream.dataMap[stream.header.GroupID][stream.header.PeepID] = make(map[moqtmessage.ObjectID]chan []byte)
+// 	}
+
+// 	_, ok = stream.dataMap[stream.header.GroupID][stream.header.PeepID][stream.objectID]
+
+// 	if !ok {
+// 		stream.dataMap[stream.header.GroupID][stream.header.PeepID][stream.objectID] = make(chan []byte, 1)
+// 	}
+
+// 	payloadCh := stream.dataMap[stream.header.GroupID][stream.header.PeepID][stream.objectID]
+
+// 	payload, ok := <-payloadCh
+// 	if !ok {
+// 		return 0, errors.New("no data")
+// 	}
+
+// 	n := copy(buf, payload)
+
+// 	return n, nil
+// }
+
+// func (stream *receiveDataStreamPeep) NextGroup() (ReceiveDataStream, error) {
+// 	if stream.closed {
+// 		return nil, ErrClosedStream
+// 	}
+
+// 	//Delete
+// 	delete(stream.readerMap, stream.header.GroupID)
+
+// 	// Delete
+// 	delete(stream.dataMap, stream.header.GroupID)
+
+// 	// Increment the Group ID by 1
+// 	stream.header.GroupID++
+
+// 	// Set the Peep ID to -1
+// 	stream.header.PeepID = 1<<64 - 1
+
+// 	stream.closed = true
+
+// 	return stream, nil
+// }
+
+// func (stream *receiveDataStreamPeep) NextStream() (ReceiveDataStream, error) {
+// 	for {
+// 		// Receive a receive reader
+// 		reader := <-stream.readerCh
+// 		_, ok := stream.readerMap[reader.GroupID]
+// 		if !ok {
+// 			stream.readerMap[reader.GroupID] = make(map[moqtmessage.PeepID]chan struct {
+// 				moqtmessage.PublisherPriority
+// 				quicvarint.Reader
+// 			})
+// 		}
+
+// 		_, ok = stream.readerMap[reader.GroupID][reader.PeepID]
+// 		if !ok {
+// 			stream.readerMap[reader.GroupID][reader.PeepID] = make(chan struct {
+// 				moqtmessage.PublisherPriority
+// 				quicvarint.Reader
+// 			}, 1)
+// 		}
+
+// 		stream.readerMap[reader.GroupID][reader.PeepID] <- struct {
+// 			moqtmessage.PublisherPriority
+// 			quicvarint.Reader
+// 		}{
+// 			PublisherPriority: reader.PublisherPriority,
+// 			Reader:            reader.Reader,
+// 		}
+
+// 		_, ok = stream.dataMap[reader.GroupID]
+// 		if !ok {
+// 			stream.dataMap[reader.GroupID] = make(map[moqtmessage.PeepID]map[moqtmessage.ObjectID]chan []byte)
+// 		}
+
+// 		_, ok = stream.dataMap[reader.GroupID][reader.PeepID]
+// 		if !ok {
+// 			stream.dataMap[reader.GroupID][reader.PeepID] = make(map[moqtmessage.ObjectID]chan []byte)
+// 		}
+
+// 		_, ok = stream.readerMap[stream.header.GroupID][stream.header.PeepID]
+// 		if ok {
+// 			break
+// 		}
+// 	}
+
+// 	stream.init()
+
+// 	return stream, nil
+// }

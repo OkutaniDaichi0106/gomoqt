@@ -1,4 +1,4 @@
-module go-moq
+module github.com/OkutaniDaichi0106/gomoqt
 
 go 1.22.0
 

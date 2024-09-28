@@ -15,24 +15,26 @@ func main() {
 
 	sess, err := subscriber.ConnectAndSetup(URL)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		return
 	}
 
 	announcement, err := sess.WaitAnnounce()
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
 		return
 	}
 
 	err = sess.AllowAnnounce(*announcement)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
 		return
 	}
 
 	stream, err := sess.Subscribe(*announcement, "audio", moqtransport.SubscribeConfig{})
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		return
 	}
 
 	buf := make([]byte, 1<<8)
@@ -40,7 +42,7 @@ func main() {
 	n, err := stream.Read(buf)
 
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
 		return
 	}
 

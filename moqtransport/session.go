@@ -5,6 +5,7 @@ import (
 	"go-moq/moqtransport/moqtmessage"
 	"go-moq/moqtransport/moqtversion"
 	"net"
+	"sync/atomic"
 	"time"
 
 	"github.com/quic-go/quic-go"
@@ -12,11 +13,17 @@ import (
 	"github.com/quic-go/webtransport-go"
 )
 
-func initSessionCounter() {
-	defaultPublishingSessionIDCounter = 0
+type sessionID uint64
+
+var sessionIDCounter uint64 = 0
+
+func getNextSessionID() sessionID {
+	return sessionID(atomic.AddUint64(&sessionIDCounter, 1)) - 1
 }
 
 type sessionCore struct {
+	sessionID sessionID
+
 	trSess TransportSession
 
 	controlStream ByteStream

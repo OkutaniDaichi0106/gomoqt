@@ -5,14 +5,20 @@ import (
 	"time"
 )
 
+type pubsubSessionID uint64
+
 // TODO
 type PubSubSession struct {
+	pubsubSessionID
+
 	sessionCore
-	localTrackNamespace moqtmessage.TrackNamespace
-	//remoteTrackNamespaces map[string]moqtmessage.TrackNamespace
+
+	subscriptions map[moqtmessage.SubscribeID]*Subscription
+
+	trackAliasMap trackAliasMap
 
 	maxSubscribeID   moqtmessage.SubscribeID
 	maxCacheDuration time.Duration
 
-	//trackManager
+	contentStatuses map[moqtmessage.TrackAlias]*contentStatus
 }

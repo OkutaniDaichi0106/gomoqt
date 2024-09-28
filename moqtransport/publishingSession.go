@@ -7,17 +7,8 @@ import (
 	"log"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 )
-
-var defaultPublishingSessionIDCounter uint64
-
-type publishingSessionID uint64
-
-func nextPublishingSessionID() publishingSessionID {
-	return publishingSessionID(atomic.AddUint64(&defaultPublishingSessionIDCounter, 1))
-}
 
 type trackAliasMap struct {
 	mu         sync.RWMutex
@@ -33,13 +24,11 @@ func (tamap *trackAliasMap) getAlias(tns moqtmessage.TrackNamespace, tn string) 
 	 * If an Track Alias exists, return the existing Track Alias
 	 */
 	tamap.mu.RLock()
-
+	defer tamap.mu.RUnlock()
 	existingAlias, ok := tamap.nameIndex[strings.Join(tns, "")][tn]
 	if ok {
 		return existingAlias
 	}
-
-	tamap.mu.RUnlock()
 
 	/*
 	 * If no Track Alias was found, get new Track Alias and register the Track Namespace and Track Name with it
@@ -74,9 +63,9 @@ func (tamap *trackAliasMap) getName(ta moqtmessage.TrackAlias) (moqtmessage.Trac
 
 type contentStatus struct {
 	/*
-	 * Current state of the contents
+	 * Current content status
 	 */
-	contentExist  bool
+	contentExists bool
 	finalGroupID  moqtmessage.GroupID
 	finalObjectID moqtmessage.ObjectID
 
@@ -91,15 +80,11 @@ type contentStatus struct {
  *
  */
 type PublishingSession struct {
-	publishingSessionID
-
 	sessionCore
 
 	maxSubscribeID moqtmessage.SubscribeID
 
 	subscriptions map[moqtmessage.SubscribeID]*Subscription
-
-	forwardingPreference map[string]map[string]moqtmessage.ObjectForwardingPreference
 
 	/*
 	 * Track Namespace - Track Name - Track Alias map
@@ -273,26 +258,20 @@ func (sess *PublishingSession) receiveSubscribe(newSubscribeID moqtmessage.Subsc
 
 	tnsNode.mu.RLock()
 	defer tnsNode.mu.RUnlock()
-	tnNode, ok := tnsNode.tracks[sm.TrackName]
+	_, ok = tnsNode.tracks[sm.TrackName]
 
 	// Create new Track if the Track Name did not exist
 	if !ok {
 		tnsNode.mu.Lock()
 		tnsNode.tracks[sm.TrackName] = &trackNameNode{
-			value:                 sm.TrackName,
-			sessionWithSubscriber: make(map[publishingSessionID]*PublishingSession),
+			value: sm.TrackName,
 		}
-
-		tnNode = tnsNode.tracks[sm.TrackName]
 
 		tnsNode.mu.Unlock()
 
 		// TODO: create a new subscription
 		panic("NO TRACK!! MAKE NEW SUBSCRIPTION!!")
 	}
-
-	// Register the session
-	tnNode.sessionWithSubscriber[sess.publishingSessionID] = sess
 
 	// Verify if the Track Alias is valid
 	existingAlias := sess.trackAliasMap.getAlias(sm.TrackNamespace, sm.TrackName)
@@ -301,18 +280,22 @@ func (sess *PublishingSession) receiveSubscribe(newSubscribeID moqtmessage.Subsc
 		return nil, RetryTrackAliasError{}
 	}
 
-	// Parse the parameters
-	authInfo, _ := sm.Parameters.AuthorizationInfo()
-
-	timeout, _ := sm.Parameters.DeliveryTimeout()
-
 	// Get new Subscribe Config
 	config := SubscribeConfig{
 		SubscriberPriority: sm.SubscriberPriority,
 		GroupOrder:         sm.GroupOrder,
 		SubscriptionFilter: sm.SubscriptionFilter,
-		AuthorizationInfo:  authInfo,
-		DeliveryTimeout:    timeout,
+	}
+
+	// Parse the parameters
+	authInfo, ok := sm.Parameters.AuthorizationInfo()
+	if ok {
+		config.AuthorizationInfo = authInfo
+	}
+
+	timeout, ok := sm.Parameters.DeliveryTimeout()
+	if ok {
+		config.DeliveryTimeout = timeout
 	}
 
 	// Get new Subscription
@@ -328,14 +311,27 @@ func (sess *PublishingSession) receiveSubscribe(newSubscribeID moqtmessage.Subsc
 }
 
 func (sess *PublishingSession) AllowSubscribe(subscription *Subscription, expiry time.Duration) error {
-	var contentExists bool
+	// Update the content status
+	tnsNode, ok := trackManager.findTrackNamespace(subscription.trackNamespace)
+	if !ok {
+		errors.New("track namespace not found")
+	}
+
+	tnNode, ok := tnsNode.findTrackName(subscription.trackName)
+	if !ok {
+		tnNode = tnsNode.newTrackNameNode(subscription.trackName)
+	}
+	sess.contentStatuses[subscription.trackAlias] = tnNode.originSession.contentStatuses[]
+
+	// Register the session
+	tnNode.destinationSession = append(tnNode.destinationSession, sess)
 
 	// Send a SUBSCRIBE_OK
 	so := moqtmessage.SubscribeOkMessage{
 		SubscribeID:     subscription.subscribeID,
 		Expires:         expiry,
 		GroupOrder:      subscription.config.GroupOrder,
-		ContentExists:   contentExists,
+		ContentExists:   sess.contentStatuses[subscription.trackAlias].contentExists,
 		LargestGroupID:  sess.contentStatuses[subscription.trackAlias].largestGroupID,
 		LargestObjectID: sess.contentStatuses[subscription.trackAlias].largestObjectID,
 		Parameters:      make(moqtmessage.Parameters), // TODO: Handler the parameters
@@ -396,7 +392,7 @@ func (sess *PublishingSession) EndSubscription(subscribeID moqtmessage.Subscribe
 		SubscribeID:   subscribeID,
 		StatusCode:    status.Code(),
 		Reason:        status.Reason(),
-		ContentExists: contentStatus.contentExist,
+		ContentExists: contentStatus.contentExists,
 		FinalGroupID:  contentStatus.finalGroupID,
 		FinalObjectID: contentStatus.finalObjectID,
 	}
@@ -435,7 +431,7 @@ type Subscription struct {
 	trackName      string
 	config         SubscribeConfig
 
-	//onceErr *sync.Once
+	forwardingPreference moqtmessage.ObjectForwardingPreference
 }
 
 func (s Subscription) TrackName() string {

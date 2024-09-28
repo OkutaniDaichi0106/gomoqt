@@ -7,24 +7,17 @@ import (
 	"log"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-var defaultSubscribingSessionIDCounter uint64
-
-type subscribingSessionID uint64
-
-func nextSubscribingSessionID() subscribingSessionID {
-	return subscribingSessionID(atomic.AddUint64(&defaultSubscribingSessionIDCounter, 1))
-}
-
 type Announcement struct {
 	trackNamespace moqtmessage.TrackNamespace
 
 	AuthorizationInfo string
+
+	Parameters moqtmessage.Parameters
 }
 
 /*
@@ -34,8 +27,6 @@ type Announcement struct {
 
 type SubscribingSession struct {
 	mu sync.RWMutex
-
-	subscribingSessionID
 
 	sessionCore
 
@@ -47,6 +38,8 @@ type SubscribingSession struct {
 	trackAliasMap trackAliasMap
 
 	subscriptions map[moqtmessage.SubscribeID]Subscription
+
+	//chunkReaderChs map[moqtmessage.SubscribeID]chan<- ReceiveByteStream
 
 	relayConfig map[moqtmessage.SubscribeID]struct {
 		deliveryTimeout time.Duration
@@ -64,19 +57,22 @@ type SubscribingSession struct {
 		expireCancel context.CancelFunc
 	}
 
-	//TODO
-	readerMap map[moqtmessage.SubscribeID]chan struct {
-		moqtmessage.StreamHeader
-		quicvarint.Reader
+	streams map[moqtmessage.SubscribeID]chan struct {
+		header moqtmessage.StreamHeader
+		reader quicvarint.Reader
 	}
+	// //TODO
+	// readerMap map[moqtmessage.SubscribeID]chan struct {
+	// 	moqtmessage.StreamHeader
+	// 	quicvarint.Reader
+	// }
 }
 
-func (sess *SubscribingSession) init() {
-	sess.readerMap = make(map[moqtmessage.SubscribeID]chan struct {
-		moqtmessage.StreamHeader
-		quicvarint.Reader
-	})
+func (sess *SubscribingSession) getContentStatus(trackNamespace moqtmessage.TrackNamespace, trackName string) {
+	sess.trackAliasMap.getAlias(trackNamespace, trackName)
+}
 
+func (sess *SubscribingSession) listenReceiveStreams() {
 	go func() {
 		for {
 			stream, err := sess.trSess.AcceptUniStream(context.TODO())
@@ -93,20 +89,26 @@ func (sess *SubscribingSession) init() {
 				return
 			}
 
-			if sess.readerMap[header.GetSubscribeID()] == nil {
-				sess.readerMap[header.GetSubscribeID()] = make(chan struct {
-					moqtmessage.StreamHeader
-					quicvarint.Reader
-				}, 1<<1)
+			sess.mu.Lock()
+
+			_, ok := sess.streams[header.GetSubscribeID()]
+
+			if !ok {
+				sess.streams[header.GetSubscribeID()] = make(chan struct {
+					header moqtmessage.StreamHeader
+					reader quicvarint.Reader
+				}, 1<<2)
 			}
 
-			sess.readerMap[header.GetSubscribeID()] <- struct {
-				moqtmessage.StreamHeader
-				quicvarint.Reader
+			sess.streams[header.GetSubscribeID()] <- struct {
+				header moqtmessage.StreamHeader
+				reader quicvarint.Reader
 			}{
-				StreamHeader: header,
-				Reader:       qvReader,
+				header: header,
+				reader: qvReader,
 			}
+
+			sess.mu.Unlock()
 		}
 	}()
 }
@@ -125,7 +127,6 @@ func (sess *SubscribingSession) WaitAnnounce() (*Announcement, error) {
 	}
 
 	var am moqtmessage.AnnounceMessage
-
 	err = am.DeserializeBody(sess.controlReader)
 	if err != nil {
 		return nil, err
@@ -133,9 +134,8 @@ func (sess *SubscribingSession) WaitAnnounce() (*Announcement, error) {
 
 	announcement := Announcement{
 		trackNamespace: am.TrackNamespace,
+		Parameters:     am.Parameters,
 	}
-
-	trackManager.addAnnouncement(am)
 
 	authInfo, ok := am.Parameters.AuthorizationInfo()
 	if ok {
@@ -149,6 +149,15 @@ func (sess *SubscribingSession) WaitAnnounce() (*Announcement, error) {
 func (sess *SubscribingSession) AllowAnnounce(announcement Announcement) error {
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
+
+	// Register the Track Namaspace
+	node := trackManager.trackNamespaceTree.insert(announcement.trackNamespace)
+
+	node.mu.Lock()
+	defer node.mu.Unlock()
+
+	// Register the parameters
+	node.params = &announcement.Parameters
 
 	// Send an ANNOUNCE_OK message
 	ao := moqtmessage.AnnounceOkMessage{
@@ -178,150 +187,7 @@ func (sess *SubscribingSession) RejectAnnounce(announcement Announcement, annErr
 	}
 }
 
-func (sess *SubscribingSession) Subscribe(announcement Announcement, trackName string, config SubscribeConfig) (ReceiveDataStream, error) {
-	subscription, err := sess.subscribe(announcement, trackName, config)
-	if err != nil {
-		return nil, err
-	}
-
-	reader := <-sess.readerMap[subscription.subscribeID]
-
-	log.Println("REACH!! receive a reader through channel")
-
-	switch header := reader.StreamHeader.(type) {
-	case *moqtmessage.StreamHeaderDatagram:
-
-		readerCh := make(chan struct {
-			moqtmessage.StreamHeaderDatagram
-			quicvarint.Reader
-		}, 1<<1)
-
-		readerCh <- struct {
-			moqtmessage.StreamHeaderDatagram
-			quicvarint.Reader
-		}{
-			StreamHeaderDatagram: *header,
-			Reader:               reader.Reader,
-		}
-
-		// Continue to receive stream readers in a goroutine
-		go func() {
-			for {
-				reader := <-sess.readerMap[subscription.subscribeID]
-				header, ok := reader.StreamHeader.(*moqtmessage.StreamHeaderDatagram)
-				// Ignore the header if it is an unexpected header
-				if !ok {
-					continue
-				}
-
-				readerCh <- struct {
-					moqtmessage.StreamHeaderDatagram
-					quicvarint.Reader
-				}{
-					StreamHeaderDatagram: *header,
-					Reader:               reader.Reader,
-				}
-			}
-		}()
-
-		return &receiveDataStreamDatagram{
-			closed:   false,
-			header:   *header,
-			groupID:  0,
-			objectID: 0,
-			readerCh: readerCh,
-		}, nil
-
-	case *moqtmessage.StreamHeaderTrack:
-		readerCh := make(chan struct {
-			moqtmessage.StreamHeaderTrack
-			quicvarint.Reader
-		}, 1<<1)
-
-		readerCh <- struct {
-			moqtmessage.StreamHeaderTrack
-			quicvarint.Reader
-		}{
-			StreamHeaderTrack: *header,
-			Reader:            reader.Reader,
-		}
-
-		// Continue to receive stream readers in a goroutine
-		go func() {
-			for {
-				reader := <-sess.readerMap[subscription.subscribeID]
-				header, ok := reader.StreamHeader.(*moqtmessage.StreamHeaderTrack)
-				// Ignore the header if it is an unexpected header
-				if !ok {
-					continue
-				}
-
-				readerCh <- struct {
-					moqtmessage.StreamHeaderTrack
-					quicvarint.Reader
-				}{
-					StreamHeaderTrack: *header,
-					Reader:            reader.Reader,
-				}
-			}
-		}()
-
-		return &receiveDataStreamTrack{
-			closed:   false,
-			header:   *header,
-			groupID:  0,
-			objectID: 0,
-
-			readerCh: readerCh,
-		}, nil
-
-	case *moqtmessage.StreamHeaderPeep:
-		readerCh := make(chan struct {
-			moqtmessage.StreamHeaderPeep
-			quicvarint.Reader
-		}, 1<<1)
-
-		readerCh <- struct {
-			moqtmessage.StreamHeaderPeep
-			quicvarint.Reader
-		}{
-			StreamHeaderPeep: *header,
-			Reader:           reader.Reader,
-		}
-
-		// Continue to receive stream readers in a goroutine
-		go func() {
-			for {
-				reader := <-sess.readerMap[subscription.subscribeID]
-				header, ok := reader.StreamHeader.(*moqtmessage.StreamHeaderPeep)
-				// Ignore the header if it is an unexpected header
-				if !ok {
-					continue
-				}
-
-				readerCh <- struct {
-					moqtmessage.StreamHeaderPeep
-					quicvarint.Reader
-				}{
-					StreamHeaderPeep: *header,
-					Reader:           reader.Reader,
-				}
-			}
-		}()
-
-		return &receiveDataStreamPeep{
-			closed:   false,
-			header:   *header,
-			objectID: 0,
-
-			readerCh: readerCh,
-		}, nil
-	default:
-		return nil, ErrProtocolViolation
-	}
-}
-
-func (sess *SubscribingSession) subscribe(announcement Announcement, trackName string, config SubscribeConfig) (*Subscription, error) {
+func (sess *SubscribingSession) Subscribe(announcement Announcement, trackName string, config SubscribeConfig) (*Subscription, error) {
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
 
@@ -343,7 +209,7 @@ func (sess *SubscribingSession) subscribe(announcement Announcement, trackName s
 
 	// Initialize the subscription status
 	sess.contentStatuses[newSubscribeID] = &contentStatus{
-		contentExist:    false,
+		contentExists:   false,
 		largestGroupID:  0,
 		largestObjectID: 0,
 	}
@@ -394,6 +260,12 @@ func (sess *SubscribingSession) subscribe(announcement Announcement, trackName s
 			return sess.retrySubscribe(subscription, ctx)
 		}
 
+		return nil, err
+	}
+
+	// Register the session
+	err = trackManager.setOrigin(subscription.trackNamespace, subscription.trackName, sess)
+	if err != nil {
 		return nil, err
 	}
 
@@ -481,6 +353,24 @@ func (sess *SubscribingSession) receiveSubscribeResponce(subscription Subscripti
 			}
 		}
 
+		// Update the content status in the session
+		contentStatus := &contentStatus{
+			contentExists:   so.ContentExists,
+			largestGroupID:  so.LargestGroupID,
+			largestObjectID: so.LargestObjectID,
+		}
+
+		sess.contentStatuses[so.SubscribeID] = contentStatus
+
+		// Update the content status in track
+		tnsNode, ok := trackManager.findTrackNamespace(subscription.trackNamespace)
+		if !ok {
+			return errors.New("track namespace not found")
+		}
+		tnNode := tnsNode.addTrackNameNode(subscription.trackName)
+		tnNode.contentStatus = contentStatus
+
+		//
 		var ctx context.Context
 		var cancel context.CancelFunc
 
@@ -488,14 +378,6 @@ func (sess *SubscribingSession) receiveSubscribeResponce(subscription Subscripti
 		if so.Expires != 0 {
 			ctx, cancel = context.WithTimeout(context.Background(), so.Expires)
 		}
-
-		// Update the subscription status
-		sess.contentStatuses[so.SubscribeID] = &contentStatus{
-			contentExist:    so.ContentExists,
-			largestGroupID:  so.LargestGroupID,
-			largestObjectID: so.LargestObjectID,
-		}
-
 		sess.expiries[so.SubscribeID] = &struct {
 			expireCtx    context.Context
 			expireCancel context.CancelFunc
@@ -520,6 +402,38 @@ func (sess *SubscribingSession) receiveSubscribeResponce(subscription Subscripti
 	default:
 		return ErrProtocolViolation
 	}
+}
+
+func (sess *SubscribingSession) GetReceiveDataStream(subsription Subscription, ctx context.Context) (ReceiveDataStream, error) {
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+
+	_, ok := sess.streams[subsription.subscribeID]
+	if !ok {
+		sess.streams[subsription.subscribeID] = make(chan struct {
+			header moqtmessage.StreamHeader
+			reader quicvarint.Reader
+		}, 1<<2)
+	}
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+
+	case v := <-sess.streams[subsription.subscribeID]:
+		if subsription.subscribeID != v.header.GetSubscribeID() {
+			panic("subscribe id mismatch")
+		}
+
+		if subsription.trackAlias != v.header.GetTrackAlias() {
+			log.Println("track alias mismatch")
+			return nil, ErrProtocolViolation
+		}
+
+		return
+
+	}
+
 }
 
 func (sess *SubscribingSession) UpdateSubscription(subscribeID moqtmessage.SubscribeID, config SubscribeConfig) error {

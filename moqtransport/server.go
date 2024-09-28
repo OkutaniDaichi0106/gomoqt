@@ -25,6 +25,8 @@ var DefaultPublishingHandler map[string]func(*PublishingSession)
 var DefaultSubscribingHandler map[string]func(*SubscribingSession)
 var DefaultPubSubHandler map[string]func(*PubSubSession)
 
+//var relayMapping map[subscribingSessionID][]PublishingSession
+
 func HandlePublishingFunc(pattern string, op func(*PublishingSession)) {
 	_, ok := DefaultPublishingHandler[pattern]
 	if ok {
@@ -52,6 +54,8 @@ func HandleRelayFunc(pattern string, op func(*PubSubSession)) {
 	DefaultPubSubHandler[pattern] = op
 }
 
+var sessions []*sessionCore
+
 /*
  * Server
  */
@@ -78,8 +82,6 @@ type Server struct {
 }
 
 func (s Server) ListenAndServe() error {
-	initSessionCounter()
-
 	errCh := make(chan error, 1)
 
 	if s.TLSConfig == nil {
@@ -222,6 +224,7 @@ func (s Server) handleWebTransport(path string, sess *webtransport.Session) erro
 	}
 
 	sessionCore := sessionCore{
+		sessionID:       getNextSessionID(),
 		trSess:          &webtransportSessionWrapper{innerSession: sess},
 		controlStream:   webtransportStreamWrapper{innerStream: controlStream},
 		controlReader:   controlReader,
@@ -334,6 +337,7 @@ func (s Server) handleRawQUIC(conn quic.Connection) error {
 	}
 
 	sessionCore := sessionCore{
+		sessionID:       getNextSessionID(),
 		trSess:          &rawQuicConnectionWrapper{innerSession: conn},
 		controlStream:   rawQuicStreamWrapper{innerStream: controlStream},
 		controlReader:   controlReader,
@@ -388,8 +392,6 @@ func (s Server) handleRawQUIC(conn quic.Connection) error {
 		return ErrInternalError
 	}
 }
-
-var sessions []*sessionCore
 
 func (s Server) GoAway(url string, duration time.Duration) {
 	gm := moqtmessage.GoAwayMessage{

@@ -6,33 +6,55 @@ import (
 	"sync"
 )
 
-var trackManager TrackManager
+var trackManager = TrackManager{
+	trackNamespaceTree: *newTrackNamespaceTree(),
+}
 
 type TrackManager struct {
 	trackNamespaceTree TrackNamespaceTree
-
-	// fullTrackNameFromAlias map[moqtmessage.TrackAlias]struct {
-	// 	moqtmessage.TrackNamespace
-	// 	TrackName string
-	// }
-
-	/*
-	 * map[upstream Track Alias]downstream Track Alias
-	 */
-	//router map[moqtmessage.TrackAlias]moqtmessage.TrackAlias
 }
 
-func (tm *TrackManager) addAnnouncement(announcement moqtmessage.AnnounceMessage) {
-	node := tm.trackNamespaceTree.insert(announcement.TrackNamespace)
+// func (tm *TrackManager) addAnnouncement(announcement Announcement) {
+// 	node := tm.trackNamespaceTree.insert(announcement.trackNamespace)
 
-	node.mu.Lock()
-	defer node.mu.Unlock()
+// 	node.mu.Lock()
+// 	defer node.mu.Unlock()
 
-	node.params = &announcement.Parameters
+// 	node.params = &announcement.Parameters
+// }
+
+func (tm *TrackManager) newTrackNamespace(trackNamespace moqtmessage.TrackNamespace) *trackNamespaceNode {
+	return tm.trackNamespaceTree.insert(trackNamespace)
 }
 
 func (tm *TrackManager) findTrackNamespace(trackNamespace moqtmessage.TrackNamespace) (*trackNamespaceNode, bool) {
 	return tm.trackNamespaceTree.trace(trackNamespace)
+}
+
+func (tm *TrackManager) addTrackName(trackNamespace moqtmessage.TrackNamespace, trackName string) *trackNameNode {
+	tnsNode := tm.newTrackNamespace(trackNamespace)
+
+	return tnsNode.newTrackNameNode(trackName)
+}
+
+func (tm *TrackManager) findTrackName(trackNamespace moqtmessage.TrackNamespace, trackName string) (*trackNameNode, bool) {
+	tnsNode, ok := tm.findTrackNamespace(trackNamespace)
+	if !ok {
+		return nil, false
+	}
+
+	return tnsNode.findTrackName(trackName)
+}
+
+func (tm *TrackManager) setOrigin(trackNamespace moqtmessage.TrackNamespace, trackName string, sess *SubscribingSession) error {
+	node, ok := tm.findTrackName(trackNamespace, trackName)
+	if !ok {
+		return errors.New("track not found")
+	}
+
+	node.originSession = sess
+
+	return nil
 }
 
 type TrackNamespaceTree struct {
@@ -99,6 +121,11 @@ type trackNamespaceNode struct {
 
 	//
 	tracks map[string]*trackNameNode
+
+	/*
+	 * Session with the publisher
+	 */
+	//originSession *SubscribingSession
 }
 
 type trackNameNode struct {
@@ -110,19 +137,19 @@ type trackNameNode struct {
 	value string
 
 	/*
-	 * Object Forwarding Preference
+	 * The Object Forwarding Preference
 	 */
-	forwarding moqtmessage.ObjectForwardingPreference
+	ofp moqtmessage.ObjectForwardingPreference
 
 	/*
-	 * Session with the publisher
+	 *
 	 */
-	sessionWithPublisher *SubscribingSession
+	originSession *SubscribingSession
 
 	/*
-	 * Session with subscribers
+	 *
 	 */
-	sessionWithSubscriber map[publishingSessionID]*PublishingSession
+	destinationSession []*PublishingSession
 }
 
 func (node *trackNamespaceNode) remove(tns moqtmessage.TrackNamespace, depth int) (bool, error) {
@@ -167,6 +194,9 @@ func (node *trackNamespaceNode) remove(tns moqtmessage.TrackNamespace, depth int
 }
 
 func (node *trackNamespaceNode) trace(values ...string) (*trackNamespaceNode, bool) {
+	node.mu.RLock()
+	defer node.mu.RUnlock()
+
 	currentNode := node
 	for _, nodeValue := range values {
 		// Verify the node has a child with the node value
@@ -182,93 +212,25 @@ func (node *trackNamespaceNode) trace(values ...string) (*trackNamespaceNode, bo
 	return currentNode, true
 }
 
-// func (tm *TrackManager) getTrackStatus(tns moqtmessage.TrackNamespace, tn string) (*TrackStatus, error) {
-// 	node, err := tm.trackNamespaceTree.trace(tns)
-// 	if err != nil {
-// 		return nil, err
-// 	}
+func (node *trackNamespaceNode) findTrackName(trackName string) (*trackNameNode, bool) {
+	tnNode, ok := node.tracks[trackName]
+	if !ok {
+		return nil, false
+	}
 
-// 	for trackName, track := range node.tracks {
-// 		if trackName == tn {
-// 			return track.status, nil
-// 		}
-// 	}
+	return tnNode, true
+}
 
-// 	return nil, errors.New("track not found")
-// }
+func (node *trackNamespaceNode) newTrackNameNode(trackName string) *trackNameNode {
+	node.tracks[trackName] = &trackNameNode{
+		value: trackName,
+	}
 
-// func (tm *TrackManager) addTrack(tns moqtmessage.TrackNamespace, tn string) error {
-// 	node, err := tm.trackNamespaceTree.trace(tns)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	for trackName, track := range node.tracks {
-// 		if trackName == tn {
-
-// 		}
-// 	}
-// }
+	return node.tracks[trackName]
+}
 
 type TrackStatus struct {
 	Code         moqtmessage.TrackStatusCode
 	LastGroupID  moqtmessage.GroupID
 	LastObjectID moqtmessage.ObjectID
 }
-
-//var pubSessions map[moqtmessage.SubscribeID]PubSession
-
-// type PubSessionManager struct {
-// 	mu sync.RWMutex
-
-// 	pubSessions map[sessionID]PubSession
-// }
-
-// var subSessionManager SubSessionManager
-
-// type SubSessionManager struct {
-// 	mu sync.RWMutex
-
-// 	subSessions []SubSession
-// }
-
-// func (manager *SubSessionManager) getSession(id sessionID) SubSession {
-// 	manager.mu.RLock()
-// 	defer manager.mu.RUnlock()
-
-// 	return manager.subSessions[id]
-// }
-
-// func (manager *SubSessionManager) addSession(sess SubSession) error {
-// 	manager.mu.Lock()
-// 	defer manager.mu.Unlock()
-
-// 	_, ok := manager.subSessions[sess.sessionID]
-// 	if ok {
-// 		return errors.New("duplicate session ID")
-// 	}
-
-// 	manager.subSessions[sess.sessionID] = sess
-
-// 	return nil
-// }
-
-// func getTrackStatus(tns moqtmessage.TrackNamespace, tn string) (TrackStatus, error) {
-// 	// Set default Track Status
-// 	defaultStatus := TrackStatus{
-// 		Code: moqtmessage.TRACK_STATUS_UNTRACEABLE_RELAY,
-// 	}
-
-// 	// Listen to the local Track Manager
-// 	status, err := trackManager.getTrackStatus(tns, tn)
-// 	if err != nil {
-// 		return defaultStatus, err
-// 	}
-// 	if status != nil {
-// 		return *status, nil
-// 	}
-
-// 	for _, subSession := range subSessionManager.subSessions {
-// 		subSession
-// 	}
-// }

@@ -1,8 +1,9 @@
 package moqtransport
 
 import (
-	"go-moq/moqtransport/moqtmessage"
 	"time"
+
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
 )
 
 type pubsubSessionID uint64

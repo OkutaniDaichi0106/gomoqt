@@ -2,11 +2,12 @@ package moqtransport
 
 import (
 	"context"
-	"go-moq/moqtransport/moqtmessage"
-	"go-moq/moqtransport/moqtversion"
 	"net"
 	"sync/atomic"
 	"time"
+
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtversion"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/quicvarint"

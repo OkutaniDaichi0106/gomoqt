@@ -49,61 +49,71 @@ type SubscribeOkMessage struct {
 
 func (so SubscribeOkMessage) Serialize() []byte {
 	/*
-	 * Serialize as following formatt
+	 * Serialize the message in the following formatt
 	 *
 	 * SUBSCRIBE_UPDATE Message {
+	 *   Type (varint) = 0x04,
+	 *   Length (varint),
 	 *   Subscribe ID (varint),
 	 *   Expire (varint),
 	 *   Group Order (8),
 	 *   Content Exist (flag),
 	 *   [Largest Group ID (varint),]
 	 *   [Largest Object ID (varint),]
+	 *   Parameters
 	 * }
 	 */
 
-	// TODO?: Chech URI exists
+	/*
+	 * Get serialized payload
+	 */
+	p := so.serializePayload()
 
-	// TODO: Tune the length of the "b"
-	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
+	/*
+	 * Get serialized message
+	 */
+	b := make([]byte, 0, 1<<10)
 	// Append the type of the message
 	b = quicvarint.Append(b, uint64(SUBSCRIBE_OK))
-	// Append Subscriber ID
-	b = quicvarint.Append(b, uint64(so.SubscribeID))
-	// Append Expire
-	if so.Expires.Microseconds() < 0 {
-		so.Expires = 0
-	}
-	b = quicvarint.Append(b, uint64(so.Expires.Microseconds()))
-	// Append Group Order
-	b = quicvarint.Append(b, uint64(so.GroupOrder))
-
-	// Append Content Exist
-	if !so.ContentExists {
-		b = quicvarint.Append(b, 0)
-		return b
-	} else if so.ContentExists {
-		b = quicvarint.Append(b, 1)
-		// Append the End Group ID only when the Content Exist is true
-		b = quicvarint.Append(b, uint64(so.LargestGroupID))
-		// Append the End Object ID only when the Content Exist is true
-		b = quicvarint.Append(b, uint64(so.LargestObjectID))
-	}
+	// Append the length of the payload
+	b = quicvarint.Append(b, uint64(len(p)))
+	// Append the payload
+	b = append(b, p...)
 
 	return b
 }
 
-// func (so *SubscribeOkMessage) deserialize(r quicvarint.Reader) error {
-// 	// Get Message ID and check it
-// 	id, err := deserializeHeader(r)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	if id != SUBSCRIBE_OK {
-// 		return errors.New("unexpected message")
-// 	}
+func (so *SubscribeOkMessage) serializePayload() []byte {
+	/*
+	 * Serialize the message payload
+	 */
+	p := make([]byte, 0, 1<<10)
 
-// 	return so.deserializeBody(r)
-// }
+	// Append Subscriber ID
+	p = quicvarint.Append(p, uint64(so.SubscribeID))
+
+	// Append Expire
+	p = quicvarint.Append(p, uint64(so.Expires.Milliseconds()))
+
+	// Append Group Order
+	p = quicvarint.Append(p, uint64(so.GroupOrder))
+
+	// Append Content Exist
+	if so.ContentExists {
+		p = quicvarint.Append(p, 1)
+		// Append the End Group ID only when the Content Exist is true
+		p = quicvarint.Append(p, uint64(so.LargestGroupID))
+		// Append the End Object ID only when the Content Exist is true
+		p = quicvarint.Append(p, uint64(so.LargestObjectID))
+	} else {
+		p = quicvarint.Append(p, 0)
+	}
+
+	// Append parameters
+	p = so.Parameters.append(p)
+
+	return p
+}
 
 func (so *SubscribeOkMessage) DeserializeBody(r quicvarint.Reader) error {
 	var err error

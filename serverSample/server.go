@@ -2,10 +2,11 @@ package main
 
 import (
 	"crypto/tls"
-	"go-moq/moqtransport"
-	"go-moq/moqtransport/moqtversion"
 	"net/http"
 	"time"
+
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransport"
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtversion"
 
 	"github.com/quic-go/quic-go"
 )
@@ -35,12 +36,21 @@ func main() {
 	}
 
 	moqtransport.HandlePublishingFunc("/", func(ps *moqtransport.PublishingSession) {
-
+		ps.WaitSubscribe()
 	})
 
 	moqtransport.HandlePublishingFunc("/", func(ps *moqtransport.PublishingSession) {
 
 	})
+
+	// c := make(chan os.Signal)
+	// signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	// go func() {
+	// 	<-c
+	// 	// Exit server
+	// 	cancel()
+	// 	ms.Close()
+	// }()
 
 	ms.ListenAndServe()
 

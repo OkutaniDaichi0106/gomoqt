@@ -2,8 +2,9 @@ package moqtransport
 
 import (
 	"errors"
-	"go-moq/moqtransport/moqtmessage"
 	"sync"
+
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
 )
 
 var trackManager = TrackManager{
@@ -13,15 +14,6 @@ var trackManager = TrackManager{
 type TrackManager struct {
 	trackNamespaceTree TrackNamespaceTree
 }
-
-// func (tm *TrackManager) addAnnouncement(announcement Announcement) {
-// 	node := tm.trackNamespaceTree.insert(announcement.trackNamespace)
-
-// 	node.mu.Lock()
-// 	defer node.mu.Unlock()
-
-// 	node.params = &announcement.Parameters
-// }
 
 func (tm *TrackManager) newTrackNamespace(trackNamespace moqtmessage.TrackNamespace) *trackNamespaceNode {
 	return tm.trackNamespaceTree.insert(trackNamespace)
@@ -44,17 +36,6 @@ func (tm *TrackManager) findTrackName(trackNamespace moqtmessage.TrackNamespace,
 	}
 
 	return tnsNode.findTrackName(trackName)
-}
-
-func (tm *TrackManager) setOrigin(trackNamespace moqtmessage.TrackNamespace, trackName string, sess *SubscribingSession) error {
-	node, ok := tm.findTrackName(trackNamespace, trackName)
-	if !ok {
-		return errors.New("track not found")
-	}
-
-	node.originSession = sess
-
-	return nil
 }
 
 type TrackNamespaceTree struct {
@@ -121,11 +102,6 @@ type trackNamespaceNode struct {
 
 	//
 	tracks map[string]*trackNameNode
-
-	/*
-	 * Session with the publisher
-	 */
-	//originSession *SubscribingSession
 }
 
 type trackNameNode struct {
@@ -144,12 +120,12 @@ type trackNameNode struct {
 	/*
 	 *
 	 */
-	originSession *SubscribingSession
+	contentStatus *contentStatus
 
 	/*
 	 *
 	 */
-	destinationSession []*PublishingSession
+	//destinationSession []*PublishingSession
 }
 
 func (node *trackNamespaceNode) remove(tns moqtmessage.TrackNamespace, depth int) (bool, error) {
@@ -224,6 +200,11 @@ func (node *trackNamespaceNode) findTrackName(trackName string) (*trackNameNode,
 func (node *trackNamespaceNode) newTrackNameNode(trackName string) *trackNameNode {
 	node.tracks[trackName] = &trackNameNode{
 		value: trackName,
+		contentStatus: &contentStatus{
+			contentExists:   false,
+			largestGroupID:  0,
+			largestObjectID: 0,
+		},
 	}
 
 	return node.tracks[trackName]

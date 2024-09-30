@@ -4,14 +4,23 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"go-moq/moqtransport/moqtmessage"
-	"go-moq/moqtransport/moqtversion"
 	"net/http"
 	"net/url"
+
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtversion"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/quicvarint"
 	"github.com/quic-go/webtransport-go"
+)
+
+type Role byte
+
+const (
+	PUB     Role = 0x00
+	SUB     Role = 0x01
+	PUB_SUB Role = 0x02
 )
 
 type node struct {

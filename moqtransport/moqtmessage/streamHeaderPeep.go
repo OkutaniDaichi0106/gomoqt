@@ -112,6 +112,26 @@ func (shp *StreamHeaderPeep) GetSubscribeID() SubscribeID {
 	return shp.SubscribeID
 }
 
+func (shp StreamHeaderPeep) NextGroupHeader() StreamHeaderPeep {
+	return StreamHeaderPeep{
+		SubscribeID:       shp.SubscribeID,
+		TrackAlias:        shp.TrackAlias,
+		PublisherPriority: shp.PublisherPriority,
+		GroupID:           shp.GroupID + 1,
+		PeepID:            0,
+	}
+}
+
+func (shp StreamHeaderPeep) NextPeepHeader() StreamHeaderPeep {
+	return StreamHeaderPeep{
+		SubscribeID:       shp.SubscribeID,
+		TrackAlias:        shp.TrackAlias,
+		PublisherPriority: shp.PublisherPriority,
+		GroupID:           shp.GroupID,
+		PeepID:            shp.PeepID + 1,
+	}
+}
+
 type ObjectChunk struct {
 	/*
 	 * Object ID

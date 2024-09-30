@@ -1,8 +1,9 @@
 package main
 
 import (
-	"go-moq/moqtransport"
 	"log"
+
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransport"
 )
 
 const (

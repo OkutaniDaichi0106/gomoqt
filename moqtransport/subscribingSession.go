@@ -3,11 +3,12 @@ package moqtransport
 import (
 	"context"
 	"errors"
-	"go-moq/moqtransport/moqtmessage"
 	"log"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -45,13 +46,6 @@ type SubscribingSession struct {
 		deliveryTimeout time.Duration
 	}
 
-	/*
-	 * State of the subscribing content
-	 * Initialized when sending new SUBSCRIBE message
-	 * Updated when receiving contents or when receiving SUBSCRIBE_OK, SUBSCRIBE_DONE message
-	 */
-	contentStatuses map[moqtmessage.SubscribeID]*contentStatus
-
 	expiries map[moqtmessage.SubscribeID]*struct {
 		expireCtx    context.Context
 		expireCancel context.CancelFunc
@@ -61,56 +55,6 @@ type SubscribingSession struct {
 		header moqtmessage.StreamHeader
 		reader quicvarint.Reader
 	}
-	// //TODO
-	// readerMap map[moqtmessage.SubscribeID]chan struct {
-	// 	moqtmessage.StreamHeader
-	// 	quicvarint.Reader
-	// }
-}
-
-func (sess *SubscribingSession) getContentStatus(trackNamespace moqtmessage.TrackNamespace, trackName string) {
-	sess.trackAliasMap.getAlias(trackNamespace, trackName)
-}
-
-func (sess *SubscribingSession) listenReceiveStreams() {
-	go func() {
-		for {
-			stream, err := sess.trSess.AcceptUniStream(context.TODO())
-			if err != nil {
-				log.Println(err)
-				return
-			}
-
-			qvReader := quicvarint.NewReader(stream)
-
-			header, err := moqtmessage.DeserializeStreamHeader(qvReader)
-			if err != nil {
-				log.Print(err)
-				return
-			}
-
-			sess.mu.Lock()
-
-			_, ok := sess.streams[header.GetSubscribeID()]
-
-			if !ok {
-				sess.streams[header.GetSubscribeID()] = make(chan struct {
-					header moqtmessage.StreamHeader
-					reader quicvarint.Reader
-				}, 1<<2)
-			}
-
-			sess.streams[header.GetSubscribeID()] <- struct {
-				header moqtmessage.StreamHeader
-				reader quicvarint.Reader
-			}{
-				header: header,
-				reader: qvReader,
-			}
-
-			sess.mu.Unlock()
-		}
-	}()
 }
 
 func (sess *SubscribingSession) WaitAnnounce() (*Announcement, error) {
@@ -202,17 +146,10 @@ func (sess *SubscribingSession) Subscribe(announcement Announcement, trackName s
 	}
 
 	// Get new Subscribe ID
-	newSubscribeID := moqtmessage.SubscribeID(len(sess.contentStatuses))
+	newSubscribeID := moqtmessage.SubscribeID(len(sess.subscriptions))
 
 	// Get the Track Alias
 	alias := sess.trackAliasMap.getAlias(announcement.trackNamespace, trackName)
-
-	// Initialize the subscription status
-	sess.contentStatuses[newSubscribeID] = &contentStatus{
-		contentExists:   false,
-		largestGroupID:  0,
-		largestObjectID: 0,
-	}
 
 	/*
 	 * Send a SUBSCRIBE message
@@ -249,6 +186,9 @@ func (sess *SubscribingSession) Subscribe(announcement Announcement, trackName s
 		config:         config,
 	}
 
+	/*
+	 * Receive a SUBSCRIBE_OK message of a SUBSCRIBE_ERROR message
+	 */
 	err = sess.receiveSubscribeResponce(subscription)
 	if err != nil {
 		retryErr, ok := err.(RetryTrackAliasError)
@@ -260,12 +200,6 @@ func (sess *SubscribingSession) Subscribe(announcement Announcement, trackName s
 			return sess.retrySubscribe(subscription, ctx)
 		}
 
-		return nil, err
-	}
-
-	// Register the session
-	err = trackManager.setOrigin(subscription.trackNamespace, subscription.trackName, sess)
-	if err != nil {
 		return nil, err
 	}
 
@@ -340,37 +274,26 @@ func (sess *SubscribingSession) receiveSubscribeResponce(subscription Subscripti
 			return ErrProtocolViolation
 		}
 
-		//
-		timeout, ok := so.Parameters.DeliveryTimeout()
-		if ok {
-			if subscription.config.DeliveryTimeout != 0 && subscription.config.DeliveryTimeout != timeout {
-				return errors.New("unexpected delivery timeout")
-			}
-			sess.relayConfig[subscription.subscribeID] = struct {
-				deliveryTimeout time.Duration
-			}{
-				deliveryTimeout: timeout,
-			}
-		}
-
-		// Update the content status in the session
-		contentStatus := &contentStatus{
-			contentExists:   so.ContentExists,
-			largestGroupID:  so.LargestGroupID,
-			largestObjectID: so.LargestObjectID,
-		}
-
-		sess.contentStatuses[so.SubscribeID] = contentStatus
+		//TODO: Handle the delivery timeout
+		//timeout, ok := so.Parameters.DeliveryTimeout()
 
 		// Update the content status in track
 		tnsNode, ok := trackManager.findTrackNamespace(subscription.trackNamespace)
 		if !ok {
 			return errors.New("track namespace not found")
 		}
-		tnNode := tnsNode.addTrackNameNode(subscription.trackName)
-		tnNode.contentStatus = contentStatus
+		tnNode, ok := tnsNode.findTrackName(subscription.trackName)
+		if !ok {
+			tnNode = tnsNode.newTrackNameNode(subscription.trackName)
+		}
 
-		//
+		// Update the content status
+		tnNode.contentStatus = &contentStatus{
+			contentExists:   so.ContentExists,
+			largestGroupID:  so.LargestGroupID,
+			largestObjectID: so.LargestObjectID,
+		}
+
 		var ctx context.Context
 		var cancel context.CancelFunc
 
@@ -402,38 +325,6 @@ func (sess *SubscribingSession) receiveSubscribeResponce(subscription Subscripti
 	default:
 		return ErrProtocolViolation
 	}
-}
-
-func (sess *SubscribingSession) GetReceiveDataStream(subsription Subscription, ctx context.Context) (ReceiveDataStream, error) {
-	sess.mu.Lock()
-	defer sess.mu.Unlock()
-
-	_, ok := sess.streams[subsription.subscribeID]
-	if !ok {
-		sess.streams[subsription.subscribeID] = make(chan struct {
-			header moqtmessage.StreamHeader
-			reader quicvarint.Reader
-		}, 1<<2)
-	}
-
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-
-	case v := <-sess.streams[subsription.subscribeID]:
-		if subsription.subscribeID != v.header.GetSubscribeID() {
-			panic("subscribe id mismatch")
-		}
-
-		if subsription.trackAlias != v.header.GetTrackAlias() {
-			log.Println("track alias mismatch")
-			return nil, ErrProtocolViolation
-		}
-
-		return
-
-	}
-
 }
 
 func (sess *SubscribingSession) UpdateSubscription(subscribeID moqtmessage.SubscribeID, config SubscribeConfig) error {

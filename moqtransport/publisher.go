@@ -1,7 +1,8 @@
 package moqtransport
 
 import (
-	"go-moq/moqtransport/moqtmessage"
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
+	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type Publisher struct {
@@ -22,97 +23,96 @@ func (p *Publisher) ConnectAndSetup(url string) (*PublishingSession, error) {
 	return sess, nil
 }
 
-func (p Publisher) NewStreamDatagram(subscription Subscription, priority moqtmessage.PublisherPriority) (*SendDataStreamDatagram, error) {
-	if subscription.forwardingPreference != nil {
-		panic("object forwarding preference could not change")
+func (p Publisher) SendDatagram(header moqtmessage.StreamHeaderDatagram, payload []byte) error {
+	// Serialize the header
+	b := header.Serialize()
+
+	// Serialize the payload
+	b = quicvarint.Append(b, uint64(len(payload)))
+	b = append(b, payload...)
+
+	// Send the payload as a datagram
+	return p.session.trSess.SendDatagram(b)
+}
+
+func NewStreamHeaderDatagram(subscription Subscription, priority moqtmessage.PublisherPriority) moqtmessage.StreamHeaderDatagram {
+	if subscription.forwardingPreference == nil {
+		subscription.forwardingPreference = moqtmessage.DATAGRAM
 	}
 
-	// Set the Object Forwarding Preference
-	subscription.forwardingPreference = moqtmessage.DATAGRAM
+	if subscription.forwardingPreference != moqtmessage.DATAGRAM {
+		panic("dont change the object forwarding preference")
+	}
 
-	header := moqtmessage.StreamHeaderDatagram{
+	return moqtmessage.StreamHeaderDatagram{
 		SubscribeID:       subscription.subscribeID,
 		TrackAlias:        subscription.trackAlias,
 		PublisherPriority: priority,
 	}
-
-	return &SendDataStreamDatagram{
-		closed:   false,
-		trSess:   p.session.trSess,
-		header:   header,
-		groupID:  0,
-		objectID: 0,
-	}, nil
 }
 
-func (p Publisher) NewStreamTrack(subscription Subscription, priority moqtmessage.PublisherPriority) (*SendDataStreamTrack, error) {
-	if subscription.forwardingPreference != nil {
-		panic("object forwarding preference could not change")
+func NewStreamHeaderTrack(subscription Subscription, priority moqtmessage.PublisherPriority) moqtmessage.StreamHeaderTrack {
+	if subscription.forwardingPreference == nil {
+		subscription.forwardingPreference = moqtmessage.TRACK
 	}
 
-	// Set the Object Forwarding Preference
-	subscription.forwardingPreference = moqtmessage.TRACK
-
-	writer, err := p.session.trSess.OpenUniStream()
-	if err != nil {
-		return nil, err
+	if subscription.forwardingPreference != moqtmessage.TRACK {
+		panic("dont change the object forwarding preference")
 	}
 
-	// Send a Stream Header
-	header := moqtmessage.StreamHeaderTrack{
+	return moqtmessage.StreamHeaderTrack{
 		SubscribeID:       subscription.subscribeID,
 		TrackAlias:        subscription.trackAlias,
 		PublisherPriority: priority,
 	}
-	_, err = writer.Write(header.Serialize())
-	if err != nil {
-		return nil, err
-	}
-
-	return &SendDataStreamTrack{
-		closed:   false,
-		header:   header,
-		writer:   writer,
-		groupID:  0,
-		objectID: 0,
-	}, nil
 }
 
-func (p Publisher) NextTrackStream(stream SendDataStreamTrack) (*SendDataStreamTrack, error) {
-	writer, err := p.session.trSess.OpenUniStream()
-	if err != nil {
-		return nil, err
+func NewStreamHeaderPeep(subscription Subscription, priority moqtmessage.PublisherPriority) moqtmessage.StreamHeaderPeep {
+	if subscription.forwardingPreference == nil {
+		subscription.forwardingPreference = moqtmessage.PEEP
 	}
 
-	return &SendDataStreamTrack{
-		closed:   false,
-		header:   stream.header,
-		writer:   writer,
-		groupID:  stream.groupID + 1,
-		objectID: 0,
-	}, nil
-}
-
-func (p Publisher) NewStreamPeep(subscription Subscription, priority moqtmessage.PublisherPriority) (*SendDataStreamPeep, error) {
-	if subscription.forwardingPreference != nil {
-		panic("object forwarding preference could not change")
+	if subscription.forwardingPreference != moqtmessage.PEEP {
+		panic("dont change the object forwarding preference")
 	}
 
-	// Set the Object Forwarding Preference
-	subscription.forwardingPreference = moqtmessage.PEEP
-	writer, err := p.session.trSess.OpenUniStream()
-	if err != nil {
-		return nil, err
-	}
-
-	// Send a Stream Header
-	header := moqtmessage.StreamHeaderPeep{
+	return moqtmessage.StreamHeaderPeep{
 		SubscribeID:       subscription.subscribeID,
 		TrackAlias:        subscription.trackAlias,
 		PublisherPriority: priority,
 		GroupID:           0,
 		PeepID:            0,
 	}
+}
+
+func (p Publisher) OpenStreamTrack(header moqtmessage.StreamHeaderTrack) (*SendDataStreamTrack, error) {
+	writer, err := p.session.trSess.OpenUniStream()
+	if err != nil {
+		return nil, err
+	}
+
+	// Send a Stream Header
+	_, err = writer.Write(header.Serialize())
+	if err != nil {
+		return nil, err
+	}
+
+	return &SendDataStreamTrack{
+		closed:   false,
+		header:   header,
+		writer:   writer,
+		groupID:  0,
+		objectID: 0,
+	}, nil
+}
+
+func (p Publisher) OpenStreamPeep(header moqtmessage.StreamHeaderPeep) (*SendDataStreamPeep, error) {
+	writer, err := p.session.trSess.OpenUniStream()
+	if err != nil {
+		return nil, err
+	}
+
+	// Send a Stream Header
 	_, err = writer.Write(header.Serialize())
 	if err != nil {
 		return nil, err
@@ -122,39 +122,6 @@ func (p Publisher) NewStreamPeep(subscription Subscription, priority moqtmessage
 		closed:   false,
 		writer:   writer,
 		header:   header,
-		objectID: 0,
-	}, nil
-}
-
-func (p Publisher) NextGroupStream(stream SendDataStreamPeep) (*SendDataStreamPeep, error) {
-	writer, err := p.session.trSess.OpenUniStream()
-	if err != nil {
-		return nil, err
-	}
-
-	stream.header.GroupID++
-	stream.header.PeepID = 0
-
-	return &SendDataStreamPeep{
-		closed:   false,
-		writer:   writer,
-		header:   stream.header,
-		objectID: 0,
-	}, nil
-}
-
-func (p Publisher) NextPeepStream(stream SendDataStreamPeep) (*SendDataStreamPeep, error) {
-	writer, err := p.session.trSess.OpenUniStream()
-	if err != nil {
-		return nil, err
-	}
-
-	stream.header.PeepID++
-
-	return &SendDataStreamPeep{
-		closed:   false,
-		writer:   writer,
-		header:   stream.header,
 		objectID: 0,
 	}, nil
 }

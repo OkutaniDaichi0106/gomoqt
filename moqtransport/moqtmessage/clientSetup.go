@@ -1,7 +1,7 @@
 package moqtmessage
 
 import (
-	"go-moq/moqtransport/moqtversion"
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtversion"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )

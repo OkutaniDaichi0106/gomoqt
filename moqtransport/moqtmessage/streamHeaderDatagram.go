@@ -24,6 +24,10 @@ type StreamHeaderDatagram struct {
 	 * An 8 bit integer indicating the publisher's priority for the object
 	 */
 	PublisherPriority
+
+	groupID GroupID
+
+	objectID ObjectID
 }
 
 func (sht StreamHeaderDatagram) Serialize() []byte {
@@ -94,4 +98,28 @@ func (shd StreamHeaderDatagram) GetSubscribeID() SubscribeID {
 
 func (shd *StreamHeaderDatagram) GetTrackAlias() TrackAlias {
 	return shd.TrackAlias
+}
+
+func (shd *StreamHeaderDatagram) GetPublisherPriority() PublisherPriority {
+	return shd.PublisherPriority
+}
+
+func (shd StreamHeaderDatagram) NextGroupHeader() StreamHeaderDatagram {
+	return StreamHeaderDatagram{
+		SubscribeID:       shd.SubscribeID,
+		TrackAlias:        shd.TrackAlias,
+		PublisherPriority: shd.PublisherPriority,
+		groupID:           shd.groupID + 1,
+		objectID:          0,
+	}
+}
+
+func (shd StreamHeaderDatagram) NextObjectHeader() StreamHeaderDatagram {
+	return StreamHeaderDatagram{
+		SubscribeID:       shd.SubscribeID,
+		TrackAlias:        shd.TrackAlias,
+		PublisherPriority: shd.PublisherPriority,
+		groupID:           shd.groupID,
+		objectID:          shd.objectID + 1,
+	}
 }

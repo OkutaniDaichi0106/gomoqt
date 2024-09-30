@@ -4,9 +4,10 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"go-moq/moqtransport/moqtmessage"
-	"go-moq/moqtransport/moqtversion"
 	"strings"
+
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtversion"
 
 	"log"
 	"net/http"

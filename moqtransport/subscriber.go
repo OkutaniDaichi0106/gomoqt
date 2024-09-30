@@ -1,393 +1,98 @@
 package moqtransport
 
+import (
+	"bytes"
+	"context"
+	"errors"
+
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
+	"github.com/quic-go/quic-go/quicvarint"
+)
+
 type Subscriber struct {
 	node node
+
+	session *SubscribingSession
+
+	streamMap map[moqtmessage.SubscribeID]chan struct {
+		header moqtmessage.StreamHeader
+		reader quicvarint.Reader
+	}
 }
 
 func (s Subscriber) ConnectAndSetup(URL string) (*SubscribingSession, error) {
-	return s.node.EstablishSubSession(URL)
+	sess, err := s.node.EstablishSubSession(URL)
+	if err != nil {
+		return nil, err
+	}
+
+	s.session = sess
+
+	s.streamMap = make(map[moqtmessage.SubscribeID]chan struct {
+		header moqtmessage.StreamHeader
+		reader quicvarint.Reader
+	})
+
+	return sess, nil
 }
 
-// func (s *Subscriber) SubscribeParameters(params moqtmessage.Parameters) {
-// 	s.subscribeParameters = params
-// }
-// func (s *Subscriber) SubscribeUpdateParameters(params moqtmessage.Parameters) {
-// 	s.subscribeUpdateParameters = params
-// }
-
-// func (s *Subscriber) ConnectAndSetup(url string) (moqtmessage.Parameters, error) {
-// 	// Check if the Client specify the Versions
-// 	if len(s.Versions) < 1 {
-// 		panic("no versions is specified")
-// 	}
-
-// 	// Connect
-// 	err := s.connect(url)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	// Setup
-// 	params, err := s.setup()
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	s.maxSubscribeID, err = params.MaxSubscribeID()
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	delete(params, moqtmessage.MAX_SUBSCRIBE_ID)
-
-// 	return params, nil
-// }
-
-// func (s *Subscriber) setup() (moqtmessage.Parameters, error) {
-// 	var err error
-
-// 	// Open first stream to send control messages
-// 	s.controlStream, err = s.session.OpenStreamSync(context.Background())
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	// Send SETUP_CLIENT message
-// 	err = s.sendClientSetup()
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	// Initialize control reader
-// 	s.controlReader = quicvarint.NewReader(s.controlStream)
-
-// 	// Receive SETUP_SERVER message
-// 	return s.receiveServerSetup()
-// }
-
-// func (s Subscriber) sendClientSetup() error {
-// 	// Initialize SETUP_CLIENT csm
-// 	csm := moqtmessage.ClientSetupMessage{
-// 		Versions:   s.Versions,
-// 		Parameters: make(moqtmessage.Parameters),
-// 	}
-
-// 	// Add role parameter
-// 	csm.AddParameter(moqtmessage.ROLE, moqtmessage.SUB)
-
-// 	_, err := s.controlStream.Write(csm.Serialize())
-
-// 	return err
-// }
-
-// func (s Subscriber) receiveSubscribeResponce() error {
-// 	// Receive SUBSCRIBE_OK message or SUBSCRIBE_ERROR message
-// 	id, err := moqtmessage.DeserializeMessageID(s.controlReader)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	switch id {
-// 	case moqtmessage.SUBSCRIBE_OK:
-// 		so := moqtmessage.SubscribeOkMessage{}
-// 		so.DeserializeBody(s.controlReader)
-// 		return nil
-// 	case moqtmessage.SUBSCRIBE_ERROR:
-// 		se := moqtmessage.SubscribeErrorMessage{}
-// 		se.DeserializeBody(s.controlReader)
-
-// 		return errors.New(se.Reason)
-// 	default:
-// 		return ErrUnexpectedMessage
-// 	}
-// }
-
-// func (s *Subscriber) AcceptObjects(ctx context.Context) (ObjectStream, error) {
-// 	// Accept a new unidirectional stream
-// 	wtStream, err := s.session.AcceptUniStream(ctx)
-// 	// Until the new stream is opened, proccess stops here
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	stream, err := newObjectStream(wtStream)
-// 	if err != nil {
-// 		log.Println(err)
-// 		return nil, err
-// 	}
-
-// 	return stream, nil
-// }
-
-// func newObjectStream(stream webtransport.ReceiveStream) (ObjectStream, error) {
-// 	reader := quicvarint.NewReader(stream)
-// 	// Read the first object
-// 	id, err := moqtmessage.DeserializeStreamType(reader)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	//var dataStream DataStream
-
-// 	switch id {
-// 	case moqtmessage.STREAM_HEADER_TRACK:
-// 		sht := moqtmessage.StreamHeaderTrack{}
-// 		err = sht.DeserializeStreamHeader(reader)
-// 		if err != nil {
-// 			return nil, err
-// 		}
-
-// 		// Create new data stream
-// 		stream := &trackStream{
-// 			header: sht,
-// 			chunks: make([]moqtmessage.GroupChunk, 0, 1<<3),
-// 			closed: false,
-// 		}
-
-// 		go func() {
-// 			// Read and write chunks to the data stream
-// 			var chunk moqtmessage.GroupChunk
-// 			for {
-// 				err = chunk.DeserializeBody(reader)
-// 				if err != nil {
-// 					if err == io.EOF {
-// 						break
-// 					}
-// 					log.Println(err)
-// 					return
-// 				}
-// 				// Check if the chunk is the end of the stream
-// 				if chunk.StatusCode == moqtmessage.END_OF_TRACK {
-// 					break
-// 				}
-
-// 				// Add the data
-// 				stream.write(chunk)
-// 			}
-// 		}()
-
-// 		return stream, nil
-// 	case moqtmessage.STREAM_HEADER_PEEP:
-// 		shp := moqtmessage.StreamHeaderPeep{}
-// 		err = shp.DeserializeStreamHeader(reader)
-// 		if err != nil {
-// 			return nil, err
-// 		}
-
-// 		// Create new data stream
-// 		stream := &peepStream{
-// 			header: shp,
-// 			chunks: make([]moqtmessage.ObjectChunk, 0, 1<<3),
-// 			closed: false,
-// 		}
-
-// 		go func() {
-// 			// Read and write chunks to the data stream
-// 			var chunk moqtmessage.ObjectChunk
-// 			for {
-// 				err = chunk.DeserializeBody(reader)
-// 				if err != nil {
-// 					if err == io.EOF {
-// 						stream.Close()
-// 						return
-// 					}
-// 					log.Println(err)
-// 					return
-// 				}
-// 				// Check if the chunk is the end of the stream
-// 				if chunk.StatusCode == moqtmessage.END_OF_PEEP {
-// 					stream.Close()
-// 					return
-// 				}
-
-// 				// Add the data
-// 				stream.write(chunk)
-// 			}
-// 		}()
-// 		return stream, nil
-// 	default:
-// 		return nil, ErrUnexpectedMessage
-// 	}
-
-// }
-
-// func (s *Subscriber) Unsubscribe(id moqtmessage.SubscribeID) error {
-// 	_, ok := s.subscriptions[id]
-// 	if !ok {
-// 		return errors.New("subscription not found")
-// 	}
-
-// 	// Delete the subscription
-// 	delete(s.subscriptions, id)
-
-// 	// Send UNSUBSCRIBE message
-// 	um := moqtmessage.UnsubscribeMessage{
-// 		SubscribeID: id,
-// 	}
-
-// 	_, err := s.controlStream.Write(um.Serialize())
-
-// 	return err
-// }
-
-// /*
-//  * Update the specifyed subscription
-//  */
-// func (s *Subscriber) SubscribeUpdate(id moqtmessage.SubscribeID, config SubscribeUpdateConfig) error {
-// 	// Retrieve the old subscription
-// 	old, ok := s.subscriptions[id]
-// 	if !ok {
-// 		return errors.New("subscription not found")
-// 	}
-
-// 	// Validate filter configuration
-// 	filter := moqtmessage.SubscriptionFilter{
-// 		FilterCode:  old.FilterCode,
-// 		FilterRange: config.FilterRange,
-// 	}
-
-// 	err := filter.IsOK()
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	var ErrInvalidUpdate = errors.New("invalid update")
-
-// 	// Check if the updated subscription is narrower than the existing subscription
-// 	switch old.GroupOrder {
-// 	case moqtmessage.ASCENDING:
-// 		switch old.FilterCode {
-// 		case moqtmessage.ABSOLUTE_START:
-// 			// Check if the update is valid
-// 			if config.StartGroup < old.StartGroup {
-// 				return ErrInvalidUpdate
-// 			}
-// 			if old.StartGroup == config.StartGroup && config.StartObject < old.StartObject {
-// 				return ErrInvalidUpdate
-// 			}
-
-// 		case moqtmessage.ABSOLUTE_RANGE:
-// 			// Check if the update is valid
-
-// 			// Check if the new Start Group ID is larger than old Start Group ID
-// 			if config.StartGroup < old.StartGroup {
-// 				return ErrInvalidUpdate
-// 			}
-
-// 			// Check if the new Start Object ID is larger than old Start Object ID
-// 			if old.StartGroup == config.StartGroup && config.StartObject < old.StartObject {
-// 				return ErrInvalidUpdate
-// 			}
-
-// 			// Check if the new End Group ID is smaller than old End Group ID
-// 			if old.EndGroup < config.EndGroup {
-// 				return ErrInvalidUpdate
-// 			}
-
-// 			// Check if the End Object ID is smaller than old End Object ID
-// 			if old.StartGroup == config.StartGroup && old.EndObject < config.EndObject {
-// 				return ErrInvalidUpdate
-// 			}
-// 		}
-// 	case moqtmessage.DESCENDING:
-// 		switch old.FilterCode {
-// 		case moqtmessage.ABSOLUTE_START:
-// 			// Check if the update is valid
-// 			if old.StartGroup < config.StartGroup {
-// 				return ErrInvalidUpdate
-// 			}
-// 			if old.StartGroup == config.StartGroup && old.StartObject < config.StartObject {
-// 				return ErrInvalidUpdate
-// 			}
-
-// 		case moqtmessage.ABSOLUTE_RANGE:
-// 			// Check if the new Start Group ID is larger than old Start Group ID
-// 			if old.StartGroup < config.StartGroup {
-// 				return ErrInvalidUpdate
-// 			}
-
-// 			// Check if the new Start Object ID is larger than old Start Object ID
-// 			if old.StartGroup == config.StartGroup && old.StartObject < config.StartObject {
-// 				return ErrInvalidUpdate
-// 			}
-
-// 			// Check if the new End Group ID is smaller than old End Group ID
-// 			if config.EndGroup < old.EndGroup {
-// 				return ErrInvalidUpdate
-// 			}
-
-// 			// Check if the End Object ID is smaller than old End Object ID
-// 			if old.StartGroup == config.StartGroup && config.EndObject < old.EndObject {
-// 				return ErrInvalidUpdate
-// 			}
-// 		}
-// 	}
-
-// 	new := old
-
-// 	new.SubscriberPriority = config.SubscriberPriority
-// 	new.FilterRange = config.FilterRange
-// 	new.Parameters = config.Parameters
-
-// 	s.subscriptions[id] = new
-
-// 	return s.sendSubscribeUpdateMessage(id, config)
-// }
-
-// /*
-//  * Send SUBSCRIBE_UPDATE message
-//  */
-// func (s Subscriber) sendSubscribeUpdateMessage(id moqtmessage.SubscribeID, config SubscribeUpdateConfig) error {
-// 	sum := moqtmessage.SubscribeUpdateMessage{
-// 		SubscribeID:        id,
-// 		FilterRange:        config.FilterRange,
-// 		SubscriberPriority: config.SubscriberPriority,
-// 		Parameters:         config.Parameters,
-// 	}
-// 	// Send SUBSCRIBE_UPDATE message
-// 	_, err := s.controlStream.Write(sum.Serialize())
-
-// 	return err
-// }
-
-// type SubscribeUpdateConfig struct {
-// 	moqtmessage.SubscriberPriority
-// 	moqtmessage.FilterRange
-// 	Parameters moqtmessage.Parameters
-// }
-
-// func (s Subscriber) CancelAnnounce(trackNamespace ...string) error {
-// 	// Delete the Track Namespace from the map of Track Alias
-// 	fullTrackNamespace := strings.Join(trackNamespace, "")
-// 	hasTrackAlias := false
-// 	for trackFullName := range s.trackAliases {
-// 		if strings.HasPrefix(trackFullName, fullTrackNamespace) {
-// 			hasTrackAlias = true
-// 			delete(s.trackAliases, trackFullName)
-// 		}
-// 	}
-
-// 	if !hasTrackAlias {
-// 		return errors.New("track not found")
-// 	}
-
-// 	acm := moqtmessage.AnnounceCancelMessage{
-// 		TrackNamespace: trackNamespace,
-// 	}
-
-// 	_, err := s.controlStream.Write(acm.Serialize())
-// 	return err
-// }
-
-// func (s Subscriber) GetTrackStatus(trackNamespace, trackName string) error {
-
-// 	return s.sendTrackStatusRequest(trackNamespace, trackName)
-// }
-// func (s Subscriber) sendTrackStatusRequest(trackNamespace, trackName string) error {
-// 	tsr := moqtmessage.TrackStatusRequest{
-// 		TrackNamespace: trackNamespace,
-// 		TrackName:      trackName,
-// 	}
-
-// 	_, err := s.controlStream.Write(tsr.Serialize())
-
-// 	return err
-// }
+func (s Subscriber) ReceiveDatagram(ctx context.Context) (ReceiveDataStream, error) {
+	b, err := s.session.trSess.ReceiveDatagram(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	reader := quicvarint.NewReader(bytes.NewReader(b))
+
+	var header moqtmessage.StreamHeaderDatagram
+	err = header.DeserializeStreamHeaderBody(reader)
+	if err != nil {
+		return nil, err
+	}
+
+	return &receiveDataStreamDatagram{
+		header: header,
+		reader: reader,
+	}, nil
+}
+
+func (s Subscriber) AcceptUniStream(ctx context.Context) (ReceiveDataStream, error) {
+	stream, err := s.session.trSess.AcceptStream(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	reader := quicvarint.NewReader(stream)
+
+	id, err := moqtmessage.DeserializeStreamTypeID(reader)
+	if err != nil {
+		return nil, err
+	}
+
+	switch id {
+	case moqtmessage.TRACK_ID:
+		var header moqtmessage.StreamHeaderTrack
+		err := header.DeserializeStreamHeaderBody(reader)
+		if err != nil {
+			return nil, err
+		}
+
+		return &receiveDataStreamTrack{
+			header: header,
+			reader: reader,
+		}, nil
+	case moqtmessage.PEEP_ID:
+		var header moqtmessage.StreamHeaderPeep
+		err := header.DeserializeStreamHeaderBody(reader)
+		if err != nil {
+			return nil, err
+		}
+
+		return &receiveDataStreamPeep{
+			header: header,
+			reader: reader,
+		}, nil
+	default:
+		return nil, errors.New("invalid stream type")
+	}
+}

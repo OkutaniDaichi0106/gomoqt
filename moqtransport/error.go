@@ -1,14 +1,20 @@
 package moqtransport
 
-import "go-moq/moqtransport/moqtmessage"
+import "github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
 
 /*
  * Announce Error
  */
 
 var (
-	ErrAnnounceFailed          = AnnounceInternalError{}
-	ErrDuplicateTrackNamespace = AnnounceDuplicateTrackNamespace{}
+	ErrAnnounceFailed = DefaultAnnounceError{
+		reason: "internal error",
+		code:   moqtmessage.ANNOUNCE_INTERNAL_ERROR,
+	}
+	ErrDuplicateTrackNamespace = DefaultAnnounceError{
+		reason: "duplicate track namespace",
+		code:   moqtmessage.DUPLICATE_TRACK_NAMESPACE,
+	}
 )
 
 type AnnounceError interface {
@@ -16,26 +22,17 @@ type AnnounceError interface {
 	Code() moqtmessage.AnnounceErrorCode
 }
 
-type AnnounceInternalError struct {
+type DefaultAnnounceError struct {
+	reason string
+	code   moqtmessage.AnnounceErrorCode
 }
 
-func (AnnounceInternalError) Error() string {
-	return "internal error"
+func (err DefaultAnnounceError) Error() string {
+	return err.reason
 }
 
-func (AnnounceInternalError) Code() moqtmessage.AnnounceErrorCode {
-	return moqtmessage.ANNOUNCE_INTERNAL_ERROR
-}
-
-type AnnounceDuplicateTrackNamespace struct {
-}
-
-func (AnnounceDuplicateTrackNamespace) Error() string {
-	return "duplicate track namespace"
-}
-
-func (AnnounceDuplicateTrackNamespace) Code() moqtmessage.AnnounceErrorCode {
-	return moqtmessage.DUPLICATE_TRACK_NAMESPACE
+func (err DefaultAnnounceError) Code() moqtmessage.AnnounceErrorCode {
+	return err.code
 }
 
 /*

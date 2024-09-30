@@ -6,41 +6,41 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-func DeserializeStreamHeader(r quicvarint.Reader) (StreamHeader, error) {
-	id, err := DeserializeStreamTypeID(r)
-	if err != nil {
-		return nil, err
-	}
+// func DeserializeStreamHeader(r quicvarint.Reader) (StreamHeader, error) {
+// 	id, err := DeserializeStreamTypeID(r)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	switch id {
-	case DATAGRAM_ID:
-		var header StreamHeaderDatagram
-		err := header.DeserializeStreamHeaderBody(r)
-		if err != nil {
-			return nil, err
-		}
+// 	switch id {
+// 	case DATAGRAM_ID:
+// 		var header StreamHeaderDatagram
+// 		err := header.DeserializeStreamHeaderBody(r)
+// 		if err != nil {
+// 			return nil, err
+// 		}
 
-		return &header, nil
-	case TRACK_ID:
-		var header StreamHeaderTrack
-		err := header.DeserializeStreamHeaderBody(r)
-		if err != nil {
-			return nil, err
-		}
+// 		return &header, nil
+// 	case TRACK_ID:
+// 		var header StreamHeaderTrack
+// 		err := header.DeserializeStreamHeaderBody(r)
+// 		if err != nil {
+// 			return nil, err
+// 		}
 
-		return &header, nil
-	case PEEP_ID:
-		var header StreamHeaderPeep
-		err := header.DeserializeStreamHeaderBody(r)
-		if err != nil {
-			return nil, err
-		}
+// 		return &header, nil
+// 	case PEEP_ID:
+// 		var header StreamHeaderPeep
+// 		err := header.DeserializeStreamHeaderBody(r)
+// 		if err != nil {
+// 			return nil, err
+// 		}
 
-		return &header, nil
-	default:
-		return nil, errors.New("unexpected stream type")
-	}
-}
+// 		return &header, nil
+// 	default:
+// 		return nil, errors.New("unexpected stream type")
+// 	}
+// }
 
 type StreamHeader interface {
 	Serialize() []byte

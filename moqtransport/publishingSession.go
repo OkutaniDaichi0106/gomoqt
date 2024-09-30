@@ -3,11 +3,12 @@ package moqtransport
 import (
 	"errors"
 	"fmt"
-	"go-moq/moqtransport/moqtmessage"
 	"log"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
 )
 
 type trackAliasMap struct {
@@ -66,8 +67,8 @@ type contentStatus struct {
 	 * Current content status
 	 */
 	contentExists bool
-	finalGroupID  moqtmessage.GroupID
-	finalObjectID moqtmessage.ObjectID
+	// finalGroupID  moqtmessage.GroupID
+	// finalObjectID moqtmessage.ObjectID
 
 	/*
 	 * The Largest Group ID and Largest Object ID of the contents received so far
@@ -91,7 +92,7 @@ type PublishingSession struct {
 	 */
 	trackAliasMap trackAliasMap
 
-	contentStatuses map[moqtmessage.TrackAlias]*contentStatus
+	//contentStatuses map[moqtmessage.TrackAlias]*contentStatus
 }
 
 func (sess *PublishingSession) Announce(trackNamespace moqtmessage.TrackNamespace, config AnnounceConfig) error {
@@ -139,8 +140,8 @@ func (sess *PublishingSession) Announce(trackNamespace moqtmessage.TrackNamespac
 			}
 		}
 
-		// Register the ANNOUNCE message and the Track Namespace
-		trackManager.addAnnouncement(am)
+		// Register the Track Namespace
+		trackManager.newTrackNamespace(trackNamespace)
 
 		return nil
 	case moqtmessage.ANNOUNCE_ERROR:
@@ -190,32 +191,12 @@ func (sess *PublishingSession) WaitSubscribe() (*Subscription, error) {
 	 * Receive SUBSCRIBE message
 	 */
 	subscription, err := sess.receiveSubscribe(newSubscribeID)
-
-	var onceErr *sync.Once
-	// If some error exists, reject the subscription
 	if err != nil {
-		switch someErr := err.(type) {
-		case SubscribeError:
-			onceErr.Do(func() {
-				sess.RejectSubscribe(newSubscribeID, someErr)
-			})
-		case TerminateError:
-			sess.Terminate(someErr)
-			return nil, err
-		default:
-			onceErr.Do(func() {
-				sess.RejectSubscribe(newSubscribeID, ErrSubscribeFailed)
-			})
-		}
+		return nil, err
 	}
 
 	// Register the subscription
 	sess.subscriptions[newSubscribeID] = subscription
-
-	_, ok := sess.contentStatuses[subscription.trackAlias]
-	if !ok {
-		sess.contentStatuses[subscription.trackAlias] = &contentStatus{}
-	}
 
 	return subscription, nil
 }
@@ -311,29 +292,26 @@ func (sess *PublishingSession) receiveSubscribe(newSubscribeID moqtmessage.Subsc
 }
 
 func (sess *PublishingSession) AllowSubscribe(subscription *Subscription, expiry time.Duration) error {
-	// Update the content status
 	tnsNode, ok := trackManager.findTrackNamespace(subscription.trackNamespace)
 	if !ok {
-		errors.New("track namespace not found")
+		return errors.New("track namespace not found")
 	}
 
 	tnNode, ok := tnsNode.findTrackName(subscription.trackName)
 	if !ok {
 		tnNode = tnsNode.newTrackNameNode(subscription.trackName)
 	}
-	sess.contentStatuses[subscription.trackAlias] = tnNode.originSession.contentStatuses[]
 
-	// Register the session
-	tnNode.destinationSession = append(tnNode.destinationSession, sess)
-
-	// Send a SUBSCRIBE_OK
+	/*
+	 * Send a SUBSCRIBE_OK message
+	 */
 	so := moqtmessage.SubscribeOkMessage{
 		SubscribeID:     subscription.subscribeID,
 		Expires:         expiry,
 		GroupOrder:      subscription.config.GroupOrder,
-		ContentExists:   sess.contentStatuses[subscription.trackAlias].contentExists,
-		LargestGroupID:  sess.contentStatuses[subscription.trackAlias].largestGroupID,
-		LargestObjectID: sess.contentStatuses[subscription.trackAlias].largestObjectID,
+		ContentExists:   tnNode.contentStatus.contentExists,
+		LargestGroupID:  tnNode.contentStatus.largestGroupID,
+		LargestObjectID: tnNode.contentStatus.largestObjectID,
 		Parameters:      make(moqtmessage.Parameters), // TODO: Handler the parameters
 	}
 
@@ -374,27 +352,20 @@ func (sess *PublishingSession) RejectSubscribe(subscribeID moqtmessage.Subscribe
 	}
 }
 
-func (sess *PublishingSession) EndSubscription(subscribeID moqtmessage.SubscribeID, status SubscribeDoneStatus) error {
-	// Get subscription information from Subscribe ID
-	subscription, ok := sess.subscriptions[subscribeID]
+func (sess *PublishingSession) EndSubscription(subscription Subscription, status SubscribeDoneStatus) error {
+	tnNode, ok := trackManager.findTrackName(subscription.trackNamespace, subscription.trackName)
 	if !ok {
-		return errors.New("subscription not found")
-	}
-
-	// Get current publishment information from Track Alias
-	contentStatus, ok := sess.contentStatuses[subscription.trackAlias]
-	if !ok {
-		return errors.New("invalid subscripe ID")
+		return errors.New("track not found")
 	}
 
 	// Send a SUBSCRIBE_DONE message
 	sd := moqtmessage.SubscribeDoneMessage{
-		SubscribeID:   subscribeID,
+		SubscribeID:   subscription.subscribeID,
 		StatusCode:    status.Code(),
 		Reason:        status.Reason(),
-		ContentExists: contentStatus.contentExists,
-		FinalGroupID:  contentStatus.finalGroupID,
-		FinalObjectID: contentStatus.finalObjectID,
+		ContentExists: tnNode.contentStatus.contentExists,
+		FinalGroupID:  subscription.finalGroupID,
+		FinalObjectID: subscription.finalObjectID,
 	}
 	_, err := sess.controlStream.Write(sd.Serialize())
 	if err != nil {
@@ -430,6 +401,9 @@ type Subscription struct {
 	trackNamespace moqtmessage.TrackNamespace
 	trackName      string
 	config         SubscribeConfig
+
+	finalGroupID  moqtmessage.GroupID
+	finalObjectID moqtmessage.ObjectID
 
 	forwardingPreference moqtmessage.ObjectForwardingPreference
 }

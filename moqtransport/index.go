@@ -23,11 +23,15 @@ func (tm *TrackManager) findTrackNamespace(trackNamespace moqtmessage.TrackNames
 	return tm.trackNamespaceTree.trace(trackNamespace)
 }
 
-func (tm *TrackManager) addTrackName(trackNamespace moqtmessage.TrackNamespace, trackName string) *trackNameNode {
-	tnsNode := tm.newTrackNamespace(trackNamespace)
-
-	return tnsNode.newTrackNameNode(trackName)
+func (tm *TrackManager) removeTrackNamespace(trackNamespace moqtmessage.TrackNamespace) error {
+	return tm.trackNamespaceTree.remove(trackNamespace)
 }
+
+// func (tm *TrackManager) addTrackName(trackNamespace moqtmessage.TrackNamespace, trackName string) *trackNameNode {
+// 	tnsNode := tm.newTrackNamespace(trackNamespace)
+
+// 	return tnsNode.newTrackNameNode(trackName)
+// }
 
 func (tm *TrackManager) findTrackName(trackNamespace moqtmessage.TrackNamespace, trackName string) (*trackNameNode, bool) {
 	tnsNode, ok := tm.findTrackNamespace(trackNamespace)
@@ -113,11 +117,6 @@ type trackNameNode struct {
 	value string
 
 	/*
-	 * The Object Forwarding Preference
-	 */
-	ofp moqtmessage.ObjectForwardingPreference
-
-	/*
 	 *
 	 */
 	contentStatus *contentStatus
@@ -132,6 +131,9 @@ func (node *trackNamespaceNode) remove(tns moqtmessage.TrackNamespace, depth int
 	if node == nil {
 		return false, errors.New("node not found at value" + tns[depth])
 	}
+
+	node.mu.Lock()
+	defer node.mu.Unlock()
 
 	if depth > len(tns) {
 		return false, errors.New("invalid depth")
@@ -189,6 +191,9 @@ func (node *trackNamespaceNode) trace(values ...string) (*trackNamespaceNode, bo
 }
 
 func (node *trackNamespaceNode) findTrackName(trackName string) (*trackNameNode, bool) {
+	node.mu.RLock()
+	defer node.mu.RUnlock()
+
 	tnNode, ok := node.tracks[trackName]
 	if !ok {
 		return nil, false
@@ -198,6 +203,9 @@ func (node *trackNamespaceNode) findTrackName(trackName string) (*trackNameNode,
 }
 
 func (node *trackNamespaceNode) newTrackNameNode(trackName string) *trackNameNode {
+	node.mu.Lock()
+	defer node.mu.Unlock()
+
 	node.tracks[trackName] = &trackNameNode{
 		value: trackName,
 		contentStatus: &contentStatus{

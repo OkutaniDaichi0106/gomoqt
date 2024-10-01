@@ -38,7 +38,7 @@ type StreamHeaderPeep struct {
 
 func (shp StreamHeaderPeep) Serialize() []byte {
 	/*
-	 * Serialize as following formatt
+	 * Serialize the message in the following formatt
 	 *
 	 * STREAM_HEADER_Peep Message {
 	 *   Subscribe ID (varint),
@@ -53,7 +53,7 @@ func (shp StreamHeaderPeep) Serialize() []byte {
 	// TODO: Tune the length of the "b"
 	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
 	// Append the type of the message
-	b = quicvarint.Append(b, uint64(PEEP.ID()))
+	b = quicvarint.Append(b, uint64(PEEP_ID))
 	// Append the Subscriber ID
 	b = quicvarint.Append(b, uint64(shp.SubscribeID))
 	// Append the Track Alias
@@ -150,7 +150,7 @@ type ObjectChunk struct {
 
 func (oc ObjectChunk) Serialize() []byte {
 	/*
-	 * Serialize as following formatt
+	 * Serialize the message in the following formatt
 	 *
 	 * OBJECT Chunk {
 	 *   Object ID (varint),
@@ -164,16 +164,16 @@ func (oc ObjectChunk) Serialize() []byte {
 	// TODO: Tune the length of the "b"
 	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
 
-	// Append Subscribe ID
+	// Append the Subscribe ID
 	b = quicvarint.Append(b, uint64(oc.ObjectID))
 
-	// Append length of the Payload
+	// Append the length of the Payload
 	b = quicvarint.Append(b, uint64(len(oc.Payload)))
 
-	// Append Object Payload
+	// Append the Object Payload
 	b = append(b, oc.Payload...)
 
-	// Append Object Status if the length of the Object Payload is zero
+	// Append the Object Status if the length of the Object Payload is zero
 	if len(oc.Payload) == 0 {
 		b = quicvarint.Append(b, uint64(oc.StatusCode))
 	}

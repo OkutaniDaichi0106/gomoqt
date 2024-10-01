@@ -47,7 +47,7 @@ gomoqt is an implementation of Media over QUIC Transport in Golang.
 | 6.9. ANNOUNCE_CANCEL                         | :white_check_mark: | :x:        |
 | 6.10. TRACK_STATUS_REQUEST                   | :construction:     | :x:        |
 | 6.11. SUBSCRIBE_NAMESPACE                    | :white_check_mark: | :x:        |
-| 6.12. UNSUBSCRIBE_NAMESPACE                  | :white_check_mark: | :x:        |
+| 6.12. UNSUBSCRIBE_NAMESPACE                  | :construction:     | :x:        |
 | 6.13. SUBSCRIBE_OK                           | :white_check_mark: | :x:        |
 | 6.14. SUBSCRIBE_ERROR                        | :white_check_mark: | :x:        |
 | 6.15. SUBSCRIBE_DONE                         | :white_check_mark: | :x:        |
@@ -55,8 +55,8 @@ gomoqt is an implementation of Media over QUIC Transport in Golang.
 | 6.17. ANNOUNCE                               | :white_check_mark: | :x:        |
 | 6.18. UNANNOUNCE                             | :white_check_mark: | :x:        |
 | 6.19. TRACK_STATUS                           | :construction:     | :x:        |
-| 6.20. SUBSCRIBE_NAMESPACE_OK                 | :white_check_mark: | :x:        |
-| 6.21. SUBSCRIBE_NAMESPACE_ERROR              | :white_check_mark: | :x:        |
+| 6.20. SUBSCRIBE_NAMESPACE_OK                 | :construction:     | :x:        |
+| 6.21. SUBSCRIBE_NAMESPACE_ERROR              | :construction:     | :x:        |
 | **Data Streams**                             |                    |            |
 | 7.1. Object Headers                          | :white_check_mark: | :x:        |
 | 7.2. Object Datagram Message                 | :white_check_mark: | :x:        |

@@ -20,7 +20,7 @@ type SubscribeDoneMessage struct {
 
 func (sd SubscribeDoneMessage) Serialize() []byte {
 	/*
-	 * Serialize as following formatt
+	 * Serialize the message in the following formatt
 	 *
 	 * SUBSCRIBE_DONE Message {
 	 *   Subscribe ID (varint),
@@ -32,37 +32,49 @@ func (sd SubscribeDoneMessage) Serialize() []byte {
 	 * }
 	 */
 
-	// TODO: Tune the length of the "b"
-	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
-	// Append the type of the message
+	/*
+	 * Serialize the payload
+	 */
+	p := make([]byte, 0, 1<<8)
+
+	// Append the Subscirbe ID
+	p = quicvarint.Append(p, uint64(sd.SubscribeID))
+
+	// Append the Status Code
+	p = quicvarint.Append(p, uint64(sd.StatusCode))
+
+	// Append the Reason Phrase
+	p = quicvarint.Append(p, uint64(len(sd.Reason)))
+	p = append(p, []byte(sd.Reason)...)
+
+	// Append the Content Exist
+	if !sd.ContentExists {
+		p = quicvarint.Append(p, 0)
+		return p
+	} else if sd.ContentExists {
+		p = quicvarint.Append(p, 1)
+		// Append the End Group ID only when the Content Exist is true
+		p = quicvarint.Append(p, uint64(sd.FinalGroupID))
+		// Append the End Object ID only when the Content Exist is true
+		p = quicvarint.Append(p, uint64(sd.FinalObjectID))
+	}
+
+	/*
+	 * Serialize the whole message
+	 */
+	b := make([]byte, 0, len(p)+1<<4)
+
+	// Append the message type
 	b = quicvarint.Append(b, uint64(SUBSCRIBE_DONE))
 
-	// Append Subscirbe ID
-	b = quicvarint.Append(b, uint64(sd.SubscribeID))
-
-	// Append Status Code
-	b = quicvarint.Append(b, uint64(sd.StatusCode))
-
-	// Append Reason
-	b = quicvarint.Append(b, uint64(len(sd.Reason)))
-	b = append(b, []byte(sd.Reason)...)
-
-	// Append Content Exist
-	if !sd.ContentExists {
-		b = quicvarint.Append(b, 0)
-		return b
-	} else if sd.ContentExists {
-		b = quicvarint.Append(b, 1)
-		// Append the End Group ID only when the Content Exist is true
-		b = quicvarint.Append(b, uint64(sd.FinalGroupID))
-		// Append the End Object ID only when the Content Exist is true
-		b = quicvarint.Append(b, uint64(sd.FinalObjectID))
-	}
+	// Appen the payload
+	b = quicvarint.Append(b, uint64(len(p)))
+	b = append(b, p...)
 
 	return b
 }
 
-func (sd *SubscribeDoneMessage) DeserializeBody(r quicvarint.Reader) error {
+func (sd *SubscribeDoneMessage) DeserializePayload(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 

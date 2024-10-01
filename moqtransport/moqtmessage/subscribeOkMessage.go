@@ -65,40 +65,20 @@ func (so SubscribeOkMessage) Serialize() []byte {
 	 */
 
 	/*
-	 * Get serialized payload
-	 */
-	p := so.serializePayload()
-
-	/*
-	 * Get serialized message
-	 */
-	b := make([]byte, 0, 1<<10)
-	// Append the type of the message
-	b = quicvarint.Append(b, uint64(SUBSCRIBE_OK))
-	// Append the length of the payload
-	b = quicvarint.Append(b, uint64(len(p)))
-	// Append the payload
-	b = append(b, p...)
-
-	return b
-}
-
-func (so *SubscribeOkMessage) serializePayload() []byte {
-	/*
 	 * Serialize the message payload
 	 */
 	p := make([]byte, 0, 1<<10)
 
-	// Append Subscriber ID
+	// Append the Subscriber ID
 	p = quicvarint.Append(p, uint64(so.SubscribeID))
 
-	// Append Expire
+	// Append the Expire
 	p = quicvarint.Append(p, uint64(so.Expires.Milliseconds()))
 
-	// Append Group Order
+	// Append the Group Order
 	p = quicvarint.Append(p, uint64(so.GroupOrder))
 
-	// Append Content Exist
+	// Append the Content Exist
 	if so.ContentExists {
 		p = quicvarint.Append(p, 1)
 		// Append the End Group ID only when the Content Exist is true
@@ -109,13 +89,25 @@ func (so *SubscribeOkMessage) serializePayload() []byte {
 		p = quicvarint.Append(p, 0)
 	}
 
-	// Append parameters
+	// Append the Parameters
 	p = so.Parameters.append(p)
 
-	return p
+	/*
+	 * Serialize the whole message
+	 */
+	b := make([]byte, 0, len(p)+1<<4)
+
+	// Append the type of the message
+	b = quicvarint.Append(b, uint64(SUBSCRIBE_OK))
+
+	// Append the payload
+	b = quicvarint.Append(b, uint64(len(p)))
+	b = append(b, p...)
+
+	return b
 }
 
-func (so *SubscribeOkMessage) DeserializeBody(r quicvarint.Reader) error {
+func (so *SubscribeOkMessage) DeserializePayload(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 

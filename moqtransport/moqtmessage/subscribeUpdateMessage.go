@@ -35,9 +35,11 @@ type SubscribeUpdateMessage struct {
 
 func (su SubscribeUpdateMessage) Serialize() []byte {
 	/*
-	 * Serialize as following formatt
+	 * Serialize the message in the following formatt
 	 *
 	 * SUBSCRIBE_UPDATE Message {
+	 *   Type (varint) = 0x02,
+	 *   Length (varint),
 	 *   Subscribe ID (varint),
 	 *   Start Group ID (varint),
 	 *   Start Object ID (varint),
@@ -49,44 +51,48 @@ func (su SubscribeUpdateMessage) Serialize() []byte {
 	 * }
 	 */
 
-	// TODO?: Chech URI exists
+	/*
+	 * Serialize the payload
+	 */
+	p := make([]byte, 0, 1<<8)
 
-	// TODO: Tune the length of the "b"
-	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
-	// Append the type of the message
-	b = quicvarint.Append(b, uint64(SUBSCRIBE_UPDATE))
 	// Append the Subscriber ID
-	b = quicvarint.Append(b, uint64(su.SubscribeID))
+	p = quicvarint.Append(p, uint64(su.SubscribeID))
+
 	// Append the Start Group ID
-	b = quicvarint.Append(b, uint64(su.StartGroup))
+	p = quicvarint.Append(p, uint64(su.StartGroup))
+
 	// Append the Start Object ID
-	b = quicvarint.Append(b, uint64(su.StartObject))
+	p = quicvarint.Append(p, uint64(su.StartObject))
+
 	// Append the End Group ID
-	b = quicvarint.Append(b, uint64(su.EndGroup))
+	p = quicvarint.Append(p, uint64(su.EndGroup))
+
 	// Append the End Object ID
-	b = quicvarint.Append(b, uint64(su.EndObject))
+	p = quicvarint.Append(p, uint64(su.EndObject))
+
 	// Append the Publisher Priority
-	b = quicvarint.Append(b, uint64(su.SubscriberPriority))
+	p = quicvarint.Append(p, uint64(su.SubscriberPriority))
+
 	// Append the Subscribe Update Priority
-	b = su.Parameters.append(b)
+	p = su.Parameters.append(p)
+
+	/*
+	 * Serialize the whole message
+	 */
+	b := make([]byte, 0, len(p)+1<<4)
+
+	// Append the message type
+	b = quicvarint.Append(b, uint64(SUBSCRIBE_UPDATE))
+
+	// Appen the payload
+	b = quicvarint.Append(b, uint64(len(p)))
+	b = append(b, p...)
 
 	return b
 }
 
-// func (su *SubscribeUpdateMessage) deserialize(r quicvarint.Reader) error {
-// 	// Get Message ID and check it
-// 	id, err := deserializeHeader(r)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	if id != SUBSCRIBE_UPDATE {
-// 		return errors.New("unexpected message")
-// 	}
-
-// 	return su.deserializeBody(r)
-// }
-
-func (su *SubscribeUpdateMessage) DeserializeBody(r quicvarint.Reader) error {
+func (su *SubscribeUpdateMessage) DeserializePayload(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 

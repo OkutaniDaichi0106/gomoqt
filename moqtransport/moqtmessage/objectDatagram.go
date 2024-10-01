@@ -19,7 +19,7 @@ type ObjectDatagram struct {
 
 func (od ObjectDatagram) Serialize() []byte {
 	/*
-	 * Serialize as following formatt
+	 * Serialize the message in the following formatt
 	 *
 	 * OBJECT_DATAGRAM Message {
 	 *   Subscribe ID (varint),
@@ -36,25 +36,25 @@ func (od ObjectDatagram) Serialize() []byte {
 
 	// TODO: Tune the length of the "b"
 	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
-	// Append the type of the message
-	b = quicvarint.Append(b, uint64(DATAGRAM.ID()))
-	// Append Subscribe ID
+	// Append the stream type
+	b = quicvarint.Append(b, uint64(DATAGRAM_ID))
+	// Append the Subscribe ID
 	b = quicvarint.Append(b, uint64(od.SubscribeID))
-	// Append Track Alias
+	// Append the Track Alias
 	b = quicvarint.Append(b, uint64(od.TrackAlias))
-	// Append Group ID
+	// Append the Group ID
 	b = quicvarint.Append(b, uint64(od.GroupID))
-	// Append Object ID
+	// Append the Object ID
 	b = quicvarint.Append(b, uint64(od.ObjectID))
-	// Append Publisher Priority
+	// Append the Publisher Priority
 	b = quicvarint.Append(b, uint64(od.PublisherPriority))
-	// Append Object Payload Length
+	// Append the Object Payload Length
 	b = quicvarint.Append(b, uint64(len(od.Payload)))
-	// Append Object Payload
+	// Append the Object Payload
 	b = append(b, od.Payload...)
 
 	if len(od.Payload) == 0 {
-		// Append Object Status Code
+		// Append the Object Status Code
 		b = quicvarint.Append(b, uint64(od.StatusCode))
 	}
 

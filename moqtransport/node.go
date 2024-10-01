@@ -279,7 +279,7 @@ func (n node) receiveServerSetupMessage(controlReader quicvarint.Reader) (moqtve
 	}
 
 	var ssm moqtmessage.ServerSetupMessage
-	err = ssm.DeserializeBody(controlReader)
+	err = ssm.DeserializePayload(controlReader)
 	if err != nil {
 		return 0, nil, err
 	}

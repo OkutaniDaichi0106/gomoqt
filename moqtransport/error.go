@@ -48,6 +48,21 @@ var (
 		code:   moqtmessage.INVALID_RANGE,
 		reason: "invalid range",
 	}
+
+	ErrTrackDoesNotExist = DefaultSubscribeError{
+		code:   moqtmessage.TRACK_DOES_NOT_EXIST,
+		reason: "track does not exist",
+	}
+
+	ErrSubscribeUnauthorized = DefaultSubscribeError{
+		code:   moqtmessage.SUBSCRIBE_UNAUTHORIZED,
+		reason: "unauthorized",
+	}
+
+	ErrSubscribeTimeout = DefaultSubscribeError{
+		code:   moqtmessage.SUBSCRIBE_TIMEOUT,
+		reason: "time out",
+	}
 )
 
 func GetSubscribeError(message moqtmessage.SubscribeErrorMessage) SubscribeError {
@@ -83,7 +98,6 @@ func (err DefaultSubscribeError) Code() moqtmessage.SubscribeErrorCode {
 }
 
 type RetryTrackAliasError struct {
-	//code       moqtmessage.SubscribeErrorCode
 	reason     string
 	trackAlias moqtmessage.TrackAlias
 }
@@ -118,7 +132,7 @@ var (
 		code:   moqtmessage.SUBSCRIBE_DONE_INTERNAL_ERROR,
 		reason: "internal error",
 	}
-	ErrSubscribeUnauthorized = DefaultSubscribeDoneError{
+	ErrSubscribeDoneUnauthorized = DefaultSubscribeDoneError{
 		code:   moqtmessage.SUBSCRIBE_DONE_UNAUTHORIZED,
 		reason: "unauthorized",
 	}

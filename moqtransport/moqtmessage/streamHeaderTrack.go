@@ -91,7 +91,7 @@ var _ StreamHeader = (*StreamHeaderTrack)(nil)
 
 func (sht StreamHeaderTrack) Serialize() []byte {
 	/*
-	 * Serialize as following formatt
+	 * Serialize the message in the following formatt
 	 *
 	 * STREAM_HEADER_TRACK Message {
 	 *   Subscribe ID (varint),
@@ -166,7 +166,7 @@ type GroupChunk struct {
 
 func (gc GroupChunk) Serialize() []byte {
 	/*
-	 * Serialize as following formatt
+	 * Serialize the message in the following formatt
 	 *
 	 * OBJECT Chunk {
 	 *   Object ID (varint),
@@ -180,16 +180,16 @@ func (gc GroupChunk) Serialize() []byte {
 	// TODO: Tune the length of the "b"
 	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
 
-	// Append Subscribe ID
+	// Append the Subscribe ID
 	b = quicvarint.Append(b, uint64(gc.GroupID))
 
-	// Append Subscribe ID
+	// Append the Subscribe ID
 	b = quicvarint.Append(b, uint64(gc.ObjectID))
 
-	// Append length of the Payload
+	// Append the length of the Payload
 	b = quicvarint.Append(b, uint64(len(gc.Payload)))
 
-	// Append Object Payload
+	// Append the Object Payload
 	b = append(b, gc.Payload...)
 
 	if len(gc.Payload) == 0 {

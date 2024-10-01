@@ -21,46 +21,41 @@ type ServerSetupMessage struct {
 
 func (ss ServerSetupMessage) Serialize() []byte {
 	/*
-	 * Serialize as following formatt
+	 * Serialize the message in the following formatt
 	 *
-	 * SERVER_SETUP Payload {
+	 * SERVER_SETUP Message {
+	 *   Type (varint) = 0x41,
+	 *   Length (varint),
 	 *   Selected Version (varint),
 	 *   Number of Parameters (varint),
 	 *   Setup Parameters (..),
 	 * }
 	 */
-	// TODO: Tune the length of the "b"
-	b := make([]byte, 0, 1<<8) /* Byte slice storing whole data */
+
+	p := make([]byte, 0, 1<<8)
+
+	// Append the selected version
+	p = quicvarint.Append(p, uint64(ss.SelectedVersion))
+
+	// Append the parameters
+	p = ss.Parameters.append(p)
+
+	/*
+	 * Serialize the whole message
+	 */
+	b := make([]byte, 0, len(p)+1<<4)
+
 	// Append the type of the message
 	b = quicvarint.Append(b, uint64(SERVER_SETUP))
-	// Append the selected version
-	b = quicvarint.Append(b, uint64(ss.SelectedVersion))
 
-	// Serialize the parameters and append it
-	/*
-	 * Setup Parameters {
-	 *   [Optional Patameters(..)],
-	 * }
-	 */
-	b = ss.Parameters.append(b)
+	// Appen the payload
+	b = quicvarint.Append(b, uint64(len(p)))
+	b = append(b, p...)
 
 	return b
 }
 
-// func (ss *ServerSetupMessage) deserialize(r quicvarint.Reader) error {
-// 	// Get Message ID and check it
-// 	id, err := deserializeHeader(r)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	if id != SERVER_SETUP {
-// 		return errors.New("unexpected message")
-// 	}
-
-// 	return ss.deserializeBody(r)
-// }
-
-func (ss *ServerSetupMessage) DeserializeBody(r quicvarint.Reader) error {
+func (ss *ServerSetupMessage) DeserializePayload(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 
@@ -76,7 +71,4 @@ func (ss *ServerSetupMessage) DeserializeBody(r quicvarint.Reader) error {
 		return err
 	}
 	return nil
-
-	// PATH parameter must not be included in the parameters
-	// Keys of the parameters must not be duplicate
 }

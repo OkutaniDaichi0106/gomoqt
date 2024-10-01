@@ -20,7 +20,7 @@ type ClientSetupMessage struct {
 
 func (cs ClientSetupMessage) Serialize() []byte {
 	/*
-	 * Serialize as following formatt
+	 * Serialize the message in the following formatt
 	 *
 	 * CLIENT_SETUP Payload {
 	 *   Number of Supported Versions (varint),
@@ -30,43 +30,45 @@ func (cs ClientSetupMessage) Serialize() []byte {
 	 * }
 	 */
 
-	// Check the condition of the parameters
-	// 1. At least one version is required
+	// Verify if at least one version is required
 	if len(cs.Versions) == 0 {
 		panic("no version is specifyed")
 	}
 
-	// 2. Parameters should conclude role parameter
+	// Verify if the Parameters conclude some role parameter
 	_, ok := cs.Parameters.Role()
 	if !ok {
 		panic("no role is specifyed")
 	}
 
-	// TODO: Tune the length of the "b"
-	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
-	// Append the type of the message
-	b = quicvarint.Append(b, uint64(CLIENT_SETUP))
+	p := make([]byte, 0, 1<<8)
+
 	// Append the supported versions
-	b = quicvarint.Append(b, uint64(len(cs.Versions)))
+	p = quicvarint.Append(p, uint64(len(cs.Versions)))
 	var version moqtversion.Version
 	for _, version = range cs.Versions {
-		b = quicvarint.Append(b, uint64(version))
+		p = quicvarint.Append(p, uint64(version))
 	}
 
-	// Serialize the parameters and append it
+	// Append the parameters
+	p = cs.Parameters.append(p)
+
 	/*
-	 * Setup Parameters {
-	 *   Role Parameter (varint),
-	 *   [Path Parameter (stirng),]
-	 *   [Optional Patameters(..)],
-	 * }
+	 * Serialize the whole data
 	 */
-	b = cs.Parameters.append(b)
+	b := make([]byte, 0, len(p)+1<<4)
+
+	// Append the type of the message
+	b = quicvarint.Append(b, uint64(CLIENT_SETUP))
+
+	// Appen the payload
+	b = quicvarint.Append(b, uint64(len(p)))
+	b = append(b, p...)
 
 	return b
 }
 
-func (cs *ClientSetupMessage) DeserializeBody(r quicvarint.Reader) error {
+func (cs *ClientSetupMessage) DeserializePayload(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 

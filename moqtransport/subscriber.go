@@ -20,7 +20,7 @@ type Subscriber struct {
 	}
 }
 
-func (s Subscriber) ConnectAndSetup(URL string) (*SubscribingSession, error) {
+func (s *Subscriber) ConnectAndSetup(URL string) (*SubscribingSession, error) {
 	sess, err := s.node.EstablishSubSession(URL)
 	if err != nil {
 		return nil, err

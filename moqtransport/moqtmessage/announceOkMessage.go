@@ -4,15 +4,17 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-type UnannounceMessage struct {
+type AnnounceOkMessage struct {
 	TrackNamespace TrackNamespace
 }
 
-func (ua UnannounceMessage) Serialize() []byte {
+func (ao AnnounceOkMessage) Serialize() []byte {
 	/*
 	 * Serialize the message in the following formatt
 	 *
-	 * UNANNOUNCE Payload {
+	 * ANNOUNCE_OK Message {
+	 *   Type (varint) = 0x07,
+	 *   Length (varint),
 	 *   Track Namespace (tuple),
 	 * }
 	 */
@@ -22,32 +24,32 @@ func (ua UnannounceMessage) Serialize() []byte {
 	 */
 	p := make([]byte, 0, 1<<8)
 
-	// Append the Track Namespace
-	p = ua.TrackNamespace.Append(p)
+	// Append the supported versions
+	p = ao.TrackNamespace.Append(p)
 
 	/*
 	 * Serialize the whole message
 	 */
 	b := make([]byte, 0, len(p)+1<<4)
 
-	// Append the message type
-	b = quicvarint.Append(b, uint64(UNANNOUNCE))
+	// Append the type of the message
+	b = quicvarint.Append(b, uint64(ANNOUNCE_OK))
 
-	// Append the payload
+	// Append the length of the payload and the payload
 	b = quicvarint.Append(b, uint64(len(p)))
 	b = append(b, p...)
 
 	return b
 }
 
-func (ua *UnannounceMessage) DeserializePayload(r quicvarint.Reader) error {
+func (ao *AnnounceOkMessage) DeserializePayload(r quicvarint.Reader) error {
+	// Get Track Namespace
 	var tns TrackNamespace
 	err := tns.Deserialize(r)
 	if err != nil {
 		return err
 	}
-
-	ua.TrackNamespace = tns
+	ao.TrackNamespace = tns
 
 	return nil
 }

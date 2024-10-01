@@ -12,27 +12,40 @@ type GoAwayMessage struct {
 
 func (ga GoAwayMessage) Serialize() []byte {
 	/*
-	 * Serialize as following formatt
+	 * Serialize the message in the following formatt
 	 *
-	 * GOAWAY Payload {
+	 * GOAWAY Message {
+	 *   Type (varint) = 0x10,
+	 *   Length (varint),
 	 *   New Session URI ([]byte),
 	 * }
 	 */
 
-	// TODO?: Chech URI exists
+	/*
+	 * Serialize the payload
+	 */
+	p := make([]byte, 0, 1<<6)
 
-	// TODO: Tune the length of the "b"
-	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
-	// Append the type of the message
-	b = quicvarint.Append(b, uint64(GOAWAY))
 	// Append the supported versions
-	b = quicvarint.Append(b, uint64(len(ga.NewSessionURI)))
-	b = append(b, []byte(ga.NewSessionURI)...)
+	p = quicvarint.Append(p, uint64(len(ga.NewSessionURI)))
+	p = append(p, []byte(ga.NewSessionURI)...)
+
+	/*
+	 * Serialize the whole message
+	 */
+	b := make([]byte, 0, len(p)+1<<4)
+
+	// Append the message type
+	b = quicvarint.Append(b, uint64(GOAWAY))
+
+	// Appen the payload
+	b = quicvarint.Append(b, uint64(len(p)))
+	b = append(b, p...)
 
 	return b
 }
 
-func (ga *GoAwayMessage) DeserializeBody(r quicvarint.Reader) error {
+func (ga *GoAwayMessage) DeserializePayload(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 

@@ -28,12 +28,14 @@ func main() {
 		log.Println(err)
 		return
 	}
+	log.Println("Announced!!")
 
 	subscription, err := sess.WaitSubscribe()
 	if err != nil {
 		log.Println(err)
 		return
 	}
+	log.Println("Subscribed!!")
 
 	err = sess.AllowSubscribe(subscription, 0)
 	if err != nil {
@@ -41,7 +43,9 @@ func main() {
 		return
 	}
 
-	stream, err := publisher.NewTrack(*subscription, moqtmessage.TRACK, 0)
+	header := moqtransport.NewStreamHeaderTrack(*subscription, 0)
+
+	stream, err := publisher.OpenStreamTrack(header)
 	if err != nil {
 		log.Println(err)
 		return
@@ -49,5 +53,7 @@ func main() {
 
 	data := []byte("hello")
 
+	stream.Write(data)
+	stream.Write(data)
 	stream.Write(data)
 }

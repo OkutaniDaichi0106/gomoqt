@@ -22,48 +22,57 @@ type AnnounceErrorMessage struct {
 
 func (ae AnnounceErrorMessage) Serialize() []byte {
 	/*
-	 * Serialize as following formatt
+	 * Serialize the message in the following formatt
 	 *
 	 * ANNOUNCE_ERROR Message {
-	 *   Track Namespace ([]byte),
+	 *   Track Namespace (tuple),
 	 *   Error Code (varint),
 	 *   Reason Phrase ([]byte]),
 	 * }
 	 */
 
-	// TODO: Tune the length of the "b"
-	b := make([]byte, 0, 1<<8) /* Byte slice storing whole data */
+	/*
+	 * Serialize the payload
+	 */
+	p := make([]byte, 0, 1<<8)
 
-	// Append the type of the message
+	// Append the Subscriber ID
+	p = ae.TrackNamespace.Append(p)
+
+	// Append the Error Code
+	p = quicvarint.Append(p, uint64(ae.Code))
+
+	// Append the Reason Phrase
+	p = quicvarint.Append(p, uint64(len(ae.Reason)))
+	p = append(p, []byte(ae.Reason)...)
+
+	/*
+	 * Serialize the whole message
+	 */
+	b := make([]byte, 0, len(p)+1<<4)
+
+	// Append the message type
 	b = quicvarint.Append(b, uint64(ANNOUNCE_ERROR))
 
-	// Append Subscriber ID
-	b = ae.TrackNamespace.Append(b)
-
-	// Append Error Code
-	b = quicvarint.Append(b, uint64(ae.Code))
-
-	// Append Reason
-	b = quicvarint.Append(b, uint64(len(ae.Reason)))
-	b = append(b, []byte(ae.Reason)...)
+	// Append the length of the payload and the payload
+	b = quicvarint.Append(b, uint64(len(p)))
+	b = append(b, p...)
 
 	return b
 }
 
-func (ae *AnnounceErrorMessage) DeserializeBody(r quicvarint.Reader) error {
-	var num uint64
-
+func (ae *AnnounceErrorMessage) DeserializePayload(r quicvarint.Reader) error {
 	// Get Track Namespace
-	if ae.TrackNamespace == nil {
-		ae.TrackNamespace = make(TrackNamespace, 0, 1)
-	}
-	err := ae.TrackNamespace.Deserialize(r)
+	var tns TrackNamespace
+
+	err := tns.Deserialize(r)
 	if err != nil {
 		return err
 	}
+	ae.TrackNamespace = tns
 
 	// Get Error Code
-	num, err = quicvarint.Read(r)
+	num, err := quicvarint.Read(r)
 	if err != nil {
 		return err
 	}

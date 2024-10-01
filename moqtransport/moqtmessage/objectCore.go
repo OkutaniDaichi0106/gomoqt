@@ -36,7 +36,7 @@ const (
  * TRACK, PEEP, DATAGRAM
  */
 type ObjectForwardingPreference interface {
-	ID() StreamTypeID
+	//ID() StreamTypeID
 	StreamType() string
 }
 
@@ -44,9 +44,10 @@ var _ ObjectForwardingPreference = (*datagram)(nil)
 
 type datagram struct{}
 
-func (datagram) ID() StreamTypeID {
-	return DATAGRAM_ID
-}
+// func (datagram) ID() StreamTypeID {
+// 	return DATAGRAM_ID
+// }
+
 func (datagram) StreamType() string {
 	return "DATAGRAM"
 }
@@ -55,9 +56,9 @@ var _ ObjectForwardingPreference = (*track)(nil)
 
 type track struct{}
 
-func (track) ID() StreamTypeID {
-	return TRACK_ID
-}
+// func (track) ID() StreamTypeID {
+// 	return TRACK_ID
+// }
 
 func (track) StreamType() string {
 	return "TRACK"
@@ -67,9 +68,10 @@ var _ ObjectForwardingPreference = (*peep)(nil)
 
 type peep struct{}
 
-func (peep) ID() StreamTypeID {
-	return PEEP_ID
-}
+// func (peep) ID() StreamTypeID {
+// 	return PEEP_ID
+// }
+
 func (peep) StreamType() string {
 	return "PEEP"
 }

@@ -1,12 +1,14 @@
 package moqtmessage
 
+// TODO:
+
 // type MaxSubscribeID struct {
 // 	subscribeID
 // }
 
 // func (msi MaxSubscribeID) serialize() []byte {
 // 	/*
-// 	 * Serialize as following formatt
+// 	 * Serialize the message in the following formatt
 // 	 *
 // 	 * MAX_SUBSCRIBE_ID Message {
 // 	 *   Max Subscirbe ID (varint),
@@ -16,7 +18,7 @@ package moqtmessage
 
 // 	b = quicvarint.Append(b, uint64(MAX_SUBSCRIBE_ID))
 
-// 	// Append Track Namespace Prefix
+// 	// Append the Track Namespace Prefix
 // 	b = quicvarint.Append(b, uint64(msi.subscribeID))
 
 // 	return b

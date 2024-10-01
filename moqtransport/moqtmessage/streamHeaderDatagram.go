@@ -32,7 +32,7 @@ type StreamHeaderDatagram struct {
 
 func (sht StreamHeaderDatagram) Serialize() []byte {
 	/*
-	 * Serialize as following formatt
+	 * Serialize the message in the following formatt
 	 *
 	 * STREAM_HEADER_TRACK Message {
 	 *   Subscribe ID (varint),
@@ -44,7 +44,7 @@ func (sht StreamHeaderDatagram) Serialize() []byte {
 	// TODO?: Chech URI exists
 
 	// TODO: Tune the length of the "b"
-	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
+	b := make([]byte, 0, 1<<6) /* Byte slice storing whole data */
 	// Append the type of the message
 	b = quicvarint.Append(b, uint64(DATAGRAM_ID))
 	// Append the Subscriber ID

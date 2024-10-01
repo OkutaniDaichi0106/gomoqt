@@ -2,16 +2,16 @@ package moqtmessage
 
 import "github.com/quic-go/quic-go/quicvarint"
 
-type SubscribeNamespaceOkMessage struct {
+type UnsubscribeNamespace struct {
 	TrackNamespacePrefix TrackNamespacePrefix
 }
 
-func (sno SubscribeNamespaceOkMessage) Serialize() []byte {
+func (usn UnsubscribeNamespace) Serialize() []byte {
 	/*
 	 * Serialize the message in the following formatt
 	 *
-	 * SUBSCRIBE_NAMESPACE_OK Message {
-	 *   Type (varint) = 0x12,
+	 * UNSUBSCRIBE_NAMESPACE Message {
+	 *   Type (varint) = 0x14,
 	 *   Length (varint),
 	 *   Track Namespace Prefix (tuple),
 	 * }
@@ -23,7 +23,7 @@ func (sno SubscribeNamespaceOkMessage) Serialize() []byte {
 	p := make([]byte, 0, 1<<8)
 
 	// Append the Track Namespace Prefix
-	p = sno.TrackNamespacePrefix.Append(p)
+	p = usn.TrackNamespacePrefix.Append(p)
 
 	/*
 	 * Serialize the whole message
@@ -31,7 +31,7 @@ func (sno SubscribeNamespaceOkMessage) Serialize() []byte {
 	b := make([]byte, 0, len(p)+1<<4)
 
 	// Append the message ID
-	b = quicvarint.Append(b, uint64(SUBSCRIBE_NAMESPACE_OK))
+	b = quicvarint.Append(b, uint64(UNSUBSCRIBE_NAMESPACE))
 
 	// Append the payload
 	b = quicvarint.Append(b, uint64(len(p)))
@@ -40,14 +40,11 @@ func (sno SubscribeNamespaceOkMessage) Serialize() []byte {
 	return b
 }
 
-func (sno *SubscribeNamespaceOkMessage) DeserializePayload(r quicvarint.Reader) error {
-	var tnsp TrackNamespacePrefix
-
-	err := tnsp.Deserialize(r)
-	if err != nil {
-		return err
+func (usn *UnsubscribeNamespace) Deserialize(r quicvarint.Reader) error {
+	if usn.TrackNamespacePrefix == nil {
+		usn.TrackNamespacePrefix = make(TrackNamespacePrefix, 0, 1)
 	}
-	sno.TrackNamespacePrefix = tnsp
+	err := usn.TrackNamespacePrefix.Deserialize(r)
 
-	return nil
+	return err
 }

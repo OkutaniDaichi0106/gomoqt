@@ -1,6 +1,7 @@
 package moqtransport
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -11,76 +12,12 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
 )
 
-type trackAliasMap struct {
-	mu         sync.RWMutex
-	nameIndex  map[string]map[string]moqtmessage.TrackAlias
-	aliasIndex map[moqtmessage.TrackAlias]struct {
-		trackNamespace moqtmessage.TrackNamespace
-		trackName      string
-	}
-}
-
-func (tamap *trackAliasMap) getAlias(tns moqtmessage.TrackNamespace, tn string) moqtmessage.TrackAlias {
-	/*
-	 * If an Track Alias exists, return the existing Track Alias
-	 */
-	tamap.mu.RLock()
-	defer tamap.mu.RUnlock()
-	existingAlias, ok := tamap.nameIndex[strings.Join(tns, "")][tn]
-	if ok {
-		return existingAlias
-	}
-
-	/*
-	 * If no Track Alias was found, get new Track Alias and register the Track Namespace and Track Name with it
-	 */
-	tamap.mu.Lock()
-
-	newAlias := moqtmessage.TrackAlias(len(tamap.aliasIndex))
-
-	tamap.nameIndex[strings.Join(tns, "")][tn] = newAlias
-
-	tamap.aliasIndex[newAlias] = struct {
-		trackNamespace moqtmessage.TrackNamespace
-		trackName      string
-	}{
-		trackNamespace: tns,
-		trackName:      tn,
-	}
-
-	tamap.mu.Lock()
-
-	return newAlias
-}
-
-func (tamap *trackAliasMap) getName(ta moqtmessage.TrackAlias) (moqtmessage.TrackNamespace, string, bool) {
-	data, ok := tamap.aliasIndex[ta]
-	if !ok {
-		return nil, "", false
-	}
-
-	return data.trackNamespace, data.trackName, true
-}
-
-type contentStatus struct {
-	/*
-	 * Current content status
-	 */
-	contentExists bool
-	// finalGroupID  moqtmessage.GroupID
-	// finalObjectID moqtmessage.ObjectID
-
-	/*
-	 * The Largest Group ID and Largest Object ID of the contents received so far
-	 */
-	largestGroupID  moqtmessage.GroupID
-	largestObjectID moqtmessage.ObjectID
-}
-
 /*
  *
  */
 type PublishingSession struct {
+	mu sync.Mutex
+
 	sessionCore
 
 	maxSubscribeID moqtmessage.SubscribeID
@@ -95,11 +32,21 @@ type PublishingSession struct {
 	//contentStatuses map[moqtmessage.TrackAlias]*contentStatus
 }
 
-func (sess *PublishingSession) Announce(trackNamespace moqtmessage.TrackNamespace, config AnnounceConfig) error {
-	/*
-	 * Send ANNOUNCE message
-	 */
+func (sess *PublishingSession) OpenUniStream() (SendByteStream, error) {
+	return sess.trSess.OpenUniStream()
+}
 
+func (sess *PublishingSession) OpenUniStreamSync(ctx context.Context) (SendByteStream, error) {
+	return sess.trSess.OpenUniStreamSync(ctx)
+}
+
+func (sess *PublishingSession) Announce(trackNamespace moqtmessage.TrackNamespace, config AnnounceConfig) error {
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+
+	/*
+	 * Send an ANNOUNCE message
+	 */
 	am := moqtmessage.AnnounceMessage{
 		TrackNamespace: trackNamespace,
 		Parameters:     make(moqtmessage.Parameters, 2),
@@ -128,7 +75,7 @@ func (sess *PublishingSession) Announce(trackNamespace moqtmessage.TrackNamespac
 	switch id {
 	case moqtmessage.ANNOUNCE_OK:
 		var ao moqtmessage.AnnounceOkMessage
-		err = ao.DeserializeBody(sess.controlReader)
+		err = ao.DeserializePayload(sess.controlReader)
 		if err != nil {
 			return err
 		}
@@ -146,7 +93,7 @@ func (sess *PublishingSession) Announce(trackNamespace moqtmessage.TrackNamespac
 		return nil
 	case moqtmessage.ANNOUNCE_ERROR:
 		var ae moqtmessage.AnnounceErrorMessage // TODO: Handle Error Code
-		err = ae.DeserializeBody(sess.controlReader)
+		err = ae.DeserializePayload(sess.controlReader)
 		if err != nil {
 			return err
 		}
@@ -166,11 +113,25 @@ func (sess *PublishingSession) Announce(trackNamespace moqtmessage.TrackNamespac
 }
 
 func (sess *PublishingSession) Unannounce(trackNamespace moqtmessage.TrackNamespace) error {
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+
+	/*
+	 * Send an UNANNOUNCE message
+	 */
 	um := moqtmessage.UnannounceMessage{
 		TrackNamespace: trackNamespace,
 	}
 
 	_, err := sess.controlStream.Write(um.Serialize())
+	if err != nil {
+		return err
+	}
+
+	/*
+	 * Remove the Track Namespace
+	 */
+	err = trackManager.removeTrackNamespace(trackNamespace)
 	if err != nil {
 		return err
 	}
@@ -202,7 +163,9 @@ func (sess *PublishingSession) WaitSubscribe() (*Subscription, error) {
 }
 
 func (sess *PublishingSession) receiveSubscribe(newSubscribeID moqtmessage.SubscribeID) (*Subscription, error) {
-	// Receive a SUBSCRIBE message
+	/*
+	 * Receive a SUBSCRIBE message
+	 */
 	id, err := moqtmessage.DeserializeMessageID(sess.controlReader)
 	if err != nil {
 		return nil, err
@@ -212,7 +175,7 @@ func (sess *PublishingSession) receiveSubscribe(newSubscribeID moqtmessage.Subsc
 	}
 
 	sm := moqtmessage.SubscribeMessage{}
-	err = sm.DeserializeBody(sess.controlReader)
+	err = sm.DeserializePayload(sess.controlReader)
 	if err != nil {
 		return nil, err
 	}
@@ -237,18 +200,11 @@ func (sess *PublishingSession) receiveSubscribe(newSubscribeID moqtmessage.Subsc
 		panic("NO TRACKNAMESPACE!! MAKE NEW SUBSCRIPTION!!")
 	}
 
-	tnsNode.mu.RLock()
-	defer tnsNode.mu.RUnlock()
-	_, ok = tnsNode.tracks[sm.TrackName]
+	_, ok = tnsNode.findTrackName(sm.TrackName)
 
 	// Create new Track if the Track Name did not exist
 	if !ok {
-		tnsNode.mu.Lock()
-		tnsNode.tracks[sm.TrackName] = &trackNameNode{
-			value: sm.TrackName,
-		}
-
-		tnsNode.mu.Unlock()
+		tnsNode.newTrackNameNode(sm.TrackName)
 
 		// TODO: create a new subscription
 		panic("NO TRACK!! MAKE NEW SUBSCRIPTION!!")
@@ -292,13 +248,16 @@ func (sess *PublishingSession) receiveSubscribe(newSubscribeID moqtmessage.Subsc
 }
 
 func (sess *PublishingSession) AllowSubscribe(subscription *Subscription, expiry time.Duration) error {
+	// Find the Track Namespace and verify if it is available
 	tnsNode, ok := trackManager.findTrackNamespace(subscription.trackNamespace)
 	if !ok {
 		return errors.New("track namespace not found")
 	}
 
+	// Find the Track Name
 	tnNode, ok := tnsNode.findTrackName(subscription.trackName)
 	if !ok {
+		// Register the Track Name if it did not exist
 		tnNode = tnsNode.newTrackNameNode(subscription.trackName)
 	}
 
@@ -329,13 +288,13 @@ func (sess *PublishingSession) AllowSubscribe(subscription *Subscription, expiry
 	return nil
 }
 
-func (sess *PublishingSession) RejectSubscribe(subscribeID moqtmessage.SubscribeID, subscribeError SubscribeError) {
+func (sess *PublishingSession) RejectSubscribe(subscription *Subscription, subscribeError SubscribeError) {
 	/*
 	 * Send a SUBSCRIBE_ERROR
 	 */
 
 	sem := moqtmessage.SubscribeErrorMessage{
-		SubscribeID: subscribeID,
+		SubscribeID: subscription.subscribeID,
 		Code:        subscribeError.Code(),
 		Reason:      subscribeError.Error(),
 	}
@@ -375,23 +334,19 @@ func (sess *PublishingSession) EndSubscription(subscription Subscription, status
 	return nil
 }
 
-func (sess *PublishingSession) sendTrackStatus() {
+func (sess *PublishingSession) SendTrackStatus() {
 
+}
+
+func (p *PublishingSession) WaitSubscribeNamespace() {
+	// Send a SUBSCRIBE_OK
 }
 
 func (sess *PublishingSession) AllowSubscribeNamespace() {
 	// Send a SUBSCRIBE_OK
 }
 
-func (p *PublishingSession) allowSubscribeNamespace() {
-	// Send a SUBSCRIBE_OK
-}
-
 func (p *PublishingSession) RejectSubscribeNamespace() {
-	// Send a SUBSCRIBE_ERROR
-}
-
-func (p *PublishingSession) rejectSubscribeNamespace() {
 	// Send a SUBSCRIBE_ERROR
 }
 

@@ -185,7 +185,7 @@ func (s Server) handleWebTransport(path string, sess *webtransport.Session) erro
 
 	// Receive a SETUP_CLIENT message
 	var csm moqtmessage.ClientSetupMessage
-	err = csm.DeserializeBody(controlReader)
+	err = csm.DeserializePayload(controlReader)
 	if err != nil {
 		return err
 	}
@@ -300,7 +300,7 @@ func (s Server) handleRawQUIC(conn quic.Connection) error {
 	}
 
 	var csm moqtmessage.ClientSetupMessage
-	err = csm.DeserializeBody(controlReader)
+	err = csm.DeserializePayload(controlReader)
 	if err != nil {
 		return err
 	}

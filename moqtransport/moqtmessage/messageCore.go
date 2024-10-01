@@ -35,26 +35,6 @@ const (
 	SERVER_SETUP              MessageID = 0x41
 )
 
-type Messager interface {
-	/*
-	 * Serialize values of the fields to byte string
-	 * and returns it
-	 */
-	Serialize() []byte
-
-	/*
-	 * Deserialize byte string to a value
-	 * and reflect the value to the fields
-	 */
-	//deserialize(quicvarint.Reader) error
-
-	/*
-	 * Deserialize byte string to a value
-	 * and reflect the value to the fields
-	 */
-	DeserializeMessagePayload(quicvarint.Reader) error
-}
-
 /*
  * Deserialize the Message ID
  */
@@ -85,6 +65,17 @@ func DeserializeMessageID(r quicvarint.Reader) (MessageID, error) {
 	default:
 		return 0, errors.New("undefined Message ID")
 	}
+}
+
+func GetPayloadReader(r quicvarint.Reader) (quicvarint.Reader, error) {
+	num, err := quicvarint.Read(r)
+	if err != nil {
+		return nil, err
+	}
+
+	reader := io.LimitReader(r, int64(num))
+
+	return quicvarint.NewReader(reader), nil
 }
 
 func NewTrackNamespace(values ...string) TrackNamespace {

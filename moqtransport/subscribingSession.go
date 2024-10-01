@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
-
-	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type Announcement struct {
@@ -31,11 +29,6 @@ type SubscribingSession struct {
 
 	sessionCore
 
-	/*
-	 * ANNOUNCE messages received from the publisher
-	 */
-	announcements []Announcement
-
 	trackAliasMap trackAliasMap
 
 	subscriptions map[moqtmessage.SubscribeID]Subscription
@@ -50,11 +43,10 @@ type SubscribingSession struct {
 		expireCtx    context.Context
 		expireCancel context.CancelFunc
 	}
+}
 
-	streams map[moqtmessage.SubscribeID]chan struct {
-		header moqtmessage.StreamHeader
-		reader quicvarint.Reader
-	}
+func (sess *SubscribingSession) AcceptUniStream(ctx context.Context) (ReceiveByteStream, error) {
+	return sess.trSess.AcceptUniStream(ctx)
 }
 
 func (sess *SubscribingSession) WaitAnnounce() (*Announcement, error) {
@@ -261,7 +253,7 @@ func (sess *SubscribingSession) receiveSubscribeResponce(subscription Subscripti
 	switch id {
 	case moqtmessage.SUBSCRIBE_OK:
 		var so moqtmessage.SubscribeOkMessage
-		err = so.DeserializeBody(sess.controlReader)
+		err = so.DeserializePayload(sess.controlReader)
 		if err != nil {
 			return err
 		}
@@ -312,7 +304,7 @@ func (sess *SubscribingSession) receiveSubscribeResponce(subscription Subscripti
 		return nil
 	case moqtmessage.SUBSCRIBE_ERROR:
 		var se moqtmessage.SubscribeErrorMessage // TODO: Handle Error Code
-		err = se.DeserializeBody(sess.controlReader)
+		err = se.DeserializePayload(sess.controlReader)
 		if err != nil {
 			return err
 		}
@@ -359,6 +351,9 @@ func (sess *SubscribingSession) UpdateSubscription(subscribeID moqtmessage.Subsc
 	}
 
 	_, err := sess.controlStream.Write(sum.Serialize())
+	if err != nil {
+		return err
+	}
 
 	/*
 	 * Receive a SUBSCRIBE_OK or a SUBSCRIBE_ERROR message
@@ -381,6 +376,9 @@ func (sess *SubscribingSession) Unsubscribe(subscribeID moqtmessage.SubscribeID)
 	}
 
 	_, err := sess.controlStream.Write(us.Serialize())
+	if err != nil {
+		return err
+	}
 
 	/*
 	 * Receive a SUBSCRIBE_DONE message
@@ -396,7 +394,7 @@ func (sess *SubscribingSession) Unsubscribe(subscribeID moqtmessage.SubscribeID)
 
 	var sdm moqtmessage.SubscribeDoneMessage
 
-	err = sdm.DeserializeBody(sess.controlReader)
+	err = sdm.DeserializePayload(sess.controlReader)
 	if err != nil {
 		return err
 	}
@@ -406,7 +404,7 @@ func (sess *SubscribingSession) Unsubscribe(subscribeID moqtmessage.SubscribeID)
 	}
 
 	if sdm.StatusCode != moqtmessage.SUBSCRIBE_DONE_UNSUBSCRIBED {
-
+		return ErrProtocolViolation
 	}
 
 	return nil
@@ -437,11 +435,14 @@ func (sess *SubscribingSession) SubscribeNamespace(trackNamespacePrefix moqtmess
 	 * Receive a SUBSCRIBE_NAMESPACE_OK message or a SUBSCRIBE_NAMESPACE_ERROR message
 	 */
 	id, err := moqtmessage.DeserializeMessageID(sess.controlReader)
+	if err != nil {
+		return err
+	}
 	switch id {
 	case moqtmessage.SUBSCRIBE_NAMESPACE_OK:
 		var sno moqtmessage.SubscribeNamespaceOkMessage
 
-		err := sno.DeserializeBody(sess.controlReader)
+		err := sno.DeserializePayload(sess.controlReader)
 		if err != nil {
 			return err
 		}
@@ -454,7 +455,7 @@ func (sess *SubscribingSession) SubscribeNamespace(trackNamespacePrefix moqtmess
 	case moqtmessage.SUBSCRIBE_NAMESPACE_ERROR:
 		var sne moqtmessage.SubscribeNamespaceErrorMessage
 
-		err := sne.DeserializeBody(sess.controlReader)
+		err := sne.DeserializePayload(sess.controlReader)
 		if err != nil {
 			return err
 		}
@@ -498,7 +499,8 @@ func (sess *SubscribingSession) CancelAnnounce(trackNamespace moqtmessage.TrackN
 	return err
 }
 
-func (sess *SubscribingSession) requestTrackStatus(tns moqtmessage.TrackNamespace, tn string) (*TrackStatus, error) {
+// TODO: this has not implemented yet
+func (sess *SubscribingSession) RequestTrackStatus(tns moqtmessage.TrackNamespace, tn string) (*TrackStatus, error) {
 	// Send a TRACK_STATUS_REQUEST message
 	tsq := moqtmessage.TrackStatusRequest{
 		TrackNamespace: tns,
@@ -521,7 +523,7 @@ func (sess *SubscribingSession) requestTrackStatus(tns moqtmessage.TrackNamespac
 	}
 
 	var tsm moqtmessage.TrackStatusMessage
-	err = tsm.DeserializeBody(sess.controlReader)
+	err = tsm.DeserializePayload(sess.controlReader)
 	if err != nil {
 		return nil, err
 	}

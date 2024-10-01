@@ -30,45 +30,56 @@ type TrackStatusRequest struct {
 
 func (tsr TrackStatusRequest) Serialize() []byte {
 	/*
-	 * Serialize as following formatt
+	 * Serialize the message in the following formatt
 	 *
 	 * TRACK_STATUS_REQUEST Message {
-	 *   Track Namespace ([]byte),
+	 *   Track Namespace (tuple),
 	 *   Track Name ([]byte),
 	 * }
 	 */
 
-	// TODO?: Chech URI exists
+	/*
+	 * Serialize the payload
+	 */
+	p := make([]byte, 0, 1<<10)
 
-	// TODO: Tune the length of the "b"
-	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
-	// Append the type of the message
-	b = quicvarint.Append(b, uint64(TRACK_STATUS_REQUEST))
-	// Append Track Namespace
-	b = tsr.TrackNamespace.Append(b)
-	// Append Track Name
-	b = quicvarint.Append(b, uint64(len(tsr.TrackName)))
-	b = append(b, []byte(tsr.TrackName)...)
+	// Append the Track Namespace
+	p = tsr.TrackNamespace.Append(p)
+
+	// Append the Track Name
+	p = quicvarint.Append(p, uint64(len(tsr.TrackName)))
+	p = append(p, []byte(tsr.TrackName)...)
+
+	/*
+	 * Serialize the whole message
+	 */
+	b := make([]byte, 0, len(p)+1<<4)
+
+	// Append the message type
+	p = quicvarint.Append(p, uint64(TRACK_STATUS_REQUEST))
+
+	// Appen the payload
+	b = quicvarint.Append(b, uint64(len(p)))
+	b = append(b, p...)
 
 	return b
 }
 
-func (tsr *TrackStatusRequest) DeserializeBody(r quicvarint.Reader) error {
-	var err error
-	var num uint64
-	// Get length of the Track Namespace
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
-	}
-
+func (tsr *TrackStatusRequest) DeserializePayload(r quicvarint.Reader) error {
 	// Get Track Namespace
-	err = tsr.DeserializeBody(r)
+	var tns TrackNamespace
+	err := tns.Deserialize(r)
 	if err != nil {
 		return err
 	}
+	tsr.TrackNamespace = tns
 
 	// Get Track Name
+	num, err := quicvarint.Read(r)
+	if err != nil {
+		return err
+	}
+
 	buf := make([]byte, num)
 	_, err = r.Read(buf)
 	if err != nil {

@@ -8,30 +8,52 @@ type SubscribeNamespaceMessage struct {
 }
 
 func (sn SubscribeNamespaceMessage) Serialize() []byte {
-	b := make([]byte, 0, 1<<8)
+	/*
+	 * Serialize the message in the following formatt
+	 *
+	 * SUBSCRIBE_NAMESPACE Message {
+	 *   Type (varint) = 0x11,
+	 *   Length (varint),
+	 *   Track Namespace prefix (tuple),
+	 *   Number of Parameters (varint),
+	 *   Subscribe Parameters (..),
+	 * }
+	 */
 
-	// Append
-	b = quicvarint.Append(b, uint64(SUBSCRIBE_NAMESPACE))
+	/*
+	 * Serialize the payload
+	 */
+	p := make([]byte, 0, 1<<8)
 
-	// Append Track Namespace Prefix
-	b = sn.TrackNamespacePrefix.Append(b)
+	// Append the Track Namespace Prefix
+	p = sn.TrackNamespacePrefix.Append(p)
 
 	// Append the Parameters
-	b = sn.Parameters.append(b)
+	p = sn.Parameters.append(p)
+
+	/*
+	 * Serialize the whole message
+	 */
+	b := make([]byte, 0, len(p)+1<<4)
+
+	// Append the message type
+	b = quicvarint.Append(b, uint64(SUBSCRIBE_NAMESPACE))
+
+	// Append the payload
+	b = quicvarint.Append(b, uint64(len(p)))
+	b = append(b, p...)
 
 	return b
 }
 
-func (sn *SubscribeNamespaceMessage) Deserialize(r quicvarint.Reader) error {
+func (sn *SubscribeNamespaceMessage) DeserializePayload(r quicvarint.Reader) error {
 	// Get Track Namespace Prefix
-	if sn.TrackNamespacePrefix == nil {
-		sn.TrackNamespacePrefix = make(TrackNamespacePrefix, 0, 1)
-	}
-
-	err := sn.TrackNamespacePrefix.Deserialize(r)
+	var tnsp TrackNamespacePrefix
+	err := tnsp.Deserialize(r)
 	if err != nil {
 		return err
 	}
+	sn.TrackNamespacePrefix = tnsp
 
 	// Get Parameters
 	err = sn.Parameters.Deserialize(r)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqtransport"
@@ -32,7 +33,14 @@ func main() {
 		return
 	}
 
-	stream, err := sess.Subscribe(*announcement, "audio", moqtransport.SubscribeConfig{})
+	subscription, err := sess.Subscribe(*announcement, "audio", moqtransport.SubscribeConfig{})
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	log.Println(subscription)
+
+	stream, err := subscriber.AcceptUniStream(context.Background())
 	if err != nil {
 		log.Println(err)
 		return
@@ -40,7 +48,7 @@ func main() {
 
 	buf := make([]byte, 1<<8)
 
-	n, err := stream.Read(buf)
+	n, _, err := stream.ReadChunk(buf)
 
 	if err != nil {
 		log.Println(err)

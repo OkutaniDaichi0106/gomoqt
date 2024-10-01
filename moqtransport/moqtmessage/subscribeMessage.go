@@ -83,34 +83,18 @@ type FilterRange struct {
 	EndObject ObjectID
 }
 
-func (sf SubscriptionFilter) IsOK() error { //TODO
-	switch sf.Code {
-	case LATEST_GROUP, LATEST_OBJECT, ABSOLUTE_START:
-		return nil
-	case ABSOLUTE_RANGE:
-		// Check if the Start Group ID is smaller than End Group ID
-		if sf.Range.StartGroup > sf.Range.EndGroup {
-			return ErrInvalidFilter
-		}
-		return nil
-	default:
-		return ErrInvalidFilter
-	}
-	//TODO: Check if the Filter Code is valid and valid parameters is set
-}
-
 func (sf SubscriptionFilter) append(b []byte) []byte {
 	if sf.Code == LATEST_GROUP {
 		b = quicvarint.Append(b, uint64(sf.Code))
 	} else if sf.Code == LATEST_OBJECT {
 		b = quicvarint.Append(b, uint64(sf.Code))
 	} else if sf.Code == ABSOLUTE_START {
-		// Append Filter Type, Start Group ID and Start Object ID
+		// Append the Filter Type, Start Group ID and Start Object ID
 		b = quicvarint.Append(b, uint64(sf.Code))
 		b = quicvarint.Append(b, uint64(sf.Range.StartGroup))
 		b = quicvarint.Append(b, uint64(sf.Range.StartObject))
 	} else if sf.Code == ABSOLUTE_RANGE {
-		// Append Filter Type, Start Group ID, Start Object ID, End Group ID and End Object ID
+		// Append the Filter Type, Start Group ID, Start Object ID, End Group ID and End Object ID
 		b = quicvarint.Append(b, uint64(sf.Code))
 		b = quicvarint.Append(b, uint64(sf.Range.StartGroup))
 		b = quicvarint.Append(b, uint64(sf.Range.StartObject))
@@ -126,11 +110,11 @@ type SubscribeMessage struct {
 	/*
 	 * A number to identify the subscribe session
 	 */
-	SubscribeID
-	TrackAlias
-	TrackNamespace TrackNamespace
-	TrackName      string
-	SubscriberPriority
+	SubscribeID        SubscribeID
+	TrackAlias         TrackAlias
+	TrackNamespace     TrackNamespace
+	TrackName          string
+	SubscriberPriority SubscriberPriority
 
 	/*
 	 * The order of the group
@@ -150,12 +134,14 @@ type SubscribeMessage struct {
 
 func (s SubscribeMessage) Serialize() []byte {
 	/*
-	 * Serialize as following formatt
+	 * Serialize the message in the following formatt
 	 *
 	 * SUBSCRIBE_UPDATE Message {
+	 *   Type (varint) = 0x03,
+	 *   Length (varint),
 	 *   Subscribe ID (varint),
 	 *   Track Alias (varint),
-	 *   Track Namespace ([]byte),
+	 *   Track Namespace (tuple),
 	 *   Track Name ([]byte),
 	 *   Subscriber Priority (8),
 	 *   Group Order (8),
@@ -169,36 +155,52 @@ func (s SubscribeMessage) Serialize() []byte {
 	 * }
 	 */
 
-	// TODO?: Chech URI exists
+	/*
+	 * Serialize the payload
+	 */
+	p := make([]byte, 0, 1<<8)
 
-	// TODO: Tune the length of the "b"
-	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
-	// Append the type of the message
-	b = quicvarint.Append(b, uint64(SUBSCRIBE))
-	// Append Subscriber ID
-	b = quicvarint.Append(b, uint64(s.SubscribeID))
-	// Append Subscriber ID
-	b = quicvarint.Append(b, uint64(s.TrackAlias))
-	// Append Track Namespace
-	b = s.TrackNamespace.Append(b)
-	// Append Track Name
-	b = quicvarint.Append(b, uint64(len(s.TrackName)))
-	b = append(b, []byte(s.TrackName)...)
-	// Append Subscriber Priority
-	b = quicvarint.Append(b, uint64(s.SubscriberPriority))
-	// Append Group Order
-	b = quicvarint.Append(b, uint64(s.GroupOrder))
+	// Append the Subscriber ID
+	p = quicvarint.Append(p, uint64(s.SubscribeID))
+
+	// Append the Subscriber ID
+	p = quicvarint.Append(p, uint64(s.TrackAlias))
+
+	// Append the Track Namespace
+	p = s.TrackNamespace.Append(p)
+
+	// Append the Track Name
+	p = quicvarint.Append(p, uint64(len(s.TrackName)))
+	p = append(p, []byte(s.TrackName)...)
+
+	// Append the Subscriber Priority
+	p = quicvarint.Append(p, uint64(s.SubscriberPriority))
+
+	// Append the Group Order
+	p = quicvarint.Append(p, uint64(s.GroupOrder))
 
 	// Append the subscription filter
-	b = s.SubscriptionFilter.append(b)
+	p = s.SubscriptionFilter.append(p)
 
 	// Append the Subscribe Update Priority
-	b = s.Parameters.append(b)
+	p = s.Parameters.append(p)
+
+	/*
+	 * Serialize the whole message
+	 */
+	b := make([]byte, 0, len(p)+1<<4)
+
+	// Append the type of the message
+	b = quicvarint.Append(b, uint64(SUBSCRIBE))
+
+	// Append the payload
+	b = quicvarint.Append(b, uint64(len(p)))
+	b = append(b, p...)
 
 	return b
 }
 
-func (s *SubscribeMessage) DeserializeBody(r quicvarint.Reader) error {
+func (s *SubscribeMessage) DeserializePayload(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 
@@ -217,7 +219,12 @@ func (s *SubscribeMessage) DeserializeBody(r quicvarint.Reader) error {
 	s.TrackAlias = TrackAlias(num)
 
 	// Get Track Namespace
-	s.TrackNamespace.Deserialize(r)
+	var tns TrackNamespace
+	err = tns.Deserialize(r)
+	if err != nil {
+		return err
+	}
+	s.TrackNamespace = tns
 
 	// Get Track Name
 	num, err = quicvarint.Read(r)

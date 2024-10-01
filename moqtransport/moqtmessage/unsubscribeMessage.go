@@ -13,45 +13,39 @@ type UnsubscribeMessage struct {
 
 func (us UnsubscribeMessage) Serialize() []byte {
 	/*
-	 * Serialize as following formatt
+	 * Serialize the message in the following formatt
 	 *
 	 * UNSUBSCRIBE Message {
+	 *   Type (varint) = 0x0A,
+	 *   Length (varint),
 	 *   Subscribe ID (varint),
 	 * }
 	 */
 
-	// TODO?: Chech URI exists
-
-	// TODO: Tune the length of the "b"
-	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
+	p := make([]byte, 0, 1<<8)
 	// Append the type of the message
+
+	// Append the Subscirbe ID
+	p = quicvarint.Append(p, uint64(us.SubscribeID))
+
+	/*
+	 * Serialize the whole message
+	 */
+	b := make([]byte, 0, len(p)+1<<4)
+
+	// Append the message type
 	b = quicvarint.Append(b, uint64(UNSUBSCRIBE))
 
-	// Append Subscirbe ID
-	b = quicvarint.Append(b, uint64(us.SubscribeID))
+	// Append the payload
+	b = quicvarint.Append(b, uint64(len(p)))
+	b = append(b, p...)
 
 	return b
 }
 
-// func (us *UnsubscribeMessage) deserialize(r quicvarint.Reader) error {
-// 	// Get Message ID and check it
-// 	id, err := deserializeHeader(r)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	if id != UNSUBSCRIBE {
-// 		return errors.New("unexpected message")
-// 	}
-
-// 	return us.deserializeBody(r)
-// }
-
-func (us *UnsubscribeMessage) DeserializeBody(r quicvarint.Reader) error {
-	var err error
-	var num uint64
-
+func (us *UnsubscribeMessage) DeserializePayload(r quicvarint.Reader) error {
 	// Get Subscribe ID
-	num, err = quicvarint.Read(r)
+	num, err := quicvarint.Read(r)
 	if err != nil {
 		return err
 	}

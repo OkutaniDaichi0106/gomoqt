@@ -19,32 +19,39 @@ type AnnounceMessage struct {
 
 func (a AnnounceMessage) Serialize() []byte {
 	/*
-	 * Serialize as following formatt
+	 * Serialize the message in the following formatt
 	 *
-	 * ANNOUNCE Payload {
+	 * ANNOUNCE Message {
+	 *   Type (varint) = 0x06,
+	 *   Length (varint),
 	 *   Track Namespace (tuple),
 	 *   Number of Parameters (),
 	 *   Announce Parameters(..)
 	 * }
 	 */
 
-	// TODO: Tune the size of the slice
-	b := make([]byte, 0, 1<<8)
-
-	// Append message ID
-	b = quicvarint.Append(b, uint64(ANNOUNCE))
+	/*
+	 * Serialize the payload
+	 */
+	p := make([]byte, 0, 1<<8)
 
 	// Append the Track Namespace
-	b = a.TrackNamespace.Append(b)
+	p = a.TrackNamespace.Append(p)
 
-	// Serialize the parameters and append it
+	// Append the Parameters
+	p = a.Parameters.append(p)
+
 	/*
-	 * Announce Parameters {
-	 *   [Authorization Info Parameter (stirng)],
-	 *   [Optional Patameters(..)],
-	 * }
+	 * Serialize the whole message
 	 */
-	b = a.Parameters.append(b)
+	b := make([]byte, 0, len(p)+1<<4)
+
+	// Append the message type
+	b = quicvarint.Append(b, uint64(ANNOUNCE))
+
+	// Append the payload
+	b = quicvarint.Append(b, uint64(len(p)))
+	b = append(b, p...)
 
 	return b
 }

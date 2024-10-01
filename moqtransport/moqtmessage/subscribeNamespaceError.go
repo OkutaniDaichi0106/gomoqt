@@ -14,33 +14,46 @@ type SubscribeNamespaceErrorCode uint
 
 func (sne SubscribeNamespaceErrorMessage) Serialize() []byte {
 	/*
-	 * Serialize as following formatt
+	 * Serialize the message in the following formatt
 	 *
 	 * SUBSCRIBE_NAMESPACE_ERROR Message {
-	 *  Track Namespace (tuple),
+	 *  Track Namespace Prefix (tuple),
 	 *  Error Code (varint),
 	 *  Reason ([]byte),
 	 * }
 	 */
-	b := make([]byte, 0, 1<<8)
 
-	//Append message ID
+	/*
+	 * Serialize the payload
+	 */
+	p := make([]byte, 0, 1<<8)
+
+	// Append the Track Namespace Prefix
+	p = sne.TrackNamespacePrefix.Append(p)
+
+	// Append the Error Code
+	p = quicvarint.Append(p, uint64(sne.Code))
+
+	// Append the Error Reason
+	p = quicvarint.Append(p, uint64(len(sne.Reason)))
+	p = append(p, []byte(sne.Reason)...)
+
+	/*
+	 * Serialize the whole message
+	 */
+	b := make([]byte, 0, len(p)+1<<4)
+
+	// Append the message type
 	b = quicvarint.Append(b, uint64(SUBSCRIBE_NAMESPACE_ERROR))
 
-	// Append Track Namespace Prefix
-	b = sne.TrackNamespacePrefix.Append(b)
-
-	// Append Error Code
-	b = quicvarint.Append(b, uint64(sne.Code))
-
-	// Append Error Reason
-	b = quicvarint.Append(b, uint64(len(sne.Reason)))
-	b = append(b, []byte(sne.Reason)...)
+	// Append the payload
+	b = quicvarint.Append(b, uint64(len(p)))
+	b = append(b, p...)
 
 	return b
 }
 
-func (sne *SubscribeNamespaceErrorMessage) DeserializeBody(r quicvarint.Reader) error {
+func (sne *SubscribeNamespaceErrorMessage) DeserializePayload(r quicvarint.Reader) error {
 	if sne.TrackNamespacePrefix == nil {
 		sne.TrackNamespacePrefix = make(TrackNamespacePrefix, 0, 1)
 	}

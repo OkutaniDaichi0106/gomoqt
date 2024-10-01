@@ -25,10 +25,12 @@ type TrackStatusMessage struct {
 
 func (ts TrackStatusMessage) Serialize() []byte {
 	/*
-	 * Serialize as following formatt
+	 * Serialize the message in the following formatt
 	 *
 	 * TRACK_STATUS Message {
-	 *   Track Namespace ([]byte),
+	 *   Type (varint) = 0x0E,
+	 *   Length (varint),
+	 *   Track Namespace (tuple),
 	 *   Track Name ([]byte),
 	 *   Status Code (varint),
 	 *   Last Group ID (varint),
@@ -36,34 +38,43 @@ func (ts TrackStatusMessage) Serialize() []byte {
 	 * }
 	 */
 
-	// TODO?: Chech URI exists
+	/*
+	 * Serialize the payload
+	 */
+	p := make([]byte, 0, 1<<10)
 
-	// TODO: Tune the length of the "b"
-	b := make([]byte, 0, 1<<10) /* Byte slice storing whole data */
+	// Append the Track Namespace
+	p = ts.TrackNamespace.Append(p)
+
+	// Append the Track Name
+	p = quicvarint.Append(p, uint64(len(ts.TrackName)))
+	p = append(p, []byte(ts.TrackName)...)
+
+	// Append the Status Code
+	p = quicvarint.Append(p, uint64(ts.Code))
+
+	// Appen the Last Group ID
+	p = quicvarint.Append(p, uint64(ts.LastGroupID))
+
+	// Appen the  Last Object ID
+	p = quicvarint.Append(p, uint64(ts.LastObjectID))
+
+	/*
+	 * Serialize the whole message
+	 */
+	b := make([]byte, 0, len(p)+1<<4)
 
 	// Append the type of the message
 	b = quicvarint.Append(b, uint64(TRACK_STATUS))
 
-	// Append Track Namespace
-	b = ts.TrackNamespace.Append(b)
-
-	// Append Track Name
-	b = quicvarint.Append(b, uint64(len(ts.TrackName)))
-	b = append(b, []byte(ts.TrackName)...)
-
-	// Append Status Code
-	b = quicvarint.Append(b, uint64(ts.Code))
-
-	// Last Group ID
-	b = quicvarint.Append(b, uint64(ts.LastGroupID))
-
-	// Last Object ID
-	b = quicvarint.Append(b, uint64(ts.LastObjectID))
+	// Appen the payload
+	b = quicvarint.Append(b, uint64(len(p)))
+	b = append(b, p...)
 
 	return b
 }
 
-func (ts *TrackStatusMessage) DeserializeBody(r quicvarint.Reader) error {
+func (ts *TrackStatusMessage) DeserializePayload(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 

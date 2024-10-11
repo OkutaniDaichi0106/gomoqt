@@ -1,26 +1,17 @@
 package moqtmessage
 
 import (
+	"time"
+
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type TrackStatusMessage struct {
-	/*
-	 * Track namespace
-	 */
-	TrackNamespace TrackNamespace
-
-	/*
-	 * Track name
-	 */
-	TrackName string
-
-	/*
-	 * Status code
-	 */
-	Code         TrackStatusCode
-	LastGroupID  GroupID
-	LastObjectID ObjectID
+	TrackAlias    TrackAlias
+	Code          TrackStatusCode
+	LatestGroupID GroupID
+	GroupOrder    GroupOrder
+	GroupExpires  time.Duration
 }
 
 func (ts TrackStatusMessage) Serialize() []byte {
@@ -43,21 +34,20 @@ func (ts TrackStatusMessage) Serialize() []byte {
 	 */
 	p := make([]byte, 0, 1<<10)
 
-	// Append the Track Namespace
-	p = ts.TrackNamespace.Append(p)
-
-	// Append the Track Name
-	p = quicvarint.Append(p, uint64(len(ts.TrackName)))
-	p = append(p, []byte(ts.TrackName)...)
+	// Append the Track Alias
+	p = quicvarint.Append(p, uint64(ts.TrackAlias))
 
 	// Append the Status Code
 	p = quicvarint.Append(p, uint64(ts.Code))
 
 	// Appen the Last Group ID
-	p = quicvarint.Append(p, uint64(ts.LastGroupID))
+	p = quicvarint.Append(p, uint64(ts.LatestGroupID))
 
-	// Appen the  Last Object ID
-	p = quicvarint.Append(p, uint64(ts.LastObjectID))
+	// Appen the Group Order
+	p = quicvarint.Append(p, uint64(ts.GroupOrder))
+
+	// Appen the Group Expires
+	p = quicvarint.Append(p, uint64(ts.GroupExpires))
 
 	/*
 	 * Serialize the whole message
@@ -78,48 +68,40 @@ func (ts *TrackStatusMessage) DeserializePayload(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 
-	// Get Track Namespace
-	var tns TrackNamespace
-	err = tns.Deserialize(r)
-	if err != nil {
-		return err
-	}
-	ts.TrackNamespace = tns
-
-	// Get length of the Track Name
+	// Get a Track Alias
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
+	ts.TrackAlias = TrackAlias(num)
 
-	// Get Track Name
-	buf := make([]byte, num)
-	_, err = r.Read(buf)
-	if err != nil {
-		return err
-	}
-	ts.TrackName = string(buf)
-
-	// Get Status Code
+	// Get a Status Code
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
 	ts.Code = TrackStatusCode(num)
 
-	// Get Last Group ID
+	// Get a Latest Group ID
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	ts.LastGroupID = GroupID(num)
+	ts.LatestGroupID = GroupID(num)
 
-	// Get Last Object ID
+	// Get a Group Order
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	ts.LastObjectID = ObjectID(num)
+	ts.GroupOrder = GroupOrder(num)
+
+	// Get a Group Expires
+	num, err = quicvarint.Read(r)
+	if err != nil {
+		return err
+	}
+	ts.GroupExpires = time.Duration(num)
 
 	return nil
 }

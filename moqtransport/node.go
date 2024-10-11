@@ -231,7 +231,7 @@ func (n node) EstablishPubSubSession(URL string, maxSubscribeID uint64) (*PubSub
 	return &session, nil
 }
 
-func (n node) connect(url *url.URL) (TransportSession, error) {
+func (n node) connect(url *url.URL) (Connection, error) {
 	// Set tls configuration
 	if n.TLSConfig == nil {
 		panic("no TLS configuration")
@@ -270,7 +270,7 @@ func (n node) connect(url *url.URL) (TransportSession, error) {
 		}
 
 		// Register the connection
-		return &webtransportSessionWrapper{innerSession: sess}, nil
+		return &webtransportConnection{conn: sess}, nil
 	default:
 		return nil, errors.New("invalid URL scheme")
 	}

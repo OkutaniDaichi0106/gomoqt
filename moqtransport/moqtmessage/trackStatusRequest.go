@@ -17,7 +17,7 @@ const (
 	TRACK_STATUS_UNTRACEABLE_RELAY TrackStatusCode = 0x04
 )
 
-type TrackStatusRequest struct {
+type TrackStatusRequestMessage struct {
 	/*
 	 * Track namespace
 	 */
@@ -28,7 +28,7 @@ type TrackStatusRequest struct {
 	TrackName string
 }
 
-func (tsr TrackStatusRequest) Serialize() []byte {
+func (tsr TrackStatusRequestMessage) Serialize() []byte {
 	/*
 	 * Serialize the message in the following formatt
 	 *
@@ -65,7 +65,7 @@ func (tsr TrackStatusRequest) Serialize() []byte {
 	return b
 }
 
-func (tsr *TrackStatusRequest) DeserializePayload(r quicvarint.Reader) error {
+func (tsr *TrackStatusRequestMessage) DeserializePayload(r quicvarint.Reader) error {
 	// Get Track Namespace
 	var tns TrackNamespace
 	err := tns.Deserialize(r)

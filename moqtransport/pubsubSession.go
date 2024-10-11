@@ -1,25 +1,19 @@
 package moqtransport
 
-import (
-	"time"
+// type pubsubSessionID uint64
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
-)
+// // TODO
+// type PubSubSession struct {
+// 	pubsubSessionID
 
-type pubsubSessionID uint64
+// 	sessionCore
 
-// TODO
-type PubSubSession struct {
-	pubsubSessionID
+// 	subscriptions map[moqtmessage.SubscribeID]*Subscription
 
-	sessionCore
+// 	trackAliasMap trackAliasMap
 
-	subscriptions map[moqtmessage.SubscribeID]*Subscription
+// 	maxSubscribeID   moqtmessage.SubscribeID
+// 	maxCacheDuration time.Duration
 
-	trackAliasMap trackAliasMap
-
-	maxSubscribeID   moqtmessage.SubscribeID
-	maxCacheDuration time.Duration
-
-	contentStatuses map[moqtmessage.TrackAlias]*contentStatus
-}
+// 	contentStatuses map[moqtmessage.TrackAlias]*contentStatus
+// }

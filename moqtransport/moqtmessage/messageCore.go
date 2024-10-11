@@ -13,69 +13,48 @@ type MessageID byte
 
 // Control Messages
 const (
-	SUBSCRIBE_UPDATE          MessageID = 0x02
-	SUBSCRIBE                 MessageID = 0x03
-	SUBSCRIBE_OK              MessageID = 0x04
-	SUBSCRIBE_ERROR           MessageID = 0x05
-	ANNOUNCE                  MessageID = 0x06
-	ANNOUNCE_OK               MessageID = 0x07
-	ANNOUNCE_ERROR            MessageID = 0x08
-	UNANNOUNCE                MessageID = 0x09
-	UNSUBSCRIBE               MessageID = 0x0A
-	SUBSCRIBE_DONE            MessageID = 0x0B
-	ANNOUNCE_CANCEL           MessageID = 0x0C
-	TRACK_STATUS_REQUEST      MessageID = 0x0D
-	TRACK_STATUS              MessageID = 0x0E
-	GOAWAY                    MessageID = 0x10
-	SUBSCRIBE_NAMESPACE       MessageID = 0x11 //TODO
-	SUBSCRIBE_NAMESPACE_OK    MessageID = 0x12 //TODO
-	SUBSCRIBE_NAMESPACE_ERROR MessageID = 0x13 //TODO
-	UNSUBSCRIBE_NAMESPACE     MessageID = 0x14 //TODO
-	CLIENT_SETUP              MessageID = 0x40
-	SERVER_SETUP              MessageID = 0x41
+	SUBSCRIBE_UPDATE     MessageID = 0x02
+	SUBSCRIBE            MessageID = 0x03
+	ANNOUNCE             MessageID = 0x06
+	TRACK_STATUS_REQUEST MessageID = 0x0D
+	TRACK_STATUS         MessageID = 0x0E
+	GOAWAY               MessageID = 0x10
+	SUBSCRIBE_NAMESPACE  MessageID = 0x11
+	CLIENT_SETUP         MessageID = 0x40
+	SERVER_SETUP         MessageID = 0x41
 )
 
-/*
- * Deserialize the Message ID
- */
-func DeserializeMessageID(r quicvarint.Reader) (MessageID, error) {
-	// Get the first number expected to be Message ID
+func ReadControlMessage(r quicvarint.Reader) (MessageID, quicvarint.Reader, error) {
+	// Get a Message ID
+	var messageID MessageID
 	num, err := quicvarint.Read(r)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	switch MessageID(num) {
 	case SUBSCRIBE_UPDATE,
 		SUBSCRIBE,
-		SUBSCRIBE_OK,
-		SUBSCRIBE_ERROR,
 		ANNOUNCE,
-		ANNOUNCE_OK,
-		ANNOUNCE_ERROR,
-		UNANNOUNCE,
-		UNSUBSCRIBE,
-		SUBSCRIBE_DONE,
-		ANNOUNCE_CANCEL,
 		TRACK_STATUS_REQUEST,
 		TRACK_STATUS,
 		GOAWAY,
+		SUBSCRIBE_NAMESPACE,
 		CLIENT_SETUP,
 		SERVER_SETUP:
-		return MessageID(num), nil
+		messageID = MessageID(num)
 	default:
-		return 0, errors.New("undefined Message ID")
+		return 0, nil, errors.New("undefined Message ID")
 	}
-}
 
-func GetPayloadReader(r quicvarint.Reader) (quicvarint.Reader, error) {
-	num, err := quicvarint.Read(r)
+	// Get a payload reader
+	num, err = quicvarint.Read(r)
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
 
 	reader := io.LimitReader(r, int64(num))
 
-	return quicvarint.NewReader(reader), nil
+	return messageID, quicvarint.NewReader(reader), nil
 }
 
 func NewTrackNamespace(values ...string) TrackNamespace {

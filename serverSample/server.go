@@ -52,7 +52,7 @@ func main() {
 			return
 		}
 
-		if subscription.TrackName() != "audio" {
+		if subscription.GetTrackName() != "audio" {
 			ps.RejectSubscribe(subscription, moqtransport.ErrTrackDoesNotExist)
 			return
 		}

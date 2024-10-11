@@ -142,6 +142,28 @@ var (
 	}
 )
 
+var (
+	StatusUnsubscribed = DefaultSubscribeDoneStatus{
+		code:   moqtmessage.SUBSCRIBE_DONE_UNSUBSCRIBED,
+		reason: "unsubscribed",
+	}
+	StatusEndedTrack = DefaultSubscribeDoneStatus{
+		code:   moqtmessage.SUBSCRIBE_DONE_TRACK_ENDED,
+		reason: "track ended",
+	}
+	StatusEndedSubscription = DefaultSubscribeDoneStatus{
+		code:   moqtmessage.SUBSCRIBE_DONE_SUBSCRIPTION_ENDED,
+		reason: "subsription ended",
+	}
+	StatusGoingAway = DefaultSubscribeDoneStatus{
+		code:   moqtmessage.SUBSCRIBE_DONE_GOING_AWAY,
+		reason: "going away",
+	}
+)
+
+var _ SubscribeDoneError = (*DefaultSubscribeDoneError)(nil)
+var _ SubscribeDoneStatus = (*DefaultSubscribeDoneError)(nil)
+
 type DefaultSubscribeDoneError struct {
 	code   moqtmessage.SubscribeDoneStatusCode
 	reason string
@@ -151,8 +173,27 @@ func (err DefaultSubscribeDoneError) Error() string {
 	return err.reason
 }
 
+func (err DefaultSubscribeDoneError) Reason() string {
+	return err.reason
+}
+
 func (err DefaultSubscribeDoneError) Code() moqtmessage.SubscribeDoneStatusCode {
 	return err.code
+}
+
+var _ SubscribeDoneStatus = (*DefaultSubscribeDoneStatus)(nil)
+
+type DefaultSubscribeDoneStatus struct {
+	code   moqtmessage.SubscribeDoneStatusCode
+	reason string
+}
+
+func (status DefaultSubscribeDoneStatus) Reason() string {
+	return status.reason
+}
+
+func (status DefaultSubscribeDoneStatus) Code() moqtmessage.SubscribeDoneStatusCode {
+	return status.code
 }
 
 /***/

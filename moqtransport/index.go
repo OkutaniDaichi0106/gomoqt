@@ -27,13 +27,7 @@ func (tm *TrackManager) removeTrackNamespace(trackNamespace moqtmessage.TrackNam
 	return tm.trackNamespaceTree.remove(trackNamespace)
 }
 
-// func (tm *TrackManager) addTrackName(trackNamespace moqtmessage.TrackNamespace, trackName string) *trackNameNode {
-// 	tnsNode := tm.newTrackNamespace(trackNamespace)
-
-// 	return tnsNode.newTrackNameNode(trackName)
-// }
-
-func (tm *TrackManager) findTrackName(trackNamespace moqtmessage.TrackNamespace, trackName string) (*trackNameNode, bool) {
+func (tm *TrackManager) findTrack(trackNamespace moqtmessage.TrackNamespace, trackName string) (*trackNameNode, bool) {
 	tnsNode, ok := tm.findTrackNamespace(trackNamespace)
 	if !ok {
 		return nil, false
@@ -104,8 +98,15 @@ type trackNamespaceNode struct {
 	 */
 	params *moqtmessage.Parameters
 
-	//
+	/*
+	 * Track Name Nodes
+	 */
 	tracks map[string]*trackNameNode
+
+	/*
+	 * The origin session
+	 */
+	originSession *SubscribingSession
 }
 
 type trackNameNode struct {
@@ -124,12 +125,12 @@ type trackNameNode struct {
 	/*
 	 *
 	 */
-	//destinationSession []*PublishingSession
+	destinationSessions map[sessionID]*PublishingSession
 }
 
 func (node *trackNamespaceNode) remove(tns moqtmessage.TrackNamespace, depth int) (bool, error) {
 	if node == nil {
-		return false, errors.New("node not found at value" + tns[depth])
+		return false, errors.New(ErrTrackNamespaceNotFound.Error() + " at " + tns[depth])
 	}
 
 	node.mu.Lock()
@@ -152,7 +153,7 @@ func (node *trackNamespaceNode) remove(tns moqtmessage.TrackNamespace, depth int
 	child, exists := node.children[value]
 
 	if !exists {
-		return false, errors.New("child node not found at value" + value)
+		return false, errors.New(ErrTrackNamespaceNotFound.Error() + " at " + value)
 	}
 
 	ok, err := child.remove(tns, depth+1)
@@ -216,10 +217,4 @@ func (node *trackNamespaceNode) newTrackNameNode(trackName string) *trackNameNod
 	}
 
 	return node.tracks[trackName]
-}
-
-type TrackStatus struct {
-	Code         moqtmessage.TrackStatusCode
-	LastGroupID  moqtmessage.GroupID
-	LastObjectID moqtmessage.ObjectID
 }

@@ -1,14 +1,18 @@
 package moqtransport
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"log"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
+	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type Announcement struct {
@@ -27,15 +31,13 @@ type Announcement struct {
 type SubscribingSession struct {
 	mu sync.RWMutex
 
-	sessionCore
+	moqtSession
 
 	trackAliasMap trackAliasMap
 
 	subscriptions map[moqtmessage.SubscribeID]Subscription
 
-	//chunkReaderChs map[moqtmessage.SubscribeID]chan<- ReceiveByteStream
-
-	relayConfig map[moqtmessage.SubscribeID]struct {
+	relayConfig map[moqtmessage.SubscribeID]struct { // TODO :Handle
 		deliveryTimeout time.Duration
 	}
 
@@ -45,7 +47,11 @@ type SubscribingSession struct {
 	}
 }
 
-func (sess *SubscribingSession) AcceptUniStream(ctx context.Context) (ReceiveByteStream, error) {
+func (sess *SubscribingSession) ReceiveDatagram(ctx context.Context) ([]byte, error) {
+	return sess.trSess.ReceiveDatagram(ctx)
+}
+
+func (sess *SubscribingSession) AcceptUniStream(ctx context.Context) (ReceiveStream, error) {
 	return sess.trSess.AcceptUniStream(ctx)
 }
 
@@ -252,8 +258,13 @@ func (sess *SubscribingSession) receiveSubscribeResponce(subscription Subscripti
 
 	switch id {
 	case moqtmessage.SUBSCRIBE_OK:
+		payloadReader, err := moqtmessage.GetPayloadReader(sess.controlReader)
+		if err != nil {
+			return err
+		}
+
 		var so moqtmessage.SubscribeOkMessage
-		err = so.DeserializePayload(sess.controlReader)
+		err = so.DeserializePayload(payloadReader)
 		if err != nil {
 			return err
 		}
@@ -272,7 +283,7 @@ func (sess *SubscribingSession) receiveSubscribeResponce(subscription Subscripti
 		// Update the content status in track
 		tnsNode, ok := trackManager.findTrackNamespace(subscription.trackNamespace)
 		if !ok {
-			return errors.New("track namespace not found")
+			return ErrTrackNamespaceNotFound
 		}
 		tnNode, ok := tnsNode.findTrackName(subscription.trackName)
 		if !ok {
@@ -303,8 +314,13 @@ func (sess *SubscribingSession) receiveSubscribeResponce(subscription Subscripti
 
 		return nil
 	case moqtmessage.SUBSCRIBE_ERROR:
+		payloadReader, err := moqtmessage.GetPayloadReader(sess.controlReader)
+		if err != nil {
+			return err
+		}
+
 		var se moqtmessage.SubscribeErrorMessage // TODO: Handle Error Code
-		err = se.DeserializePayload(sess.controlReader)
+		err = se.DeserializePayload(payloadReader)
 		if err != nil {
 			return err
 		}
@@ -392,9 +408,14 @@ func (sess *SubscribingSession) Unsubscribe(subscribeID moqtmessage.SubscribeID)
 		return ErrProtocolViolation
 	}
 
+	payloadReader, err := moqtmessage.GetPayloadReader(sess.controlReader)
+	if err != nil {
+		return err
+	}
+
 	var sdm moqtmessage.SubscribeDoneMessage
 
-	err = sdm.DeserializePayload(sess.controlReader)
+	err = sdm.DeserializePayload(payloadReader)
 	if err != nil {
 		return err
 	}
@@ -440,9 +461,14 @@ func (sess *SubscribingSession) SubscribeNamespace(trackNamespacePrefix moqtmess
 	}
 	switch id {
 	case moqtmessage.SUBSCRIBE_NAMESPACE_OK:
+		payloadReader, err := moqtmessage.GetPayloadReader(sess.controlReader)
+		if err != nil {
+			return err
+		}
+
 		var sno moqtmessage.SubscribeNamespaceOkMessage
 
-		err := sno.DeserializePayload(sess.controlReader)
+		err = sno.DeserializePayload(payloadReader)
 		if err != nil {
 			return err
 		}
@@ -453,9 +479,13 @@ func (sess *SubscribingSession) SubscribeNamespace(trackNamespacePrefix moqtmess
 
 		return nil
 	case moqtmessage.SUBSCRIBE_NAMESPACE_ERROR:
-		var sne moqtmessage.SubscribeNamespaceErrorMessage
+		payloadReader, err := moqtmessage.GetPayloadReader(sess.controlReader)
+		if err != nil {
+			return err
+		}
 
-		err := sne.DeserializePayload(sess.controlReader)
+		var sne moqtmessage.SubscribeNamespaceErrorMessage
+		err = sne.DeserializePayload(payloadReader)
 		if err != nil {
 			return err
 		}
@@ -477,7 +507,7 @@ func (sess *SubscribingSession) UnsubscribeNamespace(trackNamespacePrefix moqtme
 	/*
 	 * Send a UNSUBSCRIBE_NAMESPACE massage
 	 */
-	usns := moqtmessage.UnsubscribeNamespace{
+	usns := moqtmessage.UnsubscribeNamespaceMessage{
 		TrackNamespacePrefix: trackNamespacePrefix,
 	}
 
@@ -502,7 +532,7 @@ func (sess *SubscribingSession) CancelAnnounce(trackNamespace moqtmessage.TrackN
 // TODO: this has not implemented yet
 func (sess *SubscribingSession) RequestTrackStatus(tns moqtmessage.TrackNamespace, tn string) (*TrackStatus, error) {
 	// Send a TRACK_STATUS_REQUEST message
-	tsq := moqtmessage.TrackStatusRequest{
+	tsq := moqtmessage.TrackStatusRequestMessage{
 		TrackNamespace: tns,
 		TrackName:      tn,
 	}
@@ -522,8 +552,13 @@ func (sess *SubscribingSession) RequestTrackStatus(tns moqtmessage.TrackNamespac
 		return nil, ErrProtocolViolation
 	}
 
+	payloadReader, err := moqtmessage.GetPayloadReader(sess.controlReader)
+	if err != nil {
+		return nil, err
+	}
+
 	var tsm moqtmessage.TrackStatusMessage
-	err = tsm.DeserializePayload(sess.controlReader)
+	err = tsm.DeserializePayload(payloadReader)
 	if err != nil {
 		return nil, err
 	}
@@ -535,4 +570,151 @@ func (sess *SubscribingSession) RequestTrackStatus(tns moqtmessage.TrackNamespac
 	}
 
 	return &ts, nil
+}
+
+func (sess *SubscribingSession) Relay(ctx context.Context, bufferSize int) error {
+	// Listen datagrams
+	go func() {
+		for {
+			// Receive a datagram
+			b, err := sess.ReceiveDatagram(ctx)
+			if err != nil {
+				return
+			}
+
+			// Read the header
+			reader := quicvarint.NewReader(bytes.NewReader(b))
+
+			var header moqtmessage.StreamHeaderDatagram
+			err = header.DeserializeStreamHeaderBody(reader)
+			if err != nil {
+				return
+			}
+
+			// Get Track Namespace and Track Name from the Track Alias
+			alias := header.GetTrackAlias()
+			tns, tn, ok := sess.trackAliasMap.getName(alias)
+			if !ok {
+				log.Println("invalid track alias")
+				return
+			}
+
+			// Find the track from the Track Namespace and the Track Name
+			node, ok := trackManager.findTrack(tns, tn)
+			if !ok {
+				log.Println(ErrTrackNotFound) // TODO: Send a message in responce
+				return
+			}
+
+			// Distribute the data
+			for _, sess := range node.destinationSessions {
+				//
+
+				err := sess.SendDatagram(b)
+				if err != nil {
+					log.Println(err)
+					return
+				}
+			}
+		}
+
+	}()
+
+	// Stream
+	go func() {
+		for {
+			/*
+			 * Accept a unidiretional stream
+			 */
+			stream, err := sess.AcceptUniStream(ctx)
+			if err != nil {
+				return
+			}
+
+			/*
+			 * Handle the stream
+			 */
+			go func(stream ReceiveStream) {
+				/*
+				 * Get the reader and read a header
+				 */
+				reader := quicvarint.NewReader(stream)
+				header, err := moqtmessage.DeserializeStreamHeader(reader)
+				if err != nil {
+					stream.CancelRead(StreamErrorCode(quic.InternalError))
+					return
+				}
+
+				/***/
+				// Get Track Namespace and Track Name from the Track Alias
+				alias := header.GetTrackAlias()
+				tns, tn, ok := sess.trackAliasMap.getName(alias)
+				if !ok {
+					log.Println("invalid track alias")
+					return
+				}
+
+				// Find the track from the Track Namespace and the Track Name
+				node, ok := trackManager.findTrack(tns, tn)
+				if !ok {
+					log.Println(ErrTrackNotFound) // TODO: Send a message in responce
+					return
+				}
+
+				/*
+				 * Opne unidirectional streams and send headers
+				 */
+				senders := make([]SendStream, 0, 1<<4) // TODO: Tune the size
+				for _, sess := range node.destinationSessions {
+					sender, err := sess.OpenUniStream()
+					if err != nil {
+						log.Println(err)
+						return
+					}
+
+					_, err = sender.Write(header.Serialize())
+					if err != nil {
+						log.Println(err)
+						return
+					}
+
+					senders = append(senders, sender)
+				}
+
+				buf := make([]byte, bufferSize)
+
+				/*
+				 * Read data and distribute it
+				 */
+				for {
+					n, err := reader.Read(buf)
+					if err != nil {
+						if err == io.EOF {
+							// Send the final data
+							go distribute(buf[:n], senders)
+						} else {
+							log.Println(err)
+						}
+
+						return
+					}
+
+					go distribute(buf[:n], senders)
+				}
+
+			}(stream)
+		}
+
+	}()
+
+	// TODO: Implement cache duration
+	// TODO: Make it thread-safe
+	return nil
+}
+
+func distribute(data []byte, senders []SendStream) {
+	for _, stream := range senders {
+		_, err := stream.Write(data)
+		log.Println(err)
+	}
 }

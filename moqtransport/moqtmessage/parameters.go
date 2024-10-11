@@ -53,7 +53,7 @@ type Parameters map[ParameterKey]any
 
 func (params Parameters) Role() (Role, bool) {
 	num, err := params.AsUint(ROLE)
-	if err == ErrParameterNotFound {
+	if err != nil {
 		return 0, false
 	}
 	return Role(num), true
@@ -61,7 +61,7 @@ func (params Parameters) Role() (Role, bool) {
 
 func (params Parameters) Path() (string, bool) {
 	num, err := params.AsString(PATH)
-	if err == ErrParameterNotFound {
+	if err != nil {
 		return "", false
 	}
 	return num, true
@@ -69,7 +69,7 @@ func (params Parameters) Path() (string, bool) {
 
 func (params Parameters) MaxSubscribeID() (SubscribeID, bool) {
 	num, err := params.AsUint(MAX_SUBSCRIBE_ID)
-	if err == ErrParameterNotFound {
+	if err != nil {
 		return 0, false
 	}
 
@@ -78,7 +78,7 @@ func (params Parameters) MaxSubscribeID() (SubscribeID, bool) {
 
 func (params Parameters) MaxCacheDuration() (time.Duration, bool) {
 	num, err := params.AsUint(MAX_CACHE_DURATION)
-	if err == ErrParameterNotFound {
+	if err != nil {
 		return 0, false
 	}
 
@@ -87,7 +87,7 @@ func (params Parameters) MaxCacheDuration() (time.Duration, bool) {
 
 func (params Parameters) AuthorizationInfo() (string, bool) {
 	str, err := params.AsString(AUTHORIZATION_INFO)
-	if err == ErrParameterNotFound {
+	if err != nil {
 		return "", false
 	}
 
@@ -96,7 +96,7 @@ func (params Parameters) AuthorizationInfo() (string, bool) {
 
 func (params Parameters) DeliveryTimeout() (time.Duration, bool) {
 	num, err := params.AsUint(DELIVERY_TIMEOUT)
-	if err == ErrParameterNotFound {
+	if err != nil {
 		return 0, false
 	}
 
@@ -215,6 +215,10 @@ func (params Parameters) AsByteArray(key ParameterKey) ([]byte, error) {
 	default:
 		return nil, ErrNotByteArrayParameter
 	}
+}
+
+func (params Parameters) Remove(key ParameterKey) {
+	delete(params, key)
 }
 
 var ErrNotBoolParameter = errors.New("it is assumed to not be a bool")

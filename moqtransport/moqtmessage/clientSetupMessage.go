@@ -1,16 +1,14 @@
 package moqtmessage
 
 import (
-	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtversion"
-
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type ClientSetupMessage struct {
 	/*
-	 * Versions supported by the client
+	 * SupportedVersions supported by the client
 	 */
-	Versions []moqtversion.Version
+	SupportedVersions []Version
 
 	/*
 	 * Setup Parameters
@@ -19,20 +17,9 @@ type ClientSetupMessage struct {
 }
 
 func (cs ClientSetupMessage) Serialize() []byte {
-	/*
-	 * Serialize the message in the following formatt
-	 *
-	 * CLIENT_SETUP Payload {
-	 *   Number of Supported Versions (varint),
-	 *   Supported Versions (varint),
-	 *   Number of Parameters (varint),
-	 *   Setup Parameters (..),
-	 * }
-	 */
-
-	// Verify if at least one version is required
-	if len(cs.Versions) == 0 {
-		panic("no version is specifyed")
+	// Verify if at least one version is specified
+	if len(cs.SupportedVersions) == 0 {
+		panic("no version is specified")
 	}
 
 	// Verify if the Parameters conclude some role parameter
@@ -44,9 +31,9 @@ func (cs ClientSetupMessage) Serialize() []byte {
 	p := make([]byte, 0, 1<<8)
 
 	// Append the supported versions
-	p = quicvarint.Append(p, uint64(len(cs.Versions)))
-	var version moqtversion.Version
-	for _, version = range cs.Versions {
+	p = quicvarint.Append(p, uint64(len(cs.SupportedVersions)))
+	var version Version
+	for _, version = range cs.SupportedVersions {
 		p = quicvarint.Append(p, uint64(version))
 	}
 
@@ -69,24 +56,23 @@ func (cs ClientSetupMessage) Serialize() []byte {
 }
 
 func (cs *ClientSetupMessage) DeserializePayload(r quicvarint.Reader) error {
-	var err error
-	var num uint64
-
 	// Get number of supported versions
-	num, err = quicvarint.Read(r)
+	num, err := quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	count := num
+
 	// Get supported versions
+	count := num
 	for i := uint64(0); i < count; i++ {
 		num, err = quicvarint.Read(r)
 		if err != nil {
 			return err
 		}
-		cs.Versions = append(cs.Versions, moqtversion.Version(num))
+		cs.SupportedVersions = append(cs.SupportedVersions, Version(num))
 	}
 
+	// Get Parameters
 	err = cs.Parameters.Deserialize(r)
 	if err != nil {
 		return err

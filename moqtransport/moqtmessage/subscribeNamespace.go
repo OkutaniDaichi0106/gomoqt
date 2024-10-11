@@ -3,8 +3,8 @@ package moqtmessage
 import "github.com/quic-go/quic-go/quicvarint"
 
 type SubscribeNamespaceMessage struct {
-	TrackNamespacePrefix
-	Parameters Parameters
+	TrackNamespacePrefix TrackNamespacePrefix
+	Parameters           Parameters
 }
 
 func (sn SubscribeNamespaceMessage) Serialize() []byte {

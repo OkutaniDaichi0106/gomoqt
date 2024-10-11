@@ -6,8 +6,8 @@ import (
 )
 
 type Publisher struct {
-	node    node
-	session *PublishingSession
+	node node
+	//session *PublishingSession
 
 	MaxSubscribeID uint64
 }

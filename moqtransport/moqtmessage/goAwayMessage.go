@@ -12,16 +12,6 @@ type GoAwayMessage struct {
 
 func (ga GoAwayMessage) Serialize() []byte {
 	/*
-	 * Serialize the message in the following formatt
-	 *
-	 * GOAWAY Message {
-	 *   Type (varint) = 0x10,
-	 *   Length (varint),
-	 *   New Session URI ([]byte),
-	 * }
-	 */
-
-	/*
 	 * Serialize the payload
 	 */
 	p := make([]byte, 0, 1<<6)

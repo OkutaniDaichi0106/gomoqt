@@ -8,7 +8,6 @@ import (
 	"net/url"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
-	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtversion"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/quicvarint"
@@ -37,12 +36,15 @@ type node struct {
 	/*
 	 * Versions supported by the node
 	 */
-	SupportedVersions []moqtversion.Version
+	SupportedVersions []moqtmessage.Version
 }
 
 func (n node) EstablishPubSession(URL string, maxSubscribeID uint64) (*PublishingSession, error) {
 	// Parse the url strings
 	u, err := url.Parse(URL)
+	if err != nil {
+		return nil, err
+	}
 
 	// Connect to the server as a publisher
 	trSess, err := n.connect(u)
@@ -62,8 +64,8 @@ func (n node) EstablishPubSession(URL string, maxSubscribeID uint64) (*Publishin
 	// Set up
 	// Initialize SETUP_CLIENT message
 	csm := moqtmessage.ClientSetupMessage{
-		Versions:   n.SupportedVersions,
-		Parameters: make(moqtmessage.Parameters),
+		SupportedVersions: n.SupportedVersions,
+		Parameters:        make(moqtmessage.Parameters),
 	}
 
 	// Add the ROLE parameter
@@ -87,7 +89,7 @@ func (n node) EstablishPubSession(URL string, maxSubscribeID uint64) (*Publishin
 		return nil, err
 	}
 
-	sessionCore := sessionCore{
+	sessionCore := moqtSession{
 		trSess:          trSess,
 		controlStream:   controlStream,
 		controlReader:   controlReader,
@@ -108,6 +110,9 @@ func (n node) EstablishPubSession(URL string, maxSubscribeID uint64) (*Publishin
 func (n node) EstablishSubSession(URL string) (*SubscribingSession, error) {
 	// Parse the url strings
 	u, err := url.Parse(URL)
+	if err != nil {
+		return nil, err
+	}
 
 	// Connect to the server as a subscriber
 	trSess, err := n.connect(u)
@@ -127,8 +132,8 @@ func (n node) EstablishSubSession(URL string) (*SubscribingSession, error) {
 	// Set up
 	// Initialize SETUP_CLIENT message
 	csm := moqtmessage.ClientSetupMessage{
-		Versions:   n.SupportedVersions,
-		Parameters: make(moqtmessage.Parameters),
+		SupportedVersions: n.SupportedVersions,
+		Parameters:        make(moqtmessage.Parameters),
 	}
 
 	// Add role parameter
@@ -144,7 +149,7 @@ func (n node) EstablishSubSession(URL string) (*SubscribingSession, error) {
 		return nil, err
 	}
 
-	sessionCore := sessionCore{
+	sessionCore := moqtSession{
 		trSess:          trSess,
 		controlStream:   controlStream,
 		controlReader:   controlReader,
@@ -154,7 +159,7 @@ func (n node) EstablishSubSession(URL string) (*SubscribingSession, error) {
 	sessions = append(sessions, &sessionCore)
 
 	session := SubscribingSession{
-		sessionCore: sessionCore,
+		moqtSession: sessionCore,
 	}
 
 	return &session, nil
@@ -163,6 +168,9 @@ func (n node) EstablishSubSession(URL string) (*SubscribingSession, error) {
 func (n node) EstablishPubSubSession(URL string, maxSubscribeID uint64) (*PubSubSession, error) {
 	// Parse the url strings
 	u, err := url.Parse(URL)
+	if err != nil {
+		return nil, err
+	}
 
 	// Connect to the server as a publisher and a subscriber
 	trSess, err := n.connect(u)
@@ -182,8 +190,8 @@ func (n node) EstablishPubSubSession(URL string, maxSubscribeID uint64) (*PubSub
 	// Set up
 	// Initialize SETUP_CLIENT message
 	csm := moqtmessage.ClientSetupMessage{
-		Versions:   n.SupportedVersions,
-		Parameters: make(moqtmessage.Parameters),
+		SupportedVersions: n.SupportedVersions,
+		Parameters:        make(moqtmessage.Parameters),
 	}
 
 	// Add role parameter
@@ -207,7 +215,7 @@ func (n node) EstablishPubSubSession(URL string, maxSubscribeID uint64) (*PubSub
 		return nil, err
 	}
 
-	sessionCore := sessionCore{
+	session := moqtSession{
 		trSess:          trSess,
 		controlStream:   controlStream,
 		controlReader:   controlReader,
@@ -268,7 +276,7 @@ func (n node) connect(url *url.URL) (TransportSession, error) {
 	}
 }
 
-func (n node) receiveServerSetupMessage(controlReader quicvarint.Reader) (moqtversion.Version, moqtmessage.Parameters, error) {
+func (n node) receiveServerSetupMessage(controlReader quicvarint.Reader) (moqtmessage.Version, moqtmessage.Parameters, error) {
 	// Receive SETUP_SERVER message
 	id, err := moqtmessage.DeserializeMessageID(controlReader)
 	if err != nil {
@@ -278,14 +286,19 @@ func (n node) receiveServerSetupMessage(controlReader quicvarint.Reader) (moqtve
 		return 0, nil, ErrProtocolViolation
 	}
 
+	payloadReader, err := moqtmessage.GetPayloadReader(controlReader)
+	if err != nil {
+		return 0, nil, err
+	}
+
 	var ssm moqtmessage.ServerSetupMessage
-	err = ssm.DeserializePayload(controlReader)
+	err = ssm.DeserializePayload(payloadReader)
 	if err != nil {
 		return 0, nil, err
 	}
 
 	// Verify if the selected version is one of the specified versions
-	err = moqtversion.Contain(ssm.SelectedVersion, n.SupportedVersions)
+	err = moqtmessage.Contain(ssm.SelectedVersion, n.SupportedVersions)
 	if err != nil {
 		return 0, nil, err
 	}

@@ -1,8 +1,6 @@
 package moqtmessage
 
 import (
-	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtversion"
-
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -10,13 +8,13 @@ type ServerSetupMessage struct {
 	/*
 	 * Versions selected by the server
 	 */
-	SelectedVersion moqtversion.Version
+	SelectedVersion Version
 
 	/*
 	 * Setup Parameters
 	 * Keys of the maps should not be duplicated
 	 */
-	Parameters
+	Parameters Parameters
 }
 
 func (ss ServerSetupMessage) Serialize() []byte {
@@ -63,7 +61,7 @@ func (ss *ServerSetupMessage) DeserializePayload(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	ss.SelectedVersion = moqtversion.Version(num)
+	ss.SelectedVersion = Version(num)
 
 	err = ss.Parameters.Deserialize(r)
 

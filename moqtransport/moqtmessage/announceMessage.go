@@ -56,7 +56,7 @@ func (a AnnounceMessage) Serialize() []byte {
 	return b
 }
 
-func (a *AnnounceMessage) DeserializeBody(r quicvarint.Reader) error {
+func (a *AnnounceMessage) DeserializePayload(r quicvarint.Reader) error {
 	var tns TrackNamespace
 	err := tns.Deserialize(r)
 	if err != nil {

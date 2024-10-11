@@ -8,7 +8,7 @@ import (
 	"github.com/quic-go/webtransport-go"
 )
 
-type SendByteStream interface {
+type SendStream interface {
 	io.Writer
 	io.Closer
 
@@ -18,7 +18,7 @@ type SendByteStream interface {
 	SetWriteDeadline(time.Time) error
 }
 
-type ReceiveByteStream interface {
+type ReceiveStream interface {
 	io.Reader
 
 	StreamID() StreamID
@@ -27,9 +27,9 @@ type ReceiveByteStream interface {
 	SetReadDeadline(time.Time) error
 }
 
-type ByteStream interface {
-	SendByteStream
-	ReceiveByteStream
+type Stream interface {
+	SendStream
+	ReceiveStream
 	SetDeadLine(time.Time) error
 }
 

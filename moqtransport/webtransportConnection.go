@@ -1,33 +1,35 @@
-package moqwebtransport
+package moqtransport
 
 import (
 	"context"
 	"net"
+	"net/url"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqtransport"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/webtransport-go"
 )
 
 type webtransportConnection struct {
 	conn *webtransport.Session
+	url  url.URL
 }
 
-func NewMOQTConnection(conn *webtransport.Session) moqtransport.Connection {
+func NewMOWTConnection(url url.URL, conn *webtransport.Session) Connection {
 	return &webtransportConnection{
 		conn: conn,
+		url:  url,
 	}
 }
 
-func (conn *webtransportConnection) AcceptStream(ctx context.Context) (moqtransport.Stream, error) {
+func (conn *webtransportConnection) AcceptStream(ctx context.Context) (Stream, error) {
 	stream, err := conn.conn.AcceptStream(ctx)
-	return &webtransportStream{str: stream}, err
+	return &webtransportStream{stream: stream}, err
 }
-func (conn *webtransportConnection) AcceptUniStream(ctx context.Context) (moqtransport.ReceiveStream, error) {
+func (conn *webtransportConnection) AcceptUniStream(ctx context.Context) (ReceiveStream, error) {
 	stream, err := conn.conn.AcceptUniStream(ctx)
-	return &webtransportReceiveStream{innerReceiveStream: stream}, err
+	return &webtransportReceiveStream{stream: stream}, err
 }
-func (conn *webtransportConnection) CloseWithError(code moqtransport.SessionErrorCode, msg string) error {
+func (conn *webtransportConnection) CloseWithError(code SessionErrorCode, msg string) error {
 	return conn.conn.CloseWithError(webtransport.SessionErrorCode(code), msg)
 }
 func (conn *webtransportConnection) ConnectionState() quic.ConnectionState {
@@ -39,21 +41,21 @@ func (conn *webtransportConnection) Context() context.Context {
 func (conn *webtransportConnection) LocalAddr() net.Addr {
 	return conn.conn.LocalAddr()
 }
-func (conn *webtransportConnection) OpenStream() (moqtransport.Stream, error) {
+func (conn *webtransportConnection) OpenStream() (Stream, error) {
 	stream, err := conn.conn.OpenStream()
-	return &webtransportStream{str: stream}, err
+	return &webtransportStream{stream: stream}, err
 }
-func (conn *webtransportConnection) OpenStreamSync(ctx context.Context) (moqtransport.Stream, error) {
+func (conn *webtransportConnection) OpenStreamSync(ctx context.Context) (Stream, error) {
 	stream, err := conn.conn.OpenStreamSync(ctx)
-	return &webtransportStream{str: stream}, err
+	return &webtransportStream{stream: stream}, err
 }
-func (conn *webtransportConnection) OpenUniStream() (moqtransport.SendStream, error) {
+func (conn *webtransportConnection) OpenUniStream() (SendStream, error) {
 	stream, err := conn.conn.OpenUniStream()
-	return &webtransportSendStream{innerSendStream: stream}, err
+	return &webtransportSendStream{stream: stream}, err
 }
-func (conn *webtransportConnection) OpenUniStreamSync(ctx context.Context) (moqtransport.SendStream, error) {
+func (conn *webtransportConnection) OpenUniStreamSync(ctx context.Context) (SendStream, error) {
 	stream, err := conn.conn.OpenUniStreamSync(ctx)
-	return &webtransportSendStream{innerSendStream: stream}, err
+	return &webtransportSendStream{stream: stream}, err
 }
 func (conn *webtransportConnection) ReceiveDatagram(ctx context.Context) ([]byte, error) {
 	return conn.conn.ReceiveDatagram(ctx)
@@ -63,4 +65,8 @@ func (conn *webtransportConnection) RemoteAddr() net.Addr {
 }
 func (conn *webtransportConnection) SendDatagram(b []byte) error {
 	return conn.conn.SendDatagram(b)
+}
+
+func (wrapper *webtransportConnection) URL() url.URL {
+	return wrapper.url
 }

@@ -24,7 +24,7 @@ type Announcement struct {
 type SubscribingSession struct {
 	mu sync.RWMutex
 
-	moqtSession
+	Session
 
 	trackAliasMap trackAliasMap
 

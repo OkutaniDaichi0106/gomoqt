@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+type StreamType uint8
+
 type SendStream interface {
 	io.Writer
 	io.Closer
@@ -28,6 +30,10 @@ type Stream interface {
 	SendStream
 	ReceiveStream
 	SetDeadLine(time.Time) error
+
+	// moqt
+	SetType(StreamType)
+	Type() StreamType
 }
 
 type StreamID int64

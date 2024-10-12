@@ -3,27 +3,35 @@ package moqtransport
 type TerminateErrorCode int
 
 var (
-	NoTerminateErr             TerminateNoError
-	ErrInternalError           TerminateInternalError
-	ErrUnauthorized            terminateUnauthorized
-	ErrProtocolViolation       TerminateProtocolViolation
-	ErrDuplicatedTrackAlias    terminateDuplicateTrackAlias
-	ErrParameterLengthMismatch terminateParameterLengthMismatch
-	ErrTooManySubscribes       terminateTooManySubscribes
-	ErrGoAwayTimeout           terminateGoAwayTimeout
+	NoTerminateErr = DefaultTerminateError{
+		code:   TERMINATE_NO_ERROR,
+		reason: "no error",
+	}
+
+	ErrProtocolViolation = DefaultTerminateError{
+		code:   TERMINATE_PROTOCOL_VIOLATION,
+		reason: "protocol violation",
+	}
+	ErrDuplicatedTrackAlias = DefaultTerminateError{
+		code:   TERMINATE_DUPLICATE_TRACK_ALIAS,
+		reason: "duplicate track alias",
+	}
+	ErrParameterLengthMismatch = DefaultTerminateError{
+		code:   TERMINATE_PARAMETER_LENGTH_MISMATCH,
+		reason: "parameter length mismatch",
+	}
+	ErrTooManySubscribes = DefaultTerminateError{
+		code:   TERMINATE_TOO_MANY_SUBSCRIBES,
+		reason: "too many subscribes",
+	}
+	ErrGoAwayTimeout = DefaultTerminateError{
+		code:   TERMINATE_GOAWAY_TIMEOUT,
+		reason: "goaway timeout",
+	}
 )
 
 /*
- * Error codes and status codes for termination of the session
  *
- * The following error codes and status codes are defined in the official document
- * NO_ERROR
- * INTERNAL_ERROR
- * UNAUTHORIZED
- * PROTOCOL_VIOLATION
- * DUPLICATE_TRACK_ALIAS
- * PARAMETER_LENGTH_MISMATCH
- * GOAWAY_TIMEOUT
  */
 const (
 	TERMINATE_NO_ERROR                  TerminateErrorCode = 0x0
@@ -38,100 +46,18 @@ const (
 
 type TerminateError interface {
 	error
-	Code() TerminateErrorCode
+	TerminateErrorCode() TerminateErrorCode
 }
 
-type DefaultTerminateNoError struct {
+type DefaultTerminateError struct {
 	code   TerminateErrorCode
 	reason string
 }
 
-func (err DefaultTerminateNoError) Error() string {
+func (err DefaultTerminateError) Error() string {
 	return err.reason
 }
 
-func (err DefaultTerminateNoError) Code() TerminateErrorCode {
+func (err DefaultTerminateError) TerminateErrorCode() TerminateErrorCode {
 	return err.code
-}
-
-type TerminateNoError struct{}
-
-func (TerminateNoError) Error() string {
-	return "no error"
-}
-
-func (TerminateNoError) Code() TerminateErrorCode {
-	return TERMINATE_NO_ERROR
-}
-
-type TerminateInternalError struct{}
-
-func (TerminateInternalError) Error() string {
-	return "internal error"
-}
-
-func (TerminateInternalError) Code() TerminateErrorCode {
-	return TERMINATE_INTERNAL_ERROR
-}
-
-type terminateUnauthorized struct{}
-
-func (terminateUnauthorized) Error() string {
-	return "unauthorized"
-}
-
-func (terminateUnauthorized) Code() TerminateErrorCode {
-	return TERMINATE_UNAUTHORIZED
-}
-
-type TerminateProtocolViolation struct{}
-
-func (TerminateProtocolViolation) Error() string {
-	return "protocol violation"
-}
-
-func (TerminateProtocolViolation) Code() TerminateErrorCode {
-	return TERMINATE_PROTOCOL_VIOLATION
-}
-
-type terminateDuplicateTrackAlias struct{}
-
-func (terminateDuplicateTrackAlias) Error() string {
-	return "duplicate track alias"
-}
-
-func (terminateDuplicateTrackAlias) Code() TerminateErrorCode {
-	return TERMINATE_DUPLICATE_TRACK_ALIAS
-}
-
-type terminateParameterLengthMismatch struct{}
-
-func (terminateParameterLengthMismatch) Error() string {
-	return "parameter length mismatch"
-}
-
-func (terminateParameterLengthMismatch) Code() TerminateErrorCode {
-	return TERMINATE_PARAMETER_LENGTH_MISMATCH
-}
-
-type terminateTooManySubscribes struct{}
-
-func (terminateTooManySubscribes) Error() string {
-	return "too many subscribes"
-}
-
-func (terminateTooManySubscribes) Code() TerminateErrorCode {
-	return TERMINATE_TOO_MANY_SUBSCRIBES
-}
-
-var _ TerminateError = (*terminateGoAwayTimeout)(nil)
-
-type terminateGoAwayTimeout struct{}
-
-func (terminateGoAwayTimeout) Error() string {
-	return "goaway timeout"
-}
-
-func (terminateGoAwayTimeout) Code() TerminateErrorCode {
-	return TERMINATE_GOAWAY_TIMEOUT
 }

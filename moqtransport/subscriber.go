@@ -3,96 +3,106 @@ package moqtransport
 import (
 	"bytes"
 	"context"
-	"errors"
+	"io"
+	"net/url"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type Subscriber struct {
-	node node
-
-	session *SubscribingSession
-
-	streamMap map[moqtmessage.SubscribeID]chan struct {
-		header moqtmessage.StreamHeader
-		reader quicvarint.Reader
-	}
+	client
+	QUICPath url.URL
 }
 
-func (s *Subscriber) ConnectAndSetup(URL string) (*SubscribingSession, error) {
-	sess, err := s.node.EstablishSubSession(URL)
+func (s *Subscriber) Setup(conn Connection) error {
+	/*
+	 * Open an bidirectional stream
+	 */
+	stream, err := s.conn.OpenStream()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	s.session = sess
+	/*
+	 * Set the Stream Type to the Setup
+	 */
+	streamType := SETUP_STREAM
+	// Send the Stream Type
+	_, err = stream.Write([]byte{byte(streamType)})
+	if err != nil {
+		return err
+	}
+	stream.SetType(streamType)
 
-	s.streamMap = make(map[moqtmessage.SubscribeID]chan struct {
-		header moqtmessage.StreamHeader
-		reader quicvarint.Reader
-	})
+	/*
+	 *
+	 */
+	s.setupStream = stream
 
-	return sess, nil
+	/*
+	 * Send a CLIENT_SETUP message
+	 */
+	csm := moqtmessage.ClientSetupMessage{
+		SupportedVersions: s.SupportedVersions,
+		Parameters:        make(moqtmessage.Parameters),
+	}
+	// Add a role parameter
+	csm.Parameters.AddParameter(moqtmessage.ROLE, moqtmessage.SUB)
+	// Add a path parameter, when using raw QUIC
+	if url := s.conn.URL(); url.Scheme == "moqt" {
+		csm.Parameters.AddParameter(moqtmessage.PATH, url.Path)
+	}
+
+	_, err = stream.Write(csm.Serialize())
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func (s Subscriber) ReceiveDatagram(ctx context.Context) (ReceiveDataStream, error) {
-	b, err := s.session.trSess.ReceiveDatagram(ctx)
+func (s Subscriber) ReceiveDatagram(ctx context.Context) (*moqtmessage.GroupMessage, io.Reader, error) {
+	/*
+	 * Receive a datagram
+	 */
+	b, err := s.conn.ReceiveDatagram(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	reader := quicvarint.NewReader(bytes.NewReader(b))
-
-	var header moqtmessage.StreamHeaderDatagram
-	err = header.DeserializeStreamHeaderBody(reader)
+	/*
+	 * Read a Group message
+	 */
+	byteReader := bytes.NewReader(b)
+	qvReader := quicvarint.NewReader(byteReader)
+	var gm moqtmessage.GroupMessage
+	err = gm.DeserializePayload(qvReader)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return &receiveDataStreamDatagram{
-		header: header,
-		reader: reader,
-	}, nil
+	return &gm, byteReader, nil
 }
 
-func (s Subscriber) AcceptUniStream(ctx context.Context) (ReceiveDataStream, error) {
-	stream, err := s.session.trSess.AcceptStream(ctx)
+func (s Subscriber) AcceptDataStream(ctx context.Context) (*moqtmessage.GroupMessage, ReceiveStream, error) {
+	/*
+	 * Accept an unidirectional stream
+	 */
+	stream, err := s.conn.AcceptUniStream(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	reader := quicvarint.NewReader(stream)
-
-	id, err := moqtmessage.DeserializeStreamTypeID(reader)
+	/*
+	 * Read a Group message
+	 */
+	qvReader := quicvarint.NewReader(stream)
+	var gm moqtmessage.GroupMessage
+	err = gm.DeserializePayload(qvReader)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	switch id {
-	case moqtmessage.TRACK_ID:
-		var header moqtmessage.StreamHeaderTrack
-		err := header.DeserializeStreamHeaderBody(reader)
-		if err != nil {
-			return nil, err
-		}
-
-		return &receiveDataStreamTrack{
-			header: header,
-			reader: reader,
-		}, nil
-	case moqtmessage.PEEP_ID:
-		var header moqtmessage.StreamHeaderPeep
-		err := header.DeserializeStreamHeaderBody(reader)
-		if err != nil {
-			return nil, err
-		}
-
-		return &receiveDataStreamPeep{
-			header: header,
-			reader: reader,
-		}, nil
-	default:
-		return nil, errors.New("invalid stream type")
-	}
+	return &gm, stream, nil
 }

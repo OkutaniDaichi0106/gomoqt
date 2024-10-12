@@ -22,10 +22,16 @@ type TrackStatusRequestMessage struct {
 	 * Track namespace
 	 */
 	TrackNamespace TrackNamespace
+
 	/*
 	 * Track name
 	 */
 	TrackName string
+
+	/*
+	 * Track Alias
+	 */
+	TrackAlias TrackAlias
 }
 
 func (tsr TrackStatusRequestMessage) Serialize() []byte {
@@ -50,6 +56,9 @@ func (tsr TrackStatusRequestMessage) Serialize() []byte {
 	p = quicvarint.Append(p, uint64(len(tsr.TrackName)))
 	p = append(p, []byte(tsr.TrackName)...)
 
+	// Append the Track Alias
+	p = quicvarint.Append(p, uint64(tsr.TrackAlias))
+
 	/*
 	 * Serialize the whole message
 	 */
@@ -66,7 +75,7 @@ func (tsr TrackStatusRequestMessage) Serialize() []byte {
 }
 
 func (tsr *TrackStatusRequestMessage) DeserializePayload(r quicvarint.Reader) error {
-	// Get Track Namespace
+	// Get a Track Namespace
 	var tns TrackNamespace
 	err := tns.Deserialize(r)
 	if err != nil {
@@ -74,18 +83,24 @@ func (tsr *TrackStatusRequestMessage) DeserializePayload(r quicvarint.Reader) er
 	}
 	tsr.TrackNamespace = tns
 
-	// Get Track Name
+	// Get a Track Name
 	num, err := quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-
 	buf := make([]byte, num)
 	_, err = r.Read(buf)
 	if err != nil {
 		return err
 	}
 	tsr.TrackName = string(buf)
+
+	// Get a Track Alias
+	num, err = quicvarint.Read(r)
+	if err != nil {
+		return err
+	}
+	tsr.TrackAlias = TrackAlias(num)
 
 	return nil
 }

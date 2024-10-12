@@ -3,13 +3,11 @@ package moqtransport
 import (
 	"context"
 	"net"
+	"net/url"
 
 	"github.com/quic-go/quic-go"
 )
 
-/*
- * Transport Session: The wrapper of the both raw QUIC connection and the WebTransport session
- */
 type Connection interface {
 	AcceptStream(ctx context.Context) (Stream, error)
 	AcceptUniStream(ctx context.Context) (ReceiveStream, error)
@@ -24,4 +22,5 @@ type Connection interface {
 	ReceiveDatagram(ctx context.Context) ([]byte, error)
 	RemoteAddr() net.Addr
 	SendDatagram(b []byte) error
+	URL() url.URL
 }

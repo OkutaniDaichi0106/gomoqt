@@ -10,7 +10,7 @@ type SendAnnounceStream struct {
 	qvReader quicvarint.Reader
 }
 
-func (sender SendAnnounceStream) WaitSubscribeNamespace() (moqtmessage.TrackNamespacePrefix, moqtmessage.Parameters, error) {
+func (sender SendAnnounceStream) ReceiveSubscribeNamespace() (moqtmessage.TrackNamespacePrefix, moqtmessage.Parameters, error) {
 	/*
 	 * Receive a SUBSCRIBE_NAMESPACE message
 	 */

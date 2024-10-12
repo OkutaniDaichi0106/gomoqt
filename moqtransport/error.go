@@ -2,90 +2,139 @@ package moqtransport
 
 import "github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
 
+// /*
+//  * Announce Error
+//  */
+// type AnnounceErrorCode uint32
+
+// const (
+// 	ANNOUNCE_INTERNAL_ERROR AnnounceErrorCode =
+// )
+
+// var (
+// 	ErrAnnounceFailed = DefaultAnnounceError{
+// 		reason: "internal error",
+// 		code:   moqtmessage.ANNOUNCE_INTERNAL_ERROR,
+// 	}
+// 	ErrDuplicateTrackNamespace = DefaultAnnounceError{
+// 		reason: "duplicate track namespace",
+// 		code:   moqtmessage.DUPLICATE_TRACK_NAMESPACE,
+// 	}
+// )
+
+// type AnnounceError interface {
+// 	error
+// 	Code() AnnounceErrorCode
+// }
+
+// type DefaultAnnounceError struct {
+// 	reason string
+// 	code   AnnounceErrorCode
+// }
+
+// func (err DefaultAnnounceError) Error() string {
+// 	return err.reason
+// }
+
+// func (err DefaultAnnounceError) Code() AnnounceErrorCode {
+// 	return err.code
+// }
+
 /*
- * Announce Error
+ * Internal Error
  */
+var _ SubscribeError = (*InternalError)(nil)
+var _ SubscribeDoneError = (*InternalError)(nil)
+var _ TerminateError = (*InternalError)(nil)
 
-var (
-	ErrAnnounceFailed = DefaultAnnounceError{
-		reason: "internal error",
-		code:   moqtmessage.ANNOUNCE_INTERNAL_ERROR,
-	}
-	ErrDuplicateTrackNamespace = DefaultAnnounceError{
-		reason: "duplicate track namespace",
-		code:   moqtmessage.DUPLICATE_TRACK_NAMESPACE,
-	}
+type InternalError struct{}
+
+func (InternalError) Error() string {
+	return "internal error"
+}
+
+func (InternalError) SubscribeErrorCode() SubscribeErrorCode {
+	return SUBSCRIBE_INTERNAL_ERROR
+}
+
+func (InternalError) SubscribeDoneErrorCode() SubscribeDoneStatusCode {
+	return SUBSCRIBE_DONE_INTERNAL_ERROR
+}
+
+func (InternalError) TerminateErrorCode() TerminateErrorCode {
+	return TERMINATE_INTERNAL_ERROR
+}
+
+var ErrInternalError = InternalError{}
+
+/*
+ * Unauthorized Error
+ */
+var _ SubscribeError = (*UnauthorizedError)(nil)
+var _ SubscribeDoneError = (*UnauthorizedError)(nil)
+var _ TerminateError = (*UnauthorizedError)(nil)
+
+type UnauthorizedError struct{}
+
+func (UnauthorizedError) Error() string {
+	return "internal error"
+}
+
+func (UnauthorizedError) SubscribeErrorCode() SubscribeErrorCode {
+	return SUBSCRIBE_UNAUTHORIZED
+}
+
+func (UnauthorizedError) SubscribeDoneErrorCode() SubscribeDoneStatusCode {
+	return SUBSCRIBE_DONE_UNAUTHORIZED
+}
+
+func (UnauthorizedError) TerminateErrorCode() TerminateErrorCode {
+	return TERMINATE_UNAUTHORIZED
+}
+
+var ErrUnauthorizedError = InternalError{}
+
+/*
+ * Subscribe Error
+ */
+type SubscribeErrorCode uint32
+
+const (
+	SUBSCRIBE_INTERNAL_ERROR       SubscribeErrorCode = 0x0
+	SUBSCRIBE_INVALID_RANGE        SubscribeErrorCode = 0x0
+	SUBSCRIBE_RETRY_TRACK_ALIAS    SubscribeErrorCode = 0x0
+	SUBSCRIBE_TRACK_DOES_NOT_EXIST SubscribeErrorCode = 0x0
+	SUBSCRIBE_UNAUTHORIZED         SubscribeErrorCode = 0x0
+	SUBSCRIBE_TIMEOUT              SubscribeErrorCode = 0x0
 )
-
-type AnnounceError interface {
-	error
-	Code() moqtmessage.AnnounceErrorCode
-}
-
-type DefaultAnnounceError struct {
-	reason string
-	code   moqtmessage.AnnounceErrorCode
-}
-
-func (err DefaultAnnounceError) Error() string {
-	return err.reason
-}
-
-func (err DefaultAnnounceError) Code() moqtmessage.AnnounceErrorCode {
-	return err.code
-}
 
 /*
  * Subscribe Error
  */
 var (
-	ErrSubscribeFailed = DefaultSubscribeError{
-		code:   moqtmessage.SUBSCRIBE_INTERNAL_ERROR,
-		reason: "internal error",
-	}
-
 	ErrDefaultInvalidRange = DefaultSubscribeError{
-		code:   moqtmessage.INVALID_RANGE,
+		code:   SUBSCRIBE_INVALID_RANGE,
 		reason: "invalid range",
 	}
 
 	ErrTrackDoesNotExist = DefaultSubscribeError{
-		code:   moqtmessage.TRACK_DOES_NOT_EXIST,
+		code:   SUBSCRIBE_TRACK_DOES_NOT_EXIST,
 		reason: "track does not exist",
 	}
 
-	ErrSubscribeUnauthorized = DefaultSubscribeError{
-		code:   moqtmessage.SUBSCRIBE_UNAUTHORIZED,
-		reason: "unauthorized",
-	}
-
 	ErrSubscribeTimeout = DefaultSubscribeError{
-		code:   moqtmessage.SUBSCRIBE_TIMEOUT,
+		code:   SUBSCRIBE_TIMEOUT,
 		reason: "time out",
 	}
 )
 
-func GetSubscribeError(message moqtmessage.SubscribeErrorMessage) SubscribeError {
-	if message.Code == moqtmessage.RETRY_TRACK_ALIAS {
-		return RetryTrackAliasError{
-			reason:     message.Reason,
-			trackAlias: message.TrackAlias,
-		}
-	}
-
-	return DefaultSubscribeError{
-		code:   message.Code,
-		reason: message.Reason,
-	}
-}
-
 type SubscribeError interface {
 	error
-	Code() moqtmessage.SubscribeErrorCode
+	SubscribeErrorCode() SubscribeErrorCode
 }
 
 type DefaultSubscribeError struct {
-	code   moqtmessage.SubscribeErrorCode
+	code   SubscribeErrorCode
 	reason string
 }
 
@@ -93,7 +142,7 @@ func (err DefaultSubscribeError) Error() string {
 	return err.reason
 }
 
-func (err DefaultSubscribeError) Code() moqtmessage.SubscribeErrorCode {
+func (err DefaultSubscribeError) SubscribeErrorCode() SubscribeErrorCode {
 	return err.code
 }
 
@@ -106,8 +155,8 @@ func (err RetryTrackAliasError) Error() string {
 	return err.reason
 }
 
-func (err RetryTrackAliasError) Code() moqtmessage.SubscribeErrorCode {
-	return moqtmessage.RETRY_TRACK_ALIAS
+func (err RetryTrackAliasError) SubscribeErrorCode() SubscribeErrorCode {
+	return SUBSCRIBE_RETRY_TRACK_ALIAS
 }
 
 func (err RetryTrackAliasError) TrackAlias() moqtmessage.TrackAlias {
@@ -117,55 +166,35 @@ func (err RetryTrackAliasError) TrackAlias() moqtmessage.TrackAlias {
 /*
  *
  */
-type SubscribeDoneStatus interface {
-	Reason() string
-	Code() moqtmessage.SubscribeDoneStatusCode
-}
+type SubscribeDoneStatusCode uint32
+
+const (
+	SUBSCRIBE_DONE_UNSUBSCRIBED       SubscribeDoneStatusCode = 0x0
+	SUBSCRIBE_DONE_INTERNAL_ERROR     SubscribeDoneStatusCode = 0x1
+	SUBSCRIBE_DONE_UNAUTHORIZED       SubscribeDoneStatusCode = 0x2
+	SUBSCRIBE_DONE_TRACK_ENDED        SubscribeDoneStatusCode = 0x3
+	SUBSCRIBE_DONE_SUBSCRIPTION_ENDED SubscribeDoneStatusCode = 0x4
+	SUBSCRIBE_DONE_GOING_AWAY         SubscribeDoneStatusCode = 0x5
+	SUBSCRIBE_DONE_EXPIRED            SubscribeDoneStatusCode = 0x6
+)
 
 type SubscribeDoneError interface {
 	error
-	Code() moqtmessage.SubscribeDoneStatusCode
+	SubscribeDoneErrorCode() SubscribeDoneStatusCode
 }
 
 var (
-	ErrSubscribeDoneInternalError = DefaultSubscribeDoneError{
-		code:   moqtmessage.SUBSCRIBE_DONE_INTERNAL_ERROR,
-		reason: "internal error",
-	}
-	ErrSubscribeDoneUnauthorized = DefaultSubscribeDoneError{
-		code:   moqtmessage.SUBSCRIBE_DONE_UNAUTHORIZED,
-		reason: "unauthorized",
-	}
 	ErrSubscribeExpired = DefaultSubscribeDoneError{
-		code:   moqtmessage.SUBSCRIBE_DONE_EXPIRED,
+		code:   SUBSCRIBE_DONE_EXPIRED,
 		reason: "expired",
 	}
 )
 
-var (
-	StatusUnsubscribed = DefaultSubscribeDoneStatus{
-		code:   moqtmessage.SUBSCRIBE_DONE_UNSUBSCRIBED,
-		reason: "unsubscribed",
-	}
-	StatusEndedTrack = DefaultSubscribeDoneStatus{
-		code:   moqtmessage.SUBSCRIBE_DONE_TRACK_ENDED,
-		reason: "track ended",
-	}
-	StatusEndedSubscription = DefaultSubscribeDoneStatus{
-		code:   moqtmessage.SUBSCRIBE_DONE_SUBSCRIPTION_ENDED,
-		reason: "subsription ended",
-	}
-	StatusGoingAway = DefaultSubscribeDoneStatus{
-		code:   moqtmessage.SUBSCRIBE_DONE_GOING_AWAY,
-		reason: "going away",
-	}
-)
-
+/***/
 var _ SubscribeDoneError = (*DefaultSubscribeDoneError)(nil)
-var _ SubscribeDoneStatus = (*DefaultSubscribeDoneError)(nil)
 
 type DefaultSubscribeDoneError struct {
-	code   moqtmessage.SubscribeDoneStatusCode
+	code   SubscribeDoneStatusCode
 	reason string
 }
 
@@ -177,14 +206,39 @@ func (err DefaultSubscribeDoneError) Reason() string {
 	return err.reason
 }
 
-func (err DefaultSubscribeDoneError) Code() moqtmessage.SubscribeDoneStatusCode {
+func (err DefaultSubscribeDoneError) SubscribeDoneErrorCode() SubscribeDoneStatusCode {
 	return err.code
+}
+
+/***/
+type SubscribeDoneStatus interface {
+	Reason() string
+	Code() SubscribeDoneStatusCode
 }
 
 var _ SubscribeDoneStatus = (*DefaultSubscribeDoneStatus)(nil)
 
+var (
+	StatusUnsubscribed = DefaultSubscribeDoneStatus{
+		code:   SUBSCRIBE_DONE_UNSUBSCRIBED,
+		reason: "unsubscribed",
+	}
+	StatusEndedTrack = DefaultSubscribeDoneStatus{
+		code:   SUBSCRIBE_DONE_TRACK_ENDED,
+		reason: "track ended",
+	}
+	StatusEndedSubscription = DefaultSubscribeDoneStatus{
+		code:   SUBSCRIBE_DONE_SUBSCRIPTION_ENDED,
+		reason: "subsription ended",
+	}
+	StatusGoingAway = DefaultSubscribeDoneStatus{
+		code:   SUBSCRIBE_DONE_GOING_AWAY,
+		reason: "going away",
+	}
+)
+
 type DefaultSubscribeDoneStatus struct {
-	code   moqtmessage.SubscribeDoneStatusCode
+	code   SubscribeDoneStatusCode
 	reason string
 }
 
@@ -192,46 +246,46 @@ func (status DefaultSubscribeDoneStatus) Reason() string {
 	return status.reason
 }
 
-func (status DefaultSubscribeDoneStatus) Code() moqtmessage.SubscribeDoneStatusCode {
+func (status DefaultSubscribeDoneStatus) Code() SubscribeDoneStatusCode {
 	return status.code
 }
 
 /***/
 
-type AnnounceCancelError interface {
-	Code() moqtmessage.AnnounceCancelCode
-	Reason() string
-}
+// type AnnounceCancelError interface {
+// 	AnnounceCancelErrorCode() AnnounceCancelCode
+// 	Reason() string
+// }
 
-var _ AnnounceCancelError = (*DefaultAnnounceCancelError)(nil)
+// var _ AnnounceCancelError = (*DefaultAnnounceCancelError)(nil)
 
-type DefaultAnnounceCancelError struct {
-	code   moqtmessage.AnnounceCancelCode
-	reason string
-}
+// type DefaultAnnounceCancelError struct {
+// 	code   moqtmessage.AnnounceCancelCode
+// 	reason string
+// }
 
-func (cancel DefaultAnnounceCancelError) Code() moqtmessage.AnnounceCancelCode {
-	return cancel.code
-}
+// func (cancel DefaultAnnounceCancelError) Code() moqtmessage.AnnounceCancelCode {
+// 	return cancel.code
+// }
 
-func (cancel DefaultAnnounceCancelError) Reason() string {
-	return cancel.reason
-}
+// func (cancel DefaultAnnounceCancelError) Reason() string {
+// 	return cancel.reason
+// }
 
-type SubscribeNamespaceError interface {
-	error
-	Code() uint64
-}
+// type SubscribeNamespaceError interface {
+// 	error
+// 	Code() uint64
+// }
 
-type DefaultSubscribeNamespaceError struct {
-	code   moqtmessage.SubscribeNamespaceErrorCode
-	reason string
-}
+// type DefaultSubscribeNamespaceError struct {
+// 	code   moqtmessage.SubscribeNamespaceErrorCode
+// 	reason string
+// }
 
-func (err DefaultSubscribeNamespaceError) Error() string {
-	return err.reason
-}
+// func (err DefaultSubscribeNamespaceError) Error() string {
+// 	return err.reason
+// }
 
-func (err DefaultSubscribeNamespaceError) Code() moqtmessage.SubscribeNamespaceErrorCode {
-	return err.code
-}
+// func (err DefaultSubscribeNamespaceError) Code() moqtmessage.SubscribeNamespaceErrorCode {
+// 	return err.code
+// }

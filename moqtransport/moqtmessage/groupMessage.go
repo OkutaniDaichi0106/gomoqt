@@ -2,6 +2,10 @@ package moqtmessage
 
 import "github.com/quic-go/quic-go/quicvarint"
 
+type GroupID uint64
+
+type PublisherPriority byte
+
 type GroupMessage struct {
 	SubscribeID SubscribeID
 

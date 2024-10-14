@@ -4,24 +4,39 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"net/url"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
+	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type Subscriber struct {
-	client
-	QUICPath url.URL
+	Client
 }
 
-func (s *Subscriber) Setup(conn Connection) error {
+func (s *Subscriber) SetupMORQ(qconn quic.Connection, path string) (*Session, error) {
+	if !isValidPath(path) {
+		panic("invalid path")
+	}
+
+	conn := newMORQConnection(qconn)
+	sess, err := s.setupMORQ(conn, path)
+	if err != nil {
+		if terr, ok := err.(TerminateError); ok {
+			conn.CloseWithError(SessionErrorCode(terr.TerminateErrorCode()), terr.Error())
+		}
+	}
+
+	return sess, nil
+}
+
+func (s *Subscriber) setupMORQ(conn Connection, path string) (*Session, error) {
 	/*
 	 * Open an bidirectional stream
 	 */
 	stream, err := s.conn.OpenStream()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	/*
@@ -31,14 +46,9 @@ func (s *Subscriber) Setup(conn Connection) error {
 	// Send the Stream Type
 	_, err = stream.Write([]byte{byte(streamType)})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	stream.SetType(streamType)
-
-	/*
-	 *
-	 */
-	s.setupStream = stream
 
 	/*
 	 * Send a CLIENT_SETUP message
@@ -47,19 +57,17 @@ func (s *Subscriber) Setup(conn Connection) error {
 		SupportedVersions: s.SupportedVersions,
 		Parameters:        make(moqtmessage.Parameters),
 	}
-	// Add a role parameter
+	// Add the ROLE parameter
 	csm.Parameters.AddParameter(moqtmessage.ROLE, moqtmessage.SUB)
-	// Add a path parameter, when using raw QUIC
-	if url := s.conn.URL(); url.Scheme == "moqt" {
-		csm.Parameters.AddParameter(moqtmessage.PATH, url.Path)
-	}
+	// Add the path parameter
+	csm.Parameters.AddParameter(moqtmessage.PATH, path)
 
 	_, err = stream.Write(csm.Serialize())
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return &Session{}, nil
 }
 
 func (s Subscriber) ReceiveDatagram(ctx context.Context) (*moqtmessage.GroupMessage, io.Reader, error) {

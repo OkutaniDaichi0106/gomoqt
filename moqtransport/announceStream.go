@@ -119,3 +119,9 @@ func (receiver ReceiveAnnounceStream) ReceiveAnnounce() (*Announcement, error) {
 
 	return &announcement, nil
 }
+
+type Announcement struct {
+	trackNamespace    moqtmessage.TrackNamespace
+	AuthorizationInfo string
+	Parameters        moqtmessage.Parameters
+}

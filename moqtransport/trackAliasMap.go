@@ -58,17 +58,17 @@ func (tamap *trackAliasMap) getName(ta moqtmessage.TrackAlias) (moqtmessage.Trac
 	return data.trackNamespace, data.trackName, true
 }
 
-type contentStatus struct {
-	/*
-	 * Current content status
-	 */
-	contentExists bool
-	// finalGroupID  moqtmessage.GroupID
-	// finalObjectID moqtmessage.ObjectID
+// type contentStatus struct {
+// 	/*
+// 	 * Current content status
+// 	 */
+// 	contentExists bool
+// 	// finalGroupID  moqtmessage.GroupID
+// 	// finalObjectID moqtmessage.ObjectID
 
-	/*
-	 * The Largest Group ID and Largest Object ID of the contents received so far
-	 */
-	largestGroupID  moqtmessage.GroupID
-	largestObjectID moqtmessage.ObjectID
-}
+// 	/*
+// 	 * The Largest Group ID and Largest Object ID of the contents received so far
+// 	 */
+// 	largestGroupID  moqtmessage.GroupID
+// 	largestObjectID moqtmessage.ObjectID
+// }

@@ -7,9 +7,13 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
 )
 
-var trackManager = TrackManager{
-	trackNamespaceTree: *newTrackNamespaceTree(),
+type Relay struct {
+	TrackManager
 }
+
+// var trackManager = TrackManager{
+// 	trackNamespaceTree: *newTrackNamespaceTree(),
+// }
 
 type TrackManager struct {
 	trackNamespaceTree TrackNamespaceTree
@@ -106,7 +110,7 @@ type trackNamespaceNode struct {
 	/*
 	 * The origin session
 	 */
-	originSession *SubscribingSession
+	origin Connection
 }
 
 type trackNameNode struct {
@@ -120,17 +124,17 @@ type trackNameNode struct {
 	/*
 	 *
 	 */
-	contentStatus *contentStatus
+	trackStatus *TrackStatus
 
 	/*
 	 *
 	 */
-	destinationSessions map[sessionID]*PublishingSession
+	destinations []Connection
 }
 
 func (node *trackNamespaceNode) remove(tns moqtmessage.TrackNamespace, depth int) (bool, error) {
 	if node == nil {
-		return false, errors.New(ErrTrackNamespaceNotFound.Error() + " at " + tns[depth])
+		return false, errors.New("track namespace not found at " + tns[depth])
 	}
 
 	node.mu.Lock()
@@ -153,7 +157,7 @@ func (node *trackNamespaceNode) remove(tns moqtmessage.TrackNamespace, depth int
 	child, exists := node.children[value]
 
 	if !exists {
-		return false, errors.New(ErrTrackNamespaceNotFound.Error() + " at " + value)
+		return false, errors.New("track namespace not found at " + value)
 	}
 
 	ok, err := child.remove(tns, depth+1)
@@ -209,7 +213,7 @@ func (node *trackNamespaceNode) newTrackNameNode(trackName string) *trackNameNod
 
 	node.tracks[trackName] = &trackNameNode{
 		value: trackName,
-		contentStatus: &contentStatus{
+		trackStatus: &TrackStatus{
 			contentExists:   false,
 			largestGroupID:  0,
 			largestObjectID: 0,

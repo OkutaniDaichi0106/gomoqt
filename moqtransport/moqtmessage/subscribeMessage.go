@@ -8,6 +8,8 @@ import (
 
 type SubscribeID uint64
 
+type TrackAlias uint64
+
 type SubscriberPriority byte
 
 type GroupOrder byte

@@ -1,11 +1,12 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
+	"log"
 	"net/http"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/Samples/rawquicServer/rawquic"
 	"github.com/OkutaniDaichi0106/gomoqt/moqtransport"
 	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
 
@@ -14,7 +15,7 @@ import (
 
 func main() {
 
-	tlsConfig, err := generateTLSConfig("", "")
+	tlsConfig, err := generateTLSConfig("cert.pem", "cert-key.pem")
 	if err != nil {
 		return
 	}
@@ -36,13 +37,35 @@ func main() {
 		},
 	}
 
-	rawquic.HandleFunc("/rawquic", func(c quic.Connection) {
+	ln, err := quic.ListenAddrEarly(ms.Addr, ms.TLSConfig, ms.QUICConfig)
+	if err != nil {
+		log.Println(err)
+		return
+	}
 
-	})
+	go func() {
+		for {
+			conn, err := ln.Accept(context.Background()) // TODO:
+			if err != nil {
+				log.Println(err)
+				return
+			}
 
-	rqs := rawquic.RawQUICServer(ms)
+			go func(conn quic.Connection) {
+				morqSess, path, err := ms.SetupMORQ(conn)
+				if err != nil {
+					return
+				}
+				switch path {
+				case "/rawquic":
 
-	rqs.ListenAndServe()
+				default:
+					return
+				}
+			}(conn)
+		}
+	}()
+
 }
 
 func generateTLSConfig(certFile, keyFile string) (*tls.Config, error) {

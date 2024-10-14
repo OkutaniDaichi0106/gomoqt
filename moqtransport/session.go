@@ -13,7 +13,7 @@ import (
 type Session struct {
 	Connection
 
-	sessionStream Stream
+	setupStream Stream
 
 	selectedVersion moqtmessage.Version
 
@@ -21,7 +21,7 @@ type Session struct {
 	//
 	subscribeCounter uint64
 	//
-	maxSubscribeID moqtmessage.SubscribeID
+	maxSubscribeID *moqtmessage.SubscribeID
 }
 
 const (
@@ -123,10 +123,6 @@ func (sess Session) PeekStreamType(stream Stream) (StreamType, error) {
 	}
 
 	return StreamType(b[0]), nil
-}
-
-func (sess Session) Terminate(err TerminateError) {
-	sess.CloseWithError(SessionErrorCode(err.TerminateErrorCode()), err.Error())
 }
 
 type AnnounceConfig struct {

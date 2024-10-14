@@ -13,12 +13,12 @@ import (
 
 func main() {
 
-	tlsConfig, err := generateTLSConfig("", "")
+	tlsConfig, err := generateTLSConfig("cert.pem", "cert-key.pem")
 	if err != nil {
 		return
 	}
 
-	ms := moqtransport.Server{
+	moqs := moqtransport.Server{
 		Addr:      "0.0.0.0",
 		Port:      8443,
 		TLSConfig: tlsConfig,
@@ -35,22 +35,22 @@ func main() {
 		},
 	}
 
-	wts := ms.WTServer()
+	//wts := ms.WebTransportServer()
 
 	http.HandleFunc("/webtransport", func(w http.ResponseWriter, r *http.Request) {
-		sess, err := wts.Upgrade(w, r)
+		wtSess, err := moqs.WebtransportUpgrade(w, r)
 		if err != nil {
 			log.Printf("upgrading failed: %s", err)
 			w.WriteHeader(500)
 			return
 		}
-
-		conn := moqtransport.NewMOWTConnection(*r.URL, sess)
-
+		mowtSess, err := moqs.SetupMOWT(wtSess)
+		if err != nil {
+			return
+		}
 	})
 
-	wts.ListenAndServe()
-
+	moqs.ListenAndServe()
 }
 
 func generateTLSConfig(certFile, keyFile string) (*tls.Config, error) {

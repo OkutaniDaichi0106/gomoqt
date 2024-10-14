@@ -47,7 +47,7 @@ func (wrapper rawQuicStream) Close() error {
 	return wrapper.stream.Close()
 }
 
-func (wrapper rawQuicStream) SetType(streamType StreamType) {
+func (wrapper *rawQuicStream) SetType(streamType StreamType) {
 	if wrapper.streamType != nil {
 		panic("do not change stream type")
 	}

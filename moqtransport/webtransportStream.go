@@ -47,7 +47,7 @@ func (wrapper webtransportStream) Close() error {
 	return wrapper.stream.Close()
 }
 
-func (wrapper webtransportStream) SetType(streamType StreamType) {
+func (wrapper *webtransportStream) SetType(streamType StreamType) {
 	if wrapper.streamType != nil {
 		panic("do not change stream type")
 	}

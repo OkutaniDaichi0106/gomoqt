@@ -4,20 +4,19 @@ import (
 	"context"
 	"net"
 	"net/url"
+	"strings"
 
 	"github.com/quic-go/quic-go"
 )
 
-func NewMORQConnection(url url.URL, conn quic.Connection) Connection {
+func newMORQConnection(conn quic.Connection) Connection {
 	return &rawQuicConnection{
 		conn: conn,
-		url:  url,
 	}
 }
 
 type rawQuicConnection struct {
 	conn quic.Connection
-	url  url.URL
 }
 
 func (wrapper *rawQuicConnection) AcceptStream(ctx context.Context) (Stream, error) {
@@ -66,6 +65,13 @@ func (wrapper *rawQuicConnection) SendDatagram(b []byte) error {
 	return wrapper.conn.SendDatagram(b)
 }
 
-func (wrapper *rawQuicConnection) URL() url.URL {
-	return wrapper.url
+func isValidPath(pattern string) bool {
+	// Verify the pattern starts with "/"
+	if !strings.HasPrefix(pattern, "/") {
+		return false
+	}
+
+	_, err := url.ParseRequestURI(pattern)
+
+	return err == nil
 }

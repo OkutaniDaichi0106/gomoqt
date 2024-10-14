@@ -1,8 +1,6 @@
 package moqtransport
 
 import (
-	"bufio"
-	"bytes"
 	"errors"
 	"sync/atomic"
 	"time"
@@ -16,9 +14,15 @@ type SendSubscribeStream struct {
 	qvReader         quicvarint.Reader
 	subscribeCounter *uint64
 	trackAliasMap    *trackAliasMap
+	//
+	subscription *Subscription
 }
 
 func (stream SendSubscribeStream) Subscribe(trackNamespace moqtmessage.TrackNamespace, trackName string, config SubscribeConfig) (*Subscription, *TrackStatus, error) {
+	if stream.subscription != nil {
+		return nil, nil, errors.New("subscribed stream")
+	}
+
 	/*
 	 * Send a SUBSCRIBE message
 	 */
@@ -61,7 +65,7 @@ func (stream SendSubscribeStream) Subscribe(trackNamespace moqtmessage.TrackName
 	/*
 	 * Receive a TRACK_STATUS message
 	 */
-	ts, err := stream.receiveTrackStatus(trackNamespace, trackName, trackAlias)
+	ts, err := receiveTrackStatus(stream.qvReader, trackAlias)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -79,41 +83,15 @@ func (stream SendSubscribeStream) Subscribe(trackNamespace moqtmessage.TrackName
 	}, ts, nil
 }
 
-func (stream SendSubscribeStream) RequestTrackStatus(trackNamespace moqtmessage.TrackNamespace, trackName string) (*TrackStatus, error) {
-	/*
-	 * Send a TRACK_STATUS_REQUEST message
-	 */
-	// Get the Track Alias
-	trackAlias := stream.trackAliasMap.getAlias(trackNamespace, trackName)
-	// Initialize a TRACK_STATUS_REQUEST message
-	rts := moqtmessage.TrackStatusRequestMessage{
-		TrackNamespace: trackNamespace,
-		TrackName:      trackName,
-		TrackAlias:     trackAlias,
-	}
-
-	_, err := stream.stream.Write(rts.Serialize())
-	if err != nil {
-		return nil, err
-	}
-
-	/*
-	 * Receive a TRACK_STATUS message
-	 */
-	ts, err := stream.receiveTrackStatus(trackNamespace, trackName, trackAlias)
-	if err != nil {
-		return nil, err
-	}
-
-	return ts, nil
-}
-
 func (stream SendSubscribeStream) UpdateSubscription(subscription Subscription, config SubscribeConfig) (*TrackStatus, error) {
 	/*
 	 * Verify the new configuration is valid
 	 */
 	if config.GroupOrder != 0 {
 		return nil, errors.New("invalid group order")
+	}
+	if config.MinGroupSequence > config.MaxGroupSequence {
+		return nil, errors.New("min larger than max")
 	}
 	if config.MinGroupSequence < subscription.config.MinGroupSequence {
 		return nil, errors.New("wider update")
@@ -154,7 +132,7 @@ func (stream SendSubscribeStream) UpdateSubscription(subscription Subscription, 
 	/*
 	 * Receive a TRACK_STATUS message
 	 */
-	ts, err := stream.receiveTrackStatus(subscription.trackNamespace, subscription.trackName, subscription.trackAlias)
+	ts, err := receiveTrackStatus(stream.qvReader, subscription.trackAlias)
 	if err != nil {
 		return nil, err
 	}
@@ -162,11 +140,11 @@ func (stream SendSubscribeStream) UpdateSubscription(subscription Subscription, 
 	return ts, nil
 }
 
-func (stream SendSubscribeStream) receiveTrackStatus(trackNamespace moqtmessage.TrackNamespace, trackName string, trackAlias moqtmessage.TrackAlias) (*TrackStatus, error) {
+func receiveTrackStatus(qvReader quicvarint.Reader, trackAlias moqtmessage.TrackAlias) (*TrackStatus, error) {
 	/*
 	 * Receive a TRACK_STATUS message
 	 */
-	id, preader, err := moqtmessage.ReadControlMessage(stream.qvReader)
+	id, preader, err := moqtmessage.ReadControlMessage(qvReader)
 	if err != nil {
 		return nil, err
 	}
@@ -246,7 +224,7 @@ func (stream ReceiveSubscribeStream) ReceiveSubscribe() (*Subscription, error) {
 	}, nil
 }
 
-func (stream ReceiveSubscribeStream) AllowSubscribe(subscription Subscription) error {
+func (stream ReceiveSubscribeStream) AllowSubscribe(subscription Subscription) {
 	/***/
 	stream.subscriptions[subscription.subscribeID] = subscription
 } // TODO:
@@ -255,23 +233,6 @@ func (stream ReceiveSubscribeStream) RejectSubscribe(err SubscribeError) {
 	stream.stream.CancelRead(StreamErrorCode(err.SubscribeErrorCode())) // TODO:
 }
 
-func (stream ReceiveSubscribeStream) ReceiveTrackStatusRequest() (*moqtmessage.TrackStatusRequestMessage, error) {
-	// Read the TRACK_STATUS_REQUEST message
-	id, preader, err := moqtmessage.ReadControlMessage(stream.qvReader)
-	if err != nil {
-		return nil, err
-	}
-	if id != moqtmessage.TRACK_STATUS_REQUEST {
-		return nil, ErrUnexpectedMessage
-	}
-	var tsrm moqtmessage.TrackStatusRequestMessage
-	err = tsrm.DeserializePayload(preader)
-	if err != nil {
-		return nil, err
-	}
-
-	return &tsrm, nil
-}
 func (stream ReceiveSubscribeStream) ReceiveSubscribeUpdate() (*Subscription, error) {
 	// Read the SUBSCRIBE_UPDATE message
 	id, preader, err := moqtmessage.ReadControlMessage(stream.qvReader)
@@ -295,20 +256,20 @@ func (stream ReceiveSubscribeStream) ReceiveSubscribeUpdate() (*Subscription, er
 	}, nil
 }
 
-func (stream ReceiveSubscribeStream) PeekMessageID() (moqtmessage.MessageID, error) {
-	peeker := bufio.NewReader(stream.qvReader)
-	b, err := peeker.Peek(1 << 3)
-	if err != nil {
-		return 0, err
-	}
-	qvReader := quicvarint.Reader(bytes.NewReader(b))
-	id, _, err := moqtmessage.ReadControlMessage(qvReader)
-	if err != nil {
-		return 0, err
-	}
+// func (stream ReceiveSubscribeStream) PeekMessageID() (moqtmessage.MessageID, error) {
+// 	peeker := bufio.NewReader(stream.qvReader)
+// 	b, err := peeker.Peek(1 << 3)
+// 	if err != nil {
+// 		return 0, err
+// 	}
+// 	qvReader := quicvarint.Reader(bytes.NewReader(b))
+// 	id, _, err := moqtmessage.ReadControlMessage(qvReader)
+// 	if err != nil {
+// 		return 0, err
+// 	}
 
-	return id, nil
-}
+// 	return id, nil
+// }
 
 type Subscription struct {
 	subscribeID    moqtmessage.SubscribeID

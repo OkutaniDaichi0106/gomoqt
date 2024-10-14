@@ -3,7 +3,6 @@ package moqtransport
 import (
 	"context"
 	"net"
-	"net/url"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/webtransport-go"
@@ -11,13 +10,11 @@ import (
 
 type webtransportConnection struct {
 	conn *webtransport.Session
-	url  url.URL
 }
 
-func NewMOWTConnection(url url.URL, conn *webtransport.Session) Connection {
+func newMOWTConnection(wtconn *webtransport.Session) Connection {
 	return &webtransportConnection{
-		conn: conn,
-		url:  url,
+		conn: wtconn,
 	}
 }
 
@@ -65,8 +62,4 @@ func (conn *webtransportConnection) RemoteAddr() net.Addr {
 }
 func (conn *webtransportConnection) SendDatagram(b []byte) error {
 	return conn.conn.SendDatagram(b)
-}
-
-func (wrapper *webtransportConnection) URL() url.URL {
-	return wrapper.url
 }

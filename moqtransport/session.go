@@ -25,20 +25,20 @@ type Session struct {
 }
 
 const (
-	SETUP_STREAM     StreamType = 0x0
-	ANNOUNCE_STREAM  StreamType = 0x1
-	SUBSCRIBE_STREAM StreamType = 0x2
+	setup_stream    StreamType = 0x0
+	announce_stream StreamType = 0x1
+	subscibe_stream StreamType = 0x2
 )
 
 func (sess Session) OpenAnnounceStream(stream Stream) (*ReceiveAnnounceStream, error) {
 	// Send the Stream Type ID and notify the Stream Type is the Announce
-	_, err := stream.Write([]byte{byte(ANNOUNCE_STREAM)})
+	_, err := stream.Write([]byte{byte(announce_stream)})
 	if err != nil {
 		return nil, err
 	}
 
 	// Set the Stream Type to the Announce
-	stream.SetType(ANNOUNCE_STREAM)
+	stream.SetType(announce_stream)
 
 	return &ReceiveAnnounceStream{
 		stream:   stream,
@@ -57,7 +57,7 @@ func (sess Session) AcceptAnnounceStream(stream Stream, ctx context.Context) (*S
 		return nil, err
 	}
 	// Verify the Stream Type ID
-	if StreamType(b[0]) != ANNOUNCE_STREAM {
+	if StreamType(b[0]) != announce_stream {
 		return nil, ErrUnexpectedStreamType
 	}
 	// Read and advance by 1 byte
@@ -68,7 +68,7 @@ func (sess Session) AcceptAnnounceStream(stream Stream, ctx context.Context) (*S
 	}
 
 	// Set the Stream Type to the Announce
-	stream.SetType(ANNOUNCE_STREAM)
+	stream.SetType(announce_stream)
 
 	return &SendAnnounceStream{
 		stream:   stream,
@@ -78,13 +78,13 @@ func (sess Session) AcceptAnnounceStream(stream Stream, ctx context.Context) (*S
 
 func (sess Session) OpenSubscribeStream(stream Stream) (*SendSubscribeStream, error) {
 	// Send the Stream Type ID and notify the Stream Type is the Subscribe
-	_, err := stream.Write([]byte{byte(SUBSCRIBE_STREAM)})
+	_, err := stream.Write([]byte{byte(subscibe_stream)})
 	if err != nil {
 		return nil, err
 	}
 
 	// Set the Stream Type to the Subscribe
-	stream.SetType(ANNOUNCE_STREAM)
+	stream.SetType(announce_stream)
 
 	return &SendSubscribeStream{
 		stream:           stream,
@@ -106,7 +106,7 @@ func (sess Session) AcceptSubscribeStream(stream Stream, ctx context.Context) (*
 	}
 
 	// Set the Stream Type to the Subscribe
-	stream.SetType(SUBSCRIBE_STREAM)
+	stream.SetType(subscibe_stream)
 
 	return &ReceiveSubscribeStream{
 		stream:   stream,

@@ -334,12 +334,12 @@ func acceptSetupStream(stream Stream) error {
 		return err
 	}
 	// verify the Stream Type ID
-	if StreamType(num) != SETUP_STREAM {
+	if StreamType(num) != setup_stream {
 		log.Println(stream.Close())
 		return ErrUnexpectedStreamType
 	}
 	// Set the Stream Type to the Setup
-	stream.SetType(SETUP_STREAM)
+	stream.SetType(setup_stream)
 
 	return nil
 }

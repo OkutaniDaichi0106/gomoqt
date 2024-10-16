@@ -40,7 +40,7 @@ func (p *Publisher) setupMORQ(conn Connection, path string) (*Session, error) {
 	/*
 	 * Set the Stream Type to the Setup
 	 */
-	streamType := SETUP_STREAM
+	streamType := setup_stream
 	// Send the Stream Type
 	_, err = stream.Write([]byte{byte(streamType)})
 	if err != nil {
@@ -126,7 +126,7 @@ func (p *Publisher) setupMOWT(conn Connection) (*Session, error) {
 	/*
 	 * Set the Stream Type to the Setup
 	 */
-	streamType := SETUP_STREAM
+	streamType := setup_stream
 	// Send the Stream Type
 	_, err = stream.Write([]byte{byte(streamType)})
 	if err != nil {

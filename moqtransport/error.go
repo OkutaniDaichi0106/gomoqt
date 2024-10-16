@@ -8,14 +8,14 @@ import "github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
 type AnnounceErrorCode uint32
 
 const (
-	ANNOUNCE_INTERNAL_ERROR   AnnounceErrorCode = 0x0
-	DUPLICATE_TRACK_NAMESPACE AnnounceErrorCode = 0x1
+	announce_internal_error            AnnounceErrorCode = 0x0
+	announce_duplicate_track_namespace AnnounceErrorCode = 0x1
 )
 
 var (
 	ErrDuplicatedTrackNamespace = DefaultAnnounceError{
 		reason: "duplicate track namespace",
-		code:   DUPLICATE_TRACK_NAMESPACE,
+		code:   announce_duplicate_track_namespace,
 	}
 )
 
@@ -52,19 +52,19 @@ func (InternalError) Error() string {
 }
 
 func (InternalError) AnnounceErrorCode() AnnounceErrorCode {
-	return ANNOUNCE_INTERNAL_ERROR
+	return announce_internal_error
 }
 
 func (InternalError) SubscribeErrorCode() SubscribeErrorCode {
-	return SUBSCRIBE_INTERNAL_ERROR
+	return subscribe_internal_error
 }
 
 func (InternalError) SubscribeDoneErrorCode() SubscribeDoneStatusCode {
-	return SUBSCRIBE_DONE_INTERNAL_ERROR
+	return subscribe_done_internal_error
 }
 
 func (InternalError) TerminateErrorCode() TerminateErrorCode {
-	return TERMINATE_INTERNAL_ERROR
+	return terminate_internal_error
 }
 
 var ErrInternalError = InternalError{}
@@ -83,15 +83,15 @@ func (UnauthorizedError) Error() string {
 }
 
 func (UnauthorizedError) SubscribeErrorCode() SubscribeErrorCode {
-	return SUBSCRIBE_UNAUTHORIZED
+	return subscribe_unauthorized
 }
 
 func (UnauthorizedError) SubscribeDoneErrorCode() SubscribeDoneStatusCode {
-	return SUBSCRIBE_DONE_UNAUTHORIZED
+	return subscribe_done_unauthorized
 }
 
 func (UnauthorizedError) TerminateErrorCode() TerminateErrorCode {
-	return TERMINATE_UNAUTHORIZED
+	return terminate_unauthorized
 }
 
 var ErrUnauthorizedError = InternalError{}
@@ -102,12 +102,12 @@ var ErrUnauthorizedError = InternalError{}
 type SubscribeErrorCode uint32
 
 const (
-	SUBSCRIBE_INTERNAL_ERROR       SubscribeErrorCode = 0x00
-	SUBSCRIBE_INVALID_RANGE        SubscribeErrorCode = 0x01
-	SUBSCRIBE_RETRY_TRACK_ALIAS    SubscribeErrorCode = 0x02
-	SUBSCRIBE_TRACK_DOES_NOT_EXIST SubscribeErrorCode = 0x03
-	SUBSCRIBE_UNAUTHORIZED         SubscribeErrorCode = 0x04
-	SUBSCRIBE_TIMEOUT              SubscribeErrorCode = 0x05
+	subscribe_internal_error       SubscribeErrorCode = 0x00
+	subscribe_invlid_range         SubscribeErrorCode = 0x01
+	subscribe_retry_track_alias    SubscribeErrorCode = 0x02
+	subscribe_track_does_not_exist SubscribeErrorCode = 0x03
+	subscribe_unauthorized         SubscribeErrorCode = 0x04
+	subscribe_timeout              SubscribeErrorCode = 0x05
 )
 
 /*
@@ -115,17 +115,17 @@ const (
  */
 var (
 	ErrDefaultInvalidRange = DefaultSubscribeError{
-		code:   SUBSCRIBE_INVALID_RANGE,
+		code:   subscribe_invlid_range,
 		reason: "invalid range",
 	}
 
 	ErrTrackDoesNotExist = DefaultSubscribeError{
-		code:   SUBSCRIBE_TRACK_DOES_NOT_EXIST,
+		code:   subscribe_track_does_not_exist,
 		reason: "track does not exist",
 	}
 
 	ErrSubscribeTimeout = DefaultSubscribeError{
-		code:   SUBSCRIBE_TIMEOUT,
+		code:   subscribe_timeout,
 		reason: "time out",
 	}
 )
@@ -158,7 +158,7 @@ func (err RetryTrackAliasError) Error() string {
 }
 
 func (err RetryTrackAliasError) SubscribeErrorCode() SubscribeErrorCode {
-	return SUBSCRIBE_RETRY_TRACK_ALIAS
+	return subscribe_retry_track_alias
 }
 
 func (err RetryTrackAliasError) TrackAlias() moqtmessage.TrackAlias {
@@ -171,13 +171,13 @@ func (err RetryTrackAliasError) TrackAlias() moqtmessage.TrackAlias {
 type SubscribeDoneStatusCode uint32
 
 const (
-	SUBSCRIBE_DONE_UNSUBSCRIBED       SubscribeDoneStatusCode = 0x0
-	SUBSCRIBE_DONE_INTERNAL_ERROR     SubscribeDoneStatusCode = 0x1
-	SUBSCRIBE_DONE_UNAUTHORIZED       SubscribeDoneStatusCode = 0x2
-	SUBSCRIBE_DONE_TRACK_ENDED        SubscribeDoneStatusCode = 0x3
-	SUBSCRIBE_DONE_SUBSCRIPTION_ENDED SubscribeDoneStatusCode = 0x4
-	SUBSCRIBE_DONE_GOING_AWAY         SubscribeDoneStatusCode = 0x5
-	SUBSCRIBE_DONE_EXPIRED            SubscribeDoneStatusCode = 0x6
+	subscribed_done_unsubscribed      SubscribeDoneStatusCode = 0x0
+	subscribe_done_internal_error     SubscribeDoneStatusCode = 0x1
+	subscribe_done_unauthorized       SubscribeDoneStatusCode = 0x2
+	subscribe_done_track_ended        SubscribeDoneStatusCode = 0x3
+	subscribe_done_subscription_ended SubscribeDoneStatusCode = 0x4
+	subscribe_done_going_away         SubscribeDoneStatusCode = 0x5
+	subscribe_done_expired            SubscribeDoneStatusCode = 0x6
 )
 
 type SubscribeDoneError interface {
@@ -187,7 +187,7 @@ type SubscribeDoneError interface {
 
 var (
 	ErrSubscribeExpired = DefaultSubscribeDoneError{
-		code:   SUBSCRIBE_DONE_EXPIRED,
+		code:   subscribe_done_expired,
 		reason: "expired",
 	}
 )
@@ -222,19 +222,19 @@ var _ SubscribeDoneStatus = (*DefaultSubscribeDoneStatus)(nil)
 
 var (
 	StatusUnsubscribed = DefaultSubscribeDoneStatus{
-		code:   SUBSCRIBE_DONE_UNSUBSCRIBED,
+		code:   subscribed_done_unsubscribed,
 		reason: "unsubscribed",
 	}
 	StatusEndedTrack = DefaultSubscribeDoneStatus{
-		code:   SUBSCRIBE_DONE_TRACK_ENDED,
+		code:   subscribe_done_track_ended,
 		reason: "track ended",
 	}
 	StatusEndedSubscription = DefaultSubscribeDoneStatus{
-		code:   SUBSCRIBE_DONE_SUBSCRIPTION_ENDED,
+		code:   subscribe_done_subscription_ended,
 		reason: "subsription ended",
 	}
 	StatusGoingAway = DefaultSubscribeDoneStatus{
-		code:   SUBSCRIBE_DONE_GOING_AWAY,
+		code:   subscribe_done_going_away,
 		reason: "going away",
 	}
 )
@@ -299,28 +299,28 @@ type TerminateErrorCode int
 
 var (
 	NoTerminateErr = DefaultTerminateError{
-		code:   TERMINATE_NO_ERROR,
+		code:   terminate_no_error,
 		reason: "no error",
 	}
 
 	ErrProtocolViolation = DefaultTerminateError{
-		code:   TERMINATE_PROTOCOL_VIOLATION,
+		code:   terminate_protocol_violation,
 		reason: "protocol violation",
 	}
 	ErrDuplicatedTrackAlias = DefaultTerminateError{
-		code:   TERMINATE_DUPLICATE_TRACK_ALIAS,
+		code:   terminate_duplicate_track_alias,
 		reason: "duplicate track alias",
 	}
 	ErrParameterLengthMismatch = DefaultTerminateError{
-		code:   TERMINATE_PARAMETER_LENGTH_MISMATCH,
+		code:   terminate_parameter_length_mismatch,
 		reason: "parameter length mismatch",
 	}
 	ErrTooManySubscribes = DefaultTerminateError{
-		code:   TERMINATE_TOO_MANY_SUBSCRIBES,
+		code:   terminate_too_many_subscribes,
 		reason: "too many subscribes",
 	}
 	ErrGoAwayTimeout = DefaultTerminateError{
-		code:   TERMINATE_GOAWAY_TIMEOUT,
+		code:   terminate_goaway_timeout,
 		reason: "goaway timeout",
 	}
 )
@@ -329,14 +329,14 @@ var (
  *
  */
 const (
-	TERMINATE_NO_ERROR                  TerminateErrorCode = 0x0
-	TERMINATE_INTERNAL_ERROR            TerminateErrorCode = 0x1
-	TERMINATE_UNAUTHORIZED              TerminateErrorCode = 0x2
-	TERMINATE_PROTOCOL_VIOLATION        TerminateErrorCode = 0x3
-	TERMINATE_DUPLICATE_TRACK_ALIAS     TerminateErrorCode = 0x4
-	TERMINATE_PARAMETER_LENGTH_MISMATCH TerminateErrorCode = 0x5
-	TERMINATE_TOO_MANY_SUBSCRIBES       TerminateErrorCode = 0x6
-	TERMINATE_GOAWAY_TIMEOUT            TerminateErrorCode = 0x10
+	terminate_no_error                  TerminateErrorCode = 0x0
+	terminate_internal_error            TerminateErrorCode = 0x1
+	terminate_unauthorized              TerminateErrorCode = 0x2
+	terminate_protocol_violation        TerminateErrorCode = 0x3
+	terminate_duplicate_track_alias     TerminateErrorCode = 0x4
+	terminate_parameter_length_mismatch TerminateErrorCode = 0x5
+	terminate_too_many_subscribes       TerminateErrorCode = 0x6
+	terminate_goaway_timeout            TerminateErrorCode = 0x10
 )
 
 type TerminateError interface {

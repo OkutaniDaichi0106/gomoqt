@@ -191,11 +191,11 @@ func (p Publisher) SendDatagram(group moqtmessage.GroupMessage, payload []byte) 
 	b = append(b, payload...)
 
 	// Send the payload as a datagram
-	return p.Connection.SendDatagram(b)
+	return p.conn.SendDatagram(b)
 }
 
 func (p Publisher) OpenDataStream(group moqtmessage.GroupMessage) (SendStream, error) {
-	stream, err := p.Connection.OpenUniStream()
+	stream, err := p.conn.OpenUniStream()
 	if err != nil {
 		return nil, err
 	}

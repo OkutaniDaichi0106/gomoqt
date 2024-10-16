@@ -28,6 +28,10 @@ func main() {
 	 */
 	// Dial
 	qconn, err := quic.DialAddrEarly(context.Background(), "0.0.0.0:8444", &tls.Config{}, &quic.Config{})
+	if err != nil {
+		log.Println(err)
+		return
+	}
 	//
 	morqSess, err := publisher.SetupMORQ(qconn, "/rawquic")
 	if err != nil {
@@ -35,4 +39,7 @@ func main() {
 		return
 	}
 
+	HandleSession(morqSess)
 }
+
+func HandleSession(morqSess *moqtransport.Session) {}

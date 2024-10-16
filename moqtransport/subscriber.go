@@ -34,6 +34,7 @@ func (s *Subscriber) setupMORQ(conn Connection, path string) (*Session, error) {
 	/*
 	 * Open an bidirectional stream
 	 */
+	s.conn = conn
 	stream, err := s.conn.OpenStream()
 	if err != nil {
 		return nil, err

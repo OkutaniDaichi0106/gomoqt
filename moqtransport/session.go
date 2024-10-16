@@ -11,7 +11,7 @@ import (
 )
 
 type Session struct {
-	Connection
+	Connection Connection
 
 	setupStream Stream
 

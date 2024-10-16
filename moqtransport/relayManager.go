@@ -212,12 +212,8 @@ func (node *trackNamespaceNode) newTrackNameNode(trackName string) *trackNameNod
 	defer node.mu.Unlock()
 
 	node.tracks[trackName] = &trackNameNode{
-		value: trackName,
-		trackStatus: &TrackStatus{
-			contentExists:   false,
-			largestGroupID:  0,
-			largestObjectID: 0,
-		},
+		value:       trackName,
+		trackStatus: &TrackStatus{},
 	}
 
 	return node.tracks[trackName]

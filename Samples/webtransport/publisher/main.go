@@ -30,6 +30,10 @@ func main() {
 	wtd := webtransport.Dialer{}
 	var headers http.Header
 	_, wtconn, err := wtd.Dial(context.Background(), "https://localhost:8443/webtransport", headers)
+	if err != nil {
+		log.Println(err)
+		return
+	}
 	//
 	mowtSess, err := publisher.SetupMOWT(wtconn)
 	if err != nil {
@@ -37,4 +41,7 @@ func main() {
 		return
 	}
 
+	HandleSession(mowtSess)
 }
+
+func HandleSession(mowtSess *moqtransport.Session) {}

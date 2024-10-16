@@ -4,62 +4,84 @@ import (
 	"context"
 	"crypto/tls"
 	"log"
-	"net/http"
-	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
 	"github.com/quic-go/quic-go"
-	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/quic-go/quicvarint"
 	"github.com/quic-go/webtransport-go"
 )
 
 type Server struct {
-	Addr string
-
-	Port int
-
+	/*
+	 * TLS configuration
+	 */
 	TLSConfig *tls.Config
 
+	/*
+	 * QUIC configuration
+	 */
 	QUICConfig *quic.Config
 
+	// Versions supported by the moqt server
 	SupportedVersions []moqtmessage.Version
 
-	WTConfig struct {
-		ReorderingTimeout time.Duration
-
-		CheckOrigin func(r *http.Request) bool
-
-		EnableDatagrams bool
-	}
+	QUICHandler QUICHandler
 
 	SetupHijacker func(moqtmessage.Parameters) (moqtmessage.Parameters, error)
-
-	wts *webtransport.Server
 }
 
-func (s Server) WebtransportUpgrade(w http.ResponseWriter, r *http.Request) (*webtransport.Session, error) {
-	if s.wts == nil {
-		s.wts = &webtransport.Server{
-			H3: http3.Server{
-				Addr:            s.Addr,
-				Port:            s.Port,
-				TLSConfig:       s.TLSConfig,
-				QUICConfig:      s.QUICConfig,
-				EnableDatagrams: s.WTConfig.EnableDatagrams,
-			},
-			ReorderingTimeout: s.WTConfig.ReorderingTimeout,
-			CheckOrigin:       s.WTConfig.CheckOrigin,
-		}
+func (s Server) ListenAndServeQUIC(addr string, tlsConfig *tls.Config, quicConfig *quic.Config) error {
+	if s.TLSConfig != nil {
+		log.Println("The TLS configuration was overwrited")
+		tlsConfig = s.TLSConfig
+	}
+	if s.QUICConfig != nil {
+		log.Println("The QUIC configuration was overwrited")
+		quicConfig = s.QUICConfig
 	}
 
-	wtsess, err := s.wts.Upgrade(w, r)
-
+	ln, err := quic.ListenAddrEarly(addr, tlsConfig, quicConfig)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return wtsess, nil
+	go func() {
+		for {
+			conn, err := ln.Accept(context.Background()) // TODO:
+			if err != nil {
+				log.Println(err)
+				return
+			}
+
+			go func(conn quic.Connection) {
+				morqSess, path, err := s.SetupMORQ(conn)
+				if err != nil {
+					return
+				}
+
+				op := s.QUICHandler.HandlePath(path)
+				if op == nil {
+					return
+				}
+				op(morqSess)
+			}(conn)
+		}
+	}()
+
+	return nil
+}
+
+func (s Server) ListenAndServeWT(wts *webtransport.Server) error {
+	if s.TLSConfig != nil && wts.H3.TLSConfig != nil {
+		log.Println("The TLS configuration was overwrited")
+		wts.H3.TLSConfig = s.TLSConfig
+	}
+	if s.QUICConfig != nil && wts.H3.QUICConfig != nil {
+		log.Println("The QUIC configuration was overwrited")
+		wts.H3.QUICConfig = s.QUICConfig
+	}
+
+	return wts.ListenAndServe()
 }
 
 func (s Server) SetupMORQ(qconn quic.Connection) (*Session, string, error) {
@@ -320,4 +342,22 @@ func acceptSetupStream(stream Stream) error {
 	stream.SetType(SETUP_STREAM)
 
 	return nil
+}
+
+func (s *Server) CertFiles(certFile, keyFile string) error {
+	var err error
+	certs := make([]tls.Certificate, 1)
+	certs[0], err = tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return err
+	}
+	s.TLSConfig = &tls.Config{
+		Certificates: certs,
+	}
+
+	return nil
+}
+
+type QUICHandler interface {
+	HandlePath(path string) func(*Session)
 }

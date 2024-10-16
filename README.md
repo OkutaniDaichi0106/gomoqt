@@ -1,5 +1,5 @@
 # gomoqt  
-gomoqt is an implementation of Media over QUIC Transport in Golang.  
+gomoqt is an original implementation of Media over QUIC refering to MOQTransport and MOQTransfork in Golang.  
 [document](https://www.notion.so/gomoqt-116e4265c81c80f190aacad73bfdae5a?pvs=4)
 
 ## Implemented sections

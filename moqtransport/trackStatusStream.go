@@ -48,7 +48,7 @@ type SendTrackStatusStream struct {
 }
 
 func (stream SendTrackStatusStream) ReceiveTrackStatusRequest() (*moqtmessage.TrackStatusRequestMessage, error) {
-	// Read the TRACK_STATUS_REQUEST message
+	// Receive a TRACK_STATUS_REQUEST message
 	id, preader, err := moqtmessage.ReadControlMessage(stream.qvReader)
 	if err != nil {
 		return nil, err
@@ -63,4 +63,21 @@ func (stream SendTrackStatusStream) ReceiveTrackStatusRequest() (*moqtmessage.Tr
 	}
 
 	return &tsrm, nil
+}
+
+func (stream SendTrackStatusStream) SendTrackStatus(request moqtmessage.TrackStatusRequestMessage, ts TrackStatus) error {
+	tsm := moqtmessage.TrackStatusMessage{
+		TrackAlias:    request.TrackAlias,
+		Code:          ts.Code,
+		LatestGroupID: ts.LatestGroupID,
+		GroupOrder:    ts.GroupOrder,
+		GroupExpires:  ts.GroupExpires,
+	}
+
+	_, err := stream.stream.Write(tsm.Serialize())
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

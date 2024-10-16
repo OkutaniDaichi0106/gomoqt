@@ -178,9 +178,9 @@ func (stream SendSubscribeStream) CancelSubscribe(err SubscribeError) {
 }
 
 type ReceiveSubscribeStream struct {
-	stream        Stream
-	qvReader      quicvarint.Reader
-	subscriptions map[moqtmessage.SubscribeID]Subscription
+	stream       Stream
+	qvReader     quicvarint.Reader
+	subscription Subscription
 }
 
 func (stream ReceiveSubscribeStream) ReceiveSubscribe() (*Subscription, error) {
@@ -224,10 +224,30 @@ func (stream ReceiveSubscribeStream) ReceiveSubscribe() (*Subscription, error) {
 	}, nil
 }
 
-func (stream ReceiveSubscribeStream) AllowSubscribe(subscription Subscription) {
-	/***/
-	stream.subscriptions[subscription.subscribeID] = subscription
-} // TODO:
+func (stream *ReceiveSubscribeStream) AllowSubscribe(subscription Subscription, trackStatus TrackStatus) error {
+	/*
+	 * Register the subscription
+	 */
+	stream.subscription = subscription
+
+	/*
+	 * Send a TRACK_STATUS message
+	 */
+	tsm := moqtmessage.TrackStatusMessage{
+		TrackAlias:    subscription.trackAlias,
+		Code:          trackStatus.Code,
+		LatestGroupID: trackStatus.LatestGroupID,
+		GroupOrder:    trackStatus.GroupOrder,
+		GroupExpires:  trackStatus.GroupExpires,
+	}
+
+	_, err := stream.stream.Write(tsm.Serialize())
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
 
 func (stream ReceiveSubscribeStream) RejectSubscribe(err SubscribeError) {
 	stream.stream.CancelRead(StreamErrorCode(err.SubscribeErrorCode())) // TODO:
@@ -255,21 +275,6 @@ func (stream ReceiveSubscribeStream) ReceiveSubscribeUpdate() (*Subscription, er
 		config:      config,
 	}, nil
 }
-
-// func (stream ReceiveSubscribeStream) PeekMessageID() (moqtmessage.MessageID, error) {
-// 	peeker := bufio.NewReader(stream.qvReader)
-// 	b, err := peeker.Peek(1 << 3)
-// 	if err != nil {
-// 		return 0, err
-// 	}
-// 	qvReader := quicvarint.Reader(bytes.NewReader(b))
-// 	id, _, err := moqtmessage.ReadControlMessage(qvReader)
-// 	if err != nil {
-// 		return 0, err
-// 	}
-
-// 	return id, nil
-// }
 
 type Subscription struct {
 	subscribeID    moqtmessage.SubscribeID

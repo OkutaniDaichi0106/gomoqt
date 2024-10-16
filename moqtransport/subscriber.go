@@ -34,8 +34,8 @@ func (s *Subscriber) setupMORQ(conn Connection, path string) (*Session, error) {
 	/*
 	 * Open an bidirectional stream
 	 */
-	s.conn = conn
-	stream, err := s.conn.OpenStream()
+	s.Connection = conn
+	stream, err := s.Connection.OpenStream()
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +75,7 @@ func (s Subscriber) ReceiveDatagram(ctx context.Context) (*moqtmessage.GroupMess
 	/*
 	 * Receive a datagram
 	 */
-	b, err := s.conn.ReceiveDatagram(ctx)
+	b, err := s.Connection.ReceiveDatagram(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -98,7 +98,7 @@ func (s Subscriber) AcceptDataStream(ctx context.Context) (*moqtmessage.GroupMes
 	/*
 	 * Accept an unidirectional stream
 	 */
-	stream, err := s.conn.AcceptUniStream(ctx)
+	stream, err := s.Connection.AcceptUniStream(ctx)
 	if err != nil {
 		return nil, nil, err
 	}

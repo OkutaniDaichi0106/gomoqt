@@ -1,6 +1,7 @@
 package moqtmessage
 
 import (
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/internal/protocol"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -8,7 +9,7 @@ type ClientSetupMessage struct {
 	/*
 	 * SupportedVersions supported by the client
 	 */
-	SupportedVersions []Version
+	SupportedVersions []protocol.Version
 
 	/*
 	 * Setup Parameters
@@ -32,8 +33,7 @@ func (cs ClientSetupMessage) Serialize() []byte {
 
 	// Append the supported versions
 	p = quicvarint.Append(p, uint64(len(cs.SupportedVersions)))
-	var version Version
-	for _, version = range cs.SupportedVersions {
+	for _, version := range cs.SupportedVersions {
 		p = quicvarint.Append(p, uint64(version))
 	}
 
@@ -69,7 +69,7 @@ func (cs *ClientSetupMessage) DeserializePayload(r quicvarint.Reader) error {
 		if err != nil {
 			return err
 		}
-		cs.SupportedVersions = append(cs.SupportedVersions, Version(num))
+		cs.SupportedVersions = append(cs.SupportedVersions, protocol.Version(num))
 	}
 
 	// Get Parameters

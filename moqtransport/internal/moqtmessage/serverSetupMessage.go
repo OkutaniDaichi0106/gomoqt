@@ -1,6 +1,7 @@
 package moqtmessage
 
 import (
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/internal/protocol"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -8,7 +9,7 @@ type ServerSetupMessage struct {
 	/*
 	 * Versions selected by the server
 	 */
-	SelectedVersion Version
+	SelectedVersion protocol.Version
 
 	/*
 	 * Setup Parameters
@@ -61,7 +62,7 @@ func (ss *ServerSetupMessage) DeserializePayload(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	ss.SelectedVersion = Version(num)
+	ss.SelectedVersion = protocol.Version(num)
 
 	err = ss.Parameters.Deserialize(r)
 

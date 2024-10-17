@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqtransport"
-	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
 	"github.com/quic-go/webtransport-go"
 )
 
@@ -15,10 +14,10 @@ const (
 )
 
 func main() {
-	// Set subscriber
+	// Initialize a Subscriber
 	publisher := moqtransport.Publisher{
 		Client: moqtransport.Client{
-			SupportedVersions: []moqtmessage.Version{moqtmessage.FoalkDraft01},
+			SupportedVersions: []moqtransport.Version{moqtransport.FoalkDraft01},
 		},
 		MaxSubscribeID: 1 << 4,
 	}

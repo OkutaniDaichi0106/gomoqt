@@ -4,7 +4,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/internal/moqtmessage"
 )
 
 type Relay struct {

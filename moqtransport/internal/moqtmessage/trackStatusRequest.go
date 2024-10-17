@@ -50,7 +50,7 @@ func (tsr TrackStatusRequestMessage) Serialize() []byte {
 	p := make([]byte, 0, 1<<10)
 
 	// Append the Track Namespace
-	p = tsr.TrackNamespace.Append(p)
+	p = AppendTrackNamespace(p, tsr.TrackNamespace)
 
 	// Append the Track Name
 	p = quicvarint.Append(p, uint64(len(tsr.TrackName)))
@@ -76,8 +76,7 @@ func (tsr TrackStatusRequestMessage) Serialize() []byte {
 
 func (tsr *TrackStatusRequestMessage) DeserializePayload(r quicvarint.Reader) error {
 	// Get a Track Namespace
-	var tns TrackNamespace
-	err := tns.Deserialize(r)
+	tns, err := ReadTrackNamespace(r)
 	if err != nil {
 		return err
 	}

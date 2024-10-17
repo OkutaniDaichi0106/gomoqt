@@ -5,7 +5,7 @@ import (
 	"context"
 	"io"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/internal/moqtmessage"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -55,7 +55,7 @@ func (s *Subscriber) setupMORQ(conn Connection, path string) (*Session, error) {
 	 * Send a CLIENT_SETUP message
 	 */
 	csm := moqtmessage.ClientSetupMessage{
-		SupportedVersions: s.SupportedVersions,
+		SupportedVersions: getProtocolVersions(s.SupportedVersions),
 		Parameters:        make(moqtmessage.Parameters),
 	}
 	// Add the ROLE parameter

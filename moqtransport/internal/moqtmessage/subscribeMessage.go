@@ -75,7 +75,7 @@ func (s SubscribeMessage) Serialize() []byte {
 	p = quicvarint.Append(p, uint64(s.TrackAlias))
 
 	// Append the Track Namespace
-	p = s.TrackNamespace.Append(p)
+	p = AppendTrackNamespace(p, s.TrackNamespace)
 
 	// Append the Track Name
 	p = quicvarint.Append(p, uint64(len(s.TrackName)))
@@ -127,8 +127,7 @@ func (s *SubscribeMessage) DeserializePayload(r quicvarint.Reader) error {
 	s.TrackAlias = TrackAlias(num)
 
 	// Get Track Namespace
-	var tns TrackNamespace
-	err = tns.Deserialize(r)
+	tns, err := ReadTrackNamespace(r)
 	if err != nil {
 		return err
 	}

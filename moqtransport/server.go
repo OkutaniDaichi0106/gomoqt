@@ -5,7 +5,8 @@ import (
 	"crypto/tls"
 	"log"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/internal/moqtmessage"
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/internal/protocol"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/quicvarint"
 	"github.com/quic-go/webtransport-go"
@@ -22,8 +23,10 @@ type Server struct {
 	 */
 	QUICConfig *quic.Config
 
-	// Versions supported by the moqt server
-	SupportedVersions []moqtmessage.Version
+	/*
+	 * MOQT Versions supported by the moqt server
+	 */
+	SupportedVersions []Version
 
 	QUICHandler QUICHandler
 
@@ -164,7 +167,7 @@ func (s Server) setupMORQ(conn Connection) (*Session, string, error) {
 	/*
 	 * Select the latest version supported by both the client and the server
 	 */
-	selectedVersion, err := moqtmessage.SelectLatestVersion(s.SupportedVersions, csm.SupportedVersions)
+	selectedVersion, err := protocol.SelectLatestVersion(getProtocolVersions(s.SupportedVersions), csm.SupportedVersions)
 	if err != nil {
 		return nil, "", err
 	}
@@ -281,7 +284,7 @@ func (s Server) setupMOWT(conn Connection) (*Session, error) {
 	/*
 	 * Select the latest version supported by both the client and the server
 	 */
-	selectedVersion, err := moqtmessage.SelectLatestVersion(s.SupportedVersions, csm.SupportedVersions)
+	selectedVersion, err := protocol.SelectLatestVersion(getProtocolVersions(s.SupportedVersions), csm.SupportedVersions)
 	if err != nil {
 		return nil, err
 	}

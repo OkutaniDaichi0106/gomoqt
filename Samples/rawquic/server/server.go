@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqtransport"
-	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
 
 	"github.com/quic-go/quic-go"
 )
@@ -13,7 +12,7 @@ func main() {
 	moqs := moqtransport.Server{
 		TLSConfig:         &tls.Config{},
 		QUICConfig:        &quic.Config{},
-		SupportedVersions: []moqtmessage.Version{moqtmessage.FoalkDraft01},
+		SupportedVersions: []moqtransport.Version{moqtransport.FoalkDraft01},
 		QUICHandler:       QUICHandler{},
 	}
 

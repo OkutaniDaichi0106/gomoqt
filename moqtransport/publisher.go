@@ -1,7 +1,8 @@
 package moqtransport
 
 import (
-	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/internal/moqtmessage"
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/internal/protocol"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/quicvarint"
 	"github.com/quic-go/webtransport-go"
@@ -52,7 +53,7 @@ func (p *Publisher) setupMORQ(conn Connection, path string) (*Session, error) {
 	 * Send a CLIENT_SETUP message
 	 */
 	csm := moqtmessage.ClientSetupMessage{
-		SupportedVersions: p.SupportedVersions,
+		SupportedVersions: getProtocolVersions(p.SupportedVersions),
 		Parameters:        make(moqtmessage.Parameters),
 	}
 	// Add a role parameter
@@ -86,7 +87,7 @@ func (p *Publisher) setupMORQ(conn Connection, path string) (*Session, error) {
 	}
 
 	// Verify the selected version is valid
-	ok := moqtmessage.ContainVersion(ssm.SelectedVersion, p.SupportedVersions)
+	ok := protocol.ContainVersion(ssm.SelectedVersion, getProtocolVersions(p.SupportedVersions))
 	if !ok {
 		return nil, ErrProtocolViolation
 	}
@@ -138,7 +139,7 @@ func (p *Publisher) setupMOWT(conn Connection) (*Session, error) {
 	 * Send a CLIENT_SETUP message
 	 */
 	csm := moqtmessage.ClientSetupMessage{
-		SupportedVersions: p.SupportedVersions,
+		SupportedVersions: getProtocolVersions(p.SupportedVersions),
 		Parameters:        make(moqtmessage.Parameters),
 	}
 	// Add a role parameter
@@ -167,7 +168,7 @@ func (p *Publisher) setupMOWT(conn Connection) (*Session, error) {
 	}
 
 	// Verify the selected version is valid
-	ok := moqtmessage.ContainVersion(ssm.SelectedVersion, p.SupportedVersions)
+	ok := protocol.ContainVersion(ssm.SelectedVersion, getProtocolVersions(p.SupportedVersions))
 	if !ok {
 		return nil, ErrProtocolViolation
 	}

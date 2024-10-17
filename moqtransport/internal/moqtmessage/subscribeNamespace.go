@@ -26,7 +26,7 @@ func (sn SubscribeNamespaceMessage) Serialize() []byte {
 	p := make([]byte, 0, 1<<8)
 
 	// Append the Track Namespace Prefix
-	p = sn.TrackNamespacePrefix.Append(p)
+	p = AppendTrackNamespacePrefix(p, sn.TrackNamespacePrefix)
 
 	// Append the Parameters
 	p = sn.Parameters.append(p)
@@ -47,9 +47,8 @@ func (sn SubscribeNamespaceMessage) Serialize() []byte {
 }
 
 func (sn *SubscribeNamespaceMessage) DeserializePayload(r quicvarint.Reader) error {
-	// Get Track Namespace Prefix
-	var tnsp TrackNamespacePrefix
-	err := tnsp.Deserialize(r)
+	// Get a Track Namespace Prefix
+	tnsp, err := ReadTrackNamespacePrefix(r)
 	if err != nil {
 		return err
 	}

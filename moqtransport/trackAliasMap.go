@@ -4,7 +4,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/internal/moqtmessage"
 )
 
 type trackAliasMap struct {

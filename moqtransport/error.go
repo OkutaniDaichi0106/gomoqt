@@ -1,6 +1,6 @@
 package moqtransport
 
-import "github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
+import "github.com/OkutaniDaichi0106/gomoqt/moqtransport/internal/moqtmessage"
 
 /*
  * Announce Error

@@ -1,10 +1,10 @@
-package moqtmessage
+package protocol
 
 import (
 	"errors"
 )
 
-type Version int
+type Version uint64
 
 const (
 	FoalkDraft01 Version = 0xffffff01
@@ -53,5 +53,3 @@ func ContainVersion(version Version, versions []Version) bool {
 
 	return false
 }
-
-//var ErrVersionNotFound = errors.New("version not found")

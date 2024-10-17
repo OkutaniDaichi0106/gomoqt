@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqtransport"
-	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
@@ -25,7 +24,7 @@ func main() {
 			Allow0RTT:       true,
 			EnableDatagrams: true,
 		},
-		SupportedVersions: []moqtmessage.Version{moqtmessage.FoalkDraft01},
+		SupportedVersions: []moqtransport.Version{moqtransport.FoalkDraft01},
 	}
 
 	http.HandleFunc("/webtransport", func(w http.ResponseWriter, r *http.Request) {

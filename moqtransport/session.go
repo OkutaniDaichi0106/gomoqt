@@ -6,7 +6,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/internal/moqtmessage"
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/internal/protocol"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -15,7 +16,7 @@ type Session struct {
 
 	setupStream Stream
 
-	selectedVersion moqtmessage.Version
+	selectedVersion protocol.Version
 
 	trackAliasMap *trackAliasMap
 	//

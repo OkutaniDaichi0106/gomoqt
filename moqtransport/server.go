@@ -28,12 +28,10 @@ type Server struct {
 	 */
 	SupportedVersions []Version
 
-	QUICHandler QUICHandler
-
 	SetupHijacker func(moqtmessage.Parameters) (moqtmessage.Parameters, error)
 }
 
-func (s Server) ListenAndServeQUIC(addr string, tlsConfig *tls.Config, quicConfig *quic.Config) error {
+func (s Server) ListenAndServeQUIC(addr string, handler QUICHandler, tlsConfig *tls.Config, quicConfig *quic.Config) error {
 	if s.TLSConfig != nil {
 		log.Println("The TLS configuration was overwrited")
 		tlsConfig = s.TLSConfig
@@ -62,7 +60,7 @@ func (s Server) ListenAndServeQUIC(addr string, tlsConfig *tls.Config, quicConfi
 					return
 				}
 
-				op := s.QUICHandler.HandlePath(path)
+				op := handler.HandlePath(path)
 				if op == nil {
 					return
 				}
@@ -347,7 +345,7 @@ func acceptSetupStream(stream Stream) error {
 	return nil
 }
 
-func (s *Server) CertFiles(certFile, keyFile string) error {
+func (s *Server) SetCertFiles(certFile, keyFile string) error {
 	var err error
 	certs := make([]tls.Certificate, 1)
 	certs[0], err = tls.LoadX509KeyPair(certFile, keyFile)

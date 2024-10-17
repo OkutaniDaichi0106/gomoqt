@@ -16,10 +16,8 @@ const (
 func main() {
 	// Initialize a Subscriber
 	publisher := moqtransport.Publisher{
-		Client: moqtransport.Client{
-			SupportedVersions: []moqtransport.Version{moqtransport.FoalkDraft01},
-		},
-		MaxSubscribeID: 1 << 4,
+		SupportedVersions: []moqtransport.Version{moqtransport.FoalkDraft01},
+		MaxSubscribeID:    1 << 4,
 	}
 
 	/*

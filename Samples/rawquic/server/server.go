@@ -13,10 +13,9 @@ func main() {
 		TLSConfig:         &tls.Config{},
 		QUICConfig:        &quic.Config{},
 		SupportedVersions: []moqtransport.Version{moqtransport.FoalkDraft01},
-		QUICHandler:       QUICHandler{},
 	}
 
-	moqs.ListenAndServeQUIC("0.0.0.0:8444", nil, nil)
+	moqs.ListenAndServeQUIC("0.0.0.0:8444", QUICHandler{}, nil, nil)
 }
 
 type QUICHandler struct{}
@@ -27,9 +26,9 @@ func (QUICHandler) HandlePath(path string) func(*moqtransport.Session) {
 		return func(s *moqtransport.Session) {
 			HandleSession(s)
 		}
+	default:
+		return nil
 	}
-
-	return nil
 }
 
 func HandleSession(*moqtransport.Session) {}

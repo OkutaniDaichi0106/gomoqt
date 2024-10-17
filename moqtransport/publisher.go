@@ -9,8 +9,9 @@ import (
 )
 
 type Publisher struct {
-	Client
-	MaxSubscribeID uint64
+	conn              Connection
+	SupportedVersions []Version
+	MaxSubscribeID    uint64
 }
 
 func (p *Publisher) SetupMORQ(qconn quic.Connection, path string) (*Session, error) {
@@ -103,9 +104,15 @@ func (p *Publisher) setupMORQ(conn Connection, path string) (*Session, error) {
 }
 
 func (p *Publisher) SetupMOWT(wtconn *webtransport.Session) (*Session, error) {
+	// Get a Connection from the webtransport.Session
 	conn := newMOWTConnection(wtconn)
+
+	// Get a Session through a set-up negotiation
 	sess, err := p.setupMOWT(conn)
+
+	// Handle any error
 	if err != nil {
+		// Terminate if the error is a Terminate Error
 		if terr, ok := err.(TerminateError); ok {
 			wtconn.CloseWithError(webtransport.SessionErrorCode(terr.TerminateErrorCode()), terr.Error())
 		}

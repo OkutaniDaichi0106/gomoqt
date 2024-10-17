@@ -38,7 +38,7 @@ func (cs ClientSetupMessage) Serialize() []byte {
 	}
 
 	// Append the parameters
-	p = cs.Parameters.append(p)
+	p = AppendParameters(p, cs.Parameters)
 
 	/*
 	 * Serialize the whole data
@@ -73,7 +73,7 @@ func (cs *ClientSetupMessage) DeserializePayload(r quicvarint.Reader) error {
 	}
 
 	// Get Parameters
-	err = cs.Parameters.Deserialize(r)
+	cs.Parameters, err = ReadParameters(r)
 	if err != nil {
 		return err
 	}

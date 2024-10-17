@@ -94,7 +94,7 @@ func (s SubscribeMessage) Serialize() []byte {
 	p = quicvarint.Append(p, s.MinGroupSequence)
 
 	// Append the Subscribe Update Priority
-	p = s.Parameters.append(p)
+	p = AppendParameters(p, s.Parameters)
 
 	/*
 	 * Serialize the whole message
@@ -177,7 +177,7 @@ func (s *SubscribeMessage) DeserializePayload(r quicvarint.Reader) error {
 	s.MaxGroupSequence = num
 
 	// Get Subscribe Update Parameters
-	err = s.Parameters.Deserialize(r)
+	s.Parameters, err = ReadParameters(r)
 	if err != nil {
 		return err
 	}

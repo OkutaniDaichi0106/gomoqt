@@ -39,7 +39,7 @@ func (a AnnounceMessage) Serialize() []byte {
 	p = AppendTrackNamespace(p, a.TrackNamespace)
 
 	// Append the Parameters
-	p = a.Parameters.append(p)
+	p = AppendParameters(p, a.Parameters)
 
 	/*
 	 * Serialize the whole message
@@ -64,7 +64,7 @@ func (a *AnnounceMessage) DeserializePayload(r quicvarint.Reader) error {
 
 	a.TrackNamespace = tns
 
-	err = a.Parameters.Deserialize(r)
+	a.Parameters, err = ReadParameters(r)
 	if err != nil {
 		return err
 	}

@@ -37,7 +37,7 @@ func (ss ServerSetupMessage) Serialize() []byte {
 	p = quicvarint.Append(p, uint64(ss.SelectedVersion))
 
 	// Append the parameters
-	p = ss.Parameters.append(p)
+	p = AppendParameters(p, ss.Parameters)
 
 	/*
 	 * Serialize the whole message
@@ -64,8 +64,7 @@ func (ss *ServerSetupMessage) DeserializePayload(r quicvarint.Reader) error {
 	}
 	ss.SelectedVersion = protocol.Version(num)
 
-	err = ss.Parameters.Deserialize(r)
-
+	ss.Parameters, err = ReadParameters(r)
 	if err != nil {
 		return err
 	}

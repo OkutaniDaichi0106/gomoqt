@@ -48,7 +48,7 @@ func (su SubscribeUpdateMessage) Serialize() []byte {
 	p = quicvarint.Append(p, uint64(su.MaxGroupNumber))
 
 	// Append the Subscribe Update Parameters
-	p = su.Parameters.append(p)
+	p = AppendParameters(p, su.Parameters)
 
 	/*
 	 * Serialize the whole message
@@ -99,7 +99,7 @@ func (su *SubscribeUpdateMessage) DeserializePayload(r quicvarint.Reader) error 
 	su.SubscriberPriority = SubscriberPriority(priorityBuf[0])
 
 	// Get Subscribe Update Parameters
-	err = su.Parameters.Deserialize(r)
+	su.Parameters, err = ReadParameters(r)
 	if err != nil {
 		return err
 	}

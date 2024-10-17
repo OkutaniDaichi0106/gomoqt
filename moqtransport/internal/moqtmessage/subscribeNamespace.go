@@ -29,7 +29,7 @@ func (sn SubscribeNamespaceMessage) Serialize() []byte {
 	p = AppendTrackNamespacePrefix(p, sn.TrackNamespacePrefix)
 
 	// Append the Parameters
-	p = sn.Parameters.append(p)
+	p = AppendParameters(p, sn.Parameters)
 
 	/*
 	 * Serialize the whole message
@@ -55,7 +55,7 @@ func (sn *SubscribeNamespaceMessage) DeserializePayload(r quicvarint.Reader) err
 	sn.TrackNamespacePrefix = tnsp
 
 	// Get Parameters
-	err = sn.Parameters.Deserialize(r)
+	sn.Parameters, err = ReadParameters(r)
 	if err != nil {
 		return err
 	}

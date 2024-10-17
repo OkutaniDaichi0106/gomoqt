@@ -30,6 +30,7 @@ func (p *Publisher) SetupMORQ(qconn quic.Connection, path string) (*Session, err
 
 	return sess, nil
 }
+
 func (p *Publisher) setupMORQ(conn Connection, path string) (*Session, error) {
 	/*
 	 * Open a bidirectional setupStream
@@ -124,7 +125,7 @@ func (p *Publisher) SetupMOWT(wtconn *webtransport.Session) (*Session, error) {
 
 func (p *Publisher) setupMOWT(conn Connection) (*Session, error) {
 	/*
-	 * Open a bidirectional setupStream
+	 * Open a bidirectional Setup Stream
 	 */
 	stream, err := conn.OpenStream()
 	if err != nil {
@@ -134,13 +135,12 @@ func (p *Publisher) setupMOWT(conn Connection) (*Session, error) {
 	/*
 	 * Set the Stream Type to the Setup
 	 */
-	streamType := setup_stream
 	// Send the Stream Type
-	_, err = stream.Write([]byte{byte(streamType)})
+	_, err = stream.Write([]byte{byte(setup_stream)})
 	if err != nil {
 		return nil, err
 	}
-	stream.SetType(streamType)
+	stream.SetType(setup_stream)
 
 	/*
 	 * Send a CLIENT_SETUP message

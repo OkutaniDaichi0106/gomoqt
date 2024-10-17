@@ -6,7 +6,6 @@ import (
 	"log"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqtransport"
-	"github.com/OkutaniDaichi0106/gomoqt/moqtransport/moqtmessage"
 	"github.com/quic-go/quic-go"
 )
 
@@ -18,7 +17,7 @@ func main() {
 	// Set subscriber
 	publisher := moqtransport.Publisher{
 		Client: moqtransport.Client{
-			SupportedVersions: []moqtmessage.Version{moqtmessage.FoalkDraft01},
+			SupportedVersions: []moqtransport.Version{moqtransport.FoalkDraft01},
 		},
 		MaxSubscribeID: 1 << 4,
 	}

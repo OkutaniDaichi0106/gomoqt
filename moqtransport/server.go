@@ -33,11 +33,15 @@ type Server struct {
 
 func (s Server) ListenAndServeQUIC(addr string, handler QUICHandler, tlsConfig *tls.Config, quicConfig *quic.Config) error {
 	if s.TLSConfig != nil {
-		log.Println("The TLS configuration was overwrited")
+		if tlsConfig != nil {
+			log.Println("The TLS configuration was overwrited")
+		}
 		tlsConfig = s.TLSConfig
 	}
 	if s.QUICConfig != nil {
-		log.Println("The QUIC configuration was overwrited")
+		if quicConfig != nil {
+			log.Println("The QUIC configuration was overwrited")
+		}
 		quicConfig = s.QUICConfig
 	}
 
@@ -73,12 +77,18 @@ func (s Server) ListenAndServeQUIC(addr string, handler QUICHandler, tlsConfig *
 }
 
 func (s Server) ListenAndServeWT(wts *webtransport.Server) error {
-	if s.TLSConfig != nil && wts.H3.TLSConfig != nil {
-		log.Println("The TLS configuration was overwrited")
+	if s.TLSConfig != nil {
+		if wts.H3.TLSConfig != nil {
+			log.Println("The TLS configuration was overwrited")
+		}
+		// Set the moqtransport.Server's TLS configuration
 		wts.H3.TLSConfig = s.TLSConfig
 	}
-	if s.QUICConfig != nil && wts.H3.QUICConfig != nil {
-		log.Println("The QUIC configuration was overwrited")
+	if s.QUICConfig != nil {
+		if wts.H3.QUICConfig != nil {
+			log.Println("The QUIC configuration was overwrited")
+		}
+		// Set the moqtransport.Server's QUIC configuration
 		wts.H3.QUICConfig = s.QUICConfig
 	}
 
@@ -88,7 +98,7 @@ func (s Server) ListenAndServeWT(wts *webtransport.Server) error {
 func (s Server) SetupMORQ(qconn quic.Connection) (*Session, string, error) {
 	conn := newMORQConnection(qconn)
 
-	// Setup
+	// Set up
 	sess, path, err := s.setupMORQ(conn)
 
 	// Terminate the connection when Terminate Error occured
@@ -250,6 +260,7 @@ func (s Server) setupMOWT(conn Connection) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	// Verify if a ROLE parameter exists
 	role, ok := csm.Parameters.Role()
 	if !ok {
@@ -257,11 +268,13 @@ func (s Server) setupMOWT(conn Connection) (*Session, error) {
 	} else if role != moqtmessage.PUB && role != moqtmessage.SUB && role != moqtmessage.PUB_SUB {
 		return nil, ErrProtocolViolation
 	}
+
 	// Get a MAX_SUBSCRIBE_ID parameter
 	maxID, ok := csm.Parameters.MaxSubscribeID()
 	if !ok {
 		maxID = 0
 	}
+
 	// Get a PATH parameter and close the connection
 	if _, ok := conn.(*rawQuicConnection); ok {
 		_, ok = csm.Parameters.Path()
@@ -303,6 +316,8 @@ func (s Server) setupMOWT(conn Connection) (*Session, error) {
 		ssm.Parameters.AddParameter(moqtmessage.ROLE, moqtmessage.PUB)
 	case moqtmessage.PUB_SUB:
 		ssm.Parameters.AddParameter(moqtmessage.ROLE, moqtmessage.PUB_SUB)
+	default:
+		return nil, ErrProtocolViolation
 	}
 	// Optional Parameters
 	for k, v := range ssparams {

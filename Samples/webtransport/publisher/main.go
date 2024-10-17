@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	URL = "https://localhost:8443/"
+	URL = "https://localhost:8443"
 )
 
 func main() {
@@ -21,12 +21,11 @@ func main() {
 	}
 
 	/*
-	 *
+	 * Dial to a server
 	 */
-	// Dial
 	wtd := webtransport.Dialer{}
 	var headers http.Header
-	_, wtconn, err := wtd.Dial(context.Background(), "https://localhost:8443/webtransport", headers)
+	_, wtconn, err := wtd.Dial(context.Background(), URL+"/webtransport", headers)
 	if err != nil {
 		log.Println(err)
 		return

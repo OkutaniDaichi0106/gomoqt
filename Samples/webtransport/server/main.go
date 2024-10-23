@@ -2,10 +2,9 @@ package main
 
 import (
 	"crypto/tls"
-	"log"
-	"net/http"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqtransport"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt"
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransfork"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
@@ -18,33 +17,38 @@ func main() {
 		},
 	}
 
-	moqs := moqtransport.Server{
+	moqs := moqt.Server{
 		TLSConfig: &tls.Config{}, // Use your tls.Config here
 		QUICConfig: &quic.Config{ // Use your quic.Config here
 			Allow0RTT:       true,
 			EnableDatagrams: true,
 		},
-		SupportedVersions: []moqtransport.Version{moqtransport.FoalkDraft01},
+		SupportedVersions: []moqt.Version{0xffffff01},
 	}
 
-	http.HandleFunc("/webtransport", func(w http.ResponseWriter, r *http.Request) {
-		wtSess, err := wts.Upgrade(w, r)
-		if err != nil {
-			log.Printf("upgrading failed: %s", err)
-			w.WriteHeader(500)
-			return
-		}
+	moqs.HandleFunc("/webtransport", moqtransfork.Handler)
 
-		mowtSess, err := moqs.SetupMOWT(wtSess)
-		if err != nil {
-			return
-		}
+	// http.HandleFunc("/webtransport", func(w http.ResponseWriter, r *http.Request) {
+	// 	wtSess, err := wts.Upgrade(w, r)
+	// 	if err != nil {
+	// 		log.Printf("upgrading failed: %s", err)
+	// 		w.WriteHeader(500)
+	// 		return
+	// 	}
 
-		// Handle the MOQT session
-		HandleSession(mowtSess)
-	})
+	// 	conn := mowebtransport.NewConnection(wtSess)
+
+	// 	handler := handler{}
+
+	// 	moqs.Run(conn)
+
+	// })
 
 	moqs.ListenAndServeWT(&wts)
 }
 
-func HandleSession(mowtSess *moqtransport.Session) {}
+type handler struct {
+	moqt.SetupHandler
+	moqt.AnnounceHandler
+	moqt.SubscribeHandler
+}

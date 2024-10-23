@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransfork"
 	"github.com/OkutaniDaichi0106/gomoqt/moqtransport"
 	"github.com/quic-go/webtransport-go"
 )
@@ -15,8 +16,8 @@ const (
 
 func main() {
 	// Initialize a Subscriber
-	publisher := moqtransport.Publisher{
-		SupportedVersions: []moqtransport.Version{moqtransport.FoalkDraft01},
+	publisher := moqtransfork.Publisher{
+		SupportedVersions: []moqtransfork.Version{moqtransfork.FoalkDraft01},
 		MaxSubscribeID:    1 << 4,
 	}
 

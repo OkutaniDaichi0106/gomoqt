@@ -21,13 +21,9 @@ func main() {
 	moqs.SetCertFiles("localhost.pem", "localhost-key.pem")
 
 	relayer := moqt.Relayer{
-		Path: "/webtransport",
-		Publisher: moqt.Publisher{
-			LocalTrack: []string{"foalk", "japan", "kyoto"},
-		},
-		Subscriber: moqt.Subscriber{
-			RemoteTrack: make([][]string, 1),
-		},
+		Path:       "/webtransport",
+		Publisher:  moqt.Publisher{},
+		Subscriber: moqt.Subscriber{},
 	}
 
 	moqs.RunOnQUIC(relayer)
@@ -56,8 +52,6 @@ func (SetupHandler) HandleSetup(r moqt.SetupRequest, w moqt.SetupResponceWriter)
 var defaultRelayHandler = RelayHandler{
 	trackManager: trackManager{},
 }
-
-var _ moqt.PublisherHandler = (*RelayHandler)(nil)
 
 type RelayHandler struct {
 	trackManager trackManager

@@ -6,6 +6,14 @@ type Session struct {
 	Connection    Connection
 	SessionStream SessionStream
 	//version Version
+	/*
+	 * Announcement
+	 */
+	announcement Announcement
+	/*
+	 * Subscription
+	 */
+	subscription map[SubscribeID]Subscription
 }
 
 func (sess Session) Terminate(terr TerminateError) {

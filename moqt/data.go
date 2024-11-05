@@ -4,8 +4,19 @@ import (
 	"io"
 )
 
+type DataWriter interface {
+	SendData()
+}
+
+func NewBufferStream(stream Stream) BufferStream {
+	return BufferStream{
+		buffer: make([]byte, 0),
+		src:    stream,
+		ended:  false,
+	}
+}
+
 type BufferStream struct {
-	group  Group
 	buffer []byte
 	src    Stream
 	ended  bool
@@ -29,7 +40,7 @@ func (stream BufferStream) Read(buf []byte) (int, error) {
 }
 
 func (stream BufferStream) ReadOffset(buf []byte, offset uint64) (int, error) {
-	if len(stream.buffer[offset:]) < 1 {
+	if uint64(len(stream.buffer)) < offset {
 		if stream.ended {
 			return 0, io.EOF
 		}

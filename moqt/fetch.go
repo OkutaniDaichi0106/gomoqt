@@ -19,7 +19,7 @@ type FetchHandler interface {
 type FetchRequest message.FetchMessage
 
 type FetchResponceWriter interface {
-	SendGroup(BufferStream, uint64)
+	SendGroup(Group, BufferStream, uint64)
 	Reject(FetchError)
 }
 
@@ -30,8 +30,8 @@ type defaultFetchRequestWriter struct {
 	stream Stream
 }
 
-func (w defaultFetchRequestWriter) SendGroup(data BufferStream, offset uint64) {
-	_, err := w.stream.Write(message.GroupMessage(data.group).SerializePayload())
+func (w defaultFetchRequestWriter) SendGroup(group Group, data BufferStream, offset uint64) {
+	_, err := w.stream.Write(message.GroupMessage(group).SerializePayload())
 	if err != nil {
 		slog.Error("failed to send a GROUP message", slog.String("error", err.Error()))
 		w.errCh <- err
@@ -65,6 +65,7 @@ func (w defaultFetchRequestWriter) SendGroup(data BufferStream, offset uint64) {
 }
 
 func (w defaultFetchRequestWriter) Reject(err FetchError) {
+	slog.Info("rejcted the fetch request")
 	w.stream.CancelRead(StreamErrorCode(err.FetchErrorCode()))
 	w.stream.CancelWrite(StreamErrorCode(err.FetchErrorCode()))
 

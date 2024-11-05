@@ -1,48 +1,48 @@
-package main
+package moqt
 
 import (
 	"errors"
 	"sync"
-
-	"github.com/OkutaniDaichi0106/gomoqt/moqt"
 )
 
-type trackManager struct {
+func newRelayManager() relayManager {
+	return relayManager{
+		trackNamespaceTree: trackNamespaceTree{
+			rootNode: &trackNamespaceNode{
+				value:    "",
+				children: make(map[string]*trackNamespaceNode),
+			},
+		},
+	}
+}
+
+type relayManager struct {
 	trackNamespaceTree trackNamespaceTree
 }
 
-func (tm *trackManager) newTrackNamespace(trackNamespace []string) *trackNamespaceNode {
+func (tm *relayManager) newTrackNamespace(trackNamespace []string) *trackNamespaceNode {
 	return tm.trackNamespaceTree.insert(trackNamespace)
 }
 
-func (tm *trackManager) findTrackNamespace(trackNamespace []string) (*trackNamespaceNode, bool) {
+func (tm *relayManager) findTrackNamespace(trackNamespace []string) (*trackNamespaceNode, bool) {
 	return tm.trackNamespaceTree.trace(trackNamespace)
 }
 
-func (tm *trackManager) removeTrackNamespace(trackNamespace []string) error {
+func (tm *relayManager) removeTrackNamespace(trackNamespace []string) error {
 	return tm.trackNamespaceTree.remove(trackNamespace)
 }
 
-func (tm *trackManager) findTrack(trackNamespace []string, trackName string) (*trackNameNode, bool) {
+func (tm *relayManager) findTrack(trackNamespace []string, trackName string) (*trackNameNode, bool) {
 	tnsNode, ok := tm.findTrackNamespace(trackNamespace)
 	if !ok {
 		return nil, false
 	}
 
-	return tnsNode.findTrackName(trackName)
+	return tnsNode.findTrackNameNode(trackName)
 }
 
 type trackNamespaceTree struct {
 	rootNode *trackNamespaceNode
-}
-
-func newTrackNamespaceTree() *trackNamespaceTree {
-	return &trackNamespaceTree{
-		rootNode: &trackNamespaceNode{
-			value:    "",
-			children: make(map[string]*trackNamespaceNode),
-		},
-	}
 }
 
 func (tree trackNamespaceTree) insert(tns []string) *trackNamespaceNode {
@@ -68,7 +68,7 @@ func (tree trackNamespaceTree) insert(tns []string) *trackNamespaceNode {
 }
 
 func (tree trackNamespaceTree) remove(tns []string) error {
-	_, err := tree.rootNode.removeTrackNamespace(tns, 0)
+	_, err := tree.rootNode.removeDescendants(tns, 0)
 	return err
 }
 
@@ -97,7 +97,7 @@ type trackNamespaceNode struct {
 	/*
 	 * The origin session
 	 */
-	origin moqt.Session
+	origin *Session
 }
 
 type trackNameNode struct {
@@ -109,22 +109,12 @@ type trackNameNode struct {
 	value string
 
 	/*
-	 * Announcement
-	 */
-	announcement moqt.Announcement
-
-	/*
-	 * Info
-	 */
-	info moqt.Info
-
-	/*
 	 *
 	 */
-	destinations []moqt.Session
+	destinations []*Session
 }
 
-func (node *trackNamespaceNode) removeTrackNamespace(tns []string, depth int) (bool, error) {
+func (node *trackNamespaceNode) removeDescendants(tns []string, depth int) (bool, error) {
 	if node == nil {
 		return false, errors.New("track namespace not found at " + tns[depth])
 	}
@@ -152,7 +142,7 @@ func (node *trackNamespaceNode) removeTrackNamespace(tns []string, depth int) (b
 		return false, errors.New("track namespace not found at " + value)
 	}
 
-	ok, err := child.removeTrackNamespace(tns, depth+1)
+	ok, err := child.removeDescendants(tns, depth+1)
 	if err != nil {
 		return false, err
 	}
@@ -187,7 +177,7 @@ func (node *trackNamespaceNode) trace(values ...string) (*trackNamespaceNode, bo
 	return currentNode, true
 }
 
-func (node *trackNamespaceNode) findTrackName(trackName string) (*trackNameNode, bool) {
+func (node *trackNamespaceNode) findTrackNameNode(trackName string) (*trackNameNode, bool) {
 	node.mu.RLock()
 	defer node.mu.RUnlock()
 
@@ -205,7 +195,6 @@ func (node *trackNamespaceNode) newTrackNameNode(trackName string) *trackNameNod
 
 	node.tracks[trackName] = &trackNameNode{
 		value: trackName,
-		info:  moqt.Info{},
 	}
 
 	return node.tracks[trackName]

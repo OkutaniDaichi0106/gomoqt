@@ -1,6 +1,8 @@
 package message
 
 import (
+	"time"
+
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -8,9 +10,10 @@ type SubscribeUpdateMessage struct {
 	SubscribeID SubscribeID
 
 	SubscriberPriority SubscriberPriority
-
-	MinGroupNumber uint64
-	MaxGroupNumber uint64
+	GroupOrder         GroupOrder
+	GroupExpires       time.Duration
+	MinGroupSequence   uint64
+	MaxGroupSequence   uint64
 
 	Parameters Parameters
 }
@@ -40,10 +43,10 @@ func (su SubscribeUpdateMessage) SerializePayload() []byte {
 	p = quicvarint.Append(p, uint64(su.SubscriberPriority))
 
 	// Append the Min Group Number
-	p = quicvarint.Append(p, su.MinGroupNumber)
+	p = quicvarint.Append(p, su.MinGroupSequence)
 
 	// Append the Max Group Number
-	p = quicvarint.Append(p, uint64(su.MaxGroupNumber))
+	p = quicvarint.Append(p, uint64(su.MaxGroupSequence))
 
 	// Append the Subscribe Update Parameters
 	p = su.Parameters.Append(p)
@@ -67,14 +70,14 @@ func (su *SubscribeUpdateMessage) DeserializePayload(r quicvarint.Reader) error 
 	if err != nil {
 		return err
 	}
-	su.MinGroupNumber = num
+	su.MinGroupSequence = num
 
 	// Get a Max Group Number
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	su.MaxGroupNumber = num
+	su.MaxGroupSequence = num
 
 	// Get a Subscriber Priority
 	priorityBuf := make([]byte, 1)

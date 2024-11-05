@@ -14,19 +14,50 @@ type Relayer struct {
 	Publisher Publisher
 
 	Subscriber Subscriber
+
+	manager relayManager
+}
+
+func (r Relayer) init() {
+	r.manager = newRelayManager()
 }
 
 func (r Relayer) listen(sess Session) {
-	r.Publisher.init()
-	r.Subscriber.init()
+	r.init()
+
+	biCh := make(chan Stream, 1<<3)         // TODO: Tune the size
+	uniCh := make(chan ReceiveStream, 1<<3) // TODO: Tune the size
 
 	go func() {
 		for {
 			stream, err := sess.Connection.AcceptStream(context.Background())
 			if err != nil {
 				slog.Error("failed to accept a bidirectional stream", slog.String("error", err.Error()))
+				return
 			}
 
+			biCh <- stream
+		}
+	}()
+
+	go func() {
+		for {
+			stream, err := sess.Connection.AcceptUniStream(context.Background())
+			if err != nil {
+				slog.Error("failed to accept a bidirectional stream", slog.String("error", err.Error()))
+				return
+			}
+
+			uniCh <- stream
+		}
+	}()
+
+	/*
+	 *
+	 */
+	for {
+		select {
+		case stream := <-biCh:
 			// Handle the Stream
 			go func(stream Stream) {
 				qvr := quicvarint.NewReader(stream)
@@ -44,23 +75,24 @@ func (r Relayer) listen(sess Session) {
 						return
 					}
 
-					r.Publisher.interestCh <- struct {
-						Interest
-						AnnounceWriter
-					}{
-						Interest: interest,
-						AnnounceWriter: defaultAnnounceWriter{
-							stream: stream,
-						},
-					}
+					r.Publisher.Handler.HandleInterest(interest, defaultAnnounceWriter{
+						stream: stream,
+					})
 
-					// Listen any error
+					// Catch any error
 					for {
 						_, err := stream.Read([]byte{})
 						if err != nil {
 							slog.Error("receives an error in announce stream from client", slog.String("error", err.Error()))
-							return
+							break
 						}
+					}
+
+					// Close the Stream
+					err = stream.Close()
+					if err != nil {
+						slog.Error("failed to close the stream", slog.String("error", err.Error()))
+						return
 					}
 				case SUBSCRIBE:
 					subscription, err := getSubscription(qvr)
@@ -69,23 +101,62 @@ func (r Relayer) listen(sess Session) {
 						return
 					}
 
-					r.Publisher.subscriptionCh <- struct {
-						Subscription
-						SubscribeResponceWriter
-					}{
-						Subscription: subscription,
-						SubscribeResponceWriter: defaultSubscribeResponceWriter{
-							stream: stream,
-						},
+					sw := defaultSubscribeResponceWriter{
+						stream: stream,
+						errCh:  make(chan error),
 					}
 
-					// Listen any error
+					r.Publisher.Handler.HandleSubscribe(subscription, sw)
+
+					err = <-sw.errCh
+					if err != nil {
+						slog.Error("failed to subscribe", slog.String("error", err.Error()))
+						return
+					}
+
+					// Notice the track information
+					iw := defaultInfoWriter{
+						errCh:  make(chan error),
+						stream: stream,
+					}
+					// Handle
+					r.Publisher.Handler.HandleInfoRequest(InfoRequest{
+						TrackNamespace: subscription.TrackNamespace,
+						TrackName:      subscription.TrackName,
+					}, iw)
+
+					err = <-iw.errCh
+					if err != nil {
+						slog.Error("catch an error", slog.String("error", err.Error()))
+					}
+
+					// Catch any Subscribe Update or any error from the subscriber
 					for {
-						_, err := stream.Read([]byte{})
+						subscription, err := getSubscribeUpdate(subscription, qvr)
 						if err != nil {
-							slog.Error("receives an error in announce stream from client", slog.String("error", err.Error()))
+							slog.Error("receives an error in announce stream from a subscriber", slog.String("error", err.Error()))
+							break
+						}
+
+						sw := defaultSubscribeResponceWriter{
+							stream: stream,
+							errCh:  make(chan error),
+						}
+
+						r.Publisher.Handler.HandleSubscribe(subscription, sw)
+
+						err = <-sw.errCh
+						if err != nil {
+							slog.Error("failed to subscribe", slog.String("error", err.Error()))
 							return
 						}
+					}
+
+					// Close the Stream gracefully
+					err = stream.Close()
+					if err != nil {
+						slog.Error("failed to close the stream", slog.String("error", err.Error()))
+						return
 					}
 				case FETCH:
 					fetchRequest, err := getFetchRequest(qvr)
@@ -99,13 +170,7 @@ func (r Relayer) listen(sess Session) {
 						stream: stream,
 					}
 
-					r.Publisher.fetchReqCh <- struct {
-						FetchRequest
-						FetchResponceWriter
-					}{
-						FetchRequest:        fetchRequest,
-						FetchResponceWriter: w,
-					}
+					r.Publisher.Handler.HandleFetch(fetchRequest, w)
 
 					err = <-w.errCh
 					if err != nil {
@@ -131,13 +196,7 @@ func (r Relayer) listen(sess Session) {
 						stream: stream,
 					}
 
-					r.Publisher.infoReqCh <- struct {
-						InfoRequest
-						InfoWriter
-					}{
-						InfoRequest: infoRequest,
-						InfoWriter:  w,
-					}
+					r.Publisher.Handler.HandleInfoRequest(infoRequest, w)
 
 					err = <-w.errCh
 
@@ -145,22 +204,27 @@ func (r Relayer) listen(sess Session) {
 						slog.Error("catch an error", slog.String("error", err.Error()))
 					}
 
-					// Close the stream
-					stream.Close()
+					// Close the Stream
+					err = stream.Close()
+					if err != nil {
+						slog.Error("failed to close the stream", slog.String("error", err.Error()))
+						return
+					}
 				default:
 					slog.Error("invalid Stream Type ID", slog.Uint64("ID", uint64(num)))
 					return
 				}
 			}(stream)
+		case stream := <-uniCh:
+			go func(stream ReceiveStream) {
+				group, err := getGroup(quicvarint.NewReader(stream))
+				if err != nil {
+					slog.Error("failed to get a group", slog.String("error", err.Error()))
+					return
+				}
+
+				r.Subscriber.Handler.HandleData(group, stream)
+			}(stream)
 		}
-	}()
-
-	go r.Publisher.listen()
-	go r.Subscriber.listen()
-
+	}
 }
-
-// type RelayHandler interface {
-// 	PublisherHandler
-// 	SubscriberHandler
-// }

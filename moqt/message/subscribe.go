@@ -1,6 +1,8 @@
 package message
 
 import (
+	"time"
+
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -29,6 +31,8 @@ type SubscribeMessage struct {
 	 */
 	GroupOrder GroupOrder
 
+	Expires time.Duration
+
 	/***/
 	MinGroupSequence uint64
 
@@ -47,12 +51,11 @@ func (s SubscribeMessage) SerializePayload() []byte {
 	 * Serialize the message in the following formatt
 	 *
 	 * SUBSCRIBE Message payload {
-	 *   Subscribe ID (varint),
-	 *   Track Alias (varint),
 	 *   Track Namespace (Track Namespace),
 	 *   Track Name (string),
 	 *   Subscriber Priority (8),
 	 *   Group Order (8),
+	 *   Group Expires (varint),
 	 *   Min Group Sequence (varint),
 	 *   Max Group Sequence (varint),
 	 *   Subscribe Parameters (Parameters),
@@ -81,6 +84,9 @@ func (s SubscribeMessage) SerializePayload() []byte {
 	p = append(p, []byte{byte(s.SubscriberPriority)}...)
 
 	// Append the Group Order
+	p = append(p, []byte{byte(s.GroupOrder)}...)
+
+	// Append the Group Expires
 	p = append(p, []byte{byte(s.GroupOrder)}...)
 
 	// Append the Min Group Sequence
@@ -142,6 +148,13 @@ func (s *SubscribeMessage) DeserializePayload(r quicvarint.Reader) error {
 		return err
 	}
 	s.GroupOrder = GroupOrder(bnum)
+
+	// Get Group Expires
+	num, err = quicvarint.Read(r)
+	if err != nil {
+		return err
+	}
+	s.Expires = time.Duration(num)
 
 	// Get Min Group Sequence
 	num, err = quicvarint.Read(r)

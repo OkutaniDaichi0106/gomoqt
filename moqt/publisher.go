@@ -10,28 +10,6 @@ import (
 type Publisher struct {
 	// Handlers
 	Handler PublisherHandler
-
-	LocalTrack []string
-
-	interestCh chan struct {
-		Interest
-		AnnounceWriter
-	}
-
-	subscriptionCh chan struct {
-		Subscription
-		SubscribeResponceWriter
-	}
-
-	infoReqCh chan struct {
-		InfoRequest
-		InfoWriter
-	}
-
-	fetchReqCh chan struct {
-		FetchRequest
-		FetchResponceWriter
-	}
 }
 
 type PublisherHandler interface {
@@ -39,43 +17,8 @@ type PublisherHandler interface {
 	SubscribeHandler
 	FetchHandler
 	InfoRequestHandler
-}
 
-func (p Publisher) init() {
-	p.interestCh = make(chan struct {
-		Interest
-		AnnounceWriter
-	}, 1<<2) // TODO: tune the size
-
-	p.subscriptionCh = make(chan struct {
-		Subscription
-		SubscribeResponceWriter
-	}, 1<<2) // TODO: tune the size
-
-	p.infoReqCh = make(chan struct {
-		InfoRequest
-		InfoWriter
-	}, 1<<2) // TODO: tune the size
-
-	p.fetchReqCh = make(chan struct {
-		FetchRequest
-		FetchResponceWriter
-	}, 1<<2) // TODO: tune the size
-}
-
-func (p Publisher) listen() {
-	for {
-		select {
-		case v := <-p.interestCh:
-			p.Handler.HandleInterest(v.Interest, v.AnnounceWriter)
-		case v := <-p.subscriptionCh:
-			p.Handler.HandleSubscribe(v.Subscription, v.SubscribeResponceWriter)
-		case v := <-p.infoReqCh:
-			p.Handler.HandleInfoRequest(v.InfoRequest, v.InfoWriter)
-		case v := <-p.fetchReqCh:
-			p.Handler.HandleFetch(v.FetchRequest, v.FetchResponceWriter)
-		}
-	}
+	DataWriter
 }
 
 func getInterest(r quicvarint.Reader) (Interest, error) {

@@ -16,7 +16,6 @@ type InterestWriter interface {
 type AnnounceWriter interface {
 	Announce(Announcement)
 	Reject(InterestError)
-	New(Stream) AnnounceWriter
 }
 
 type InterestHandler interface {
@@ -87,13 +86,8 @@ func (w defaultInterestWriter) Interest(interest Interest) error {
 var _ AnnounceWriter = (*defaultAnnounceWriter)(nil)
 
 type defaultAnnounceWriter struct {
+	errCh  chan error
 	stream Stream
-}
-
-func (irw defaultAnnounceWriter) New(stream Stream) AnnounceWriter {
-	return defaultAnnounceWriter{
-		stream: stream,
-	}
 }
 
 func (irw defaultAnnounceWriter) Announce(announcement Announcement) {
@@ -117,6 +111,8 @@ func (irw defaultAnnounceWriter) Announce(announcement Announcement) {
 func (w defaultAnnounceWriter) Reject(err InterestError) {
 	w.stream.CancelRead(StreamErrorCode(err.InterestErrorCode()))
 	w.stream.CancelWrite(StreamErrorCode(err.InterestErrorCode()))
+
+	w.errCh <- err
 
 	slog.Info("reject the interest", slog.String("error", err.Error()))
 }

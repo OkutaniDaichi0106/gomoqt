@@ -1,6 +1,8 @@
 package message
 
-import "github.com/quic-go/quic-go/quicvarint"
+import (
+	"github.com/quic-go/quic-go/quicvarint"
+)
 
 type AnnounceInterestMessage struct {
 	TrackPrefix TrackPrefix

@@ -1,4 +1,4 @@
-package protocol
+package moqt
 
 type StreamType byte
 

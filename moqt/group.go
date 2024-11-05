@@ -1,9 +1,9 @@
 package moqt
 
-import "github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+import "github.com/OkutaniDaichi0106/gomoqt/moqt/message"
 
 type Group message.GroupMessage
 
-type GroupHander interface {
-	HandleGroup(Group)
+type DataHander interface {
+	HandleData(Group, Stream)
 }

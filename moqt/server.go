@@ -3,11 +3,13 @@ package moqt
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"log"
 	"log/slog"
 	"net/http"
+	"sync"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/quic-go/quicvarint"
@@ -15,7 +17,11 @@ import (
 )
 
 type Server struct {
+	/*
+	 * Server's Address
+	 */
 	Addr string
+
 	/*
 	 * TLS configuration
 	 */
@@ -32,30 +38,12 @@ type Server struct {
 	SupportedVersions []Version
 
 	//
-	SetupHandler SetupHandler
+	Handler ServerHandler
 
-	//
-	setupRR SetupRequestReader
-	setupRW SetupResponceWriter
-
-	// for QUIC
+	// Relayers running on QUIC
 	quicRelayers map[string]Relayer
 
 	wts *webtransport.Server
-}
-
-type Relayer struct {
-	Path string
-
-	//
-	Publisher Publisher
-
-	Subscriber Subscriber
-}
-
-func (r Relayer) run(sess Session) {
-	go r.Publisher.run(sess)
-	go r.Subscriber.run(sess)
 }
 
 func (s Server) ListenAndServe() error {
@@ -64,6 +52,7 @@ func (s Server) ListenAndServe() error {
 	 */
 	ln, err := quic.ListenAddrEarly(s.Addr, s.TLSConfig, s.QUICConfig)
 	if err != nil {
+		slog.Error("failed to run a quic server", slog.String("error", err.Error()))
 		return err
 	}
 
@@ -85,60 +74,63 @@ func (s Server) ListenAndServe() error {
 				// Accept a Stream which must be a Sesson Stream
 				stream, err := conn.AcceptStream(context.Background())
 				if err != nil {
-					slog.Error("failed to open a stream", slog.String("error", err.Error()))
-					return
-				}
-
-				// Read the first byte and get Stream Type
-				buf := make([]byte, 1)
-				_, err = stream.Read(buf)
-				if err != nil {
-					slog.Error("failed to read a Stream Type", slog.String("error", err.Error()))
-					return
-				}
-
-				// Verify if the Stream Type is the SESSION
-				if protocol.StreamType(buf[0]) != protocol.SESSION {
-					slog.Error("unexpected Stream Type ID", slog.Uint64("ID", uint64(buf[0]))) // TODO
+					slog.Error("failed to accept a stream", slog.String("error", err.Error()))
 					return
 				}
 
 				// Initialize a Session
 				sess := Session{
-					Connection: conn,
-					stream:     stream,
+					Connection:    conn,
+					SessionStream: stream,
+				}
+
+				/*
+				 * Set up
+				 */
+				// Read the first byte and get Stream Type
+				buf := make([]byte, 1)
+				_, err = sess.SessionStream.Read(buf)
+				if err != nil {
+					slog.Error("failed to read a Stream Type", slog.String("error", err.Error()))
+					return
+				}
+				// Verify if the Stream Type is the SESSION
+				if StreamType(buf[0]) != SESSION {
+					slog.Error("unexpected Stream Type ID", slog.Uint64("ID", uint64(buf[0]))) // TODO
+					return
 				}
 
 				// Get a set-up request
-				req, err := s.setupRR.Read(quicvarint.NewReader(stream))
+				req, err := getSetupRequest(quicvarint.NewReader(sess.SessionStream))
 				if err != nil {
 					slog.Error("failed to get a set-up request", slog.String("error", err.Error()))
 					return
 				}
 
-				// Handle the set-up request
-				terr := s.SetupHandler.HandleSetup(req, s.setupRW.New(stream))
-				if terr != nil {
-					slog.Error("failed to set up", slog.String("error", terr.Error()))
+				// Initialize a SetupResponceWriter{}
+				srw := defaultSetupResponceWriter{
+					errCh:  make(chan error),
+					once:   new(sync.Once),
+					stream: sess.SessionStream,
+				}
 
-					err := conn.CloseWithError(SessionErrorCode(terr.TerminateErrorCode()), terr.Error())
-					if err != nil {
-						slog.Error("failed to close the conncetion", slog.String("error", err.Error()))
-					}
+				// Handle the Set-up
+				s.Handler.HandleSetup(req, srw)
 
-					slog.Info("close the connection")
-
+				err = <-srw.errCh
+				if err != nil {
+					slog.Error("set-up was rejected", slog.String("error", err.Error()))
 					return
 				}
 
-				// Get a handler from the path
+				// Get a relayer from the path
 				relayer, ok := s.quicRelayers[req.Path]
 				if !ok {
 					slog.Error("relayer not found", slog.String("path", req.Path))
 					return
 				}
 
-				go relayer.run(sess)
+				go relayer.listen(sess)
 			}()
 		}
 	}()
@@ -148,7 +140,7 @@ func (s Server) ListenAndServe() error {
 	 */
 	err = s.wts.ListenAndServe()
 	if err != nil {
-		slog.Error("failed run the webtransport server", slog.String("error", err.Error()))
+		slog.Error("failed to run a webtransport server", slog.String("error", err.Error()))
 		return err
 	}
 
@@ -163,7 +155,7 @@ func (s Server) RunOnQUIC(relayer Relayer) {
 	s.quicRelayers[relayer.Path] = relayer
 }
 
-func (s Server) RunOnWT(relayer Relayer) {
+func (s Server) RunOnWebTransport(relayer Relayer) {
 	if s.wts == nil {
 		s.wts = &webtransport.Server{
 			H3: http3.Server{
@@ -188,58 +180,92 @@ func (s Server) RunOnWT(relayer Relayer) {
 		conn := NewMOWTConnection(wtsess)
 
 		/*
-		 * Set up
+		 * Get a Session
 		 */
-		// Accept a Stream which must be a Sesson Stream
+		// Accept a bidirectional Stream for the Sesson Stream
 		stream, err := conn.AcceptStream(context.Background())
 		if err != nil {
 			slog.Error("failed to open a stream", slog.String("error", err.Error()))
 			return
 		}
-
-		//
+		// Initialize a Session
 		sess := Session{
-			Connection: conn,
-			stream:     stream,
+			Connection:    conn,
+			SessionStream: stream,
 		}
 
+		/*
+		 * Set up
+		 */
 		// Read the first byte and get Stream Type
 		buf := make([]byte, 1)
-		_, err = stream.Read(buf)
+		_, err = sess.SessionStream.Read(buf)
 		if err != nil {
 			slog.Error("failed to read a Stream Type", slog.String("error", err.Error()))
 			return
 		}
 		// Verify if the Stream Type is the SESSION
-		if protocol.StreamType(buf[0]) != protocol.SESSION {
+		if StreamType(buf[0]) != SESSION {
 			slog.Error("unexpected Stream Type ID", slog.Uint64("ID", uint64(buf[0]))) // TODO
 			return
 		}
 
 		// Get a set-up request
-		req, err := s.setupRR.Read(quicvarint.NewReader(stream))
+		req, err := getSetupRequest(quicvarint.NewReader(sess.SessionStream))
 		if err != nil {
 			slog.Error("failed to get a set-up request", slog.String("error", err.Error()))
 			return
 		}
 
-		// Handle the set-up request
-		terr := s.SetupHandler.HandleSetup(req, s.setupRW.New(stream))
-		if terr != nil {
-			slog.Error("failed to set up", slog.String("error", terr.Error()))
+		srw := defaultSetupResponceWriter{
+			errCh:  make(chan error),
+			once:   new(sync.Once),
+			stream: sess.SessionStream,
+		}
 
-			err := conn.CloseWithError(SessionErrorCode(terr.TerminateErrorCode()), terr.Error())
-			if err != nil {
-				slog.Error("failed to close the conncetion", slog.String("error", err.Error()))
-			}
+		s.Handler.HandleSetup(req, srw)
 
-			slog.Info("close the connection")
-
+		err = <-srw.errCh
+		if err != nil {
+			slog.Error("set-up was rejected", slog.String("error", err.Error()))
 			return
 		}
 
-		go relayer.run(sess)
+		go relayer.listen(sess)
 	})
+}
+
+func getSetupRequest(r quicvarint.Reader) (SetupRequest, error) {
+	// Receive SESSION_CLIENT message
+	var scm message.SessionClientMessage
+	err := scm.DeserializePayload(r)
+	if err != nil {
+		slog.Error("failed to read a SESSION_CLIENT message", slog.String("error", err.Error())) // TODO
+		return SetupRequest{}, err
+	}
+
+	// Get a path
+	path, ok := getPath(scm.Parameters)
+	if !ok {
+		err := errors.New("path not found")
+		slog.Error("path not found")
+		return SetupRequest{}, err
+	}
+
+	req := SetupRequest{
+		Path:       path,
+		Parameters: Parameters(scm.Parameters),
+	}
+	// Set versions
+	for _, v := range scm.SupportedVersions {
+		req.SupportedVersions = append(req.SupportedVersions, Version(v))
+	}
+
+	return req, nil
+}
+
+type ServerHandler interface {
+	SetupHandler
 }
 
 // func handleSessionStream(SessionStream)    {}

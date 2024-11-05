@@ -3,10 +3,38 @@ package moqt
 import (
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
 )
 
-type ParameterKey uint64
+type Parameters message.Parameters
+
+func (p Parameters) Add(key uint64, value any) {
+	message.Parameters(p).Add(key, value)
+}
+
+func (p Parameters) Remove(key uint64) {
+	message.Parameters(p).Remove(key)
+}
+
+func (p Parameters) ReadAsByteArray(key uint64) ([]byte, bool) {
+	return message.Parameters(p).AsByteArray(key)
+}
+
+func (p Parameters) ReadAsString(key uint64) (string, bool) {
+	return message.Parameters(p).AsString(key)
+}
+
+func (p Parameters) ReadAsInt(key uint64) (int64, bool) {
+	return message.Parameters(p).AsInt(key)
+}
+
+func (p Parameters) ReadAsUint(key uint64) (uint64, bool) {
+	return message.Parameters(p).AsUint(key)
+}
+
+func (p Parameters) ReadAsBool(key uint64) (bool, bool) {
+	return message.Parameters(p).AsBool(key)
+}
 
 const (
 	ROLE               uint64 = 0x00
@@ -16,20 +44,6 @@ const (
 	DELIVERY_TIMEOUT   uint64 = 0x04
 	MAX_CACHE_DURATION uint64 = 0x05
 )
-
-type Parameters message.Parameters
-
-type Role byte
-
-type SubscribeID uint64
-
-func getRole(params message.Parameters) (Role, bool) {
-	num, ok := params.AsUint(ROLE)
-	if !ok {
-		return 0, false
-	}
-	return Role(num), true
-}
 
 func getPath(params message.Parameters) (string, bool) {
 	num, ok := params.AsString(PATH)

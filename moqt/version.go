@@ -9,7 +9,9 @@ import (
 type Version protocol.Version
 
 const (
-	Devlop Version = 0xffffff00
+	Default         = Draft01
+	Draft01 Version = 0xffffff01
+	Devlop  Version = 0xffffff00
 )
 
 /*

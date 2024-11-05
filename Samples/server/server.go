@@ -16,7 +16,6 @@ func main() {
 			EnableDatagrams: true,
 		},
 		SupportedVersions: []moqt.Version{moqt.Devlop},
-		SetupHandler:      SetupHandler{},
 	}
 
 	moqs.SetCertFiles("localhost.pem", "localhost-key.pem")
@@ -24,16 +23,12 @@ func main() {
 	relayer := moqt.Relayer{
 		Path: "/webtransport",
 		Publisher: moqt.Publisher{
-			PublisherHandler: defaultRelayHandler,
-			LocalTrack:       []string{"foalk", "japan", "kyoto"},
+			LocalTrack: []string{"foalk", "japan", "kyoto"},
 		},
 		Subscriber: moqt.Subscriber{
-			SubscriberHandler: defaultRelayHandler,
-			RemoteTrack:       make([][]string, 1),
+			RemoteTrack: make([][]string, 1),
 		},
 	}
-
-	moqs.RunOnWT(relayer)
 
 	moqs.RunOnQUIC(relayer)
 }
@@ -63,7 +58,6 @@ var defaultRelayHandler = RelayHandler{
 }
 
 var _ moqt.PublisherHandler = (*RelayHandler)(nil)
-var _ moqt.SubscriberHandler = (*RelayHandler)(nil)
 
 type RelayHandler struct {
 	trackManager trackManager

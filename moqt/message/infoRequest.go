@@ -27,11 +27,6 @@ type InfoRequestMessage struct {
 	 * Track name
 	 */
 	TrackName string
-
-	/*
-	 * Track Alias
-	 */
-	TrackAlias TrackAlias
 }
 
 func (irm InfoRequestMessage) SerializePayload() []byte {
@@ -56,9 +51,6 @@ func (irm InfoRequestMessage) SerializePayload() []byte {
 	p = quicvarint.Append(p, uint64(len(irm.TrackName)))
 	p = append(p, []byte(irm.TrackName)...)
 
-	// Append the Track Alias
-	p = quicvarint.Append(p, uint64(irm.TrackAlias))
-
 	return p
 }
 
@@ -81,13 +73,6 @@ func (irm *InfoRequestMessage) DeserializePayload(r quicvarint.Reader) error {
 		return err
 	}
 	irm.TrackName = string(buf)
-
-	// Get a Track Alias
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
-	}
-	irm.TrackAlias = TrackAlias(num)
 
 	return nil
 }

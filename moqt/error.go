@@ -143,23 +143,6 @@ func (err defaultSubscribeError) SubscribeErrorCode() SubscribeErrorCode {
 	return err.code
 }
 
-type retryTrackAliasError struct {
-	reason     string
-	trackAlias TrackAlias
-}
-
-func (err retryTrackAliasError) Error() string {
-	return err.reason
-}
-
-func (err retryTrackAliasError) SubscribeErrorCode() SubscribeErrorCode {
-	return subscribe_retry_track_alias
-}
-
-func (err retryTrackAliasError) TrackAlias() TrackAlias {
-	return err.trackAlias
-}
-
 /*
  *
  */
@@ -285,7 +268,47 @@ var (
 )
 
 /*
- *
+ * Fetch Error
+ */
+type FetchErrorCode int
+
+type FetchError interface {
+	error
+	FetchErrorCode() FetchErrorCode
+}
+
+type defaultFetchError struct {
+	code   FetchErrorCode
+	reason string
+}
+
+func (err defaultFetchError) Error() string {
+	return err.reason
+}
+
+func (err defaultFetchError) FetchErrorCode() FetchErrorCode {
+	return err.code
+}
+
+const (
+	fetch_no_group       FetchErrorCode = 0x0
+	fetch_invalid_offset FetchErrorCode = 0x1
+)
+
+var (
+	ErrNoGroup = defaultFetchError{
+		code:   fetch_no_group,
+		reason: "no group",
+	}
+
+	ErrInvalidOffset = defaultFetchError{
+		code:   fetch_invalid_offset,
+		reason: "invalid offset",
+	}
+)
+
+/*
+ * Terminate Error
  */
 type TerminateErrorCode int
 
@@ -345,5 +368,3 @@ var (
 		reason: "goaway timeout",
 	}
 )
-
-type TrackAlias uint64

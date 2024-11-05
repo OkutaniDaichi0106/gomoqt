@@ -3,17 +3,26 @@ package moqt
 import (
 	"log/slog"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
+	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type Subscriber struct {
-	SubscriberHandler
+	Handler SubscriberHandler
 
 	RemoteTrack [][]string
 
-	// interestCh  chan Interest
-	// subscribeCh chan Subscription
+	announcementCh <-chan struct {
+		Announcement
+		AnnounceResponceWriter
+	}
 
+	infoCh <-chan Info
+
+	dataCh <-chan struct {
+		Group
+		Stream
+	}
 	//
 	// interestW InterestWriter
 
@@ -27,56 +36,59 @@ type Subscriber struct {
 type SubscriberHandler interface {
 	AnnounceHandler
 	InfoHandler
-	GroupHander
+	DataHander
+
+	InterestWriter
+	SubscribeWriter
+	InfoRequestWriter
 }
 
-func (s Subscriber) run(sess Session) {
+func (s Subscriber) init() {
+	s.announcementCh = make(<-chan struct {
+		Announcement
+		AnnounceResponceWriter
+	}, 1<<2)
 
+	s.infoCh = make(<-chan Info, 1<<2)
+
+	s.dataCh = make(<-chan struct {
+		Group
+		Stream
+	}, 1<<2)
+}
+
+func (s Subscriber) listen() {
 	for {
-
 		select {
-		case interest := <-s.interestCh:
-			// Open a Announce Stream
-			stream, err := sess.OpenStream()
-			if err != nil {
-				slog.Error("failed to open a bidirectional Stream", slog.String("error", err.Error()))
-				return
-			}
-
-			// Send the Announce Stream Type
-			_, err = stream.Write([]byte{byte(protocol.ANNOUNCE)})
-			if err != nil {
-				slog.Error("failed to open an Announce Stream", slog.String("error", err.Error()))
-				return
-			}
-
-			//
-			err = s.interestW.Interest(interest)
-			if err != nil {
-				slog.Error("failed to express interest", slog.String("error", err.Error()))
-				return
-			}
-		case subscription := <-s.subscribeCh:
-			// Open a Subscribe Stream
-			stream, err := sess.OpenStream()
-			if err != nil {
-				slog.Error("failed to open a bidirectional Stream", slog.String("error", err.Error()))
-				return
-			}
-
-			// Send the Subscribe Stream Type
-			_, err = stream.Write([]byte{byte(protocol.SUBSCRIBE)})
-			if err != nil {
-				slog.Error("failed to open a Subscribe Stream", slog.String("error", err.Error()))
-				return
-			}
-
-			err = s.subscribeW.Subscribe(subscription)
+		case v := <-s.announcementCh:
+			s.Handler.HandleAnnounce(v.Announcement, v.AnnounceResponceWriter)
+		case v := <-s.infoCh:
+			s.Handler.HandleInfo(v)
+		case v := <-s.dataCh:
+			s.Handler.HandleData(v.Group, v.Stream)
 		}
-
 	}
 }
 
-func (s Subscriber) Subscribe(subscription Subscription) {
-	s.subscribeCh <- subscription
+func getAnnouncement(r quicvarint.Reader) (Announcement, error) {
+	// Read an ANNOUNCE message
+	var am message.AnnounceMessage
+	err := am.DeserializePayload(r)
+	if err != nil {
+		slog.Error("failed to read ANNOUNCE message", slog.String("error", err.Error()))
+		return Announcement{}, err
+	}
+
+	// Return an Announcement
+	announcement := Announcement{
+		TrackNamespace: am.TrackNamespace,
+		Parameters:     am.Parameters,
+	}
+
+	authInfo, ok := getAuthorizationInfo(am.Parameters)
+	if ok {
+		announcement.AuthorizationInfo = authInfo
+	}
+
+	return announcement, nil
 }

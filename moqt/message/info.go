@@ -7,11 +7,10 @@ import (
 )
 
 type InfoMessage struct {
-	TrackAlias    TrackAlias
-	Code          TrackStatusCode
-	LatestGroupID GroupID
-	GroupOrder    GroupOrder
-	GroupExpires  time.Duration
+	Code                TrackStatusCode
+	LatestGroupSequence GroupSequence
+	GroupOrder          GroupOrder
+	GroupExpires        time.Duration
 }
 
 func (im InfoMessage) SerializePayload() []byte {
@@ -32,14 +31,11 @@ func (im InfoMessage) SerializePayload() []byte {
 	 */
 	p := make([]byte, 0, 1<<10)
 
-	// Append the Track Alias
-	p = quicvarint.Append(p, uint64(im.TrackAlias))
-
 	// Append the Status Code
 	p = quicvarint.Append(p, uint64(im.Code))
 
 	// Appen the Last Group ID
-	p = quicvarint.Append(p, uint64(im.LatestGroupID))
+	p = quicvarint.Append(p, uint64(im.LatestGroupSequence))
 
 	// Appen the Group Order
 	p = quicvarint.Append(p, uint64(im.GroupOrder))
@@ -54,13 +50,6 @@ func (im *InfoMessage) DeserializePayload(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 
-	// Get a Track Alias
-	num, err = quicvarint.Read(r)
-	if err != nil {
-		return err
-	}
-	im.TrackAlias = TrackAlias(num)
-
 	// Get a Status Code
 	num, err = quicvarint.Read(r)
 	if err != nil {
@@ -73,7 +62,7 @@ func (im *InfoMessage) DeserializePayload(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	im.LatestGroupID = GroupID(num)
+	im.LatestGroupSequence = GroupSequence(num)
 
 	// Get a Group Order
 	num, err = quicvarint.Read(r)

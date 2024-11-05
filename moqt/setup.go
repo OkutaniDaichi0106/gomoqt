@@ -1,13 +1,11 @@
 package moqt
 
 import (
-	"errors"
 	"log/slog"
 	"sync"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
-	"github.com/quic-go/quic-go/quicvarint"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
 )
 
 type SessionStream Stream
@@ -21,78 +19,23 @@ type SetupRequest struct {
 /*
  *
  */
-type SetupRequestWriter interface {
-	//New(Stream) SetupRequestWriter
-	Setup([]Version) error
-	WithExtension(Parameters) SetupRequestWriter
-}
-
-var _ SetupRequestWriter = (*defaultSetupRequestWriter)(nil)
-
-type defaultSetupRequestWriter struct {
-	once   *sync.Once
-	stream SessionStream
-	params Parameters
-}
-
-// func (w defaultSetupRequestWriter) New(stream Stream) SetupRequestWriter {
-// 	return defaultSetupRequestWriter{
-// 		once:   new(sync.Once),
-// 		stream: stream,
-// 		params: make(Parameters),
-// 	}
-// }
-
-func (w defaultSetupRequestWriter) Setup(versions []Version) error {
-	/***/
-	var scm message.SessionClientMessage
-	for _, v := range versions {
-		scm.SupportedVersions = append(scm.SupportedVersions, protocol.Version(v))
-	}
-
-	if w.params != nil {
-		scm.Parameters = message.Parameters(w.params)
-	}
-
-	_, err := w.stream.Write(scm.SerializePayload())
-	if err != nil {
-		slog.Error("failed to send a SESSION_CLIENT message", slog.String("error", err.Error()))
-		return err
-	}
-
-	/***/
-	var ssm message.SessionServerMessage
-	err = ssm.DeserializePayload(quicvarint.NewReader(w.stream))
-	if err != nil {
-		slog.Error("failed to receive a SESSION_SERVER message", slog.String("error", err.Error()))
-		return err
-	}
-
-	if !ContainVersion(Version(ssm.SelectedVersion), versions) {
-		err = errors.New("unexpected version was seleted")
-		slog.Error("failed to negotiate versions", slog.String("error", err.Error()), slog.Uint64("selected version", uint64(ssm.SelectedVersion)))
-		return err
-	}
-
-	// TODO: Handle the parameters
-
-	return nil
-}
-
-func (w defaultSetupRequestWriter) WithExtension(params Parameters) SetupRequestWriter {
-	return defaultSetupRequestWriter{
-		stream: w.stream,
-		params: params,
-	}
-}
 
 /*
- *
+ * Server
  */
+type SetupResponce struct {
+	SelectedVersion Version
+	Parameters      Parameters
+}
+
 type SetupResponceWriter interface {
 	Accept(Version)
 	Reject(TerminateError)
 	WithExtension(Parameters) SetupResponceWriter
+}
+
+type SetupHandler interface {
+	HandleSetup(SetupRequest, SetupResponceWriter)
 }
 
 var _ SetupResponceWriter = (*defaultSetupResponceWriter)(nil)
@@ -117,6 +60,8 @@ func (w defaultSetupResponceWriter) Accept(version Version) {
 	}
 
 	w.errCh <- nil
+
+	close(w.errCh)
 }
 
 func (w defaultSetupResponceWriter) Reject(err TerminateError) {
@@ -129,6 +74,8 @@ func (w defaultSetupResponceWriter) Reject(err TerminateError) {
 	w.stream.CancelWrite(StreamErrorCode(err.TerminateErrorCode()))
 
 	w.errCh <- err
+
+	close(w.errCh)
 }
 
 func (w defaultSetupResponceWriter) WithExtension(params Parameters) SetupResponceWriter {
@@ -137,8 +84,4 @@ func (w defaultSetupResponceWriter) WithExtension(params Parameters) SetupRespon
 		stream: w.stream,
 		params: params,
 	}
-}
-
-type SetupHandler interface {
-	HandleSetup(SetupRequest, SetupResponceWriter)
 }

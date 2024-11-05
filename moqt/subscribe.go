@@ -3,20 +3,19 @@ package moqt
 import (
 	"log/slog"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type SubscribeStream Stream
-
-type SubscriberPriority byte
+type SubscribeID uint64
 type GroupOrder byte
 
 type Subscription struct {
 	SubscribeID        SubscribeID
 	Announcement       Announcement
 	TrackName          string
-	Parameters         Parameters
+	Parameters         message.Parameters
 	SubscriberPriority SubscriberPriority
 	GroupOrder         GroupOrder
 	MinGroupSequence   uint64
@@ -28,7 +27,18 @@ type Subscription struct {
  */
 type SubscribeWriter interface {
 	Subscribe(Subscription) error
-	NextSubscribeID() SubscribeID
+}
+
+/*
+ *
+ */
+type SubscribeResponceWriter interface {
+	Accept()
+	Reject(SubscribeError)
+}
+
+type SubscribeHandler interface {
+	HandleSubscribe(Subscription, SubscribeResponceWriter)
 }
 
 var _ SubscribeWriter = (*defaultSubscribeWriter)(nil)
@@ -39,15 +49,16 @@ type defaultSubscribeWriter struct {
 }
 
 func (w defaultSubscribeWriter) Subscribe(subscription Subscription) error {
+	w.subscribeID++
 	sm := message.SubscribeMessage{
-		SubscribeID:        message.SubscribeID(w.NextSubscribeID()),
+		SubscribeID:        message.SubscribeID(w.subscribeID),
 		TrackNamespace:     subscription.Announcement.TrackNamespace,
 		TrackName:          subscription.TrackName,
 		SubscriberPriority: message.SubscriberPriority(subscription.SubscriberPriority),
 		GroupOrder:         message.GroupOrder(subscription.GroupOrder),
 		MinGroupSequence:   subscription.MinGroupSequence,
 		MaxGroupSequence:   subscription.MaxGroupSequence,
-		Parameters:         message.Parameters(subscription.Parameters),
+		Parameters:         subscription.Parameters,
 	}
 
 	subAttr := slog.Group("subscription",
@@ -72,58 +83,10 @@ func (w defaultSubscribeWriter) Subscribe(subscription Subscription) error {
 	return nil
 }
 
-func (w defaultSubscribeWriter) NextSubscribeID() SubscribeID {
-	currentID := w.subscribeID
-
-	// Increment the Subscribe ID by 1
-	w.subscribeID++
-
-	return currentID
-}
-
-/*
- *
- */
-type SubscribeResponceWriter interface {
-	Accept()
-	Reject(SubscribeError)
-}
-
-type SubscribeHandler interface {
-	HandleSubscribe(Subscription, SubscribeResponceWriter)
-}
-
-type SubscribeReader interface {
-	Read() (Subscription, error)
-}
-
-var _ SubscribeReader = (*defaultSubscribeReader)(nil)
-
-type defaultSubscribeReader struct {
-	streaem SubscribeStream
-}
-
-func (r defaultSubscribeReader) Read() (Subscription, error) {
-	qvr := quicvarint.NewReader(r.streaem)
-	var sm message.SubscribeMessage
-	err := sm.DeserializePayload(qvr)
-	if err != nil {
-		slog.Error("failed to read a SUBSCRIBE message", slog.String("error", err.Error()))
-		return Subscription{}, err
-	}
-
-	return Subscription{
-		SubscribeID:        SubscribeID(sm.SubscribeID),
-		Announcement:       Announcement{},
-		TrackName:          sm.TrackName,
-		SubscriberPriority: SubscriberPriority(sm.SubscriberPriority),
-	}, nil
-}
-
 var _ SubscribeResponceWriter = (*defaultSubscribeResponceWriter)(nil)
 
 type defaultSubscribeResponceWriter struct {
-	stream SubscribeStream
+	stream Stream
 }
 
 func (defaultSubscribeResponceWriter) Accept() {
@@ -133,4 +96,26 @@ func (defaultSubscribeResponceWriter) Accept() {
 func (srw defaultSubscribeResponceWriter) Reject(err SubscribeError) {
 	srw.stream.CancelRead(StreamErrorCode(err.SubscribeErrorCode()))
 	srw.stream.CancelWrite(StreamErrorCode(err.SubscribeErrorCode()))
+}
+
+func getSubscription(r quicvarint.Reader) (Subscription, error) {
+	var sm message.SubscribeMessage
+	err := sm.DeserializePayload(r)
+	if err != nil {
+		slog.Error("failed to read a SUBSCRIBE message", slog.String("error", err.Error()))
+		return Subscription{}, err
+	}
+
+	return Subscription{
+		SubscribeID: SubscribeID(sm.SubscribeID),
+		Announcement: Announcement{
+			TrackNamespace: sm.TrackNamespace,
+		},
+		TrackName:          sm.TrackName,
+		SubscriberPriority: SubscriberPriority(sm.SubscriberPriority),
+		GroupOrder:         GroupOrder(sm.GroupOrder),
+		MinGroupSequence:   sm.MinGroupSequence,
+		MaxGroupSequence:   sm.MaxGroupSequence,
+		Parameters:         sm.Parameters,
+	}, nil
 }

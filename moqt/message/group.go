@@ -2,14 +2,14 @@ package message
 
 import "github.com/quic-go/quic-go/quicvarint"
 
-type GroupID uint64
+type GroupSequence uint64
 
 type PublisherPriority byte
 
 type GroupMessage struct {
 	SubscribeID SubscribeID
 
-	GroupID GroupID
+	GroupSequence GroupSequence
 
 	PublisherPriority PublisherPriority
 }
@@ -30,7 +30,7 @@ func (g GroupMessage) SerializePayload() []byte {
 	p = quicvarint.Append(p, uint64(g.SubscribeID))
 
 	// Append the Subscribe ID
-	p = quicvarint.Append(p, uint64(g.GroupID))
+	p = quicvarint.Append(p, uint64(g.GroupSequence))
 
 	// Append the Publisher Priority
 	p = quicvarint.Append(p, uint64(g.PublisherPriority))
@@ -51,7 +51,7 @@ func (g *GroupMessage) DeserializePayload(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	g.GroupID = GroupID(num)
+	g.GroupSequence = GroupSequence(num)
 
 	// Get a Publisher Priority
 	num, err = quicvarint.Read(r)

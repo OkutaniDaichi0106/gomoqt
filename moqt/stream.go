@@ -35,35 +35,3 @@ type StreamID int64
 type StreamErrorCode uint32
 
 type SessionErrorCode uint32
-
-// /*
-//  * Handlers
-//  */
-// type UniStreamHandler interface {
-// 	HandleReceiveStream(ReceiveStream)
-// 	HandleSendStream(SendStream)
-// }
-
-// /***/
-// type BiStreamHandler interface {
-// 	HandleStream(Stream)
-// }
-
-// var _ (BiStreamHandler) = (*defaultBiStreamHandler)(nil)
-
-// type defaultBiStreamHandler struct{}
-
-// func (defaultBiStreamHandler) HandleStream(stream Stream) {
-
-// }
-
-// var _ (UniStreamHandler) = (*defaultUniStreamHandler)(nil)
-
-// type defaultUniStreamHandler struct{}
-
-// func (defaultUniStreamHandler) HandleReceiveStream(stream ReceiveStream) {
-
-// }
-// func (defaultUniStreamHandler) HandleSendStream(stream SendStream) {
-
-// }

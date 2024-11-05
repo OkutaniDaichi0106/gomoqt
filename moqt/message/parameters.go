@@ -132,7 +132,7 @@ func (params Parameters) Remove(key uint64) {
 	delete(params, key)
 }
 
-func (params Parameters) AddParameter(key uint64, value any) {
+func (params Parameters) Add(key uint64, value any) {
 	switch v := value.(type) {
 	case int64:
 		params[key] = uint64(v)

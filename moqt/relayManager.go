@@ -5,6 +5,8 @@ import (
 	"sync"
 )
 
+var defaultRelayManager = NewRelayManager()
+
 func NewRelayManager() *RelayManager {
 	return &RelayManager{
 		trackNamespaceTree: trackNamespaceTree{
@@ -98,6 +100,12 @@ type trackNamespaceNode struct {
 	 * The origin session
 	 */
 	origin *Session
+
+	/*
+	 * Announcement
+	 */
+	announcements map[string]Announcement
+	annMu         sync.RWMutex
 }
 
 type trackNameNode struct {

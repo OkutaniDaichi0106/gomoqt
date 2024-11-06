@@ -2,6 +2,7 @@ package moqt
 
 import (
 	"log/slog"
+	"strings"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
 	"github.com/quic-go/quic-go/quicvarint"
@@ -23,7 +24,7 @@ type InterestHandler interface {
 }
 
 type Announcement struct {
-	TrackNamespace    []string
+	TrackNamespace    string
 	AuthorizationInfo string
 	Parameters        message.Parameters
 }
@@ -92,7 +93,7 @@ type defaultAnnounceWriter struct {
 
 func (irw defaultAnnounceWriter) Announce(announcement Announcement) {
 	am := message.AnnounceMessage{
-		TrackNamespace: announcement.TrackNamespace,
+		TrackNamespace: strings.Split(announcement.TrackNamespace, "/"),
 		Parameters:     announcement.Parameters,
 	}
 

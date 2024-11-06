@@ -2,6 +2,7 @@ package moqt
 
 import (
 	"log/slog"
+	"strings"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
 	"github.com/quic-go/quic-go/quicvarint"
@@ -32,7 +33,7 @@ func getAnnouncement(r quicvarint.Reader) (Announcement, error) {
 
 	// Initialize an Announcement
 	announcement := Announcement{
-		TrackNamespace: am.TrackNamespace,
+		TrackNamespace: strings.Join(am.TrackNamespace, "/"),
 		Parameters:     am.Parameters,
 	}
 	//

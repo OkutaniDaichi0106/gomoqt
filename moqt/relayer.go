@@ -18,9 +18,9 @@ type Relayer struct {
 	RelayManager *RelayManager
 }
 
-func (r Relayer) listen(sess Session) {
+func (r Relayer) listen(sess *Session) {
 	if r.RelayManager == nil {
-		r.RelayManager = NewRelayManager()
+		r.RelayManager = defaultRelayManager
 	}
 
 	go r.listenBiStreams(sess)
@@ -32,7 +32,7 @@ func (r Relayer) listen(sess Session) {
 	sess.Terminate(err)
 }
 
-func (r Relayer) listenBiStreams(sess Session) {
+func (r Relayer) listenBiStreams(sess *Session) {
 	for {
 		stream, err := sess.Connection.AcceptStream(context.Background())
 		if err != nil {
@@ -58,9 +58,18 @@ func (r Relayer) listenBiStreams(sess Session) {
 					return
 				}
 
-				r.Publisher.Handler.HandleInterest(interest, defaultAnnounceWriter{
+				w := defaultAnnounceWriter{
+					errCh:  make(chan error),
 					stream: stream,
-				})
+				}
+
+				r.Publisher.Handler.HandleInterest(interest, w)
+
+				err = <-w.errCh
+				if err != nil {
+					slog.Error("rejected an interest", slog.Any("interest", interest))
+					return
+				}
 
 				// Catch any error
 				for {
@@ -100,7 +109,12 @@ func (r Relayer) listenBiStreams(sess Session) {
 					return
 				}
 
-				// Notice the track information
+				// Register the subscription
+				sess.addSubscription(subscription)
+
+				/*
+				 * Notice the track information
+				 */
 				iw := defaultInfoWriter{
 					errCh:  make(chan error),
 					stream: stream,
@@ -120,9 +134,11 @@ func (r Relayer) listenBiStreams(sess Session) {
 				for {
 					subscription, err := getSubscribeUpdate(subscription, qvr)
 					if err != nil {
-						slog.Error("receives an error in announce stream from a subscriber", slog.String("error", err.Error()))
+						slog.Error("receives an error in subscriber stream from a subscriber", slog.String("error", err.Error()))
 						break
 					}
+
+					slog.Info("received a subscription", slog.Any("subscription", subscription))
 
 					sw := defaultSubscribeResponceWriter{
 						stream: stream,
@@ -133,9 +149,14 @@ func (r Relayer) listenBiStreams(sess Session) {
 
 					err = <-sw.errCh
 					if err != nil {
-						slog.Error("failed to subscribe", slog.String("error", err.Error()))
+						slog.Error("reject a subscription", slog.Any("subscription", subscription), slog.String("error", err.Error()))
 						return
 					}
+
+					slog.Info("accept a subscribe update", slog.Any("new subscription", subscription))
+
+					// Register the subscription
+					sess.addSubscription(subscription)
 				}
 
 				// Close the Stream gracefully
@@ -217,7 +238,7 @@ func (r Relayer) listenBiStreams(sess Session) {
 	}
 }
 
-func (r Relayer) listenUniStreams(sess Session) {
+func (r Relayer) listenUniStreams(sess *Session) {
 	for {
 		stream, err := sess.Connection.AcceptUniStream(context.Background())
 		if err != nil {

@@ -130,7 +130,7 @@ func (s Server) ListenAndServe() error {
 					return
 				}
 
-				go relayer.listen(sess)
+				go relayer.listen(&sess)
 			}()
 		}
 	}()
@@ -231,7 +231,7 @@ func (s Server) RunOnWebTransport(relayer Relayer) {
 			return
 		}
 
-		go relayer.listen(sess)
+		go relayer.listen(&sess)
 	})
 }
 

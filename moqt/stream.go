@@ -34,4 +34,32 @@ type StreamID int64
 
 type StreamErrorCode uint32
 
-type SessionErrorCode uint32
+const (
+	stream_internal_error StreamErrorCode = 0x00
+	invalid_stream_type   StreamErrorCode = 0x10 // TODO: See spec
+)
+
+type StreamError interface {
+	error
+	StreamErrorCode() StreamErrorCode
+}
+
+type defaultStreamError struct {
+	code   StreamErrorCode
+	reason string
+}
+
+func (err defaultStreamError) Error() string {
+	return err.reason
+}
+
+func (err defaultStreamError) StreamErrorCode() StreamErrorCode {
+	return err.code
+}
+
+var (
+	ErrInvalidStreamType = defaultStreamError{
+		code:   invalid_stream_type,
+		reason: "invalid stream type",
+	}
+)

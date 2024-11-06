@@ -163,24 +163,7 @@ func (c Client) Run(ctx context.Context) error {
 		}
 	}
 
-	/*
-	 * Run Publisher
-	 */
-	if c.Publisher != nil {
-		c.Publisher.init()
-		go c.Publisher.listen()
-		slog.Info("Client is running as Publisher")
-	}
-
-	/*
-	 * Run Subscriber
-	 */
-	if c.Subscriber != nil {
-		c.Subscriber.init()
-		go c.Subscriber.listen()
-
-		slog.Info("Client is running as Subscriber")
-	}
+	//
 
 	return nil
 }

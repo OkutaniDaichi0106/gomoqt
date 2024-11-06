@@ -14,6 +14,8 @@ type Session struct {
 	 * Subscription
 	 */
 	subscription map[SubscribeID]Subscription
+
+	terrCh chan TerminateError
 }
 
 func (sess Session) Terminate(terr TerminateError) {

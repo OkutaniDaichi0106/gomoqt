@@ -5,8 +5,8 @@ import (
 	"sync"
 )
 
-func newRelayManager() relayManager {
-	return relayManager{
+func NewRelayManager() *RelayManager {
+	return &RelayManager{
 		trackNamespaceTree: trackNamespaceTree{
 			rootNode: &trackNamespaceNode{
 				value:    "",
@@ -16,23 +16,23 @@ func newRelayManager() relayManager {
 	}
 }
 
-type relayManager struct {
+type RelayManager struct {
 	trackNamespaceTree trackNamespaceTree
 }
 
-func (tm *relayManager) newTrackNamespace(trackNamespace []string) *trackNamespaceNode {
+func (tm *RelayManager) newTrackNamespace(trackNamespace []string) *trackNamespaceNode {
 	return tm.trackNamespaceTree.insert(trackNamespace)
 }
 
-func (tm *relayManager) findTrackNamespace(trackNamespace []string) (*trackNamespaceNode, bool) {
+func (tm *RelayManager) findTrackNamespace(trackNamespace []string) (*trackNamespaceNode, bool) {
 	return tm.trackNamespaceTree.trace(trackNamespace)
 }
 
-func (tm *relayManager) removeTrackNamespace(trackNamespace []string) error {
+func (tm *RelayManager) removeTrackNamespace(trackNamespace []string) error {
 	return tm.trackNamespaceTree.remove(trackNamespace)
 }
 
-func (tm *relayManager) findTrack(trackNamespace []string, trackName string) (*trackNameNode, bool) {
+func (tm *RelayManager) findTrack(trackNamespace []string, trackName string) (*trackNameNode, bool) {
 	tnsNode, ok := tm.findTrackNamespace(trackNamespace)
 	if !ok {
 		return nil, false

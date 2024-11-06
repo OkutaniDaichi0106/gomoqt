@@ -22,3 +22,5 @@ type Connection interface {
 	RemoteAddr() net.Addr
 	SendDatagram(b []byte) error
 }
+
+type SessionErrorCode uint32

@@ -38,6 +38,7 @@ func (err DefaultAnnounceError) Code() AnnounceErrorCode {
 /*
  * Internal Error
  */
+var _ StreamError = (*InternalError)(nil)
 var _ AnnounceError = (*InternalError)(nil)
 var _ SubscribeError = (*InternalError)(nil)
 var _ SubscribeDoneError = (*InternalError)(nil)
@@ -63,6 +64,10 @@ func (InternalError) SubscribeDoneErrorCode() SubscribeDoneStatusCode {
 
 func (InternalError) TerminateErrorCode() TerminateErrorCode {
 	return terminate_internal_error
+}
+
+func (InternalError) StreamErrorCode() StreamErrorCode {
+	return stream_internal_error
 }
 
 var ErrInternalError = InternalError{}

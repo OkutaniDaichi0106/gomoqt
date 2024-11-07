@@ -8,18 +8,7 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-type Subscriber struct {
-	Handler SubscriberHandler
-}
-
 type SubscriberHandler interface {
-	AnnounceHandler
-	InfoHandler
-	DataHander
-
-	InterestWriter
-	SubscribeWriter
-	InfoRequestWriter
 }
 
 func getAnnouncement(r quicvarint.Reader) (Announcement, error) {
@@ -55,5 +44,21 @@ func getGroup(r quicvarint.Reader) (Group, error) {
 	}
 
 	//
-	return Group(gm), nil
+	return Group{
+		SubscribeID:       SubscribeID(gm.SubscribeID),
+		GroupSequence:     GroupSequence(gm.GroupSequence),
+		PublisherPriority: gm.PublisherPriority,
+	}, nil
+}
+
+func getInfo(r quicvarint.Reader) (Info, error) {
+	//
+	var im message.InfoMessage
+	err := im.DeserializePayload(r)
+	if err != nil {
+		slog.Error("failed to read a INFO message", slog.String("error", err.Error()))
+		return Info{}, err
+	}
+
+	return Info(im), nil
 }

@@ -4,19 +4,6 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-/*
- * Track Status
- */
-type TrackStatusCode byte
-
-const (
-	TRACK_STATUS_IN_PROGRESS       TrackStatusCode = 0x00
-	TRACK_STATUS_NOT_EXIST         TrackStatusCode = 0x01
-	TRACK_STATUS_NOT_BEGUN_YET     TrackStatusCode = 0x02
-	TRACK_STATUS_FINISHED          TrackStatusCode = 0x03
-	TRACK_STATUS_UNTRACEABLE_RELAY TrackStatusCode = 0x04
-)
-
 type InfoRequestMessage struct {
 	/*
 	 * Track namespace

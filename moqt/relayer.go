@@ -2,7 +2,9 @@ package moqt
 
 import (
 	"context"
+	"io"
 	"log/slog"
+	"strings"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -11,25 +13,27 @@ type Relayer struct {
 	Path string
 
 	//
-	Publisher Publisher
+	PublisherHandler
 
-	Subscriber Subscriber
+	SubscriberHandler
 
 	RelayManager *RelayManager
 }
 
+func (r Relayer) Relay()
+
 func (r Relayer) listen(sess *Session) {
 	if r.RelayManager == nil {
-		r.RelayManager = defaultRelayManager
+		panic("no relay manager")
 	}
 
 	go r.listenBiStreams(sess)
 	go r.listenUniStreams(sess)
 
-	err := <-sess.terrCh
-	slog.Error("Session was terminated", slog.String("error", err.Error()))
+	terr := <-sess.terrCh
+	slog.Error("Session was terminated", slog.String("error", terr.Error()))
 
-	sess.Terminate(err)
+	sess.Terminate(terr)
 }
 
 func (r Relayer) listenBiStreams(sess *Session) {
@@ -50,7 +54,7 @@ func (r Relayer) listenBiStreams(sess *Session) {
 
 			switch StreamType(num) {
 			case ANNOUNCE:
-				slog.Info("Announce Stream is opened")
+				slog.Debug("Announce Stream is opened")
 
 				interest, err := getInterest(qvr)
 				if err != nil {
@@ -58,116 +62,105 @@ func (r Relayer) listenBiStreams(sess *Session) {
 					return
 				}
 
-				w := defaultAnnounceWriter{
-					errCh:  make(chan error),
+				w := AnnounceWriter{
+					doneCh: make(chan struct{}),
 					stream: stream,
 				}
 
-				r.Publisher.Handler.HandleInterest(interest, w)
+				// Announce
 
-				err = <-w.errCh
-				if err != nil {
-					slog.Error("rejected an interest", slog.Any("interest", interest))
-					return
+				announcements, ok := r.RelayManager.GetAnnouncements(interest.TrackPrefix)
+				if ok {
+
 				}
-
-				// Catch any error
-				for {
-					_, err := stream.Read([]byte{})
-					if err != nil {
-						slog.Error("receives an error in announce stream from client", slog.String("error", err.Error()))
-						break
-					}
-				}
-
-				// Close the Stream
-				err = stream.Close()
-				if err != nil {
-					slog.Error("failed to close the stream", slog.String("error", err.Error()))
-					return
-				}
-
+				// Handle the Interest
+				r.HandleInterest(interest, announcements, w)
 			case SUBSCRIBE:
-				slog.Info("Subscribe Stream is opened")
+				slog.Debug("Subscribe Stream was opened")
 
 				subscription, err := getSubscription(qvr)
 				if err != nil {
-					slog.Error("failed to get a subscription", slog.String("error", err.Error()))
-					return
-				}
+					slog.Debug("failed to get a subscription", slog.String("error", err.Error()))
 
-				sw := defaultSubscribeResponceWriter{
-					stream: stream,
-					errCh:  make(chan error),
-				}
-
-				r.Publisher.Handler.HandleSubscribe(subscription, sw)
-
-				err = <-sw.errCh
-				if err != nil {
-					slog.Error("failed to subscribe", slog.String("error", err.Error()))
-					return
-				}
-
-				// Register the subscription
-				sess.addSubscription(subscription)
-
-				/*
-				 * Notice the track information
-				 */
-				iw := defaultInfoWriter{
-					errCh:  make(chan error),
-					stream: stream,
-				}
-				// Handle
-				r.Publisher.Handler.HandleInfoRequest(InfoRequest{
-					TrackNamespace: subscription.TrackNamespace,
-					TrackName:      subscription.TrackName,
-				}, iw)
-
-				err = <-iw.errCh
-				if err != nil {
-					slog.Error("catch an error", slog.String("error", err.Error()))
-				}
-
-				// Catch any Subscribe Update or any error from the subscriber
-				for {
-					subscription, err := getSubscribeUpdate(subscription, qvr)
+					// Close the Stream gracefully
+					slog.Debug("closing a Subscribe Stream", slog.String("error", err.Error()))
+					err = stream.Close()
 					if err != nil {
-						slog.Error("receives an error in subscriber stream from a subscriber", slog.String("error", err.Error()))
-						break
-					}
-
-					slog.Info("received a subscription", slog.Any("subscription", subscription))
-
-					sw := defaultSubscribeResponceWriter{
-						stream: stream,
-						errCh:  make(chan error),
-					}
-
-					r.Publisher.Handler.HandleSubscribe(subscription, sw)
-
-					err = <-sw.errCh
-					if err != nil {
-						slog.Error("reject a subscription", slog.Any("subscription", subscription), slog.String("error", err.Error()))
+						slog.Debug("failed to close the stream", slog.String("error", err.Error()))
 						return
 					}
 
-					slog.Info("accept a subscribe update", slog.Any("new subscription", subscription))
-
-					// Register the subscription
-					sess.addSubscription(subscription)
+					return
 				}
+
+				//
+				sw := SubscribeResponceWriter{
+					stream: stream,
+					doneCh: make(chan struct{}),
+				}
+
+				// Get any Infomation of the track
+				info, ok := r.RelayManager.GetInfo(subscription.TrackNamespace, subscription.TrackName)
+				if ok {
+					// Handle with out
+					r.HandleSubscribe(subscription, &info, sw)
+				} else {
+					r.HandleSubscribe(subscription, nil, sw)
+				}
+
+				<-sw.doneCh
+
+				/*
+				 * Accept the new subscription
+				 */
+				sess.acceptSubscription(subscription)
+
+				/*
+				 * Catch any Subscribe Update or any error from the subscriber
+				 */
+				for {
+					update, err := getSubscribeUpdate(subscription, qvr)
+					if err != nil {
+						slog.Debug("catched an error from the subscriber", slog.String("error", err.Error()))
+						break
+					}
+
+					slog.Debug("received a subscribe update request", slog.Any("subscription", update))
+
+					sw := SubscribeResponceWriter{
+						stream: stream,
+						doneCh: make(chan struct{}),
+					}
+
+					// Get any Infomation of the track
+					info, ok := r.RelayManager.GetInfo(subscription.TrackNamespace, subscription.TrackName)
+					if ok {
+						r.HandleSubscribe(update, &info, sw)
+					} else {
+						r.HandleSubscribe(update, nil, sw)
+					}
+
+					<-sw.doneCh
+
+					slog.Info("updated a subscription", slog.Any("from", subscription), slog.Any("to", update))
+
+					/*
+					 * Update the subscription
+					 */
+					sess.updateSubscription(update)
+					subscription = update
+				}
+
+				sess.stopSubscription(subscription.subscribeID)
 
 				// Close the Stream gracefully
 				err = stream.Close()
 				if err != nil {
-					slog.Error("failed to close the stream", slog.String("error", err.Error()))
+					slog.Debug("failed to close the stream", slog.String("error", err.Error()))
 					return
 				}
-
 			case FETCH:
-				slog.Info("Fetch Stream is opened")
+				slog.Debug("Fetch Stream was opened")
 
 				fetchRequest, err := getFetchRequest(qvr)
 				if err != nil {
@@ -175,26 +168,14 @@ func (r Relayer) listenBiStreams(sess *Session) {
 					return
 				}
 
-				w := defaultFetchRequestWriter{
-					errCh:  make(chan error),
+				w := FetchResponceWriter{
+					doneCh: make(chan struct{}),
 					stream: stream,
 				}
 
-				r.Publisher.Handler.HandleFetch(fetchRequest, w)
+				r.HandleFetch(fetchRequest, w)
 
-				err = <-w.errCh
-				if err != nil {
-					slog.Error("catch an error", slog.String("error", err.Error()))
-					return
-				}
-
-				// Close the Stream
-				err = stream.Close()
-				if err != nil {
-					slog.Error("failed to close the stream", slog.String("error", err.Error()))
-					return
-				}
-
+				<-w.doneCh
 			case INFO:
 				slog.Info("Info Stream is opened")
 
@@ -204,26 +185,19 @@ func (r Relayer) listenBiStreams(sess *Session) {
 					return
 				}
 
-				w := defaultInfoWriter{
-					errCh:  make(chan error),
+				w := InfoWriter{
+					doneCh: make(chan struct{}),
 					stream: stream,
 				}
 
-				r.Publisher.Handler.HandleInfoRequest(infoRequest, w)
-
-				err = <-w.errCh
-
-				if err != nil {
-					slog.Error("catch an error", slog.String("error", err.Error()))
+				info, ok := r.RelayManager.GetInfo(infoRequest.TrackNamespace, infoRequest.TrackName)
+				if ok {
+					r.HandleInfoRequest(infoRequest, &info, w)
+				} else {
+					r.HandleInfoRequest(infoRequest, nil, w)
 				}
 
-				// Close the Stream
-				err = stream.Close()
-				if err != nil {
-					slog.Error("failed to close the stream", slog.String("error", err.Error()))
-					return
-				}
-
+				<-w.doneCh
 			default:
 				err := ErrInvalidStreamType
 				slog.Error(err.Error(), slog.Uint64("ID", uint64(num)))
@@ -247,13 +221,91 @@ func (r Relayer) listenUniStreams(sess *Session) {
 		}
 
 		go func(stream ReceiveStream) {
+			/*
+			 * Get a group
+			 */
 			group, err := getGroup(quicvarint.NewReader(stream))
 			if err != nil {
 				slog.Error("failed to get a group", slog.String("error", err.Error()))
 				return
 			}
 
-			r.Subscriber.Handler.HandleData(group, stream)
+			/*
+			 * Find a subscription corresponding to the Subscribe ID in the Group
+			 * Verify if subscribed or not
+			 */
+			sess.rsMu.RLock()
+			defer sess.rsMu.RUnlock()
+
+			sw, ok := sess.subscribeWriters[group.SubscribeID]
+			if !ok {
+				slog.Error("received a group of unsubscribed track", slog.Any("group", group))
+				return
+			}
+			subscription := sw.subscription
+
+			/*
+			 * Distribute data
+			 */
+			// Find a Track corresponding to the Group's Track
+			tnNode, ok := r.RelayManager.findTrack(strings.Split(subscription.TrackNamespace, "/"), subscription.TrackName)
+			if !ok {
+				slog.Error("")
+				return
+			}
+
+			dataCh := make(chan []byte, 1<<5) // TODO: Tune the size
+
+			/*
+			 * Read data
+			 */
+			go func() {
+				buf := make([]byte, 1<<10)
+				for {
+					n, err := stream.Read(buf)
+					if err != nil {
+						if err == io.EOF {
+							dataCh <- buf[:n]
+						}
+						return
+					}
+
+					dataCh <- buf[:n]
+				}
+			}()
+
+			/*
+			 * Send data
+			 */
+			for data := range dataCh {
+				go func(data []byte) {
+					for _, destSess := range tnNode.destinations {
+
+						if destSess == nil {
+							// Skip
+							continue
+						}
+
+						go func(sess *Session) {
+							stream, err := sess.OpenDataStream(group)
+							if err != nil {
+								slog.Error("failed to open a Data Stream")
+								// Notify the Group may be dropped // TODO:
+
+								return
+							}
+
+							_, err = stream.Write(data)
+							if err != nil {
+								// Notify the Group may be dropped // TODO:
+								return
+							}
+						}(destSess)
+					}
+				}(data)
+			}
+
+			slog.Debug("all data was distributed", slog.Any("group", group))
 		}(stream)
 	}
 }

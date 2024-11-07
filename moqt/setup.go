@@ -38,6 +38,12 @@ type SetupHandler interface {
 	HandleSetup(SetupRequest, SetupResponceWriter)
 }
 
+type SetupHandlerFunc func(SetupRequest, SetupResponceWriter)
+
+func (f SetupHandlerFunc) HandleSetup(r SetupRequest, w SetupResponceWriter) {
+	f(r, w)
+}
+
 var _ SetupResponceWriter = (*defaultSetupResponceWriter)(nil)
 
 type defaultSetupResponceWriter struct {

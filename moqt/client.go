@@ -29,8 +29,8 @@ type Client struct {
 
 	HandleSetupResponce func(SetupResponce) error
 
-	*Publisher
-	*Subscriber
+	PublisherHandler
+	SubscriberHandler
 }
 
 func (c Client) init() {

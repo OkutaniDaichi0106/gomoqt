@@ -2,10 +2,9 @@ package moqt
 
 import (
 	"errors"
+	"strings"
 	"sync"
 )
-
-var defaultRelayManager = NewRelayManager()
 
 func NewRelayManager() *RelayManager {
 	return &RelayManager{
@@ -22,19 +21,56 @@ type RelayManager struct {
 	trackNamespaceTree trackNamespaceTree
 }
 
-func (tm *RelayManager) newTrackNamespace(trackNamespace []string) *trackNamespaceNode {
+func (rm RelayManager) GetAnnouncement(trackNamespace string) (Announcement, bool) {
+	tns := strings.Split(trackNamespace, "/")
+	tnsNode, ok := rm.findTrackNamespace(tns)
+	if !ok {
+		return Announcement{}, false
+	}
+
+	return *tnsNode.announcement, true
+}
+
+func (rm RelayManager) GetAnnouncements(trackNamespacePrefix string) ([]Announcement, bool) {
+	tns := strings.Split(trackNamespacePrefix, "/")
+	tnsNode, ok := rm.findTrackNamespace(tns)
+	if !ok {
+		return nil, false
+	}
+
+	announcements := tnsNode.getAnnouncements()
+	if announcements == nil {
+		return nil, false
+	}
+
+	return announcements, true
+}
+
+func (rm RelayManager) GetInfo(trackNamespace, trackName string) (Info, bool) {
+	tns := strings.Split(trackNamespace, "/")
+	tnNode, ok := rm.findTrack(tns, trackName)
+	if !ok {
+		return Info{}, false
+	}
+
+	return tnNode.info, true
+}
+
+//func (rm RelayManager) FindDestinations()
+
+func (tm RelayManager) newTrackNamespace(trackNamespace []string) *trackNamespaceNode {
 	return tm.trackNamespaceTree.insert(trackNamespace)
 }
 
-func (tm *RelayManager) findTrackNamespace(trackNamespace []string) (*trackNamespaceNode, bool) {
+func (tm RelayManager) findTrackNamespace(trackNamespace []string) (*trackNamespaceNode, bool) {
 	return tm.trackNamespaceTree.trace(trackNamespace)
 }
 
-func (tm *RelayManager) removeTrackNamespace(trackNamespace []string) error {
+func (tm RelayManager) removeTrackNamespace(trackNamespace []string) error {
 	return tm.trackNamespaceTree.remove(trackNamespace)
 }
 
-func (tm *RelayManager) findTrack(trackNamespace []string, trackName string) (*trackNameNode, bool) {
+func (tm RelayManager) findTrack(trackNamespace []string, trackName string) (*trackNameNode, bool) {
 	tnsNode, ok := tm.findTrackNamespace(trackNamespace)
 	if !ok {
 		return nil, false
@@ -104,8 +140,7 @@ type trackNamespaceNode struct {
 	/*
 	 * Announcement
 	 */
-	announcements map[string]Announcement
-	annMu         sync.RWMutex
+	announcement *Announcement
 }
 
 type trackNameNode struct {
@@ -120,6 +155,11 @@ type trackNameNode struct {
 	 *
 	 */
 	destinations []*Session
+
+	/*
+	 *
+	 */
+	info Info
 }
 
 func (node *trackNamespaceNode) removeDescendants(tns []string, depth int) (bool, error) {
@@ -206,4 +246,20 @@ func (node *trackNamespaceNode) newTrackNameNode(trackName string) *trackNameNod
 	}
 
 	return node.tracks[trackName]
+}
+
+func (node *trackNamespaceNode) getAnnouncements() []Announcement {
+	var announcements []Announcement
+	for _, childNode := range node.children {
+		if childNode == nil {
+			continue
+		}
+		announcements = append(announcements, childNode.getAnnouncements()...)
+	}
+
+	if node.announcement != nil {
+		announcements = append(announcements, *node.announcement)
+	}
+
+	return announcements
 }

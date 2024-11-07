@@ -1,6 +1,7 @@
 package moqt
 
 import (
+	"errors"
 	"log/slog"
 	"strings"
 
@@ -8,19 +9,62 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-type Interest message.AnnounceInterestMessage
-
-type InterestWriter interface {
-	Interest(Interest) error
+type AnnounceStream struct {
+	reader quicvarint.Reader
+	stream Stream
 }
 
-type AnnounceWriter interface {
-	Announce(Announcement)
-	Reject(InterestError)
+func (a AnnounceStream) ReadAnnouncement() (Announcement, error) {
+	if a.reader == nil {
+		a.reader = quicvarint.NewReader(a.stream)
+	}
+
+	var am message.AnnounceMessage
+	err := am.DeserializePayload(a.reader)
+	if err != nil {
+		slog.Debug("failed to get an announcement", slog.String("error", err.Error()))
+		return Announcement{}, err
+	}
+
+	announcement := Announcement{
+		TrackNamespace: strings.Join(am.TrackNamespace, "/"),
+		Parameters:     am.Parameters,
+	}
+
+	if authInfo, ok := getAuthorizationInfo(am.Parameters); ok {
+		announcement.AuthorizationInfo = authInfo
+	}
+
+	return announcement, nil
+}
+
+func (a AnnounceStream) Close(err error) {
+	if err == nil {
+		err = a.stream.Close()
+		if err != nil {
+			slog.Debug("failed to close the stream", slog.String("error", err.Error()))
+			return
+		}
+	}
+
+	annerr, ok := err.(AnnounceError)
+	if !ok {
+		annerr = ErrInternalError
+	}
+
+	slog.Debug("trying to close an Announce Stream", slog.String("reason", annerr.Error()))
+
+	a.stream.CancelWrite(StreamErrorCode(annerr.AnnounceErrorCode()))
+	a.stream.CancelRead(StreamErrorCode(annerr.AnnounceErrorCode()))
+}
+
+type Interest struct {
+	TrackPrefix string
+	Parameters  Parameters
 }
 
 type InterestHandler interface {
-	HandleInterest(Interest, AnnounceWriter)
+	HandleInterest(Interest, []Announcement, AnnounceWriter)
 }
 
 type Announcement struct {
@@ -29,69 +73,12 @@ type Announcement struct {
 	Parameters        message.Parameters
 }
 
-type AnnounceResponceWriter interface {
-	Accept(Announcement)
-	Reject(AnnounceError)
-}
-
-type AnnounceHandler interface {
-	HandleAnnounce(Announcement, AnnounceResponceWriter)
-}
-
-var _ AnnounceResponceWriter = (*defaultAnnounceResponceWriter)(nil)
-
-type defaultAnnounceResponceWriter struct {
+type AnnounceWriter struct {
+	doneCh chan struct{}
 	stream Stream
 }
 
-func (defaultAnnounceResponceWriter) Accept(Announcement) {
-
-}
-
-func (w defaultAnnounceResponceWriter) Reject(err AnnounceError) {
-	w.stream.CancelRead(StreamErrorCode(err.AnnounceErrorCode()))
-	w.stream.CancelWrite(StreamErrorCode(err.AnnounceErrorCode()))
-
-	slog.Info("reject the interest", slog.String("error", err.Error()))
-}
-
-type AnnounceReader interface {
-	Read(r quicvarint.Reader) (Announcement, error)
-}
-
-var _ InterestWriter = (*defaultInterestWriter)(nil)
-
-type defaultInterestWriter struct {
-	stream Stream
-}
-
-func (w defaultInterestWriter) Interest(interest Interest) error {
-	aim := message.AnnounceInterestMessage{
-		TrackPrefix: interest.TrackPrefix,
-		Parameters:  interest.Parameters,
-	}
-
-	_, err := w.stream.Write(aim.SerializePayload())
-	if err != nil {
-		slog.Error("failed to send an ANNOUNCE_INTEREST message", slog.String("error", err.Error()))
-		return err
-	}
-
-	slog.Info("Interested", slog.Any("track prefix", interest.TrackPrefix))
-	return nil
-}
-
-/*
- * MOQTransfork implementation
- */
-var _ AnnounceWriter = (*defaultAnnounceWriter)(nil)
-
-type defaultAnnounceWriter struct {
-	errCh  chan error
-	stream Stream
-}
-
-func (irw defaultAnnounceWriter) Announce(announcement Announcement) {
+func (w AnnounceWriter) Announce(announcement Announcement) {
 	am := message.AnnounceMessage{
 		TrackNamespace: strings.Split(announcement.TrackNamespace, "/"),
 		Parameters:     announcement.Parameters,
@@ -101,19 +88,42 @@ func (irw defaultAnnounceWriter) Announce(announcement Announcement) {
 		am.Parameters.Add(AUTHORIZATION_INFO, announcement.AuthorizationInfo)
 	}
 
-	_, err := irw.stream.Write(am.SerializePayload())
+	_, err := w.stream.Write(am.SerializePayload())
 	if err != nil {
-		slog.Error("failed to send an ANNOUNCE message.", slog.String("error", err.Error()))
+		slog.Debug("failed to send an ANNOUNCE message.", slog.String("error", err.Error()))
+		return
 	}
 
-	slog.Info("announced", slog.Any("track namespace", announcement.TrackNamespace))
+	slog.Info("announced", slog.Any("announcement", announcement))
 }
 
-func (w defaultAnnounceWriter) Reject(err InterestError) {
-	w.stream.CancelRead(StreamErrorCode(err.InterestErrorCode()))
-	w.stream.CancelWrite(StreamErrorCode(err.InterestErrorCode()))
+func (w AnnounceWriter) Close(err error) {
+	if err == nil {
+		err = w.stream.Close()
+		slog.Error("failed to close an Announce Stream", slog.String("error", err.Error()))
+		return
+	}
 
-	w.errCh <- err
+	var code StreamErrorCode
 
-	slog.Info("reject the interest", slog.String("error", err.Error()))
+	var strerr StreamError
+	if errors.As(err, &strerr) {
+		code = strerr.StreamErrorCode()
+	} else {
+		annerr, ok := err.(AnnounceError)
+		if ok {
+			code = StreamErrorCode(annerr.AnnounceErrorCode())
+		} else {
+			code = ErrInternalError.StreamErrorCode()
+		}
+	}
+
+	w.stream.CancelRead(code)
+	w.stream.CancelWrite(code)
+
+	w.doneCh <- struct{}{}
+
+	close(w.doneCh)
+
+	slog.Debug("close an Announce Stream")
 }

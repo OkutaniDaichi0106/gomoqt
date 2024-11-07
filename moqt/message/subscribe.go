@@ -34,10 +34,10 @@ type SubscribeMessage struct {
 	Expires time.Duration
 
 	/***/
-	MinGroupSequence uint64
+	MinGroupSequence GroupSequence
 
 	/***/
-	MaxGroupSequence uint64
+	MaxGroupSequence GroupSequence
 
 	/*
 	 * Subscribe Parameters
@@ -90,10 +90,10 @@ func (s SubscribeMessage) SerializePayload() []byte {
 	p = append(p, []byte{byte(s.GroupOrder)}...)
 
 	// Append the Min Group Sequence
-	p = quicvarint.Append(p, s.MinGroupSequence)
+	p = quicvarint.Append(p, uint64(s.MinGroupSequence))
 
 	// Append the Max Group Sequence
-	p = quicvarint.Append(p, s.MinGroupSequence)
+	p = quicvarint.Append(p, uint64(s.MinGroupSequence))
 
 	// Append the Subscribe Update Priority
 	p = s.Parameters.Append(p)
@@ -161,14 +161,14 @@ func (s *SubscribeMessage) DeserializePayload(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	s.MinGroupSequence = num
+	s.MinGroupSequence = GroupSequence(num)
 
 	// Get Max Group Sequence
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	s.MaxGroupSequence = num
+	s.MaxGroupSequence = GroupSequence(num)
 
 	// Get Subscribe Update Parameters
 	err = s.Parameters.Deserialize(r)

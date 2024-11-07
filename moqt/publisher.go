@@ -2,23 +2,22 @@ package moqt
 
 import (
 	"log/slog"
+	"strings"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-type Publisher struct {
-	// Handlers
-	Handler PublisherHandler
-}
+// type Publisher struct {
+// 	// Handlers
+// 	Handler PublisherHandler
+// }
 
 type PublisherHandler interface {
 	InterestHandler
 	SubscribeHandler
 	FetchHandler
 	InfoRequestHandler
-
-	DataWriter
 }
 
 func getInterest(r quicvarint.Reader) (Interest, error) {
@@ -28,7 +27,10 @@ func getInterest(r quicvarint.Reader) (Interest, error) {
 		slog.Error("failed to read an ANNOUNCE_INTEREST message", slog.String("error", err.Error()))
 		return Interest{}, err
 	}
-	return Interest(aim), nil
+	return Interest{
+		TrackPrefix: strings.Join(aim.TrackPrefix, "/"),
+		Parameters:  Parameters(aim.Parameters),
+	}, nil
 }
 
 func getFetchRequest(r quicvarint.Reader) (FetchRequest, error) {
@@ -50,5 +52,8 @@ func getInfoRequest(r quicvarint.Reader) (InfoRequest, error) {
 		return InfoRequest{}, err
 	}
 
-	return InfoRequest(irm), nil
+	return InfoRequest{
+		TrackNamespace: strings.Join(irm.TrackNamespace, "/"),
+		TrackName:      irm.TrackName,
+	}, nil
 }

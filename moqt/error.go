@@ -1,7 +1,7 @@
 package moqt
 
 /*
- * Announce Error
+ * Announce Errors
  */
 type AnnounceErrorCode uint32
 
@@ -11,7 +11,7 @@ const (
 )
 
 var (
-	ErrDuplicatedTrackNamespace = DefaultAnnounceError{
+	ErrDuplicatedTrackNamespace = defaultAnnounceError{
 		reason: "duplicate track namespace",
 		code:   announce_duplicate_track_namespace,
 	}
@@ -22,118 +22,111 @@ type AnnounceError interface {
 	AnnounceErrorCode() AnnounceErrorCode
 }
 
-type DefaultAnnounceError struct {
+type defaultAnnounceError struct {
 	reason string
 	code   AnnounceErrorCode
 }
 
-func (err DefaultAnnounceError) Error() string {
+func (err defaultAnnounceError) Error() string {
 	return err.reason
 }
 
-func (err DefaultAnnounceError) Code() AnnounceErrorCode {
+func (err defaultAnnounceError) AnnounceErrorCode() AnnounceErrorCode {
 	return err.code
 }
 
 /*
  * Internal Error
  */
-var _ StreamError = (*InternalError)(nil)
-var _ AnnounceError = (*InternalError)(nil)
-var _ SubscribeError = (*InternalError)(nil)
-var _ SubscribeDoneError = (*InternalError)(nil)
-var _ TerminateError = (*InternalError)(nil)
+var _ StreamError = (*internalError)(nil)
+var _ AnnounceError = (*internalError)(nil)
+var _ SubscribeError = (*internalError)(nil)
+var _ SubscribeDoneError = (*internalError)(nil)
+var _ TerminateError = (*internalError)(nil)
+var _ InfoError = (*internalError)(nil)
 
-type InternalError struct{}
+type internalError struct{}
 
-func (InternalError) Error() string {
+func (internalError) Error() string {
 	return "internal error"
 }
 
-func (InternalError) AnnounceErrorCode() AnnounceErrorCode {
+func (internalError) AnnounceErrorCode() AnnounceErrorCode {
 	return announce_internal_error
 }
 
-func (InternalError) SubscribeErrorCode() SubscribeErrorCode {
+func (internalError) SubscribeErrorCode() SubscribeErrorCode {
 	return subscribe_internal_error
 }
 
-func (InternalError) SubscribeDoneErrorCode() SubscribeDoneStatusCode {
+func (internalError) SubscribeDoneErrorCode() SubscribeDoneStatusCode {
 	return subscribe_done_internal_error
 }
 
-func (InternalError) TerminateErrorCode() TerminateErrorCode {
+func (internalError) TerminateErrorCode() TerminateErrorCode {
 	return terminate_internal_error
 }
 
-func (InternalError) StreamErrorCode() StreamErrorCode {
+func (internalError) StreamErrorCode() StreamErrorCode {
 	return stream_internal_error
 }
 
-var ErrInternalError = InternalError{}
+func (internalError) FetchErrorCode() FetchErrorCode {
+	return fetch_internal_error
+}
+
+func (internalError) InfoErrorCode() InfoErrorCode {
+	return info_internal_error
+}
+
+var ErrInternalError = internalError{}
 
 /*
  * Unauthorized Error
  */
-var _ SubscribeError = (*UnauthorizedError)(nil)
-var _ SubscribeDoneError = (*UnauthorizedError)(nil)
-var _ TerminateError = (*UnauthorizedError)(nil)
+var _ SubscribeError = (*unauthorizedError)(nil)
+var _ SubscribeDoneError = (*unauthorizedError)(nil)
+var _ TerminateError = (*unauthorizedError)(nil)
 
-type UnauthorizedError struct{}
+type unauthorizedError struct{}
 
-func (UnauthorizedError) Error() string {
+func (unauthorizedError) Error() string {
 	return "internal error"
 }
 
-func (UnauthorizedError) SubscribeErrorCode() SubscribeErrorCode {
+func (unauthorizedError) SubscribeErrorCode() SubscribeErrorCode {
 	return subscribe_unauthorized
 }
 
-func (UnauthorizedError) SubscribeDoneErrorCode() SubscribeDoneStatusCode {
+func (unauthorizedError) SubscribeDoneErrorCode() SubscribeDoneStatusCode {
 	return subscribe_done_unauthorized
 }
 
-func (UnauthorizedError) TerminateErrorCode() TerminateErrorCode {
+func (unauthorizedError) TerminateErrorCode() TerminateErrorCode {
 	return terminate_unauthorized
 }
 
-var ErrUnauthorizedError = InternalError{}
+var ErrUnauthorizedError = internalError{}
 
 /*
- * Subscribe Error
+ * Subscribe Errors
  */
 type SubscribeErrorCode uint32
 
 const (
 	subscribe_internal_error       SubscribeErrorCode = 0x00
 	subscribe_invlid_range         SubscribeErrorCode = 0x01
-	subscribe_retry_track_alias    SubscribeErrorCode = 0x02
 	subscribe_track_does_not_exist SubscribeErrorCode = 0x03
 	subscribe_unauthorized         SubscribeErrorCode = 0x04
 	subscribe_timeout              SubscribeErrorCode = 0x05
-)
-
-var (
-	ErrDefaultInvalidRange = defaultSubscribeError{
-		code:   subscribe_invlid_range,
-		reason: "invalid range",
-	}
-
-	ErrTrackDoesNotExist = defaultSubscribeError{
-		code:   subscribe_track_does_not_exist,
-		reason: "track does not exist",
-	}
-
-	ErrSubscribeTimeout = defaultSubscribeError{
-		code:   subscribe_timeout,
-		reason: "time out",
-	}
 )
 
 type SubscribeError interface {
 	error
 	SubscribeErrorCode() SubscribeErrorCode
 }
+
+var _ SubscribeError = (*defaultSubscribeError)(nil)
 
 type defaultSubscribeError struct {
 	code   SubscribeErrorCode
@@ -147,6 +140,18 @@ func (err defaultSubscribeError) Error() string {
 func (err defaultSubscribeError) SubscribeErrorCode() SubscribeErrorCode {
 	return err.code
 }
+
+var (
+	ErrInvalidRange = defaultSubscribeError{
+		code:   subscribe_invlid_range,
+		reason: "invalid range",
+	}
+
+	ErrSubscribeTimeout = defaultSubscribeError{
+		code:   subscribe_timeout,
+		reason: "time out",
+	}
+)
 
 /*
  *
@@ -240,40 +245,59 @@ func (status DefaultSubscribeDoneStatus) Code() SubscribeDoneStatusCode {
 }
 
 /*
- * Interest Error
+ * Info Errors
  */
+type InfoErrorCode int
 
-type InterestErrorCode int
+const (
+	info_internal_error       InfoErrorCode = 0x00
+	info_track_does_not_exist InfoErrorCode = 0x01
+)
 
-type InterestError interface {
+type InfoError interface {
 	error
-	InterestErrorCode() InterestErrorCode
+	InfoErrorCode() InfoErrorCode
 }
 
-var _ InterestError = (*defaultInterestError)(nil)
+var _ InfoError = (*defaultInfoError)(nil)
 
-type defaultInterestError struct {
-	code   InterestErrorCode
+type defaultInfoError struct {
+	code   InfoErrorCode
 	reason string
 }
 
-func (err defaultInterestError) Error() string {
+func (err defaultInfoError) Error() string {
 	return err.reason
 }
 
-func (err defaultInterestError) InterestErrorCode() InterestErrorCode {
+func (err defaultInfoError) InfoErrorCode() InfoErrorCode {
 	return err.code
 }
 
 var (
-	ErrTrackNotFound = defaultInterestError{
-		code:   0x00,
-		reason: "track not found",
-	}
+	ErrTrackDoesNotExist = trackNotFoundError{}
 )
 
 /*
- * Fetch Error
+ * Track Not Found Error
+ */
+var _ SubscribeError = (*trackNotFoundError)(nil)
+var _ InfoError = (*trackNotFoundError)(nil)
+
+type trackNotFoundError struct{}
+
+func (trackNotFoundError) Error() string {
+	return "track does not exist"
+}
+func (trackNotFoundError) SubscribeErrorCode() SubscribeErrorCode {
+	return subscribe_track_does_not_exist
+}
+func (trackNotFoundError) InfoErrorCode() InfoErrorCode {
+	return info_track_does_not_exist
+}
+
+/*
+ * Fetch Errors
  */
 type FetchErrorCode int
 
@@ -281,6 +305,8 @@ type FetchError interface {
 	error
 	FetchErrorCode() FetchErrorCode
 }
+
+var _ FetchError = (*defaultFetchError)(nil)
 
 type defaultFetchError struct {
 	code   FetchErrorCode
@@ -296,8 +322,9 @@ func (err defaultFetchError) FetchErrorCode() FetchErrorCode {
 }
 
 const (
-	fetch_no_group       FetchErrorCode = 0x0
-	fetch_invalid_offset FetchErrorCode = 0x1
+	fetch_internal_error FetchErrorCode = 0x0
+	fetch_no_group       FetchErrorCode = 0x1
+	fetch_invalid_offset FetchErrorCode = 0x2
 )
 
 var (

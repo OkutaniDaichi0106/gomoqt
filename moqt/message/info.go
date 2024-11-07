@@ -6,8 +6,10 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
+type TrackPriority uint64
+
 type InfoMessage struct {
-	Code                TrackStatusCode
+	TrackPriority       TrackPriority
 	LatestGroupSequence GroupSequence
 	GroupOrder          GroupOrder
 	GroupExpires        time.Duration
@@ -32,7 +34,7 @@ func (im InfoMessage) SerializePayload() []byte {
 	p := make([]byte, 0, 1<<10)
 
 	// Append the Status Code
-	p = quicvarint.Append(p, uint64(im.Code))
+	p = quicvarint.Append(p, uint64(im.TrackPriority))
 
 	// Appen the Last Group ID
 	p = quicvarint.Append(p, uint64(im.LatestGroupSequence))
@@ -55,7 +57,7 @@ func (im *InfoMessage) DeserializePayload(r quicvarint.Reader) error {
 	if err != nil {
 		return err
 	}
-	im.Code = TrackStatusCode(num)
+	im.TrackPriority = TrackPriority(num)
 
 	// Get a Latest Group ID
 	num, err = quicvarint.Read(r)

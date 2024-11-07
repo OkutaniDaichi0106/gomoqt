@@ -28,12 +28,6 @@ type SetupResponce struct {
 	Parameters      Parameters
 }
 
-type SetupResponceWriter interface {
-	Accept(Version)
-	Reject(TerminateError)
-	WithExtension(Parameters) SetupResponceWriter
-}
-
 type SetupHandler interface {
 	HandleSetup(SetupRequest, SetupResponceWriter)
 }
@@ -44,16 +38,14 @@ func (f SetupHandlerFunc) HandleSetup(r SetupRequest, w SetupResponceWriter) {
 	f(r, w)
 }
 
-var _ SetupResponceWriter = (*defaultSetupResponceWriter)(nil)
-
-type defaultSetupResponceWriter struct {
+type SetupResponceWriter struct {
 	errCh  chan error
 	once   *sync.Once
 	stream SessionStream
 	params Parameters
 }
 
-func (w defaultSetupResponceWriter) Accept(version Version) {
+func (w SetupResponceWriter) Accept(version Version) {
 	ssm := message.SessionServerMessage{
 		SelectedVersion: protocol.Version(version),
 		Parameters:      message.Parameters(w.params),
@@ -70,7 +62,7 @@ func (w defaultSetupResponceWriter) Accept(version Version) {
 	close(w.errCh)
 }
 
-func (w defaultSetupResponceWriter) Reject(err TerminateError) {
+func (w SetupResponceWriter) Reject(err TerminateError) {
 	slog.Error(err.Error(), slog.Any("Code", err.TerminateErrorCode()))
 
 	/*
@@ -84,8 +76,8 @@ func (w defaultSetupResponceWriter) Reject(err TerminateError) {
 	close(w.errCh)
 }
 
-func (w defaultSetupResponceWriter) WithExtension(params Parameters) SetupResponceWriter {
-	return defaultSetupResponceWriter{
+func (w SetupResponceWriter) WithExtension(params Parameters) SetupResponceWriter {
+	return SetupResponceWriter{
 		once:   w.once,
 		stream: w.stream,
 		params: params,

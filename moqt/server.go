@@ -108,7 +108,7 @@ func (s Server) ListenAndServe() error {
 				}
 
 				// Initialize a SetupResponceWriter{}
-				srw := defaultSetupResponceWriter{
+				srw := SetupResponceWriter{
 					errCh:  make(chan error),
 					once:   new(sync.Once),
 					stream: sess.SessionStream,
@@ -217,7 +217,7 @@ func (s Server) RunOnWebTransport(relayer Relayer) {
 			return
 		}
 
-		srw := defaultSetupResponceWriter{
+		srw := SetupResponceWriter{
 			errCh:  make(chan error),
 			once:   new(sync.Once),
 			stream: sess.SessionStream,

@@ -29,18 +29,28 @@ type Client struct {
 
 	HandleSetupResponce func(SetupResponce) error
 
-	PublisherHandler
-	SubscriberHandler
+	DataHandler
+
+	RequestHandler
+
+	RelayManager *RelayManager
 }
 
-func (c Client) init() {
-	if c.SupportedVersions == nil {
-		c.SupportedVersions = []Version{Default}
-	}
+type DataHandler interface {
+	HandleData(Group, ReceiveStream)
 }
 
 func (c Client) Run(ctx context.Context) error {
-	c.init()
+	/*
+	 * Initialize the Client
+	 */
+	if c.RelayManager == nil {
+		c.RelayManager = defaultRelayManager
+	}
+
+	if c.SupportedVersions == nil {
+		c.SupportedVersions = []Version{Default}
+	}
 
 	/*
 	 * Dial
@@ -121,8 +131,11 @@ func (c Client) Run(ctx context.Context) error {
 	}
 	// Initialize a Session
 	sess := Session{
-		Connection:    conn,
-		SessionStream: stream,
+		Connection:            conn,
+		SessionStream:         stream,
+		subscribeWriters:      make(map[SubscribeID]*SubscribeWriter),
+		receivedSubscriptions: make(map[SubscribeID]Subscription),
+		terrCh:                make(chan TerminateError),
 	}
 
 	/*
@@ -163,7 +176,16 @@ func (c Client) Run(ctx context.Context) error {
 		}
 	}
 
-	//
+	/***/
+	go c.listenBiStreams(&sess)
+	go c.listenUniStreams(&sess)
+
+	go func() {
+		terr := <-sess.terrCh
+		if terr != nil {
+			sess.Terminate(terr)
+		}
+	}()
 
 	return nil
 }
@@ -201,4 +223,216 @@ func getSetupResponce(r quicvarint.Reader) (SetupResponce, error) {
 		SelectedVersion: Version(ssm.SelectedVersion),
 		Parameters:      Parameters(ssm.Parameters),
 	}, nil
+}
+
+func (c Client) listenBiStreams(sess *Session) {
+	for {
+		stream, err := sess.Connection.AcceptStream(context.Background())
+		if err != nil {
+			slog.Error("failed to accept a bidirectional stream", slog.String("error", err.Error()))
+			return
+		}
+
+		go func(stream Stream) {
+			qvr := quicvarint.NewReader(stream)
+
+			num, err := qvr.ReadByte()
+			if err != nil {
+				slog.Error("failed to read a Stream Type ID", slog.String("error", err.Error()))
+			}
+
+			switch StreamType(num) {
+			case ANNOUNCE:
+				slog.Debug("Announce Stream is opened")
+
+				interest, err := getInterest(qvr)
+				if err != nil {
+					slog.Error("failed to get an Interest", slog.String("error", err.Error()))
+					return
+				}
+
+				w := AnnounceWriter{
+					doneCh: make(chan struct{}),
+					stream: stream,
+				}
+
+				// Announce
+				announcements, ok := c.RelayManager.GetAnnouncements(interest.TrackPrefix)
+				if !ok || announcements == nil {
+					announcements = make([]Announcement, 0)
+				}
+
+				c.HandleInterest(interest, announcements, w)
+				<-w.doneCh
+			case SUBSCRIBE:
+				slog.Debug("Subscribe Stream was opened")
+
+				subscription, err := getSubscription(qvr)
+				if err != nil {
+					slog.Debug("failed to get a subscription", slog.String("error", err.Error()))
+
+					// Close the Stream gracefully
+					slog.Debug("closing a Subscribe Stream", slog.String("error", err.Error()))
+					err = stream.Close()
+					if err != nil {
+						slog.Debug("failed to close the stream", slog.String("error", err.Error()))
+						return
+					}
+
+					return
+				}
+
+				//
+				sw := SubscribeResponceWriter{
+					stream: stream,
+					doneCh: make(chan struct{}),
+				}
+
+				// Get any Infomation of the track
+				info, ok := c.RelayManager.GetInfo(subscription.TrackNamespace, subscription.TrackName)
+				if ok {
+					// Handle with out
+					c.HandleSubscribe(subscription, &info, sw)
+				} else {
+					c.HandleSubscribe(subscription, nil, sw)
+				}
+
+				<-sw.doneCh
+
+				/*
+				 * Accept the new subscription
+				 */
+				sess.acceptSubscription(subscription)
+
+				/*
+				 * Catch any Subscribe Update or any error from the subscriber
+				 */
+				for {
+					update, err := getSubscribeUpdate(subscription, qvr)
+					if err != nil {
+						slog.Debug("catched an error from the subscriber", slog.String("error", err.Error()))
+						break
+					}
+
+					slog.Debug("received a subscribe update request", slog.Any("subscription", update))
+
+					sw := SubscribeResponceWriter{
+						stream: stream,
+						doneCh: make(chan struct{}),
+					}
+
+					// Get any Infomation of the track
+					info, ok := c.RelayManager.GetInfo(subscription.TrackNamespace, subscription.TrackName)
+					if ok {
+						c.HandleSubscribe(update, &info, sw)
+					} else {
+						c.HandleSubscribe(update, nil, sw)
+					}
+
+					<-sw.doneCh
+
+					slog.Info("updated a subscription", slog.Any("from", subscription), slog.Any("to", update))
+
+					/*
+					 * Update the subscription
+					 */
+					sess.updateSubscription(update)
+					subscription = update
+				}
+
+				sess.stopSubscription(subscription.subscribeID)
+
+				// Close the Stream gracefully
+				err = stream.Close()
+				if err != nil {
+					slog.Debug("failed to close the stream", slog.String("error", err.Error()))
+					return
+				}
+			case FETCH:
+				slog.Debug("Fetch Stream was opened")
+
+				fetchRequest, err := getFetchRequest(qvr)
+				if err != nil {
+					slog.Error("failed to get a fetch-request", slog.String("error", err.Error()))
+					return
+				}
+
+				w := FetchResponceWriter{
+					doneCh: make(chan struct{}),
+					stream: stream,
+				}
+
+				c.HandleFetch(fetchRequest, w)
+
+				<-w.doneCh
+			case INFO:
+				slog.Info("Info Stream is opened")
+
+				infoRequest, err := getInfoRequest(qvr)
+				if err != nil {
+					slog.Error("failed to get a info-request", slog.String("error", err.Error()))
+					return
+				}
+
+				w := InfoWriter{
+					doneCh: make(chan struct{}),
+					stream: stream,
+				}
+
+				info, ok := c.RelayManager.GetInfo(infoRequest.TrackNamespace, infoRequest.TrackName)
+				if ok {
+					c.HandleInfoRequest(infoRequest, &info, w)
+				} else {
+					c.HandleInfoRequest(infoRequest, nil, w)
+				}
+
+				<-w.doneCh
+			default:
+				err := ErrInvalidStreamType
+				slog.Error(err.Error(), slog.Uint64("ID", uint64(num)))
+
+				// Cancel reading and writing
+				stream.CancelRead(err.StreamErrorCode())
+				stream.CancelWrite(err.StreamErrorCode())
+
+				return
+			}
+		}(stream)
+	}
+}
+
+func (c Client) listenUniStreams(sess *Session) {
+	for {
+		stream, err := sess.Connection.AcceptUniStream(context.Background())
+		if err != nil {
+			slog.Error("failed to accept a bidirectional stream", slog.String("error", err.Error()))
+			return
+		}
+
+		go func(stream ReceiveStream) {
+			/*
+			 * Get a group
+			 */
+			group, err := getGroup(quicvarint.NewReader(stream))
+			if err != nil {
+				slog.Error("failed to get a group", slog.String("error", err.Error()))
+				return
+			}
+
+			/*
+			 * Find a subscription corresponding to the Subscribe ID in the Group
+			 * Verify if subscribed or not
+			 */
+			sess.rsMu.RLock()
+			defer sess.rsMu.RUnlock()
+
+			_, ok := sess.subscribeWriters[group.SubscribeID]
+			if !ok {
+				slog.Error("received data of unsubscribed track", slog.Any("group", group))
+				return
+			}
+
+			c.HandleData(group, stream)
+		}(stream)
+	}
 }

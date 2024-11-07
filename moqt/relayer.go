@@ -9,22 +9,28 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
+var defaultRelayManager = NewRelayManager()
+
 type Relayer struct {
 	Path string
 
 	//
-	PublisherHandler
+	RequestHandler
 
-	SubscriberHandler
-
+	/*
+	 * Relay Manager
+	 * This field is optional
+	 * If no value is set, default RelayManger is used
+	 */
 	RelayManager *RelayManager
 }
 
-func (r Relayer) Relay()
-
 func (r Relayer) listen(sess *Session) {
-	if r.RelayManager == nil {
+	if r.RequestHandler == nil {
 		panic("no relay manager")
+	}
+	if r.RelayManager == nil {
+		r.RelayManager = defaultRelayManager
 	}
 
 	go r.listenBiStreams(sess)
@@ -68,13 +74,13 @@ func (r Relayer) listenBiStreams(sess *Session) {
 				}
 
 				// Announce
-
 				announcements, ok := r.RelayManager.GetAnnouncements(interest.TrackPrefix)
-				if ok {
-
+				if !ok || announcements == nil {
+					announcements = make([]Announcement, 0)
 				}
-				// Handle the Interest
+
 				r.HandleInterest(interest, announcements, w)
+				<-w.doneCh
 			case SUBSCRIBE:
 				slog.Debug("Subscribe Stream was opened")
 

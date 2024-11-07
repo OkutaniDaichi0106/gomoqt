@@ -25,22 +25,30 @@ func main() {
 	moqs.SetCertFiles("localhost.pem", "localhost-key.pem")
 
 	relayer := moqt.Relayer{
-		Path: "/main",
+		Path:           "/main",
+		RequestHandler: handler{},
 	}
 
 	moqs.RunOnQUIC(relayer)
 }
 
-var _ moqt.PublisherHandler = (*PublisherHandler)(nil)
-var _ moqt.SubscriberHandler = (*SubscriberHandler)(nil)
+var _ moqt.RequestHandler = (*handler)(nil)
 
-type PublisherHandler struct{}
+type handler struct{}
 
-func (PublisherHandler) HandleInterest(i moqt.Interest, w moqt.AnnounceWriter) {
-	return
+func (handler) HandleInterest(i moqt.Interest, as []moqt.Announcement, w moqt.AnnounceWriter) {
+	if as == nil {
+		// Handle
+	}
+
+	for _, announcement := range as {
+		w.Announce(announcement)
+	}
+
+	w.Close(nil)
 }
 
-func (PublisherHandler) HandleSubscribe(s moqt.Subscription, info *moqt.Info, w moqt.SubscribeResponceWriter) {
+func (handler) HandleSubscribe(s moqt.Subscription, info *moqt.Info, w moqt.SubscribeResponceWriter) {
 	if info == nil {
 		/*
 		 * When info is nil, it means the subscribed track was not found.
@@ -53,11 +61,11 @@ func (PublisherHandler) HandleSubscribe(s moqt.Subscription, info *moqt.Info, w 
 	w.Accept(*info)
 }
 
-func (PublisherHandler) HandleFetch(r moqt.FetchRequest, w moqt.FetchResponceWriter) {
+func (handler) HandleFetch(r moqt.FetchRequest, w moqt.FetchResponceWriter) {
 	w.Reject(moqt.ErrNoGroup)
 }
 
-func (PublisherHandler) HandleInfoRequest(r moqt.InfoRequest, i *moqt.Info, w moqt.InfoWriter) {
+func (handler) HandleInfoRequest(r moqt.InfoRequest, i *moqt.Info, w moqt.InfoWriter) {
 	if i == nil {
 		/*
 		 * When info is nil, it means the subscribed track was not found.
@@ -69,8 +77,3 @@ func (PublisherHandler) HandleInfoRequest(r moqt.InfoRequest, i *moqt.Info, w mo
 
 	w.Answer(*i)
 }
-
-type SubscriberHandler struct {
-}
-
-func (SubscriberHandler) HandleInfo(i moqt.Info)

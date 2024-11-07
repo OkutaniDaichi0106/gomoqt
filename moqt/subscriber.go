@@ -8,9 +8,6 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-type SubscriberHandler interface {
-}
-
 func getAnnouncement(r quicvarint.Reader) (Announcement, error) {
 	// Read an ANNOUNCE message
 	var am message.AnnounceMessage

@@ -13,7 +13,7 @@ import (
 // 	Handler PublisherHandler
 // }
 
-type PublisherHandler interface {
+type RequestHandler interface {
 	InterestHandler
 	SubscribeHandler
 	FetchHandler

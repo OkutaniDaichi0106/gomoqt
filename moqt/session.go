@@ -4,15 +4,14 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type Session struct {
-	Connection    Connection
-	SessionStream SessionStream
+	conn    Connection
+	sessStr SessionStream
 	//version Version
 
 	/*
@@ -27,30 +26,8 @@ type Session struct {
 	terrCh chan TerminateError
 }
 
-func (sess *Session) GoAway(url string, timeout time.Duration) error {
-	gam := message.GoAwayMessage{
-		NewSessionURI: url,
-	}
-
-	_, err := sess.SessionStream.Write(gam.SerializePayload())
-	if err != nil {
-		slog.Error("failed to send a GOAWAY message", slog.String("error", err.Error()))
-		return err
-	}
-
-	// Lock the Mutex and stop making new subscription
-	sess.ssMu.Lock()
-	sess.rsMu.Lock()
-
-	time.Sleep(timeout)
-
-	sess.Terminate(ErrGoAwayTimeout)
-
-	return nil
-}
-
 func (sess *Session) Terminate(terr TerminateError) {
-	err := sess.Connection.CloseWithError(SessionErrorCode(terr.TerminateErrorCode()), terr.Error())
+	err := sess.conn.CloseWithError(SessionErrorCode(terr.TerminateErrorCode()), terr.Error())
 	if err != nil {
 		slog.Error("failed to close the Session", slog.String("error", err.Error()))
 		return
@@ -61,7 +38,7 @@ func (sess *Session) Terminate(terr TerminateError) {
 
 func (sess *Session) Interest(interest Interest) (AnnounceStream, error) {
 	//
-	stream, err := sess.Connection.OpenStream()
+	stream, err := sess.conn.OpenStream()
 	if err != nil {
 		slog.Error("failed to open an Announce Stream")
 		return AnnounceStream{}, err
@@ -92,7 +69,7 @@ func (sess *Session) Subscribe(subscription Subscription) (*SubscribeWriter, Inf
 	defer sess.ssMu.Unlock()
 
 	// Open a Subscribe Stream
-	stream, err := sess.Connection.OpenStream()
+	stream, err := sess.conn.OpenStream()
 	if err != nil {
 		slog.Error("failed to open a Subscribe Stream", slog.String("error", err.Error()))
 		return nil, Info{}, err
@@ -148,7 +125,7 @@ func (sess *Session) Subscribe(subscription Subscription) (*SubscribeWriter, Inf
 }
 
 func (sess *Session) Fetch(req FetchRequest) (FetchStream, error) {
-	stream, err := sess.Connection.OpenStream()
+	stream, err := sess.conn.OpenStream()
 	if err != nil {
 		slog.Error("failed to open an Fetch Stream", slog.String("error", err.Error()))
 		return FetchStream{}, err
@@ -166,7 +143,7 @@ func (sess *Session) Fetch(req FetchRequest) (FetchStream, error) {
 }
 
 func (sess *Session) RequestInfo(req InfoRequest) (Info, error) {
-	stream, err := sess.Connection.OpenStream()
+	stream, err := sess.conn.OpenStream()
 	if err != nil {
 		slog.Error("failed to open an Info Request Stream", slog.String("error", err.Error()))
 		return Info{}, err
@@ -194,7 +171,7 @@ func (sess *Session) RequestInfo(req InfoRequest) (Info, error) {
 }
 
 func (sess *Session) OpenDataStream(g Group) (SendStream, error) {
-	stream, err := sess.Connection.OpenUniStream()
+	stream, err := sess.conn.OpenUniStream()
 	if err != nil {
 		slog.Error("failed to open an unidirectional Stream", slog.String("error", err.Error()))
 		return nil, err
@@ -242,6 +219,15 @@ func (sess *Session) updateSubscription(subscription Subscription) {
 
 	slog.Info("updated a subscription", slog.Any("from", old), slog.Any("to", subscription))
 }
+
+// func (sess *Session) stopSubscriptions() {
+// 	sess.rsMu.Lock()
+// 	defer sess.rsMu.Unlock()
+
+// 	for _, subscription := range sess.receivedSubscriptions {
+// 		delete(sess.receivedSubscriptions, subscription.subscribeID)
+// 	}
+// }
 
 func (sess *Session) stopSubscription(id SubscribeID) {
 	sess.rsMu.Lock()

@@ -131,8 +131,8 @@ func (c Client) Run(ctx context.Context) error {
 	}
 	// Initialize a Session
 	sess := Session{
-		Connection:            conn,
-		SessionStream:         stream,
+		conn:                  conn,
+		sessStr:               stream,
 		subscribeWriters:      make(map[SubscribeID]*SubscribeWriter),
 		receivedSubscriptions: make(map[SubscribeID]Subscription),
 		terrCh:                make(chan TerminateError),
@@ -142,19 +142,19 @@ func (c Client) Run(ctx context.Context) error {
 	 * Set up
 	 */
 	// Send the Session Stream Type
-	_, err = sess.SessionStream.Write([]byte{byte(SESSION)})
+	_, err = sess.sessStr.Write([]byte{byte(SESSION)})
 	if err != nil {
 		slog.Error("failed to send a Session Stream Type", slog.String("error", err.Error()))
 		return err
 	}
 
-	err = sendSetupRequest(sess.SessionStream, req)
+	err = sendSetupRequest(sess.sessStr, req)
 	if err != nil {
 		slog.Error("failed to request to set up", slog.String("error", err.Error()))
 		return err
 	}
 
-	rsp, err := getSetupResponce(quicvarint.NewReader(sess.SessionStream))
+	rsp, err := getSetupResponce(quicvarint.NewReader(sess.sessStr))
 	if err != nil {
 		slog.Error("failed to receive a SESSION_SERVER message", slog.String("error", err.Error()))
 		return err
@@ -227,7 +227,7 @@ func getSetupResponce(r quicvarint.Reader) (SetupResponce, error) {
 
 func (c Client) listenBiStreams(sess *Session) {
 	for {
-		stream, err := sess.Connection.AcceptStream(context.Background())
+		stream, err := sess.conn.AcceptStream(context.Background())
 		if err != nil {
 			slog.Error("failed to accept a bidirectional stream", slog.String("error", err.Error()))
 			return
@@ -403,7 +403,7 @@ func (c Client) listenBiStreams(sess *Session) {
 
 func (c Client) listenUniStreams(sess *Session) {
 	for {
-		stream, err := sess.Connection.AcceptUniStream(context.Background())
+		stream, err := sess.conn.AcceptUniStream(context.Background())
 		if err != nil {
 			slog.Error("failed to accept a bidirectional stream", slog.String("error", err.Error()))
 			return

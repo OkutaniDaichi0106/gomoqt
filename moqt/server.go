@@ -80,8 +80,8 @@ func (s Server) ListenAndServe() error {
 
 				// Initialize a Session
 				sess := Session{
-					Connection:    conn,
-					SessionStream: stream,
+					conn:    conn,
+					sessStr: stream,
 				}
 
 				/*
@@ -89,7 +89,7 @@ func (s Server) ListenAndServe() error {
 				 */
 				// Read the first byte and get Stream Type
 				buf := make([]byte, 1)
-				_, err = sess.SessionStream.Read(buf)
+				_, err = sess.sessStr.Read(buf)
 				if err != nil {
 					slog.Error("failed to read a Stream Type", slog.String("error", err.Error()))
 					return
@@ -101,7 +101,7 @@ func (s Server) ListenAndServe() error {
 				}
 
 				// Get a set-up request
-				req, err := getSetupRequest(quicvarint.NewReader(sess.SessionStream))
+				req, err := getSetupRequest(quicvarint.NewReader(sess.sessStr))
 				if err != nil {
 					slog.Error("failed to get a set-up request", slog.String("error", err.Error()))
 					return
@@ -111,7 +111,7 @@ func (s Server) ListenAndServe() error {
 				srw := SetupResponceWriter{
 					errCh:  make(chan error),
 					once:   new(sync.Once),
-					stream: sess.SessionStream,
+					stream: sess.sessStr,
 				}
 
 				// Handle the Set-up
@@ -188,10 +188,14 @@ func (s Server) RunOnWebTransport(relayer Relayer) {
 			slog.Error("failed to open a stream", slog.String("error", err.Error()))
 			return
 		}
+
 		// Initialize a Session
 		sess := Session{
-			Connection:    conn,
-			SessionStream: stream,
+			conn:                  conn,
+			sessStr:               stream,
+			subscribeWriters:      make(map[SubscribeID]*SubscribeWriter),
+			receivedSubscriptions: make(map[SubscribeID]Subscription),
+			terrCh:                make(chan TerminateError),
 		}
 
 		/*
@@ -199,7 +203,7 @@ func (s Server) RunOnWebTransport(relayer Relayer) {
 		 */
 		// Read the first byte and get Stream Type
 		buf := make([]byte, 1)
-		_, err = sess.SessionStream.Read(buf)
+		_, err = sess.sessStr.Read(buf)
 		if err != nil {
 			slog.Error("failed to read a Stream Type", slog.String("error", err.Error()))
 			return
@@ -211,7 +215,7 @@ func (s Server) RunOnWebTransport(relayer Relayer) {
 		}
 
 		// Get a set-up request
-		req, err := getSetupRequest(quicvarint.NewReader(sess.SessionStream))
+		req, err := getSetupRequest(quicvarint.NewReader(sess.sessStr))
 		if err != nil {
 			slog.Error("failed to get a set-up request", slog.String("error", err.Error()))
 			return
@@ -220,7 +224,7 @@ func (s Server) RunOnWebTransport(relayer Relayer) {
 		srw := SetupResponceWriter{
 			errCh:  make(chan error),
 			once:   new(sync.Once),
-			stream: sess.SessionStream,
+			stream: sess.sessStr,
 		}
 
 		s.HandleSetup(req, srw)

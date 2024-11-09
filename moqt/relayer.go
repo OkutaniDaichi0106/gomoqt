@@ -5,7 +5,9 @@ import (
 	"io"
 	"log/slog"
 	"strings"
+	"time"
 
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -23,6 +25,8 @@ type Relayer struct {
 	 * If no value is set, default RelayManger is used
 	 */
 	RelayManager *RelayManager
+
+	GoAwayFunc func() (string, time.Duration)
 }
 
 func (r Relayer) listen(sess *Session) {
@@ -33,18 +37,76 @@ func (r Relayer) listen(sess *Session) {
 		r.RelayManager = defaultRelayManager
 	}
 
+	/*
+	 * Listen bidirectional streams
+	 */
 	go r.listenBiStreams(sess)
+
+	/*
+	 * Listen unidirectional streams
+	 */
 	go r.listenUniStreams(sess)
 
+	/*
+	 * Wait any Terminate Error
+	 */
 	terr := <-sess.terrCh
-	slog.Error("Session was terminated", slog.String("error", terr.Error()))
 
+	slog.Info("terminating a Session")
+
+	/*
+	 * Unsubscribe
+	 */
+	for _, w := range sess.subscribeWriters {
+		slog.Debug("unsubscribing", slog.Any("subscription", w.subscription))
+		w.Unsubscribe(terr)
+	}
+
+	/*
+	 * Go away
+	 */
+	if terr == nil && r.GoAwayFunc != nil {
+		slog.Info("go away")
+		url, timeout := r.GoAwayFunc()
+
+		terr = r.goAway(sess, url, timeout)
+	}
+
+	/*
+	 * Terminate the Session
+	 */
 	sess.Terminate(terr)
+	slog.Error("Session was terminated", slog.String("error", terr.Error()))
+}
+
+func (Relayer) goAway(sess *Session, url string, timeout time.Duration) TerminateError {
+	/*
+	 * Send a GOAWAY message
+	 */
+	gam := message.GoAwayMessage{
+		NewSessionURI: url,
+	}
+	_, err := sess.sessStr.Write(gam.SerializePayload())
+	if err != nil {
+		slog.Error("failed to send a GOAWAY message", slog.String("error", err.Error()))
+		return ErrInternalError
+	}
+
+	//
+	time.Sleep(timeout)
+
+	//
+	if len(sess.receivedSubscriptions) != 0 {
+		slog.Debug("subscription is still on the Session")
+		return ErrGoAwayTimeout
+	}
+
+	return nil
 }
 
 func (r Relayer) listenBiStreams(sess *Session) {
 	for {
-		stream, err := sess.Connection.AcceptStream(context.Background())
+		stream, err := sess.conn.AcceptStream(context.Background())
 		if err != nil {
 			slog.Error("failed to accept a bidirectional stream", slog.String("error", err.Error()))
 			return
@@ -89,7 +151,6 @@ func (r Relayer) listenBiStreams(sess *Session) {
 					slog.Debug("failed to get a subscription", slog.String("error", err.Error()))
 
 					// Close the Stream gracefully
-					slog.Debug("closing a Subscribe Stream", slog.String("error", err.Error()))
 					err = stream.Close()
 					if err != nil {
 						slog.Debug("failed to close the stream", slog.String("error", err.Error()))
@@ -158,6 +219,7 @@ func (r Relayer) listenBiStreams(sess *Session) {
 				}
 
 				sess.stopSubscription(subscription.subscribeID)
+				slog.Debug("unsubscribed", slog.Any("subscription", subscription))
 
 				// Close the Stream gracefully
 				err = stream.Close()
@@ -220,7 +282,7 @@ func (r Relayer) listenBiStreams(sess *Session) {
 
 func (r Relayer) listenUniStreams(sess *Session) {
 	for {
-		stream, err := sess.Connection.AcceptUniStream(context.Background())
+		stream, err := sess.conn.AcceptUniStream(context.Background())
 		if err != nil {
 			slog.Error("failed to accept a bidirectional stream", slog.String("error", err.Error()))
 			return

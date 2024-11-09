@@ -92,6 +92,7 @@ func (s *SubscribeWriter) Update(subscription Subscription) (Info, error) {
 
 func (s *SubscribeWriter) Unsubscribe(err error) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	if err == nil {
 		err := s.stream.Close()

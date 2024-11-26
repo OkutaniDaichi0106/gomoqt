@@ -1,15 +1,16 @@
 package moqt
 
 import (
+	"errors"
 	"log/slog"
 	"strings"
 	"sync"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-type Session struct {
+type session struct {
 	conn    Connection
 	sessStr SessionStream
 	//version Version
@@ -23,20 +24,34 @@ type Session struct {
 	receivedSubscriptions map[SubscribeID]Subscription
 	rsMu                  sync.RWMutex
 
-	terrCh chan TerminateError
+	doneCh chan struct{}
 }
 
-func (sess *Session) Terminate(terr TerminateError) {
-	err := sess.conn.CloseWithError(SessionErrorCode(terr.TerminateErrorCode()), terr.Error())
+func (sess *session) Terminate(err error) {
+	slog.Debug("terminating a Session")
+
+	var tererr TerminateError
+
+	if err == nil {
+		tererr = NoErrTerminate
+	} else {
+		var ok bool
+		tererr, ok = err.(TerminateError)
+		if !ok {
+			tererr = ErrInternalError
+		}
+	}
+
+	err = sess.conn.CloseWithError(SessionErrorCode(tererr.TerminateErrorCode()), err.Error())
 	if err != nil {
-		slog.Error("failed to close the Session", slog.String("error", err.Error()))
+		slog.Error("failed to close the Connection", slog.String("error", err.Error()))
 		return
 	}
 
-	slog.Info("closed the Session", slog.String("reason", terr.Error()))
+	slog.Debug("terminated a Session", slog.String("reason", err.Error()))
 }
 
-func (sess *Session) Interest(interest Interest) (AnnounceStream, error) {
+func (sess *session) Interest(interest Interest) (AnnounceStream, error) {
 	//
 	stream, err := sess.conn.OpenStream()
 	if err != nil {
@@ -64,7 +79,7 @@ func (sess *Session) Interest(interest Interest) (AnnounceStream, error) {
 	}, nil
 }
 
-func (sess *Session) Subscribe(subscription Subscription) (*SubscribeWriter, Info, error) {
+func (sess *session) Subscribe(subscription Subscription) (*SubscribeWriter, Info, error) {
 	sess.ssMu.Lock()
 	defer sess.ssMu.Unlock()
 
@@ -124,7 +139,7 @@ func (sess *Session) Subscribe(subscription Subscription) (*SubscribeWriter, Inf
 	return &sw, info, nil
 }
 
-func (sess *Session) Fetch(req FetchRequest) (FetchStream, error) {
+func (sess *session) Fetch(req FetchRequest) (FetchStream, error) {
 	stream, err := sess.conn.OpenStream()
 	if err != nil {
 		slog.Error("failed to open an Fetch Stream", slog.String("error", err.Error()))
@@ -142,7 +157,7 @@ func (sess *Session) Fetch(req FetchRequest) (FetchStream, error) {
 	}, nil
 }
 
-func (sess *Session) RequestInfo(req InfoRequest) (Info, error) {
+func (sess *session) RequestInfo(req InfoRequest) (Info, error) {
 	stream, err := sess.conn.OpenStream()
 	if err != nil {
 		slog.Error("failed to open an Info Request Stream", slog.String("error", err.Error()))
@@ -170,7 +185,11 @@ func (sess *Session) RequestInfo(req InfoRequest) (Info, error) {
 	return Info(info), nil
 }
 
-func (sess *Session) OpenDataStream(g Group) (SendStream, error) {
+func (sess *session) openDataStream(g Group) (SendStream, error) {
+	if g.groupSequence == 0 {
+		return nil, errors.New("0 sequence number")
+	}
+
 	stream, err := sess.conn.OpenUniStream()
 	if err != nil {
 		slog.Error("failed to open an unidirectional Stream", slog.String("error", err.Error()))
@@ -178,11 +197,12 @@ func (sess *Session) OpenDataStream(g Group) (SendStream, error) {
 	}
 
 	gm := message.GroupMessage{
-		SubscribeID:       message.SubscribeID(g.SubscribeID),
-		GroupSequence:     message.GroupSequence(g.GroupSequence),
+		SubscribeID:       message.SubscribeID(g.subscribeID),
+		GroupSequence:     message.GroupSequence(g.groupSequence),
 		PublisherPriority: message.PublisherPriority(g.PublisherPriority),
 	}
 
+	// Send the GROUP message
 	_, err = stream.Write(gm.SerializePayload())
 	if err != nil {
 		slog.Error("failed to send a GROUP message", slog.String("error", err.Error()))
@@ -192,7 +212,32 @@ func (sess *Session) OpenDataStream(g Group) (SendStream, error) {
 	return stream, nil
 }
 
-func (sess *Session) acceptSubscription(subscription Subscription) {
+func (sess *session) sendDatagram(g Group, data []byte) error {
+	if g.groupSequence == 0 {
+		return errors.New("0 sequence number")
+	}
+
+	gm := message.GroupMessage{
+		SubscribeID:       message.SubscribeID(g.subscribeID),
+		GroupSequence:     message.GroupSequence(g.groupSequence),
+		PublisherPriority: message.PublisherPriority(g.PublisherPriority),
+	}
+
+	p := gm.SerializePayload()
+
+	p = append(p, data...)
+
+	// Send the data with the GROUP message
+	err := sess.conn.SendDatagram(p)
+	if err != nil {
+		slog.Error("failed to send a datagram", slog.String("error", err.Error()))
+		return err
+	}
+
+	return nil
+}
+
+func (sess *session) acceptSubscription(subscription Subscription) {
 	sess.rsMu.Lock()
 	defer sess.rsMu.Unlock()
 
@@ -205,7 +250,7 @@ func (sess *Session) acceptSubscription(subscription Subscription) {
 	sess.receivedSubscriptions[subscription.subscribeID] = subscription
 }
 
-func (sess *Session) updateSubscription(subscription Subscription) {
+func (sess *session) updateSubscription(subscription Subscription) {
 	sess.rsMu.Lock()
 	defer sess.rsMu.Unlock()
 
@@ -220,16 +265,7 @@ func (sess *Session) updateSubscription(subscription Subscription) {
 	slog.Info("updated a subscription", slog.Any("from", old), slog.Any("to", subscription))
 }
 
-// func (sess *Session) stopSubscriptions() {
-// 	sess.rsMu.Lock()
-// 	defer sess.rsMu.Unlock()
-
-// 	for _, subscription := range sess.receivedSubscriptions {
-// 		delete(sess.receivedSubscriptions, subscription.subscribeID)
-// 	}
-// }
-
-func (sess *Session) stopSubscription(id SubscribeID) {
+func (sess *session) stopSubscription(id SubscribeID) {
 	sess.rsMu.Lock()
 	defer sess.rsMu.Unlock()
 
@@ -239,4 +275,8 @@ func (sess *Session) stopSubscription(id SubscribeID) {
 	}
 
 	delete(sess.receivedSubscriptions, id)
+}
+
+type SessionHandler interface {
+	HandleSession(*ServerSession)
 }

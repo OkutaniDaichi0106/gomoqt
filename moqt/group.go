@@ -1,13 +1,23 @@
 package moqt
 
-import "github.com/OkutaniDaichi0106/gomoqt/moqt/message"
+import "github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+
+type PublisherPriority message.PublisherPriority
 
 type Group struct {
-	SubscribeID SubscribeID
+	subscribeID SubscribeID
 
-	GroupSequence GroupSequence
+	groupSequence GroupSequence
 
-	PublisherPriority message.PublisherPriority
+	PublisherPriority PublisherPriority
+}
+
+func (g Group) SubscribeID() SubscribeID {
+	return g.subscribeID
+}
+
+func (g Group) GroupSequence() GroupSequence {
+	return g.groupSequence
 }
 
 type GroupErrorCode message.GroupErrorCode

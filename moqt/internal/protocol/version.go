@@ -3,6 +3,6 @@ package protocol
 type Version uint64
 
 const (
-	Devlop      Version = 0xffffffff
-	ForkDraft03 Version = 0xff0bad03
+	Dev      Version = 0xffffff00
+	Stable01 Version = 0xffffff01
 )

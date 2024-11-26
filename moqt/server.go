@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/quic-go/quicvarint"
@@ -71,7 +71,7 @@ func (s Server) ListenAndServe() error {
 				/*
 				 * Set up
 				 */
-				// Accept a Stream which must be a Sesson Stream
+				// Accept a Stream, which must be a Sesson Stream
 				stream, err := conn.AcceptStream(context.Background())
 				if err != nil {
 					slog.Error("failed to accept a stream", slog.String("error", err.Error()))
@@ -79,9 +79,11 @@ func (s Server) ListenAndServe() error {
 				}
 
 				// Initialize a Session
-				sess := Session{
-					conn:    conn,
-					sessStr: stream,
+				sess := session{
+					conn:                  conn,
+					sessStr:               stream,
+					subscribeWriters:      make(map[SubscribeID]*SubscribeWriter),
+					receivedSubscriptions: map[SubscribeID]Subscription{},
 				}
 
 				/*
@@ -91,12 +93,12 @@ func (s Server) ListenAndServe() error {
 				buf := make([]byte, 1)
 				_, err = sess.sessStr.Read(buf)
 				if err != nil {
-					slog.Error("failed to read a Stream Type", slog.String("error", err.Error()))
+					slog.Debug("failed to read a Stream Type", slog.String("error", err.Error()))
 					return
 				}
 				// Verify if the Stream Type is the SESSION
 				if StreamType(buf[0]) != SESSION {
-					slog.Error("unexpected Stream Type ID", slog.Uint64("ID", uint64(buf[0]))) // TODO
+					slog.Debug("unexpected Stream Type ID", slog.Any("expected ID", SESSION), slog.Any("detected ID", StreamType(buf[0]))) // TODO
 					return
 				}
 
@@ -130,7 +132,7 @@ func (s Server) ListenAndServe() error {
 					return
 				}
 
-				go relayer.listen(&sess)
+				relayer.run(&sess)
 			}()
 		}
 	}()
@@ -190,12 +192,11 @@ func (s Server) RunOnWebTransport(relayer Relayer) {
 		}
 
 		// Initialize a Session
-		sess := Session{
+		sess := session{
 			conn:                  conn,
 			sessStr:               stream,
 			subscribeWriters:      make(map[SubscribeID]*SubscribeWriter),
 			receivedSubscriptions: make(map[SubscribeID]Subscription),
-			terrCh:                make(chan TerminateError),
 		}
 
 		/*
@@ -235,7 +236,7 @@ func (s Server) RunOnWebTransport(relayer Relayer) {
 			return
 		}
 
-		go relayer.listen(&sess)
+		go relayer.run(&sess)
 	})
 }
 

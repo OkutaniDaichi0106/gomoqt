@@ -37,10 +37,6 @@ func (ga *GoAwayMessage) DeserializePayload(r quicvarint.Reader) error {
 		return err
 	}
 
-	// if num == 0 {
-	// 	// TODO: Reuse currenct URI
-	// }
-
 	// Get URI
 	buf := make([]byte, num)
 	_, err = r.Read(buf)

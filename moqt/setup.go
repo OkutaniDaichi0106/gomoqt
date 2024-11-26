@@ -4,8 +4,8 @@ import (
 	"log/slog"
 	"sync"
 
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
 )
 
 type SessionStream Stream

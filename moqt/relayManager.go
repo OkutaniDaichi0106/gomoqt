@@ -21,15 +21,15 @@ type RelayManager struct {
 	trackNamespaceTree trackNamespaceTree
 }
 
-func (rm RelayManager) GetAnnouncement(trackNamespace string) (Announcement, bool) {
-	tns := strings.Split(trackNamespace, "/")
-	tnsNode, ok := rm.findTrackNamespace(tns)
-	if !ok {
-		return Announcement{}, false
-	}
+// func (rm RelayManager) GetAnnouncement(trackNamespace string) (Announcement, bool) {
+// 	tns := strings.Split(trackNamespace, "/")
+// 	tnsNode, ok := rm.findTrackNamespace(tns)
+// 	if !ok {
+// 		return Announcement{}, false
+// 	}
 
-	return *tnsNode.announcement, true
-}
+// 	return *tnsNode.announcement, true
+// }
 
 func (rm RelayManager) GetAnnouncements(trackNamespacePrefix string) ([]Announcement, bool) {
 	tns := strings.Split(trackNamespacePrefix, "/")
@@ -48,7 +48,12 @@ func (rm RelayManager) GetAnnouncements(trackNamespacePrefix string) ([]Announce
 
 func (rm RelayManager) GetInfo(trackNamespace, trackName string) (Info, bool) {
 	tns := strings.Split(trackNamespace, "/")
-	tnNode, ok := rm.findTrack(tns, trackName)
+	tnsNode, ok := rm.findTrackNamespace(tns)
+	if !ok {
+		return Info{}, false
+	}
+
+	tnNode, ok := tnsNode.findTrackNameNode(trackName)
 	if !ok {
 		return Info{}, false
 	}
@@ -66,17 +71,27 @@ func (tm RelayManager) findTrackNamespace(trackNamespace []string) (*trackNamesp
 	return tm.trackNamespaceTree.trace(trackNamespace)
 }
 
-func (tm RelayManager) removeTrackNamespace(trackNamespace []string) error {
-	return tm.trackNamespaceTree.remove(trackNamespace)
+func (rm RelayManager) removeTrackNamespace(trackNamespace []string) error {
+	return rm.trackNamespaceTree.remove(trackNamespace)
 }
 
-func (tm RelayManager) findTrack(trackNamespace []string, trackName string) (*trackNameNode, bool) {
-	tnsNode, ok := tm.findTrackNamespace(trackNamespace)
+func (rm RelayManager) findDestinations(trackNamespace []string, trackName string, order GroupOrder) ([]*session, bool) {
+	tnsNode, ok := rm.findTrackNamespace(trackNamespace)
 	if !ok {
 		return nil, false
 	}
 
-	return tnsNode.findTrackNameNode(trackName)
+	tnNode, ok := tnsNode.findTrackNameNode(trackName)
+	if !ok {
+		return nil, false
+	}
+
+	goNode, ok := tnNode.findGroupOrder(order)
+	if !ok {
+		return nil, false
+	}
+
+	return goNode.destinations, true
 }
 
 type trackNamespaceTree struct {
@@ -135,7 +150,7 @@ type trackNamespaceNode struct {
 	/*
 	 * The origin session
 	 */
-	origin *Session
+	origin *session
 
 	/*
 	 * Announcement
@@ -151,15 +166,26 @@ type trackNameNode struct {
 	 */
 	value string
 
-	/*
-	 *
-	 */
-	destinations []*Session
+	orders map[GroupOrder]*groupOrderNode
 
 	/*
-	 *
+	 * Information of the Track
 	 */
 	info Info
+}
+
+type groupOrderNode struct {
+	mu sync.RWMutex
+
+	/*
+	 * The Group's order
+	 */
+	groupOrder GroupOrder
+
+	/*
+	 * The destination session
+	 */
+	destinations []*session
 }
 
 func (node *trackNamespaceNode) removeDescendants(tns []string, depth int) (bool, error) {
@@ -262,4 +288,13 @@ func (node *trackNamespaceNode) getAnnouncements() []Announcement {
 	}
 
 	return announcements
+}
+
+func (node *trackNameNode) findGroupOrder(order GroupOrder) (*groupOrderNode, bool) {
+	goNode, ok := node.orders[order]
+	if !ok {
+		return nil, false
+	}
+
+	return goNode, true
 }

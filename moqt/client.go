@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/quicvarint"
 	"github.com/quic-go/webtransport-go"
@@ -27,17 +27,13 @@ type Client struct {
 
 	SetupParameters Parameters
 
-	HandleSetupResponce func(SetupResponce) error
+	HijackSetupRarams func(Parameters) error
 
-	DataHandler
+	DataHandler DataHandler
 
-	RequestHandler
+	RequestHandler RequestHandler
 
 	RelayManager *RelayManager
-}
-
-type DataHandler interface {
-	HandleData(Group, ReceiveStream)
 }
 
 func (c Client) Run(ctx context.Context) error {
@@ -130,12 +126,12 @@ func (c Client) Run(ctx context.Context) error {
 		return err
 	}
 	// Initialize a Session
-	sess := Session{
+	sess := session{
 		conn:                  conn,
 		sessStr:               stream,
 		subscribeWriters:      make(map[SubscribeID]*SubscribeWriter),
 		receivedSubscriptions: make(map[SubscribeID]Subscription),
-		terrCh:                make(chan TerminateError),
+		doneCh:                make(chan struct{}),
 	}
 
 	/*
@@ -160,7 +156,7 @@ func (c Client) Run(ctx context.Context) error {
 		return err
 	}
 
-	// Verify the selceted version is contained in the
+	// Verify the selceted version is contained in the supported versions
 	if !ContainVersion(rsp.SelectedVersion, req.SupportedVersions) {
 		err = errors.New("unexpected version was seleted")
 		slog.Error("failed to negotiate versions", slog.String("error", err.Error()), slog.Any("selected version", rsp.SelectedVersion))
@@ -168,8 +164,8 @@ func (c Client) Run(ctx context.Context) error {
 	}
 
 	// Handle the responce
-	if c.HandleSetupResponce != nil {
-		err := c.HandleSetupResponce(rsp)
+	if c.HijackSetupRarams != nil {
+		err := c.HijackSetupRarams(rsp.Parameters)
 		if err != nil {
 			slog.Error(err.Error())
 			return err
@@ -178,14 +174,9 @@ func (c Client) Run(ctx context.Context) error {
 
 	/***/
 	go c.listenBiStreams(&sess)
-	go c.listenUniStreams(&sess)
 
-	go func() {
-		terr := <-sess.terrCh
-		if terr != nil {
-			sess.Terminate(terr)
-		}
-	}()
+	/***/
+	go c.listenUniStreams(&sess)
 
 	return nil
 }
@@ -225,7 +216,7 @@ func getSetupResponce(r quicvarint.Reader) (SetupResponce, error) {
 	}, nil
 }
 
-func (c Client) listenBiStreams(sess *Session) {
+func (c Client) listenBiStreams(sess *session) {
 	for {
 		stream, err := sess.conn.AcceptStream(context.Background())
 		if err != nil {
@@ -262,7 +253,7 @@ func (c Client) listenBiStreams(sess *Session) {
 					announcements = make([]Announcement, 0)
 				}
 
-				c.HandleInterest(interest, announcements, w)
+				c.RequestHandler.HandleInterest(interest, announcements, w)
 				<-w.doneCh
 			case SUBSCRIBE:
 				slog.Debug("Subscribe Stream was opened")
@@ -292,9 +283,9 @@ func (c Client) listenBiStreams(sess *Session) {
 				info, ok := c.RelayManager.GetInfo(subscription.TrackNamespace, subscription.TrackName)
 				if ok {
 					// Handle with out
-					c.HandleSubscribe(subscription, &info, sw)
+					c.RequestHandler.HandleSubscribe(subscription, &info, sw)
 				} else {
-					c.HandleSubscribe(subscription, nil, sw)
+					c.RequestHandler.HandleSubscribe(subscription, nil, sw)
 				}
 
 				<-sw.doneCh
@@ -324,9 +315,9 @@ func (c Client) listenBiStreams(sess *Session) {
 					// Get any Infomation of the track
 					info, ok := c.RelayManager.GetInfo(subscription.TrackNamespace, subscription.TrackName)
 					if ok {
-						c.HandleSubscribe(update, &info, sw)
+						c.RequestHandler.HandleSubscribe(update, &info, sw)
 					} else {
-						c.HandleSubscribe(update, nil, sw)
+						c.RequestHandler.HandleSubscribe(update, nil, sw)
 					}
 
 					<-sw.doneCh
@@ -362,7 +353,7 @@ func (c Client) listenBiStreams(sess *Session) {
 					stream: stream,
 				}
 
-				c.HandleFetch(fetchRequest, w)
+				c.RequestHandler.HandleFetch(fetchRequest, w)
 
 				<-w.doneCh
 			case INFO:
@@ -381,9 +372,9 @@ func (c Client) listenBiStreams(sess *Session) {
 
 				info, ok := c.RelayManager.GetInfo(infoRequest.TrackNamespace, infoRequest.TrackName)
 				if ok {
-					c.HandleInfoRequest(infoRequest, &info, w)
+					c.RequestHandler.HandleInfoRequest(infoRequest, &info, w)
 				} else {
-					c.HandleInfoRequest(infoRequest, nil, w)
+					c.RequestHandler.HandleInfoRequest(infoRequest, nil, w)
 				}
 
 				<-w.doneCh
@@ -401,7 +392,7 @@ func (c Client) listenBiStreams(sess *Session) {
 	}
 }
 
-func (c Client) listenUniStreams(sess *Session) {
+func (c Client) listenUniStreams(sess *session) {
 	for {
 		stream, err := sess.conn.AcceptUniStream(context.Background())
 		if err != nil {
@@ -426,13 +417,13 @@ func (c Client) listenUniStreams(sess *Session) {
 			sess.rsMu.RLock()
 			defer sess.rsMu.RUnlock()
 
-			_, ok := sess.subscribeWriters[group.SubscribeID]
+			_, ok := sess.subscribeWriters[group.subscribeID]
 			if !ok {
 				slog.Error("received data of unsubscribed track", slog.Any("group", group))
 				return
 			}
 
-			c.HandleData(group, stream)
+			c.DataHandler.HandleData(group, stream)
 		}(stream)
 	}
 }

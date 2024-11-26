@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -42,9 +42,9 @@ func getGroup(r quicvarint.Reader) (Group, error) {
 
 	//
 	return Group{
-		SubscribeID:       SubscribeID(gm.SubscribeID),
-		GroupSequence:     GroupSequence(gm.GroupSequence),
-		PublisherPriority: gm.PublisherPriority,
+		subscribeID:       SubscribeID(gm.SubscribeID),
+		groupSequence:     GroupSequence(gm.GroupSequence),
+		PublisherPriority: PublisherPriority(gm.PublisherPriority),
 	}, nil
 }
 

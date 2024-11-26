@@ -4,7 +4,7 @@ import (
 	"errors"
 	"log/slog"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 )
 
 // type InfoHandler interface {

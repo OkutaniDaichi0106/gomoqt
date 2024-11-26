@@ -1,5 +1,7 @@
 package moqt
 
+import "time"
+
 /*
  * Announce Errors
  */
@@ -344,10 +346,23 @@ var (
  */
 type TerminateErrorCode int
 
+const (
+	terminate_no_error                  TerminateErrorCode = 0x0
+	terminate_internal_error            TerminateErrorCode = 0x1
+	terminate_unauthorized              TerminateErrorCode = 0x2
+	terminate_protocol_violation        TerminateErrorCode = 0x3
+	terminate_duplicate_track_alias     TerminateErrorCode = 0x4
+	terminate_parameter_length_mismatch TerminateErrorCode = 0x5
+	terminate_too_many_subscribes       TerminateErrorCode = 0x6
+	terminate_goaway_timeout            TerminateErrorCode = 0x10
+)
+
 type TerminateError interface {
 	error
 	TerminateErrorCode() TerminateErrorCode
 }
+
+var _ TerminateError = (*defaultTerminateError)(nil)
 
 type defaultTerminateError struct {
 	code   TerminateErrorCode
@@ -362,19 +377,8 @@ func (err defaultTerminateError) TerminateErrorCode() TerminateErrorCode {
 	return err.code
 }
 
-const (
-	terminate_no_error                  TerminateErrorCode = 0x0
-	terminate_internal_error            TerminateErrorCode = 0x1
-	terminate_unauthorized              TerminateErrorCode = 0x2
-	terminate_protocol_violation        TerminateErrorCode = 0x3
-	terminate_duplicate_track_alias     TerminateErrorCode = 0x4
-	terminate_parameter_length_mismatch TerminateErrorCode = 0x5
-	terminate_too_many_subscribes       TerminateErrorCode = 0x6
-	terminate_goaway_timeout            TerminateErrorCode = 0x10
-)
-
 var (
-	NoTerminateErr = defaultTerminateError{
+	NoErrTerminate = defaultTerminateError{
 		code:   terminate_no_error,
 		reason: "no error",
 	}
@@ -400,3 +404,12 @@ var (
 		reason: "goaway timeout",
 	}
 )
+
+var _ TerminateError = (*ErrorWithGoAway)(nil)
+
+// TODO:
+type ErrorWithGoAway struct {
+	TerminateError
+	NewSessionURI string
+	Timeout       time.Duration
+}

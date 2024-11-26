@@ -7,20 +7,19 @@ import (
 	"sync"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/quic-go/quic-go/quicvarint"
 )
-
-type SubscribeWriter struct {
-	reader       quicvarint.Reader
-	stream       Stream
-	subscription Subscription
-	mu           sync.RWMutex
-}
 
 type SubscribeID uint64
 
 type GroupOrder byte
+
+const (
+	DEFAULT    GroupOrder = 0x0
+	ASCENDING  GroupOrder = 0x1
+	DESCENDING GroupOrder = 0x2
+)
 
 type Subscription struct {
 	subscribeID        SubscribeID
@@ -32,6 +31,32 @@ type Subscription struct {
 	GroupExpires       time.Duration
 	MinGroupSequence   GroupSequence
 	MaxGroupSequence   GroupSequence
+}
+
+func (s Subscription) FirstGrouopSequence() GroupSequence {
+	switch s.GroupOrder {
+	case ASCENDING, DEFAULT:
+		return s.MinGroupSequence
+	case DESCENDING:
+		return s.MaxGroupSequence
+	default:
+		return 0
+	}
+}
+
+func (s Subscription) GetGroup(seq GroupSequence, priority PublisherPriority) Group {
+	return Group{
+		subscribeID:       s.subscribeID,
+		groupSequence:     seq,
+		PublisherPriority: priority,
+	}
+}
+
+type SubscribeWriter struct {
+	reader       quicvarint.Reader
+	stream       Stream
+	subscription Subscription
+	mu           sync.RWMutex
 }
 
 func (s *SubscribeWriter) Update(subscription Subscription) (Info, error) {

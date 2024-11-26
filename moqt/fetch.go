@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -41,9 +41,9 @@ func (f FetchStream) Group() Group {
 		}
 
 		f.group = &Group{
-			SubscribeID:       SubscribeID(gm.SubscribeID),
-			GroupSequence:     GroupSequence(gm.GroupSequence),
-			PublisherPriority: gm.PublisherPriority,
+			subscribeID:       SubscribeID(gm.SubscribeID),
+			groupSequence:     GroupSequence(gm.GroupSequence),
+			PublisherPriority: PublisherPriority(gm.PublisherPriority),
 		}
 	}
 
@@ -68,6 +68,12 @@ func (f FetchStream) Close() error {
 	return nil
 }
 
+/*
+ * Sequence number of a group in a track
+ * When this is integer more than 1, the number means the sequence number.
+ * When this is 0, it indicates the sequence number is currently unknown .
+ * 0 is used to specify "the latest sequence number" or "the final sequence number of an open-ended track", "the first sequence number of the default order".
+ */
 type GroupSequence message.GroupSequence
 
 type SubscriberPriority message.SubscriberPriority
@@ -85,9 +91,9 @@ type FetchResponceWriter struct {
 
 func (w FetchResponceWriter) SendGroup(group Group, data []byte) {
 	gm := message.GroupMessage{
-		SubscribeID:       message.SubscribeID(group.SubscribeID),
-		GroupSequence:     message.GroupSequence(group.GroupSequence),
-		PublisherPriority: group.PublisherPriority,
+		SubscribeID:       message.SubscribeID(group.subscribeID),
+		GroupSequence:     message.GroupSequence(group.groupSequence),
+		PublisherPriority: message.PublisherPriority(group.PublisherPriority),
 	}
 	_, err := w.stream.Write(gm.SerializePayload())
 	if err != nil {

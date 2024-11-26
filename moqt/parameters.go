@@ -3,7 +3,7 @@ package moqt
 import (
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 )
 
 type Parameters message.Parameters

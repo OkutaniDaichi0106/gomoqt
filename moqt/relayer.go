@@ -1,11 +1,11 @@
 package moqt
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/quic-go/quic-go/quicvarint"
@@ -19,7 +19,7 @@ type Relayer struct {
 	//
 	RequestHandler RequestHandler
 
-	SessionHandler SessionHandler
+	ServerSessionHandler ServerSessionHandler
 
 	/*
 	 * Relay Manager
@@ -33,7 +33,7 @@ type Relayer struct {
 	BufferSize int
 }
 
-func (r Relayer) run(sess *session) {
+func (r Relayer) run(sess *ServerSession) {
 	if r.RequestHandler == nil {
 		panic("no relay manager")
 	}
@@ -47,7 +47,7 @@ func (r Relayer) run(sess *session) {
 	/*
 	 * Handle Session
 	 */
-	go r.SessionHandler.HandleSession(&ServerSession{session: sess})
+	go r.ServerSessionHandler.HandleServerSession(sess)
 
 	/*
 	 * Listen bidirectional streams
@@ -58,9 +58,13 @@ func (r Relayer) run(sess *session) {
 	 * Listen unidirectional streams
 	 */
 	go r.listenUniStreams(sess)
+
+	go r.listenDatagram(sess)
+
+	select {}
 }
 
-func (r Relayer) listenBiStreams(sess *session) {
+func (r Relayer) listenBiStreams(sess *ServerSession) {
 	for {
 		stream, err := sess.conn.AcceptStream(context.Background())
 		if err != nil {
@@ -78,7 +82,7 @@ func (r Relayer) listenBiStreams(sess *session) {
 
 			switch StreamType(num) {
 			case ANNOUNCE:
-				slog.Debug("Announce Stream is opened")
+				slog.Info("Announce Stream was opened")
 
 				interest, err := getInterest(qvr)
 				if err != nil {
@@ -87,7 +91,7 @@ func (r Relayer) listenBiStreams(sess *session) {
 				}
 
 				w := AnnounceWriter{
-					doneCh: make(chan struct{}),
+					doneCh: make(chan struct{}, 1),
 					stream: stream,
 				}
 
@@ -100,16 +104,16 @@ func (r Relayer) listenBiStreams(sess *session) {
 				r.RequestHandler.HandleInterest(interest, announcements, w)
 				<-w.doneCh
 			case SUBSCRIBE:
-				slog.Debug("Subscribe Stream was opened")
+				slog.Info("Subscribe Stream was opened")
 
 				subscription, err := getSubscription(qvr)
 				if err != nil {
-					slog.Debug("failed to get a subscription", slog.String("error", err.Error()))
+					slog.Error("failed to get a subscription", slog.String("error", err.Error()))
 
 					// Close the Stream gracefully
 					err = stream.Close()
 					if err != nil {
-						slog.Debug("failed to close the stream", slog.String("error", err.Error()))
+						slog.Error("failed to close the stream", slog.String("error", err.Error()))
 						return
 					}
 
@@ -119,7 +123,7 @@ func (r Relayer) listenBiStreams(sess *session) {
 				//
 				sw := SubscribeResponceWriter{
 					stream: stream,
-					doneCh: make(chan struct{}),
+					doneCh: make(chan struct{}, 1),
 				}
 
 				// Get any Infomation of the track
@@ -144,15 +148,15 @@ func (r Relayer) listenBiStreams(sess *session) {
 				for {
 					update, err := getSubscribeUpdate(subscription, qvr)
 					if err != nil {
-						slog.Debug("catched an error from the subscriber", slog.String("error", err.Error()))
+						slog.Info("catched an error from the subscriber", slog.String("error", err.Error()))
 						break
 					}
 
-					slog.Debug("received a subscribe update request", slog.Any("subscription", update))
+					slog.Info("received a subscribe update request", slog.Any("subscription", update))
 
 					sw := SubscribeResponceWriter{
 						stream: stream,
-						doneCh: make(chan struct{}),
+						doneCh: make(chan struct{}, 1),
 					}
 
 					// Get any Infomation of the track
@@ -175,16 +179,16 @@ func (r Relayer) listenBiStreams(sess *session) {
 				}
 
 				sess.stopSubscription(subscription.subscribeID)
-				slog.Debug("unsubscribed", slog.Any("subscription", subscription))
+				slog.Info("unsubscribed", slog.Any("subscription", subscription))
 
 				// Close the Stream gracefully
 				err = stream.Close()
 				if err != nil {
-					slog.Debug("failed to close the stream", slog.String("error", err.Error()))
+					slog.Error("failed to close the stream", slog.String("error", err.Error()))
 					return
 				}
 			case FETCH:
-				slog.Debug("Fetch Stream was opened")
+				slog.Info("Fetch Stream was opened")
 
 				fetchRequest, err := getFetchRequest(qvr)
 				if err != nil {
@@ -193,7 +197,7 @@ func (r Relayer) listenBiStreams(sess *session) {
 				}
 
 				w := FetchResponceWriter{
-					doneCh: make(chan struct{}),
+					doneCh: make(chan struct{}, 1),
 					stream: stream,
 				}
 
@@ -210,7 +214,7 @@ func (r Relayer) listenBiStreams(sess *session) {
 				}
 
 				w := InfoWriter{
-					doneCh: make(chan struct{}),
+					doneCh: make(chan struct{}, 1),
 					stream: stream,
 				}
 
@@ -236,24 +240,15 @@ func (r Relayer) listenBiStreams(sess *session) {
 	}
 }
 
-func (r Relayer) listenUniStreams(sess *session) {
+func (r Relayer) listenUniStreams(sess *ServerSession) {
 	for {
-		stream, err := sess.conn.AcceptUniStream(context.Background())
+		group, stream, err := sess.acceptDataStream(context.TODO())
 		if err != nil {
-			slog.Error("failed to accept a bidirectional stream", slog.String("error", err.Error()))
+			slog.Error("failed to accept a data stream", slog.String("error", err.Error()))
 			return
 		}
 
 		go func(stream ReceiveStream) {
-			/*
-			 * Get a group
-			 */
-			group, err := getGroup(quicvarint.NewReader(stream))
-			if err != nil {
-				slog.Error("failed to get a group", slog.String("error", err.Error()))
-				return
-			}
-
 			/*
 			 * Verify if subscribed or not by finding a subscription having the Subscribe ID in the Group
 			 */
@@ -283,35 +278,43 @@ func (r Relayer) listenUniStreams(sess *session) {
 			 * Open Streams
 			 */
 			streams := make([]SendStream, len(dests))
+			var mu sync.Mutex
 			for _, destSess := range dests {
 				// Skip to send data if the Session is nil
 				if destSess == nil {
 					continue
 				}
 
-				// Verify the Group is
-				for _, subscription := range destSess.receivedSubscriptions {
-					if subscription.MinGroupSequence > group.groupSequence {
-						continue
+				go func(sess *ServerSession) {
+					mu.Lock()
+					defer mu.Unlock()
+
+					// Verify if the Group is needed
+					for _, subscription := range destSess.receivedSubscriptions {
+						if subscription.MinGroupSequence > group.groupSequence {
+							continue
+						}
+
+						if subscription.MaxGroupSequence < group.groupSequence {
+							continue
+						}
+
+						// Update the Group's Subscribe ID to the one in the Session
+						group.subscribeID = subscription.subscribeID
+
+						// Open a Data Stream
+						stream, err := destSess.openDataStream(group)
+						if err != nil {
+							slog.Error("failed to open a data stream")
+							// Notify the Group may be dropped
+							// TODO:
+
+							return
+						}
+
+						streams = append(streams, stream)
 					}
-
-					if subscription.MaxGroupSequence < group.groupSequence {
-						continue
-					}
-
-					// make new Group by changing Subscribe ID
-					group.subscribeID = subscription.subscribeID
-
-					stream, err := destSess.openDataStream(group)
-					if err != nil {
-						slog.Error("failed to open a Data Stream")
-						// Notify the Group may be dropped // TODO:
-
-						return
-					}
-
-					streams = append(streams, stream)
-				}
+				}(sess)
 
 			}
 
@@ -322,7 +325,7 @@ func (r Relayer) listenUniStreams(sess *session) {
 			for {
 				n, err := stream.Read(buf)
 				if err != nil && err != io.EOF {
-					slog.Debug("failed to read data", slog.String("error", err.Error()))
+					slog.Error("failed to read data", slog.String("error", err.Error()))
 					return
 				}
 
@@ -343,32 +346,23 @@ func (r Relayer) listenUniStreams(sess *session) {
 			}
 
 			//
-			slog.Debug("all data was distributed", slog.Any("group", group))
+			slog.Info("all data was distributed", slog.Any("group", group))
 		}(stream)
 
 	}
 }
 
-func (r Relayer) listenDatagram(sess *session) {
+func (r Relayer) listenDatagram(sess *ServerSession) {
 	for {
-		data, err := sess.conn.ReceiveDatagram(context.TODO()) //TODO
+		group, payload, err := sess.receiveDatagram(context.TODO())
 		if err != nil {
-			slog.Debug("failed to receive a datagram")
-		}
-		qvr := quicvarint.NewReader(bytes.NewReader(data))
-
-		/*
-		 * Read the object's group
-		 */
-		group, err := getGroup(qvr)
-		if err != nil {
-			slog.Error("failed to get a group", slog.String("error", err.Error()))
+			slog.Error("failed to receive a datagram", slog.String("error", err.Error()))
 			return
 		}
 
 		/*
-		 * Find a subscription corresponding to the Subscribe ID in the Group
-		 * Verify if subscribed or not
+		 *
+		 * Verify if subscribed or not by finding a subscription having the Group's Subscribe ID
 		 */
 		sess.rsMu.RLock()
 		defer sess.rsMu.RUnlock()
@@ -384,7 +378,7 @@ func (r Relayer) listenDatagram(sess *session) {
 		/*
 		 * Distribute data
 		 */
-		// Find a Track corresponding to the Group's Track
+		// Find destinations subscribing the Group's Track
 		dests, ok := r.RelayManager.findDestinations(strings.Split(subscription.TrackNamespace, "/"), subscription.TrackName, subscription.GroupOrder)
 		if !ok {
 			slog.Error("")
@@ -394,7 +388,7 @@ func (r Relayer) listenDatagram(sess *session) {
 		/*
 		 * Send data
 		 */
-
+		var mu sync.Mutex
 		for _, destSess := range dests {
 
 			if destSess == nil {
@@ -403,18 +397,34 @@ func (r Relayer) listenDatagram(sess *session) {
 			}
 
 			go func(sess *session) {
+				mu.Lock()
+				defer mu.Unlock()
 
-				err := sess.sendDatagram(group, data)
-				if err != nil {
-					slog.Error("failed to open a Data Stream")
-					// Notify the Group may be dropped // TODO:
+				for _, subscription := range sess.receivedSubscriptions {
+					if subscription.MinGroupSequence > group.groupSequence {
+						continue
+					}
 
-					return
+					if subscription.MaxGroupSequence < group.groupSequence {
+						continue
+					}
+
+					// Update the Group's Subscribe ID to the one in the Session
+					group.subscribeID = subscription.subscribeID
+
+					err := sess.sendDatagram(group, payload)
+					if err != nil {
+						slog.Error("failed to open a Data Stream")
+						// Notify the Group may be dropped
+						// TODO:
+
+						return
+					}
 				}
 			}(destSess)
 		}
 
-		slog.Debug("all data was distributed", slog.Any("group", group))
+		slog.Info("all data was distributed", slog.Any("group", group))
 	}
 
 }

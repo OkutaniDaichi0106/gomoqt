@@ -43,27 +43,41 @@ type Server struct {
 	// Relayers running on QUIC
 	quicRelayers map[string]Relayer
 
-	wts *webtransport.Server
+	wts   *webtransport.Server
+	wtsMu sync.Mutex
 }
 
-func (s Server) ListenAndServe() error {
-	/*
-	 * Listen and serve on raw QUIC
-	 */
-	ln, err := quic.ListenAddrEarly(s.Addr, s.TLSConfig, s.QUICConfig)
+func (s *Server) ListenAndServe() error {
+	s.wtsMu.Lock()
+	defer s.wtsMu.Unlock()
+
+	listener, err := quic.ListenAddrEarly(s.Addr, s.TLSConfig, s.QUICConfig)
 	if err != nil {
-		slog.Error("failed to run a quic server", slog.String("error", err.Error()))
+		slog.Error("failed to listen address", slog.String("error", err.Error()))
 		return err
 	}
 
-	go func() {
-		for {
-			qconn, err := ln.Accept(context.Background()) // TODO:
-			if err != nil {
-				slog.Error("failed to accept a connection", slog.String("error", err.Error()))
-				return
+	for {
+		qconn, err := listener.Accept(context.Background())
+		if err != nil {
+			slog.Error("failed to accept", slog.String("error", err.Error()))
+			return err
+		}
+
+		switch qconn.ConnectionState().TLS.NegotiatedProtocol {
+		case "h3":
+			/*
+			 * Listen and serve on Webtransport
+			 */
+			if s.wts == nil {
+				continue
 			}
 
+			go s.wts.ServeQUICConn(qconn)
+		case "moq-00":
+			/*
+			 * Listen and serve on raw QUIC
+			 */
 			conn := NewMORQConnection(qconn)
 
 			/***/
@@ -79,11 +93,13 @@ func (s Server) ListenAndServe() error {
 				}
 
 				// Initialize a Session
-				sess := session{
-					conn:                  conn,
-					sessStr:               stream,
-					subscribeWriters:      make(map[SubscribeID]*SubscribeWriter),
-					receivedSubscriptions: map[SubscribeID]Subscription{},
+				sess := ServerSession{
+					session: &session{
+						conn:                  conn,
+						sessStr:               stream,
+						subscribeWriters:      make(map[SubscribeID]*SubscribeWriter),
+						receivedSubscriptions: map[SubscribeID]Subscription{},
+					},
 				}
 
 				/*
@@ -93,12 +109,12 @@ func (s Server) ListenAndServe() error {
 				buf := make([]byte, 1)
 				_, err = sess.sessStr.Read(buf)
 				if err != nil {
-					slog.Debug("failed to read a Stream Type", slog.String("error", err.Error()))
+					slog.Error("failed to read a Stream Type", slog.String("error", err.Error()))
 					return
 				}
 				// Verify if the Stream Type is the SESSION
 				if StreamType(buf[0]) != SESSION {
-					slog.Debug("unexpected Stream Type ID", slog.Any("expected ID", SESSION), slog.Any("detected ID", StreamType(buf[0]))) // TODO
+					slog.Error("unexpected Stream Type ID", slog.Any("expected ID", SESSION), slog.Any("detected ID", StreamType(buf[0]))) // TODO
 					return
 				}
 
@@ -108,10 +124,9 @@ func (s Server) ListenAndServe() error {
 					slog.Error("failed to get a set-up request", slog.String("error", err.Error()))
 					return
 				}
-
 				// Initialize a SetupResponceWriter{}
 				srw := SetupResponceWriter{
-					errCh:  make(chan error),
+					doneCh: make(chan struct{}, 1),
 					once:   new(sync.Once),
 					stream: sess.sessStr,
 				}
@@ -119,11 +134,7 @@ func (s Server) ListenAndServe() error {
 				// Handle the Set-up
 				s.HandleSetup(req, srw)
 
-				err = <-srw.errCh
-				if err != nil {
-					slog.Error("set-up was rejected", slog.String("error", err.Error()))
-					return
-				}
+				<-srw.doneCh
 
 				// Get a relayer from the path
 				relayer, ok := s.quicRelayers[req.Path]
@@ -134,22 +145,18 @@ func (s Server) ListenAndServe() error {
 
 				relayer.run(&sess)
 			}()
+		default:
+			continue
 		}
-	}()
-
-	/*
-	 * Listen and serve on Webtransport
-	 */
-	err = s.wts.ListenAndServe()
-	if err != nil {
-		slog.Error("failed to run a webtransport server", slog.String("error", err.Error()))
-		return err
 	}
 
-	return nil
 }
 
-func (s Server) RunOnQUIC(relayer Relayer) {
+func (s *Server) RunOnQUIC(relayer Relayer) {
+	if s.quicRelayers == nil {
+		s.quicRelayers = make(map[string]Relayer)
+	}
+
 	if _, ok := s.quicRelayers[relayer.Path]; ok {
 		panic("relayer overwrite")
 	}
@@ -157,15 +164,19 @@ func (s Server) RunOnQUIC(relayer Relayer) {
 	s.quicRelayers[relayer.Path] = relayer
 }
 
-func (s Server) RunOnWebTransport(relayer Relayer) {
+func (s *Server) RunOnWebTransport(relayer Relayer) {
+	s.wtsMu.Lock()
+	defer s.wtsMu.Unlock()
+
 	if s.wts == nil {
 		s.wts = &webtransport.Server{
 			H3: http3.Server{
-				Addr:       "",
+				Addr:       s.Addr,
 				TLSConfig:  s.TLSConfig,
 				QUICConfig: s.QUICConfig,
 			},
 		}
+
 	}
 
 	http.HandleFunc(relayer.Path, func(w http.ResponseWriter, r *http.Request) {
@@ -192,11 +203,14 @@ func (s Server) RunOnWebTransport(relayer Relayer) {
 		}
 
 		// Initialize a Session
-		sess := session{
-			conn:                  conn,
-			sessStr:               stream,
-			subscribeWriters:      make(map[SubscribeID]*SubscribeWriter),
-			receivedSubscriptions: make(map[SubscribeID]Subscription),
+
+		sess := ServerSession{
+			session: &session{
+				conn:                  conn,
+				sessStr:               stream,
+				subscribeWriters:      make(map[SubscribeID]*SubscribeWriter),
+				receivedSubscriptions: make(map[SubscribeID]Subscription),
+			},
 		}
 
 		/*
@@ -223,18 +237,14 @@ func (s Server) RunOnWebTransport(relayer Relayer) {
 		}
 
 		srw := SetupResponceWriter{
-			errCh:  make(chan error),
+			doneCh: make(chan struct{}, 1),
 			once:   new(sync.Once),
 			stream: sess.sessStr,
 		}
 
 		s.HandleSetup(req, srw)
 
-		err = <-srw.errCh
-		if err != nil {
-			slog.Error("set-up was rejected", slog.String("error", err.Error()))
-			return
-		}
+		<-srw.doneCh
 
 		go relayer.run(&sess)
 	})
@@ -267,18 +277,4 @@ func getSetupRequest(r quicvarint.Reader) (SetupRequest, error) {
 	}
 
 	return req, nil
-}
-
-func (s *Server) SetCertFiles(certFile, keyFile string) error {
-	var err error
-	certs := make([]tls.Certificate, 1)
-	certs[0], err = tls.LoadX509KeyPair(certFile, keyFile)
-	if err != nil {
-		return err
-	}
-	s.TLSConfig = &tls.Config{
-		Certificates: certs,
-	}
-
-	return nil
 }

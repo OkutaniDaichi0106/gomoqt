@@ -19,30 +19,15 @@ func (a AnnounceStream) ReadAnnouncement() (Announcement, error) {
 		a.reader = quicvarint.NewReader(a.stream)
 	}
 
-	var am message.AnnounceMessage
-	err := am.DeserializePayload(a.reader)
-	if err != nil {
-		slog.Debug("failed to get an announcement", slog.String("error", err.Error()))
-		return Announcement{}, err
-	}
+	return getAnnouncement(a.reader)
 
-	announcement := Announcement{
-		TrackNamespace: strings.Join(am.TrackNamespace, "/"),
-		Parameters:     am.Parameters,
-	}
-
-	if authInfo, ok := getAuthorizationInfo(am.Parameters); ok {
-		announcement.AuthorizationInfo = authInfo
-	}
-
-	return announcement, nil
 }
 
 func (a AnnounceStream) Close(err error) {
 	if err == nil {
 		err = a.stream.Close()
 		if err != nil {
-			slog.Debug("failed to close the stream", slog.String("error", err.Error()))
+			slog.Error("failed to close the stream", slog.String("error", err.Error()))
 			return
 		}
 	}
@@ -52,7 +37,7 @@ func (a AnnounceStream) Close(err error) {
 		annerr = ErrInternalError
 	}
 
-	slog.Debug("trying to close an Announce Stream", slog.String("reason", annerr.Error()))
+	slog.Info("trying to close an Announce Stream", slog.String("reason", annerr.Error()))
 
 	a.stream.CancelWrite(StreamErrorCode(annerr.AnnounceErrorCode()))
 	a.stream.CancelRead(StreamErrorCode(annerr.AnnounceErrorCode()))
@@ -90,7 +75,7 @@ func (w AnnounceWriter) Announce(announcement Announcement) {
 
 	_, err := w.stream.Write(am.SerializePayload())
 	if err != nil {
-		slog.Debug("failed to send an ANNOUNCE message.", slog.String("error", err.Error()))
+		slog.Error("failed to send an ANNOUNCE message.", slog.String("error", err.Error()))
 		return
 	}
 
@@ -125,5 +110,5 @@ func (w AnnounceWriter) Close(err error) {
 
 	close(w.doneCh)
 
-	slog.Debug("close an Announce Stream")
+	slog.Info("closed an Announce Stream")
 }

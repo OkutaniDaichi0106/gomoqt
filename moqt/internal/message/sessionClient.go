@@ -49,8 +49,10 @@ func (scm SessionClientMessage) SerializePayload() []byte {
 		p = quicvarint.Append(p, uint64(version))
 	}
 
-	// Append the parameters
-	p = scm.Parameters.Append(p)
+	if scm.Parameters != nil {
+		// Append the parameters
+		p = scm.Parameters.Append(p)
+	}
 
 	return p
 }
@@ -73,6 +75,9 @@ func (scm *SessionClientMessage) DeserializePayload(r quicvarint.Reader) error {
 	}
 
 	// Get Parameters
+	if scm.Parameters == nil {
+		scm.Parameters = make(Parameters)
+	}
 	err = scm.Parameters.Deserialize(r)
 	if err != nil {
 		return err

@@ -59,7 +59,7 @@ We haven't conducted interoperability testing with other implementations yet
 
 ## TODO
 - ANNOUNCE message's Status field
-- Scheduling based on Subscriber Priority
+- Priority Control
 - Not sending a Group after the Group Expires
 - LOC (Low Overhead Container)
 - Common Catalog Format for moq

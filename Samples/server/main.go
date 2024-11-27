@@ -1,18 +1,31 @@
 package main
 
 import (
+	"crypto/tls"
 	"log/slog"
+	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt"
 	"github.com/quic-go/quic-go"
 )
 
 func main() {
+	// Set certification config
+	certs, err := getCertificates("localhost.pem", "localhost-key.pem")
+	if err != nil {
+		return
+	}
+
 	/*
 	 * Initialize a Server
 	 */
 	moqs := moqt.Server{
-		Addr: "0.0.0.0:8443",
+		Addr: "localhost:8443",
+		TLSConfig: &tls.Config{
+			NextProtos:         []string{"h3", "moq-00"},
+			Certificates:       certs,
+			InsecureSkipVerify: true,
+		},
 		QUICConfig: &quic.Config{
 			Allow0RTT:       true,
 			EnableDatagrams: true,
@@ -21,34 +34,32 @@ func main() {
 		SetupHandler: moqt.SetupHandlerFunc(func(sr moqt.SetupRequest, srw moqt.SetupResponceWriter) {
 			if !moqt.ContainVersion(moqt.Devlop, sr.SupportedVersions) {
 				srw.Reject(moqt.ErrInternalError)
+				return
 			}
 
 			srw.Accept(moqt.Devlop)
 		}),
 	}
 
-	// Set certification config
-	moqs.SetCertFiles("localhost.pem", "localhost-key.pem")
-
 	// Initialize a Relayer
 	relayer := moqt.Relayer{
-		Path:           "/path",
-		RequestHandler: requestHandler{},
-		SessionHandler: sessionHandler{},
-		RelayManager:   nil,
+		Path:                 "/path",
+		RequestHandler:       requestHandler{},
+		ServerSessionHandler: serverSessionHandler{},
+		RelayManager:         nil,
 	}
 
-	// Run the Relayer on WebTransport
+	// Run the Relayer on QUIC
 	moqs.RunOnWebTransport(relayer)
 
 	moqs.ListenAndServe()
 }
 
-var _ moqt.SessionHandler = (*sessionHandler)(nil)
+var _ moqt.ServerSessionHandler = (*serverSessionHandler)(nil)
 
-type sessionHandler struct{}
+type serverSessionHandler struct{}
 
-func (sessionHandler) HandleSession(sess *moqt.ServerSession) {
+func (serverSessionHandler) HandleServerSession(sess *moqt.ServerSession) {
 	/*
 	 * Interest
 	 */
@@ -78,8 +89,9 @@ func (sessionHandler) HandleSession(sess *moqt.ServerSession) {
 	 */
 	subscription := moqt.Subscription{
 		TrackNamespace: ann.TrackNamespace,
-		TrackName:      "audio",
+		TrackName:      "text",
 	}
+
 	_, info, err := sess.Subscribe(subscription)
 	if err != nil {
 		slog.Error("failed to subscribe", slog.String("error", err.Error()))
@@ -96,14 +108,18 @@ var _ moqt.RequestHandler = (*requestHandler)(nil)
 
 type requestHandler struct{}
 
-func (requestHandler) HandleInterest(i moqt.Interest, as []moqt.Announcement, w moqt.AnnounceWriter) {
-	if as == nil {
-		// Handle
+func (requestHandler) HandleInterest(i moqt.Interest, a []moqt.Announcement, w moqt.AnnounceWriter) {
+	if a == nil {
+		// Close the Announce Stream if track was not found
+		w.Close(moqt.ErrTrackDoesNotExist)
 	}
 
-	for _, announcement := range as {
+	for _, announcement := range a {
 		w.Announce(announcement)
 	}
+
+	// Close the Announce Stream after 30 minutes
+	time.Sleep(30 * time.Minute)
 
 	w.Close(nil)
 }
@@ -122,6 +138,7 @@ func (requestHandler) HandleSubscribe(s moqt.Subscription, info *moqt.Info, w mo
 }
 
 func (requestHandler) HandleFetch(r moqt.FetchRequest, w moqt.FetchResponceWriter) {
+	// Reject all fetch request
 	w.Reject(moqt.ErrNoGroup)
 }
 
@@ -136,4 +153,16 @@ func (requestHandler) HandleInfoRequest(r moqt.InfoRequest, i *moqt.Info, w moqt
 	}
 
 	w.Answer(*i)
+}
+
+func getCertificates(certFile, keyFile string) ([]tls.Certificate, error) {
+	var err error
+	certs := make([]tls.Certificate, 1)
+	certs[0], err = tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return nil, err
+	}
+
+	return certs, nil
+
 }

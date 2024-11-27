@@ -87,12 +87,13 @@ func AppendTrackNamespacePrefix(b []byte, tnsp TrackPrefix) []byte {
 }
 
 func ReadTrackNamespacePrefix(r quicvarint.Reader) (TrackPrefix, error) {
-	var tnsp TrackPrefix
 	// Get the number of the elements of the track namespace
 	num, err := quicvarint.Read(r)
 	if err != nil {
 		return nil, err
 	}
+
+	tnsp := make(TrackPrefix, num)
 
 	buf := make([]byte, 1<<6)
 

@@ -20,7 +20,7 @@ type FetchStream struct {
 }
 
 func (f FetchStream) StreamID() StreamID {
-	return f.StreamID()
+	return f.stream.StreamID()
 }
 
 func (f FetchStream) Read(buf []byte) (int, error) {
@@ -112,7 +112,7 @@ func (w FetchResponceWriter) SendGroup(group Group, data []byte) {
 
 	close(w.doneCh)
 
-	slog.Debug("sent data")
+	slog.Info("sent data")
 }
 
 func (w FetchResponceWriter) Reject(err error) {

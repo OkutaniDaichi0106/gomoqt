@@ -4,10 +4,15 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"log"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
@@ -29,7 +34,7 @@ type Client struct {
 
 	HijackSetupRarams func(Parameters) error
 
-	DataHandler DataHandler
+	ClientSessionHandler ClientSessionHandler
 
 	RequestHandler RequestHandler
 
@@ -66,7 +71,6 @@ func (c Client) Run(ctx context.Context) error {
 		// Dial with webtransport
 		var d webtransport.Dialer
 		_, sess, err := d.Dial(ctx, c.URL, http.Header{}) // TODO: configure the header
-
 		if err != nil {
 			slog.Error("failed to dial with webtransport", slog.String("error", err.Error()))
 			return err
@@ -88,7 +92,14 @@ func (c Client) Run(ctx context.Context) error {
 
 		// Try all IPs
 		for i, ip := range ips {
-			addr := ip.String() + parsedURL.Port()
+			// Get Address
+			addr := ip.String()
+			if strings.Contains(addr, ":") && !strings.HasPrefix(addr, "[") {
+				addr = "[" + addr + "]"
+			}
+			addr += ":" + parsedURL.Port()
+
+			// Dial
 			qconn, err := quic.DialAddrEarly(ctx, addr, c.TLSConfig, c.QUICConfig)
 			if err != nil {
 				slog.Error("failed to dial with quic", slog.String("error", err.Error()))
@@ -125,13 +136,17 @@ func (c Client) Run(ctx context.Context) error {
 		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
 		return err
 	}
+
 	// Initialize a Session
-	sess := session{
-		conn:                  conn,
-		sessStr:               stream,
-		subscribeWriters:      make(map[SubscribeID]*SubscribeWriter),
-		receivedSubscriptions: make(map[SubscribeID]Subscription),
-		doneCh:                make(chan struct{}),
+
+	sess := ClientSession{
+		session: &session{
+			conn:                  conn,
+			sessStr:               stream,
+			subscribeWriters:      make(map[SubscribeID]*SubscribeWriter),
+			receivedSubscriptions: make(map[SubscribeID]Subscription),
+			doneCh:                make(chan struct{}, 1),
+		},
 	}
 
 	/*
@@ -172,11 +187,23 @@ func (c Client) Run(ctx context.Context) error {
 		}
 	}
 
-	/***/
+	/*
+	 * Handle the Client Session
+	 */
+	go c.ClientSessionHandler.HandleClientSession(&sess)
+
+	/*
+	 * Listen a bidirectional stream
+	 */
 	go c.listenBiStreams(&sess)
 
-	/***/
-	go c.listenUniStreams(&sess)
+	signalCh := make(chan os.Signal, 1)
+	signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM)
+
+	slog.Info("Client is running. Press ctrl+C to exit.")
+	<-signalCh
+
+	slog.Info("Shunnting down client")
 
 	return nil
 }
@@ -184,6 +211,7 @@ func (c Client) Run(ctx context.Context) error {
 func sendSetupRequest(stream Stream, req SetupRequest) error {
 	scm := message.SessionClientMessage{
 		SupportedVersions: make([]protocol.Version, 0),
+		Parameters:        make(message.Parameters),
 	}
 
 	for _, v := range req.SupportedVersions {
@@ -194,7 +222,7 @@ func sendSetupRequest(stream Stream, req SetupRequest) error {
 
 	_, err := stream.Write(scm.SerializePayload())
 	if err != nil {
-		slog.Error("failed to send a SESSION_CLIENT message", err.Error())
+		slog.Error("failed to send a SESSION_CLIENT message", slog.String("error", err.Error()))
 		return err
 	}
 
@@ -216,7 +244,7 @@ func getSetupResponce(r quicvarint.Reader) (SetupResponce, error) {
 	}, nil
 }
 
-func (c Client) listenBiStreams(sess *session) {
+func (c Client) listenBiStreams(sess *ClientSession) {
 	for {
 		stream, err := sess.conn.AcceptStream(context.Background())
 		if err != nil {
@@ -234,7 +262,7 @@ func (c Client) listenBiStreams(sess *session) {
 
 			switch StreamType(num) {
 			case ANNOUNCE:
-				slog.Debug("Announce Stream is opened")
+				slog.Info("Announce Stream is opened")
 
 				interest, err := getInterest(qvr)
 				if err != nil {
@@ -242,8 +270,10 @@ func (c Client) listenBiStreams(sess *session) {
 					return
 				}
 
+				log.Print(interest)
+
 				w := AnnounceWriter{
-					doneCh: make(chan struct{}),
+					doneCh: make(chan struct{}, 1),
 					stream: stream,
 				}
 
@@ -256,17 +286,17 @@ func (c Client) listenBiStreams(sess *session) {
 				c.RequestHandler.HandleInterest(interest, announcements, w)
 				<-w.doneCh
 			case SUBSCRIBE:
-				slog.Debug("Subscribe Stream was opened")
+				slog.Info("Subscribe Stream was opened")
 
 				subscription, err := getSubscription(qvr)
 				if err != nil {
-					slog.Debug("failed to get a subscription", slog.String("error", err.Error()))
+					slog.Error("failed to get a subscription", slog.String("error", err.Error()))
 
 					// Close the Stream gracefully
-					slog.Debug("closing a Subscribe Stream", slog.String("error", err.Error()))
+					slog.Info("closing a Subscribe Stream", slog.String("error", err.Error()))
 					err = stream.Close()
 					if err != nil {
-						slog.Debug("failed to close the stream", slog.String("error", err.Error()))
+						slog.Error("failed to close the stream", slog.String("error", err.Error()))
 						return
 					}
 
@@ -276,7 +306,7 @@ func (c Client) listenBiStreams(sess *session) {
 				//
 				sw := SubscribeResponceWriter{
 					stream: stream,
-					doneCh: make(chan struct{}),
+					doneCh: make(chan struct{}, 1),
 				}
 
 				// Get any Infomation of the track
@@ -301,15 +331,15 @@ func (c Client) listenBiStreams(sess *session) {
 				for {
 					update, err := getSubscribeUpdate(subscription, qvr)
 					if err != nil {
-						slog.Debug("catched an error from the subscriber", slog.String("error", err.Error()))
+						slog.Info("catched an error from the subscriber", slog.String("error", err.Error()))
 						break
 					}
 
-					slog.Debug("received a subscribe update request", slog.Any("subscription", update))
+					slog.Info("received a subscribe update request", slog.Any("subscription", update))
 
 					sw := SubscribeResponceWriter{
 						stream: stream,
-						doneCh: make(chan struct{}),
+						doneCh: make(chan struct{}, 1),
 					}
 
 					// Get any Infomation of the track
@@ -336,11 +366,11 @@ func (c Client) listenBiStreams(sess *session) {
 				// Close the Stream gracefully
 				err = stream.Close()
 				if err != nil {
-					slog.Debug("failed to close the stream", slog.String("error", err.Error()))
+					slog.Error("failed to close the stream", slog.String("error", err.Error()))
 					return
 				}
 			case FETCH:
-				slog.Debug("Fetch Stream was opened")
+				slog.Info("Fetch Stream was opened")
 
 				fetchRequest, err := getFetchRequest(qvr)
 				if err != nil {
@@ -349,7 +379,7 @@ func (c Client) listenBiStreams(sess *session) {
 				}
 
 				w := FetchResponceWriter{
-					doneCh: make(chan struct{}),
+					doneCh: make(chan struct{}, 1),
 					stream: stream,
 				}
 
@@ -366,7 +396,7 @@ func (c Client) listenBiStreams(sess *session) {
 				}
 
 				w := InfoWriter{
-					doneCh: make(chan struct{}),
+					doneCh: make(chan struct{}, 1),
 					stream: stream,
 				}
 
@@ -388,42 +418,6 @@ func (c Client) listenBiStreams(sess *session) {
 
 				return
 			}
-		}(stream)
-	}
-}
-
-func (c Client) listenUniStreams(sess *session) {
-	for {
-		stream, err := sess.conn.AcceptUniStream(context.Background())
-		if err != nil {
-			slog.Error("failed to accept a bidirectional stream", slog.String("error", err.Error()))
-			return
-		}
-
-		go func(stream ReceiveStream) {
-			/*
-			 * Get a group
-			 */
-			group, err := getGroup(quicvarint.NewReader(stream))
-			if err != nil {
-				slog.Error("failed to get a group", slog.String("error", err.Error()))
-				return
-			}
-
-			/*
-			 * Find a subscription corresponding to the Subscribe ID in the Group
-			 * Verify if subscribed or not
-			 */
-			sess.rsMu.RLock()
-			defer sess.rsMu.RUnlock()
-
-			_, ok := sess.subscribeWriters[group.subscribeID]
-			if !ok {
-				slog.Error("received data of unsubscribed track", slog.Any("group", group))
-				return
-			}
-
-			c.DataHandler.HandleData(group, stream)
 		}(stream)
 	}
 }

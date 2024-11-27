@@ -39,7 +39,7 @@ func (f SetupHandlerFunc) HandleSetup(r SetupRequest, w SetupResponceWriter) {
 }
 
 type SetupResponceWriter struct {
-	errCh  chan error
+	doneCh chan struct{}
 	once   *sync.Once
 	stream SessionStream
 	params Parameters
@@ -57,9 +57,9 @@ func (w SetupResponceWriter) Accept(version Version) {
 		w.Reject(ErrInternalError)
 	}
 
-	w.errCh <- nil
+	w.doneCh <- struct{}{}
 
-	close(w.errCh)
+	close(w.doneCh)
 }
 
 func (w SetupResponceWriter) Reject(err TerminateError) {
@@ -71,9 +71,9 @@ func (w SetupResponceWriter) Reject(err TerminateError) {
 	w.stream.CancelRead(StreamErrorCode(err.TerminateErrorCode()))
 	w.stream.CancelWrite(StreamErrorCode(err.TerminateErrorCode()))
 
-	w.errCh <- err
+	w.doneCh <- struct{}{}
 
-	close(w.errCh)
+	close(w.doneCh)
 }
 
 func (w SetupResponceWriter) WithExtension(params Parameters) SetupResponceWriter {

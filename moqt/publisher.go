@@ -16,12 +16,14 @@ type RequestHandler interface {
 }
 
 func getInterest(r quicvarint.Reader) (Interest, error) {
+	//
 	var aim message.AnnounceInterestMessage
 	err := aim.DeserializePayload(r)
 	if err != nil {
 		slog.Error("failed to read an ANNOUNCE_INTEREST message", slog.String("error", err.Error()))
 		return Interest{}, err
 	}
+
 	return Interest{
 		TrackPrefix: strings.Join(aim.TrackPrefix, "/"),
 		Parameters:  Parameters(aim.Parameters),

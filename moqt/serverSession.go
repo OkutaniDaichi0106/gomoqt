@@ -27,7 +27,7 @@ func (sess *ServerSession) GoAway(uri string, timeout time.Duration) {
 
 	//
 	if len(sess.receivedSubscriptions) != 0 {
-		slog.Debug("subscription is still on the Session")
+		slog.Info("subscription is still on the Session")
 
 		// Terminate the Session with an GO_AWAY_TIMEOUT error
 		sess.Terminate(ErrGoAwayTimeout)

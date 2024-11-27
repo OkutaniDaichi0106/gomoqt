@@ -56,12 +56,3 @@ func ContainVersion(version Version, versions []Version) bool {
 
 	return versionMap[version]
 }
-
-func getVersions(vs []uint64) []Version {
-	versions := make([]Version, len(vs))
-	for _, v := range vs {
-		versions = append(versions, Version(v))
-	}
-
-	return versions
-}

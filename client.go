@@ -14,8 +14,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
+	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/internal/protocol"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/quicvarint"
 	"github.com/quic-go/webtransport-go"

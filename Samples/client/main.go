@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt"
+	moqt "github.com/OkutaniDaichi0106/gomoqt"
 )
 
 func main() {

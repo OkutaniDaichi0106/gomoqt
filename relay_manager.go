@@ -61,8 +61,6 @@ func (rm RelayManager) GetInfo(trackNamespace, trackName string) (Info, bool) {
 	return tnNode.info, true
 }
 
-//func (rm RelayManager) FindDestinations()
-
 func (tm RelayManager) newTrackNamespace(trackNamespace []string) *trackNamespaceNode {
 	return tm.trackNamespaceTree.insert(trackNamespace)
 }

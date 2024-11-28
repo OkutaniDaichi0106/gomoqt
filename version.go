@@ -3,7 +3,7 @@ package moqt
 import (
 	"errors"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
+	"github.com/OkutaniDaichi0106/gomoqt/internal/protocol"
 )
 
 type Version protocol.Version

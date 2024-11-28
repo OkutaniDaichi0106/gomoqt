@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt"
+	moqt "github.com/OkutaniDaichi0106/gomoqt"
 	"github.com/quic-go/quic-go"
 )
 

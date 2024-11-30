@@ -1,0 +1,34 @@
+name: linter
+
+on:
+  pull_request:
+   branches: [ "main" ]
+
+
+
+jobs:
+  
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      contents: read
+
+  
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: 1.22
+
+    - name: Lint
+      uses: reviewdog/action-golangci-lint@v2
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        level: warning
+        reporter: github-pr-review
+        go_version: ^1.22
+        golangci_lint_flags: "--config=.github/.golangci.yml"

@@ -1,6 +1,11 @@
 package message
 
-import "github.com/quic-go/quic-go/quicvarint"
+import (
+	"io"
+	"log"
+
+	"github.com/quic-go/quic-go/quicvarint"
+)
 
 type GoAwayMessage struct {
 	/*
@@ -10,7 +15,7 @@ type GoAwayMessage struct {
 	NewSessionURI string
 }
 
-func (ga GoAwayMessage) SerializePayload() []byte {
+func (ga GoAwayMessage) Encode(w io.Writer) error {
 	/*
 	 * Serialize the payload in the following format
 	 *
@@ -18,16 +23,34 @@ func (ga GoAwayMessage) SerializePayload() []byte {
 	 *   New Session URI (string),
 	 * }
 	 */
+
+	/*
+	 * Serialize the payload
+	 */
 	p := make([]byte, 0, 1<<6)
 
 	// Append the supported versions
 	p = quicvarint.Append(p, uint64(len(ga.NewSessionURI)))
 	p = append(p, []byte(ga.NewSessionURI)...)
 
-	return p
+	log.Print("GO_AWAY payload", p)
+
+	// Get a serialized message
+	b := make([]byte, 0, len(p)+8)
+
+	// Append the length of the payload
+	b = quicvarint.Append(b, uint64(len(p)))
+
+	// Append the payload
+	b = append(b, p...)
+
+	// Write
+	_, err := w.Write(b)
+
+	return err
 }
 
-func (ga *GoAwayMessage) DeserializePayload(r quicvarint.Reader) error {
+func (ga *GoAwayMessage) Decode(r quicvarint.Reader) error {
 	var err error
 	var num uint64
 
@@ -44,9 +67,6 @@ func (ga *GoAwayMessage) DeserializePayload(r quicvarint.Reader) error {
 		return err
 	}
 	ga.NewSessionURI = string(buf)
-
-	// Just one URI supposed to be detected
-	// Over one URI will not be detected
 
 	return nil
 }

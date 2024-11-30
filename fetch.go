@@ -6,22 +6,23 @@ import (
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
 /*
  * Fetch Stream
  */
-var _ ReceiveStream = (*FetchStream)(nil)
+// var _ moq.ReceiveStream = (*FetchStream)(nil)
 
 type FetchStream struct {
 	group  *Group
-	stream Stream
+	stream moq.Stream
 }
 
-func (f FetchStream) StreamID() StreamID {
-	return f.stream.StreamID()
-}
+// func (f FetchStream) StreamID() StreamID {
+// 	return f.stream.StreamID()
+// }
 
 func (f FetchStream) Read(buf []byte) (int, error) {
 	if f.group == nil {
@@ -54,7 +55,7 @@ func (f FetchStream) SetReadDeadline(time time.Time) error {
 	return f.stream.SetDeadLine(time)
 }
 
-func (f FetchStream) CancelRead(code StreamErrorCode) {
+func (f FetchStream) CancelRead(code moq.StreamErrorCode) {
 	f.stream.CancelRead(code)
 }
 
@@ -86,7 +87,7 @@ type FetchRequest message.FetchMessage
 
 type FetchResponceWriter struct {
 	doneCh chan struct{}
-	stream Stream
+	stream moq.Stream
 }
 
 func (w FetchResponceWriter) SendGroup(group Group, data []byte) {
@@ -123,16 +124,16 @@ func (w FetchResponceWriter) Reject(err error) {
 		}
 	}
 
-	var code StreamErrorCode
+	var code moq.StreamErrorCode
 
-	var strerr StreamError
+	var strerr moq.StreamError
 	if errors.As(err, &strerr) {
 		code = strerr.StreamErrorCode()
 	} else {
 		var ok bool
 		feterr, ok := err.(FetchError)
 		if ok {
-			code = StreamErrorCode(feterr.FetchErrorCode())
+			code = moq.StreamErrorCode(feterr.FetchErrorCode())
 		} else {
 			code = ErrInternalError.StreamErrorCode()
 		}

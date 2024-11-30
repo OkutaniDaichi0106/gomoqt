@@ -6,18 +6,6 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-func ReadControlMessage(r quicvarint.Reader) (quicvarint.Reader, error) {
-	// Get a payload reader
-	num, err := quicvarint.Read(r)
-	if err != nil {
-		return nil, err
-	}
-
-	reader := io.LimitReader(r, int64(num))
-
-	return quicvarint.NewReader(reader), nil
-}
-
 type TrackNamespace []string
 
 func AppendTrackNamespace(b []byte, tns TrackNamespace) []byte {
@@ -35,31 +23,32 @@ func AppendTrackNamespace(b []byte, tns TrackNamespace) []byte {
 	return b
 }
 
-func ReadTrackNamespace(r quicvarint.Reader) (TrackNamespace, error) {
-	var tns TrackNamespace
-
+func readTrackNamespace(r Reader) (TrackNamespace, error) {
 	// Get the number of the elements of the track namespace
-	num, err := quicvarint.Read(r)
+	l, err := quicvarint.Read(r)
 	if err != nil {
 		return nil, err
 	}
 
-	buf := make([]byte, 1<<6)
+	tns := make(TrackNamespace, l)
 
-	for i := uint64(0); i < num; i++ {
+	var num uint64
+	for i := uint64(0); i < l; i++ {
 		// Get a length of a string in the Track Namespace
 		num, err = quicvarint.Read(r)
 		if err != nil {
 			return nil, err
 		}
 
-		_, err = r.Read(buf[:num])
+		buf := make([]byte, num)
+
+		_, err = r.Read(buf)
 		if err == nil {
-			tns = append(tns, string(buf[:num]))
+			tns = append(tns, string(buf))
 			continue
 		} else {
 			if err == io.EOF {
-				tns = append(tns, string(buf[:num]))
+				tns = append(tns, string(buf))
 				return tns, nil
 			}
 			return nil, err
@@ -88,29 +77,30 @@ func AppendTrackNamespacePrefix(b []byte, tnsp TrackPrefix) []byte {
 
 func ReadTrackNamespacePrefix(r quicvarint.Reader) (TrackPrefix, error) {
 	// Get the number of the elements of the track namespace
-	num, err := quicvarint.Read(r)
+	l, err := quicvarint.Read(r)
 	if err != nil {
 		return nil, err
 	}
 
-	tnsp := make(TrackPrefix, num)
+	tnsp := make(TrackPrefix, l)
 
-	buf := make([]byte, 1<<6)
-
-	for i := uint64(0); i < num; i++ {
+	var num uint64
+	for i := uint64(0); i < l; i++ {
 		// Get a length of a string in the Track Namespace
 		num, err = quicvarint.Read(r)
 		if err != nil {
 			return nil, err
 		}
 
-		_, err = r.Read(buf[:num])
+		buf := make([]byte, num)
+
+		_, err = r.Read(buf)
 		if err == nil {
-			tnsp = append(tnsp, string(buf[:num]))
+			tnsp = append(tnsp, string(buf))
 			continue
 		} else {
 			if err == io.EOF {
-				tnsp = append(tnsp, string(buf[:num]))
+				tnsp = append(tnsp, string(buf))
 				return tnsp, nil
 			}
 			return nil, err

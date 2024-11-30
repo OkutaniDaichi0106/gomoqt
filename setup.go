@@ -5,10 +5,11 @@ import (
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
 	"github.com/OkutaniDaichi0106/gomoqt/internal/protocol"
 )
 
-type SessionStream Stream
+type SessionStream moq.Stream
 
 type SetupRequest struct {
 	Path              string

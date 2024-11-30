@@ -9,11 +9,12 @@ import (
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type session struct {
-	conn    Connection
+	conn    moq.Connection
 	sessStr SessionStream
 	//version Version
 
@@ -44,7 +45,7 @@ func (sess *session) Terminate(err error) {
 		}
 	}
 
-	err = sess.conn.CloseWithError(SessionErrorCode(tererr.TerminateErrorCode()), err.Error())
+	err = sess.conn.CloseWithError(moq.SessionErrorCode(tererr.TerminateErrorCode()), err.Error())
 	if err != nil {
 		slog.Error("failed to close the Connection", slog.String("error", err.Error()))
 		return
@@ -54,7 +55,9 @@ func (sess *session) Terminate(err error) {
 }
 
 func (sess *session) Interest(interest Interest) (AnnounceStream, error) {
-	//
+	/*
+	 * Open an Announce Stream
+	 */
 	stream, err := sess.conn.OpenStream()
 	if err != nil {
 		slog.Error("failed to open an Announce Stream")
@@ -62,7 +65,7 @@ func (sess *session) Interest(interest Interest) (AnnounceStream, error) {
 	}
 
 	// Send Announce Stream Type
-	_, err = stream.Write([]byte{byte(ANNOUNCE)})
+	_, err = stream.Write([]byte{byte(moq.ANNOUNCE)})
 	if err != nil {
 		slog.Error("failed to send Announce Stream Type")
 		return AnnounceStream{}, err
@@ -189,7 +192,7 @@ func (sess *session) RequestInfo(req InfoRequest) (Info, error) {
 	}
 
 	// Send Announce Stream Type
-	_, err = stream.Write([]byte{byte(INFO)})
+	_, err = stream.Write([]byte{byte(moq.INFO)})
 	if err != nil {
 		slog.Error("failed to send Announce Stream Type")
 		return Info{}, err
@@ -216,7 +219,7 @@ func (sess *session) RequestInfo(req InfoRequest) (Info, error) {
 	return Info(info), nil
 }
 
-func (sess *session) openDataStream(g Group) (SendStream, error) {
+func (sess *session) openDataStream(g Group) (moq.SendStream, error) {
 	if g.groupSequence == 0 {
 		return nil, errors.New("0 sequence number")
 	}
@@ -243,7 +246,7 @@ func (sess *session) openDataStream(g Group) (SendStream, error) {
 	return stream, nil
 }
 
-func (sess *session) acceptDataStream(ctx context.Context) (Group, ReceiveStream, error) {
+func (sess *session) acceptDataStream(ctx context.Context) (Group, moq.ReceiveStream, error) {
 	stream, err := sess.conn.AcceptUniStream(ctx)
 	if err != nil {
 		slog.Error("failed to accept an unidirectional stream", slog.String("error", err.Error()))

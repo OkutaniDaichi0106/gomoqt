@@ -1,6 +1,7 @@
 package message
 
 import (
+	"io"
 	"time"
 
 	"github.com/quic-go/quic-go/quicvarint"
@@ -13,7 +14,7 @@ type InfoMessage struct {
 	GroupExpires        time.Duration
 }
 
-func (im InfoMessage) SerializePayload() []byte {
+func (im InfoMessage) Encode(w io.Writer) error {
 	/*
 	 * Serialize the payload in the following format
 	 *
@@ -26,9 +27,6 @@ func (im InfoMessage) SerializePayload() []byte {
 	 * }
 	 */
 
-	/*
-	 * Serialize the payload
-	 */
 	p := make([]byte, 0, 1<<10)
 
 	// Append the Status Code
@@ -43,15 +41,24 @@ func (im InfoMessage) SerializePayload() []byte {
 	// Appen the Group Expires
 	p = quicvarint.Append(p, uint64(im.GroupExpires))
 
-	return p
+	// Serialize the whole message
+	b := make([]byte, len(p)+8)
+
+	// Append the length of the payload
+	b = quicvarint.Append(b, uint64(len(p)))
+
+	// Append the payload
+	b = append(b, p...)
+
+	// Write
+	_, err := w.Write(b)
+
+	return err
 }
 
-func (im *InfoMessage) DeserializePayload(r quicvarint.Reader) error {
-	var err error
-	var num uint64
-
+func (im *InfoMessage) Decode(r Reader) error {
 	// Get a Status Code
-	num, err = quicvarint.Read(r)
+	num, err := quicvarint.Read(r)
 	if err != nil {
 		return err
 	}

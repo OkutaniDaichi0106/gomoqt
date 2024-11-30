@@ -22,7 +22,7 @@ func main() {
 	moqs := moqt.Server{
 		Addr: "localhost:8443",
 		TLSConfig: &tls.Config{
-			NextProtos:         []string{"h3", "moq-00"},
+			//NextProtos:         []string{"h3", "moq-00"},
 			Certificates:       certs,
 			InsecureSkipVerify: true,
 		},

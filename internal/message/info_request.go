@@ -1,6 +1,9 @@
 package message
 
 import (
+	"io"
+	"log"
+
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -16,7 +19,7 @@ type InfoRequestMessage struct {
 	TrackName string
 }
 
-func (irm InfoRequestMessage) SerializePayload() []byte {
+func (irm InfoRequestMessage) Encode(w io.Writer) error {
 	/*
 	 * Serialize the payload in the following format
 	 *
@@ -26,9 +29,6 @@ func (irm InfoRequestMessage) SerializePayload() []byte {
 	 * }
 	 */
 
-	/*
-	 * Serialize the payload
-	 */
 	p := make([]byte, 0, 1<<8)
 
 	// Append the Track Namespace
@@ -38,12 +38,26 @@ func (irm InfoRequestMessage) SerializePayload() []byte {
 	p = quicvarint.Append(p, uint64(len(irm.TrackName)))
 	p = append(p, []byte(irm.TrackName)...)
 
-	return p
+	log.Print("INFO_REQUEST payload", p)
+
+	// Serialize the whole message
+	b := make([]byte, len(p)+8)
+
+	// Append the length of the payload
+	b = quicvarint.Append(b, uint64(len(p)))
+
+	// Append the payload
+	b = append(b, p...)
+
+	// Write
+	_, err := w.Write(b)
+
+	return err
 }
 
-func (irm *InfoRequestMessage) DeserializePayload(r quicvarint.Reader) error {
+func (irm *InfoRequestMessage) Decode(r Reader) error {
 	// Get a Track Namespace
-	tns, err := ReadTrackNamespace(r)
+	tns, err := readTrackNamespace(r)
 	if err != nil {
 		return err
 	}

@@ -15,6 +15,52 @@ func (FetchMessage) SerializePayload() []byte {
 	return p
 }
 
-func (FetchMessage) DeserializePayload(r quicvarint.Reader) error {
+func (fm *FetchMessage) Decode(r Reader) error {
+	var err error
+
+	// Get a Track Namespace
+	fm.TrackNamespace, err = readTrackNamespace(r)
+	if err != nil {
+		return err
+	}
+
+	// Get a Track Name
+	num, err := quicvarint.Read(r)
+	if err != nil {
+		return err
+	}
+
+	buf := make([]byte, num)
+	_, err = r.Read(buf)
+	if err != nil {
+		return err
+	}
+
+	fm.TrackName = string(buf)
+
+	// Get a Subscriber Priority
+	num, err = quicvarint.Read(r)
+	if err != nil {
+		return err
+	}
+
+	fm.SubscriberPriority = SubscriberPriority(num)
+
+	// Get a Group Sequence
+	num, err = quicvarint.Read(r)
+	if err != nil {
+		return err
+	}
+
+	fm.GroupSequence = GroupSequence(num)
+
+	// Get a Group Offset
+	num, err = quicvarint.Read(r)
+	if err != nil {
+		return err
+	}
+
+	fm.GroupOffset = num
+
 	return nil
 }

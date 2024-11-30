@@ -163,10 +163,9 @@ func (params Parameters) Add(key uint64, value any) {
 	default:
 		panic("invalid type")
 	}
-
 }
 
-func (params Parameters) Append(b []byte) []byte {
+func appendParameters(b []byte, params Parameters) []byte {
 	// Append the number of the parameters
 	b = quicvarint.Append(b, uint64(len(params)))
 
@@ -190,30 +189,26 @@ func (params Parameters) Append(b []byte) []byte {
 	return b
 }
 
-func (params *Parameters) Deserialize(r quicvarint.Reader) error {
-	var num uint64
-	var err error
-
+func readParameters(r Reader) (Parameters, error) {
 	// Get the number of the parameters
-	num, err = quicvarint.Read(r)
+	len, err := quicvarint.Read(r)
 	if err != nil {
-		return err
+		return Parameters{}, err
 	}
 
-	*params = make(Parameters, int(num))
+	params := make(Parameters, len)
 
-	numParam := num
-
-	for i := uint64(0); i < numParam; i++ {
+	var num uint64
+	for i := uint64(0); i < len; i++ {
 		num, err = quicvarint.Read(r)
 		if err != nil {
-			return err
+			return Parameters{}, err
 		}
 		key := uint64(num)
 
 		num, err = quicvarint.Read(r)
 		if err != nil {
-			return err
+			return Parameters{}, err
 		}
 		wireType := WireType(num)
 
@@ -222,31 +217,31 @@ func (params *Parameters) Deserialize(r quicvarint.Reader) error {
 			// Get the uint64 b
 			num, err = quicvarint.Read(r)
 			if err != nil {
-				return err
+				return Parameters{}, err
 			}
 
 			// Register the b
-			(*params)[key] = num
+			params[key] = num
 		case length_delimited:
 			// Get length of the byte array b
 			num, err = quicvarint.Read(r)
 			if err != nil {
-				return err
+				return Parameters{}, err
 			}
 
 			// Get byte array b
 			buf := make([]byte, num)
 			n, err := r.Read(buf)
 			if err != nil {
-				return err
+				return Parameters{}, err
 			}
 
 			// Register the b
-			(*params)[key] = buf[:n]
+			params[key] = buf[:n]
 		default:
-			return errors.New("invalid wire type")
+			return Parameters{}, errors.New("invalid wire type")
 		}
 	}
 
-	return nil
+	return params, nil
 }

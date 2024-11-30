@@ -1,4 +1,4 @@
-package moqt
+package moq
 
 import (
 	"time"

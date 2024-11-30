@@ -1,6 +1,11 @@
 package message
 
-import "github.com/quic-go/quic-go/quicvarint"
+import (
+	"io"
+	"log"
+
+	"github.com/quic-go/quic-go/quicvarint"
+)
 
 type GroupSequence uint64
 
@@ -14,7 +19,7 @@ type GroupMessage struct {
 	PublisherPriority PublisherPriority
 }
 
-func (g GroupMessage) SerializePayload() []byte {
+func (g GroupMessage) Encode(w io.Writer) error {
 	/*
 	 * Serialize the payload in the following format
 	 *
@@ -35,10 +40,24 @@ func (g GroupMessage) SerializePayload() []byte {
 	// Append the Publisher Priority
 	p = quicvarint.Append(p, uint64(g.PublisherPriority))
 
-	return p
+	log.Print("GROUP payload", p)
+
+	// Get a serialized message
+	b := make([]byte, len(p)+8)
+
+	// Append the length of the payload
+	b = quicvarint.Append(b, uint64(len(p)))
+
+	// Append the payload
+	b = append(b, p...)
+
+	// Write
+	_, err := w.Write(b)
+
+	return err
 }
 
-func (g *GroupMessage) DeserializePayload(r quicvarint.Reader) error {
+func (g *GroupMessage) Decode(r Reader) error {
 	// Get a Subscribe ID
 	num, err := quicvarint.Read(r)
 	if err != nil {

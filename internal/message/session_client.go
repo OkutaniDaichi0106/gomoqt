@@ -1,6 +1,9 @@
 package message
 
 import (
+	"io"
+	"log"
+
 	"github.com/OkutaniDaichi0106/gomoqt/internal/protocol"
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -17,18 +20,7 @@ type SessionClientMessage struct {
 	Parameters Parameters
 }
 
-func (scm SessionClientMessage) SerializePayload() []byte {
-	// // Verify if at least one version is specified
-	// if len(cs.SupportedVersions) == 0 {
-	// 	panic("no version is specified")
-	// }
-
-	// // Verify if the Parameters conclude some role parameter
-	// _, ok := cs.Parameters.Role()
-	// if !ok {
-	// 	panic("no role is specifyed")
-	// }
-
+func (scm SessionClientMessage) Encode(w io.Writer) error {
 	/*
 	 * Serialize the payload in the following format
 	 *
@@ -37,8 +29,7 @@ func (scm SessionClientMessage) SerializePayload() []byte {
 	 *     Count (varint),
 	 *     Versions (varint...),
 	 *   },
-	 *   Number of Parameters (),
-	 *   Announce Parameters(..)
+	 *   Announce Parameters (Parameters),
 	 * }
 	 */
 	p := make([]byte, 0, 1<<8)
@@ -49,15 +40,27 @@ func (scm SessionClientMessage) SerializePayload() []byte {
 		p = quicvarint.Append(p, uint64(version))
 	}
 
-	if scm.Parameters != nil {
-		// Append the parameters
-		p = scm.Parameters.Append(p)
-	}
+	// Append the parameters
+	p = appendParameters(p, scm.Parameters)
 
-	return p
+	log.Print("SESSION_CLIENT payload", p)
+
+	// Get a serialized message
+	b := make([]byte, len(p)+8)
+
+	// Append the length of the payload
+	b = quicvarint.Append(b, uint64(len(p)))
+
+	// Append the payload
+	b = append(b, p...)
+
+	// Write
+	_, err := w.Write(b)
+
+	return err
 }
 
-func (scm *SessionClientMessage) DeserializePayload(r quicvarint.Reader) error {
+func (scm *SessionClientMessage) Decode(r Reader) error {
 	// Get number of supported versions
 	num, err := quicvarint.Read(r)
 	if err != nil {
@@ -75,10 +78,7 @@ func (scm *SessionClientMessage) DeserializePayload(r quicvarint.Reader) error {
 	}
 
 	// Get Parameters
-	if scm.Parameters == nil {
-		scm.Parameters = make(Parameters)
-	}
-	err = scm.Parameters.Deserialize(r)
+	scm.Parameters, err = readParameters(r)
 	if err != nil {
 		return err
 	}

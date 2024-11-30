@@ -15,6 +15,7 @@ import (
 	"syscall"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
 	"github.com/OkutaniDaichi0106/gomoqt/internal/protocol"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/quicvarint"
@@ -64,7 +65,7 @@ func (c Client) Run(ctx context.Context) error {
 	}
 
 	// Handle the scheme
-	var conn Connection
+	var conn moq.Connection
 	var req SetupRequest
 	switch parsedURL.Scheme {
 	case "https":
@@ -76,7 +77,7 @@ func (c Client) Run(ctx context.Context) error {
 			return err
 		}
 
-		conn = NewMOWTConnection(sess)
+		conn = moq.NewMOWTConnection(sess)
 
 		req = SetupRequest{
 			SupportedVersions: c.SupportedVersions,
@@ -111,7 +112,7 @@ func (c Client) Run(ctx context.Context) error {
 				continue
 			}
 
-			conn = NewMORQConnection(qconn)
+			conn = moq.NewMORQConnection(qconn)
 
 			break
 		}
@@ -153,7 +154,7 @@ func (c Client) Run(ctx context.Context) error {
 	 * Set up
 	 */
 	// Send the Session Stream Type
-	_, err = sess.sessStr.Write([]byte{byte(SESSION)})
+	_, err = sess.sessStr.Write([]byte{byte(stream_type_session)})
 	if err != nil {
 		slog.Error("failed to send a Session Stream Type", slog.String("error", err.Error()))
 		return err
@@ -208,7 +209,7 @@ func (c Client) Run(ctx context.Context) error {
 	return nil
 }
 
-func sendSetupRequest(stream Stream, req SetupRequest) error {
+func sendSetupRequest(stream moq.Stream, req SetupRequest) error {
 	scm := message.SessionClientMessage{
 		SupportedVersions: make([]protocol.Version, 0),
 		Parameters:        make(message.Parameters),
@@ -252,7 +253,7 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 			return
 		}
 
-		go func(stream Stream) {
+		go func(stream moq.Stream) {
 			qvr := quicvarint.NewReader(stream)
 
 			num, err := qvr.ReadByte()
@@ -261,8 +262,8 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 			}
 
 			switch StreamType(num) {
-			case ANNOUNCE:
-				slog.Info("Announce Stream is opened")
+			case stream_type_announce:
+				slog.Info("Announce Stream was opened")
 
 				interest, err := getInterest(qvr)
 				if err != nil {
@@ -285,7 +286,7 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 
 				c.RequestHandler.HandleInterest(interest, announcements, w)
 				<-w.doneCh
-			case SUBSCRIBE:
+			case stream_type_subscribe:
 				slog.Info("Subscribe Stream was opened")
 
 				subscription, err := getSubscription(qvr)
@@ -369,7 +370,7 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 					slog.Error("failed to close the stream", slog.String("error", err.Error()))
 					return
 				}
-			case FETCH:
+			case stream_type_fetch:
 				slog.Info("Fetch Stream was opened")
 
 				fetchRequest, err := getFetchRequest(qvr)
@@ -386,8 +387,8 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 				c.RequestHandler.HandleFetch(fetchRequest, w)
 
 				<-w.doneCh
-			case INFO:
-				slog.Info("Info Stream is opened")
+			case stream_type_info:
+				slog.Info("Info Stream was opened")
 
 				infoRequest, err := getInfoRequest(qvr)
 				if err != nil {

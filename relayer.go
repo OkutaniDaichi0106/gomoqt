@@ -205,7 +205,7 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 
 				<-w.doneCh
 			case INFO:
-				slog.Info("Info Stream is opened")
+				slog.Info("Info Stream was opened")
 
 				infoRequest, err := getInfoRequest(qvr)
 				if err != nil {

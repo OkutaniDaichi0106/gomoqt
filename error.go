@@ -1,6 +1,39 @@
 package moqt
 
-import "time"
+import (
+	"time"
+
+	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
+)
+
+/*
+ * Stream Error
+ */
+
+const (
+	stream_internal_error moq.StreamErrorCode = 0x00
+	invalid_stream_type   moq.StreamErrorCode = 0x10 // TODO: See spec
+)
+
+type defaultStreamError struct {
+	code   moq.StreamErrorCode
+	reason string
+}
+
+func (err defaultStreamError) Error() string {
+	return err.reason
+}
+
+func (err defaultStreamError) StreamErrorCode() moq.StreamErrorCode {
+	return err.code
+}
+
+var (
+	ErrInvalidStreamType = defaultStreamError{
+		code:   invalid_stream_type,
+		reason: "invalid stream type",
+	}
+)
 
 /*
  * Announce Errors
@@ -40,7 +73,7 @@ func (err defaultAnnounceError) AnnounceErrorCode() AnnounceErrorCode {
 /*
  * Internal Error
  */
-var _ StreamError = (*internalError)(nil)
+var _ moq.StreamError = (*internalError)(nil)
 var _ AnnounceError = (*internalError)(nil)
 var _ SubscribeError = (*internalError)(nil)
 var _ SubscribeDoneError = (*internalError)(nil)
@@ -69,7 +102,7 @@ func (internalError) TerminateErrorCode() TerminateErrorCode {
 	return terminate_internal_error
 }
 
-func (internalError) StreamErrorCode() StreamErrorCode {
+func (internalError) StreamErrorCode() moq.StreamErrorCode {
 	return stream_internal_error
 }
 

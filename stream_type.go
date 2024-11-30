@@ -3,9 +3,9 @@ package moqt
 type StreamType byte
 
 const (
-	SESSION   StreamType = 0x0
-	ANNOUNCE  StreamType = 0x1
-	SUBSCRIBE StreamType = 0x2
-	FETCH     StreamType = 0x3
-	INFO      StreamType = 0x4
+	stream_type_session   StreamType = 0x0
+	stream_type_announce  StreamType = 0x1
+	stream_type_subscribe StreamType = 0x2
+	stream_type_fetch     StreamType = 0x3
+	stream_type_info      StreamType = 0x4
 )

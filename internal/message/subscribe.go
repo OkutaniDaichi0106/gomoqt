@@ -1,6 +1,8 @@
 package message
 
 import (
+	"io"
+	"log"
 	"time"
 
 	"github.com/quic-go/quic-go/quicvarint"
@@ -16,8 +18,6 @@ type GroupOrder byte
 
 type SubscribeMessage struct {
 	SubscribeID SubscribeID
-
-	//TrackAlias TrackAlias
 
 	TrackNamespace TrackNamespace
 
@@ -46,7 +46,7 @@ type SubscribeMessage struct {
 	Parameters Parameters
 }
 
-func (s SubscribeMessage) SerializePayload() []byte {
+func (s SubscribeMessage) Encode(w io.Writer) error {
 	/*
 	 * Serialize the message in the following formatt
 	 *
@@ -69,9 +69,6 @@ func (s SubscribeMessage) SerializePayload() []byte {
 
 	// Append the Subscriber ID
 	p = quicvarint.Append(p, uint64(s.SubscribeID))
-
-	// Append the Subscriber ID
-	//p = quicvarint.Append(p, uint64(s.TrackAlias))
 
 	// Append the Track Namespace
 	p = AppendTrackNamespace(p, s.TrackNamespace)
@@ -96,9 +93,23 @@ func (s SubscribeMessage) SerializePayload() []byte {
 	p = quicvarint.Append(p, uint64(s.MinGroupSequence))
 
 	// Append the Subscribe Update Priority
-	p = s.Parameters.Append(p)
+	p = appendParameters(p, s.Parameters)
 
-	return p
+	log.Print("SUBSCRIBE payload", len(p))
+
+	// Get a serialized message
+	b := make([]byte, 0, len(p)+8)
+
+	// Append the length of the payload
+	b = quicvarint.Append(b, uint64(len(p)))
+
+	// Append the payload
+	b = append(b, p...)
+
+	// Write
+	_, err := w.Write(b)
+
+	return err
 }
 
 func (s *SubscribeMessage) DeserializePayload(r quicvarint.Reader) error {
@@ -109,15 +120,8 @@ func (s *SubscribeMessage) DeserializePayload(r quicvarint.Reader) error {
 	}
 	s.SubscribeID = SubscribeID(num)
 
-	// // Get Track Alias
-	// num, err = quicvarint.Read(r)
-	// if err != nil {
-	// 	return err
-	// }
-	// s.TrackAlias = TrackAlias(num)
-
 	// Get Track Namespace
-	tns, err := ReadTrackNamespace(r)
+	tns, err := readTrackNamespace(r)
 	if err != nil {
 		return err
 	}
@@ -171,7 +175,7 @@ func (s *SubscribeMessage) DeserializePayload(r quicvarint.Reader) error {
 	s.MaxGroupSequence = GroupSequence(num)
 
 	// Get Subscribe Update Parameters
-	err = s.Parameters.Deserialize(r)
+	s.Parameters, err = readParameters(r)
 	if err != nil {
 		return err
 	}

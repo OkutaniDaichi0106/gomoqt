@@ -1,6 +1,7 @@
 package message
 
 import (
+	"io"
 	"time"
 
 	"github.com/quic-go/quic-go/quicvarint"
@@ -18,7 +19,7 @@ type SubscribeUpdateMessage struct {
 	Parameters Parameters
 }
 
-func (su SubscribeUpdateMessage) SerializePayload() []byte {
+func (su SubscribeUpdateMessage) SerializePayload(w io.Writer) error {
 	/*
 	 * Serialize the message in the following format
 	 *
@@ -34,7 +35,7 @@ func (su SubscribeUpdateMessage) SerializePayload() []byte {
 	/*
 	 * Serialize the payload
 	 */
-	p := make([]byte, 0, 1<<8)
+	p := make([]byte, 0, 1<<6)
 
 	// Append the Subscriber ID
 	p = quicvarint.Append(p, uint64(su.SubscribeID))
@@ -49,17 +50,26 @@ func (su SubscribeUpdateMessage) SerializePayload() []byte {
 	p = quicvarint.Append(p, uint64(su.MaxGroupSequence))
 
 	// Append the Subscribe Update Parameters
-	p = su.Parameters.Append(p)
+	p = appendParameters(p, su.Parameters)
 
-	return p
+	// Get a serialized message
+	b := make([]byte, 0, len(p)+8)
+
+	// Append the length of the payload
+	b = quicvarint.Append(b, uint64(len(p)))
+
+	// Append the payload
+	b = append(b, p...)
+
+	// Write
+	_, err := w.Write(b)
+
+	return err
 }
 
-func (su *SubscribeUpdateMessage) DeserializePayload(r quicvarint.Reader) error {
-	var err error
-	var num uint64
-
+func (su *SubscribeUpdateMessage) Decode(r Reader) error {
 	// Get a Subscribe ID
-	num, err = quicvarint.Read(r)
+	num, err := quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
@@ -88,7 +98,7 @@ func (su *SubscribeUpdateMessage) DeserializePayload(r quicvarint.Reader) error 
 	su.SubscriberPriority = SubscriberPriority(priorityBuf[0])
 
 	// Get Subscribe Update Parameters
-	err = su.Parameters.Deserialize(r)
+	su.Parameters, err = readParameters(r)
 	if err != nil {
 		return err
 	}

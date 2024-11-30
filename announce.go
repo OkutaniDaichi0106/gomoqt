@@ -6,12 +6,13 @@ import (
 	"strings"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type AnnounceStream struct {
 	reader quicvarint.Reader
-	stream Stream
+	stream moq.Stream
 }
 
 func (a AnnounceStream) ReadAnnouncement() (Announcement, error) {
@@ -39,8 +40,8 @@ func (a AnnounceStream) Close(err error) {
 
 	slog.Info("trying to close an Announce Stream", slog.String("reason", annerr.Error()))
 
-	a.stream.CancelWrite(StreamErrorCode(annerr.AnnounceErrorCode()))
-	a.stream.CancelRead(StreamErrorCode(annerr.AnnounceErrorCode()))
+	a.stream.CancelWrite(moq.StreamErrorCode(annerr.AnnounceErrorCode()))
+	a.stream.CancelRead(moq.StreamErrorCode(annerr.AnnounceErrorCode()))
 }
 
 type Interest struct {
@@ -60,7 +61,7 @@ type Announcement struct {
 
 type AnnounceWriter struct {
 	doneCh chan struct{}
-	stream Stream
+	stream moq.Stream
 }
 
 func (w AnnounceWriter) Announce(announcement Announcement) {
@@ -89,15 +90,15 @@ func (w AnnounceWriter) Close(err error) {
 		return
 	}
 
-	var code StreamErrorCode
+	var code moq.StreamErrorCode
 
-	var strerr StreamError
+	var strerr moq.StreamError
 	if errors.As(err, &strerr) {
 		code = strerr.StreamErrorCode()
 	} else {
 		annerr, ok := err.(AnnounceError)
 		if ok {
-			code = StreamErrorCode(annerr.AnnounceErrorCode())
+			code = moq.StreamErrorCode(annerr.AnnounceErrorCode())
 		} else {
 			code = ErrInternalError.StreamErrorCode()
 		}

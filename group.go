@@ -1,6 +1,11 @@
 package moqt
 
-import "github.com/OkutaniDaichi0106/gomoqt/internal/message"
+import (
+	"io"
+	"log/slog"
+
+	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
+)
 
 type PublisherPriority message.PublisherPriority
 
@@ -20,4 +25,27 @@ func (g Group) GroupSequence() GroupSequence {
 	return g.groupSequence
 }
 
-type GroupDrop message.GroupDrop
+// type GroupDrop message.GroupDrop
+func readGroup(r io.Reader) (Group, error) {
+	// Get a message reader
+	mr, err := message.NewReader(r)
+	if err != nil {
+		slog.Error("failed to get a new message reader", slog.String("error", err.Error()))
+		return Group{}, err
+	}
+
+	// Read a GROUP message
+	var gm message.GroupMessage
+	err = gm.Decode(mr)
+	if err != nil {
+		slog.Error("failed to read a GROUP message", slog.String("error", err.Error()))
+		return Group{}, err
+	}
+
+	//
+	return Group{
+		subscribeID:       SubscribeID(gm.SubscribeID),
+		groupSequence:     GroupSequence(gm.GroupSequence),
+		PublisherPriority: PublisherPriority(gm.PublisherPriority),
+	}, nil
+}

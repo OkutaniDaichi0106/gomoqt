@@ -2,7 +2,6 @@ package message
 
 import (
 	"io"
-	"log"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -32,8 +31,6 @@ func (gd GroupDrop) Encode(w io.Writer) error {
 
 	// Append the Group Error Code
 	p = quicvarint.Append(p, uint64(gd.GroupErrorCode))
-
-	log.Print("GROUP_DROP payload", p)
 
 	// Get a serialized message
 	b := make([]byte, 0, len(p)+8)

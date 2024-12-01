@@ -2,12 +2,28 @@ package moqt
 
 import (
 	"errors"
+	"io"
 	"log/slog"
 	"strings"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
 )
+
+type Interest struct {
+	TrackPrefix string
+	Parameters  Parameters
+}
+
+type InterestHandler interface {
+	HandleInterest(Interest, []Announcement, AnnounceWriter)
+}
+
+type Announcement struct {
+	TrackNamespace    string
+	AuthorizationInfo string
+	Parameters        Parameters
+}
 
 type AnnounceStream struct {
 	stream moq.Stream
@@ -37,19 +53,35 @@ func (a AnnounceStream) Close(err error) {
 	a.stream.CancelRead(moq.StreamErrorCode(annerr.AnnounceErrorCode()))
 }
 
-type Interest struct {
-	TrackPrefix string
-	Parameters  Parameters
-}
+func readAnnouncement(r io.Reader) (Announcement, error) {
+	// Get a new message reader
+	mr, err := message.NewReader(r)
+	if err != nil {
+		slog.Error("failed to get a new message reader", slog.String("error", err.Error()))
+		return Announcement{}, err
+	}
 
-type InterestHandler interface {
-	HandleInterest(Interest, []Announcement, AnnounceWriter)
-}
+	// Read an ANNOUNCE message
+	var am message.AnnounceMessage
+	err = am.Decode(mr)
+	if err != nil {
+		slog.Error("failed to read an ANNOUNCE message", slog.String("error", err.Error()))
+		return Announcement{}, err
+	}
 
-type Announcement struct {
-	TrackNamespace    string
-	AuthorizationInfo string
-	Parameters        Parameters
+	// Initialize an Announcement
+	announcement := Announcement{
+		TrackNamespace: strings.Join(am.TrackNamespace, "/"),
+		Parameters:     Parameters(am.Parameters),
+	}
+
+	//
+	authInfo, ok := getAuthorizationInfo(announcement.Parameters)
+	if ok {
+		announcement.AuthorizationInfo = authInfo
+	}
+
+	return announcement, nil
 }
 
 type AnnounceWriter struct {

@@ -26,12 +26,18 @@ type Subscription struct {
 	subscribeID        SubscribeID
 	TrackNamespace     string
 	TrackName          string
-	Parameters         Parameters
 	SubscriberPriority SubscriberPriority
 	GroupOrder         GroupOrder
 	GroupExpires       time.Duration
 	MinGroupSequence   GroupSequence
 	MaxGroupSequence   GroupSequence
+
+	/*
+	 * Parameters
+	 */
+	Parameters Parameters
+
+	DeliveryTimeout time.Duration //TODO
 }
 
 func (s Subscription) FirstGrouopSequence() GroupSequence {
@@ -54,29 +60,29 @@ func (s Subscription) GetGroup(seq GroupSequence, priority PublisherPriority) Gr
 }
 
 type SubscribeWriter struct {
-	//reader       quicvarint.Reader
 	stream       moq.Stream
 	subscription Subscription
 	mu           sync.RWMutex
 }
 
-func (w *SubscribeWriter) Update(subscription Subscription) (Info, error) {
+func (w *SubscribeWriter) Update(update SubscribeUpdate) (Info, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	old := w.subscription
-	slog.Debug("trying to update", slog.Any("from", old), slog.Any("to", subscription))
+	slog.Debug("trying to update", slog.Any("subscription", w.subscription), slog.Any("to", update))
 
 	// Verify if the new group range is valid
-	if subscription.MinGroupSequence > subscription.MaxGroupSequence {
+	if update.MinGroupSequence > update.MaxGroupSequence {
 		slog.Debug("MinGroupSequence is larger than MaxGroupSequence")
 		return Info{}, ErrInvalidRange
 	}
-	if old.MinGroupSequence > subscription.MinGroupSequence {
+	//
+	if old.MinGroupSequence > update.MinGroupSequence {
 		slog.Debug("the new MinGroupSequence is smaller than the old MinGroupSequence")
 		return Info{}, ErrInvalidRange
 	}
-	if old.MaxGroupSequence < subscription.MaxGroupSequence {
+	if old.MaxGroupSequence < update.MaxGroupSequence {
 		slog.Debug("the new MaxGroupSequence is larger than the old MaxGroupSequence")
 		return Info{}, ErrInvalidRange
 	}
@@ -84,16 +90,23 @@ func (w *SubscribeWriter) Update(subscription Subscription) (Info, error) {
 	/*
 	 * Send a SUBSCRIBE_UPDATE message
 	 */
+	// Set parameters
+	if update.Parameters == nil {
+		update.Parameters = make(Parameters)
+	}
+	if update.DeliveryTimeout > 0 {
+		update.Parameters.Add(DELIVERY_TIMEOUT, update.DeliveryTimeout)
+	}
+	// Initialize
 	sum := message.SubscribeUpdateMessage{
 		SubscribeID:        message.SubscribeID(w.subscription.subscribeID),
-		SubscriberPriority: message.SubscriberPriority(subscription.SubscriberPriority),
-		GroupOrder:         message.GroupOrder(subscription.GroupOrder),
-		GroupExpires:       subscription.GroupExpires,
-		MinGroupSequence:   message.GroupSequence(subscription.MinGroupSequence),
-		MaxGroupSequence:   message.GroupSequence(subscription.MaxGroupSequence),
-		Parameters:         message.Parameters(subscription.Parameters),
+		SubscriberPriority: message.SubscriberPriority(update.SubscriberPriority),
+		GroupOrder:         message.GroupOrder(update.GroupOrder),
+		GroupExpires:       update.GroupExpires,
+		MinGroupSequence:   message.GroupSequence(update.MinGroupSequence),
+		MaxGroupSequence:   message.GroupSequence(update.MaxGroupSequence),
+		Parameters:         message.Parameters(update.Parameters),
 	}
-
 	err := sum.Encode(w.stream)
 	if err != nil {
 		slog.Debug("failed to send a SUBSCRIBE_UPDATE message", slog.String("error", err.Error()))
@@ -131,9 +144,6 @@ func (s *SubscribeWriter) Unsubscribe(err error) {
 }
 
 func (s *SubscribeWriter) Subscription() Subscription {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	return s.subscription
 }
 
@@ -223,6 +233,21 @@ func readSubscription(str moq.Stream) (Subscription, error) {
 		MaxGroupSequence:   GroupSequence(sm.MaxGroupSequence),
 		Parameters:         Parameters(sm.Parameters),
 	}, nil
+}
+
+type SubscribeUpdate struct {
+	SubscriberPriority SubscriberPriority
+	GroupOrder         GroupOrder
+	GroupExpires       time.Duration
+	MinGroupSequence   GroupSequence
+	MaxGroupSequence   GroupSequence
+
+	/*
+	 * Parameters
+	 */
+	Parameters Parameters
+
+	DeliveryTimeout time.Duration
 }
 
 func readSubscribeUpdate(old Subscription, r io.Reader) (Subscription, error) {

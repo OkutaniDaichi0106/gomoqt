@@ -51,17 +51,21 @@ func (fm FetchMessage) Encode(w io.Writer) error {
 	return err
 }
 
-func (fm *FetchMessage) Decode(r Reader) error {
-	var err error
+func (fm *FetchMessage) Decode(r io.Reader) error {
+	// Get a messaga reader
+	mr, err := newReader(r)
+	if err != nil {
+		return err
+	}
 
 	// Get a Track Namespace
-	fm.TrackNamespace, err = readTrackNamespace(r)
+	fm.TrackNamespace, err = readTrackNamespace(mr)
 	if err != nil {
 		return err
 	}
 
 	// Get a Track Name
-	num, err := quicvarint.Read(r)
+	num, err := quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
@@ -75,7 +79,7 @@ func (fm *FetchMessage) Decode(r Reader) error {
 	fm.TrackName = string(buf)
 
 	// Get a Subscriber Priority
-	num, err = quicvarint.Read(r)
+	num, err = quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
@@ -83,7 +87,7 @@ func (fm *FetchMessage) Decode(r Reader) error {
 	fm.SubscriberPriority = SubscriberPriority(num)
 
 	// Get a Group Sequence
-	num, err = quicvarint.Read(r)
+	num, err = quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
@@ -91,7 +95,7 @@ func (fm *FetchMessage) Decode(r Reader) error {
 	fm.GroupSequence = GroupSequence(num)
 
 	// Get a Group Offset
-	num, err = quicvarint.Read(r)
+	num, err = quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}

@@ -159,51 +159,61 @@ func (sess *session) Fetch(req FetchRequest) (FetchStream, error) {
 		return FetchStream{}, err
 	}
 
+	group, err := readGroup(stream)
+	if err != nil {
+		slog.Error("failed to get a Group", slog.String("error", err.Error()))
+		return FetchStream{}, err
+	}
+
 	return FetchStream{
 		stream: stream,
+		group:  group,
 	}, nil
 }
 
 func (sess *session) RequestInfo(req InfoRequest) (Info, error) {
+	/*
+	 * Open an Info Stream
+	 */
+	// Open a bidirectional stream
 	stream, err := sess.conn.OpenStream()
 	if err != nil {
 		slog.Error("failed to open an Info Request Stream", slog.String("error", err.Error()))
 		return Info{}, err
 	}
-
-	// Send Announce Stream Type
+	// Send the Info Stream Type
 	_, err = stream.Write([]byte{byte(stream_type_info)})
 	if err != nil {
 		slog.Error("failed to send Announce Stream Type")
 		return Info{}, err
 	}
 
+	/*
+	 * Send an INFO_REQUEST message
+	 */
 	irm := message.InfoRequestMessage{
 		TrackNamespace: strings.Split(req.TrackNamespace, "/"),
 		TrackName:      req.TrackName,
 	}
-
 	err = irm.Encode(stream)
-
 	if err != nil {
-		slog.Error("failed to send a INFO_REQUEST message", slog.String("error", err.Error()))
-		return Info{}, err
-	}
-
-	/*
-	 *
-	 */
-	r, err := message.NewReader(stream)
-	if err != nil {
-		slog.Error("failed to get a new message reader", slog.String("error", err.Error()))
+		slog.Error("failed to send an INFO_REQUEST message", slog.String("error", err.Error()))
 		return Info{}, err
 	}
 
 	var info message.InfoMessage
-	err = info.Decode(r)
+	err = info.Decode(stream)
 	if err != nil {
 		slog.Error("failed to get a INFO message", slog.String("error", err.Error()))
 		return Info{}, err
+	}
+
+	/*
+	 * Close the Info Stream
+	 */
+	err = stream.Close()
+	if err != nil {
+		slog.Error("failed to close an Info Stream", slog.String("error", err.Error()))
 	}
 
 	return Info(info), nil

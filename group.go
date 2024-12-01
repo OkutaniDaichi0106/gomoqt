@@ -27,16 +27,9 @@ func (g Group) GroupSequence() GroupSequence {
 
 // type GroupDrop message.GroupDrop
 func readGroup(r io.Reader) (Group, error) {
-	// Get a message reader
-	mr, err := message.NewReader(r)
-	if err != nil {
-		slog.Error("failed to get a new message reader", slog.String("error", err.Error()))
-		return Group{}, err
-	}
-
 	// Read a GROUP message
 	var gm message.GroupMessage
-	err = gm.Decode(mr)
+	err := gm.Decode(r)
 	if err != nil {
 		slog.Error("failed to read a GROUP message", slog.String("error", err.Error()))
 		return Group{}, err

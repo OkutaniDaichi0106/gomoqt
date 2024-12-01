@@ -43,8 +43,14 @@ func (fum FetchUpdateMessage) Encode(w io.Writer) error {
 	return err
 }
 
-func (fum *FetchUpdateMessage) Decode(r Reader) error {
-	num, err := quicvarint.Read(r)
+func (fum *FetchUpdateMessage) Decode(r io.Reader) error {
+	// Get a messaga reader
+	mr, err := newReader(r)
+	if err != nil {
+		return err
+	}
+
+	num, err := quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}

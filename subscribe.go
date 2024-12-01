@@ -211,13 +211,9 @@ func (w SubscribeResponceWriter) Reject(err error) {
 	slog.Debug("Rejected a subscription", slog.String("error", err.Error()))
 }
 
-func readSubscription(str moq.Stream) (Subscription, error) {
-	r, err := message.NewReader(str)
-	if err != nil {
-		slog.Error("failed to get a new message reader", slog.String("error", err.Error()))
-	}
+func readSubscription(r moq.Stream) (Subscription, error) {
 	var sm message.SubscribeMessage
-	err = sm.Decode(r)
+	err := sm.Decode(r)
 	if err != nil {
 		slog.Debug("failed to read a SUBSCRIBE message", slog.String("error", err.Error()))
 		return Subscription{}, err
@@ -251,16 +247,10 @@ type SubscribeUpdate struct {
 }
 
 func readSubscribeUpdate(old Subscription, r io.Reader) (Subscription, error) {
-	// Get a new message reader
-	mr, err := message.NewReader(r)
-	if err != nil {
-		slog.Error("failed to get a new message reader", slog.String("error", err.Error()))
-		return Subscription{}, err
-	}
 
 	// Read a SUBSCRIBE_UPDATE message
 	var sum message.SubscribeUpdateMessage
-	err = sum.Decode(mr)
+	err := sum.Decode(r)
 	if err != nil {
 		slog.Debug("failed to read a SUBSCRIBE_UPDATE message", slog.String("error", err.Error()))
 		return Subscription{}, err

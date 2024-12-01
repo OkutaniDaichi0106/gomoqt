@@ -7,11 +7,11 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-type Reader interface {
+type reader interface {
 	quicvarint.Reader
 }
 
-func NewReader(str io.Reader) (Reader, error) {
+func newReader(str io.Reader) (reader, error) {
 	// Get a message reader
 	num, err := quicvarint.Read(quicvarint.NewReader(str))
 	if err != nil {

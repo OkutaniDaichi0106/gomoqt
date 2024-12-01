@@ -51,7 +51,7 @@ func appendParameters(b []byte, params Parameters) []byte {
 	return b
 }
 
-func readParameters(r Reader) (Parameters, error) {
+func readParameters(r reader) (Parameters, error) {
 	// Get the number of the parameters
 	len, err := quicvarint.Read(r)
 	if err != nil {

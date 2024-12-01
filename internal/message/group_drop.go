@@ -47,23 +47,29 @@ func (gd GroupDrop) Encode(w io.Writer) error {
 	return err
 }
 
-func (gd *GroupDrop) Decode(r Reader) error {
+func (gd *GroupDrop) Decode(r io.Reader) error {
+	// Get a messaga reader
+	mr, err := newReader(r)
+	if err != nil {
+		return err
+	}
+
 	// Get a Group Start Sequence
-	num, err := quicvarint.Read(r)
+	num, err := quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
 	gd.GroupStartSequence = GroupSequence(num)
 
 	// Get a Count
-	num, err = quicvarint.Read(r)
+	num, err = quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
 	gd.Count = num
 
 	// Get a Group Error Code
-	num, err = quicvarint.Read(r)
+	num, err = quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}

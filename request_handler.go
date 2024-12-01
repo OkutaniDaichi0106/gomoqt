@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
 )
 
 type RequestHandler interface {
@@ -16,15 +15,10 @@ type RequestHandler interface {
 	InfoRequestHandler
 }
 
-func readInterest(str io.Reader) (Interest, error) {
-	r, err := message.NewReader(str)
-	if err != nil {
-		slog.Error("failed to get a new message reader", slog.String("error", err.Error()))
-		return Interest{}, err
-	}
+func readInterest(r io.Reader) (Interest, error) {
 	//
 	var aim message.AnnounceInterestMessage
-	err = aim.Decode(r)
+	err := aim.Decode(r)
 	if err != nil {
 		slog.Error("failed to read an ANNOUNCE_INTEREST message", slog.String("error", err.Error()))
 		return Interest{}, err
@@ -36,14 +30,9 @@ func readInterest(str io.Reader) (Interest, error) {
 	}, nil
 }
 
-func readFetchRequest(str moq.Stream) (FetchRequest, error) {
-	r, err := message.NewReader(str)
-	if err != nil {
-		slog.Error("failed to get a new message reader")
-	}
-
+func readFetchRequest(r io.Reader) (FetchRequest, error) {
 	var frm message.FetchMessage
-	err = frm.Decode(r)
+	err := frm.Decode(r)
 	if err != nil {
 		slog.Error("failed to read a FETCH message", slog.String("error", err.Error()))
 		return FetchRequest{}, err
@@ -52,14 +41,10 @@ func readFetchRequest(str moq.Stream) (FetchRequest, error) {
 	return FetchRequest(frm), nil
 }
 
-func readInfoRequest(str moq.Stream) (InfoRequest, error) {
-	r, err := message.NewReader(str)
-	if err != nil {
-		slog.Error("failed to get a new message reader", slog.String("error", err.Error()))
-	}
+func readInfoRequest(r io.Reader) (InfoRequest, error) {
 
 	var irm message.InfoRequestMessage
-	err = irm.Decode(r)
+	err := irm.Decode(r)
 	if err != nil {
 		slog.Error("failed to read an INFO_REQUEST message", slog.String("error", err.Error()))
 		return InfoRequest{}, err

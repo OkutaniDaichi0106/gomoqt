@@ -56,30 +56,36 @@ func (im InfoMessage) Encode(w io.Writer) error {
 	return err
 }
 
-func (im *InfoMessage) Decode(r Reader) error {
+func (im *InfoMessage) Decode(r io.Reader) error {
+	// Get a messaga reader
+	mr, err := newReader(r)
+	if err != nil {
+		return err
+	}
+
 	// Get a Status Code
-	num, err := quicvarint.Read(r)
+	num, err := quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
 	im.PublisherPriority = PublisherPriority(num)
 
 	// Get a Latest Group ID
-	num, err = quicvarint.Read(r)
+	num, err = quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
 	im.LatestGroupSequence = GroupSequence(num)
 
 	// Get a Group Order
-	num, err = quicvarint.Read(r)
+	num, err = quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
 	im.GroupOrder = GroupOrder(num)
 
 	// Get a Group Expires
-	num, err = quicvarint.Read(r)
+	num, err = quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}

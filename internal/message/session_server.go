@@ -54,16 +54,22 @@ func (ssm SessionServerMessage) Encode(w io.Writer) error {
 	return err
 }
 
-func (ssm *SessionServerMessage) Decode(r Reader) error {
+func (ssm *SessionServerMessage) Decode(r io.Reader) error {
+	// Get a messaga reader
+	mr, err := newReader(r)
+	if err != nil {
+		return err
+	}
+
 	// Get a Version
-	num, err := quicvarint.Read(r)
+	num, err := quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
 	ssm.SelectedVersion = protocol.Version(num)
 
 	// Get Parameters
-	ssm.Parameters, err = readParameters(r)
+	ssm.Parameters, err = readParameters(mr)
 	if err != nil {
 		return err
 	}

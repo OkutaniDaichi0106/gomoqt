@@ -49,16 +49,22 @@ func (aim AnnounceInterestMessage) Encode(w io.Writer) error {
 	return err
 }
 
-func (aim *AnnounceInterestMessage) Decode(r Reader) error {
+func (aim *AnnounceInterestMessage) Decode(r io.Reader) error {
+	// Get a messaga reader
+	mr, err := newReader(r)
+	if err != nil {
+		return err
+	}
+
 	// Get a Track Namespace Prefix
-	tnsp, err := readTrackNamespacePrefix(r)
+	tnsp, err := readTrackNamespacePrefix(mr)
 	if err != nil {
 		return err
 	}
 	aim.TrackPrefix = tnsp
 
 	// Get Parameters
-	aim.Parameters, err = readParameters(r)
+	aim.Parameters, err = readParameters(mr)
 	if err != nil {
 		return err
 	}

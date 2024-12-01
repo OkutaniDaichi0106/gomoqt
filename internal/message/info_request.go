@@ -55,16 +55,22 @@ func (irm InfoRequestMessage) Encode(w io.Writer) error {
 	return err
 }
 
-func (irm *InfoRequestMessage) Decode(r Reader) error {
+func (irm *InfoRequestMessage) Decode(r io.Reader) error {
+	// Get a messaga reader
+	mr, err := newReader(r)
+	if err != nil {
+		return err
+	}
+
 	// Get a Track Namespace
-	tns, err := readTrackNamespace(r)
+	tns, err := readTrackNamespace(mr)
 	if err != nil {
 		return err
 	}
 	irm.TrackNamespace = tns
 
 	// Get a Track Name
-	num, err := quicvarint.Read(r)
+	num, err := quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}

@@ -50,12 +50,15 @@ func (ga GoAwayMessage) Encode(w io.Writer) error {
 	return err
 }
 
-func (ga *GoAwayMessage) Decode(r Reader) error {
-	var err error
-	var num uint64
+func (ga *GoAwayMessage) Decode(r io.Reader) error {
+	// Get a messaga reader
+	mr, err := newReader(r)
+	if err != nil {
+		return err
+	}
 
 	// Get length of the URI
-	num, err = quicvarint.Read(r)
+	num, err := quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}

@@ -273,19 +273,14 @@ func (s *Server) RunOnWebTransport(relayer Relayer) {
 	})
 }
 
-func readSetupRequest(str io.Reader) (SetupRequest, error) {
+func readSetupRequest(r io.Reader) (SetupRequest, error) {
 	/*
 	 * Receive a SESSION_CLIENT message
 	 */
-	// Get a new message reader
-	r, err := message.NewReader(str)
-	if err != nil {
-		slog.Error("failed to get a new message reader", slog.String("error", err.Error()))
-		return SetupRequest{}, err
-	}
+
 	// Decode
 	var scm message.SessionClientMessage
-	err = scm.Decode(r)
+	err := scm.Decode(r)
 	if err != nil {
 		slog.Error("failed to read a SESSION_CLIENT message", slog.String("error", err.Error())) // TODO
 		return SetupRequest{}, err

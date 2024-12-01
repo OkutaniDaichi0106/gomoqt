@@ -69,25 +69,29 @@ func (su SubscribeUpdateMessage) Encode(w io.Writer) error {
 	return err
 }
 
-func (sum *SubscribeUpdateMessage) Decode(r Reader) error {
+func (sum *SubscribeUpdateMessage) Decode(r io.Reader) error {
 	slog.Debug("decoding a SUBSCRIBE_UPDATE message")
-
+	// Get a messaga reader
+	mr, err := newReader(r)
+	if err != nil {
+		return err
+	}
 	// Get a Subscribe ID
-	num, err := quicvarint.Read(r)
+	num, err := quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
 	sum.SubscribeID = SubscribeID(num)
 
 	// Get a Min Group Number
-	num, err = quicvarint.Read(r)
+	num, err = quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
 	sum.MinGroupSequence = GroupSequence(num)
 
 	// Get a Max Group Number
-	num, err = quicvarint.Read(r)
+	num, err = quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
@@ -102,7 +106,7 @@ func (sum *SubscribeUpdateMessage) Decode(r Reader) error {
 	sum.SubscriberPriority = SubscriberPriority(priorityBuf[0])
 
 	// Get Subscribe Update Parameters
-	sum.Parameters, err = readParameters(r)
+	sum.Parameters, err = readParameters(mr)
 	if err != nil {
 		return err
 	}

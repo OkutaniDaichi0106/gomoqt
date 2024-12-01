@@ -54,16 +54,9 @@ func (a AnnounceStream) Close(err error) {
 }
 
 func readAnnouncement(r io.Reader) (Announcement, error) {
-	// Get a new message reader
-	mr, err := message.NewReader(r)
-	if err != nil {
-		slog.Error("failed to get a new message reader", slog.String("error", err.Error()))
-		return Announcement{}, err
-	}
-
 	// Read an ANNOUNCE message
 	var am message.AnnounceMessage
-	err = am.Decode(mr)
+	err := am.Decode(r)
 	if err != nil {
 		slog.Error("failed to read an ANNOUNCE message", slog.String("error", err.Error()))
 		return Announcement{}, err

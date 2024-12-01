@@ -3,7 +3,6 @@ package moqt
 import (
 	"errors"
 	"log/slog"
-	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
@@ -12,27 +11,18 @@ import (
 /*
  * Fetch Stream
  */
-// var _ moq.ReceiveStream = (*FetchStream)(nil)
 
 type FetchStream struct {
-	group  *Group
+	group  Group
 	stream moq.Stream
 }
-
-// func (f FetchStream) StreamID() StreamID {
-// 	return f.stream.StreamID()
-// }
 
 func (f FetchStream) Read(buf []byte) (int, error) {
 	return f.stream.Read(buf)
 }
 
 func (f FetchStream) Group() Group {
-	return *f.group
-}
-
-func (f FetchStream) SetReadDeadline(time time.Time) error {
-	return f.stream.SetDeadLine(time)
+	return f.group
 }
 
 func (f FetchStream) CancelRead(code moq.StreamErrorCode) {

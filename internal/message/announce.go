@@ -52,15 +52,21 @@ func (a AnnounceMessage) Encode(w io.Writer) error {
 	return err
 }
 
-func (am *AnnounceMessage) Decode(r Reader) error {
+func (am *AnnounceMessage) Decode(r io.Reader) error {
+	// Get a messaga reader
+	mr, err := newReader(r)
+	if err != nil {
+		return err
+	}
+
 	// Get a Track Namespace
-	tns, err := readTrackNamespace(r)
+	tns, err := readTrackNamespace(mr)
 	if err != nil {
 		return err
 	}
 	am.TrackNamespace = tns
 
-	am.Parameters, err = readParameters(r)
+	am.Parameters, err = readParameters(mr)
 	if err != nil {
 		return err
 	}

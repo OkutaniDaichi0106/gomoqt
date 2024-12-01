@@ -109,23 +109,28 @@ func (s SubscribeMessage) Encode(w io.Writer) error {
 	return err
 }
 
-func (s *SubscribeMessage) Decode(r Reader) error {
+func (s *SubscribeMessage) Decode(r io.Reader) error {
+	// Get a messaga reader
+	mr, err := newReader(r)
+	if err != nil {
+		return err
+	}
 	// Get Subscribe ID
-	num, err := quicvarint.Read(r)
+	num, err := quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
 	s.SubscribeID = SubscribeID(num)
 
 	// Get Track Namespace
-	tns, err := readTrackNamespace(r)
+	tns, err := readTrackNamespace(mr)
 	if err != nil {
 		return err
 	}
 	s.TrackNamespace = tns
 
 	// Get Track Name
-	num, err = quicvarint.Read(r)
+	num, err = quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
@@ -137,42 +142,42 @@ func (s *SubscribeMessage) Decode(r Reader) error {
 	s.TrackName = string(buf)
 
 	// Get Subscriber Priority
-	bnum, err := r.ReadByte()
+	bnum, err := mr.ReadByte()
 	if err != nil {
 		return err
 	}
 	s.SubscriberPriority = SubscriberPriority(bnum)
 
 	// Get Group Order
-	bnum, err = r.ReadByte()
+	bnum, err = mr.ReadByte()
 	if err != nil {
 		return err
 	}
 	s.GroupOrder = GroupOrder(bnum)
 
 	// Get Group Expires
-	num, err = quicvarint.Read(r)
+	num, err = quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
 	s.Expires = time.Duration(num)
 
 	// Get Min Group Sequence
-	num, err = quicvarint.Read(r)
+	num, err = quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
 	s.MinGroupSequence = GroupSequence(num)
 
 	// Get Max Group Sequence
-	num, err = quicvarint.Read(r)
+	num, err = quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
 	s.MaxGroupSequence = GroupSequence(num)
 
 	// Get Subscribe Update Parameters
-	s.Parameters, err = readParameters(r)
+	s.Parameters, err = readParameters(mr)
 	if err != nil {
 		return err
 	}

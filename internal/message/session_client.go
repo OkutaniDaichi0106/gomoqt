@@ -59,11 +59,16 @@ func (scm SessionClientMessage) Encode(w io.Writer) error {
 	return err
 }
 
-func (scm *SessionClientMessage) Decode(r Reader) error {
+func (scm *SessionClientMessage) Decode(r io.Reader) error {
 	slog.Debug("decoding a SESSION_CLIENT message")
+	// Get a messaga reader
+	mr, err := newReader(r)
+	if err != nil {
+		return err
+	}
 
 	// Get number of supported versions
-	num, err := quicvarint.Read(r)
+	num, err := quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
@@ -71,7 +76,7 @@ func (scm *SessionClientMessage) Decode(r Reader) error {
 	// Get supported versions
 	count := num
 	for i := uint64(0); i < count; i++ {
-		num, err = quicvarint.Read(r)
+		num, err = quicvarint.Read(mr)
 		if err != nil {
 			return err
 		}
@@ -79,7 +84,7 @@ func (scm *SessionClientMessage) Decode(r Reader) error {
 	}
 
 	// Get Parameters
-	scm.Parameters, err = readParameters(r)
+	scm.Parameters, err = readParameters(mr)
 	if err != nil {
 		return err
 	}

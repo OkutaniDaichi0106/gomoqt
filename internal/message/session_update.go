@@ -41,9 +41,15 @@ func (sum SessionUpdateMessage) Encode(w io.Writer) error {
 	return err
 }
 
-func (sum *SessionUpdateMessage) Decode(r Reader) error {
+func (sum *SessionUpdateMessage) Decode(r io.Reader) error {
+	// Get a messaga reader
+	mr, err := newReader(r)
+	if err != nil {
+		return err
+	}
+
 	// Get a bitrate
-	num, err := quicvarint.Read(r)
+	num, err := quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}

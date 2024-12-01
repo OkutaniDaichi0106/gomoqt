@@ -54,23 +54,29 @@ func (g GroupMessage) Encode(w io.Writer) error {
 	return err
 }
 
-func (g *GroupMessage) Decode(r Reader) error {
+func (g *GroupMessage) Decode(r io.Reader) error {
+	// Get a messaga reader
+	mr, err := newReader(r)
+	if err != nil {
+		return err
+	}
+
 	// Get a Subscribe ID
-	num, err := quicvarint.Read(r)
+	num, err := quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
 	g.SubscribeID = SubscribeID(num)
 
 	// Get a Subscribe ID
-	num, err = quicvarint.Read(r)
+	num, err = quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
 	g.GroupSequence = GroupSequence(num)
 
 	// Get a Publisher Priority
-	num, err = quicvarint.Read(r)
+	num, err = quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}

@@ -226,16 +226,10 @@ func sendSetupRequest(w io.Writer, req SetupRequest) error {
 	return nil
 }
 
-func readSetupResponce(str io.Reader) (SetupResponce, error) {
-	// Get message reader
-	r, err := message.NewReader(str)
-	if err != nil {
-		return SetupResponce{}, err
-	}
-
+func readSetupResponce(r io.Reader) (SetupResponce, error) {
 	/***/
 	var ssm message.SessionServerMessage
-	err = ssm.Decode(r)
+	err := ssm.Decode(r)
 	if err != nil {
 		slog.Error("failed to read a SESSION_SERVER message", slog.String("error", err.Error()))
 		return SetupResponce{}, err

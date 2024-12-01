@@ -74,12 +74,7 @@ func (rm RelayManager) findDestinations(trackNamespace []string, trackName strin
 		return nil, false
 	}
 
-	goNode, ok := tnNode.findGroupOrder(order)
-	if !ok {
-		return nil, false
-	}
-
-	return goNode.destinations, true
+	return tnNode.destinations, true
 }
 
 type trackNamespaceTree struct {
@@ -144,6 +139,11 @@ type trackNamespaceNode struct {
 	 * Announcement
 	 */
 	announcement *Announcement
+
+	/*
+	 * sessions of followers to the Track Namespace
+	 */
+	followers []*session
 }
 
 type trackNameNode struct {
@@ -154,17 +154,6 @@ type trackNameNode struct {
 	 */
 	value string
 
-	orders map[GroupOrder]*groupOrderNode
-
-	/*
-	 * Information of the Track
-	 */
-	info Info
-}
-
-type groupOrderNode struct {
-	mu sync.RWMutex
-
 	/*
 	 * The Group's order
 	 */
@@ -174,6 +163,11 @@ type groupOrderNode struct {
 	 * The destination session
 	 */
 	destinations []*session
+
+	/*
+	 * Information of the Track
+	 */
+	info Info
 }
 
 func (node *trackNamespaceNode) removeDescendants(tns []string, depth int) (bool, error) {
@@ -276,13 +270,4 @@ func (node *trackNamespaceNode) getAnnouncements() []Announcement {
 	}
 
 	return announcements
-}
-
-func (node *trackNameNode) findGroupOrder(order GroupOrder) (*groupOrderNode, bool) {
-	goNode, ok := node.orders[order]
-	if !ok {
-		return nil, false
-	}
-
-	return goNode, true
 }

@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
 )
@@ -25,18 +24,16 @@ type Relayer struct {
 	/*
 	 * Relay Manager
 	 * This field is optional
-	 * If no value is set, default RelayManger is used
+	 * If no value is set, default Relay Manger will be used
 	 */
 	RelayManager *RelayManager
-
-	GoAwayFunc func() (string, time.Duration)
 
 	BufferSize int
 }
 
 func (r Relayer) run(sess *ServerSession) {
 	if r.RequestHandler == nil {
-		panic("no relay manager")
+		panic("no request handler")
 	}
 	if r.RelayManager == nil {
 		r.RelayManager = defaultRelayManager
@@ -191,6 +188,7 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 					return
 				}
 			case stream_type_fetch:
+				// Handle the Fecth Stream
 				slog.Info("Fetch Stream was opened")
 
 				fetchRequest, err := readFetchRequest(stream)
@@ -208,8 +206,10 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 
 				<-w.doneCh
 			case stream_type_info:
+				// Handle the Info Stream
 				slog.Info("Info Stream was opened")
 
+				// Get a info request
 				infoRequest, err := readInfoRequest(stream)
 				if err != nil {
 					slog.Error("failed to get a info-request", slog.String("error", err.Error()))
@@ -230,11 +230,8 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 
 				<-w.doneCh
 			default:
-				err := ErrInvalidStreamType
-
-				// Cancel reading and writing
-				stream.CancelRead(err.StreamErrorCode())
-				stream.CancelWrite(err.StreamErrorCode())
+				// Terminate the session if invalid Stream Type was detected
+				sess.Terminate(ErrInvalidStreamType)
 
 				return
 			}

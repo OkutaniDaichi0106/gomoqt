@@ -47,7 +47,7 @@ var _ moqt.ClientSessionHandler = (*requestHandler)(nil)
 func (h *requestHandler) HandleClientSession(sess *moqt.ClientSession) {
 	subscription := <-h.subscribedCh
 
-	slog.Info("Subscribed!!!")
+	slog.Info("Subscribing")
 
 	if subscription.TrackName != "text" {
 		return
@@ -60,7 +60,7 @@ func (h *requestHandler) HandleClientSession(sess *moqt.ClientSession) {
 		sequence := 1
 		for i := 0; i < 10; i++ {
 			//
-			time.Sleep(1 * time.Second)
+			time.Sleep(33 * time.Millisecond)
 
 			stream, err := sess.OpenDataStream(subscription, sequence, 0)
 			if err != nil {

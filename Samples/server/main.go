@@ -40,7 +40,6 @@ func main() {
 			Allow0RTT:       true,
 			EnableDatagrams: true,
 		},
-		SupportedVersions: []moqt.Version{moqt.Develop},
 	}
 
 	// Initialize a Relayer

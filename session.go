@@ -373,10 +373,28 @@ func (sess *session) stopSubscription(id SubscribeID) {
 	delete(sess.receivedSubscriptions, id)
 }
 
+/*
+ * Server Session Handler
+ */
 type ServerSessionHandler interface {
 	HandleServerSession(*ServerSession)
 }
 
+type ServerSessionHandlerFunc func(*ServerSession)
+
+func (f ServerSessionHandlerFunc) HandleServerSession(sess *ServerSession) {
+	f(sess)
+}
+
+/*
+ * Client Session Handler
+ */
 type ClientSessionHandler interface {
 	HandleClientSession(*ClientSession)
+}
+
+type ClientSessionHandlerFunc func(*ClientSession)
+
+func (f ClientSessionHandlerFunc) HandleClientSession(sess *ClientSession) {
+	f(sess)
 }

@@ -33,11 +33,6 @@ type Server struct {
 	 */
 	QUICConfig *quic.Config
 
-	/*
-	 * MOQT Versions supported by the moqt server
-	 */
-	SupportedVersions []Version
-
 	//
 	SetupHijacker func(SetupRequest) SetupResponce
 	//SetupHandler

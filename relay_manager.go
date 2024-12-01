@@ -23,11 +23,14 @@ type RelayManager struct {
 
 func (rm RelayManager) FindAnnouncements(trackNamespacePrefix string) ([]Announcement, bool) {
 	tns := strings.Split(trackNamespacePrefix, "/")
+
+	// Find any Track Namespace node
 	tnsNode, ok := rm.findTrackNamespace(tns)
 	if !ok {
 		return nil, false
 	}
 
+	// Get any Announcement under the Track Namespace
 	announcements := tnsNode.getAnnouncements()
 	if announcements == nil {
 		return nil, false
@@ -51,12 +54,12 @@ func (rm RelayManager) GetInfo(trackNamespace, trackName string) (Info, bool) {
 	return tnNode.info, true
 }
 
-func (tm RelayManager) newTrackNamespace(trackNamespace []string) *trackNamespaceNode {
-	return tm.trackNamespaceTree.insert(trackNamespace)
+func (rm RelayManager) newTrackNamespace(trackNamespace []string) *trackNamespaceNode {
+	return rm.trackNamespaceTree.insert(trackNamespace)
 }
 
-func (tm RelayManager) findTrackNamespace(trackNamespace []string) (*trackNamespaceNode, bool) {
-	return tm.trackNamespaceTree.trace(trackNamespace)
+func (rm RelayManager) findTrackNamespace(trackNamespace []string) (*trackNamespaceNode, bool) {
+	return rm.trackNamespaceTree.trace(trackNamespace)
 }
 
 func (rm RelayManager) removeTrackNamespace(trackNamespace []string) error {
@@ -245,6 +248,10 @@ func (node *trackNamespaceNode) findTrackNameNode(trackName string) (*trackNameN
 	return tnNode, true
 }
 
+/*
+ * Create a new Track Name node when a subscriber makes a new subscription
+ *
+ */
 func (node *trackNamespaceNode) newTrackNameNode(trackName string) *trackNameNode {
 	node.mu.Lock()
 	defer node.mu.Unlock()

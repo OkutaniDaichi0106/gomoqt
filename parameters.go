@@ -9,31 +9,142 @@ import (
 type Parameters message.Parameters
 
 func (p Parameters) Add(key uint64, value any) {
-	message.Parameters(p).Add(key, value)
+	switch v := value.(type) {
+	case int64:
+		p[key] = uint64(v)
+	case int32:
+		p[key] = uint64(v)
+	case int16:
+		p[key] = uint64(v)
+	case int8:
+		p[key] = uint64(v)
+	case uint32:
+		p[key] = uint64(v)
+	case uint16:
+		p[key] = uint64(v)
+	case uint8:
+		p[key] = uint64(v)
+	case uint64:
+		p[key] = v
+	case bool:
+		if v {
+			p[key] = 1
+		} else if !v {
+			p[key] = 0
+		}
+	case string:
+		p[key] = []byte(v)
+	case []byte:
+		p[key] = v
+	default:
+		panic("invalid type")
+	}
 }
 
 func (p Parameters) Remove(key uint64) {
-	message.Parameters(p).Remove(key)
+	delete(p, key)
 }
 
 func (p Parameters) ReadAsByteArray(key uint64) ([]byte, bool) {
-	return message.Parameters(p).AsByteArray(key)
+	value, ok := p[key]
+	if !ok {
+		return nil, false
+	}
+	switch v := value.(type) {
+	case []byte:
+		return v, true
+	default:
+		return nil, false
+	}
 }
 
 func (p Parameters) ReadAsString(key uint64) (string, bool) {
-	return message.Parameters(p).AsString(key)
+	value, ok := p.ReadAsByteArray(key)
+	if !ok {
+		return "", false
+	}
+	return string(value), true
 }
 
 func (p Parameters) ReadAsInt(key uint64) (int64, bool) {
-	return message.Parameters(p).AsInt(key)
+	value, ok := p[key]
+	if !ok {
+		return 0, false
+	}
+	switch v := value.(type) {
+	case int:
+		return int64(v), true
+	case int8:
+		return int64(v), true
+	case int16:
+		return int64(v), true
+	case int32:
+		return int64(v), true
+	case int64:
+		return v, true
+	case uint:
+		return int64(v), true
+	case uint8:
+		return int64(v), true
+	case uint16:
+		return int64(v), true
+	case uint32:
+		return int64(v), true
+	case uint64:
+		return int64(v), true
+	default:
+		return 0, false
+	}
 }
 
 func (p Parameters) ReadAsUint(key uint64) (uint64, bool) {
-	return message.Parameters(p).AsUint(key)
+	value, ok := p[key]
+	if !ok {
+		return 0, false
+	}
+	switch v := value.(type) {
+	case int:
+		return uint64(v), true
+	case int8:
+		return uint64(v), true
+	case int16:
+		return uint64(v), true
+	case int32:
+		return uint64(v), true
+	case int64:
+		return uint64(v), true
+	case uint:
+		return uint64(v), true
+	case uint8:
+		return uint64(v), true
+	case uint16:
+		return uint64(v), true
+	case uint32:
+		return uint64(v), true
+	case uint64:
+		return v, true
+	default:
+		return 0, false
+	}
 }
 
 func (p Parameters) ReadAsBool(key uint64) (bool, bool) {
-	return message.Parameters(p).AsBool(key)
+	value, ok := p[key]
+	if !ok {
+		return false, false
+	}
+	switch v := value.(type) {
+	case uint64:
+		if v == 0 {
+			return false, true
+		} else if v == 1 {
+			return true, true
+		} else {
+			return false, false
+		}
+	default:
+		return false, false
+	}
 }
 
 const (
@@ -45,16 +156,16 @@ const (
 	MAX_CACHE_DURATION uint64 = 0x05
 )
 
-func getPath(params message.Parameters) (string, bool) {
-	num, ok := params.AsString(PATH)
+func getPath(params Parameters) (string, bool) {
+	num, ok := params.ReadAsString(PATH)
 	if !ok {
 		return "", false
 	}
 	return num, true
 }
 
-func getMaxSubscribeID(params message.Parameters) (SubscribeID, bool) {
-	num, ok := params.AsUint(MAX_SUBSCRIBE_ID)
+func getMaxSubscribeID(params Parameters) (SubscribeID, bool) {
+	num, ok := params.ReadAsUint(MAX_SUBSCRIBE_ID)
 	if !ok {
 		return 0, false
 	}
@@ -62,8 +173,8 @@ func getMaxSubscribeID(params message.Parameters) (SubscribeID, bool) {
 	return SubscribeID(num), true
 }
 
-func getMaxCacheDuration(params message.Parameters) (time.Duration, bool) {
-	num, ok := params.AsUint(MAX_CACHE_DURATION)
+func getMaxCacheDuration(params Parameters) (time.Duration, bool) {
+	num, ok := params.ReadAsUint(MAX_CACHE_DURATION)
 	if !ok {
 		return 0, false
 	}
@@ -71,8 +182,8 @@ func getMaxCacheDuration(params message.Parameters) (time.Duration, bool) {
 	return time.Duration(num), true
 }
 
-func getAuthorizationInfo(params message.Parameters) (string, bool) {
-	str, ok := params.AsString(AUTHORIZATION_INFO)
+func getAuthorizationInfo(params Parameters) (string, bool) {
+	str, ok := params.ReadAsString(AUTHORIZATION_INFO)
 	if !ok {
 		return "", false
 	}
@@ -80,8 +191,8 @@ func getAuthorizationInfo(params message.Parameters) (string, bool) {
 	return str, true
 }
 
-func getDeliveryTimeout(params message.Parameters) (time.Duration, bool) {
-	num, ok := params.AsUint(DELIVERY_TIMEOUT)
+func getDeliveryTimeout(params Parameters) (time.Duration, bool) {
+	num, ok := params.ReadAsUint(DELIVERY_TIMEOUT)
 	if !ok {
 		return 0, false
 	}

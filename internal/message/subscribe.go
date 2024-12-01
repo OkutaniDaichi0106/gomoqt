@@ -2,7 +2,6 @@ package message
 
 import (
 	"io"
-	"log"
 	"time"
 
 	"github.com/quic-go/quic-go/quicvarint"
@@ -65,13 +64,13 @@ func (s SubscribeMessage) Encode(w io.Writer) error {
 	/*
 	 * Serialize the payload
 	 */
-	p := make([]byte, 0, 1<<8)
+	p := make([]byte, 0, 1<<6)
 
 	// Append the Subscriber ID
 	p = quicvarint.Append(p, uint64(s.SubscribeID))
 
 	// Append the Track Namespace
-	p = AppendTrackNamespace(p, s.TrackNamespace)
+	p = appendTrackNamespace(p, s.TrackNamespace)
 
 	// Append the Track Name
 	p = quicvarint.Append(p, uint64(len(s.TrackName)))
@@ -95,8 +94,6 @@ func (s SubscribeMessage) Encode(w io.Writer) error {
 	// Append the Subscribe Update Priority
 	p = appendParameters(p, s.Parameters)
 
-	log.Print("SUBSCRIBE payload", len(p))
-
 	// Get a serialized message
 	b := make([]byte, 0, len(p)+8)
 
@@ -112,7 +109,7 @@ func (s SubscribeMessage) Encode(w io.Writer) error {
 	return err
 }
 
-func (s *SubscribeMessage) DeserializePayload(r quicvarint.Reader) error {
+func (s *SubscribeMessage) Decode(r Reader) error {
 	// Get Subscribe ID
 	num, err := quicvarint.Read(r)
 	if err != nil {

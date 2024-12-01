@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
 )
 
 // type InfoHandler interface {
@@ -24,11 +25,11 @@ type Info message.InfoMessage
 
 type InfoWriter struct {
 	doneCh chan struct{}
-	stream Stream
+	stream moq.Stream
 }
 
 func (w InfoWriter) Answer(i Info) {
-	_, err := w.stream.Write(message.InfoMessage(i).SerializePayload())
+	err := message.InfoMessage(i).Encode(w.stream)
 	if err != nil {
 		slog.Error("failed to send an INFO message", slog.String("error", err.Error()))
 		w.Reject(err)
@@ -52,15 +53,15 @@ func (w InfoWriter) Reject(err error) {
 		return
 	}
 
-	var code StreamErrorCode
+	var code moq.StreamErrorCode
 
-	var strerr StreamError
+	var strerr moq.StreamError
 	if errors.As(err, &strerr) {
 		code = strerr.StreamErrorCode()
 	} else {
 		inferr, ok := err.(InfoError)
 		if ok {
-			code = StreamErrorCode(inferr.InfoErrorCode())
+			code = moq.StreamErrorCode(inferr.InfoErrorCode())
 		} else {
 			code = ErrInternalError.StreamErrorCode()
 		}

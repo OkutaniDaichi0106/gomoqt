@@ -1,15 +1,86 @@
 package moqt
 
 import (
-	"time"
-
+	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
+)
+
+var (
+	ErrInternalError = internalError{}
+
+	ErrUnauthorizedError = unauthorizedError{}
+
+	ErrTrackDoesNotExist = trackDoesNotExistError{}
+
+	ErrInvalidStreamType = defaultStreamError{
+		code:   invalid_stream_type,
+		reason: "invalid stream type",
+	}
+
+	ErrDuplicatedTrackNamespace = defaultAnnounceError{
+		reason: "duplicate track namespace",
+		code:   announce_duplicate_track_namespace,
+	}
+
+	ErrInvalidRange = defaultSubscribeError{
+		code:   subscribe_invlid_range,
+		reason: "invalid range",
+	}
+
+	ErrSubscribeTimeout = defaultSubscribeError{
+		code:   subscribe_timeout,
+		reason: "time out",
+	}
+
+	ErrSubscribeExpired = defaultSubscribeDoneError{
+		code:   subscribe_done_expired,
+		reason: "expired",
+	}
+
+	NoErrTerminate = defaultTerminateError{
+		code:   terminate_no_error,
+		reason: "no error",
+	}
+
+	ErrProtocolViolation = defaultTerminateError{
+		code:   terminate_protocol_violation,
+		reason: "protocol violation",
+	}
+
+	ErrDuplicatedTrackAlias = defaultTerminateError{
+		code:   terminate_duplicate_track_alias,
+		reason: "duplicate track alias",
+	}
+
+	ErrParameterLengthMismatch = defaultTerminateError{
+		code:   terminate_parameter_length_mismatch,
+		reason: "parameter length mismatch",
+	}
+
+	ErrTooManySubscribes = defaultTerminateError{
+		code:   terminate_too_many_subscribes,
+		reason: "too many subscribes",
+	}
+
+	ErrGoAwayTimeout = defaultTerminateError{
+		code:   terminate_goaway_timeout,
+		reason: "goaway timeout",
+	}
+
+	ErrNoGroup = defaultFetchError{
+		code:   fetch_no_group,
+		reason: "no group",
+	}
+
+	ErrInvalidOffset = defaultFetchError{
+		code:   fetch_invalid_offset,
+		reason: "invalid offset",
+	}
 )
 
 /*
  * Stream Error
  */
-
 const (
 	stream_internal_error moq.StreamErrorCode = 0x00
 	invalid_stream_type   moq.StreamErrorCode = 0x10 // TODO: See spec
@@ -28,13 +99,6 @@ func (err defaultStreamError) StreamErrorCode() moq.StreamErrorCode {
 	return err.code
 }
 
-var (
-	ErrInvalidStreamType = defaultStreamError{
-		code:   invalid_stream_type,
-		reason: "invalid stream type",
-	}
-)
-
 /*
  * Announce Errors
  */
@@ -43,13 +107,6 @@ type AnnounceErrorCode uint32
 const (
 	announce_internal_error            AnnounceErrorCode = 0x0
 	announce_duplicate_track_namespace AnnounceErrorCode = 0x1
-)
-
-var (
-	ErrDuplicatedTrackNamespace = defaultAnnounceError{
-		reason: "duplicate track namespace",
-		code:   announce_duplicate_track_namespace,
-	}
 )
 
 type AnnounceError interface {
@@ -69,79 +126,6 @@ func (err defaultAnnounceError) Error() string {
 func (err defaultAnnounceError) AnnounceErrorCode() AnnounceErrorCode {
 	return err.code
 }
-
-/*
- * Internal Error
- */
-var _ moq.StreamError = (*internalError)(nil)
-var _ AnnounceError = (*internalError)(nil)
-var _ SubscribeError = (*internalError)(nil)
-var _ SubscribeDoneError = (*internalError)(nil)
-var _ TerminateError = (*internalError)(nil)
-var _ InfoError = (*internalError)(nil)
-
-type internalError struct{}
-
-func (internalError) Error() string {
-	return "internal error"
-}
-
-func (internalError) AnnounceErrorCode() AnnounceErrorCode {
-	return announce_internal_error
-}
-
-func (internalError) SubscribeErrorCode() SubscribeErrorCode {
-	return subscribe_internal_error
-}
-
-func (internalError) SubscribeDoneErrorCode() SubscribeDoneStatusCode {
-	return subscribe_done_internal_error
-}
-
-func (internalError) TerminateErrorCode() TerminateErrorCode {
-	return terminate_internal_error
-}
-
-func (internalError) StreamErrorCode() moq.StreamErrorCode {
-	return stream_internal_error
-}
-
-func (internalError) FetchErrorCode() FetchErrorCode {
-	return fetch_internal_error
-}
-
-func (internalError) InfoErrorCode() InfoErrorCode {
-	return info_internal_error
-}
-
-var ErrInternalError = internalError{}
-
-/*
- * Unauthorized Error
- */
-var _ SubscribeError = (*unauthorizedError)(nil)
-var _ SubscribeDoneError = (*unauthorizedError)(nil)
-var _ TerminateError = (*unauthorizedError)(nil)
-
-type unauthorizedError struct{}
-
-func (unauthorizedError) Error() string {
-	return "internal error"
-}
-
-func (unauthorizedError) SubscribeErrorCode() SubscribeErrorCode {
-	return subscribe_unauthorized
-}
-
-func (unauthorizedError) SubscribeDoneErrorCode() SubscribeDoneStatusCode {
-	return subscribe_done_unauthorized
-}
-
-func (unauthorizedError) TerminateErrorCode() TerminateErrorCode {
-	return terminate_unauthorized
-}
-
-var ErrUnauthorizedError = internalError{}
 
 /*
  * Subscribe Errors
@@ -176,18 +160,6 @@ func (err defaultSubscribeError) SubscribeErrorCode() SubscribeErrorCode {
 	return err.code
 }
 
-var (
-	ErrInvalidRange = defaultSubscribeError{
-		code:   subscribe_invlid_range,
-		reason: "invalid range",
-	}
-
-	ErrSubscribeTimeout = defaultSubscribeError{
-		code:   subscribe_timeout,
-		reason: "time out",
-	}
-)
-
 /*
  *
  */
@@ -207,13 +179,6 @@ type SubscribeDoneError interface {
 	error
 	SubscribeDoneErrorCode() SubscribeDoneStatusCode
 }
-
-var (
-	ErrSubscribeExpired = defaultSubscribeDoneError{
-		code:   subscribe_done_expired,
-		reason: "expired",
-	}
-)
 
 /*
  * Subscribe Done Error
@@ -309,25 +274,21 @@ func (err defaultInfoError) InfoErrorCode() InfoErrorCode {
 	return err.code
 }
 
-var (
-	ErrTrackDoesNotExist = trackNotFoundError{}
-)
-
 /*
  * Track Not Found Error
  */
-var _ SubscribeError = (*trackNotFoundError)(nil)
-var _ InfoError = (*trackNotFoundError)(nil)
+var _ SubscribeError = (*trackDoesNotExistError)(nil)
+var _ InfoError = (*trackDoesNotExistError)(nil)
 
-type trackNotFoundError struct{}
+type trackDoesNotExistError struct{}
 
-func (trackNotFoundError) Error() string {
+func (trackDoesNotExistError) Error() string {
 	return "track does not exist"
 }
-func (trackNotFoundError) SubscribeErrorCode() SubscribeErrorCode {
+func (trackDoesNotExistError) SubscribeErrorCode() SubscribeErrorCode {
 	return subscribe_track_does_not_exist
 }
-func (trackNotFoundError) InfoErrorCode() InfoErrorCode {
+func (trackDoesNotExistError) InfoErrorCode() InfoErrorCode {
 	return info_track_does_not_exist
 }
 
@@ -360,18 +321,6 @@ const (
 	fetch_internal_error FetchErrorCode = 0x0
 	fetch_no_group       FetchErrorCode = 0x1
 	fetch_invalid_offset FetchErrorCode = 0x2
-)
-
-var (
-	ErrNoGroup = defaultFetchError{
-		code:   fetch_no_group,
-		reason: "no group",
-	}
-
-	ErrInvalidOffset = defaultFetchError{
-		code:   fetch_invalid_offset,
-		reason: "invalid offset",
-	}
 )
 
 /*
@@ -410,39 +359,95 @@ func (err defaultTerminateError) TerminateErrorCode() TerminateErrorCode {
 	return err.code
 }
 
-var (
-	NoErrTerminate = defaultTerminateError{
-		code:   terminate_no_error,
-		reason: "no error",
-	}
+/*
+ * Group Error
+ */
 
-	ErrProtocolViolation = defaultTerminateError{
-		code:   terminate_protocol_violation,
-		reason: "protocol violation",
-	}
-	ErrDuplicatedTrackAlias = defaultTerminateError{
-		code:   terminate_duplicate_track_alias,
-		reason: "duplicate track alias",
-	}
-	ErrParameterLengthMismatch = defaultTerminateError{
-		code:   terminate_parameter_length_mismatch,
-		reason: "parameter length mismatch",
-	}
-	ErrTooManySubscribes = defaultTerminateError{
-		code:   terminate_too_many_subscribes,
-		reason: "too many subscribes",
-	}
-	ErrGoAwayTimeout = defaultTerminateError{
-		code:   terminate_goaway_timeout,
-		reason: "goaway timeout",
-	}
+type GroupErrorCode message.GroupErrorCode
+
+const (
+	group_drop_track_does_not_exist GroupErrorCode = 0x00
+	group_drop_internal_error       GroupErrorCode = 0x01
 )
 
-var _ TerminateError = (*ErrorWithGoAway)(nil)
+// type defaultGroupError struct {
+// 	code   GroupErrorCode
+// 	reason string
+// }
 
-// TODO:
-type ErrorWithGoAway struct {
-	TerminateError
-	NewSessionURI string
-	Timeout       time.Duration
+// func (err defaultGroupError) Error() string {
+// 	return err.reason
+// }
+
+// func (err defaultGroupError) GroupErrorCode() GroupErrorCode {
+// 	return err.code
+// }
+
+/*
+ * Internal Error
+ */
+var _ moq.StreamError = (*internalError)(nil)
+var _ AnnounceError = (*internalError)(nil)
+var _ SubscribeError = (*internalError)(nil)
+var _ SubscribeDoneError = (*internalError)(nil)
+var _ TerminateError = (*internalError)(nil)
+var _ InfoError = (*internalError)(nil)
+
+type internalError struct{}
+
+func (internalError) Error() string {
+	return "internal error"
+}
+
+func (internalError) AnnounceErrorCode() AnnounceErrorCode {
+	return announce_internal_error
+}
+
+func (internalError) SubscribeErrorCode() SubscribeErrorCode {
+	return subscribe_internal_error
+}
+
+func (internalError) SubscribeDoneErrorCode() SubscribeDoneStatusCode {
+	return subscribe_done_internal_error
+}
+
+func (internalError) TerminateErrorCode() TerminateErrorCode {
+	return terminate_internal_error
+}
+
+func (internalError) StreamErrorCode() moq.StreamErrorCode {
+	return stream_internal_error
+}
+
+func (internalError) FetchErrorCode() FetchErrorCode {
+	return fetch_internal_error
+}
+
+func (internalError) InfoErrorCode() InfoErrorCode {
+	return info_internal_error
+}
+
+/*
+ * Unauthorized Error
+ */
+var _ SubscribeError = (*unauthorizedError)(nil)
+var _ SubscribeDoneError = (*unauthorizedError)(nil)
+var _ TerminateError = (*unauthorizedError)(nil)
+
+type unauthorizedError struct{}
+
+func (unauthorizedError) Error() string {
+	return "internal error"
+}
+
+func (unauthorizedError) SubscribeErrorCode() SubscribeErrorCode {
+	return subscribe_unauthorized
+}
+
+func (unauthorizedError) SubscribeDoneErrorCode() SubscribeDoneStatusCode {
+	return subscribe_done_unauthorized
+}
+
+func (unauthorizedError) TerminateErrorCode() TerminateErrorCode {
+	return terminate_unauthorized
 }

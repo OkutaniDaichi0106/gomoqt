@@ -22,7 +22,7 @@ func (gd GroupDrop) Encode(w io.Writer) error {
 	 *
 	 *
 	 */
-	p := make([]byte, 1<<5)
+	p := make([]byte, 0, 1<<5)
 
 	// Append the Group Start Sequence
 	p = quicvarint.Append(p, uint64(gd.GroupStartSequence))
@@ -36,7 +36,7 @@ func (gd GroupDrop) Encode(w io.Writer) error {
 	log.Print("GROUP_DROP payload", p)
 
 	// Get a serialized message
-	b := make([]byte, len(p)+8)
+	b := make([]byte, 0, len(p)+8)
 
 	// Append the length of the payload
 	b = quicvarint.Append(b, uint64(len(p)))

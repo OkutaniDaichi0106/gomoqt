@@ -2,7 +2,6 @@ package message
 
 import (
 	"io"
-	"log"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/protocol"
 	"github.com/quic-go/quic-go/quicvarint"
@@ -32,7 +31,7 @@ func (ssm SessionServerMessage) Encode(w io.Writer) error {
 	 * }
 	 */
 
-	p := make([]byte, 0, 1<<8)
+	p := make([]byte, 0, 1<<4)
 
 	// Append the selected version
 	p = quicvarint.Append(p, uint64(ssm.SelectedVersion))
@@ -40,10 +39,8 @@ func (ssm SessionServerMessage) Encode(w io.Writer) error {
 	// Append the parameters
 	p = appendParameters(p, ssm.Parameters)
 
-	log.Print("SESSION_SERVER payload", p)
-
 	// Get a whole serialized message
-	b := make([]byte, len(p)+8)
+	b := make([]byte, 0, len(p)+8)
 
 	// Append the length of the payload
 	b = quicvarint.Append(b, uint64(len(p)))
@@ -57,7 +54,7 @@ func (ssm SessionServerMessage) Encode(w io.Writer) error {
 	return err
 }
 
-func (ssm *SessionServerMessage) Decode(r quicvarint.Reader) error {
+func (ssm *SessionServerMessage) Decode(r Reader) error {
 	// Get a Version
 	num, err := quicvarint.Read(r)
 	if err != nil {

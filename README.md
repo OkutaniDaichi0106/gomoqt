@@ -1,6 +1,5 @@
 # gomoqt  
 gomoqt is an original implementation of Media over QUIC in Golang, based on MOQTransport and MOQTransfork.  
-[document](https://fate-session-822.notion.site/gomoqt-116e4265c81c80f190aacad73bfdae5a?pvs=4)
 
 ## Implemented sections
 | Section                                      | Implemented        | Tested     |
@@ -33,17 +32,21 @@ gomoqt is an original implementation of Media over QUIC in Golang, based on MOQT
 | **Control Messages**                         |                    |            |
 | 6.1. Parameters                              | :construction:     | :x:        |
 | 6.1.1. Version Specific Parameters           | :white_check_mark: | :x:        |
-| 6.2. CLIENT_SETUP                            | :white_check_mark: | :x:        |
-| 6.2. SERVER_SETUP                            | :white_check_mark: | :x:        |
+| 6.2. SESSION_CLIENT                          | :white_check_mark: | :x:        |
+| 6.2. SESSION_SERVER                          | :white_check_mark: | :x:        |
+| 6.2. SESSION_UPDATE                          | :construction:     | :x:        |
 | 6.2.1. Versions                              | :white_check_mark: | :x:        |
 | 6.2.2. Setup Parameters                      | :white_check_mark: | :x:        |
 | 6.3. GOAWAY                                  | :white_check_mark: | :x:        |
-| 6.4. SUBSCRIBE                               | :white_check_mark: | :x:        |
-| 6.5. SUBSCRIBE_UPDATE                        | :white_check_mark: | :x:        |
-| 6.10. TRACK_STATUS_REQUEST                   | :construction:     | :x:        |
-| 6.11. SUBSCRIBE_NAMESPACE                    | :white_check_mark: | :x:        |
-| 6.17. ANNOUNCE                               | :white_check_mark: | :x:        |
-| 6.19. TRACK_STATUS                           | :construction:     | :x:        |
+| 6.4. INTEREST_ANNOUNCE                       | :white_check_mark: | :x:        |
+| 6.5. ANNOUNCE                                | :white_check_mark: | :x:        |
+| 6.6. SUBSCRIBE                               | :white_check_mark: | :x:        |
+| 6.7. SUBSCRIBE_UPDATE                        | :white_check_mark: | :x:        |
+| 6.8. INFO                                    | :white_check_mark: | :x:        |
+| 6.9. INFO_REQUEST                            | :white_check_mark: | :x:        |
+| 6.10. FETCH                                  | :white_check_mark: | :x:        |
+| 6.11. FETCH_UPDATE                           | :white_check_mark: | :x:        |
+| 6.12. GROUP_DROP                             | :construction:     | :x:        |
 | **Data Message**                             |                    |            |
 | 7.2. GROUP                                   | :white_check_mark: | :x:        |
 | 7.2. FRAME                                   | :white_check_mark: | :x:        |

@@ -2,7 +2,7 @@ package message
 
 import (
 	"io"
-	"log"
+	"log/slog"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/protocol"
 	"github.com/quic-go/quic-go/quicvarint"
@@ -21,6 +21,7 @@ type SessionClientMessage struct {
 }
 
 func (scm SessionClientMessage) Encode(w io.Writer) error {
+	slog.Debug("encoding a SESSION_CLIENT message")
 	/*
 	 * Serialize the payload in the following format
 	 *
@@ -32,7 +33,7 @@ func (scm SessionClientMessage) Encode(w io.Writer) error {
 	 *   Announce Parameters (Parameters),
 	 * }
 	 */
-	p := make([]byte, 0, 1<<8)
+	p := make([]byte, 0, 1<<6)
 
 	// Append the supported versions
 	p = quicvarint.Append(p, uint64(len(scm.SupportedVersions)))
@@ -43,10 +44,8 @@ func (scm SessionClientMessage) Encode(w io.Writer) error {
 	// Append the parameters
 	p = appendParameters(p, scm.Parameters)
 
-	log.Print("SESSION_CLIENT payload", p)
-
 	// Get a serialized message
-	b := make([]byte, len(p)+8)
+	b := make([]byte, 0, len(p)+8)
 
 	// Append the length of the payload
 	b = quicvarint.Append(b, uint64(len(p)))
@@ -61,6 +60,8 @@ func (scm SessionClientMessage) Encode(w io.Writer) error {
 }
 
 func (scm *SessionClientMessage) Decode(r Reader) error {
+	slog.Debug("decoding a SESSION_CLIENT message")
+
 	// Get number of supported versions
 	num, err := quicvarint.Read(r)
 	if err != nil {

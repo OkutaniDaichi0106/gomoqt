@@ -3,12 +3,13 @@ package moqt
 import (
 	"context"
 	"io"
+	"log"
 	"log/slog"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/quic-go/quic-go/quicvarint"
+	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
 )
 
 var defaultRelayManager = NewRelayManager()
@@ -72,19 +73,19 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 			return
 		}
 
-		go func(stream Stream) {
-			qvr := quicvarint.NewReader(stream)
+		go func(stream moq.Stream) {
+			buf := make([]byte, 1)
+			stream.Read(buf)
 
-			num, err := qvr.ReadByte()
 			if err != nil {
 				slog.Error("failed to read a Stream Type ID", slog.String("error", err.Error()))
 			}
 
-			switch StreamType(num) {
-			case ANNOUNCE:
+			switch StreamType(buf[0]) {
+			case stream_type_announce:
 				slog.Info("Announce Stream was opened")
 
-				interest, err := getInterest(qvr)
+				interest, err := readInterest(stream)
 				if err != nil {
 					slog.Error("failed to get an Interest", slog.String("error", err.Error()))
 					return
@@ -96,17 +97,17 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 				}
 
 				// Announce
-				announcements, ok := r.RelayManager.GetAnnouncements(interest.TrackPrefix)
+				announcements, ok := r.RelayManager.FindAnnouncements(interest.TrackPrefix)
 				if !ok || announcements == nil {
 					announcements = make([]Announcement, 0)
 				}
 
 				r.RequestHandler.HandleInterest(interest, announcements, w)
 				<-w.doneCh
-			case SUBSCRIBE:
+			case stream_type_subscribe:
 				slog.Info("Subscribe Stream was opened")
 
-				subscription, err := getSubscription(qvr)
+				subscription, err := readSubscription(stream)
 				if err != nil {
 					slog.Error("failed to get a subscription", slog.String("error", err.Error()))
 
@@ -142,11 +143,13 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 				 */
 				sess.acceptSubscription(subscription)
 
+				log.Print("ACCEPT Subscription")
+
 				/*
 				 * Catch any Subscribe Update or any error from the subscriber
 				 */
 				for {
-					update, err := getSubscribeUpdate(subscription, qvr)
+					update, err := readSubscribeUpdate(subscription, stream)
 					if err != nil {
 						slog.Info("catched an error from the subscriber", slog.String("error", err.Error()))
 						break
@@ -187,10 +190,10 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 					slog.Error("failed to close the stream", slog.String("error", err.Error()))
 					return
 				}
-			case FETCH:
+			case stream_type_fetch:
 				slog.Info("Fetch Stream was opened")
 
-				fetchRequest, err := getFetchRequest(qvr)
+				fetchRequest, err := readFetchRequest(stream)
 				if err != nil {
 					slog.Error("failed to get a fetch-request", slog.String("error", err.Error()))
 					return
@@ -204,10 +207,10 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 				r.RequestHandler.HandleFetch(fetchRequest, w)
 
 				<-w.doneCh
-			case INFO:
+			case stream_type_info:
 				slog.Info("Info Stream was opened")
 
-				infoRequest, err := getInfoRequest(qvr)
+				infoRequest, err := readInfoRequest(stream)
 				if err != nil {
 					slog.Error("failed to get a info-request", slog.String("error", err.Error()))
 					return
@@ -228,7 +231,6 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 				<-w.doneCh
 			default:
 				err := ErrInvalidStreamType
-				slog.Error(err.Error(), slog.Uint64("ID", uint64(num)))
 
 				// Cancel reading and writing
 				stream.CancelRead(err.StreamErrorCode())
@@ -248,7 +250,7 @@ func (r Relayer) listenUniStreams(sess *ServerSession) {
 			return
 		}
 
-		go func(stream ReceiveStream) {
+		go func(stream moq.ReceiveStream) {
 			/*
 			 * Verify if subscribed or not by finding a subscription having the Subscribe ID in the Group
 			 */
@@ -277,7 +279,7 @@ func (r Relayer) listenUniStreams(sess *ServerSession) {
 			/*
 			 * Open Streams
 			 */
-			streams := make([]SendStream, len(dests))
+			streams := make([]moq.SendStream, len(dests))
 			var mu sync.Mutex
 			for _, destSess := range dests {
 				// Skip to send data if the Session is nil
@@ -331,7 +333,7 @@ func (r Relayer) listenUniStreams(sess *ServerSession) {
 
 				// Distribute the data
 				for _, stream := range streams {
-					go func(stream SendStream) {
+					go func(stream moq.SendStream) {
 						_, err := stream.Write(buf[:n])
 						if err != nil {
 							slog.Error("failed to send data", slog.String("error", err.Error()))

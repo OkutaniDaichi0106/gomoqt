@@ -50,7 +50,7 @@ func (ga GoAwayMessage) Encode(w io.Writer) error {
 	return err
 }
 
-func (ga *GoAwayMessage) Decode(r quicvarint.Reader) error {
+func (ga *GoAwayMessage) Decode(r Reader) error {
 	var err error
 	var num uint64
 

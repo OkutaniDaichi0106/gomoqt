@@ -2,7 +2,6 @@ package message
 
 import (
 	"io"
-	"log"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -34,15 +33,13 @@ func (a AnnounceMessage) Encode(w io.Writer) error {
 	p := make([]byte, 0, 1<<6) // TODO: Tune the size
 
 	// Append the Track Namespace
-	p = AppendTrackNamespace(p, a.TrackNamespace)
+	p = appendTrackNamespace(p, a.TrackNamespace)
 
 	// Append the Parameters
 	p = appendParameters(p, a.Parameters)
 
-	log.Print("ANNOUNCE payload", p)
-
 	// Get serialized message
-	b := make([]byte, len(p)+8)
+	b := make([]byte, 0, len(p)+8)
 
 	// Append the length of the payload
 	b = quicvarint.Append(b, uint64(len(p)))

@@ -2,7 +2,6 @@ package message
 
 import (
 	"io"
-	"log"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -40,10 +39,8 @@ func (g GroupMessage) Encode(w io.Writer) error {
 	// Append the Publisher Priority
 	p = quicvarint.Append(p, uint64(g.PublisherPriority))
 
-	log.Print("GROUP payload", p)
-
 	// Get a serialized message
-	b := make([]byte, len(p)+8)
+	b := make([]byte, 0, len(p)+8)
 
 	// Append the length of the payload
 	b = quicvarint.Append(b, uint64(len(p)))

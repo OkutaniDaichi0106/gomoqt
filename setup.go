@@ -1,25 +1,20 @@
 package moqt
 
 import (
-	"log/slog"
-	"sync"
-
-	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
-	"github.com/OkutaniDaichi0106/gomoqt/internal/protocol"
 )
 
-type SessionStream moq.Stream
-
-type SetupRequest struct {
-	Path              string
-	SupportedVersions []Version
-	Parameters        Parameters
-}
+type SessionStream moq.Stream //TODO:
 
 /*
  *
  */
+type SetupRequest struct {
+	SupportedVersions []Version
+	Path              string // TODO:
+	MaxSubscribeID    uint64 // TODO:
+	Parameters        Parameters
+}
 
 /*
  * Server
@@ -29,58 +24,58 @@ type SetupResponce struct {
 	Parameters      Parameters
 }
 
-type SetupHandler interface {
-	HandleSetup(SetupRequest, SetupResponceWriter)
-}
+// type SetupHandler interface {
+// 	HandleSetup(SetupRequest, SetupResponceWriter)
+// }
 
-type SetupHandlerFunc func(SetupRequest, SetupResponceWriter)
+// type SetupHandlerFunc func(SetupRequest, SetupResponceWriter)
 
-func (f SetupHandlerFunc) HandleSetup(r SetupRequest, w SetupResponceWriter) {
-	f(r, w)
-}
+// func (f SetupHandlerFunc) HandleSetup(r SetupRequest, w SetupResponceWriter) {
+// 	f(r, w)
+// }
 
-type SetupResponceWriter struct {
-	doneCh chan struct{}
-	once   *sync.Once
-	stream SessionStream
-	params Parameters
-}
+// type SetupResponceWriter struct {
+// 	doneCh chan struct{}
+// 	once   *sync.Once
+// 	stream SessionStream
+// 	params Parameters
+// }
 
-func (w SetupResponceWriter) Accept(version Version) {
-	ssm := message.SessionServerMessage{
-		SelectedVersion: protocol.Version(version),
-		Parameters:      message.Parameters(w.params),
-	}
+// func (w SetupResponceWriter) Accept(version Version) {
+// 	ssm := message.SessionServerMessage{
+// 		SelectedVersion: protocol.Version(version),
+// 		Parameters:      message.Parameters(w.params),
+// 	}
 
-	_, err := w.stream.Write(ssm.SerializePayload())
-	if err != nil {
-		slog.Error("failed to send a SESSION_SERVER message", slog.String("error", err.Error()))
-		w.Reject(ErrInternalError)
-	}
+// 	err := ssm.Encode(w.stream)
+// 	if err != nil {
+// 		slog.Error("failed to send a SESSION_SERVER message", slog.String("error", err.Error()))
+// 		w.Reject(ErrInternalError)
+// 	}
 
-	w.doneCh <- struct{}{}
+// 	w.doneCh <- struct{}{}
 
-	close(w.doneCh)
-}
+// 	close(w.doneCh)
+// }
 
-func (w SetupResponceWriter) Reject(err TerminateError) {
-	slog.Error(err.Error(), slog.Any("Code", err.TerminateErrorCode()))
+// func (w SetupResponceWriter) Reject(err TerminateError) {
+// 	slog.Error(err.Error(), slog.Any("Code", err.TerminateErrorCode()))
 
-	/*
-	 * Send the Error
-	 */
-	w.stream.CancelRead(StreamErrorCode(err.TerminateErrorCode()))
-	w.stream.CancelWrite(StreamErrorCode(err.TerminateErrorCode()))
+// 	/*
+// 	 * Send the Error
+// 	 */
+// 	w.stream.CancelRead(moq.StreamErrorCode(err.TerminateErrorCode()))
+// 	w.stream.CancelWrite(moq.StreamErrorCode(err.TerminateErrorCode()))
 
-	w.doneCh <- struct{}{}
+// 	w.doneCh <- struct{}{}
 
-	close(w.doneCh)
-}
+// 	close(w.doneCh)
+// }
 
-func (w SetupResponceWriter) WithExtension(params Parameters) SetupResponceWriter {
-	return SetupResponceWriter{
-		once:   w.once,
-		stream: w.stream,
-		params: params,
-	}
-}
+// func (w SetupResponceWriter) WithExtension(params Parameters) SetupResponceWriter {
+// 	return SetupResponceWriter{
+// 		once:   w.once,
+// 		stream: w.stream,
+// 		params: params,
+// 	}
+// }

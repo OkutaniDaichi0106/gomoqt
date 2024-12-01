@@ -1,6 +1,10 @@
 package message
 
-import "github.com/quic-go/quic-go/quicvarint"
+import (
+	"io"
+
+	"github.com/quic-go/quic-go/quicvarint"
+)
 
 type FetchMessage struct {
 	TrackNamespace     TrackNamespace
@@ -10,9 +14,41 @@ type FetchMessage struct {
 	GroupOffset        uint64
 }
 
-func (FetchMessage) SerializePayload() []byte {
-	p := make([]byte, 1<<6)
-	return p
+func (fm FetchMessage) Encode(w io.Writer) error {
+	/*
+	 * Serialize the message in the following format
+	 */
+	p := make([]byte, 0, 1<<8)
+
+	// Append the Track Namespace
+	p = appendTrackNamespace(p, fm.TrackNamespace)
+
+	// Append the Track Name
+	p = quicvarint.Append(p, uint64(len(fm.TrackName)))
+	p = append(p, []byte(fm.TrackName)...)
+
+	// Append the Subscriber Priority
+	p = quicvarint.Append(p, uint64(fm.SubscriberPriority))
+
+	// Append the Group Sequence
+	p = quicvarint.Append(p, uint64(fm.GroupSequence))
+
+	// Append the Group Offset
+	p = quicvarint.Append(p, fm.GroupOffset)
+
+	// Get a serialized message
+	b := make([]byte, 0, len(p)+8)
+
+	// Append the length of the payload
+	b = quicvarint.Append(b, uint64(len(p)))
+
+	// Append the payload
+	b = append(b, p...)
+
+	// Write
+	_, err := w.Write(b)
+
+	return err
 }
 
 func (fm *FetchMessage) Decode(r Reader) error {

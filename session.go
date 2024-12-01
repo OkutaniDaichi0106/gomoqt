@@ -14,8 +14,8 @@ import (
 )
 
 type session struct {
-	conn    moq.Connection
-	sessStr SessionStream
+	conn   moq.Connection
+	stream SessionStream
 	//version Version
 
 	/*
@@ -58,16 +58,9 @@ func (sess *session) Interest(interest Interest) (AnnounceStream, error) {
 	/*
 	 * Open an Announce Stream
 	 */
-	stream, err := sess.conn.OpenStream()
+	stream, err := sess.openControlStream(stream_type_announce)
 	if err != nil {
 		slog.Error("failed to open an Announce Stream")
-		return AnnounceStream{}, err
-	}
-
-	// Send Announce Stream Type
-	_, err = stream.Write([]byte{byte(moq.ANNOUNCE)})
-	if err != nil {
-		slog.Error("failed to send Announce Stream Type")
 		return AnnounceStream{}, err
 	}
 
@@ -78,7 +71,7 @@ func (sess *session) Interest(interest Interest) (AnnounceStream, error) {
 		Parameters:  message.Parameters(interest.Parameters),
 	}
 
-	_, err = stream.Write(aim.SerializePayload())
+	err = aim.Encode(stream)
 	if err != nil {
 		slog.Error("failed to send an ANNOUNCE_INTEREST message", slog.String("error", err.Error()))
 		return AnnounceStream{}, err
@@ -87,26 +80,20 @@ func (sess *session) Interest(interest Interest) (AnnounceStream, error) {
 	slog.Info("Interested", slog.Any("track prefix", interest.TrackPrefix))
 
 	return AnnounceStream{
-		reader: quicvarint.NewReader(stream),
 		stream: stream,
 	}, nil
 }
 
 func (sess *session) Subscribe(subscription Subscription) (*SubscribeWriter, Info, error) {
+	slog.Debug("Subscribing", slog.Any("subscription", subscription))
+
 	sess.ssMu.Lock()
 	defer sess.ssMu.Unlock()
 
 	// Open a Subscribe Stream
-	stream, err := sess.conn.OpenStream()
+	stream, err := sess.openControlStream(stream_type_subscribe)
 	if err != nil {
 		slog.Error("failed to open a Subscribe Stream", slog.String("error", err.Error()))
-		return nil, Info{}, err
-	}
-
-	// Send Announce Stream Type
-	_, err = stream.Write([]byte{byte(SUBSCRIBE)})
-	if err != nil {
-		slog.Error("failed to send Announce Stream Type")
 		return nil, Info{}, err
 	}
 
@@ -131,49 +118,42 @@ func (sess *session) Subscribe(subscription Subscription) (*SubscribeWriter, Inf
 	/*
 	 * Send a SUBSCRIBE message
 	 */
-	_, err = stream.Write(sm.SerializePayload())
+	err = sm.Encode(stream)
 	if err != nil {
 		slog.Error("failed to send a SUBSCRIBE message", slog.String("error", err.Error()), slog.Any("message", sm))
 		return nil, Info{}, err
 	}
 
-	slog.Info("successfully subscribed", slog.Any("subscription", subscription))
-
 	/*
 	 * Receive an INFO message and get an Info
 	 */
-	info, err := getInfo(quicvarint.NewReader(stream))
+	info, err := readInfo(stream)
 	if err != nil {
 		slog.Error("failed to get a Info", slog.String("error", err.Error()))
 		return nil, Info{}, err
 	}
 
+	slog.Info("Successfully subscribed", slog.Any("subscription", subscription), slog.Any("info", info))
+
 	sw := SubscribeWriter{
-		reader:       quicvarint.NewReader(stream),
 		stream:       stream,
 		subscription: subscription,
 	}
 
+	// Register the Subscribe Writer
 	sess.subscribeWriters[subscription.subscribeID] = &sw
 
 	return &sw, info, nil
 }
 
 func (sess *session) Fetch(req FetchRequest) (FetchStream, error) {
-	stream, err := sess.conn.OpenStream()
+	stream, err := sess.openControlStream(stream_type_fetch)
 	if err != nil {
-		slog.Error("failed to open an Fetch Stream", slog.String("error", err.Error()))
+		slog.Error("failed to open a Fetch Stream", slog.String("error", err.Error()))
 		return FetchStream{}, err
 	}
 
-	// Send Announce Stream Type
-	_, err = stream.Write([]byte{byte(FETCH)})
-	if err != nil {
-		slog.Error("failed to send Announce Stream Type")
-		return FetchStream{}, err
-	}
-
-	_, err = stream.Write(message.FetchMessage(req).SerializePayload())
+	err = message.FetchMessage(req).Encode(stream)
 	if err != nil {
 		slog.Error("failed to send a FETCH message", slog.String("error", err.Error()))
 		return FetchStream{}, err
@@ -192,7 +172,7 @@ func (sess *session) RequestInfo(req InfoRequest) (Info, error) {
 	}
 
 	// Send Announce Stream Type
-	_, err = stream.Write([]byte{byte(moq.INFO)})
+	_, err = stream.Write([]byte{byte(stream_type_info)})
 	if err != nil {
 		slog.Error("failed to send Announce Stream Type")
 		return Info{}, err
@@ -203,20 +183,47 @@ func (sess *session) RequestInfo(req InfoRequest) (Info, error) {
 		TrackName:      req.TrackName,
 	}
 
-	_, err = stream.Write(irm.SerializePayload())
+	err = irm.Encode(stream)
+
 	if err != nil {
 		slog.Error("failed to send a INFO_REQUEST message", slog.String("error", err.Error()))
 		return Info{}, err
 	}
 
+	/*
+	 *
+	 */
+	r, err := message.NewReader(stream)
+	if err != nil {
+		slog.Error("failed to get a new message reader", slog.String("error", err.Error()))
+		return Info{}, err
+	}
+
 	var info message.InfoMessage
-	err = info.DeserializePayload(quicvarint.NewReader(stream))
+	err = info.Decode(r)
 	if err != nil {
 		slog.Error("failed to get a INFO message", slog.String("error", err.Error()))
 		return Info{}, err
 	}
 
 	return Info(info), nil
+}
+
+func (sess *session) openControlStream(st StreamType) (moq.Stream, error) {
+	stream, err := sess.conn.OpenStream()
+	if err != nil {
+		slog.Error("failed to open an Info Request Stream", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	// Send Announce Stream Type
+	_, err = stream.Write([]byte{byte(st)})
+	if err != nil {
+		slog.Error("failed to send Announce Stream Type")
+		return nil, err
+	}
+
+	return stream, nil
 }
 
 func (sess *session) openDataStream(g Group) (moq.SendStream, error) {
@@ -237,7 +244,7 @@ func (sess *session) openDataStream(g Group) (moq.SendStream, error) {
 	}
 
 	// Send the GROUP message
-	_, err = stream.Write(gm.SerializePayload())
+	err = gm.Encode(stream)
 	if err != nil {
 		slog.Error("failed to send a GROUP message", slog.String("error", err.Error()))
 		return nil, err
@@ -253,7 +260,7 @@ func (sess *session) acceptDataStream(ctx context.Context) (Group, moq.ReceiveSt
 		return Group{}, nil, err
 	}
 
-	group, err := getGroup(quicvarint.NewReader(stream))
+	group, err := readGroup(stream)
 	if err != nil {
 		slog.Error("failed to get a Group", slog.String("error", err.Error()))
 		return Group{}, nil, err
@@ -273,12 +280,24 @@ func (sess *session) sendDatagram(g Group, payload []byte) error {
 		PublisherPriority: message.PublisherPriority(g.PublisherPriority),
 	}
 
-	p := gm.SerializePayload()
+	var buf bytes.Buffer
 
-	p = append(p, payload...)
+	// Encode the GROUP message
+	err := gm.Encode(&buf)
+	if err != nil {
+		slog.Error("failed to encode a GROUP message", slog.String("error", err.Error()))
+		return err
+	}
+
+	// Encode the payload
+	_, err = buf.Write(payload)
+	if err != nil {
+		slog.Error("failed to encode a payload", slog.String("error", err.Error()))
+		return err
+	}
 
 	// Send the data with the GROUP message
-	err := sess.conn.SendDatagram(p)
+	err = sess.conn.SendDatagram(buf.Bytes())
 	if err != nil {
 		slog.Error("failed to send a datagram", slog.String("error", err.Error()))
 		return err
@@ -296,7 +315,7 @@ func (sess *session) receiveDatagram(ctx context.Context) (Group, []byte, error)
 
 	reader := bytes.NewReader(data)
 
-	group, err := getGroup(quicvarint.NewReader(reader))
+	group, err := readGroup(quicvarint.NewReader(reader))
 	if err != nil {
 		slog.Error("failed to get a Group", slog.String("error", err.Error()))
 		return Group{}, nil, err

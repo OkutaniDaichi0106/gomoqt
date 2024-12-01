@@ -2,7 +2,9 @@ package main
 
 import (
 	"crypto/tls"
+	"log"
 	"log/slog"
+	"os"
 	"time"
 
 	moqt "github.com/OkutaniDaichi0106/gomoqt"
@@ -10,7 +12,15 @@ import (
 )
 
 func main() {
-	// Set certification config
+	/*
+	 * Set Log Level to "DEBUG"
+	 */
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	slog.SetDefault(logger)
+
+	/*
+	 * Set certification config
+	 */
 	certs, err := getCertificates("localhost.pem", "localhost-key.pem")
 	if err != nil {
 		return
@@ -22,23 +32,15 @@ func main() {
 	moqs := moqt.Server{
 		Addr: "localhost:8443",
 		TLSConfig: &tls.Config{
-			//NextProtos:         []string{"h3", "moq-00"},
+			NextProtos:         []string{"h3", "moq-00"},
 			Certificates:       certs,
-			InsecureSkipVerify: true,
+			InsecureSkipVerify: true, // TODO:
 		},
 		QUICConfig: &quic.Config{
 			Allow0RTT:       true,
 			EnableDatagrams: true,
 		},
-		SupportedVersions: []moqt.Version{moqt.Devlop},
-		SetupHandler: moqt.SetupHandlerFunc(func(sr moqt.SetupRequest, srw moqt.SetupResponceWriter) {
-			if !moqt.ContainVersion(moqt.Devlop, sr.SupportedVersions) {
-				srw.Reject(moqt.ErrInternalError)
-				return
-			}
-
-			srw.Accept(moqt.Devlop)
-		}),
+		SupportedVersions: []moqt.Version{moqt.Develop},
 	}
 
 	// Initialize a Relayer
@@ -49,7 +51,7 @@ func main() {
 		RelayManager:         nil,
 	}
 
-	// Run the Relayer on QUIC
+	// Run the Relayer on WebTransport
 	moqs.RunOnWebTransport(relayer)
 
 	moqs.ListenAndServe()
@@ -99,9 +101,6 @@ func (serverSessionHandler) HandleServerSession(sess *moqt.ServerSession) {
 	}
 
 	slog.Info("successfully subscribed", slog.Any("subscription", subscription), slog.Any("info", info))
-
-	//
-
 }
 
 var _ moqt.RequestHandler = (*requestHandler)(nil)
@@ -113,6 +112,8 @@ func (requestHandler) HandleInterest(i moqt.Interest, a []moqt.Announcement, w m
 		// Close the Announce Stream if track was not found
 		w.Close(moqt.ErrTrackDoesNotExist)
 	}
+
+	log.Print("Announcements", a, len(a))
 
 	for _, announcement := range a {
 		w.Announce(announcement)

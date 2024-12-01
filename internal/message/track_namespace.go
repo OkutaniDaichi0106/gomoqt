@@ -8,7 +8,7 @@ import (
 
 type TrackNamespace []string
 
-func AppendTrackNamespace(b []byte, tns TrackNamespace) []byte {
+func appendTrackNamespace(b []byte, tns TrackNamespace) []byte {
 	// Append the number of the elements of the Track Namespace
 	b = quicvarint.Append(b, uint64(len(tns)))
 
@@ -44,11 +44,11 @@ func readTrackNamespace(r Reader) (TrackNamespace, error) {
 
 		_, err = r.Read(buf)
 		if err == nil {
-			tns = append(tns, string(buf))
+			tns[i] = string(buf)
 			continue
 		} else {
 			if err == io.EOF {
-				tns = append(tns, string(buf))
+				tns[i] = string(buf)
 				return tns, nil
 			}
 			return nil, err
@@ -60,7 +60,7 @@ func readTrackNamespace(r Reader) (TrackNamespace, error) {
 
 type TrackPrefix []string
 
-func AppendTrackNamespacePrefix(b []byte, tnsp TrackPrefix) []byte {
+func appendTrackNamespacePrefix(b []byte, tnsp TrackPrefix) []byte {
 	// Append the number of the elements of the Track Namespace
 	b = quicvarint.Append(b, uint64(len(tnsp)))
 
@@ -75,7 +75,7 @@ func AppendTrackNamespacePrefix(b []byte, tnsp TrackPrefix) []byte {
 	return b
 }
 
-func ReadTrackNamespacePrefix(r quicvarint.Reader) (TrackPrefix, error) {
+func readTrackNamespacePrefix(r Reader) (TrackPrefix, error) {
 	// Get the number of the elements of the track namespace
 	l, err := quicvarint.Read(r)
 	if err != nil {
@@ -96,11 +96,11 @@ func ReadTrackNamespacePrefix(r quicvarint.Reader) (TrackPrefix, error) {
 
 		_, err = r.Read(buf)
 		if err == nil {
-			tnsp = append(tnsp, string(buf))
+			tnsp[i] = string(buf)
 			continue
 		} else {
 			if err == io.EOF {
-				tnsp = append(tnsp, string(buf))
+				tnsp[i] = string(buf)
 				return tnsp, nil
 			}
 			return nil, err

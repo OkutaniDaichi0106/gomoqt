@@ -5,19 +5,30 @@ import (
 	"crypto/tls"
 	"log"
 	"log/slog"
+	"os"
+	"strconv"
 	"time"
 
 	moqt "github.com/OkutaniDaichi0106/gomoqt"
 )
 
 func main() {
-	handler := requestHandler{}
+	/*
+	 * Set Log Level to "DEBUG"
+	 */
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	slog.SetDefault(logger)
+
+	handler := requestHandler{
+		subscribedCh: make(chan moqt.Subscription, 1),
+	}
+
 	c := moqt.Client{
 		URL:                  "https://localhost:8443/path",
-		SupportedVersions:    []moqt.Version{moqt.Devlop},
+		SupportedVersions:    []moqt.Version{moqt.Default},
 		TLSConfig:            &tls.Config{},
-		RequestHandler:       handler,
-		ClientSessionHandler: handler,
+		RequestHandler:       &handler,
+		ClientSessionHandler: &handler,
 	}
 
 	err := c.Run(context.Background())
@@ -33,7 +44,7 @@ func main() {
  */
 var _ moqt.ClientSessionHandler = (*requestHandler)(nil)
 
-func (h requestHandler) HandleClientSession(sess *moqt.ClientSession) {
+func (h *requestHandler) HandleClientSession(sess *moqt.ClientSession) {
 	subscription := <-h.subscribedCh
 
 	slog.Info("Subscribed!!!")
@@ -46,15 +57,18 @@ func (h requestHandler) HandleClientSession(sess *moqt.ClientSession) {
 	 * Send data
 	 */
 	go func() {
-		sequence := 0
-		for {
+		sequence := 1
+		for i := 0; i < 10; i++ {
+			//
+			time.Sleep(1 * time.Second)
+
 			stream, err := sess.OpenDataStream(subscription, sequence, 0)
 			if err != nil {
 				slog.Error("failed to open a data stream", slog.String("error", err.Error()))
 				return
 			}
 
-			text := "hello!!!"
+			text := "hello!!!" + strconv.Itoa(i)
 
 			_, err = stream.Write([]byte(text))
 			if err != nil {
@@ -76,13 +90,12 @@ func (h requestHandler) HandleClientSession(sess *moqt.ClientSession) {
 	interest := moqt.Interest{
 		TrackPrefix: h.localTrack.TrackNamespace,
 	}
+
 	annstr, err := sess.Interest(interest)
 	if err != nil {
 		slog.Error("failed to interest", slog.String("error", err.Error()))
 		return
 	}
-	//
-	slog.Info("interest", slog.Any("interest", interest))
 
 	/*
 	 * Get Announcements
@@ -92,6 +105,8 @@ func (h requestHandler) HandleClientSession(sess *moqt.ClientSession) {
 		slog.Error("failed to read an announcement", slog.String("error", err.Error()))
 		return
 	}
+
+	log.Print("ECHO REACH")
 	//
 	slog.Info("received an announcement", slog.Any("announcement", ann))
 
@@ -104,7 +119,7 @@ func (h requestHandler) HandleClientSession(sess *moqt.ClientSession) {
 		return
 	}
 	//
-	slog.Info("successfully subscribed", slog.Any("subscription", subscription), slog.Any("info", info))
+	slog.Info("Successfully subscribed", slog.Any("subscription", subscription), slog.Any("info", info))
 
 	/*
 	 * Receive data
@@ -154,9 +169,9 @@ func (requestHandler) HandleInfoRequest(r moqt.InfoRequest, i *moqt.Info, w moqt
 	w.Answer(*i)
 }
 
-func (h requestHandler) HandleInterest(i moqt.Interest, a []moqt.Announcement, w moqt.AnnounceWriter) {
+func (h *requestHandler) HandleInterest(i moqt.Interest, a []moqt.Announcement, w moqt.AnnounceWriter) {
 	h.localTrack = moqt.Announcement{
-		TrackNamespace: i.TrackPrefix + "room-0x000001/user-0x000001",
+		TrackNamespace: i.TrackPrefix + "/room-0x000001/user-0x000001",
 	}
 
 	w.Announce(h.localTrack)
@@ -167,22 +182,27 @@ func (h requestHandler) HandleInterest(i moqt.Interest, a []moqt.Announcement, w
 	w.Close(nil)
 }
 
-func (h requestHandler) HandleSubscribe(s moqt.Subscription, i *moqt.Info, w moqt.SubscribeResponceWriter) {
+func (h *requestHandler) HandleSubscribe(s moqt.Subscription, i *moqt.Info, w moqt.SubscribeResponceWriter) {
 	slog.Info("Subscribed", slog.Any("subscription", s))
 
 	if h.localTrack.TrackNamespace != s.TrackNamespace {
+		log.Println("Unmatch Track Namespace Rejection", "local", h.localTrack.TrackNamespace, "remote", s.TrackNamespace)
 		// Reject if get a subscription with an unknown Track Namespace
 		w.Reject(nil)
-	}
-
-	if i == nil {
-		// Reject the subscription if track was not found
-		w.Reject(moqt.ErrTrackDoesNotExist)
 		return
 	}
 
-	// Accept the subscription if a track was found
-	w.Accept(*i)
+	if i != nil {
+		// Accept the subscription
+		w.Accept(*i)
+		return
+	}
+
+	// Reject the subscription if track was not found
+	info := moqt.Info{
+		LatestGroupSequence: 1,
+	}
+	w.Accept(info)
 
 	h.subscribedCh <- s
 }

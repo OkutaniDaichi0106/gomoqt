@@ -1,17 +1,25 @@
 package moqt
 
 import (
+	"io"
 	"log/slog"
 	"strings"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
-	"github.com/quic-go/quic-go/quicvarint"
+	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
 )
 
-func getAnnouncement(r quicvarint.Reader) (Announcement, error) {
+func readAnnouncement(r moq.ReceiveStream) (Announcement, error) {
+	// Get a new message reader
+	mr, err := message.NewReader(r)
+	if err != nil {
+		slog.Error("failed to get a new message reader", slog.String("error", err.Error()))
+		return Announcement{}, err
+	}
+
 	// Read an ANNOUNCE message
 	var am message.AnnounceMessage
-	err := am.DeserializePayload(r)
+	err = am.Decode(mr)
 	if err != nil {
 		slog.Error("failed to read an ANNOUNCE message", slog.String("error", err.Error()))
 		return Announcement{}, err
@@ -20,10 +28,11 @@ func getAnnouncement(r quicvarint.Reader) (Announcement, error) {
 	// Initialize an Announcement
 	announcement := Announcement{
 		TrackNamespace: strings.Join(am.TrackNamespace, "/"),
-		Parameters:     am.Parameters,
+		Parameters:     Parameters(am.Parameters),
 	}
+
 	//
-	authInfo, ok := getAuthorizationInfo(am.Parameters)
+	authInfo, ok := getAuthorizationInfo(announcement.Parameters)
 	if ok {
 		announcement.AuthorizationInfo = authInfo
 	}
@@ -31,10 +40,17 @@ func getAnnouncement(r quicvarint.Reader) (Announcement, error) {
 	return announcement, nil
 }
 
-func getGroup(r quicvarint.Reader) (Group, error) {
+func readGroup(r io.Reader) (Group, error) {
+	// Get a message reader
+	mr, err := message.NewReader(r)
+	if err != nil {
+		slog.Error("failed to get a new message reader", slog.String("error", err.Error()))
+		return Group{}, err
+	}
+
 	// Read a GROUP message
 	var gm message.GroupMessage
-	err := gm.DeserializePayload(r)
+	err = gm.Decode(mr)
 	if err != nil {
 		slog.Error("failed to read a GROUP message", slog.String("error", err.Error()))
 		return Group{}, err
@@ -48,10 +64,17 @@ func getGroup(r quicvarint.Reader) (Group, error) {
 	}, nil
 }
 
-func getInfo(r quicvarint.Reader) (Info, error) {
-	//
+func readInfo(r io.Reader) (Info, error) {
+	// Get a message reader
+	mr, err := message.NewReader(r)
+	if err != nil {
+		slog.Error("failed to get a new message reader", slog.String("error", err.Error()))
+		return Info{}, err
+	}
+
+	// Read an INFO message
 	var im message.InfoMessage
-	err := im.DeserializePayload(r)
+	err = im.Decode(mr)
 	if err != nil {
 		slog.Error("failed to read a INFO message", slog.String("error", err.Error()))
 		return Info{}, err

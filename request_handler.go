@@ -1,11 +1,12 @@
 package moqt
 
 import (
+	"io"
 	"log/slog"
 	"strings"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
-	"github.com/quic-go/quic-go/quicvarint"
+	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
 )
 
 type RequestHandler interface {
@@ -15,10 +16,15 @@ type RequestHandler interface {
 	InfoRequestHandler
 }
 
-func getInterest(r quicvarint.Reader) (Interest, error) {
+func readInterest(str io.Reader) (Interest, error) {
+	r, err := message.NewReader(str)
+	if err != nil {
+		slog.Error("failed to get a new message reader", slog.String("error", err.Error()))
+		return Interest{}, err
+	}
 	//
 	var aim message.AnnounceInterestMessage
-	err := aim.DeserializePayload(r)
+	err = aim.Decode(r)
 	if err != nil {
 		slog.Error("failed to read an ANNOUNCE_INTEREST message", slog.String("error", err.Error()))
 		return Interest{}, err
@@ -30,9 +36,14 @@ func getInterest(r quicvarint.Reader) (Interest, error) {
 	}, nil
 }
 
-func getFetchRequest(r quicvarint.Reader) (FetchRequest, error) {
+func readFetchRequest(str moq.Stream) (FetchRequest, error) {
+	r, err := message.NewReader(str)
+	if err != nil {
+		slog.Error("failed to get a new message reader")
+	}
+
 	var frm message.FetchMessage
-	err := frm.DeserializePayload(r)
+	err = frm.Decode(r)
 	if err != nil {
 		slog.Error("failed to read a FETCH message", slog.String("error", err.Error()))
 		return FetchRequest{}, err
@@ -41,9 +52,14 @@ func getFetchRequest(r quicvarint.Reader) (FetchRequest, error) {
 	return FetchRequest(frm), nil
 }
 
-func getInfoRequest(r quicvarint.Reader) (InfoRequest, error) {
+func readInfoRequest(str moq.Stream) (InfoRequest, error) {
+	r, err := message.NewReader(str)
+	if err != nil {
+		slog.Error("failed to get a new message reader", slog.String("error", err.Error()))
+	}
+
 	var irm message.InfoRequestMessage
-	err := irm.DeserializePayload(r)
+	err = irm.Decode(r)
 	if err != nil {
 		slog.Error("failed to read an INFO_REQUEST message", slog.String("error", err.Error()))
 		return InfoRequest{}, err

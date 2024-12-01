@@ -3,16 +3,17 @@ package moqt
 import (
 	"context"
 	"crypto/tls"
-	"errors"
+	"io"
 	"log"
 	"log/slog"
 	"net/http"
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
+	"github.com/OkutaniDaichi0106/gomoqt/internal/protocol"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
-	"github.com/quic-go/quic-go/quicvarint"
 	"github.com/quic-go/webtransport-go"
 )
 
@@ -38,7 +39,8 @@ type Server struct {
 	SupportedVersions []Version
 
 	//
-	SetupHandler
+	SetupHijacker func(SetupRequest) SetupResponce
+	//SetupHandler
 
 	// Relayers running on QUIC
 	quicRelayers map[string]Relayer
@@ -51,14 +53,14 @@ func (s *Server) ListenAndServe() error {
 	s.wtsMu.Lock()
 	defer s.wtsMu.Unlock()
 
-	listener, err := quic.ListenAddrEarly(s.Addr, s.TLSConfig, s.QUICConfig)
+	ln, err := quic.ListenAddrEarly(s.Addr, s.TLSConfig, s.QUICConfig)
 	if err != nil {
 		slog.Error("failed to listen address", slog.String("error", err.Error()))
 		return err
 	}
 
 	for {
-		qconn, err := listener.Accept(context.Background())
+		qconn, err := ln.Accept(context.Background())
 		if err != nil {
 			slog.Error("failed to accept", slog.String("error", err.Error()))
 			return err
@@ -78,7 +80,7 @@ func (s *Server) ListenAndServe() error {
 			/*
 			 * Listen and serve on raw QUIC
 			 */
-			conn := NewMORQConnection(qconn)
+			conn := moq.NewMORQConnection(qconn)
 
 			/***/
 			go func() {
@@ -92,51 +94,63 @@ func (s *Server) ListenAndServe() error {
 					return
 				}
 
+				// Verify if the Stream is a Session Stream
+				buf := make([]byte, 1)
+				_, err = stream.Read(buf)
+				if err != nil {
+					slog.Error("failed to read a Stream Type", slog.String("error", err.Error()))
+					return
+				}
+				if StreamType(buf[0]) != stream_type_session {
+					slog.Error("unexpected Stream Type ID", slog.Any("detected ID", StreamType(buf[0]))) // TODO
+					return
+				}
+
 				// Initialize a Session
 				sess := ServerSession{
 					session: &session{
 						conn:                  conn,
-						sessStr:               stream,
+						stream:                stream,
 						subscribeWriters:      make(map[SubscribeID]*SubscribeWriter),
 						receivedSubscriptions: map[SubscribeID]Subscription{},
 					},
 				}
 
-				/*
-				 * Set up
-				 */
-				// Read the first byte and get Stream Type
-				buf := make([]byte, 1)
-				_, err = sess.sessStr.Read(buf)
-				if err != nil {
-					slog.Error("failed to read a Stream Type", slog.String("error", err.Error()))
-					return
-				}
-				// Verify if the Stream Type is the SESSION
-				if StreamType(buf[0]) != SESSION {
-					slog.Error("unexpected Stream Type ID", slog.Any("expected ID", SESSION), slog.Any("detected ID", StreamType(buf[0]))) // TODO
-					return
-				}
-
-				// Get a set-up request
-				req, err := getSetupRequest(quicvarint.NewReader(sess.sessStr))
+				// Receive a set-up request
+				req, err := readSetupRequest(sess.stream)
 				if err != nil {
 					slog.Error("failed to get a set-up request", slog.String("error", err.Error()))
 					return
 				}
-				// Initialize a SetupResponceWriter{}
-				srw := SetupResponceWriter{
-					doneCh: make(chan struct{}, 1),
-					once:   new(sync.Once),
-					stream: sess.sessStr,
+
+				// Verify if the request contains a valid path
+				if req.Path == "" {
+					slog.Error("path not found")
+					return
 				}
 
-				// Handle the Set-up
-				s.HandleSetup(req, srw)
+				// Select the default version
+				if !ContainVersion(Default, req.SupportedVersions) {
+					slog.Error("no available version", slog.Any("versions", req.SupportedVersions))
+					return
+				}
 
-				<-srw.doneCh
+				// Send a set-up responce
+				var rsp SetupResponce
+				if s.SetupHijacker != nil {
+					rsp = s.SetupHijacker(req)
+				} else {
+					rsp = SetupResponce{
+						SelectedVersion: Default,
+						Parameters:      make(Parameters),
+					}
+				}
+				err = sendSetupResponce(sess.stream, rsp)
+				if err != nil {
+					slog.Error("failed to send a set-up responce")
+					return
+				}
 
-				// Get a relayer from the path
 				relayer, ok := s.quicRelayers[req.Path]
 				if !ok {
 					slog.Error("relayer not found", slog.String("path", req.Path))
@@ -190,7 +204,8 @@ func (s *Server) RunOnWebTransport(relayer Relayer) {
 			return
 		}
 
-		conn := NewMOWTConnection(wtsess)
+		// Get a Connection
+		conn := moq.NewMOWTConnection(wtsess)
 
 		/*
 		 * Get a Session
@@ -202,12 +217,54 @@ func (s *Server) RunOnWebTransport(relayer Relayer) {
 			return
 		}
 
-		// Initialize a Session
+		// Read the first byte and get Stream Type
+		buf := make([]byte, 1)
+		_, err = stream.Read(buf)
+		if err != nil {
+			slog.Error("failed to read a Stream Type", slog.String("error", err.Error()))
+			return
+		}
 
+		// Verify if the Stream is the Session Stream
+		if StreamType(buf[0]) != stream_type_session {
+			slog.Error("unexpected Stream Type ID", slog.Uint64("ID", uint64(buf[0]))) // TODO
+			return
+		}
+
+		// Receive a set-up request
+		req, err := readSetupRequest(stream)
+		if err != nil {
+			slog.Error("failed to get a set-up request", slog.String("error", err.Error()))
+			return
+		}
+
+		// Select the default version
+		if !ContainVersion(Default, req.SupportedVersions) {
+			slog.Error("no available version", slog.Any("versions", req.SupportedVersions))
+			return
+		}
+
+		// Send a set-up responce
+		var rsp SetupResponce
+		if s.SetupHijacker != nil {
+			rsp = s.SetupHijacker(req)
+		} else {
+			rsp = SetupResponce{
+				SelectedVersion: Default,
+				Parameters:      make(Parameters),
+			}
+		}
+		err = sendSetupResponce(stream, rsp)
+		if err != nil {
+			slog.Error("failed to send a set-up responce")
+			return
+		}
+
+		// Initialize a Session
 		sess := ServerSession{
 			session: &session{
 				conn:                  conn,
-				sessStr:               stream,
+				stream:                stream,
 				subscribeWriters:      make(map[SubscribeID]*SubscribeWriter),
 				receivedSubscriptions: make(map[SubscribeID]Subscription),
 			},
@@ -216,65 +273,64 @@ func (s *Server) RunOnWebTransport(relayer Relayer) {
 		/*
 		 * Set up
 		 */
-		// Read the first byte and get Stream Type
-		buf := make([]byte, 1)
-		_, err = sess.sessStr.Read(buf)
-		if err != nil {
-			slog.Error("failed to read a Stream Type", slog.String("error", err.Error()))
-			return
-		}
-		// Verify if the Stream Type is the SESSION
-		if StreamType(buf[0]) != SESSION {
-			slog.Error("unexpected Stream Type ID", slog.Uint64("ID", uint64(buf[0]))) // TODO
-			return
-		}
 
-		// Get a set-up request
-		req, err := getSetupRequest(quicvarint.NewReader(sess.sessStr))
-		if err != nil {
-			slog.Error("failed to get a set-up request", slog.String("error", err.Error()))
-			return
-		}
-
-		srw := SetupResponceWriter{
-			doneCh: make(chan struct{}, 1),
-			once:   new(sync.Once),
-			stream: sess.sessStr,
-		}
-
-		s.HandleSetup(req, srw)
-
-		<-srw.doneCh
-
-		go relayer.run(&sess)
+		relayer.run(&sess)
 	})
 }
 
-func getSetupRequest(r quicvarint.Reader) (SetupRequest, error) {
-	// Receive SESSION_CLIENT message
+func readSetupRequest(str io.Reader) (SetupRequest, error) {
+	/*
+	 * Receive a SESSION_CLIENT message
+	 */
+	// Get a new message reader
+	r, err := message.NewReader(str)
+	if err != nil {
+		slog.Error("failed to get a new message reader", slog.String("error", err.Error()))
+		return SetupRequest{}, err
+	}
+	// Decode
 	var scm message.SessionClientMessage
-	err := scm.DeserializePayload(r)
+	err = scm.Decode(r)
 	if err != nil {
 		slog.Error("failed to read a SESSION_CLIENT message", slog.String("error", err.Error())) // TODO
 		return SetupRequest{}, err
 	}
 
-	// Get a path
-	path, ok := getPath(scm.Parameters)
-	if !ok {
-		err := errors.New("path not found")
-		slog.Error("path not found")
-		return SetupRequest{}, err
-	}
+	var req SetupRequest
 
-	req := SetupRequest{
-		Path:       path,
-		Parameters: Parameters(scm.Parameters),
-	}
 	// Set versions
 	for _, v := range scm.SupportedVersions {
 		req.SupportedVersions = append(req.SupportedVersions, Version(v))
 	}
+	// Set parameters
+	req.Parameters = Parameters(scm.Parameters)
+
+	// Get any PATH parameter
+	path, ok := getPath(req.Parameters)
+	if ok {
+		req.Path = path
+	}
+
+	// Get any MAX_SUBSCRIBE_ID parameter
+	maxID, ok := getMaxSubscribeID(req.Parameters)
+	if ok {
+		req.MaxSubscribeID = uint64(maxID)
+	}
 
 	return req, nil
+}
+
+func sendSetupResponce(w io.Writer, rsp SetupResponce) error {
+	ssm := message.SessionServerMessage{
+		SelectedVersion: protocol.Version(rsp.SelectedVersion),
+		Parameters:      message.Parameters(rsp.Parameters),
+	}
+
+	err := ssm.Encode(w)
+	if err != nil {
+		slog.Error("failed to encode a SESSION_SERVER message", slog.String("error", err.Error()))
+		return err
+	}
+
+	return nil
 }

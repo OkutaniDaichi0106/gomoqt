@@ -16,7 +16,7 @@ func (sess *ServerSession) GoAway(uri string, timeout time.Duration) {
 		NewSessionURI: uri,
 	}
 
-	_, err := sess.sessStr.Write(gam.SerializePayload())
+	err := gam.Encode(sess.stream)
 	if err != nil {
 		slog.Error("failed to send GO_AWAY message", slog.String("error", err.Error()))
 		return

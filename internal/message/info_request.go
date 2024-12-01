@@ -32,7 +32,7 @@ func (irm InfoRequestMessage) Encode(w io.Writer) error {
 	p := make([]byte, 0, 1<<8)
 
 	// Append the Track Namespace
-	p = AppendTrackNamespace(p, irm.TrackNamespace)
+	p = appendTrackNamespace(p, irm.TrackNamespace)
 
 	// Append the Track Name
 	p = quicvarint.Append(p, uint64(len(irm.TrackName)))
@@ -41,7 +41,7 @@ func (irm InfoRequestMessage) Encode(w io.Writer) error {
 	log.Print("INFO_REQUEST payload", p)
 
 	// Serialize the whole message
-	b := make([]byte, len(p)+8)
+	b := make([]byte, 0, len(p)+8)
 
 	// Append the length of the payload
 	b = quicvarint.Append(b, uint64(len(p)))

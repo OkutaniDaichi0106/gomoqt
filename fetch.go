@@ -7,7 +7,6 @@ import (
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
-	"github.com/quic-go/quic-go/quicvarint"
 )
 
 /*
@@ -25,29 +24,10 @@ type FetchStream struct {
 // }
 
 func (f FetchStream) Read(buf []byte) (int, error) {
-	if f.group == nil {
-		f.Group()
-	}
-
 	return f.stream.Read(buf)
 }
 
 func (f FetchStream) Group() Group {
-	if f.group == nil {
-		var gm message.GroupMessage
-		err := gm.DeserializePayload(quicvarint.NewReader(f.stream))
-		if err != nil {
-			slog.Error("failed to get a GROUP message", slog.String("error", err.Error()))
-			return Group{}
-		}
-
-		f.group = &Group{
-			subscribeID:       SubscribeID(gm.SubscribeID),
-			groupSequence:     GroupSequence(gm.GroupSequence),
-			PublisherPriority: PublisherPriority(gm.PublisherPriority),
-		}
-	}
-
 	return *f.group
 }
 
@@ -96,7 +76,8 @@ func (w FetchResponceWriter) SendGroup(group Group, data []byte) {
 		GroupSequence:     message.GroupSequence(group.groupSequence),
 		PublisherPriority: message.PublisherPriority(group.PublisherPriority),
 	}
-	_, err := w.stream.Write(gm.SerializePayload())
+
+	err := gm.Encode(w.stream)
 	if err != nil {
 		slog.Error("failed to send a GROUP message", slog.String("error", err.Error()))
 		w.doneCh <- ErrInternalError

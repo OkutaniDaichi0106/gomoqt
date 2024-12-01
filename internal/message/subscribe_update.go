@@ -2,6 +2,7 @@ package message
 
 import (
 	"io"
+	"log/slog"
 	"time"
 
 	"github.com/quic-go/quic-go/quicvarint"
@@ -19,7 +20,8 @@ type SubscribeUpdateMessage struct {
 	Parameters Parameters
 }
 
-func (su SubscribeUpdateMessage) SerializePayload(w io.Writer) error {
+func (su SubscribeUpdateMessage) Encode(w io.Writer) error {
+	slog.Debug("encoding a SUBSCRIBE_UPDATE message")
 	/*
 	 * Serialize the message in the following format
 	 *
@@ -67,27 +69,29 @@ func (su SubscribeUpdateMessage) SerializePayload(w io.Writer) error {
 	return err
 }
 
-func (su *SubscribeUpdateMessage) Decode(r Reader) error {
+func (sum *SubscribeUpdateMessage) Decode(r Reader) error {
+	slog.Debug("decoding a SUBSCRIBE_UPDATE message")
+
 	// Get a Subscribe ID
 	num, err := quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	su.SubscribeID = SubscribeID(num)
+	sum.SubscribeID = SubscribeID(num)
 
 	// Get a Min Group Number
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	su.MinGroupSequence = GroupSequence(num)
+	sum.MinGroupSequence = GroupSequence(num)
 
 	// Get a Max Group Number
 	num, err = quicvarint.Read(r)
 	if err != nil {
 		return err
 	}
-	su.MaxGroupSequence = GroupSequence(num)
+	sum.MaxGroupSequence = GroupSequence(num)
 
 	// Get a Subscriber Priority
 	priorityBuf := make([]byte, 1)
@@ -95,10 +99,10 @@ func (su *SubscribeUpdateMessage) Decode(r Reader) error {
 	if err != nil {
 		return err
 	}
-	su.SubscriberPriority = SubscriberPriority(priorityBuf[0])
+	sum.SubscriberPriority = SubscriberPriority(priorityBuf[0])
 
 	// Get Subscribe Update Parameters
-	su.Parameters, err = readParameters(r)
+	sum.Parameters, err = readParameters(r)
 	if err != nil {
 		return err
 	}

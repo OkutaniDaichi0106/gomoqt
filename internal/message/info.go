@@ -42,7 +42,7 @@ func (im InfoMessage) Encode(w io.Writer) error {
 	p = quicvarint.Append(p, uint64(im.GroupExpires))
 
 	// Serialize the whole message
-	b := make([]byte, len(p)+8)
+	b := make([]byte, 0, len(p)+8)
 
 	// Append the length of the payload
 	b = quicvarint.Append(b, uint64(len(p)))

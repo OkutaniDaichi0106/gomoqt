@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"io"
 	"log"
 	"log/slog"
 	"net"
@@ -18,7 +19,6 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
 	"github.com/OkutaniDaichi0106/gomoqt/internal/protocol"
 	"github.com/quic-go/quic-go"
-	"github.com/quic-go/quic-go/quicvarint"
 	"github.com/quic-go/webtransport-go"
 )
 
@@ -118,10 +118,13 @@ func (c Client) Run(ctx context.Context) error {
 		}
 
 		req = SetupRequest{
-			Path:              parsedURL.Path,
 			SupportedVersions: c.SupportedVersions,
 			Parameters:        c.SetupParameters,
 		}
+
+		// Add the path to the parameters
+		req.Parameters.Add(PATH, parsedURL.Path)
+
 	default:
 		err := errors.New("invalid scheme")
 		slog.Error("url scheme must be https or moqt", slog.String("scheme", parsedURL.Scheme))
@@ -129,44 +132,39 @@ func (c Client) Run(ctx context.Context) error {
 	}
 
 	/*
-	 * Get a Session
+	 * Get a new Session
 	 */
-	// Open a bidirectional Stream for the Session Stream
-	stream, err := conn.OpenStream()
-	if err != nil {
-		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
-		return err
-	}
-
 	// Initialize a Session
-
 	sess := ClientSession{
 		session: &session{
 			conn:                  conn,
-			sessStr:               stream,
 			subscribeWriters:      make(map[SubscribeID]*SubscribeWriter),
 			receivedSubscriptions: make(map[SubscribeID]Subscription),
 			doneCh:                make(chan struct{}, 1),
 		},
 	}
 
+	// Open a bidirectional Stream for the Session Stream
+	stream, err := sess.openControlStream(stream_type_session)
+	if err != nil {
+		slog.Error("failed to open a Session Stream", slog.String("error", err.Error()))
+		return err
+	}
+	sess.stream = stream
+
 	/*
 	 * Set up
 	 */
-	// Send the Session Stream Type
-	_, err = sess.sessStr.Write([]byte{byte(stream_type_session)})
-	if err != nil {
-		slog.Error("failed to send a Session Stream Type", slog.String("error", err.Error()))
-		return err
-	}
-
-	err = sendSetupRequest(sess.sessStr, req)
+	/*
+	 * Send a SESSION_CLIENT message
+	 */
+	err = sendSetupRequest(sess.stream, req)
 	if err != nil {
 		slog.Error("failed to request to set up", slog.String("error", err.Error()))
 		return err
 	}
 
-	rsp, err := getSetupResponce(quicvarint.NewReader(sess.sessStr))
+	rsp, err := readSetupResponce(sess.stream)
 	if err != nil {
 		slog.Error("failed to receive a SESSION_SERVER message", slog.String("error", err.Error()))
 		return err
@@ -209,19 +207,17 @@ func (c Client) Run(ctx context.Context) error {
 	return nil
 }
 
-func sendSetupRequest(stream moq.Stream, req SetupRequest) error {
+func sendSetupRequest(w io.Writer, req SetupRequest) error {
 	scm := message.SessionClientMessage{
 		SupportedVersions: make([]protocol.Version, 0),
-		Parameters:        make(message.Parameters),
+		Parameters:        message.Parameters(req.Parameters),
 	}
 
 	for _, v := range req.SupportedVersions {
 		scm.SupportedVersions = append(scm.SupportedVersions, protocol.Version(v))
 	}
 
-	scm.Parameters.Add(PATH, req.Path)
-
-	_, err := stream.Write(scm.SerializePayload())
+	err := scm.Encode(w)
 	if err != nil {
 		slog.Error("failed to send a SESSION_CLIENT message", slog.String("error", err.Error()))
 		return err
@@ -230,10 +226,16 @@ func sendSetupRequest(stream moq.Stream, req SetupRequest) error {
 	return nil
 }
 
-func getSetupResponce(r quicvarint.Reader) (SetupResponce, error) {
+func readSetupResponce(str io.Reader) (SetupResponce, error) {
+	// Get message reader
+	r, err := message.NewReader(str)
+	if err != nil {
+		return SetupResponce{}, err
+	}
+
 	/***/
 	var ssm message.SessionServerMessage
-	err := ssm.DeserializePayload(r)
+	err = ssm.Decode(r)
 	if err != nil {
 		slog.Error("failed to read a SESSION_SERVER message", slog.String("error", err.Error()))
 		return SetupResponce{}, err
@@ -254,24 +256,26 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 		}
 
 		go func(stream moq.Stream) {
-			qvr := quicvarint.NewReader(stream)
-
-			num, err := qvr.ReadByte()
+			/*
+			 * Read a Stream Type
+			 */
+			buf := make([]byte, 1)
+			_, err := stream.Read(buf)
 			if err != nil {
 				slog.Error("failed to read a Stream Type ID", slog.String("error", err.Error()))
 			}
 
-			switch StreamType(num) {
+			switch StreamType(buf[0]) {
 			case stream_type_announce:
 				slog.Info("Announce Stream was opened")
 
-				interest, err := getInterest(qvr)
+				interest, err := readInterest(stream)
 				if err != nil {
 					slog.Error("failed to get an Interest", slog.String("error", err.Error()))
 					return
 				}
 
-				log.Print(interest)
+				log.Print("INTEREST", interest)
 
 				w := AnnounceWriter{
 					doneCh: make(chan struct{}, 1),
@@ -279,7 +283,7 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 				}
 
 				// Announce
-				announcements, ok := c.RelayManager.GetAnnouncements(interest.TrackPrefix)
+				announcements, ok := c.RelayManager.FindAnnouncements(interest.TrackPrefix)
 				if !ok || announcements == nil {
 					announcements = make([]Announcement, 0)
 				}
@@ -289,7 +293,7 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 			case stream_type_subscribe:
 				slog.Info("Subscribe Stream was opened")
 
-				subscription, err := getSubscription(qvr)
+				subscription, err := readSubscription(stream)
 				if err != nil {
 					slog.Error("failed to get a subscription", slog.String("error", err.Error()))
 
@@ -330,7 +334,7 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 				 * Catch any Subscribe Update or any error from the subscriber
 				 */
 				for {
-					update, err := getSubscribeUpdate(subscription, qvr)
+					update, err := readSubscribeUpdate(subscription, stream)
 					if err != nil {
 						slog.Info("catched an error from the subscriber", slog.String("error", err.Error()))
 						break
@@ -373,7 +377,7 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 			case stream_type_fetch:
 				slog.Info("Fetch Stream was opened")
 
-				fetchRequest, err := getFetchRequest(qvr)
+				fetchRequest, err := readFetchRequest(stream)
 				if err != nil {
 					slog.Error("failed to get a fetch-request", slog.String("error", err.Error()))
 					return
@@ -390,7 +394,7 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 			case stream_type_info:
 				slog.Info("Info Stream was opened")
 
-				infoRequest, err := getInfoRequest(qvr)
+				infoRequest, err := readInfoRequest(stream)
 				if err != nil {
 					slog.Error("failed to get a info-request", slog.String("error", err.Error()))
 					return
@@ -411,7 +415,6 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 				<-w.doneCh
 			default:
 				err := ErrInvalidStreamType
-				slog.Error(err.Error(), slog.Uint64("ID", uint64(num)))
 
 				// Cancel reading and writing
 				stream.CancelRead(err.StreamErrorCode())

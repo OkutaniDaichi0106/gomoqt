@@ -1,23 +1,21 @@
 package moqt
 
 import (
-	"errors"
-
 	"github.com/OkutaniDaichi0106/gomoqt/internal/protocol"
 )
 
 type Version protocol.Version
 
 const (
-	Default         = Draft01
-	Draft01 Version = 0xffffff01
-	Devlop  Version = 0xffffff00
+	Default         = Develop
+	Draft01 Version = Version(protocol.Draft01)
+	Develop Version = Version(protocol.Develop)
 )
 
 /*
  * Select a latest moqt version from a pair of version sets
  */
-func SelectLatestVersion(vs1, vs2 []Version) (Version, error) {
+func SelectLatestVersion(vs1, vs2 []Version) (Version, bool) {
 	// Get version-bool mapping
 	versionMap := make(map[Version]bool, len(vs1))
 	for _, v := range vs1 {
@@ -34,7 +32,7 @@ func SelectLatestVersion(vs1, vs2 []Version) (Version, error) {
 
 	// Verify if common versions between the sets exist
 	if len(commonVersions) < 1 {
-		return 0, errors.New("no common versions")
+		return 0, false
 	}
 
 	// Select the latest Vesion
@@ -45,7 +43,7 @@ func SelectLatestVersion(vs1, vs2 []Version) (Version, error) {
 		}
 	}
 
-	return latestVersion, nil
+	return latestVersion, true
 }
 
 func ContainVersion(version Version, versions []Version) bool {

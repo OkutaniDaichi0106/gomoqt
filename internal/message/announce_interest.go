@@ -2,7 +2,6 @@ package message
 
 import (
 	"io"
-	"log"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -25,15 +24,13 @@ func (aim AnnounceInterestMessage) Encode(w io.Writer) error {
 	/*
 	 * Serialize the payload
 	 */
-	p := make([]byte, 0, 1<<8) // TODO: Tune the size
+	p := make([]byte, 0, 1<<6) // TODO: Tune the size
 
 	// Append the Track Namespace Prefix
-	p = AppendTrackNamespacePrefix(p, aim.TrackPrefix)
+	p = appendTrackNamespacePrefix(p, aim.TrackPrefix)
 
 	// Append the Parameters
 	p = appendParameters(p, aim.Parameters)
-
-	log.Print("ANNOUNCE_INTEREST payload", len(p)) // TODO: delete
 
 	/*
 	 * Get serialized message
@@ -52,21 +49,19 @@ func (aim AnnounceInterestMessage) Encode(w io.Writer) error {
 	return err
 }
 
-func ReadAnnounceInterestMessage(r Reader) (AnnounceInterestMessage, error) {
-	var aim AnnounceInterestMessage
-
+func (aim *AnnounceInterestMessage) Decode(r Reader) error {
 	// Get a Track Namespace Prefix
-	tnsp, err := ReadTrackNamespacePrefix(r)
+	tnsp, err := readTrackNamespacePrefix(r)
 	if err != nil {
-		return AnnounceInterestMessage{}, err
+		return err
 	}
 	aim.TrackPrefix = tnsp
 
 	// Get Parameters
 	aim.Parameters, err = readParameters(r)
 	if err != nil {
-		return AnnounceInterestMessage{}, err
+		return err
 	}
 
-	return aim, nil
+	return nil
 }

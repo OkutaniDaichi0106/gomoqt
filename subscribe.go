@@ -2,13 +2,14 @@ package moqt
 
 import (
 	"errors"
+	"io"
 	"log/slog"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
-	"github.com/quic-go/quic-go/quicvarint"
+	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
 )
 
 type SubscribeID uint64
@@ -53,17 +54,17 @@ func (s Subscription) GetGroup(seq GroupSequence, priority PublisherPriority) Gr
 }
 
 type SubscribeWriter struct {
-	reader       quicvarint.Reader
-	stream       Stream
+	//reader       quicvarint.Reader
+	stream       moq.Stream
 	subscription Subscription
 	mu           sync.RWMutex
 }
 
-func (s *SubscribeWriter) Update(subscription Subscription) (Info, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (w *SubscribeWriter) Update(subscription Subscription) (Info, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 
-	old := s.subscription
+	old := w.subscription
 	slog.Debug("trying to update", slog.Any("from", old), slog.Any("to", subscription))
 
 	// Verify if the new group range is valid
@@ -84,7 +85,7 @@ func (s *SubscribeWriter) Update(subscription Subscription) (Info, error) {
 	 * Send a SUBSCRIBE_UPDATE message
 	 */
 	sum := message.SubscribeUpdateMessage{
-		SubscribeID:        message.SubscribeID(s.subscription.subscribeID),
+		SubscribeID:        message.SubscribeID(w.subscription.subscribeID),
 		SubscriberPriority: message.SubscriberPriority(subscription.SubscriberPriority),
 		GroupOrder:         message.GroupOrder(subscription.GroupOrder),
 		GroupExpires:       subscription.GroupExpires,
@@ -93,20 +94,13 @@ func (s *SubscribeWriter) Update(subscription Subscription) (Info, error) {
 		Parameters:         message.Parameters(subscription.Parameters),
 	}
 
-	_, err := s.stream.Write(sum.SerializePayload())
+	err := sum.Encode(w.stream)
 	if err != nil {
 		slog.Debug("failed to send a SUBSCRIBE_UPDATE message", slog.String("error", err.Error()))
 		return Info{}, err
 	}
 
-	/*
-	 * Receive an INFO message
-	 */
-	if s.reader == nil {
-		s.reader = quicvarint.NewReader(s.stream)
-	}
-
-	info, err := getInfo(s.reader)
+	info, err := readInfo(w.stream)
 	if err != nil {
 		slog.Debug("failed to get an Info")
 		return Info{}, err
@@ -132,8 +126,8 @@ func (s *SubscribeWriter) Unsubscribe(err error) {
 		suberr = ErrInternalError
 	}
 
-	s.stream.CancelWrite(StreamErrorCode(suberr.SubscribeErrorCode()))
-	s.stream.CancelRead(StreamErrorCode(suberr.SubscribeErrorCode()))
+	s.stream.CancelWrite(moq.StreamErrorCode(suberr.SubscribeErrorCode()))
+	s.stream.CancelRead(moq.StreamErrorCode(suberr.SubscribeErrorCode()))
 }
 
 func (s *SubscribeWriter) Subscription() Subscription {
@@ -153,18 +147,27 @@ type SubscribeHandler interface {
 
 type SubscribeResponceWriter struct {
 	doneCh chan struct{}
-	stream Stream
+	stream moq.Stream
 }
 
 func (w SubscribeResponceWriter) Accept(i Info) {
-	slog.Info("accepted a subscription")
+	slog.Debug("Accepting the subscription")
+
+	err := message.InfoMessage(i).Encode(w.stream)
+	if err != nil {
+		slog.Error("failed to accept the Subscription", slog.String("error", err.Error()))
+	}
 
 	w.doneCh <- struct{}{}
 
 	close(w.doneCh)
+
+	slog.Info("Accepted the subscription")
 }
 
 func (w SubscribeResponceWriter) Reject(err error) {
+	slog.Debug("Rejecting the Subscription")
+
 	if err == nil {
 		err := w.stream.Close()
 		if err != nil {
@@ -174,15 +177,15 @@ func (w SubscribeResponceWriter) Reject(err error) {
 		return
 	}
 
-	var code StreamErrorCode
+	var code moq.StreamErrorCode
 
-	var strerr StreamError
+	var strerr moq.StreamError
 	if errors.As(err, &strerr) {
 		code = strerr.StreamErrorCode()
 	} else {
 		suberr, ok := err.(SubscribeError)
 		if ok {
-			code = StreamErrorCode(suberr.SubscribeErrorCode())
+			code = moq.StreamErrorCode(suberr.SubscribeErrorCode())
 		} else {
 			code = ErrInternalError.StreamErrorCode()
 		}
@@ -195,12 +198,16 @@ func (w SubscribeResponceWriter) Reject(err error) {
 
 	close(w.doneCh)
 
-	slog.Debug("rejected a subscription", slog.String("error", err.Error()))
+	slog.Debug("Rejected a subscription", slog.String("error", err.Error()))
 }
 
-func getSubscription(r quicvarint.Reader) (Subscription, error) {
+func readSubscription(str moq.Stream) (Subscription, error) {
+	r, err := message.NewReader(str)
+	if err != nil {
+		slog.Error("failed to get a new message reader", slog.String("error", err.Error()))
+	}
 	var sm message.SubscribeMessage
-	err := sm.DeserializePayload(r)
+	err = sm.Decode(r)
 	if err != nil {
 		slog.Debug("failed to read a SUBSCRIBE message", slog.String("error", err.Error()))
 		return Subscription{}, err
@@ -218,9 +225,17 @@ func getSubscription(r quicvarint.Reader) (Subscription, error) {
 	}, nil
 }
 
-func getSubscribeUpdate(old Subscription, r quicvarint.Reader) (Subscription, error) {
+func readSubscribeUpdate(old Subscription, r io.Reader) (Subscription, error) {
+	// Get a new message reader
+	mr, err := message.NewReader(r)
+	if err != nil {
+		slog.Error("failed to get a new message reader", slog.String("error", err.Error()))
+		return Subscription{}, err
+	}
+
+	// Read a SUBSCRIBE_UPDATE message
 	var sum message.SubscribeUpdateMessage
-	err := sum.DeserializePayload(r)
+	err = sum.Decode(mr)
 	if err != nil {
 		slog.Debug("failed to read a SUBSCRIBE_UPDATE message", slog.String("error", err.Error()))
 		return Subscription{}, err

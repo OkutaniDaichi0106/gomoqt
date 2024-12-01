@@ -7,21 +7,14 @@ import (
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
-	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type AnnounceStream struct {
-	reader quicvarint.Reader
 	stream moq.Stream
 }
 
 func (a AnnounceStream) ReadAnnouncement() (Announcement, error) {
-	if a.reader == nil {
-		a.reader = quicvarint.NewReader(a.stream)
-	}
-
-	return getAnnouncement(a.reader)
-
+	return readAnnouncement(a.stream)
 }
 
 func (a AnnounceStream) Close(err error) {
@@ -56,7 +49,7 @@ type InterestHandler interface {
 type Announcement struct {
 	TrackNamespace    string
 	AuthorizationInfo string
-	Parameters        message.Parameters
+	Parameters        Parameters
 }
 
 type AnnounceWriter struct {
@@ -65,16 +58,19 @@ type AnnounceWriter struct {
 }
 
 func (w AnnounceWriter) Announce(announcement Announcement) {
+	// Add AUTHORIZATION_INFO parameter
+	if announcement.AuthorizationInfo != "" {
+		announcement.Parameters.Add(AUTHORIZATION_INFO, announcement.AuthorizationInfo)
+	}
+
+	// Initialize an ANNOUNCE message
 	am := message.AnnounceMessage{
 		TrackNamespace: strings.Split(announcement.TrackNamespace, "/"),
-		Parameters:     announcement.Parameters,
+		Parameters:     message.Parameters(announcement.Parameters),
 	}
 
-	if announcement.AuthorizationInfo != "" {
-		am.Parameters.Add(AUTHORIZATION_INFO, announcement.AuthorizationInfo)
-	}
-
-	_, err := w.stream.Write(am.SerializePayload())
+	// Encode the ANNOUNCE message
+	err := am.Encode(w.stream)
 	if err != nil {
 		slog.Error("failed to send an ANNOUNCE message.", slog.String("error", err.Error()))
 		return

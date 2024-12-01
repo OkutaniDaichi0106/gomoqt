@@ -21,17 +21,7 @@ type RelayManager struct {
 	trackNamespaceTree trackNamespaceTree
 }
 
-// func (rm RelayManager) GetAnnouncement(trackNamespace string) (Announcement, bool) {
-// 	tns := strings.Split(trackNamespace, "/")
-// 	tnsNode, ok := rm.findTrackNamespace(tns)
-// 	if !ok {
-// 		return Announcement{}, false
-// 	}
-
-// 	return *tnsNode.announcement, true
-// }
-
-func (rm RelayManager) GetAnnouncements(trackNamespacePrefix string) ([]Announcement, bool) {
+func (rm RelayManager) FindAnnouncements(trackNamespacePrefix string) ([]Announcement, bool) {
 	tns := strings.Split(trackNamespacePrefix, "/")
 	tnsNode, ok := rm.findTrackNamespace(tns)
 	if !ok {

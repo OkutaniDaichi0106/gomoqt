@@ -21,13 +21,18 @@ func TestSessionUpdateMessage(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+
 			sum := message.SessionUpdateMessage{Bitrate: tc.input}
 
-			serialized := sum.SerializePayload()
+			var buf bytes.Buffer
+			err := sum.Encode(&buf)
+
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("expected error: %v, got: %v", tc.wantErr, err)
+			}
 
 			var deserialized message.SessionUpdateMessage
-			reader := bytes.NewReader(serialized)
-			err := deserialized.DeserializePayload(quicvarint.NewReader(reader))
+			err = deserialized.Decode(quicvarint.NewReader(&buf))
 
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("expected error: %v, got: %v", tc.wantErr, err)

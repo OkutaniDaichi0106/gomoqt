@@ -57,6 +57,7 @@ func (f FetchStream) Close() error {
  */
 type GroupSequence message.GroupSequence
 
+/***/
 type SubscriberPriority message.SubscriberPriority
 
 type FetchHandler interface {

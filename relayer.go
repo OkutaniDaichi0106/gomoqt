@@ -19,7 +19,7 @@ type Relayer struct {
 	//
 	RequestHandler RequestHandler
 
-	ServerSessionHandler ServerSessionHandler
+	SessionHandler ServerSessionHandler
 
 	/*
 	 * Relay Manager
@@ -45,7 +45,7 @@ func (r Relayer) run(sess *ServerSession) {
 	/*
 	 * Handle Session
 	 */
-	go r.ServerSessionHandler.HandleServerSession(sess)
+	go r.SessionHandler.HandleServerSession(sess)
 
 	/*
 	 * Listen bidirectional streams

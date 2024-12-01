@@ -44,10 +44,10 @@ func main() {
 
 	// Initialize a Relayer
 	relayer := moqt.Relayer{
-		Path:                 "/path",
-		RequestHandler:       requestHandler{},
-		ServerSessionHandler: serverSessionHandler{},
-		RelayManager:         nil,
+		Path:           "/path",
+		RequestHandler: requestHandler{},
+		SessionHandler: serverSessionHandler{},
+		RelayManager:   nil,
 	}
 
 	// Run the Relayer on WebTransport

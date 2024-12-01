@@ -275,24 +275,6 @@ func (err defaultInfoError) InfoErrorCode() InfoErrorCode {
 }
 
 /*
- * Track Not Found Error
- */
-var _ SubscribeError = (*trackDoesNotExistError)(nil)
-var _ InfoError = (*trackDoesNotExistError)(nil)
-
-type trackDoesNotExistError struct{}
-
-func (trackDoesNotExistError) Error() string {
-	return "track does not exist"
-}
-func (trackDoesNotExistError) SubscribeErrorCode() SubscribeErrorCode {
-	return subscribe_track_does_not_exist
-}
-func (trackDoesNotExistError) InfoErrorCode() InfoErrorCode {
-	return info_track_does_not_exist
-}
-
-/*
  * Fetch Errors
  */
 type FetchErrorCode int
@@ -362,6 +344,9 @@ func (err defaultTerminateError) TerminateErrorCode() TerminateErrorCode {
 /*
  * Group Error
  */
+type GroupError interface {
+	GroupErrorCode() GroupErrorCode
+}
 
 type GroupErrorCode message.GroupErrorCode
 
@@ -392,6 +377,7 @@ var _ SubscribeError = (*internalError)(nil)
 var _ SubscribeDoneError = (*internalError)(nil)
 var _ TerminateError = (*internalError)(nil)
 var _ InfoError = (*internalError)(nil)
+var _ GroupError = (*internalError)(nil)
 
 type internalError struct{}
 
@@ -427,6 +413,10 @@ func (internalError) InfoErrorCode() InfoErrorCode {
 	return info_internal_error
 }
 
+func (internalError) GroupErrorCode() GroupErrorCode {
+	return group_drop_internal_error
+}
+
 /*
  * Unauthorized Error
  */
@@ -450,4 +440,27 @@ func (unauthorizedError) SubscribeDoneErrorCode() SubscribeDoneStatusCode {
 
 func (unauthorizedError) TerminateErrorCode() TerminateErrorCode {
 	return terminate_unauthorized
+}
+
+/*
+ * Track Does Not Exist Error
+ */
+var _ SubscribeError = (*trackDoesNotExistError)(nil)
+var _ InfoError = (*trackDoesNotExistError)(nil)
+
+type trackDoesNotExistError struct{}
+
+func (trackDoesNotExistError) Error() string {
+	return "track does not exist"
+}
+
+func (trackDoesNotExistError) SubscribeErrorCode() SubscribeErrorCode {
+	return subscribe_track_does_not_exist
+}
+func (trackDoesNotExistError) InfoErrorCode() InfoErrorCode {
+	return info_track_does_not_exist
+}
+
+func (trackDoesNotExistError) GroupErrorCode() GroupErrorCode {
+	return group_drop_track_does_not_exist
 }

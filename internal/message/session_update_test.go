@@ -31,8 +31,13 @@ func TestSessionUpdateMessage(t *testing.T) {
 				t.Fatalf("expected error: %v, got: %v", tc.wantErr, err)
 			}
 
+			r, err := message.NewReader(&buf)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("expected error: %v, got: %v", tc.wantErr, err)
+			}
+
 			var deserialized message.SessionUpdateMessage
-			err = deserialized.Decode(quicvarint.NewReader(&buf))
+			err = deserialized.Decode(quicvarint.NewReader(r))
 
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("expected error: %v, got: %v", tc.wantErr, err)

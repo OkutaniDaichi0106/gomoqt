@@ -10,7 +10,7 @@ type AnnounceMessage struct {
 	/*
 	 * Track Namespace
 	 */
-	TrackNamespace TrackNamespace
+	TrackNamespace string
 
 	/*
 	 * Announce Parameters
@@ -33,7 +33,8 @@ func (a AnnounceMessage) Encode(w io.Writer) error {
 	p := make([]byte, 0, 1<<6) // TODO: Tune the size
 
 	// Append the Track Namespace
-	p = appendTrackNamespace(p, a.TrackNamespace)
+	p = quicvarint.Append(p, uint64(len(a.TrackNamespace)))
+	p = append(p, []byte(a.TrackNamespace)...)
 
 	// Append the Parameters
 	p = appendParameters(p, a.Parameters)
@@ -60,12 +61,18 @@ func (am *AnnounceMessage) Decode(r io.Reader) error {
 	}
 
 	// Get a Track Namespace
-	tns, err := readTrackNamespace(mr)
+	num, err := quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
-	am.TrackNamespace = tns
+	buf := make([]byte, num)
+	_, err = r.Read(buf)
+	if err != nil {
+		return err
+	}
+	am.TrackNamespace = string(buf)
 
+	// Get Parameters
 	am.Parameters, err = readParameters(mr)
 	if err != nil {
 		return err

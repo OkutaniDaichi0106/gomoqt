@@ -47,11 +47,6 @@ var (
 		reason: "protocol violation",
 	}
 
-	ErrDuplicatedTrackAlias = defaultTerminateError{
-		code:   terminate_duplicate_track_alias,
-		reason: "duplicate track alias",
-	}
-
 	ErrParameterLengthMismatch = defaultTerminateError{
 		code:   terminate_parameter_length_mismatch,
 		reason: "parameter length mismatch",
@@ -315,7 +310,6 @@ const (
 	terminate_internal_error            TerminateErrorCode = 0x1
 	terminate_unauthorized              TerminateErrorCode = 0x2
 	terminate_protocol_violation        TerminateErrorCode = 0x3
-	terminate_duplicate_track_alias     TerminateErrorCode = 0x4
 	terminate_parameter_length_mismatch TerminateErrorCode = 0x5
 	terminate_too_many_subscribes       TerminateErrorCode = 0x6
 	terminate_goaway_timeout            TerminateErrorCode = 0x10

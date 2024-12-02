@@ -3,7 +3,6 @@ package moqt
 import (
 	"context"
 	"io"
-	"log"
 	"log/slog"
 	"strings"
 	"sync"
@@ -16,9 +15,6 @@ var defaultRelayManager = NewRelayManager()
 type Relayer struct {
 	Path string
 
-	//
-	RequestHandler RequestHandler
-
 	SessionHandler ServerSessionHandler
 
 	/*
@@ -29,12 +25,11 @@ type Relayer struct {
 	RelayManager *RelayManager
 
 	BufferSize int
+
+	CacheManager CacheManager
 }
 
 func (r Relayer) run(sess *ServerSession) {
-	if r.RequestHandler == nil {
-		panic("no request handler")
-	}
 	if r.RelayManager == nil {
 		r.RelayManager = defaultRelayManager
 	}
@@ -57,7 +52,10 @@ func (r Relayer) run(sess *ServerSession) {
 	 */
 	go r.listenUniStreams(sess)
 
-	go r.listenDatagram(sess)
+	/*
+	 * Listen datagrams
+	 */
+	go r.listenDatagrams(sess)
 
 	select {}
 }
@@ -89,58 +87,60 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 				}
 
 				w := AnnounceWriter{
-					doneCh: make(chan struct{}, 1),
 					stream: stream,
 				}
 
-				// Announce
-				announcements, ok := r.RelayManager.FindAnnouncements(interest.TrackPrefix)
-				if !ok || announcements == nil {
-					announcements = make([]Announcement, 0)
+				/*
+				 * Announce
+				 */
+				// Announce existing tracks
+				// Find any Track Namespace node
+				tns := strings.Split(interest.TrackPrefix, "/")
+				tnsNode, ok := r.RelayManager.findTrackNamespace(tns)
+				if !ok {
+					w.Close(ErrTrackDoesNotExist)
+					return
 				}
 
-				r.RequestHandler.HandleInterest(interest, announcements, w)
-				<-w.doneCh
+				// Get any Announcement under the Track Namespace
+				announcements := tnsNode.getAnnouncements()
+				// Send the announcements
+				for _, ann := range announcements {
+					w.Announce(ann)
+				}
 			case stream_type_subscribe:
 				slog.Info("Subscribe Stream was opened")
 
+				// Initialize a Subscriber Responce Writer
+				sw := SubscribeResponceWriter{
+					stream: stream,
+				}
+
+				// Get a subscription
 				subscription, err := readSubscription(stream)
 				if err != nil {
 					slog.Error("failed to get a subscription", slog.String("error", err.Error()))
 
-					// Close the Stream gracefully
-					err = stream.Close()
-					if err != nil {
-						slog.Error("failed to close the stream", slog.String("error", err.Error()))
-						return
-					}
-
+					// Close the Stream
+					sw.Reject(err)
 					return
-				}
-
-				//
-				sw := SubscribeResponceWriter{
-					stream: stream,
-					doneCh: make(chan struct{}, 1),
 				}
 
 				// Get any Infomation of the track
 				info, ok := r.RelayManager.GetInfo(subscription.TrackNamespace, subscription.TrackName)
 				if ok {
-					// Handle with out
-					r.RequestHandler.HandleSubscribe(subscription, &info, sw)
+					// Accept the request if information exists
+					sw.Accept(info)
 				} else {
-					r.RequestHandler.HandleSubscribe(subscription, nil, sw)
+					// Reject the request if information does not exist
+					sw.Reject(ErrTrackDoesNotExist)
+					return
 				}
-
-				<-sw.doneCh
 
 				/*
 				 * Accept the new subscription
 				 */
 				sess.acceptSubscription(subscription)
-
-				log.Print("ACCEPT Subscription")
 
 				/*
 				 * Catch any Subscribe Update or any error from the subscriber
@@ -156,18 +156,18 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 
 					sw := SubscribeResponceWriter{
 						stream: stream,
-						doneCh: make(chan struct{}, 1),
 					}
 
 					// Get any Infomation of the track
 					info, ok := r.RelayManager.GetInfo(subscription.TrackNamespace, subscription.TrackName)
 					if ok {
-						r.RequestHandler.HandleSubscribe(update, &info, sw)
+						// Accept the request if information exists
+						sw.Accept(info)
 					} else {
-						r.RequestHandler.HandleSubscribe(update, nil, sw)
+						// Reject the request if information does not exist
+						sw.Reject(ErrTrackDoesNotExist)
+						return
 					}
-
-					<-sw.doneCh
 
 					slog.Info("updated a subscription", slog.Any("from", subscription), slog.Any("to", update))
 
@@ -179,32 +179,52 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 				}
 
 				sess.stopSubscription(subscription.subscribeID)
-				slog.Info("unsubscribed", slog.Any("subscription", subscription))
+
+				slog.Info("subscription has ended", slog.Any("subscription", subscription))
 
 				// Close the Stream gracefully
-				err = stream.Close()
-				if err != nil {
-					slog.Error("failed to close the stream", slog.String("error", err.Error()))
-					return
-				}
+				sw.Reject(nil)
+				return
 			case stream_type_fetch:
 				// Handle the Fecth Stream
 				slog.Info("Fetch Stream was opened")
 
-				fetchRequest, err := readFetchRequest(stream)
+				// Get a fetch request
+				req, err := readFetchRequest(stream)
 				if err != nil {
 					slog.Error("failed to get a fetch-request", slog.String("error", err.Error()))
 					return
 				}
+				slog.Info("get a fetch request", slog.Any("fetch request", req))
 
+				// Initialize a fetch responce writer
 				w := FetchResponceWriter{
-					doneCh: make(chan struct{}, 1),
 					stream: stream,
 				}
 
-				r.RequestHandler.HandleFetch(fetchRequest, w)
+				// Get data
+				data := r.CacheManager.GetGroupData(req.TrackNamespace, req.TrackName, req.GroupSequence)
 
-				<-w.doneCh
+				// Verify if subscriptions corresponding to the ftch request exists
+				for _, subscription := range sess.receivedSubscriptions {
+					if subscription.TrackNamespace != req.TrackNamespace {
+						continue
+					}
+					if subscription.TrackName != req.TrackName {
+						continue
+					}
+
+					// Send the group data
+					w.SendGroup(Group{
+						subscribeID:       subscription.subscribeID,
+						groupSequence:     req.GroupSequence,
+						PublisherPriority: PublisherPriority(req.SubscriberPriority), // TODO: Handle Publisher Priority
+					}, data[req.GroupOffset:])
+				}
+
+				// Close the Fetch Stream gracefully
+				w.Reject(nil)
+				return
 			case stream_type_info:
 				// Handle the Info Stream
 				slog.Info("Info Stream was opened")
@@ -216,19 +236,21 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 					return
 				}
 
-				w := InfoWriter{
-					doneCh: make(chan struct{}, 1),
+				iw := InfoWriter{
 					stream: stream,
 				}
 
 				info, ok := r.RelayManager.GetInfo(infoRequest.TrackNamespace, infoRequest.TrackName)
 				if ok {
-					r.RequestHandler.HandleInfoRequest(infoRequest, &info, w)
+					iw.Answer(info)
 				} else {
-					r.RequestHandler.HandleInfoRequest(infoRequest, nil, w)
+					iw.Reject(ErrTrackDoesNotExist)
+					return
 				}
 
-				<-w.doneCh
+				// Close the Info Stream gracefully
+				iw.Reject(nil)
+				return
 			default:
 				// Terminate the session if invalid Stream Type was detected
 				sess.Terminate(ErrInvalidStreamType)
@@ -351,7 +373,7 @@ func (r Relayer) listenUniStreams(sess *ServerSession) {
 	}
 }
 
-func (r Relayer) listenDatagram(sess *ServerSession) {
+func (r Relayer) listenDatagrams(sess *ServerSession) {
 	for {
 		group, payload, err := sess.receiveDatagram(context.TODO())
 		if err != nil {

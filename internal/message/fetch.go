@@ -7,7 +7,7 @@ import (
 )
 
 type FetchMessage struct {
-	TrackNamespace     TrackNamespace
+	TrackNamespace     string
 	TrackName          string
 	SubscriberPriority SubscriberPriority
 	GroupSequence      GroupSequence
@@ -21,7 +21,8 @@ func (fm FetchMessage) Encode(w io.Writer) error {
 	p := make([]byte, 0, 1<<8)
 
 	// Append the Track Namespace
-	p = appendTrackNamespace(p, fm.TrackNamespace)
+	p = quicvarint.Append(p, uint64(len(fm.TrackNamespace)))
+	p = append(p, []byte(fm.TrackNamespace)...)
 
 	// Append the Track Name
 	p = quicvarint.Append(p, uint64(len(fm.TrackName)))
@@ -59,23 +60,27 @@ func (fm *FetchMessage) Decode(r io.Reader) error {
 	}
 
 	// Get a Track Namespace
-	fm.TrackNamespace, err = readTrackNamespace(mr)
-	if err != nil {
-		return err
-	}
-
-	// Get a Track Name
 	num, err := quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
-
 	buf := make([]byte, num)
 	_, err = r.Read(buf)
 	if err != nil {
 		return err
 	}
+	fm.TrackNamespace = string(buf)
 
+	// Get a Track Name
+	num, err = quicvarint.Read(mr)
+	if err != nil {
+		return err
+	}
+	buf = make([]byte, num)
+	_, err = r.Read(buf)
+	if err != nil {
+		return err
+	}
 	fm.TrackName = string(buf)
 
 	// Get a Subscriber Priority

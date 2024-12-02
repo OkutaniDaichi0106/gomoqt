@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"strings"
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
@@ -58,16 +57,14 @@ func (sess *session) Interest(interest Interest) (AnnounceStream, error) {
 	/*
 	 * Open an Announce Stream
 	 */
-	stream, err := sess.openControlStream(stream_type_announce)
+	stream, err := openControlStream(sess.conn, stream_type_announce)
 	if err != nil {
 		slog.Error("failed to open an Announce Stream")
 		return AnnounceStream{}, err
 	}
 
-	tp := strings.Split(interest.TrackPrefix, "/")
-
 	aim := message.AnnounceInterestMessage{
-		TrackPrefix: tp,
+		TrackPrefix: interest.TrackPrefix,
 		Parameters:  message.Parameters(interest.Parameters),
 	}
 
@@ -91,7 +88,7 @@ func (sess *session) Subscribe(subscription Subscription) (*SubscribeWriter, Inf
 	defer sess.ssMu.Unlock()
 
 	// Open a Subscribe Stream
-	stream, err := sess.openControlStream(stream_type_subscribe)
+	stream, err := openControlStream(sess.conn, stream_type_subscribe)
 	if err != nil {
 		slog.Error("failed to open a Subscribe Stream", slog.String("error", err.Error()))
 		return nil, Info{}, err
@@ -106,7 +103,7 @@ func (sess *session) Subscribe(subscription Subscription) (*SubscribeWriter, Inf
 
 	sm := message.SubscribeMessage{
 		SubscribeID:        message.SubscribeID(subscription.subscribeID),
-		TrackNamespace:     strings.Split(subscription.TrackNamespace, "/"),
+		TrackNamespace:     subscription.TrackNamespace,
 		TrackName:          subscription.TrackName,
 		SubscriberPriority: message.SubscriberPriority(subscription.SubscriberPriority),
 		GroupOrder:         message.GroupOrder(subscription.GroupOrder),
@@ -147,18 +144,28 @@ func (sess *session) Subscribe(subscription Subscription) (*SubscribeWriter, Inf
 }
 
 func (sess *session) Fetch(req FetchRequest) (FetchStream, error) {
-	stream, err := sess.openControlStream(stream_type_fetch)
+	stream, err := openControlStream(sess.conn, stream_type_fetch)
 	if err != nil {
 		slog.Error("failed to open a Fetch Stream", slog.String("error", err.Error()))
 		return FetchStream{}, err
 	}
 
-	err = message.FetchMessage(req).Encode(stream)
+	fm := message.FetchMessage{
+		TrackNamespace:     req.TrackName,
+		TrackName:          req.TrackName,
+		SubscriberPriority: message.SubscriberPriority(req.SubscriberPriority),
+		GroupSequence:      message.GroupSequence(req.GroupSequence),
+		GroupOffset:        req.GroupOffset,
+	}
+
+	// Encode the message
+	err = fm.Encode(stream)
 	if err != nil {
 		slog.Error("failed to send a FETCH message", slog.String("error", err.Error()))
 		return FetchStream{}, err
 	}
 
+	// Receive a Group
 	group, err := readGroup(stream)
 	if err != nil {
 		slog.Error("failed to get a Group", slog.String("error", err.Error()))
@@ -192,7 +199,7 @@ func (sess *session) RequestInfo(req InfoRequest) (Info, error) {
 	 * Send an INFO_REQUEST message
 	 */
 	irm := message.InfoRequestMessage{
-		TrackNamespace: strings.Split(req.TrackNamespace, "/"),
+		TrackNamespace: req.TrackNamespace,
 		TrackName:      req.TrackName,
 	}
 	err = irm.Encode(stream)
@@ -219,15 +226,15 @@ func (sess *session) RequestInfo(req InfoRequest) (Info, error) {
 	return Info(info), nil
 }
 
-func (sess *session) openControlStream(st StreamType) (moq.Stream, error) {
-	stream, err := sess.conn.OpenStream()
+func openControlStream(conn moq.Connection, streamType StreamType) (moq.Stream, error) {
+	stream, err := conn.OpenStream()
 	if err != nil {
 		slog.Error("failed to open an Info Request Stream", slog.String("error", err.Error()))
 		return nil, err
 	}
 
 	// Send Announce Stream Type
-	_, err = stream.Write([]byte{byte(st)})
+	_, err = stream.Write([]byte{byte(streamType)})
 	if err != nil {
 		slog.Error("failed to send Announce Stream Type")
 		return nil, err

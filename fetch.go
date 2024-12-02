@@ -54,10 +54,15 @@ type FetchHandler interface {
 	HandleFetch(FetchRequest, FetchResponceWriter)
 }
 
-type FetchRequest message.FetchMessage
+type FetchRequest struct {
+	TrackNamespace     string
+	TrackName          string
+	SubscriberPriority SubscriberPriority
+	GroupSequence      GroupSequence
+	GroupOffset        uint64
+}
 
 type FetchResponceWriter struct {
-	doneCh chan struct{}
 	stream moq.Stream
 }
 
@@ -71,19 +76,13 @@ func (w FetchResponceWriter) SendGroup(group Group, data []byte) {
 	err := gm.Encode(w.stream)
 	if err != nil {
 		slog.Error("failed to send a GROUP message", slog.String("error", err.Error()))
-		w.doneCh <- ErrInternalError
 		return
 	}
 
 	_, err = w.stream.Write(data)
 	if err != nil {
 		slog.Error("failed to send the data", slog.String("error", err.Error()))
-		w.doneCh <- ErrInternalError
 	}
-
-	w.doneCh <- struct{}{}
-
-	close(w.doneCh)
 
 	slog.Info("sent data")
 }
@@ -113,10 +112,6 @@ func (w FetchResponceWriter) Reject(err error) {
 
 	w.stream.CancelRead(code)
 	w.stream.CancelWrite(code)
-
-	w.doneCh <- struct{}{}
-
-	close(w.doneCh)
 
 	slog.Info("rejcted the fetch request")
 }

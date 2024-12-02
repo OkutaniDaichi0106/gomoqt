@@ -4,7 +4,6 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"strings"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
@@ -16,7 +15,7 @@ type Interest struct {
 }
 
 type InterestHandler interface {
-	HandleInterest(Interest, []Announcement, AnnounceWriter)
+	HandleInterest(Interest, AnnounceWriter)
 }
 
 type Announcement struct {
@@ -64,7 +63,7 @@ func readAnnouncement(r io.Reader) (Announcement, error) {
 
 	// Initialize an Announcement
 	announcement := Announcement{
-		TrackNamespace: strings.Join(am.TrackNamespace, "/"),
+		TrackNamespace: am.TrackNamespace,
 		Parameters:     Parameters(am.Parameters),
 	}
 
@@ -78,7 +77,6 @@ func readAnnouncement(r io.Reader) (Announcement, error) {
 }
 
 type AnnounceWriter struct {
-	doneCh chan struct{}
 	stream moq.Stream
 }
 
@@ -90,7 +88,7 @@ func (w AnnounceWriter) Announce(announcement Announcement) {
 
 	// Initialize an ANNOUNCE message
 	am := message.AnnounceMessage{
-		TrackNamespace: strings.Split(announcement.TrackNamespace, "/"),
+		TrackNamespace: announcement.TrackNamespace,
 		Parameters:     message.Parameters(announcement.Parameters),
 	}
 
@@ -127,10 +125,6 @@ func (w AnnounceWriter) Close(err error) {
 
 	w.stream.CancelRead(code)
 	w.stream.CancelWrite(code)
-
-	w.doneCh <- struct{}{}
-
-	close(w.doneCh)
 
 	slog.Info("closed an Announce Stream")
 }

@@ -2,6 +2,7 @@ package moqt
 
 import (
 	"errors"
+	"io"
 	"log/slog"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
@@ -24,7 +25,6 @@ type InfoRequest struct {
 type Info message.InfoMessage
 
 type InfoWriter struct {
-	doneCh chan struct{}
 	stream moq.Stream
 }
 
@@ -36,21 +36,12 @@ func (w InfoWriter) Answer(i Info) {
 		return
 	}
 
-	w.doneCh <- struct{}{}
-
-	close(w.doneCh)
-
 	slog.Info("answered an info")
 }
 
 func (w InfoWriter) Reject(err error) {
 	if err == nil {
-		err := w.stream.Close()
-		if err != nil {
-			slog.Debug("failed to close an Info Stream", slog.String("error", err.Error()))
-		}
-
-		return
+		w.Close()
 	}
 
 	var code moq.StreamErrorCode
@@ -70,9 +61,24 @@ func (w InfoWriter) Reject(err error) {
 	w.stream.CancelRead(code)
 	w.stream.CancelWrite(code)
 
-	w.doneCh <- struct{}{}
-
-	close(w.doneCh)
-
 	slog.Info("rejected an info request")
+}
+
+func (w InfoWriter) Close() {
+	err := w.stream.Close()
+	if err != nil {
+		slog.Debug("failed to close an Info Stream", slog.String("error", err.Error()))
+	}
+}
+
+func readInfo(r io.Reader) (Info, error) {
+	// Read an INFO message
+	var im message.InfoMessage
+	err := im.Decode(r)
+	if err != nil {
+		slog.Error("failed to read a INFO message", slog.String("error", err.Error()))
+		return Info{}, err
+	}
+
+	return Info(im), nil
 }

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"strings"
 	"sync"
 	"time"
 
@@ -156,7 +155,6 @@ type SubscribeHandler interface {
 }
 
 type SubscribeResponceWriter struct {
-	doneCh chan struct{}
 	stream moq.Stream
 }
 
@@ -167,10 +165,6 @@ func (w SubscribeResponceWriter) Accept(i Info) {
 	if err != nil {
 		slog.Error("failed to accept the Subscription", slog.String("error", err.Error()))
 	}
-
-	w.doneCh <- struct{}{}
-
-	close(w.doneCh)
 
 	slog.Info("Accepted the subscription")
 }
@@ -204,10 +198,6 @@ func (w SubscribeResponceWriter) Reject(err error) {
 	w.stream.CancelRead(code)
 	w.stream.CancelWrite(code)
 
-	w.doneCh <- struct{}{}
-
-	close(w.doneCh)
-
 	slog.Debug("Rejected a subscription", slog.String("error", err.Error()))
 }
 
@@ -221,7 +211,7 @@ func readSubscription(r moq.Stream) (Subscription, error) {
 
 	return Subscription{
 		subscribeID:        SubscribeID(sm.SubscribeID),
-		TrackNamespace:     strings.Join(sm.TrackNamespace, "/"),
+		TrackNamespace:     sm.TrackNamespace,
 		TrackName:          sm.TrackName,
 		SubscriberPriority: SubscriberPriority(sm.SubscriberPriority),
 		GroupOrder:         GroupOrder(sm.GroupOrder),

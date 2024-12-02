@@ -34,7 +34,7 @@ type Server struct {
 	QUICConfig *quic.Config
 
 	//
-	SetupHijacker func(SetupRequest) SetupResponce
+	SetupHijackerFunc func(SetupRequest) SetupResponce
 	//SetupHandler
 
 	// Relayers running on QUIC
@@ -132,8 +132,8 @@ func (s *Server) ListenAndServe() error {
 
 				// Send a set-up responce
 				var rsp SetupResponce
-				if s.SetupHijacker != nil {
-					rsp = s.SetupHijacker(req)
+				if s.SetupHijackerFunc != nil {
+					rsp = s.SetupHijackerFunc(req)
 				} else {
 					rsp = SetupResponce{
 						SelectedVersion: Default,
@@ -241,8 +241,8 @@ func (s *Server) RunOnWebTransport(relayer Relayer) {
 
 		// Send a set-up responce
 		var rsp SetupResponce
-		if s.SetupHijacker != nil {
-			rsp = s.SetupHijacker(req)
+		if s.SetupHijackerFunc != nil {
+			rsp = s.SetupHijackerFunc(req)
 		} else {
 			rsp = SetupResponce{
 				SelectedVersion: Default,

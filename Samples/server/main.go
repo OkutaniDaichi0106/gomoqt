@@ -2,10 +2,8 @@ package main
 
 import (
 	"crypto/tls"
-	"log"
 	"log/slog"
 	"os"
-	"time"
 
 	moqt "github.com/OkutaniDaichi0106/gomoqt"
 	"github.com/quic-go/quic-go"
@@ -45,7 +43,6 @@ func main() {
 	// Initialize a Relayer
 	relayer := moqt.Relayer{
 		Path:           "/path",
-		RequestHandler: requestHandler{},
 		SessionHandler: serverSessionHandler{},
 		RelayManager:   nil,
 	}
@@ -100,59 +97,6 @@ func (serverSessionHandler) HandleServerSession(sess *moqt.ServerSession) {
 	}
 
 	slog.Info("successfully subscribed", slog.Any("subscription", subscription), slog.Any("info", info))
-}
-
-var _ moqt.RequestHandler = (*requestHandler)(nil)
-
-type requestHandler struct{}
-
-func (requestHandler) HandleInterest(i moqt.Interest, a []moqt.Announcement, w moqt.AnnounceWriter) {
-	if a == nil {
-		// Close the Announce Stream if track was not found
-		w.Close(moqt.ErrTrackDoesNotExist)
-	}
-
-	log.Print("Announcements", a, len(a))
-
-	for _, announcement := range a {
-		w.Announce(announcement)
-	}
-
-	// Close the Announce Stream after 30 minutes
-	time.Sleep(30 * time.Minute)
-
-	w.Close(nil)
-}
-
-func (requestHandler) HandleSubscribe(s moqt.Subscription, info *moqt.Info, w moqt.SubscribeResponceWriter) {
-	if info == nil {
-		/*
-		 * When info is nil, it means the subscribed track was not found.
-		 * Reject the subscription or make a new subscrition to upstream.
-		 */
-		w.Reject(moqt.ErrTrackDoesNotExist)
-		return
-	}
-
-	w.Accept(*info)
-}
-
-func (requestHandler) HandleFetch(r moqt.FetchRequest, w moqt.FetchResponceWriter) {
-	// Reject all fetch request
-	w.Reject(moqt.ErrNoGroup)
-}
-
-func (requestHandler) HandleInfoRequest(r moqt.InfoRequest, i *moqt.Info, w moqt.InfoWriter) {
-	if i == nil {
-		/*
-		 * When info is nil, it means the subscribed track was not found.
-		 * Reject the request or make a new subscrition to upstream and request information of the track.
-		 */
-		w.Reject(moqt.ErrTrackDoesNotExist)
-		return
-	}
-
-	w.Answer(*i)
 }
 
 func getCertificates(certFile, keyFile string) ([]tls.Certificate, error) {

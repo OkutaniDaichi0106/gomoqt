@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"io"
-	"log"
 	"log/slog"
 	"net"
 	"net/http"
@@ -33,25 +32,24 @@ type Client struct {
 
 	SetupParameters Parameters
 
-	HijackSetupRarams func(Parameters) error
+	SetupHijackerFunc func(SetupResponce) error
 
-	ClientSessionHandler ClientSessionHandler
+	Announcements []Announcement
 
-	RequestHandler RequestHandler
+	SessionHandler ClientSessionHandler
 
-	RelayManager *RelayManager
+	CacheManager CacheManager
 }
 
 func (c Client) Run(ctx context.Context) error {
 	/*
 	 * Initialize the Client
 	 */
-	if c.RelayManager == nil {
-		c.RelayManager = defaultRelayManager
-	}
-
 	if c.SupportedVersions == nil {
 		c.SupportedVersions = []Version{Default}
+	}
+	if c.CacheManager == nil {
+		// TODO: Handle the nil Cache Manager
 	}
 
 	/*
@@ -134,37 +132,25 @@ func (c Client) Run(ctx context.Context) error {
 	/*
 	 * Get a new Session
 	 */
-	// Initialize a Session
-	sess := ClientSession{
-		session: &session{
-			conn:                  conn,
-			subscribeWriters:      make(map[SubscribeID]*SubscribeWriter),
-			receivedSubscriptions: make(map[SubscribeID]Subscription),
-			doneCh:                make(chan struct{}, 1),
-		},
-	}
-
 	// Open a bidirectional Stream for the Session Stream
-	stream, err := sess.openControlStream(stream_type_session)
+	stream, err := openControlStream(conn, stream_type_session)
 	if err != nil {
 		slog.Error("failed to open a Session Stream", slog.String("error", err.Error()))
 		return err
 	}
-	sess.stream = stream
 
 	/*
 	 * Set up
 	 */
-	/*
-	 * Send a SESSION_CLIENT message
-	 */
-	err = sendSetupRequest(sess.stream, req)
+	// Send a set-up request
+	err = sendSetupRequest(stream, req)
 	if err != nil {
 		slog.Error("failed to request to set up", slog.String("error", err.Error()))
 		return err
 	}
 
-	rsp, err := readSetupResponce(sess.stream)
+	// Receive a set-up responce
+	rsp, err := readSetupResponce(stream)
 	if err != nil {
 		slog.Error("failed to receive a SESSION_SERVER message", slog.String("error", err.Error()))
 		return err
@@ -178,24 +164,36 @@ func (c Client) Run(ctx context.Context) error {
 	}
 
 	// Handle the responce
-	if c.HijackSetupRarams != nil {
-		err := c.HijackSetupRarams(rsp.Parameters)
+	if c.SetupHijackerFunc != nil {
+		err := c.SetupHijackerFunc(rsp)
 		if err != nil {
-			slog.Error(err.Error())
+			slog.Error("setup hijacker returns an error", err.Error())
 			return err
 		}
+	}
+
+	// Initialize a Client Session
+	sess := ClientSession{
+		session: &session{
+			conn:                  conn,
+			stream:                stream,
+			subscribeWriters:      make(map[SubscribeID]*SubscribeWriter),
+			receivedSubscriptions: make(map[SubscribeID]Subscription),
+			doneCh:                make(chan struct{}, 1),
+		},
 	}
 
 	/*
 	 * Handle the Client Session
 	 */
-	go c.ClientSessionHandler.HandleClientSession(&sess)
+	go c.SessionHandler.HandleClientSession(&sess)
 
 	/*
 	 * Listen a bidirectional stream
 	 */
 	go c.listenBiStreams(&sess)
 
+	// Catch a shutting down signal
 	signalCh := make(chan os.Signal, 1)
 	signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM)
 
@@ -226,21 +224,6 @@ func sendSetupRequest(w io.Writer, req SetupRequest) error {
 	return nil
 }
 
-func readSetupResponce(r io.Reader) (SetupResponce, error) {
-	/***/
-	var ssm message.SessionServerMessage
-	err := ssm.Decode(r)
-	if err != nil {
-		slog.Error("failed to read a SESSION_SERVER message", slog.String("error", err.Error()))
-		return SetupResponce{}, err
-	}
-
-	return SetupResponce{
-		SelectedVersion: Version(ssm.SelectedVersion),
-		Parameters:      Parameters(ssm.Parameters),
-	}, nil
-}
-
 func (c Client) listenBiStreams(sess *ClientSession) {
 	for {
 		stream, err := sess.conn.AcceptStream(context.Background())
@@ -269,21 +252,18 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 					return
 				}
 
-				log.Print("INTEREST", interest)
-
-				w := AnnounceWriter{
-					doneCh: make(chan struct{}, 1),
+				aw := AnnounceWriter{
 					stream: stream,
 				}
 
 				// Announce
-				announcements, ok := c.RelayManager.FindAnnouncements(interest.TrackPrefix)
-				if !ok || announcements == nil {
-					announcements = make([]Announcement, 0)
+				for _, announcement := range c.Announcements {
+					// Verify if the Announcement's Track Namespace has the Track Prefix
+					if strings.HasPrefix(announcement.TrackNamespace, interest.TrackPrefix) {
+						// Announce the Track Namespace
+						aw.Announce(announcement)
+					}
 				}
-
-				c.RequestHandler.HandleInterest(interest, announcements, w)
-				<-w.doneCh
 			case stream_type_subscribe:
 				slog.Info("Subscribe Stream was opened")
 
@@ -305,19 +285,16 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 				//
 				sw := SubscribeResponceWriter{
 					stream: stream,
-					doneCh: make(chan struct{}, 1),
 				}
 
 				// Get any Infomation of the track
-				info, ok := c.RelayManager.GetInfo(subscription.TrackNamespace, subscription.TrackName)
+				info, ok := sess.getInfo(subscription.TrackNamespace, subscription.TrackName)
 				if ok {
-					// Handle with out
-					c.RequestHandler.HandleSubscribe(subscription, &info, sw)
+					sw.Accept(info)
 				} else {
-					c.RequestHandler.HandleSubscribe(subscription, nil, sw)
+					sw.Reject(ErrTrackDoesNotExist)
+					return
 				}
-
-				<-sw.doneCh
 
 				/*
 				 * Accept the new subscription
@@ -338,18 +315,16 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 
 					sw := SubscribeResponceWriter{
 						stream: stream,
-						doneCh: make(chan struct{}, 1),
 					}
 
 					// Get any Infomation of the track
-					info, ok := c.RelayManager.GetInfo(subscription.TrackNamespace, subscription.TrackName)
+					info, ok := sess.getInfo(subscription.TrackNamespace, subscription.TrackName)
 					if ok {
-						c.RequestHandler.HandleSubscribe(update, &info, sw)
+						sw.Accept(info)
 					} else {
-						c.RequestHandler.HandleSubscribe(update, nil, sw)
+						sw.Reject(ErrTrackDoesNotExist)
+						return
 					}
-
-					<-sw.doneCh
 
 					slog.Info("updated a subscription", slog.Any("from", subscription), slog.Any("to", update))
 
@@ -363,50 +338,69 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 				sess.stopSubscription(subscription.subscribeID)
 
 				// Close the Stream gracefully
-				err = stream.Close()
-				if err != nil {
-					slog.Error("failed to close the stream", slog.String("error", err.Error()))
-					return
-				}
+				sw.Reject(nil)
+
 			case stream_type_fetch:
 				slog.Info("Fetch Stream was opened")
 
-				fetchRequest, err := readFetchRequest(stream)
+				req, err := readFetchRequest(stream)
 				if err != nil {
 					slog.Error("failed to get a fetch-request", slog.String("error", err.Error()))
 					return
 				}
 
 				w := FetchResponceWriter{
-					doneCh: make(chan struct{}, 1),
 					stream: stream,
 				}
 
-				c.RequestHandler.HandleFetch(fetchRequest, w)
+				// Get data
+				data := c.CacheManager.GetGroupData(req.TrackNamespace, req.TrackName, req.GroupSequence)
 
-				<-w.doneCh
+				// Verify if subscriptions corresponding to the ftch request exists
+				for _, subscription := range sess.receivedSubscriptions {
+					if subscription.TrackNamespace != req.TrackNamespace {
+						continue
+					}
+					if subscription.TrackName != req.TrackName {
+						continue
+					}
+
+					// Send the group data
+					w.SendGroup(Group{
+						subscribeID:       subscription.subscribeID,
+						groupSequence:     req.GroupSequence,
+						PublisherPriority: PublisherPriority(req.SubscriberPriority), // TODO: Handle Publisher Priority
+					}, data[req.GroupOffset:])
+				}
+
+				// Close the Fetch Stream gracefully
+				w.Reject(nil)
+				return
 			case stream_type_info:
 				slog.Info("Info Stream was opened")
 
-				infoRequest, err := readInfoRequest(stream)
+				req, err := readInfoRequest(stream)
 				if err != nil {
 					slog.Error("failed to get a info-request", slog.String("error", err.Error()))
 					return
 				}
 
-				w := InfoWriter{
-					doneCh: make(chan struct{}, 1),
+				// Initialize an Info Writer
+				iw := InfoWriter{
 					stream: stream,
 				}
 
-				info, ok := c.RelayManager.GetInfo(infoRequest.TrackNamespace, infoRequest.TrackName)
+				info, ok := sess.getInfo(req.TrackNamespace, req.TrackName)
 				if ok {
-					c.RequestHandler.HandleInfoRequest(infoRequest, &info, w)
+					iw.Answer(info)
 				} else {
-					c.RequestHandler.HandleInfoRequest(infoRequest, nil, w)
+					iw.Reject(ErrTrackDoesNotExist)
+					return
 				}
 
-				<-w.doneCh
+				// Close the Info Stream gracefully
+				iw.Reject(nil)
+				return
 			default:
 				err := ErrInvalidStreamType
 

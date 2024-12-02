@@ -11,7 +11,7 @@ type InfoRequestMessage struct {
 	/*
 	 * Track namespace
 	 */
-	TrackNamespace TrackNamespace
+	TrackNamespace string
 
 	/*
 	 * Track name
@@ -32,7 +32,8 @@ func (irm InfoRequestMessage) Encode(w io.Writer) error {
 	p := make([]byte, 0, 1<<8)
 
 	// Append the Track Namespace
-	p = appendTrackNamespace(p, irm.TrackNamespace)
+	p = quicvarint.Append(p, uint64(len(irm.TrackNamespace)))
+	p = append(p, []byte(irm.TrackNamespace)...)
 
 	// Append the Track Name
 	p = quicvarint.Append(p, uint64(len(irm.TrackName)))
@@ -63,18 +64,23 @@ func (irm *InfoRequestMessage) Decode(r io.Reader) error {
 	}
 
 	// Get a Track Namespace
-	tns, err := readTrackNamespace(mr)
-	if err != nil {
-		return err
-	}
-	irm.TrackNamespace = tns
-
-	// Get a Track Name
 	num, err := quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
 	buf := make([]byte, num)
+	_, err = r.Read(buf)
+	if err != nil {
+		return err
+	}
+	irm.TrackNamespace = string(buf)
+
+	// Get a Track Name
+	num, err = quicvarint.Read(mr)
+	if err != nil {
+		return err
+	}
+	buf = make([]byte, num)
 	_, err = r.Read(buf)
 	if err != nil {
 		return err

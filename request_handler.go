@@ -3,7 +3,6 @@ package moqt
 import (
 	"io"
 	"log/slog"
-	"strings"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 )
@@ -25,7 +24,7 @@ func readInterest(r io.Reader) (Interest, error) {
 	}
 
 	return Interest{
-		TrackPrefix: strings.Join(aim.TrackPrefix, "/"),
+		TrackPrefix: aim.TrackPrefix,
 		Parameters:  Parameters(aim.Parameters),
 	}, nil
 }
@@ -38,7 +37,15 @@ func readFetchRequest(r io.Reader) (FetchRequest, error) {
 		return FetchRequest{}, err
 	}
 
-	return FetchRequest(frm), nil
+	req := FetchRequest{
+		TrackNamespace:     frm.TrackNamespace,
+		TrackName:          frm.TrackName,
+		SubscriberPriority: SubscriberPriority(frm.SubscriberPriority),
+		GroupSequence:      GroupSequence(frm.GroupSequence),
+		GroupOffset:        frm.GroupOffset,
+	}
+
+	return req, nil
 }
 
 func readInfoRequest(r io.Reader) (InfoRequest, error) {
@@ -51,7 +58,7 @@ func readInfoRequest(r io.Reader) (InfoRequest, error) {
 	}
 
 	return InfoRequest{
-		TrackNamespace: strings.Join(irm.TrackNamespace, "/"),
+		TrackNamespace: irm.TrackNamespace,
 		TrackName:      irm.TrackName,
 	}, nil
 }

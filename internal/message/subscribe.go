@@ -18,7 +18,7 @@ type GroupOrder byte
 type SubscribeMessage struct {
 	SubscribeID SubscribeID
 
-	TrackNamespace TrackNamespace
+	TrackNamespace string
 
 	TrackName string
 
@@ -70,7 +70,8 @@ func (s SubscribeMessage) Encode(w io.Writer) error {
 	p = quicvarint.Append(p, uint64(s.SubscribeID))
 
 	// Append the Track Namespace
-	p = appendTrackNamespace(p, s.TrackNamespace)
+	p = quicvarint.Append(p, uint64(len(s.TrackNamespace)))
+	p = append(p, []byte(s.TrackNamespace)...)
 
 	// Append the Track Name
 	p = quicvarint.Append(p, uint64(len(s.TrackName)))
@@ -115,6 +116,7 @@ func (s *SubscribeMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
+
 	// Get Subscribe ID
 	num, err := quicvarint.Read(mr)
 	if err != nil {
@@ -123,18 +125,23 @@ func (s *SubscribeMessage) Decode(r io.Reader) error {
 	s.SubscribeID = SubscribeID(num)
 
 	// Get Track Namespace
-	tns, err := readTrackNamespace(mr)
+	num, err = quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
-	s.TrackNamespace = tns
+	buf := make([]byte, num)
+	_, err = r.Read(buf)
+	if err != nil {
+		return err
+	}
+	s.TrackNamespace = string(buf)
 
 	// Get Track Name
 	num, err = quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
-	buf := make([]byte, num)
+	buf = make([]byte, num)
 	_, err = r.Read(buf)
 	if err != nil {
 		return err

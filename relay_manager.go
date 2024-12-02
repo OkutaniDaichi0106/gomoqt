@@ -2,6 +2,7 @@ package moqt
 
 import (
 	"errors"
+	"log/slog"
 	"strings"
 	"sync"
 )
@@ -21,23 +22,42 @@ type RelayManager struct {
 	trackNamespaceTree trackNamespaceTree
 }
 
-func (rm RelayManager) FindAnnouncements(trackNamespacePrefix string) ([]Announcement, bool) {
-	tns := strings.Split(trackNamespacePrefix, "/")
+func (rm RelayManager) RegisterAnnouncement(ann Announcement) {
+	slog.Info("Registering an announcement")
+	tns := strings.Split(ann.TrackNamespace, "/")
 
-	// Find any Track Namespace node
-	tnsNode, ok := rm.findTrackNamespace(tns)
-	if !ok {
-		return nil, false
+	tnsNode := rm.newTrackNamespace(tns)
+
+	if tnsNode.announcement != nil {
+		slog.Info("updated an announcement", slog.Any("from", tnsNode.announcement), slog.Any("to", ann))
 	}
 
-	// Get any Announcement under the Track Namespace
-	announcements := tnsNode.getAnnouncements()
-	if announcements == nil {
-		return nil, false
-	}
+	tnsNode.announcement = &ann
 
-	return announcements, true
 }
+
+func (rm RelayManager) PublishAnnouncement(ann Announcement) {
+	slog.Info("Publishing an announcement")
+
+	tns := strings.Split(ann.TrackNamespace, "/")
+
+	for i, _ := range tns {
+		tnsNode, ok := rm.findTrackNamespace(tns[:i])
+		if !ok {
+			break
+		}
+
+		if tnsNode.followers != nil || len(tnsNode.followers) > 0 {
+			for _, aw := range tnsNode.followers {
+				aw.Announce(ann)
+			}
+		}
+	}
+}
+
+// func (rm RelayManager) RegisterTrack(subscription Subscription) {
+// 	//TODO
+// }
 
 func (rm RelayManager) GetInfo(trackNamespace, trackName string) (Info, bool) {
 	tns := strings.Split(trackNamespace, "/")
@@ -46,12 +66,31 @@ func (rm RelayManager) GetInfo(trackNamespace, trackName string) (Info, bool) {
 		return Info{}, false
 	}
 
-	tnNode, ok := tnsNode.findTrackNameNode(trackName)
+	tnNode, ok := tnsNode.findTrackName(trackName)
 	if !ok {
 		return Info{}, false
 	}
 
 	return tnNode.info, true
+}
+
+func (rm RelayManager) RecordInfo(trackNamespace string, trackName string, info Info) error {
+	slog.Info("Recording a track information")
+	tns := strings.Split(trackNamespace, "/")
+
+	tnsNode, ok := rm.findTrackNamespace(tns)
+	if !ok {
+		return errors.New("track namespace not found")
+	}
+
+	tnNode, ok := tnsNode.findTrackName(trackName)
+	if !ok {
+		return errors.New("track name not found")
+	}
+
+	tnNode.info = info
+
+	return nil
 }
 
 func (rm RelayManager) newTrackNamespace(trackNamespace []string) *trackNamespaceNode {
@@ -67,13 +106,20 @@ func (rm RelayManager) removeTrackNamespace(trackNamespace []string) error {
 }
 
 func (rm RelayManager) findDestinations(trackNamespace []string, trackName string, order GroupOrder) ([]*session, bool) {
+	// Find the Track Namespace
 	tnsNode, ok := rm.findTrackNamespace(trackNamespace)
 	if !ok {
 		return nil, false
 	}
 
-	tnNode, ok := tnsNode.findTrackNameNode(trackName)
+	// Find the Track Name
+	tnNode, ok := tnsNode.findTrackName(trackName)
 	if !ok {
+		return nil, false
+	}
+
+	// Verify the Group Order of the track
+	if tnNode.groupOrder != order {
 		return nil, false
 	}
 
@@ -144,9 +190,9 @@ type trackNamespaceNode struct {
 	announcement *Announcement
 
 	/*
-	 * sessions of followers to the Track Namespace
+	 * Announce Streams of followers to the Track Namespace
 	 */
-	followers []*session
+	followers []*AnnounceWriter
 }
 
 type trackNameNode struct {
@@ -236,7 +282,7 @@ func (node *trackNamespaceNode) trace(values ...string) (*trackNamespaceNode, bo
 	return currentNode, true
 }
 
-func (node *trackNamespaceNode) findTrackNameNode(trackName string) (*trackNameNode, bool) {
+func (node *trackNamespaceNode) findTrackName(trackName string) (*trackNameNode, bool) {
 	node.mu.RLock()
 	defer node.mu.RUnlock()
 
@@ -252,15 +298,15 @@ func (node *trackNamespaceNode) findTrackNameNode(trackName string) (*trackNameN
  * Create a new Track Name node when a subscriber makes a new subscription
  *
  */
-func (node *trackNamespaceNode) newTrackNameNode(trackName string) *trackNameNode {
-	node.mu.Lock()
-	defer node.mu.Unlock()
+func (tnsNode *trackNamespaceNode) newTrackName(trackName string) *trackNameNode {
+	tnsNode.mu.Lock()
+	defer tnsNode.mu.Unlock()
 
-	node.tracks[trackName] = &trackNameNode{
+	tnsNode.tracks[trackName] = &trackNameNode{
 		value: trackName,
 	}
 
-	return node.tracks[trackName]
+	return tnsNode.tracks[trackName]
 }
 
 func (node *trackNamespaceNode) getAnnouncements() []Announcement {

@@ -2,6 +2,7 @@ package message
 
 import (
 	"io"
+	"log/slog"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -19,12 +20,14 @@ type GroupMessage struct {
 }
 
 func (g GroupMessage) Encode(w io.Writer) error {
+	slog.Debug("encoding a GROUP message")
+
 	/*
 	 * Serialize the payload in the following format
 	 *
 	 * GROUP Message Payload {
 	 *   Subscribe ID (varint),
-	 *   Group ID (varint),
+	 *   Group Sequence (varint),
 	 *   Publisher Priority (varint),
 	 * }
 	 */
@@ -55,6 +58,8 @@ func (g GroupMessage) Encode(w io.Writer) error {
 }
 
 func (g *GroupMessage) Decode(r io.Reader) error {
+	slog.Debug("decoding a GROUP message")
+
 	// Get a messaga reader
 	mr, err := newReader(r)
 	if err != nil {

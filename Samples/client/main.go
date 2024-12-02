@@ -43,6 +43,8 @@ func main() {
  * Client Session Handler
  */
 func handleClientSession(sess *moqt.ClientSession) {
+	time.Sleep(1 * time.Second)
+
 	echoTrackPrefix := "japan/kyoto"
 	echoTrackNamespace := "japan/kyoto/kiu"
 	echoTrackName := "text"
@@ -79,6 +81,8 @@ func handleClientSession(sess *moqt.ClientSession) {
 			sequence++
 		}
 	}()
+
+	time.Sleep(1 * time.Second)
 
 	/*
 	 * Subscribe data

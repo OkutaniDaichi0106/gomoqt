@@ -2,6 +2,7 @@ package message
 
 import (
 	"io"
+	"log/slog"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -20,6 +21,8 @@ type AnnounceMessage struct {
 }
 
 func (a AnnounceMessage) Encode(w io.Writer) error {
+	slog.Debug("encoding a ANNOUNCE message")
+
 	/*
 	 * Serialize the payload in the following format
 	 *
@@ -54,6 +57,8 @@ func (a AnnounceMessage) Encode(w io.Writer) error {
 }
 
 func (am *AnnounceMessage) Decode(r io.Reader) error {
+	slog.Debug("decoding a ANNOUNCE message")
+
 	// Get a messaga reader
 	mr, err := newReader(r)
 	if err != nil {

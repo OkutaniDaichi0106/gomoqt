@@ -3,6 +3,7 @@ package message
 import (
 	"io"
 	"log"
+	"log/slog"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -13,8 +14,14 @@ type FetchUpdateMessage struct {
 
 // TODO
 func (fum FetchUpdateMessage) Encode(w io.Writer) error {
+	slog.Debug("decoding a FETCH_UPDATE message")
+
 	/*
 	 * Serialize the message in the following format
+	 *
+	 * FETCH_UPDATE Message Payload {
+	 *   Subscriber Priority (varint),
+	 * }
 	 */
 
 	/*
@@ -44,6 +51,8 @@ func (fum FetchUpdateMessage) Encode(w io.Writer) error {
 }
 
 func (fum *FetchUpdateMessage) Decode(r io.Reader) error {
+	slog.Debug("decoding a FETCH_UPDATE message")
+
 	// Get a messaga reader
 	mr, err := newReader(r)
 	if err != nil {

@@ -3,6 +3,7 @@ package message
 import (
 	"io"
 	"log"
+	"log/slog"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -20,6 +21,8 @@ type InfoRequestMessage struct {
 }
 
 func (irm InfoRequestMessage) Encode(w io.Writer) error {
+	slog.Debug("encoding a INFO_REQUEST message")
+
 	/*
 	 * Serialize the payload in the following format
 	 *
@@ -57,6 +60,8 @@ func (irm InfoRequestMessage) Encode(w io.Writer) error {
 }
 
 func (irm *InfoRequestMessage) Decode(r io.Reader) error {
+	slog.Debug("decoding a INFO_REQUEST message")
+
 	// Get a messaga reader
 	mr, err := newReader(r)
 	if err != nil {

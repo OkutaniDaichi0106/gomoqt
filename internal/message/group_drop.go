@@ -2,6 +2,7 @@ package message
 
 import (
 	"io"
+	"log/slog"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -15,11 +16,16 @@ type GroupDrop struct {
 }
 
 func (gd GroupDrop) Encode(w io.Writer) error {
+	slog.Debug("encoding a GROUP_DROP message")
+
 	/*
 	 * Serialize the payload in the following format
 	 *
-	 *
-	 *
+	 * GROUP_DROP Message Payload {
+	 *   Group Start Sequence (varint),
+	 *   Count (varint),
+	 *   Group Error Code (varint),
+	 * }
 	 */
 	p := make([]byte, 0, 1<<5)
 
@@ -48,6 +54,8 @@ func (gd GroupDrop) Encode(w io.Writer) error {
 }
 
 func (gd *GroupDrop) Decode(r io.Reader) error {
+	slog.Debug("decoding a GROUP_DROP message")
+
 	// Get a messaga reader
 	mr, err := newReader(r)
 	if err != nil {

@@ -2,6 +2,7 @@ package message
 
 import (
 	"io"
+	"log/slog"
 	"time"
 
 	"github.com/quic-go/quic-go/quicvarint"
@@ -46,6 +47,8 @@ type SubscribeMessage struct {
 }
 
 func (s SubscribeMessage) Encode(w io.Writer) error {
+	slog.Debug("encoding a SUBSCRIBE message")
+
 	/*
 	 * Serialize the message in the following formatt
 	 *
@@ -111,6 +114,8 @@ func (s SubscribeMessage) Encode(w io.Writer) error {
 }
 
 func (s *SubscribeMessage) Decode(r io.Reader) error {
+	slog.Debug("decoding a SUBSCRIBE message")
+
 	// Get a messaga reader
 	mr, err := newReader(r)
 	if err != nil {

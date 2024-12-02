@@ -54,11 +54,15 @@ func main() {
 }
 
 func handleServerSession(sess *moqt.ServerSession) {
+	echoTrackPrefix := "japan/kyoto"
+	echoTrackNamespace := "japan/kyoto/kiu"
+	echoTrackName := "text"
+
 	/*
 	 * Interest
 	 */
 	interest := moqt.Interest{
-		TrackPrefix: "relayer",
+		TrackPrefix: echoTrackPrefix,
 	}
 	slog.Info("interest", slog.Any("interest", interest))
 	annstr, err := sess.Interest(interest)
@@ -70,20 +74,25 @@ func handleServerSession(sess *moqt.ServerSession) {
 	/*
 	 * Get Announcements
 	 */
-	ann, err := annstr.ReadAnnouncement()
-	if err != nil {
-		slog.Error("failed to read an announcement", slog.String("error", err.Error()))
-		return
-	}
+	for {
+		ann, err := annstr.ReadAnnouncement()
+		if err != nil {
+			slog.Error("failed to read an announcement", slog.String("error", err.Error()))
+			return
+		}
+		slog.Info("received an announcement", slog.Any("announcement", ann))
 
-	slog.Info("received an announcement", slog.Any("announcement", ann))
+		if ann.TrackNamespace == echoTrackNamespace {
+			break
+		}
+	}
 
 	/*
 	 * Subscribe
 	 */
 	subscription := moqt.Subscription{
-		TrackNamespace: ann.TrackNamespace,
-		TrackName:      "text",
+		TrackNamespace: echoTrackNamespace,
+		TrackName:      echoTrackName,
 	}
 
 	_, info, err := sess.Subscribe(subscription)

@@ -2,6 +2,7 @@ package message
 
 import (
 	"io"
+	"log/slog"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/protocol"
 	"github.com/quic-go/quic-go/quicvarint"
@@ -21,6 +22,8 @@ type SessionServerMessage struct {
 }
 
 func (ssm SessionServerMessage) Encode(w io.Writer) error {
+	slog.Debug("encoding a SESSION_SERVER message")
+
 	/*
 	 * Serialize the message in the following formatt
 	 *
@@ -55,6 +58,8 @@ func (ssm SessionServerMessage) Encode(w io.Writer) error {
 }
 
 func (ssm *SessionServerMessage) Decode(r io.Reader) error {
+	slog.Debug("decoding a SESSION_SERVER message")
+
 	// Get a messaga reader
 	mr, err := newReader(r)
 	if err != nil {

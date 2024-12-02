@@ -2,6 +2,7 @@ package message
 
 import (
 	"io"
+	"log/slog"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -14,6 +15,8 @@ type SessionUpdateMessage struct {
 }
 
 func (sum SessionUpdateMessage) Encode(w io.Writer) error {
+	slog.Debug("encoding a SESSION_UPDATE message")
+
 	/*
 	 * Serialize the message in the following format
 	 *
@@ -42,6 +45,8 @@ func (sum SessionUpdateMessage) Encode(w io.Writer) error {
 }
 
 func (sum *SessionUpdateMessage) Decode(r io.Reader) error {
+	slog.Debug("decoding a SESSION_UPDATE message")
+
 	// Get a messaga reader
 	mr, err := newReader(r)
 	if err != nil {

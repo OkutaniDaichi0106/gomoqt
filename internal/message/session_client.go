@@ -61,6 +61,7 @@ func (scm SessionClientMessage) Encode(w io.Writer) error {
 
 func (scm *SessionClientMessage) Decode(r io.Reader) error {
 	slog.Debug("decoding a SESSION_CLIENT message")
+
 	// Get a messaga reader
 	mr, err := newReader(r)
 	if err != nil {

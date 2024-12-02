@@ -2,7 +2,7 @@ package message
 
 import (
 	"io"
-	"log"
+	"log/slog"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -16,6 +16,8 @@ type GoAwayMessage struct {
 }
 
 func (ga GoAwayMessage) Encode(w io.Writer) error {
+	slog.Debug("encoding a GOAWAY message")
+
 	/*
 	 * Serialize the payload in the following format
 	 *
@@ -33,8 +35,6 @@ func (ga GoAwayMessage) Encode(w io.Writer) error {
 	p = quicvarint.Append(p, uint64(len(ga.NewSessionURI)))
 	p = append(p, []byte(ga.NewSessionURI)...)
 
-	log.Print("GO_AWAY payload", p)
-
 	// Get a serialized message
 	b := make([]byte, 0, len(p)+8)
 
@@ -51,6 +51,8 @@ func (ga GoAwayMessage) Encode(w io.Writer) error {
 }
 
 func (ga *GoAwayMessage) Decode(r io.Reader) error {
+	slog.Debug("decoding a GOAWAY message")
+
 	// Get a messaga reader
 	mr, err := newReader(r)
 	if err != nil {

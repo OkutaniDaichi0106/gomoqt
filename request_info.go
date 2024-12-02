@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
@@ -22,14 +23,26 @@ type InfoRequest struct {
 	TrackName      string
 }
 
-type Info message.InfoMessage
+type Info struct {
+	PublisherPriority   PublisherPriority
+	LatestGroupSequence GroupSequence
+	GroupOrder          GroupOrder
+	GroupExpires        time.Duration
+}
 
 type InfoWriter struct {
 	stream moq.Stream
 }
 
 func (w InfoWriter) Answer(i Info) {
-	err := message.InfoMessage(i).Encode(w.stream)
+	im := message.InfoMessage{
+		PublisherPriority:   message.PublisherPriority(i.PublisherPriority),
+		LatestGroupSequence: message.GroupSequence(i.LatestGroupSequence),
+		GroupOrder:          message.GroupOrder(i.GroupOrder),
+		GroupExpires:        i.GroupExpires,
+	}
+
+	err := im.Encode(w.stream)
 	if err != nil {
 		slog.Error("failed to send an INFO message", slog.String("error", err.Error()))
 		w.Reject(err)
@@ -80,5 +93,12 @@ func readInfo(r io.Reader) (Info, error) {
 		return Info{}, err
 	}
 
-	return Info(im), nil
+	info := Info{
+		PublisherPriority:   PublisherPriority(im.PublisherPriority),
+		LatestGroupSequence: GroupSequence(im.LatestGroupSequence),
+		GroupOrder:          GroupOrder(im.GroupOrder),
+		GroupExpires:        im.GroupExpires,
+	}
+
+	return info, nil
 }

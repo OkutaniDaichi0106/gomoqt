@@ -93,7 +93,6 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 				/*
 				 * Announce
 				 */
-				// Announce existing tracks
 				// Find any Track Namespace node
 				tns := strings.Split(interest.TrackPrefix, "/")
 				tnsNode, ok := r.RelayManager.findTrackNamespace(tns)
@@ -102,12 +101,14 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 					return
 				}
 
-				// Get any Announcement under the Track Namespace
+				// Get any Announcements under the Track Namespace
 				announcements := tnsNode.getAnnouncements()
-				// Send the announcements
+
+				// Send the Announcements
 				for _, ann := range announcements {
 					w.Announce(ann)
 				}
+
 			case stream_type_subscribe:
 				slog.Info("Subscribe Stream was opened")
 
@@ -141,6 +142,10 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 				 * Accept the new subscription
 				 */
 				sess.acceptSubscription(subscription)
+
+				/*
+				 * Register the session as destinations of the Track
+				 */
 
 				/*
 				 * Catch any Subscribe Update or any error from the subscriber
@@ -178,7 +183,7 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 					subscription = update
 				}
 
-				sess.stopSubscription(subscription.subscribeID)
+				sess.removeSubscription(subscription)
 
 				slog.Info("subscription has ended", slog.Any("subscription", subscription))
 

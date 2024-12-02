@@ -22,7 +22,7 @@ type RelayManager struct {
 	trackNamespaceTree trackNamespaceTree
 }
 
-func (rm RelayManager) RegisterAnnouncement(ann Announcement) {
+func (rm RelayManager) RegisterOrigin(origin *ServerSession, ann Announcement) {
 	slog.Info("Registering an announcement")
 	tns := strings.Split(ann.TrackNamespace, "/")
 
@@ -31,9 +31,23 @@ func (rm RelayManager) RegisterAnnouncement(ann Announcement) {
 	if tnsNode.announcement != nil {
 		slog.Info("updated an announcement", slog.Any("from", tnsNode.announcement), slog.Any("to", ann))
 	}
-
 	tnsNode.announcement = &ann
 
+	if tnsNode.origin != nil {
+		slog.Info("updated an origin session")
+	}
+	tnsNode.origin = origin
+}
+
+func (rm RelayManager) RemoveAnnouncement(ann Announcement) {
+	slog.Info("Remove an announcement")
+	tns := strings.Split(ann.TrackNamespace, "/")
+
+	err := rm.removeTrackNamespace(tns)
+	if err != nil {
+		slog.Error("failed to remove a Track Namespace", slog.String("error", err.Error()))
+		return
+	}
 }
 
 func (rm RelayManager) PublishAnnouncement(ann Announcement) {
@@ -182,7 +196,7 @@ type trackNamespaceNode struct {
 	/*
 	 * The origin session
 	 */
-	origin *session
+	origin *ServerSession
 
 	/*
 	 * Announcement

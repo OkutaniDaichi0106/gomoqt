@@ -161,7 +161,14 @@ type SubscribeResponceWriter struct {
 func (w SubscribeResponceWriter) Accept(i Info) {
 	slog.Debug("Accepting the subscription")
 
-	err := message.InfoMessage(i).Encode(w.stream)
+	im := message.InfoMessage{
+		PublisherPriority:   message.PublisherPriority(i.PublisherPriority),
+		LatestGroupSequence: message.GroupSequence(i.LatestGroupSequence),
+		GroupOrder:          message.GroupOrder(i.GroupOrder),
+		GroupExpires:        i.GroupExpires,
+	}
+
+	err := im.Encode(w.stream)
 	if err != nil {
 		slog.Error("failed to accept the Subscription", slog.String("error", err.Error()))
 	}

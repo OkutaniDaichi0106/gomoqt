@@ -19,20 +19,16 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	slog.SetDefault(logger)
 
-	handler := sessionHandler{
-		subscribedCh: make(chan moqt.Subscription, 1),
-	}
-
 	c := moqt.Client{
 		URL:               "https://localhost:8443/path",
 		SupportedVersions: []moqt.Version{moqt.Default},
 		TLSConfig:         &tls.Config{},
 		Announcements: []moqt.Announcement{
-			moqt.Announcement{
-				TrackNamespace: "japan/kyoto/student",
+			{
+				TrackNamespace: "japan/kyoto/kiu",
 			},
 		},
-		SessionHandler: &handler,
+		SessionHandler: moqt.ClientSessionHandlerFunc(handleClientSession),
 	}
 
 	err := c.Run(context.Background())
@@ -46,17 +42,13 @@ func main() {
 /*
  * Client Session Handler
  */
-var _ moqt.ClientSessionHandler = (*sessionHandler)(nil)
-
-type sessionHandler struct {
-	subscribedCh chan moqt.Subscription
-}
-
-func (h *sessionHandler) HandleClientSession(sess *moqt.ClientSession) {
-	slog.Info("Subscribing")
+func handleClientSession(sess *moqt.ClientSession) {
+	echoTrackPrefix := "japan/kyoto"
+	echoTrackNamespace := "japan/kyoto/kiu"
+	echoTrackName := "text"
 
 	/*
-	 * Send data
+	 * Publish data
 	 */
 	go func() {
 		var sequence moqt.GroupSequence = 1
@@ -64,7 +56,7 @@ func (h *sessionHandler) HandleClientSession(sess *moqt.ClientSession) {
 			//
 			time.Sleep(33 * time.Millisecond)
 
-			stream, err := sess.OpenDataStream(subscription, sequence, 0)
+			streams, err := sess.OpenDataStreams(echoTrackNamespace, echoTrackName, sequence, 0)
 			if err != nil {
 				slog.Error("failed to open a data stream", slog.String("error", err.Error()))
 				return
@@ -72,55 +64,58 @@ func (h *sessionHandler) HandleClientSession(sess *moqt.ClientSession) {
 
 			text := "hello!!!" + strconv.Itoa(i)
 
-			_, err = stream.Write([]byte(text))
-			if err != nil {
-				slog.Error("failed to send data", slog.String("error", err.Error()))
-				return
+			for _, stream := range streams {
+				_, err = stream.Write([]byte(text))
+				if err != nil {
+					slog.Error("failed to send data", slog.String("error", err.Error()))
+					return
+				}
+
+				slog.Info("sent data", slog.String("text", text))
+
+				stream.Close()
 			}
-
-			slog.Info("sent data", slog.String("text", text))
-
-			stream.Close()
 
 			sequence++
 		}
 	}()
 
 	/*
-	 * Interest
+	 * Subscribe data
 	 */
-	interest := moqt.Interest{
-		TrackPrefix: h.localTrack.TrackNamespace,
-	}
-
-	annstr, err := sess.Interest(interest)
+	// Interest
+	annstr, err := sess.Interest(moqt.Interest{
+		TrackPrefix: echoTrackPrefix,
+	})
 	if err != nil {
 		slog.Error("failed to interest", slog.String("error", err.Error()))
 		return
 	}
 
-	/*
-	 * Get Announcements
-	 */
-	ann, err := annstr.ReadAnnouncement()
-	if err != nil {
-		slog.Error("failed to read an announcement", slog.String("error", err.Error()))
-		return
+	//  Get Announcements
+	for {
+		ann, err := annstr.ReadAnnouncement()
+		if err != nil {
+			slog.Error("failed to read an announcement", slog.String("error", err.Error()))
+			return
+		}
+		slog.Info("received an announcement", slog.Any("announcement", ann))
+
+		if ann.TrackNamespace == echoTrackNamespace {
+			break
+		}
 	}
 
-	log.Print("ECHO REACH")
-	//
-	slog.Info("received an announcement", slog.Any("announcement", ann))
-
-	/*
-	 * Subscribe
-	 */
+	// Subscribe
+	subscription := moqt.Subscription{
+		TrackNamespace: echoTrackNamespace,
+		TrackName:      echoTrackName,
+	}
 	_, info, err := sess.Subscribe(subscription)
 	if err != nil {
 		slog.Error("failed to subscribe", slog.String("error", err.Error()))
 		return
 	}
-	//
 	slog.Info("Successfully subscribed", slog.Any("subscription", subscription), slog.Any("info", info))
 
 	/*

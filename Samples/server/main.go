@@ -43,7 +43,7 @@ func main() {
 	// Initialize a Relayer
 	relayer := moqt.Relayer{
 		Path:           "/path",
-		SessionHandler: serverSessionHandler{},
+		SessionHandler: moqt.ServerSessionHandlerFunc(handleServerSession),
 		RelayManager:   nil,
 	}
 
@@ -53,11 +53,7 @@ func main() {
 	moqs.ListenAndServe()
 }
 
-var _ moqt.ServerSessionHandler = (*serverSessionHandler)(nil)
-
-type serverSessionHandler struct{}
-
-func (serverSessionHandler) HandleServerSession(sess *moqt.ServerSession) {
+func handleServerSession(sess *moqt.ServerSession) {
 	/*
 	 * Interest
 	 */

@@ -167,7 +167,7 @@ func (c Client) Run(ctx context.Context) error {
 	if c.SetupHijackerFunc != nil {
 		err := c.SetupHijackerFunc(rsp)
 		if err != nil {
-			slog.Error("setup hijacker returns an error", err.Error())
+			slog.Error("setup hijacker returns an error", slog.String("error", err.Error()))
 			return err
 		}
 	}
@@ -178,7 +178,7 @@ func (c Client) Run(ctx context.Context) error {
 			conn:                  conn,
 			stream:                stream,
 			subscribeWriters:      make(map[SubscribeID]*SubscribeWriter),
-			receivedSubscriptions: make(map[SubscribeID]Subscription),
+			receivedSubscriptions: make(map[string]Subscription),
 			doneCh:                make(chan struct{}, 1),
 		},
 	}
@@ -335,7 +335,7 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 					subscription = update
 				}
 
-				sess.stopSubscription(subscription.subscribeID)
+				sess.removeSubscription(subscription)
 
 				// Close the Stream gracefully
 				sw.Reject(nil)

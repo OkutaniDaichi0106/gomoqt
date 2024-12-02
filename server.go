@@ -107,7 +107,7 @@ func (s *Server) ListenAndServe() error {
 						conn:                  conn,
 						stream:                stream,
 						subscribeWriters:      make(map[SubscribeID]*SubscribeWriter),
-						receivedSubscriptions: map[SubscribeID]Subscription{},
+						receivedSubscriptions: make(map[string]Subscription),
 					},
 				}
 
@@ -261,7 +261,7 @@ func (s *Server) RunOnWebTransport(relayer Relayer) {
 				conn:                  conn,
 				stream:                stream,
 				subscribeWriters:      make(map[SubscribeID]*SubscribeWriter),
-				receivedSubscriptions: make(map[SubscribeID]Subscription),
+				receivedSubscriptions: make(map[string]Subscription),
 			},
 		}
 

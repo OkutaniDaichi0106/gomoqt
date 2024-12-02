@@ -23,7 +23,10 @@ type session struct {
 	subscribeWriters map[SubscribeID]*SubscribeWriter
 	ssMu             sync.RWMutex
 
-	receivedSubscriptions map[SubscribeID]Subscription
+	/*
+	 *
+	 */
+	receivedSubscriptions map[string]Subscription
 	rsMu                  sync.RWMutex
 
 	doneCh chan struct{}
@@ -208,8 +211,8 @@ func (sess *session) RequestInfo(req InfoRequest) (Info, error) {
 		return Info{}, err
 	}
 
-	var info message.InfoMessage
-	err = info.Decode(stream)
+	var im message.InfoMessage
+	err = im.Decode(stream)
 	if err != nil {
 		slog.Error("failed to get a INFO message", slog.String("error", err.Error()))
 		return Info{}, err
@@ -223,7 +226,14 @@ func (sess *session) RequestInfo(req InfoRequest) (Info, error) {
 		slog.Error("failed to close an Info Stream", slog.String("error", err.Error()))
 	}
 
-	return Info(info), nil
+	info := Info{
+		PublisherPriority:   PublisherPriority(im.PublisherPriority),
+		LatestGroupSequence: GroupSequence(im.LatestGroupSequence),
+		GroupOrder:          GroupOrder(im.GroupOrder),
+		GroupExpires:        im.GroupExpires,
+	}
+
+	return info, nil
 }
 
 func openControlStream(conn moq.Connection, streamType StreamType) (moq.Stream, error) {
@@ -354,40 +364,53 @@ func (sess *session) acceptSubscription(subscription Subscription) {
 	sess.rsMu.Lock()
 	defer sess.rsMu.Unlock()
 
-	_, ok := sess.receivedSubscriptions[subscription.subscribeID]
+	// Get Full Track Name
+	fullName := subscription.TrackNamespace + "/" + subscription.TrackName
+
+	// Verify if the subscription is duplicated or not
+	_, ok := sess.receivedSubscriptions[fullName]
 	if ok {
 		slog.Debug("duplicated subscription", slog.Any("Subscribe ID", subscription.subscribeID))
 		return
 	}
 
-	sess.receivedSubscriptions[subscription.subscribeID] = subscription
+	// Register the subscription
+	sess.receivedSubscriptions[fullName] = subscription
+
+	slog.Info("Accepted a new subscription", slog.Any("subscription", subscription))
 }
 
 func (sess *session) updateSubscription(subscription Subscription) {
 	sess.rsMu.Lock()
 	defer sess.rsMu.Unlock()
 
-	old, ok := sess.receivedSubscriptions[subscription.subscribeID]
+	// Get Full Track Name
+	fullName := subscription.TrackNamespace + "/" + subscription.TrackName
+
+	old, ok := sess.receivedSubscriptions[fullName]
 	if !ok {
 		slog.Debug("no subscription", slog.Any("Subscribe ID", subscription.subscribeID))
 		return
 	}
 
-	sess.receivedSubscriptions[subscription.subscribeID] = subscription
+	sess.receivedSubscriptions[fullName] = subscription
 
 	slog.Info("updated a subscription", slog.Any("from", old), slog.Any("to", subscription))
 }
 
-func (sess *session) stopSubscription(id SubscribeID) {
+func (sess *session) removeSubscription(subscription Subscription) {
 	sess.rsMu.Lock()
 	defer sess.rsMu.Unlock()
 
-	if subscription, ok := sess.receivedSubscriptions[id]; !ok {
+	// Get Full Track Name
+	fullName := subscription.TrackNamespace + "/" + subscription.TrackName
+
+	if subscription, ok := sess.receivedSubscriptions[fullName]; !ok {
 		slog.Debug("no subscription", slog.Any("Subscribe ID", subscription.subscribeID))
 		return
 	}
 
-	delete(sess.receivedSubscriptions, id)
+	delete(sess.receivedSubscriptions, fullName)
 }
 
 /*

@@ -69,7 +69,6 @@ func (rm RelayManager) PublishAnnouncement(ann Announcement) {
 	tns := strings.Split(ann.TrackNamespace, "/")
 
 	for i := range tns {
-	for i := range tns {
 		tnsNode, ok := rm.findTrackNamespace(tns[:i])
 		if !ok {
 			break

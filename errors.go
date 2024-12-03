@@ -23,7 +23,7 @@ var (
 	}
 
 	ErrInvalidRange = defaultSubscribeError{
-		code:   subscribe_invlid_range,
+		code:   subscribe_invalid_range,
 		reason: "invalid range",
 	}
 
@@ -129,7 +129,7 @@ type SubscribeErrorCode uint32
 
 const (
 	subscribe_internal_error       SubscribeErrorCode = 0x00
-	subscribe_invlid_range         SubscribeErrorCode = 0x01
+	subscribe_invalid_range        SubscribeErrorCode = 0x01
 	subscribe_track_does_not_exist SubscribeErrorCode = 0x03
 	subscribe_unauthorized         SubscribeErrorCode = 0x04
 	subscribe_timeout              SubscribeErrorCode = 0x05

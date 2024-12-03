@@ -70,7 +70,11 @@ func (s *Server) ListenAndServe() error {
 				continue
 			}
 
-			go s.wts.ServeQUICConn(qconn)
+			go func() {
+				if err := s.wts.ServeQUICConn(qconn); err != nil {
+					slog.Error("failed serving quic connection", slog.String("error", err.Error()))
+				}
+			}()
 		case "moq-00":
 			/*
 			 * Listen and serve on raw QUIC

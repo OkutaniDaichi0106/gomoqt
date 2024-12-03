@@ -149,7 +149,7 @@ func (c Client) Run(ctx context.Context) error {
 		return err
 	}
 
-	// Receive a set-up responce
+	// Receive a set-up response
 	rsp, err := readSetupResponce(stream)
 	if err != nil {
 		slog.Error("failed to receive a SESSION_SERVER message", slog.String("error", err.Error()))
@@ -163,7 +163,7 @@ func (c Client) Run(ctx context.Context) error {
 		return err
 	}
 
-	// Handle the responce
+	// Handle the response
 	if c.SetupHijackerFunc != nil {
 		err := c.SetupHijackerFunc(rsp)
 		if err != nil {
@@ -287,7 +287,7 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 					stream: stream,
 				}
 
-				// Get any Infomation of the track
+				// Get any Information of the track
 				info, ok := sess.getInfo(subscription.TrackNamespace, subscription.TrackName)
 				if ok {
 					sw.Accept(info)
@@ -317,7 +317,7 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 						stream: stream,
 					}
 
-					// Get any Infomation of the track
+					// Get any Information of the track
 					info, ok := sess.getInfo(subscription.TrackNamespace, subscription.TrackName)
 					if ok {
 						sw.Accept(info)

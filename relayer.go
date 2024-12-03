@@ -70,7 +70,11 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 
 		go func(stream moq.Stream) {
 			buf := make([]byte, 1)
-			stream.Read(buf)
+			_, err := stream.Read(buf)
+
+			if err != nil {
+				slog.Error("failed read buf", slog.String("error", err.Error()))
+			}
 
 			if err != nil {
 				slog.Error("failed to read a Stream Type ID", slog.String("error", err.Error()))
@@ -112,7 +116,7 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 			case stream_type_subscribe:
 				slog.Info("Subscribe Stream was opened")
 
-				// Initialize a Subscriber Responce Writer
+				// Initialize a Subscriber Response Writer
 				sw := SubscribeResponceWriter{
 					stream: stream,
 				}

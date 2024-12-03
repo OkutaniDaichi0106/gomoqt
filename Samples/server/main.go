@@ -50,7 +50,9 @@ func main() {
 	// Run the Relayer on WebTransport
 	moqs.RunOnWebTransport(relayer)
 
-	moqs.ListenAndServe()
+	if err := moqs.ListenAndServe(); err != nil {
+		slog.Error("server error", slog.String("error", err.Error()))
+	}
 }
 
 func handleServerSession(sess *moqt.ServerSession) {

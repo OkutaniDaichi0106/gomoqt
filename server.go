@@ -82,22 +82,24 @@ func (s *Server) ListenAndServe() error {
 				/*
 				 * Set up
 				 */
-				// Accept a Stream, which must be a Sesson Stream
+				// Accept a Bidirectional Stream, which must be a Sesson Stream
 				stream, err := conn.AcceptStream(context.Background())
 				if err != nil {
 					slog.Error("failed to accept a stream", slog.String("error", err.Error()))
 					return
 				}
 
-				// Verify if the Stream is a Session Stream
-				buf := make([]byte, 1)
-				_, err = stream.Read(buf)
+				// Get a Stream Type message
+				var stm message.StreamTypeMessage
+				err = stm.Decode(stream)
 				if err != nil {
 					slog.Error("failed to read a Stream Type", slog.String("error", err.Error()))
 					return
 				}
-				if StreamType(buf[0]) != stream_type_session {
-					slog.Error("unexpected Stream Type ID", slog.Any("detected ID", StreamType(buf[0]))) // TODO
+
+				// Verify if the Stream is the Session Stream
+				if stm.StreamType != stream_type_session {
+					slog.Error("unexpected Stream Type ID", slog.Any("ID", stm.StreamType))
 					return
 				}
 
@@ -213,16 +215,16 @@ func (s *Server) RunOnWebTransport(relayer Relayer) {
 		}
 
 		// Read the first byte and get Stream Type
-		buf := make([]byte, 1)
-		_, err = stream.Read(buf)
+		var stm message.StreamTypeMessage
+		err = stm.Decode(stream)
 		if err != nil {
 			slog.Error("failed to read a Stream Type", slog.String("error", err.Error()))
 			return
 		}
 
 		// Verify if the Stream is the Session Stream
-		if StreamType(buf[0]) != stream_type_session {
-			slog.Error("unexpected Stream Type ID", slog.Uint64("ID", uint64(buf[0]))) // TODO
+		if stm.StreamType != stream_type_session {
+			slog.Error("unexpected Stream Type ID", slog.Any("ID", stm.StreamType))
 			return
 		}
 

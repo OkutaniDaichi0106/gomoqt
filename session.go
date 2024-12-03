@@ -28,8 +28,32 @@ type session struct {
 	 */
 	receivedSubscriptions map[string]Subscription
 	rsMu                  sync.RWMutex
+}
 
-	doneCh chan struct{}
+func (sess *session) SessionInit(conn moq.Connection) error {
+	sess = &session{
+		conn: conn,
+	}
+
+	/*
+	 * Open a Session Stream
+	 */
+	stream, err := sess.openSessionStream()
+	if err != nil {
+		slog.Error("failed to open a Session Stream")
+		return err
+	}
+
+	// Set the stream
+	sess.stream = stream
+
+	//
+	sess.subscribeWriters = make(map[SubscribeID]*SubscribeWriter)
+
+	//
+	sess.receivedSubscriptions = make(map[string]Subscription)
+
+	return nil
 }
 
 func (sess *session) Terminate(err error) {
@@ -60,7 +84,7 @@ func (sess *session) Interest(interest Interest) (AnnounceStream, error) {
 	/*
 	 * Open an Announce Stream
 	 */
-	stream, err := openControlStream(sess.conn, stream_type_announce)
+	stream, err := sess.openAnnounceStream()
 	if err != nil {
 		slog.Error("failed to open an Announce Stream")
 		return AnnounceStream{}, err
@@ -91,7 +115,7 @@ func (sess *session) Subscribe(subscription Subscription) (*SubscribeWriter, Inf
 	defer sess.ssMu.Unlock()
 
 	// Open a Subscribe Stream
-	stream, err := openControlStream(sess.conn, stream_type_subscribe)
+	stream, err := sess.openSubscribeStream()
 	if err != nil {
 		slog.Error("failed to open a Subscribe Stream", slog.String("error", err.Error()))
 		return nil, Info{}, err
@@ -147,12 +171,18 @@ func (sess *session) Subscribe(subscription Subscription) (*SubscribeWriter, Inf
 }
 
 func (sess *session) Fetch(req FetchRequest) (FetchStream, error) {
-	stream, err := openControlStream(sess.conn, stream_type_fetch)
+	/*
+	 * Open a Fetch Stream
+	 */
+	stream, err := sess.openFetchStream()
 	if err != nil {
 		slog.Error("failed to open a Fetch Stream", slog.String("error", err.Error()))
 		return FetchStream{}, err
 	}
 
+	/*
+	 * Send a FETCH message
+	 */
 	fm := message.FetchMessage{
 		TrackNamespace:     req.TrackName,
 		TrackName:          req.TrackName,
@@ -161,14 +191,15 @@ func (sess *session) Fetch(req FetchRequest) (FetchStream, error) {
 		GroupOffset:        req.GroupOffset,
 	}
 
-	// Encode the message
 	err = fm.Encode(stream)
 	if err != nil {
 		slog.Error("failed to send a FETCH message", slog.String("error", err.Error()))
 		return FetchStream{}, err
 	}
 
-	// Receive a Group
+	/*
+	 * Receive a GROUP message
+	 */
 	group, err := readGroup(stream)
 	if err != nil {
 		slog.Error("failed to get a Group", slog.String("error", err.Error()))
@@ -185,16 +216,9 @@ func (sess *session) RequestInfo(req InfoRequest) (Info, error) {
 	/*
 	 * Open an Info Stream
 	 */
-	// Open a bidirectional stream
-	stream, err := sess.conn.OpenStream()
+	stream, err := sess.openInfoStream()
 	if err != nil {
-		slog.Error("failed to open an Info Request Stream", slog.String("error", err.Error()))
-		return Info{}, err
-	}
-	// Send the Info Stream Type
-	_, err = stream.Write([]byte{byte(stream_type_info)})
-	if err != nil {
-		slog.Error("failed to send Announce Stream Type")
+		slog.Error("failed to open an Info Stream", slog.String("error", err.Error()))
 		return Info{}, err
 	}
 
@@ -211,6 +235,9 @@ func (sess *session) RequestInfo(req InfoRequest) (Info, error) {
 		return Info{}, err
 	}
 
+	/*
+	 * Receive a INFO message
+	 */
 	var im message.InfoMessage
 	err = im.Decode(stream)
 	if err != nil {
@@ -226,27 +253,147 @@ func (sess *session) RequestInfo(req InfoRequest) (Info, error) {
 		slog.Error("failed to close an Info Stream", slog.String("error", err.Error()))
 	}
 
-	info := Info{
+	return Info{
 		PublisherPriority:   PublisherPriority(im.PublisherPriority),
 		LatestGroupSequence: GroupSequence(im.LatestGroupSequence),
 		GroupOrder:          GroupOrder(im.GroupOrder),
 		GroupExpires:        im.GroupExpires,
-	}
-
-	return info, nil
+	}, nil
 }
 
-func openControlStream(conn moq.Connection, streamType StreamType) (moq.Stream, error) {
-	stream, err := conn.OpenStream()
+func (sess *session) openSessionStream() (moq.Stream, error) {
+	stream, err := sess.conn.OpenStream()
 	if err != nil {
-		slog.Error("failed to open an Info Request Stream", slog.String("error", err.Error()))
+		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
 		return nil, err
 	}
 
-	// Send Announce Stream Type
-	_, err = stream.Write([]byte{byte(streamType)})
+	stm := message.StreamTypeMessage{
+		StreamType: stream_type_session,
+	}
+
+	err = stm.Encode(stream)
 	if err != nil {
-		slog.Error("failed to send Announce Stream Type")
+		slog.Error("failed to send a Stream Type message", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	return stream, nil
+}
+
+func (sess *session) openAnnounceStream() (moq.Stream, error) {
+	stream, err := sess.conn.OpenStream()
+	if err != nil {
+		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	stm := message.StreamTypeMessage{
+		StreamType: stream_type_announce,
+	}
+
+	err = stm.Encode(stream)
+	if err != nil {
+		slog.Error("failed to send a Stream Type message", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	return stream, nil
+}
+
+func (sess *session) openSubscribeStream() (moq.Stream, error) {
+	stream, err := sess.conn.OpenStream()
+	if err != nil {
+		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	stm := message.StreamTypeMessage{
+		StreamType: stream_type_subscribe,
+	}
+
+	err = stm.Encode(stream)
+	if err != nil {
+		slog.Error("failed to send a Stream Type message", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	return stream, nil
+}
+
+func (sess *session) openInfoStream() (moq.Stream, error) {
+	stream, err := sess.conn.OpenStream()
+	if err != nil {
+		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	stm := message.StreamTypeMessage{
+		StreamType: stream_type_info,
+	}
+
+	err = stm.Encode(stream)
+	if err != nil {
+		slog.Error("failed to send a Stream Type message", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	return stream, nil
+}
+
+func (sess *session) openFetchStream() (moq.Stream, error) {
+	stream, err := sess.conn.OpenStream()
+	if err != nil {
+		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	stm := message.StreamTypeMessage{
+		StreamType: stream_type_fetch,
+	}
+
+	err = stm.Encode(stream)
+	if err != nil {
+		slog.Error("failed to send a Stream Type message", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	return stream, nil
+}
+
+func (sess *session) openGroupStream() (moq.SendStream, error) {
+	stream, err := sess.conn.OpenUniStream()
+	if err != nil {
+		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	stm := message.StreamTypeMessage{
+		StreamType: stream_type_group,
+	}
+
+	err = stm.Encode(stream)
+	if err != nil {
+		slog.Error("failed to send a Stream Type message", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	return stream, nil
+}
+
+func (sess *session) acceptGroupStream(ctx context.Context) (moq.ReceiveStream, error) {
+	// Accept an unidirectional stream
+	stream, err := sess.conn.AcceptUniStream(ctx)
+	if err != nil {
+		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	// Receive a STREAM_TYPE message
+	var stm message.StreamTypeMessage
+	err = stm.Decode(stream)
+	if err != nil {
+		slog.Error("failed to receive a Stream Type message", slog.String("error", err.Error()))
 		return nil, err
 	}
 
@@ -258,7 +405,7 @@ func (sess *session) openDataStream(g Group) (moq.SendStream, error) {
 		return nil, errors.New("0 sequence number")
 	}
 
-	stream, err := sess.conn.OpenUniStream()
+	stream, err := sess.openGroupStream()
 	if err != nil {
 		slog.Error("failed to open an unidirectional Stream", slog.String("error", err.Error()))
 		return nil, err
@@ -281,9 +428,9 @@ func (sess *session) openDataStream(g Group) (moq.SendStream, error) {
 }
 
 func (sess *session) acceptDataStream(ctx context.Context) (Group, moq.ReceiveStream, error) {
-	stream, err := sess.conn.AcceptUniStream(ctx)
+	stream, err := sess.acceptGroupStream(ctx)
 	if err != nil {
-		slog.Error("failed to accept an unidirectional stream", slog.String("error", err.Error()))
+		slog.Error("failed to accept a Group Stream", slog.String("error", err.Error()))
 		return Group{}, nil, err
 	}
 

@@ -20,7 +20,8 @@ func (sum SessionUpdateMessage) Encode(w io.Writer) error {
 	/*
 	 * Serialize the message in the following format
 	 *
-	 * SESSION_UPDATE Message Payload {
+	 * SESSION_UPDATE Message {
+	 *   Message Length (varint),
 	 *   Bitrate (varint),
 	 * }
 	 */

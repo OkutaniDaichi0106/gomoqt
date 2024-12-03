@@ -19,23 +19,23 @@ func (im InfoMessage) Encode(w io.Writer) error {
 	slog.Debug("encoding a INFO message")
 
 	/*
-	 * Serialize the payload in the following format
+	 * Serialize the message in the following format
 	 *
-	 * TRACK_STATUS Message {
-	 *   Track Namespace (tuple),
-	 *   Track Name ([]byte),
-	 *   Status Code (varint),
-	 *   Last Group ID (varint),
-	 *   Last Object ID (varint),
+	 * INFO Message {
+	 *   Message Length (varint),
+	 *   Publisher Priority (varint),
+	 *   Latest Group Sequence (varint),
+	 *   Group Order (varint),
+	 *   Group Expires (varint),
 	 * }
 	 */
-
+	// Serialize the payload
 	p := make([]byte, 0, 1<<10)
 
-	// Append the Status Code
+	// Append the Publisher Priority
 	p = quicvarint.Append(p, uint64(im.PublisherPriority))
 
-	// Appen the Last Group ID
+	// Appen the Latest Group Sequence
 	p = quicvarint.Append(p, uint64(im.LatestGroupSequence))
 
 	// Appen the Group Order
@@ -68,7 +68,7 @@ func (im *InfoMessage) Decode(r io.Reader) error {
 		return err
 	}
 
-	// Get a Status Code
+	// Get a Publisher Priority
 	num, err := quicvarint.Read(mr)
 	if err != nil {
 		return err

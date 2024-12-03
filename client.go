@@ -133,7 +133,8 @@ func (c Client) Run(ctx context.Context) error {
 	 * Get a new Session
 	 */
 	// Open a bidirectional Stream for the Session Stream
-	stream, err := openControlStream(conn, stream_type_session)
+	var sess ClientSession
+	err = sess.SessionInit(conn)
 	if err != nil {
 		slog.Error("failed to open a Session Stream", slog.String("error", err.Error()))
 		return err
@@ -143,14 +144,14 @@ func (c Client) Run(ctx context.Context) error {
 	 * Set up
 	 */
 	// Send a set-up request
-	err = sendSetupRequest(stream, req)
+	err = sendSetupRequest(sess.stream, req)
 	if err != nil {
 		slog.Error("failed to request to set up", slog.String("error", err.Error()))
 		return err
 	}
 
 	// Receive a set-up responce
-	rsp, err := readSetupResponce(stream)
+	rsp, err := readSetupResponce(sess.stream)
 	if err != nil {
 		slog.Error("failed to receive a SESSION_SERVER message", slog.String("error", err.Error()))
 		return err
@@ -170,17 +171,6 @@ func (c Client) Run(ctx context.Context) error {
 			slog.Error("setup hijacker returns an error", slog.String("error", err.Error()))
 			return err
 		}
-	}
-
-	// Initialize a Client Session
-	sess := ClientSession{
-		session: &session{
-			conn:                  conn,
-			stream:                stream,
-			subscribeWriters:      make(map[SubscribeID]*SubscribeWriter),
-			receivedSubscriptions: make(map[string]Subscription),
-			doneCh:                make(chan struct{}, 1),
-		},
 	}
 
 	/*
@@ -236,13 +226,14 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 			/*
 			 * Read a Stream Type
 			 */
-			buf := make([]byte, 1)
-			_, err := stream.Read(buf)
+			var stm message.StreamTypeMessage
+			err := stm.Decode(stream)
 			if err != nil {
-				slog.Error("failed to read a Stream Type ID", slog.String("error", err.Error()))
+				slog.Error("failed to get a Stream Type ID", slog.String("error", err.Error()))
+				return
 			}
 
-			switch StreamType(buf[0]) {
+			switch stm.StreamType {
 			case stream_type_announce:
 				slog.Info("Announce Stream was opened")
 

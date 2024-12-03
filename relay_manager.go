@@ -23,10 +23,9 @@ type RelayManager struct {
 }
 
 func (rm RelayManager) RegisterOrigin(origin *ServerSession, ann Announcement) {
-	slog.Info("Registering an announcement")
-	tns := strings.Split(ann.TrackNamespace, "/")
+	slog.Info("Registering an origin session")
 
-	tnsNode := rm.newTrackNamespace(tns)
+	tnsNode := rm.newTrackNamespace(strings.Split(ann.TrackNamespace, "/"))
 
 	if tnsNode.announcement != nil {
 		slog.Info("updated an announcement", slog.Any("from", tnsNode.announcement), slog.Any("to", ann))
@@ -37,6 +36,20 @@ func (rm RelayManager) RegisterOrigin(origin *ServerSession, ann Announcement) {
 		slog.Info("updated an origin session")
 	}
 	tnsNode.origin = origin
+}
+
+func (rm RelayManager) RegisterFollower(trackPrefix string, aw AnnounceWriter) {
+	slog.Info("Registering a follower")
+
+	tns := strings.Split(trackPrefix, "/")
+
+	tnsNode := rm.newTrackNamespace(tns)
+
+	if tnsNode.followers == nil {
+		tnsNode.followers = make([]*AnnounceWriter, 1) // TODO: Tune the size
+	}
+
+	tnsNode.followers = append(tnsNode.followers, &aw)
 }
 
 func (rm RelayManager) RemoveAnnouncement(ann Announcement) {
@@ -55,16 +68,14 @@ func (rm RelayManager) PublishAnnouncement(ann Announcement) {
 
 	tns := strings.Split(ann.TrackNamespace, "/")
 
-	for i, _ := range tns {
+	for i := range tns {
 		tnsNode, ok := rm.findTrackNamespace(tns[:i])
 		if !ok {
 			break
 		}
 
-		if tnsNode.followers != nil || len(tnsNode.followers) > 0 {
-			for _, aw := range tnsNode.followers {
-				aw.Announce(ann)
-			}
+		for _, aw := range tnsNode.followers {
+			aw.Announce(ann)
 		}
 	}
 }

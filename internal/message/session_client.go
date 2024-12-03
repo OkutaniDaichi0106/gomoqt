@@ -25,12 +25,13 @@ func (scm SessionClientMessage) Encode(w io.Writer) error {
 	/*
 	 * Serialize the payload in the following format
 	 *
-	 * CLIENT_SETUP Message Payload {
+	 * CLIENT_SETUP Message {
+	 *   Message Length (varint),
 	 *   Supported Versions {
 	 *     Count (varint),
 	 *     Versions (varint...),
 	 *   },
-	 *   Announce Parameters (Parameters),
+	 *   Session Client Parameters (Parameters),
 	 * }
 	 */
 	p := make([]byte, 0, 1<<6)

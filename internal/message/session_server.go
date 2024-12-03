@@ -27,7 +27,8 @@ func (ssm SessionServerMessage) Encode(w io.Writer) error {
 	/*
 	 * Serialize the message in the following formatt
 	 *
-	 * SERVER_SETUP Message Payload {
+	 * SERVER_SETUP Message {
+	 *   Message Length (varint),
 	 *   Selected Version (varint),
 	 *   Number of Parameters (varint),
 	 *   Setup Parameters (..),

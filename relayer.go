@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
 )
 
@@ -69,14 +70,14 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 		}
 
 		go func(stream moq.Stream) {
-			buf := make([]byte, 1)
-			stream.Read(buf)
-
+			var stm message.StreamTypeMessage
+			err := stm.Decode(stream)
 			if err != nil {
 				slog.Error("failed to read a Stream Type ID", slog.String("error", err.Error()))
+				return
 			}
 
-			switch StreamType(buf[0]) {
+			switch stm.StreamType {
 			case stream_type_announce:
 				slog.Info("Announce Stream was opened")
 
@@ -86,6 +87,9 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 					return
 				}
 
+				slog.Info("received an interest", slog.Any("interest", interest))
+
+				// Initialize a Announce Writer
 				w := AnnounceWriter{
 					stream: stream,
 				}
@@ -94,20 +98,21 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 				 * Announce
 				 */
 				// Find any Track Namespace node
-				tns := strings.Split(interest.TrackPrefix, "/")
-				tnsNode, ok := r.RelayManager.findTrackNamespace(tns)
-				if !ok {
-					w.Close(ErrTrackDoesNotExist)
-					return
+				slog.Info("finding any announcements")
+				tp := strings.Split(interest.TrackPrefix, "/")
+				tnsNode, ok := r.RelayManager.findTrackNamespace(tp)
+				if ok {
+					// Get any Announcements under the Track Namespace
+					announcements := tnsNode.getAnnouncements()
+
+					// Send the Announcements
+					for _, ann := range announcements {
+						w.Announce(ann)
+					}
 				}
 
-				// Get any Announcements under the Track Namespace
-				announcements := tnsNode.getAnnouncements()
-
-				// Send the Announcements
-				for _, ann := range announcements {
-					w.Announce(ann)
-				}
+				// Register the Announce Writer
+				r.RelayManager.RegisterFollower(interest.TrackPrefix, w)
 
 			case stream_type_subscribe:
 				slog.Info("Subscribe Stream was opened")

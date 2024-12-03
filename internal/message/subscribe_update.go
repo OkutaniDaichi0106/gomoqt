@@ -42,7 +42,7 @@ func (su SubscribeUpdateMessage) Encode(w io.Writer) error {
 	// Append the Subscriber ID
 	p = quicvarint.Append(p, uint64(su.SubscribeID))
 
-	// Append the Publisher Priority
+	// Append the Subscriber Priority
 	p = quicvarint.Append(p, uint64(su.SubscriberPriority))
 
 	// Append the Min Group Number

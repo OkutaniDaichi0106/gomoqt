@@ -38,7 +38,7 @@ gomoqt is an original implementation of Media over QUIC in Golang, based on MOQT
 | 6.2.1. Versions                              | :white_check_mark: | :x:        |
 | 6.2.2. Setup Parameters                      | :white_check_mark: | :x:        |
 | 6.3. GOAWAY                                  | :white_check_mark: | :x:        |
-| 6.4. INTEREST_ANNOUNCE                       | :white_check_mark: | :x:        |
+| 6.4. ANNOUNCE_INTEREST                       | :white_check_mark: | :x:        |
 | 6.5. ANNOUNCE                                | :white_check_mark: | :x:        |
 | 6.6. SUBSCRIBE                               | :white_check_mark: | :x:        |
 | 6.7. SUBSCRIBE_UPDATE                        | :white_check_mark: | :x:        |
@@ -63,6 +63,6 @@ We haven't conducted interoperability testing with other implementations yet
 ## TODO
 - ANNOUNCE message's Status field
 - Priority Control
-- Not sending a Group after the Group Expires
+- Handling the Group Expires
 - LOC (Low Overhead Container)
 - Common Catalog Format for moq

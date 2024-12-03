@@ -59,7 +59,7 @@ type FetchRequest struct {
 	TrackName          string
 	SubscriberPriority SubscriberPriority
 	GroupSequence      GroupSequence
-	GroupOffset        uint64
+	FrameSequence      uint64
 }
 
 type FetchResponceWriter struct {

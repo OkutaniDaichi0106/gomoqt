@@ -1,7 +1,7 @@
 package moqt
 
 type CacheManager interface {
-	GetGroupData(string, string, GroupSequence) []byte
+	GetFrameData(string, string, GroupSequence, uint64) []byte
 }
 
 //TODO:

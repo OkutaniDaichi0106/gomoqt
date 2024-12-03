@@ -9,13 +9,13 @@ import (
 
 type GroupErrorCode uint64
 
-type GroupDrop struct {
+type SubscribeGapMessage struct {
 	GroupStartSequence GroupSequence
 	Count              uint64
 	GroupErrorCode     GroupErrorCode
 }
 
-func (gd GroupDrop) Encode(w io.Writer) error {
+func (sgm SubscribeGapMessage) Encode(w io.Writer) error {
 	slog.Debug("encoding a GROUP_DROP message")
 
 	/*
@@ -30,13 +30,13 @@ func (gd GroupDrop) Encode(w io.Writer) error {
 	p := make([]byte, 0, 1<<5)
 
 	// Append the Group Start Sequence
-	p = quicvarint.Append(p, uint64(gd.GroupStartSequence))
+	p = quicvarint.Append(p, uint64(sgm.GroupStartSequence))
 
 	// Append the Count
-	p = quicvarint.Append(p, gd.Count)
+	p = quicvarint.Append(p, sgm.Count)
 
 	// Append the Group Error Code
-	p = quicvarint.Append(p, uint64(gd.GroupErrorCode))
+	p = quicvarint.Append(p, uint64(sgm.GroupErrorCode))
 
 	// Get a serialized message
 	b := make([]byte, 0, len(p)+8)
@@ -53,7 +53,7 @@ func (gd GroupDrop) Encode(w io.Writer) error {
 	return err
 }
 
-func (gd *GroupDrop) Decode(r io.Reader) error {
+func (sgm *SubscribeGapMessage) Decode(r io.Reader) error {
 	slog.Debug("decoding a GROUP_DROP message")
 
 	// Get a messaga reader
@@ -67,21 +67,21 @@ func (gd *GroupDrop) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	gd.GroupStartSequence = GroupSequence(num)
+	sgm.GroupStartSequence = GroupSequence(num)
 
 	// Get a Count
 	num, err = quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
-	gd.Count = num
+	sgm.Count = num
 
 	// Get a Group Error Code
 	num, err = quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
-	gd.GroupErrorCode = GroupErrorCode(num)
+	sgm.GroupErrorCode = GroupErrorCode(num)
 
 	return nil
 }

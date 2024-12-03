@@ -213,7 +213,7 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 				}
 
 				// Get data
-				data := r.CacheManager.GetGroupData(req.TrackNamespace, req.TrackName, req.GroupSequence)
+				data := r.CacheManager.GetFrameData(req.TrackNamespace, req.TrackName, req.GroupSequence, req.FrameSequence)
 
 				// Verify if subscriptions corresponding to the ftch request exists
 				for _, subscription := range sess.receivedSubscriptions {
@@ -229,7 +229,7 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 						subscribeID:       subscription.subscribeID,
 						groupSequence:     req.GroupSequence,
 						PublisherPriority: PublisherPriority(req.SubscriberPriority), // TODO: Handle Publisher Priority
-					}, data[req.GroupOffset:])
+					}, data[req.FrameSequence:])
 				}
 
 				// Close the Fetch Stream gracefully

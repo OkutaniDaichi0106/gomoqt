@@ -102,11 +102,9 @@ func (w AnnounceWriter) Announce(announcement Announcement) {
 	slog.Info("announced", slog.Any("announcement", announcement))
 }
 
-func (w AnnounceWriter) Close(err error) {
+func (aw AnnounceWriter) Reject(err error) {
 	if err == nil {
-		err = w.stream.Close()
-		slog.Error("failed to close an Announce Stream", slog.String("error", err.Error()))
-		return
+		aw.Close()
 	}
 
 	var code moq.StreamErrorCode
@@ -123,8 +121,15 @@ func (w AnnounceWriter) Close(err error) {
 		}
 	}
 
-	w.stream.CancelRead(code)
-	w.stream.CancelWrite(code)
+	aw.stream.CancelRead(code)
+	aw.stream.CancelWrite(code)
 
 	slog.Info("closed an Announce Stream")
+}
+
+func (aw AnnounceWriter) Close() {
+	err := aw.stream.Close()
+	if err != nil {
+		slog.Error("catch an erro when closing an Announce Stream", slog.String("error", err.Error()))
+	}
 }

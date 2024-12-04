@@ -59,14 +59,19 @@ type FetchRequest struct {
 	TrackName          string
 	SubscriberPriority SubscriberPriority
 	GroupSequence      GroupSequence
-	FrameSequence      uint64
+	FrameSequence      FrameSequence
 }
 
 type FetchResponceWriter struct {
-	stream moq.Stream
+	groupSent bool
+	stream    moq.Stream
 }
 
-func (w FetchResponceWriter) SendGroup(group Group, data []byte) {
+func (w FetchResponceWriter) SendGroup(group Group) (moq.SendStream, error) {
+	if w.groupSent {
+		return nil, errors.New("a Group was already sent")
+	}
+
 	gm := message.GroupMessage{
 		SubscribeID:       message.SubscribeID(group.subscribeID),
 		GroupSequence:     message.GroupSequence(group.groupSequence),
@@ -76,23 +81,15 @@ func (w FetchResponceWriter) SendGroup(group Group, data []byte) {
 	err := gm.Encode(w.stream)
 	if err != nil {
 		slog.Error("failed to send a GROUP message", slog.String("error", err.Error()))
-		return
+		return nil, err
 	}
 
-	_, err = w.stream.Write(data)
-	if err != nil {
-		slog.Error("failed to send the data", slog.String("error", err.Error()))
-	}
-
-	slog.Info("sent data")
+	return w.stream, nil
 }
 
-func (w FetchResponceWriter) Reject(err error) {
+func (frw FetchResponceWriter) Reject(err error) {
 	if err == nil {
-		err := w.stream.Close()
-		if err != nil {
-			slog.Error("failed to close a Fetch Stream", slog.String("error", err.Error()))
-		}
+		frw.Close()
 	}
 
 	var code moq.StreamErrorCode
@@ -110,8 +107,15 @@ func (w FetchResponceWriter) Reject(err error) {
 		}
 	}
 
-	w.stream.CancelRead(code)
-	w.stream.CancelWrite(code)
+	frw.stream.CancelRead(code)
+	frw.stream.CancelWrite(code)
 
 	slog.Info("rejcted the fetch request")
+}
+
+func (frw FetchResponceWriter) Close() {
+	err := frw.stream.Close()
+	if err != nil {
+		slog.Error("catch an error when closing a Fetch Stream", slog.String("error", err.Error()))
+	}
 }

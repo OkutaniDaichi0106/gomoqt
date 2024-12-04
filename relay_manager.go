@@ -143,11 +143,6 @@ func (rm RelayManager) findDestinations(trackNamespace []string, trackName strin
 		return nil, false
 	}
 
-	// Verify the Group Order of the track
-	if tnNode.groupOrder != order {
-		return nil, false
-	}
-
 	return tnNode.destinations, true
 }
 
@@ -227,11 +222,6 @@ type trackNameNode struct {
 	 * The string value of the Track Name
 	 */
 	value string
-
-	/*
-	 * The Group's order
-	 */
-	groupOrder GroupOrder
 
 	/*
 	 * The destination session

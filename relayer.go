@@ -114,6 +114,7 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 				// Register the Announce Writer
 				r.RelayManager.RegisterFollower(interest.TrackPrefix, w)
 
+				w.Close()
 			case stream_type_subscribe:
 				slog.Info("Subscribe Stream was opened")
 
@@ -193,27 +194,35 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 				slog.Info("subscription has ended", slog.Any("subscription", subscription))
 
 				// Close the Stream gracefully
-				sw.Reject(nil)
+				sw.Close()
 				return
 			case stream_type_fetch:
 				// Handle the Fecth Stream
+
 				slog.Info("Fetch Stream was opened")
+
+				// Initialize a fetch responce writer
+				frw := FetchResponceWriter{
+					stream: stream,
+				}
 
 				// Get a fetch request
 				req, err := readFetchRequest(stream)
 				if err != nil {
 					slog.Error("failed to get a fetch-request", slog.String("error", err.Error()))
+					frw.Reject(err)
 					return
 				}
+
 				slog.Info("get a fetch request", slog.Any("fetch request", req))
 
-				// Initialize a fetch responce writer
-				w := FetchResponceWriter{
-					stream: stream,
+				// Get a data rader
+				r, err := r.CacheManager.GetFrame(req.TrackNamespace, req.TrackName, req.GroupSequence, req.FrameSequence)
+				if err != nil {
+					slog.Error("failed to get a frame", slog.String("error", err.Error()))
+					frw.Reject(err)
+					return
 				}
-
-				// Get data
-				data := r.CacheManager.GetFrameData(req.TrackNamespace, req.TrackName, req.GroupSequence, req.FrameSequence)
 
 				// Verify if subscriptions corresponding to the ftch request exists
 				for _, subscription := range sess.receivedSubscriptions {
@@ -225,15 +234,23 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 					}
 
 					// Send the group data
-					w.SendGroup(Group{
+					w, err := frw.SendGroup(Group{
 						subscribeID:       subscription.subscribeID,
 						groupSequence:     req.GroupSequence,
 						PublisherPriority: PublisherPriority(req.SubscriberPriority), // TODO: Handle Publisher Priority
-					}, data[req.FrameSequence:])
+					})
+					if err != nil {
+						slog.Error("failed to send a group", slog.String("error", err.Error()))
+						frw.Reject(err)
+						return
+					}
+
+					// Send the data by copying it from the reader
+					io.Copy(w, r)
 				}
 
 				// Close the Fetch Stream gracefully
-				w.Reject(nil)
+				frw.Close()
 				return
 			case stream_type_info:
 				// Handle the Info Stream
@@ -259,7 +276,7 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 				}
 
 				// Close the Info Stream gracefully
-				iw.Reject(nil)
+				iw.Close()
 				return
 			default:
 				// Terminate the session if invalid Stream Type was detected

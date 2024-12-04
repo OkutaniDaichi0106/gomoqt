@@ -158,7 +158,7 @@ type SubscribeResponceWriter struct {
 	stream moq.Stream
 }
 
-func (w SubscribeResponceWriter) Accept(i Info) {
+func (srw SubscribeResponceWriter) Accept(i Info) {
 	slog.Debug("Accepting the subscription")
 
 	im := message.InfoMessage{
@@ -168,23 +168,21 @@ func (w SubscribeResponceWriter) Accept(i Info) {
 		GroupExpires:        i.GroupExpires,
 	}
 
-	err := im.Encode(w.stream)
+	err := im.Encode(srw.stream)
 	if err != nil {
 		slog.Error("failed to accept the Subscription", slog.String("error", err.Error()))
+		srw.Reject(err)
+		return
 	}
 
 	slog.Info("Accepted the subscription")
 }
 
-func (w SubscribeResponceWriter) Reject(err error) {
+func (srw SubscribeResponceWriter) Reject(err error) {
 	slog.Debug("Rejecting the Subscription")
 
 	if err == nil {
-		err := w.stream.Close()
-		if err != nil {
-			slog.Debug("failed to close a Subscribe Stream gracefully", slog.String("error", err.Error()))
-		}
-
+		srw.Close()
 		return
 	}
 
@@ -202,10 +200,17 @@ func (w SubscribeResponceWriter) Reject(err error) {
 		}
 	}
 
-	w.stream.CancelRead(code)
-	w.stream.CancelWrite(code)
+	srw.stream.CancelRead(code)
+	srw.stream.CancelWrite(code)
 
 	slog.Debug("Rejected a subscription", slog.String("error", err.Error()))
+}
+
+func (w SubscribeResponceWriter) Close() {
+	err := w.stream.Close()
+	if err != nil {
+		slog.Debug("catch an error when closing a Subscribe Stream", slog.String("error", err.Error()))
+	}
 }
 
 func readSubscription(r moq.Stream) (Subscription, error) {

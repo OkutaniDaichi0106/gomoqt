@@ -19,9 +19,10 @@ func (ga GoAwayMessage) Encode(w io.Writer) error {
 	slog.Debug("encoding a GOAWAY message")
 
 	/*
-	 * Serialize the payload in the following format
+	 * Serialize the message in the following format
 	 *
 	 * GOAWAY Message Payload {
+	 *   Message Length (varint),
 	 *   New Session URI (string),
 	 * }
 	 */

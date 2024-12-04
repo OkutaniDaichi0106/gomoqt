@@ -334,18 +334,24 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 			case stream_type_fetch:
 				slog.Info("Fetch Stream was opened")
 
-				req, err := readFetchRequest(stream)
-				if err != nil {
-					slog.Error("failed to get a fetch-request", slog.String("error", err.Error()))
-					return
-				}
-
-				w := FetchResponceWriter{
+				frw := FetchResponceWriter{
 					stream: stream,
 				}
 
-				// Get data
-				data := c.CacheManager.GetFrameData(req.TrackNamespace, req.TrackName, req.GroupSequence, req.FrameSequence)
+				req, err := readFetchRequest(stream)
+				if err != nil {
+					slog.Error("failed to get a fetch-request", slog.String("error", err.Error()))
+					frw.Reject(err)
+					return
+				}
+
+				// Get a data reader
+				r, err := c.CacheManager.GetFrame(req.TrackNamespace, req.TrackName, req.GroupSequence, req.FrameSequence)
+				if err != nil {
+					slog.Error("failed to get a frame", slog.String("error", err.Error()))
+					frw.Reject(err)
+					return
+				}
 
 				// Verify if subscriptions corresponding to the ftch request exists
 				for _, subscription := range sess.receivedSubscriptions {
@@ -357,15 +363,23 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 					}
 
 					// Send the group data
-					w.SendGroup(Group{
+					w, err := frw.SendGroup(Group{
 						subscribeID:       subscription.subscribeID,
 						groupSequence:     req.GroupSequence,
 						PublisherPriority: PublisherPriority(req.SubscriberPriority), // TODO: Handle Publisher Priority
-					}, data)
+					})
+					if err != nil {
+						slog.Error("failed to send a group", slog.String("error", err.Error()))
+						frw.Reject(err)
+						return
+					}
+
+					// Send the data by copying it from the reader
+					io.Copy(w, r)
 				}
 
 				// Close the Fetch Stream gracefully
-				w.Reject(nil)
+				frw.Reject(nil)
 				return
 			case stream_type_info:
 				slog.Info("Info Stream was opened")

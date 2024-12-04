@@ -188,7 +188,7 @@ func (sess *session) Fetch(req FetchRequest) (FetchStream, error) {
 		TrackName:          req.TrackName,
 		SubscriberPriority: message.SubscriberPriority(req.SubscriberPriority),
 		GroupSequence:      message.GroupSequence(req.GroupSequence),
-		FrameSequence:      req.FrameSequence,
+		FrameSequence:      message.FrameSequence(req.FrameSequence),
 	}
 
 	err = fm.Encode(stream)

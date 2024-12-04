@@ -3,6 +3,7 @@ package moqt
 import (
 	"io"
 	"log/slog"
+	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 )
@@ -15,6 +16,11 @@ type Group struct {
 	groupSequence GroupSequence
 
 	PublisherPriority PublisherPriority
+
+	/*
+	 * Not in wire
+	 */
+	timestamp time.Time // TODO:
 }
 
 func (g Group) SubscribeID() SubscribeID {
@@ -40,5 +46,6 @@ func readGroup(r io.Reader) (Group, error) {
 		subscribeID:       SubscribeID(gm.SubscribeID),
 		groupSequence:     GroupSequence(gm.GroupSequence),
 		PublisherPriority: PublisherPriority(gm.PublisherPriority),
+		timestamp:         time.Now(),
 	}, nil
 }

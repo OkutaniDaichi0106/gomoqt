@@ -12,7 +12,7 @@ type FetchMessage struct {
 	TrackName          string
 	SubscriberPriority SubscriberPriority
 	GroupSequence      GroupSequence
-	FrameSequence      uint64 // TODO: consider the necessity type FrameSequence
+	FrameSequence      FrameSequence // TODO: consider the necessity type FrameSequence
 }
 
 func (fm FetchMessage) Encode(w io.Writer) error {
@@ -46,7 +46,7 @@ func (fm FetchMessage) Encode(w io.Writer) error {
 	p = quicvarint.Append(p, uint64(fm.GroupSequence))
 
 	// Append the Group Offset
-	p = quicvarint.Append(p, fm.FrameSequence)
+	p = quicvarint.Append(p, uint64(fm.FrameSequence))
 
 	// Get a serialized message
 	b := make([]byte, 0, len(p)+8)
@@ -118,7 +118,7 @@ func (fm *FetchMessage) Decode(r io.Reader) error {
 		return err
 	}
 
-	fm.FrameSequence = num
+	fm.FrameSequence = FrameSequence(num)
 
 	return nil
 }

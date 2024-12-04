@@ -19,7 +19,7 @@ type InterestHandler interface {
 }
 
 type Announcement struct {
-	TrackNamespace    string
+	TrackPath         string
 	AuthorizationInfo string
 	Parameters        Parameters
 }
@@ -32,13 +32,9 @@ func (a AnnounceStream) ReadAnnouncement() (Announcement, error) {
 	return readAnnouncement(a.stream)
 }
 
-func (a AnnounceStream) Close(err error) {
+func (a AnnounceStream) Reject(err error) {
 	if err == nil {
-		err = a.stream.Close()
-		if err != nil {
-			slog.Error("failed to close the stream", slog.String("error", err.Error()))
-			return
-		}
+		a.Close()
 	}
 
 	annerr, ok := err.(AnnounceError)
@@ -52,6 +48,14 @@ func (a AnnounceStream) Close(err error) {
 	a.stream.CancelRead(moq.StreamErrorCode(annerr.AnnounceErrorCode()))
 }
 
+func (a AnnounceStream) Close() {
+	err := a.stream.Close()
+	if err != nil {
+		slog.Error("failed to close the stream", slog.String("error", err.Error()))
+		return
+	}
+}
+
 func readAnnouncement(r io.Reader) (Announcement, error) {
 	// Read an ANNOUNCE message
 	var am message.AnnounceMessage
@@ -63,8 +67,8 @@ func readAnnouncement(r io.Reader) (Announcement, error) {
 
 	// Initialize an Announcement
 	announcement := Announcement{
-		TrackNamespace: am.TrackNamespace,
-		Parameters:     Parameters(am.Parameters),
+		TrackPath:  am.TrackPath,
+		Parameters: Parameters(am.Parameters),
 	}
 
 	//
@@ -88,8 +92,8 @@ func (w AnnounceWriter) Announce(announcement Announcement) {
 
 	// Initialize an ANNOUNCE message
 	am := message.AnnounceMessage{
-		TrackNamespace: announcement.TrackNamespace,
-		Parameters:     message.Parameters(announcement.Parameters),
+		TrackPath:  announcement.TrackPath,
+		Parameters: message.Parameters(announcement.Parameters),
 	}
 
 	// Encode the ANNOUNCE message
@@ -99,7 +103,7 @@ func (w AnnounceWriter) Announce(announcement Announcement) {
 		return
 	}
 
-	slog.Info("announced", slog.Any("announcement", announcement))
+	slog.Info("Successfully announced", slog.Any("announcement", announcement))
 }
 
 func (aw AnnounceWriter) Reject(err error) {

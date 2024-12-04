@@ -55,8 +55,7 @@ func main() {
 
 func handleServerSession(sess *moqt.ServerSession) {
 	echoTrackPrefix := "japan/kyoto"
-	echoTrackNamespace := "japan/kyoto/kiu"
-	echoTrackName := "text"
+	echoTrackPath := "japan/kyoto/kiu/text"
 
 	/*
 	 * Interest
@@ -64,7 +63,6 @@ func handleServerSession(sess *moqt.ServerSession) {
 	interest := moqt.Interest{
 		TrackPrefix: echoTrackPrefix,
 	}
-	slog.Info("interest", slog.Any("interest", interest))
 	annstr, err := sess.Interest(interest)
 	if err != nil {
 		slog.Error("failed to interest", slog.String("error", err.Error()))
@@ -82,7 +80,7 @@ func handleServerSession(sess *moqt.ServerSession) {
 		}
 		slog.Info("received an announcement", slog.Any("announcement", ann))
 
-		if ann.TrackNamespace == echoTrackNamespace {
+		if ann.TrackPath == echoTrackPath {
 			break
 		}
 	}
@@ -91,8 +89,7 @@ func handleServerSession(sess *moqt.ServerSession) {
 	 * Subscribe
 	 */
 	subscription := moqt.Subscription{
-		TrackNamespace: echoTrackNamespace,
-		TrackName:      echoTrackName,
+		TrackPath: echoTrackPath,
 	}
 
 	_, info, err := sess.Subscribe(subscription)

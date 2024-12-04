@@ -21,7 +21,7 @@ func (sgm SubscribeGapMessage) Encode(w io.Writer) error {
 	/*
 	 * Serialize the payload in the following format
 	 *
-	 * GROUP_DROP Message Payload {
+	 * SUBSCRIBE_GAP Message Payload {
 	 *   Group Start Sequence (varint),
 	 *   Count (varint),
 	 *   Group Error Code (varint),

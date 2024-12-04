@@ -34,11 +34,21 @@ type Client struct {
 
 	SetupHijackerFunc func(SetupResponce) error
 
-	Announcements []Announcement
+	announcements map[string]Announcement
+
+	SubscribeHijackerFunc func(Subscription) error
 
 	SessionHandler ClientSessionHandler
 
 	CacheManager CacheManager
+}
+
+func (c Client) AddAnnouncement(announcement Announcement) {
+	if c.announcements == nil {
+		c.announcements = make(map[string]Announcement)
+	}
+
+	c.announcements[announcement.TrackPath] = announcement
 }
 
 func (c Client) Run(ctx context.Context) error {
@@ -222,6 +232,8 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 			return
 		}
 
+		slog.Debug("some control stream was opened")
+
 		go func(stream moq.Stream) {
 			/*
 			 * Read a Stream Type
@@ -235,7 +247,7 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 
 			switch stm.StreamType {
 			case stream_type_announce:
-				slog.Info("Announce Stream was opened")
+				slog.Debug("announce stream was opened")
 
 				interest, err := readInterest(stream)
 				if err != nil {
@@ -248,43 +260,47 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 				}
 
 				// Announce
-				for _, announcement := range c.Announcements {
+				for _, announcement := range c.announcements {
 					// Verify if the Announcement's Track Namespace has the Track Prefix
-					if strings.HasPrefix(announcement.TrackNamespace, interest.TrackPrefix) {
+					if strings.HasPrefix(announcement.TrackPath, interest.TrackPrefix) {
 						// Announce the Track Namespace
 						aw.Announce(announcement)
 					}
 				}
 			case stream_type_subscribe:
-				slog.Info("Subscribe Stream was opened")
-
-				subscription, err := readSubscription(stream)
-				if err != nil {
-					slog.Error("failed to get a subscription", slog.String("error", err.Error()))
-
-					// Close the Stream gracefully
-					slog.Info("closing a Subscribe Stream", slog.String("error", err.Error()))
-					err = stream.Close()
-					if err != nil {
-						slog.Error("failed to close the stream", slog.String("error", err.Error()))
-						return
-					}
-
-					return
-				}
+				slog.Debug("subscribe stream was opened")
 
 				//
 				sw := SubscribeResponceWriter{
 					stream: stream,
 				}
 
+				subscription, err := readSubscription(stream)
+				if err != nil {
+					slog.Error("failed to get a subscription", slog.String("error", err.Error()))
+
+					sw.Reject(err)
+					return
+				}
+
+				// Hijack
+				if c.SubscribeHijackerFunc != nil {
+					err := c.SubscribeHijackerFunc(subscription)
+					if err != nil {
+						sw.Reject(err)
+						return
+					}
+				}
+
 				// Get any Infomation of the track
-				info, ok := sess.getInfo(subscription.TrackNamespace, subscription.TrackName)
+				info, ok := sess.getInfo(subscription.TrackPath)
 				if ok {
 					sw.Accept(info)
 				} else {
+
 					sw.Reject(ErrTrackDoesNotExist)
 					return
+
 				}
 
 				/*
@@ -309,7 +325,7 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 					}
 
 					// Get any Infomation of the track
-					info, ok := sess.getInfo(subscription.TrackNamespace, subscription.TrackName)
+					info, ok := sess.getInfo(subscription.TrackPath)
 					if ok {
 						sw.Accept(info)
 					} else {
@@ -332,7 +348,7 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 				sw.Reject(nil)
 
 			case stream_type_fetch:
-				slog.Info("Fetch Stream was opened")
+				slog.Debug("fetch stream was opened")
 
 				frw := FetchResponceWriter{
 					stream: stream,
@@ -346,7 +362,7 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 				}
 
 				// Get a data reader
-				r, err := c.CacheManager.GetFrame(req.TrackNamespace, req.TrackName, req.GroupSequence, req.FrameSequence)
+				r, err := c.CacheManager.GetFrame(req.TrackPath, req.GroupSequence, req.FrameSequence)
 				if err != nil {
 					slog.Error("failed to get a frame", slog.String("error", err.Error()))
 					frw.Reject(err)
@@ -355,10 +371,7 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 
 				// Verify if subscriptions corresponding to the ftch request exists
 				for _, subscription := range sess.receivedSubscriptions {
-					if subscription.TrackNamespace != req.TrackNamespace {
-						continue
-					}
-					if subscription.TrackName != req.TrackName {
+					if subscription.TrackPath != req.TrackPath {
 						continue
 					}
 
@@ -382,7 +395,7 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 				frw.Reject(nil)
 				return
 			case stream_type_info:
-				slog.Info("Info Stream was opened")
+				slog.Debug("info stream was opened")
 
 				req, err := readInfoRequest(stream)
 				if err != nil {
@@ -395,7 +408,7 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 					stream: stream,
 				}
 
-				info, ok := sess.getInfo(req.TrackNamespace, req.TrackName)
+				info, ok := sess.getInfo(req.TrackPath)
 				if ok {
 					iw.Answer(info)
 				} else {
@@ -407,11 +420,10 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 				iw.Reject(nil)
 				return
 			default:
-				err := ErrInvalidStreamType
+				slog.Debug("unknown stream was opend")
 
-				// Cancel reading and writing
-				stream.CancelRead(err.StreamErrorCode())
-				stream.CancelWrite(err.StreamErrorCode())
+				// Terminate the session
+				sess.Terminate(ErrInvalidStreamType)
 
 				return
 			}

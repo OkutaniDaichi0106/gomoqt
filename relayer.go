@@ -69,6 +69,8 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 			return
 		}
 
+		slog.Debug("some control stream was opened")
+
 		go func(stream moq.Stream) {
 			var stm message.StreamTypeMessage
 			err := stm.Decode(stream)
@@ -79,7 +81,7 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 
 			switch stm.StreamType {
 			case stream_type_announce:
-				slog.Info("Announce Stream was opened")
+				slog.Debug("announce stream was opened")
 
 				interest, err := readInterest(stream)
 				if err != nil {
@@ -116,7 +118,7 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 
 				w.Close()
 			case stream_type_subscribe:
-				slog.Info("Subscribe Stream was opened")
+				slog.Debug("subscribe stream was opened")
 
 				// Initialize a Subscriber Responce Writer
 				sw := SubscribeResponceWriter{
@@ -134,7 +136,7 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 				}
 
 				// Get any Infomation of the track
-				info, ok := r.RelayManager.GetInfo(subscription.TrackNamespace, subscription.TrackName)
+				info, ok := r.RelayManager.GetInfo(subscription.TrackPath)
 				if ok {
 					// Accept the request if information exists
 					sw.Accept(info)
@@ -170,7 +172,7 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 					}
 
 					// Get any Infomation of the track
-					info, ok := r.RelayManager.GetInfo(subscription.TrackNamespace, subscription.TrackName)
+					info, ok := r.RelayManager.GetInfo(subscription.TrackPath)
 					if ok {
 						// Accept the request if information exists
 						sw.Accept(info)
@@ -197,9 +199,7 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 				sw.Close()
 				return
 			case stream_type_fetch:
-				// Handle the Fecth Stream
-
-				slog.Info("Fetch Stream was opened")
+				slog.Info("fetch stream was opened")
 
 				// Initialize a fetch responce writer
 				frw := FetchResponceWriter{
@@ -217,7 +217,7 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 				slog.Info("get a fetch request", slog.Any("fetch request", req))
 
 				// Get a data rader
-				r, err := r.CacheManager.GetFrame(req.TrackNamespace, req.TrackName, req.GroupSequence, req.FrameSequence)
+				r, err := r.CacheManager.GetFrame(req.TrackPath, req.GroupSequence, req.FrameSequence)
 				if err != nil {
 					slog.Error("failed to get a frame", slog.String("error", err.Error()))
 					frw.Reject(err)
@@ -226,10 +226,7 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 
 				// Verify if subscriptions corresponding to the ftch request exists
 				for _, subscription := range sess.receivedSubscriptions {
-					if subscription.TrackNamespace != req.TrackNamespace {
-						continue
-					}
-					if subscription.TrackName != req.TrackName {
+					if subscription.TrackPath != req.TrackPath {
 						continue
 					}
 
@@ -253,8 +250,7 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 				frw.Close()
 				return
 			case stream_type_info:
-				// Handle the Info Stream
-				slog.Info("Info Stream was opened")
+				slog.Info("info stream was opened")
 
 				// Get a info request
 				infoRequest, err := readInfoRequest(stream)
@@ -267,7 +263,7 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 					stream: stream,
 				}
 
-				info, ok := r.RelayManager.GetInfo(infoRequest.TrackNamespace, infoRequest.TrackName)
+				info, ok := r.RelayManager.GetInfo(infoRequest.TrackPath)
 				if ok {
 					iw.Answer(info)
 				} else {
@@ -279,7 +275,8 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 				iw.Close()
 				return
 			default:
-				// Terminate the session if invalid Stream Type was detected
+				slog.Debug("unknown stream was opend")
+				// Terminate the session
 				sess.Terminate(ErrInvalidStreamType)
 
 				return
@@ -316,7 +313,8 @@ func (r Relayer) listenUniStreams(sess *ServerSession) {
 			 * Distribute data
 			 */
 			// Find destinations subscribing the Group's Track
-			dests, ok := r.RelayManager.findDestinations(strings.Split(subscription.TrackNamespace, "/"), subscription.TrackName, subscription.GroupOrder)
+			tp := strings.Split(subscription.TrackPath, "/")
+			dests, ok := r.RelayManager.findDestinations(tp[:len(tp)-1], tp[len(tp)], subscription.GroupOrder)
 			if !ok {
 				slog.Error("no destinations")
 				return
@@ -427,9 +425,10 @@ func (r Relayer) listenDatagrams(sess *ServerSession) {
 		 * Distribute data
 		 */
 		// Find destinations subscribing the Group's Track
-		dests, ok := r.RelayManager.findDestinations(strings.Split(subscription.TrackNamespace, "/"), subscription.TrackName, subscription.GroupOrder)
+		tp := strings.Split(subscription.TrackPath, "/")
+		dests, ok := r.RelayManager.findDestinations(tp[:len(tp)-1], tp[len(tp)], subscription.GroupOrder)
 		if !ok {
-			slog.Error("")
+			slog.Error("destinations not found")
 			return
 		}
 

@@ -23,12 +23,7 @@ func main() {
 		URL:               "https://localhost:8443/path",
 		SupportedVersions: []moqt.Version{moqt.Default},
 		TLSConfig:         &tls.Config{},
-		Announcements: []moqt.Announcement{
-			{
-				TrackNamespace: "japan/kyoto/kiu",
-			},
-		},
-		SessionHandler: moqt.ClientSessionHandlerFunc(handleClientSession),
+		SessionHandler:    moqt.ClientSessionHandlerFunc(handleClientSession),
 	}
 
 	err := c.Run(context.Background())
@@ -45,7 +40,7 @@ func main() {
 func handleClientSession(sess *moqt.ClientSession) {
 	echoTrackPrefix := "japan/kyoto"
 	echoTrackNamespace := "japan/kyoto/kiu"
-	echoTrackName := "text"
+	echoTrackPath := "text"
 
 	/*
 	 * Publish data
@@ -56,7 +51,7 @@ func handleClientSession(sess *moqt.ClientSession) {
 			//
 			time.Sleep(33 * time.Millisecond)
 
-			streams, err := sess.OpenDataStreams(echoTrackNamespace, echoTrackName, sequence, 0)
+			streams, err := sess.OpenDataStreams(echoTrackPath, sequence, 0)
 			if err != nil {
 				slog.Error("failed to open a data stream", slog.String("error", err.Error()))
 				return
@@ -103,15 +98,14 @@ func handleClientSession(sess *moqt.ClientSession) {
 		}
 		slog.Info("received an announcement", slog.Any("announcement", ann))
 
-		if ann.TrackNamespace == echoTrackNamespace {
+		if ann.TrackPath == echoTrackNamespace {
 			break
 		}
 	}
 
 	// Subscribe
 	subscription := moqt.Subscription{
-		TrackNamespace: echoTrackNamespace,
-		TrackName:      echoTrackName,
+		TrackPath: echoTrackPath,
 	}
 	_, info, err := sess.Subscribe(subscription)
 	if err != nil {

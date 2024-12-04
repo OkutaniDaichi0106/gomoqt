@@ -24,7 +24,7 @@ func readInterest(r io.Reader) (Interest, error) {
 	}
 
 	return Interest{
-		TrackPrefix: aim.TrackPrefix,
+		TrackPrefix: aim.TrackPathPrefix,
 		Parameters:  Parameters(aim.Parameters),
 	}, nil
 }
@@ -38,8 +38,7 @@ func readFetchRequest(r io.Reader) (FetchRequest, error) {
 	}
 
 	req := FetchRequest{
-		TrackNamespace:     frm.TrackNamespace,
-		TrackName:          frm.TrackName,
+		TrackPath:          frm.TrackPath,
 		SubscriberPriority: SubscriberPriority(frm.SubscriberPriority),
 		GroupSequence:      GroupSequence(frm.GroupSequence),
 		FrameSequence:      FrameSequence(frm.FrameSequence),
@@ -58,7 +57,6 @@ func readInfoRequest(r io.Reader) (InfoRequest, error) {
 	}
 
 	return InfoRequest{
-		TrackNamespace: irm.TrackNamespace,
-		TrackName:      irm.TrackName,
+		TrackPath: irm.TrackPath,
 	}, nil
 }

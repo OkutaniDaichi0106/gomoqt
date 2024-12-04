@@ -23,6 +23,8 @@ func (svrsess *ServerSession) init(conn moq.Connection) error {
 	/*
 	 * Accept a Session Stream
 	 */
+	slog.Debug("session stream was opened")
+
 	// Accept a bidirectional Stream for the Sesson Stream
 	stream, err := conn.AcceptStream(context.Background())
 	if err != nil {

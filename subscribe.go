@@ -23,8 +23,7 @@ const (
 
 type Subscription struct {
 	subscribeID        SubscribeID
-	TrackNamespace     string
-	TrackName          string
+	TrackPath          string
 	SubscriberPriority SubscriberPriority
 	GroupOrder         GroupOrder
 	GroupExpires       time.Duration
@@ -223,8 +222,7 @@ func readSubscription(r moq.Stream) (Subscription, error) {
 
 	return Subscription{
 		subscribeID:        SubscribeID(sm.SubscribeID),
-		TrackNamespace:     sm.TrackNamespace,
-		TrackName:          sm.TrackName,
+		TrackPath:          sm.TrackPath,
 		SubscriberPriority: SubscriberPriority(sm.SubscriberPriority),
 		GroupOrder:         GroupOrder(sm.GroupOrder),
 		MinGroupSequence:   GroupSequence(sm.MinGroupSequence),
@@ -260,8 +258,7 @@ func readSubscribeUpdate(old Subscription, r io.Reader) (Subscription, error) {
 
 	new := Subscription{
 		subscribeID:        old.subscribeID,
-		TrackNamespace:     old.TrackNamespace,
-		TrackName:          old.TrackName,
+		TrackPath:          old.TrackPath,
 		Parameters:         Parameters(sum.Parameters),
 		SubscriberPriority: SubscriberPriority(sum.SubscriberPriority),
 		GroupOrder:         GroupOrder(sum.GroupOrder),

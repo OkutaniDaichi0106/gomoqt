@@ -19,8 +19,7 @@ type InfoRequestHandler interface {
 }
 
 type InfoRequest struct {
-	TrackNamespace string
-	TrackName      string
+	TrackPath string
 }
 
 type Info struct {

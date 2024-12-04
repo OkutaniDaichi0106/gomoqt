@@ -12,8 +12,6 @@ type reader interface {
 }
 
 func newReader(str io.Reader) (reader, error) {
-	slog.Debug("getting a new message reader")
-
 	// Get a message reader
 	num, err := quicvarint.Read(quicvarint.NewReader(str))
 	if err != nil {

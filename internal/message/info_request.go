@@ -10,14 +10,9 @@ import (
 
 type InfoRequestMessage struct {
 	/*
-	 * Track namespace
-	 */
-	TrackNamespace string
-
-	/*
 	 * Track name
 	 */
-	TrackName string
+	TrackPath string
 }
 
 func (irm InfoRequestMessage) Encode(w io.Writer) error {
@@ -34,13 +29,9 @@ func (irm InfoRequestMessage) Encode(w io.Writer) error {
 
 	p := make([]byte, 0, 1<<8)
 
-	// Append the Track Namespace
-	p = quicvarint.Append(p, uint64(len(irm.TrackNamespace)))
-	p = append(p, []byte(irm.TrackNamespace)...)
-
 	// Append the Track Name
-	p = quicvarint.Append(p, uint64(len(irm.TrackName)))
-	p = append(p, []byte(irm.TrackName)...)
+	p = quicvarint.Append(p, uint64(len(irm.TrackPath)))
+	p = append(p, []byte(irm.TrackPath)...)
 
 	log.Print("INFO_REQUEST payload", p)
 
@@ -74,7 +65,7 @@ func (irm *InfoRequestMessage) Decode(r io.Reader) error {
 		return err
 	}
 
-	// Get a Track Namespace
+	// Get a Track Name
 	num, err := quicvarint.Read(mr)
 	if err != nil {
 		return err
@@ -84,19 +75,7 @@ func (irm *InfoRequestMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	irm.TrackNamespace = string(buf)
-
-	// Get a Track Name
-	num, err = quicvarint.Read(mr)
-	if err != nil {
-		return err
-	}
-	buf = make([]byte, num)
-	_, err = r.Read(buf)
-	if err != nil {
-		return err
-	}
-	irm.TrackName = string(buf)
+	irm.TrackPath = string(buf)
 
 	slog.Debug("decoded a INFO_REQUEST message")
 

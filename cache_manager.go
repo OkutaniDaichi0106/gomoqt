@@ -6,9 +6,9 @@ import (
 )
 
 type CacheManager interface {
-	GetFrame(string, string, GroupSequence, FrameSequence) (io.Reader, error)
-	GetGroup(string, string, GroupSequence) (io.Reader, error)
-	GroupExpires(string, string, GroupSequence) time.Time
+	GetFrame(string, GroupSequence, FrameSequence) (io.Reader, error)
+	GetGroup(string, GroupSequence) (io.Reader, error)
+	GroupExpires(string, GroupSequence) time.Time
 }
 
 //TODO:

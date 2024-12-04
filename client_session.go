@@ -48,7 +48,7 @@ func (clisess *ClientSession) init(conn moq.Connection) error {
 	return nil
 }
 
-func (sess *ClientSession) OpenDataStreams(trackNamespace, trackName string, sequence GroupSequence, priority PublisherPriority) ([]moq.SendStream, error) {
+func (sess *ClientSession) OpenDataStreams(trackPath string, sequence GroupSequence, priority PublisherPriority) ([]moq.SendStream, error) {
 	/*
 	 * Find any Subscriptions
 	 */
@@ -80,7 +80,7 @@ func (sess *ClientSession) OpenDataStreams(trackNamespace, trackName string, seq
 	 * Update the Track Information
 	 */
 	go func() {
-		info, ok := sess.getInfo(trackNamespace, trackName)
+		info, ok := sess.getInfo(trackPath)
 		if !ok {
 			return
 		}
@@ -88,7 +88,7 @@ func (sess *ClientSession) OpenDataStreams(trackNamespace, trackName string, seq
 		// Update the Track's latest group sequence
 		info.LatestGroupSequence = sequence
 
-		sess.updateInfo(trackNamespace, trackName, info)
+		sess.updateInfo(trackPath, info)
 	}()
 
 	return streams, nil
@@ -112,24 +112,18 @@ func (sess *ClientSession) ReceiveDatagram(ctx context.Context) (Group, []byte, 
 	return sess.receiveDatagram(ctx)
 }
 
-func (sess *ClientSession) updateInfo(trackNamespace, trackName string, info Info) {
+func (sess *ClientSession) updateInfo(trackPath string, info Info) {
 	sess.iMu.Lock()
 	defer sess.iMu.Unlock()
 
-	// Get a Full Track Name
-	fullName := trackNamespace + "/" + trackName
-
-	sess.infos[fullName] = info
+	sess.infos[trackPath] = info
 }
 
-func (sess *ClientSession) getInfo(trackNamespace, trackName string) (Info, bool) {
+func (sess *ClientSession) getInfo(trackPath string) (Info, bool) {
 	sess.iMu.Lock()
 	defer sess.iMu.Unlock()
 
-	// Get a Full Track Name
-	fullName := trackNamespace + "/" + trackName
-
-	info, ok := sess.infos[fullName]
+	info, ok := sess.infos[trackPath]
 	if !ok {
 		return Info{}, false
 	}

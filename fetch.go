@@ -55,8 +55,7 @@ type FetchHandler interface {
 }
 
 type FetchRequest struct {
-	TrackNamespace     string
-	TrackName          string
+	TrackPath          string
 	SubscriberPriority SubscriberPriority
 	GroupSequence      GroupSequence
 	FrameSequence      FrameSequence

@@ -8,8 +8,7 @@ import (
 )
 
 type FetchMessage struct {
-	TrackNamespace     string
-	TrackName          string
+	TrackPath          string
 	SubscriberPriority SubscriberPriority
 	GroupSequence      GroupSequence
 	FrameSequence      FrameSequence // TODO: consider the necessity type FrameSequence
@@ -22,8 +21,7 @@ func (fm FetchMessage) Encode(w io.Writer) error {
 	 * Serialize the message in the following format
 	 *
 	 * FETCH Message Payload {
-	 *   Track Namespace (string),
-	 *   Track Name (string),
+	 *   Track Path (string),
 	 *   Subscriber Priority (varint),
 	 *   Group Sequence (varint),
 	 *   Frame Sequence (varint),
@@ -31,13 +29,9 @@ func (fm FetchMessage) Encode(w io.Writer) error {
 	 */
 	p := make([]byte, 0, 1<<8)
 
-	// Append the Track Namespace
-	p = quicvarint.Append(p, uint64(len(fm.TrackNamespace)))
-	p = append(p, []byte(fm.TrackNamespace)...)
-
-	// Append the Track Name
-	p = quicvarint.Append(p, uint64(len(fm.TrackName)))
-	p = append(p, []byte(fm.TrackName)...)
+	// Append the Track Path
+	p = quicvarint.Append(p, uint64(len(fm.TrackPath)))
+	p = append(p, []byte(fm.TrackPath)...)
 
 	// Append the Subscriber Priority
 	p = quicvarint.Append(p, uint64(fm.SubscriberPriority))
@@ -77,7 +71,7 @@ func (fm *FetchMessage) Decode(r io.Reader) error {
 		return err
 	}
 
-	// Get a Track Namespace
+	// Get a Track Name
 	num, err := quicvarint.Read(mr)
 	if err != nil {
 		return err
@@ -87,19 +81,7 @@ func (fm *FetchMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	fm.TrackNamespace = string(buf)
-
-	// Get a Track Name
-	num, err = quicvarint.Read(mr)
-	if err != nil {
-		return err
-	}
-	buf = make([]byte, num)
-	_, err = r.Read(buf)
-	if err != nil {
-		return err
-	}
-	fm.TrackName = string(buf)
+	fm.TrackPath = string(buf)
 
 	// Get a Subscriber Priority
 	num, err = quicvarint.Read(mr)

@@ -29,7 +29,7 @@ func (stm StreamTypeMessage) Encode(w io.Writer) error {
 		return err
 	}
 
-	slog.Debug("decoded a STREAM_TYPE message")
+	slog.Debug("encoded a STREAM_TYPE message")
 
 	return nil
 }

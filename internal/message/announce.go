@@ -11,7 +11,7 @@ type AnnounceMessage struct {
 	/*
 	 * Track Namespace
 	 */
-	TrackNamespace string
+	TrackPath string
 
 	/*
 	 * Announce Parameters
@@ -27,7 +27,7 @@ func (a AnnounceMessage) Encode(w io.Writer) error {
 	 * Serialize the payload in the following format
 	 *
 	 * ANNOUNCE Message Payload {
-	 *   Track Namespace (tuple),
+	 *   Track Path (tuple),
 	 *   Number of Parameters (),
 	 *   Announce Parameters(..)
 	 * }
@@ -36,8 +36,8 @@ func (a AnnounceMessage) Encode(w io.Writer) error {
 	p := make([]byte, 0, 1<<6) // TODO: Tune the size
 
 	// Append the Track Namespace
-	p = quicvarint.Append(p, uint64(len(a.TrackNamespace)))
-	p = append(p, []byte(a.TrackNamespace)...)
+	p = quicvarint.Append(p, uint64(len(a.TrackPath)))
+	p = append(p, []byte(a.TrackPath)...)
 
 	// Append the Parameters
 	p = appendParameters(p, a.Parameters)
@@ -80,7 +80,7 @@ func (am *AnnounceMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	am.TrackNamespace = string(buf)
+	am.TrackPath = string(buf)
 
 	// Get Parameters
 	am.Parameters, err = readParameters(mr)
@@ -88,7 +88,7 @@ func (am *AnnounceMessage) Decode(r io.Reader) error {
 		return err
 	}
 
-	slog.Debug("decoding a ANNOUNCE_INTEREST message")
+	slog.Debug("decoding a ANNOUNCE message")
 
 	return nil
 }

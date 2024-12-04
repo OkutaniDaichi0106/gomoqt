@@ -8,8 +8,8 @@ import (
 )
 
 type AnnounceInterestMessage struct {
-	TrackPrefix string
-	Parameters  Parameters
+	TrackPathPrefix string
+	Parameters      Parameters
 }
 
 func (aim AnnounceInterestMessage) Encode(w io.Writer) error {
@@ -30,8 +30,8 @@ func (aim AnnounceInterestMessage) Encode(w io.Writer) error {
 	p := make([]byte, 0, 1<<6) // TODO: Tune the size
 
 	// Append the Track Namespace Prefix
-	p = quicvarint.Append(p, uint64(len(aim.TrackPrefix)))
-	p = append(p, []byte(aim.TrackPrefix)...)
+	p = quicvarint.Append(p, uint64(len(aim.TrackPathPrefix)))
+	p = append(p, []byte(aim.TrackPathPrefix)...)
 
 	// Append the Parameters
 	p = appendParameters(p, aim.Parameters)
@@ -76,7 +76,7 @@ func (aim *AnnounceInterestMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	aim.TrackPrefix = string(buf)
+	aim.TrackPathPrefix = string(buf)
 
 	// Get Parameters
 	aim.Parameters, err = readParameters(mr)

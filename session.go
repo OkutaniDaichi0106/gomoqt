@@ -55,6 +55,7 @@ func (sess *session) Terminate(err error) {
 }
 
 func (sess *session) Interest(interest Interest) (AnnounceStream, error) {
+	slog.Debug("indicating interest", slog.Any("interest", interest))
 	/*
 	 * Open an Announce Stream
 	 */
@@ -65,8 +66,8 @@ func (sess *session) Interest(interest Interest) (AnnounceStream, error) {
 	}
 
 	aim := message.AnnounceInterestMessage{
-		TrackPrefix: interest.TrackPrefix,
-		Parameters:  message.Parameters(interest.Parameters),
+		TrackPathPrefix: interest.TrackPrefix,
+		Parameters:      message.Parameters(interest.Parameters),
 	}
 
 	err = aim.Encode(stream)
@@ -75,7 +76,7 @@ func (sess *session) Interest(interest Interest) (AnnounceStream, error) {
 		return AnnounceStream{}, err
 	}
 
-	slog.Info("Interested", slog.Any("track prefix", interest.TrackPrefix))
+	slog.Info("Successfully indicated interest", slog.Any("interest", interest))
 
 	return AnnounceStream{
 		stream: stream,
@@ -83,7 +84,7 @@ func (sess *session) Interest(interest Interest) (AnnounceStream, error) {
 }
 
 func (sess *session) Subscribe(subscription Subscription) (*SubscribeWriter, Info, error) {
-	slog.Debug("Subscribing", slog.Any("subscription", subscription))
+	slog.Debug("making a subscription", slog.Any("subscription", subscription))
 
 	sess.ssMu.Lock()
 	defer sess.ssMu.Unlock()
@@ -104,8 +105,7 @@ func (sess *session) Subscribe(subscription Subscription) (*SubscribeWriter, Inf
 
 	sm := message.SubscribeMessage{
 		SubscribeID:        message.SubscribeID(subscription.subscribeID),
-		TrackNamespace:     subscription.TrackNamespace,
-		TrackName:          subscription.TrackName,
+		TrackPath:          subscription.TrackPath,
 		SubscriberPriority: message.SubscriberPriority(subscription.SubscriberPriority),
 		GroupOrder:         message.GroupOrder(subscription.GroupOrder),
 		MinGroupSequence:   message.GroupSequence(subscription.MinGroupSequence),
@@ -158,8 +158,7 @@ func (sess *session) Fetch(req FetchRequest) (FetchStream, error) {
 	 * Send a FETCH message
 	 */
 	fm := message.FetchMessage{
-		TrackNamespace:     req.TrackName,
-		TrackName:          req.TrackName,
+		TrackPath:          req.TrackPath,
 		SubscriberPriority: message.SubscriberPriority(req.SubscriberPriority),
 		GroupSequence:      message.GroupSequence(req.GroupSequence),
 		FrameSequence:      message.FrameSequence(req.FrameSequence),
@@ -180,6 +179,8 @@ func (sess *session) Fetch(req FetchRequest) (FetchStream, error) {
 		return FetchStream{}, err
 	}
 
+	slog.Info("Successfully fetch a group", slog.Any("group", group))
+
 	return FetchStream{
 		stream: stream,
 		group:  group,
@@ -187,6 +188,8 @@ func (sess *session) Fetch(req FetchRequest) (FetchStream, error) {
 }
 
 func (sess *session) RequestInfo(req InfoRequest) (Info, error) {
+	slog.Debug("requesting information of a track", slog.Any("info request", req))
+
 	/*
 	 * Open an Info Stream
 	 */
@@ -200,8 +203,7 @@ func (sess *session) RequestInfo(req InfoRequest) (Info, error) {
 	 * Send an INFO_REQUEST message
 	 */
 	irm := message.InfoRequestMessage{
-		TrackNamespace: req.TrackNamespace,
-		TrackName:      req.TrackName,
+		TrackPath: req.TrackPath,
 	}
 	err = irm.Encode(stream)
 	if err != nil {
@@ -227,15 +229,22 @@ func (sess *session) RequestInfo(req InfoRequest) (Info, error) {
 		slog.Error("failed to close an Info Stream", slog.String("error", err.Error()))
 	}
 
-	return Info{
+	info := Info{
 		PublisherPriority:   PublisherPriority(im.PublisherPriority),
 		LatestGroupSequence: GroupSequence(im.LatestGroupSequence),
 		GroupOrder:          GroupOrder(im.GroupOrder),
 		GroupExpires:        im.GroupExpires,
-	}, nil
+	}
+
+	slog.Info("Successfully get track information", slog.Any("info", info))
+
+	return info, nil
 }
 
 func (sess *session) openSessionStream() (moq.Stream, error) {
+	slog.Debug("opening a Session Stream")
+
+	/***/
 	stream, err := sess.conn.OpenStream()
 	if err != nil {
 		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
@@ -256,6 +265,8 @@ func (sess *session) openSessionStream() (moq.Stream, error) {
 }
 
 func (sess *session) openAnnounceStream() (moq.Stream, error) {
+	slog.Debug("opening an Announce Stream")
+
 	stream, err := sess.conn.OpenStream()
 	if err != nil {
 		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
@@ -276,6 +287,8 @@ func (sess *session) openAnnounceStream() (moq.Stream, error) {
 }
 
 func (sess *session) openSubscribeStream() (moq.Stream, error) {
+	slog.Debug("opening an Subscribe Stream")
+
 	stream, err := sess.conn.OpenStream()
 	if err != nil {
 		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
@@ -296,6 +309,8 @@ func (sess *session) openSubscribeStream() (moq.Stream, error) {
 }
 
 func (sess *session) openInfoStream() (moq.Stream, error) {
+	slog.Debug("opening an Info Stream")
+
 	stream, err := sess.conn.OpenStream()
 	if err != nil {
 		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
@@ -316,6 +331,8 @@ func (sess *session) openInfoStream() (moq.Stream, error) {
 }
 
 func (sess *session) openFetchStream() (moq.Stream, error) {
+	slog.Debug("opening an Fetch Stream")
+
 	stream, err := sess.conn.OpenStream()
 	if err != nil {
 		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
@@ -336,6 +353,8 @@ func (sess *session) openFetchStream() (moq.Stream, error) {
 }
 
 func (sess *session) openGroupStream() (moq.SendStream, error) {
+	slog.Debug("opening an Group Stream")
+
 	stream, err := sess.conn.OpenUniStream()
 	if err != nil {
 		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
@@ -485,18 +504,15 @@ func (sess *session) acceptSubscription(subscription Subscription) {
 	sess.rsMu.Lock()
 	defer sess.rsMu.Unlock()
 
-	// Get Full Track Name
-	fullName := subscription.TrackNamespace + "/" + subscription.TrackName
-
 	// Verify if the subscription is duplicated or not
-	_, ok := sess.receivedSubscriptions[fullName]
+	_, ok := sess.receivedSubscriptions[subscription.TrackPath]
 	if ok {
 		slog.Debug("duplicated subscription", slog.Any("Subscribe ID", subscription.subscribeID))
 		return
 	}
 
 	// Register the subscription
-	sess.receivedSubscriptions[fullName] = subscription
+	sess.receivedSubscriptions[subscription.TrackPath] = subscription
 
 	slog.Info("Accepted a new subscription", slog.Any("subscription", subscription))
 }
@@ -505,16 +521,13 @@ func (sess *session) updateSubscription(subscription Subscription) {
 	sess.rsMu.Lock()
 	defer sess.rsMu.Unlock()
 
-	// Get Full Track Name
-	fullName := subscription.TrackNamespace + "/" + subscription.TrackName
-
-	old, ok := sess.receivedSubscriptions[fullName]
+	old, ok := sess.receivedSubscriptions[subscription.TrackPath]
 	if !ok {
 		slog.Debug("no subscription", slog.Any("Subscribe ID", subscription.subscribeID))
 		return
 	}
 
-	sess.receivedSubscriptions[fullName] = subscription
+	sess.receivedSubscriptions[subscription.TrackPath] = subscription
 
 	slog.Info("updated a subscription", slog.Any("from", old), slog.Any("to", subscription))
 }
@@ -523,15 +536,12 @@ func (sess *session) removeSubscription(subscription Subscription) {
 	sess.rsMu.Lock()
 	defer sess.rsMu.Unlock()
 
-	// Get Full Track Name
-	fullName := subscription.TrackNamespace + "/" + subscription.TrackName
-
-	if subscription, ok := sess.receivedSubscriptions[fullName]; !ok {
+	if subscription, ok := sess.receivedSubscriptions[subscription.TrackPath]; !ok {
 		slog.Debug("no subscription", slog.Any("Subscribe ID", subscription.subscribeID))
 		return
 	}
 
-	delete(sess.receivedSubscriptions, fullName)
+	delete(sess.receivedSubscriptions, subscription.TrackPath)
 }
 
 /*

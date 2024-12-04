@@ -22,6 +22,32 @@ type ClientSession struct {
 	iMu   sync.RWMutex
 }
 
+func (clisess *ClientSession) init(conn moq.Connection) error {
+	sess := session{
+		conn:                  conn,
+		subscribeWriters:      make(map[SubscribeID]*SubscribeWriter),
+		receivedSubscriptions: make(map[string]Subscription),
+	}
+
+	/*
+	 * Open a Session Stream
+	 */
+	stream, err := sess.openSessionStream()
+	if err != nil {
+		slog.Error("failed to open a Session Stream")
+		return err
+	}
+	// Set the stream
+	sess.stream = stream
+
+	*clisess = ClientSession{
+		session: &sess,
+		infos:   make(map[string]Info),
+	}
+
+	return nil
+}
+
 func (sess *ClientSession) OpenDataStreams(trackNamespace, trackName string, sequence GroupSequence, priority PublisherPriority) ([]moq.SendStream, error) {
 	/*
 	 * Find any Subscriptions

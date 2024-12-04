@@ -14,6 +14,8 @@ type FrameMessage struct {
 }
 
 func (fm FrameMessage) Encode(w io.Writer) error {
+	slog.Debug("encoding a FRAME message")
+
 	/*
 	 * Serialize the message in following format
 	 *
@@ -32,11 +34,19 @@ func (fm FrameMessage) Encode(w io.Writer) error {
 	b = append(b, fm.Payload...)
 
 	_, err := w.Write(b)
+	if err != nil {
+		slog.Error("failed to write a FRAME message", slog.String("error", err.Error()))
+		return err
+	}
 
-	return err
+	slog.Debug("encoded a FRAME message")
+
+	return nil
 }
 
 func (fm *FrameMessage) Decode(r io.Reader) error {
+	slog.Debug("decoding a FRAME message")
+
 	// Get a payload length
 	num, err := quicvarint.Read(quicvarint.NewReader(r))
 	if err != nil {
@@ -47,7 +57,13 @@ func (fm *FrameMessage) Decode(r io.Reader) error {
 	// Get a payload
 	buf := make([]byte, num)
 	_, err = r.Read(buf)
+	if err != nil {
+		slog.Error("failed to read payload")
+		return err
+	}
 	fm.Payload = buf
 
-	return err
+	slog.Debug("decoded a FRAME message")
+
+	return nil
 }

@@ -55,8 +55,14 @@ func (irm InfoRequestMessage) Encode(w io.Writer) error {
 
 	// Write
 	_, err := w.Write(b)
+	if err != nil {
+		slog.Error("failed to write a INFO_REQUEST message")
+		return err
+	}
 
-	return err
+	slog.Debug("encoded a INFO_REQUEST message")
+
+	return nil
 }
 
 func (irm *InfoRequestMessage) Decode(r io.Reader) error {
@@ -91,6 +97,8 @@ func (irm *InfoRequestMessage) Decode(r io.Reader) error {
 		return err
 	}
 	irm.TrackName = string(buf)
+
+	slog.Debug("decoded a INFO_REQUEST message")
 
 	return nil
 }

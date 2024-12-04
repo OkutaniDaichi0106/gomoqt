@@ -1,14 +1,59 @@
 package moqt
 
 import (
+	"context"
 	"log/slog"
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
 )
 
 type ServerSession struct {
 	*session
+}
+
+func (svrsess *ServerSession) init(conn moq.Connection) error {
+	sess := session{
+		conn:                  conn,
+		subscribeWriters:      make(map[SubscribeID]*SubscribeWriter),
+		receivedSubscriptions: make(map[string]Subscription),
+	}
+
+	/*
+	 * Accept a Session Stream
+	 */
+	// Accept a bidirectional Stream for the Sesson Stream
+	stream, err := conn.AcceptStream(context.Background())
+	if err != nil {
+		slog.Error("failed to open a stream", slog.String("error", err.Error()))
+		return err
+	}
+
+	// Read the first byte and get Stream Type
+	var stm message.StreamTypeMessage
+	err = stm.Decode(stream)
+	if err != nil {
+		slog.Error("failed to read a Stream Type", slog.String("error", err.Error()))
+		return err
+	}
+
+	// Verify if the Stream is the Session Stream
+	if stm.StreamType != stream_type_session {
+		slog.Error("unexpected Stream Type ID", slog.Any("ID", stm.StreamType))
+		return err
+	}
+
+	sess.stream = stream
+
+	/*
+	 *
+	 */
+	*svrsess = ServerSession{
+		session: &sess,
+	}
+
+	return nil
 }
 
 func (sess *ServerSession) GoAway(uri string, timeout time.Duration) {

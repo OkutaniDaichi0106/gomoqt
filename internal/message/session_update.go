@@ -41,8 +41,14 @@ func (sum SessionUpdateMessage) Encode(w io.Writer) error {
 
 	// Write
 	_, err := w.Write(b)
+	if err != nil {
+		slog.Error("failed to write a SESSION_UPDATE message", slog.String("error", err.Error()))
+		return err
+	}
 
-	return err
+	slog.Debug("encoded a SESSION_UPDATE message")
+
+	return nil
 }
 
 func (sum *SessionUpdateMessage) Decode(r io.Reader) error {
@@ -60,6 +66,8 @@ func (sum *SessionUpdateMessage) Decode(r io.Reader) error {
 		return err
 	}
 	sum.Bitrate = num
+
+	slog.Debug("decoded a SESSION_UPDATE message")
 
 	return nil
 }

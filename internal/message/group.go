@@ -53,8 +53,14 @@ func (g GroupMessage) Encode(w io.Writer) error {
 
 	// Write
 	_, err := w.Write(b)
+	if err != nil {
+		slog.Error("failed to write a GROUP message", slog.String("error", err.Error()))
+		return err
+	}
 
-	return err
+	slog.Debug("encoded a GROUP message")
+
+	return nil
 }
 
 func (g *GroupMessage) Decode(r io.Reader) error {
@@ -86,6 +92,8 @@ func (g *GroupMessage) Decode(r io.Reader) error {
 		return err
 	}
 	g.PublisherPriority = PublisherPriority(num)
+
+	slog.Debug("decoded a GROUP message")
 
 	return nil
 }

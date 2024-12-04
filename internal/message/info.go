@@ -55,6 +55,12 @@ func (im InfoMessage) Encode(w io.Writer) error {
 
 	// Write
 	_, err := w.Write(b)
+	if err != nil {
+		slog.Error("failed to write a INFO message", slog.String("error", err.Error()))
+		return err
+	}
+
+	slog.Debug("encoded a INFO message")
 
 	return err
 }
@@ -95,6 +101,8 @@ func (im *InfoMessage) Decode(r io.Reader) error {
 		return err
 	}
 	im.GroupExpires = time.Duration(num)
+
+	slog.Debug("decoded a INFO message")
 
 	return nil
 }

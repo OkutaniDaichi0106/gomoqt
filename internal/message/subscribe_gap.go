@@ -16,7 +16,7 @@ type SubscribeGapMessage struct {
 }
 
 func (sgm SubscribeGapMessage) Encode(w io.Writer) error {
-	slog.Debug("encoding a GROUP_DROP message")
+	slog.Debug("encoding a SUBSCRIBE_GAP message")
 
 	/*
 	 * Serialize the payload in the following format
@@ -49,8 +49,14 @@ func (sgm SubscribeGapMessage) Encode(w io.Writer) error {
 
 	// Write
 	_, err := w.Write(b)
+	if err != nil {
+		slog.Error("failed to write a SUBSCRIBE_GAP message", slog.String("error", err.Error()))
+		return err
+	}
 
-	return err
+	slog.Debug("encoded a SUBSCRIBE_GAP message")
+
+	return nil
 }
 
 func (sgm *SubscribeGapMessage) Decode(r io.Reader) error {
@@ -82,6 +88,8 @@ func (sgm *SubscribeGapMessage) Decode(r io.Reader) error {
 		return err
 	}
 	sgm.GroupErrorCode = GroupErrorCode(num)
+
+	slog.Debug("decoded a SUBSCRIBE_GAP message")
 
 	return nil
 }

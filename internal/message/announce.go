@@ -52,8 +52,13 @@ func (a AnnounceMessage) Encode(w io.Writer) error {
 	b = append(b, p...)
 
 	_, err := w.Write(b)
+	if err != nil {
+		return err
+	}
 
-	return err
+	slog.Debug("encoded a ANNOUNCE message")
+
+	return nil
 }
 
 func (am *AnnounceMessage) Decode(r io.Reader) error {
@@ -82,6 +87,8 @@ func (am *AnnounceMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
+
+	slog.Debug("decoding a ANNOUNCE_INTEREST message")
 
 	return nil
 }

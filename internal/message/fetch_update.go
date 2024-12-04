@@ -12,7 +12,6 @@ type FetchUpdateMessage struct {
 	SubscriberPriority SubscriberPriority
 }
 
-// TODO
 func (fum FetchUpdateMessage) Encode(w io.Writer) error {
 	slog.Debug("decoding a FETCH_UPDATE message")
 
@@ -46,8 +45,13 @@ func (fum FetchUpdateMessage) Encode(w io.Writer) error {
 
 	// Write
 	_, err := w.Write(b)
+	if err != nil {
+		return err
+	}
 
-	return err
+	slog.Debug("encoded a FETCH_UPDATE message")
+
+	return nil
 }
 
 func (fum *FetchUpdateMessage) Decode(r io.Reader) error {
@@ -65,6 +69,8 @@ func (fum *FetchUpdateMessage) Decode(r io.Reader) error {
 	}
 
 	fum.SubscriberPriority = SubscriberPriority(num)
+
+	slog.Debug("decoded a FETCH_UPDATE message")
 
 	return nil
 }

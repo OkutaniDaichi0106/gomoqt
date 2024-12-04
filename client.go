@@ -134,7 +134,7 @@ func (c Client) Run(ctx context.Context) error {
 	 */
 	// Open a bidirectional Stream for the Session Stream
 	var sess ClientSession
-	err = sess.SessionInit(conn)
+	err = sess.init(conn)
 	if err != nil {
 		slog.Error("failed to open a Session Stream", slog.String("error", err.Error()))
 		return err

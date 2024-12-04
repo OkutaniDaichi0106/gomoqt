@@ -59,8 +59,13 @@ func (fm FetchMessage) Encode(w io.Writer) error {
 
 	// Write
 	_, err := w.Write(b)
+	if err != nil {
+		return err
+	}
 
-	return err
+	slog.Debug("encoded a FETCH message")
+
+	return nil
 }
 
 func (fm *FetchMessage) Decode(r io.Reader) error {
@@ -119,6 +124,8 @@ func (fm *FetchMessage) Decode(r io.Reader) error {
 	}
 
 	fm.FrameSequence = FrameSequence(num)
+
+	slog.Debug("decoded a FETCH message")
 
 	return nil
 }

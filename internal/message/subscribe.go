@@ -109,6 +109,12 @@ func (s SubscribeMessage) Encode(w io.Writer) error {
 
 	// Write
 	_, err := w.Write(b)
+	if err != nil {
+		slog.Error("failed to write a SUBSCRIBE message", slog.String("error", err.Error()))
+		return err
+	}
+
+	slog.Debug("encoded a SUBSCRIBE message")
 
 	return err
 }
@@ -193,6 +199,8 @@ func (s *SubscribeMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
+
+	slog.Debug("decoded a SUBSCRIBE message")
 
 	return nil
 }

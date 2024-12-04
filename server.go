@@ -207,29 +207,15 @@ func (s *Server) RunOnWebTransport(relayer Relayer) {
 		/*
 		 * Get a Session
 		 */
-		// Accept a bidirectional Stream for the Sesson Stream
-		stream, err := conn.AcceptStream(context.Background())
+		var sess ServerSession
+		err = sess.init(conn)
 		if err != nil {
-			slog.Error("failed to open a stream", slog.String("error", err.Error()))
-			return
-		}
-
-		// Read the first byte and get Stream Type
-		var stm message.StreamTypeMessage
-		err = stm.Decode(stream)
-		if err != nil {
-			slog.Error("failed to read a Stream Type", slog.String("error", err.Error()))
-			return
-		}
-
-		// Verify if the Stream is the Session Stream
-		if stm.StreamType != stream_type_session {
-			slog.Error("unexpected Stream Type ID", slog.Any("ID", stm.StreamType))
+			slog.Error("failed to initialize a Server Session", slog.String("error", err.Error()))
 			return
 		}
 
 		// Receive a set-up request
-		req, err := readSetupRequest(stream)
+		req, err := readSetupRequest(sess.stream)
 		if err != nil {
 			slog.Error("failed to get a set-up request", slog.String("error", err.Error()))
 			return
@@ -251,20 +237,10 @@ func (s *Server) RunOnWebTransport(relayer Relayer) {
 				Parameters:      make(Parameters),
 			}
 		}
-		err = sendSetupResponce(stream, rsp)
+		err = sendSetupResponce(sess.stream, rsp)
 		if err != nil {
 			slog.Error("failed to send a set-up responce")
 			return
-		}
-
-		// Initialize a Session
-		sess := ServerSession{
-			session: &session{
-				conn:                  conn,
-				stream:                stream,
-				subscribeWriters:      make(map[SubscribeID]*SubscribeWriter),
-				receivedSubscriptions: make(map[string]Subscription),
-			},
 		}
 
 		/*

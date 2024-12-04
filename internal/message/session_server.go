@@ -54,8 +54,14 @@ func (ssm SessionServerMessage) Encode(w io.Writer) error {
 
 	// Write
 	_, err := w.Write(b)
+	if err != nil {
+		slog.Error("failed to write a SESSION_SERVER message", slog.String("error", err.Error()))
+		return err
+	}
 
-	return err
+	slog.Debug("encoded a SESSION_SERVER message")
+
+	return nil
 }
 
 func (ssm *SessionServerMessage) Decode(r io.Reader) error {
@@ -79,6 +85,8 @@ func (ssm *SessionServerMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
+
+	slog.Debug("decoded a SESSION_SERVER message")
 
 	return nil
 }

@@ -47,8 +47,14 @@ func (ga GoAwayMessage) Encode(w io.Writer) error {
 
 	// Write
 	_, err := w.Write(b)
+	if err != nil {
+		slog.Error("failed to write a GOAWAY message", slog.String("error", err.Error()))
+		return err
+	}
 
-	return err
+	slog.Debug("encoded a GOAWAY message")
+
+	return nil
 }
 
 func (ga *GoAwayMessage) Decode(r io.Reader) error {
@@ -70,9 +76,12 @@ func (ga *GoAwayMessage) Decode(r io.Reader) error {
 	buf := make([]byte, num)
 	_, err = r.Read(buf)
 	if err != nil {
+		slog.Error("failed to read an URI")
 		return err
 	}
 	ga.NewSessionURI = string(buf)
+
+	slog.Debug("decoded a GOAWAY message")
 
 	return nil
 }

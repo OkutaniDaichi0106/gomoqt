@@ -22,6 +22,7 @@ type SessionClientMessage struct {
 
 func (scm SessionClientMessage) Encode(w io.Writer) error {
 	slog.Debug("encoding a SESSION_CLIENT message")
+
 	/*
 	 * Serialize the payload in the following format
 	 *
@@ -56,8 +57,14 @@ func (scm SessionClientMessage) Encode(w io.Writer) error {
 
 	// Write
 	_, err := w.Write(b)
+	if err != nil {
+		slog.Error("failed to write a SESSION_CLIENT message", slog.String("error", err.Error()))
+		return err
+	}
 
-	return err
+	slog.Debug("encoded a SESSION_CLIENT message")
+
+	return nil
 }
 
 func (scm *SessionClientMessage) Decode(r io.Reader) error {
@@ -90,6 +97,8 @@ func (scm *SessionClientMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
+
+	slog.Debug("decoded a SESSION_CLIENT message")
 
 	return nil
 }

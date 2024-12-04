@@ -65,8 +65,14 @@ func (su SubscribeUpdateMessage) Encode(w io.Writer) error {
 
 	// Write
 	_, err := w.Write(b)
+	if err != nil {
+		slog.Error("failed to write a SUBSCRIBE_UPDATE message", slog.String("error", err.Error()))
+		return err
+	}
 
-	return err
+	slog.Debug("encoded a SUBSCRIBE_UPDATE message")
+
+	return nil
 }
 
 func (sum *SubscribeUpdateMessage) Decode(r io.Reader) error {
@@ -110,6 +116,8 @@ func (sum *SubscribeUpdateMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
+
+	slog.Debug("decoded a SUBSCRIBE_UPDATE message")
 
 	return nil
 }

@@ -30,32 +30,6 @@ type session struct {
 	rsMu                  sync.RWMutex
 }
 
-func (sess *session) SessionInit(conn moq.Connection) error {
-	sess = &session{
-		conn: conn,
-	}
-
-	/*
-	 * Open a Session Stream
-	 */
-	stream, err := sess.openSessionStream()
-	if err != nil {
-		slog.Error("failed to open a Session Stream")
-		return err
-	}
-
-	// Set the stream
-	sess.stream = stream
-
-	//
-	sess.subscribeWriters = make(map[SubscribeID]*SubscribeWriter)
-
-	//
-	sess.receivedSubscriptions = make(map[string]Subscription)
-
-	return nil
-}
-
 func (sess *session) Terminate(err error) {
 	slog.Info("terminating a Session", slog.String("reason", err.Error()))
 

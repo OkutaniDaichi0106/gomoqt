@@ -4,7 +4,6 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"sync"
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
@@ -12,14 +11,6 @@ import (
 )
 
 type SubscribeID uint64
-
-type GroupOrder byte
-
-const (
-	DEFAULT    GroupOrder = 0x0
-	ASCENDING  GroupOrder = 0x1
-	DESCENDING GroupOrder = 0x2
-)
 
 type Subscription struct {
 	subscribeID        SubscribeID
@@ -57,18 +48,14 @@ func (s Subscription) GetGroup(seq GroupSequence, priority PublisherPriority) Gr
 	}
 }
 
-type SubscribeWriter struct {
+type SubscribeSender struct {
 	stream       moq.Stream
 	subscription Subscription
-	mu           sync.RWMutex
 }
 
-func (w *SubscribeWriter) Update(update SubscribeUpdate) (Info, error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
+func (w *SubscribeSender) Update(update SubscribeUpdate) (Info, error) {
 	old := w.subscription
-	slog.Debug("trying to update", slog.Any("subscription", w.subscription), slog.Any("to", update))
+	slog.Debug("updating a subscription", slog.Any("subscription", w.subscription), slog.Any("to", update))
 
 	// Verify if the new group range is valid
 	if update.MinGroupSequence > update.MaxGroupSequence {
@@ -80,6 +67,7 @@ func (w *SubscribeWriter) Update(update SubscribeUpdate) (Info, error) {
 		slog.Debug("the new MinGroupSequence is smaller than the old MinGroupSequence")
 		return Info{}, ErrInvalidRange
 	}
+	//
 	if old.MaxGroupSequence < update.MaxGroupSequence {
 		slog.Debug("the new MaxGroupSequence is larger than the old MaxGroupSequence")
 		return Info{}, ErrInvalidRange
@@ -105,6 +93,7 @@ func (w *SubscribeWriter) Update(update SubscribeUpdate) (Info, error) {
 		MaxGroupSequence:   message.GroupSequence(update.MaxGroupSequence),
 		Parameters:         message.Parameters(update.Parameters),
 	}
+
 	err := sum.Encode(w.stream)
 	if err != nil {
 		slog.Debug("failed to send a SUBSCRIBE_UPDATE message", slog.String("error", err.Error()))
@@ -120,16 +109,11 @@ func (w *SubscribeWriter) Update(update SubscribeUpdate) (Info, error) {
 	return info, nil
 }
 
-func (s *SubscribeWriter) Unsubscribe(err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (s *SubscribeSender) Unsubscribe(err error) {
+	slog.Debug("stopping a subscription", slog.String("reason", err.Error()))
 
 	if err == nil {
-		err := s.stream.Close()
-		if err != nil {
-			slog.Error("failed to close a Subscribe Stream", slog.String("error", err.Error()))
-		}
-		return
+		s.Close()
 	}
 
 	suberr, ok := err.(SubscribeError)
@@ -141,7 +125,14 @@ func (s *SubscribeWriter) Unsubscribe(err error) {
 	s.stream.CancelRead(moq.StreamErrorCode(suberr.SubscribeErrorCode()))
 }
 
-func (s *SubscribeWriter) Subscription() Subscription {
+func (s SubscribeSender) Close() {
+	err := s.stream.Close()
+	if err != nil {
+		slog.Error("catch an error when closing a subscribe stream", slog.String("error", err.Error()))
+	}
+}
+
+func (s SubscribeSender) Subscription() Subscription {
 	return s.subscription
 }
 
@@ -149,15 +140,57 @@ func (s *SubscribeWriter) Subscription() Subscription {
  *
  */
 
-type SubscribeHandler interface {
-	HandleSubscribe(Subscription, *Info, SubscribeResponceWriter)
+type SubscribeReceiver struct {
+	subscription Subscription
+	stream       moq.Stream
 }
 
-type SubscribeResponceWriter struct {
-	stream moq.Stream
+func (sr SubscribeReceiver) Subscription() Subscription {
+	return sr.subscription
 }
 
-func (srw SubscribeResponceWriter) Accept(i Info) {
+func (sr *SubscribeReceiver) updateSubscription(update SubscribeUpdate) {
+	// Update the subscriber priority
+	if update.SubscriberPriority != 0 {
+		sr.subscription.SubscriberPriority = update.SubscriberPriority
+	}
+
+	// Update the group order
+	if update.GroupOrder != 0 {
+		sr.subscription.GroupOrder = update.GroupOrder
+	}
+
+	// Update the group expires
+	if update.GroupExpires != 0 {
+		sr.subscription.GroupExpires = update.GroupExpires
+	}
+
+	// Update the min group sequence
+	if update.MinGroupSequence != 0 && (sr.subscription.MinGroupSequence < update.MinGroupSequence) {
+		sr.subscription.MinGroupSequence = update.MinGroupSequence
+	}
+
+	// Update the max group sequence
+	if update.MaxGroupSequence != 0 && (sr.subscription.MaxGroupSequence > update.MaxGroupSequence) {
+		sr.subscription.SubscriberPriority = update.SubscriberPriority
+	}
+
+	// Update the parameters
+	for k, v := range update.Parameters {
+		sr.subscription.Parameters.Add(k, v)
+	}
+
+	// Update the delivery timeout
+	if update.DeliveryTimeout != 0 {
+		sr.subscription.DeliveryTimeout = update.DeliveryTimeout
+	}
+}
+
+func (sr SubscribeReceiver) ReceiveUpdate() (SubscribeUpdate, error) {
+	return readSubscribeUpdate(sr.stream)
+}
+
+func (sr SubscribeReceiver) Inform(i Info) {
 	slog.Debug("Accepting the subscription")
 
 	im := message.InfoMessage{
@@ -167,21 +200,22 @@ func (srw SubscribeResponceWriter) Accept(i Info) {
 		GroupExpires:        i.GroupExpires,
 	}
 
-	err := im.Encode(srw.stream)
+	err := im.Encode(sr.stream)
 	if err != nil {
 		slog.Error("failed to accept the Subscription", slog.String("error", err.Error()))
-		srw.Reject(err)
+		sr.CancelRead(err)
 		return
 	}
 
 	slog.Info("Accepted the subscription")
 }
 
-func (srw SubscribeResponceWriter) Reject(err error) {
-	slog.Debug("Rejecting the Subscription")
+// TODO: rename this to CancelReceive
+func (sr SubscribeReceiver) CancelRead(err error) {
+	slog.Debug("canceling a subscription", slog.Any("subscription", sr.subscription))
 
 	if err == nil {
-		srw.Close()
+		sr.Close()
 		return
 	}
 
@@ -199,14 +233,15 @@ func (srw SubscribeResponceWriter) Reject(err error) {
 		}
 	}
 
-	srw.stream.CancelRead(code)
-	srw.stream.CancelWrite(code)
+	sr.stream.CancelRead(code)
+	sr.stream.CancelWrite(code)
 
 	slog.Debug("Rejected a subscription", slog.String("error", err.Error()))
 }
 
-func (w SubscribeResponceWriter) Close() {
-	err := w.stream.Close()
+func (sr SubscribeReceiver) Close() {
+	slog.Info("Closing a Subscrbe Receiver", slog.Any("subscription", sr.subscription))
+	err := sr.stream.Close()
 	if err != nil {
 		slog.Debug("catch an error when closing a Subscribe Stream", slog.String("error", err.Error()))
 	}
@@ -246,24 +281,29 @@ type SubscribeUpdate struct {
 	DeliveryTimeout time.Duration
 }
 
-func readSubscribeUpdate(old Subscription, r io.Reader) (Subscription, error) {
+func readSubscribeUpdate(r io.Reader) (SubscribeUpdate, error) {
 
 	// Read a SUBSCRIBE_UPDATE message
 	var sum message.SubscribeUpdateMessage
 	err := sum.Decode(r)
 	if err != nil {
 		slog.Debug("failed to read a SUBSCRIBE_UPDATE message", slog.String("error", err.Error()))
-		return Subscription{}, err
+		return SubscribeUpdate{}, err
 	}
 
-	new := Subscription{
-		subscribeID:        old.subscribeID,
-		TrackPath:          old.TrackPath,
-		Parameters:         Parameters(sum.Parameters),
+	// Get a DELIVERY_TIMEOUT parameter
+	timeout, ok := getDeliveryTimeout(Parameters(sum.Parameters))
+	if !ok {
+		timeout = 0
+	}
+
+	return SubscribeUpdate{
 		SubscriberPriority: SubscriberPriority(sum.SubscriberPriority),
 		GroupOrder:         GroupOrder(sum.GroupOrder),
 		GroupExpires:       sum.GroupExpires,
-	}
-
-	return new, nil
+		MinGroupSequence:   GroupSequence(sum.MinGroupSequence),
+		MaxGroupSequence:   GroupSequence(sum.MaxGroupSequence),
+		Parameters:         Parameters(sum.Parameters),
+		DeliveryTimeout:    timeout,
+	}, nil
 }

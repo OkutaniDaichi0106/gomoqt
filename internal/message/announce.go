@@ -7,7 +7,18 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
+const (
+	ended  byte = 0x0
+	active byte = 0x1
+	live   byte = 0x2
+)
+
 type AnnounceMessage struct {
+	/*
+	 * Announce Status
+	 */
+	AnnounceStatus byte
+
 	/*
 	 * Track Namespace
 	 */
@@ -27,7 +38,7 @@ func (a AnnounceMessage) Encode(w io.Writer) error {
 	 * Serialize the payload in the following format
 	 *
 	 * ANNOUNCE Message Payload {
-	 *   Track Path (tuple),
+	 *   Track Path (string),
 	 *   Number of Parameters (),
 	 *   Announce Parameters(..)
 	 * }
@@ -70,7 +81,7 @@ func (am *AnnounceMessage) Decode(r io.Reader) error {
 		return err
 	}
 
-	// Get a Track Namespace
+	// Get a Track Path
 	num, err := quicvarint.Read(mr)
 	if err != nil {
 		return err
@@ -88,7 +99,7 @@ func (am *AnnounceMessage) Decode(r io.Reader) error {
 		return err
 	}
 
-	slog.Debug("decoding a ANNOUNCE message")
+	slog.Debug("decoded a ANNOUNCE message")
 
 	return nil
 }

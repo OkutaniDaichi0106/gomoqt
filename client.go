@@ -36,15 +36,13 @@ type Client struct {
 
 	announcements map[string]Announcement
 
-	SubscribeHijackerFunc func(Subscription) error
-
 	SessionHandler ClientSessionHandler
 
 	CacheManager CacheManager
 }
 
-func (c Client) AddAnnouncement(announcement Announcement) {
-	if c.announcements == nil {
+func (c *Client) AddAnnouncement(announcement Announcement) {
+	if len(c.announcements) == 0 {
 		c.announcements = make(map[string]Announcement)
 	}
 
@@ -258,7 +256,6 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 				aw := AnnounceWriter{
 					stream: stream,
 				}
-
 				// Announce
 				for _, announcement := range c.announcements {
 					// Verify if the Announcement's Track Namespace has the Track Prefix
@@ -271,48 +268,44 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 				slog.Debug("subscribe stream was opened")
 
 				//
-				sw := SubscribeResponceWriter{
+				sr := SubscribeReceiver{
 					stream: stream,
 				}
 
 				subscription, err := readSubscription(stream)
 				if err != nil {
 					slog.Error("failed to get a subscription", slog.String("error", err.Error()))
-
-					sw.Reject(err)
+					//
+					sr.CancelRead(err)
 					return
 				}
 
-				// Hijack
-				if c.SubscribeHijackerFunc != nil {
-					err := c.SubscribeHijackerFunc(subscription)
-					if err != nil {
-						sw.Reject(err)
-						return
-					}
+				// Verify if the Track Path in the subscription is valid
+				_, ok := c.announcements[subscription.TrackPath]
+				if !ok {
+					sr.CancelRead(ErrTrackDoesNotExist)
+					return
 				}
+
+				// Set the subscription to the receiver
+				sr.subscription = subscription
 
 				// Get any Infomation of the track
-				info, ok := sess.getInfo(subscription.TrackPath)
-				if ok {
-					sw.Accept(info)
-				} else {
+				info, _ := sess.getCurrentInfo(subscription.TrackPath)
 
-					sw.Reject(ErrTrackDoesNotExist)
-					return
-
-				}
+				// Send the current track information
+				sr.Inform(info)
 
 				/*
 				 * Accept the new subscription
 				 */
-				sess.acceptSubscription(subscription)
+				sess.acceptNewSubscription(&sr)
 
 				/*
 				 * Catch any Subscribe Update or any error from the subscriber
 				 */
 				for {
-					update, err := readSubscribeUpdate(subscription, stream)
+					update, err := sr.ReceiveUpdate()
 					if err != nil {
 						slog.Info("catched an error from the subscriber", slog.String("error", err.Error()))
 						break
@@ -320,16 +313,16 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 
 					slog.Info("received a subscribe update request", slog.Any("subscription", update))
 
-					sw := SubscribeResponceWriter{
+					sw := SubscribeReceiver{
 						stream: stream,
 					}
 
 					// Get any Infomation of the track
-					info, ok := sess.getInfo(subscription.TrackPath)
+					info, ok := sess.getCurrentInfo(subscription.TrackPath)
 					if ok {
-						sw.Accept(info)
+						sw.Inform(info)
 					} else {
-						sw.Reject(ErrTrackDoesNotExist)
+						sw.CancelRead(ErrTrackDoesNotExist)
 						return
 					}
 
@@ -338,15 +331,14 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 					/*
 					 * Update the subscription
 					 */
-					sess.updateSubscription(update)
-					subscription = update
+					sr.updateSubscription(update)
 				}
 
-				sess.removeSubscription(subscription)
+				sess.deleteSubscription(subscription)
 
 				// Close the Stream gracefully
-				sw.Reject(nil)
-
+				sr.Close()
+				return
 			case stream_type_fetch:
 				slog.Debug("fetch stream was opened")
 
@@ -369,26 +361,29 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 					return
 				}
 
-				// Verify if subscriptions corresponding to the ftch request exists
-				for _, subscription := range sess.receivedSubscriptions {
-					if subscription.TrackPath != req.TrackPath {
-						continue
-					}
+				// Send the data if valid subscription exists
+				for _, sr := range sess.subscribeReceivers {
+					subscription := sr.subscription
 
-					// Send the group data
-					w, err := frw.SendGroup(Group{
-						subscribeID:       subscription.subscribeID,
-						groupSequence:     req.GroupSequence,
-						PublisherPriority: PublisherPriority(req.SubscriberPriority), // TODO: Handle Publisher Priority
-					})
-					if err != nil {
-						slog.Error("failed to send a group", slog.String("error", err.Error()))
-						frw.Reject(err)
-						return
-					}
+					if subscription.TrackPath == req.TrackPath {
+						// Send the group data
+						w, err := frw.SendGroup(Group{
+							subscribeID:       subscription.subscribeID,
+							groupSequence:     req.GroupSequence,
+							PublisherPriority: PublisherPriority(req.SubscriberPriority), // TODO: Handle Publisher Priority
+						})
+						if err != nil {
+							slog.Error("failed to send a group", slog.String("error", err.Error()))
+							frw.Reject(err)
+							return
+						}
 
-					// Send the data by copying it from the reader
-					io.Copy(w, r)
+						// Send the data by copying it from the reader
+						io.Copy(w, r)
+
+						// Break becase data
+						break
+					}
 				}
 
 				// Close the Fetch Stream gracefully
@@ -408,16 +403,16 @@ func (c Client) listenBiStreams(sess *ClientSession) {
 					stream: stream,
 				}
 
-				info, ok := sess.getInfo(req.TrackPath)
+				info, ok := sess.getCurrentInfo(req.TrackPath)
 				if ok {
-					iw.Answer(info)
+					iw.Inform(info)
 				} else {
-					iw.Reject(ErrTrackDoesNotExist)
+					iw.CancelInform(ErrTrackDoesNotExist)
 					return
 				}
 
 				// Close the Info Stream gracefully
-				iw.Reject(nil)
+				iw.CancelInform(nil)
 				return
 			default:
 				slog.Debug("unknown stream was opend")

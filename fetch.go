@@ -48,7 +48,6 @@ func (f FetchStream) Close() error {
 type GroupSequence message.GroupSequence
 
 /***/
-type SubscriberPriority message.SubscriberPriority
 
 type FetchHandler interface {
 	HandleFetch(FetchRequest, FetchResponceWriter)
@@ -66,9 +65,11 @@ type FetchResponceWriter struct {
 	stream    moq.Stream
 }
 
-func (w FetchResponceWriter) SendGroup(group Group) (moq.SendStream, error) {
+func (w *FetchResponceWriter) SendGroup(group Group) (moq.SendStream, error) {
 	if w.groupSent {
 		return nil, errors.New("a Group was already sent")
+	} else {
+		w.groupSent = true
 	}
 
 	gm := message.GroupMessage{

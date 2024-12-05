@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/tls"
 	"log/slog"
-	"os"
 
 	moqt "github.com/OkutaniDaichi0106/gomoqt"
 	"github.com/quic-go/quic-go"
@@ -13,8 +12,8 @@ func main() {
 	/*
 	 * Set Log Level to "DEBUG"
 	 */
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	slog.SetDefault(logger)
+	// logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	// slog.SetDefault(logger)
 
 	/*
 	 * Set certification config
@@ -73,12 +72,12 @@ func handleServerSession(sess *moqt.ServerSession) {
 	 * Get Announcements
 	 */
 	for {
-		ann, err := annstr.ReadAnnouncement()
+		ann, err := annstr.Read()
 		if err != nil {
 			slog.Error("failed to read an announcement", slog.String("error", err.Error()))
 			return
 		}
-		slog.Info("received an announcement", slog.Any("announcement", ann))
+		slog.Info("Received an announcement", slog.Any("announcement", ann))
 
 		if ann.TrackPath == echoTrackPath {
 			break

@@ -10,14 +10,15 @@ import (
 )
 
 type ServerSession struct {
+	//relayManager *RelayManager
 	*session
 }
 
 func (svrsess *ServerSession) init(conn moq.Connection) error {
 	sess := session{
-		conn:                  conn,
-		subscribeWriters:      make(map[SubscribeID]*SubscribeWriter),
-		receivedSubscriptions: make(map[string]Subscription),
+		conn:               conn,
+		subscribeSenders:   make(map[SubscribeID]*SubscribeSender),
+		subscribeReceivers: make(map[SubscribeID]*SubscribeReceiver),
 	}
 
 	/*
@@ -73,7 +74,7 @@ func (sess *ServerSession) GoAway(uri string, timeout time.Duration) {
 	time.Sleep(timeout)
 
 	//
-	if len(sess.receivedSubscriptions) != 0 {
+	if len(sess.subscribeReceivers) != 0 {
 		slog.Info("subscription is still on the Session")
 
 		// Terminate the Session with an GO_AWAY_TIMEOUT error

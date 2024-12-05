@@ -106,10 +106,10 @@ func (s *Server) ListenAndServe() error {
 				// Initialize a Session
 				sess := ServerSession{
 					session: &session{
-						conn:                  conn,
-						stream:                stream,
-						subscribeWriters:      make(map[SubscribeID]*SubscribeWriter),
-						receivedSubscriptions: make(map[string]Subscription),
+						conn:               conn,
+						stream:             stream,
+						subscribeSenders:   make(map[SubscribeID]*SubscribeSender),
+						subscribeReceivers: make(map[SubscribeID]*SubscribeReceiver),
 					},
 				}
 

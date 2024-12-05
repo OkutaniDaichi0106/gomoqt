@@ -89,39 +89,40 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 					return
 				}
 
-				slog.Info("received an interest", slog.Any("interest", interest))
+				slog.Info("Received an interest", slog.Any("interest", interest))
 
 				// Initialize a Announce Writer
-				w := AnnounceWriter{
+				aw := AnnounceWriter{
 					stream: stream,
 				}
+
+				annCh := make(chan Announcement, 1) // TODO: Tune the size
+
+				// Register the Announce Writer
+				r.RelayManager.registerFollower(interest.TrackPrefix, annCh)
 
 				/*
 				 * Announce
 				 */
-				// Find any Track Namespace node
-				slog.Info("finding any announcements")
-				tp := strings.Split(interest.TrackPrefix, "/")
-				tnsNode, ok := r.RelayManager.findTrackNamespace(tp)
-				if ok {
-					// Get any Announcements under the Track Namespace
-					announcements := tnsNode.getAnnouncements()
-
-					// Send the Announcements
-					for _, ann := range announcements {
-						w.Announce(ann)
-					}
+				// Find anu current announcements
+				slog.Info("Finding any announcements")
+				anns := r.RelayManager.GetAnnouncements(interest.TrackPrefix)
+				// Send the Announcements
+				for _, ann := range anns {
+					aw.Announce(ann)
 				}
 
-				// Register the Announce Writer
-				r.RelayManager.RegisterFollower(interest.TrackPrefix, w)
+				for ann := range annCh {
+					aw.Announce(ann)
+				}
 
-				w.Close()
+				aw.Close()
+				return
 			case stream_type_subscribe:
 				slog.Debug("subscribe stream was opened")
 
 				// Initialize a Subscriber Responce Writer
-				sw := SubscribeResponceWriter{
+				sr := SubscribeReceiver{
 					stream: stream,
 				}
 
@@ -131,7 +132,7 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 					slog.Error("failed to get a subscription", slog.String("error", err.Error()))
 
 					// Close the Stream
-					sw.Reject(err)
+					sr.CancelRead(err)
 					return
 				}
 
@@ -139,67 +140,66 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 				info, ok := r.RelayManager.GetInfo(subscription.TrackPath)
 				if ok {
 					// Accept the request if information exists
-					sw.Accept(info)
+					sr.Inform(info)
 				} else {
 					// Reject the request if information does not exist
-					sw.Reject(ErrTrackDoesNotExist)
+					sr.CancelRead(ErrTrackDoesNotExist)
 					return
 				}
+
+				// Set the subscription to the receiver
+				sr.subscription = subscription
 
 				/*
 				 * Accept the new subscription
 				 */
-				sess.acceptSubscription(subscription)
+				sess.acceptNewSubscription(&sr)
 
 				/*
 				 * Register the session as destinations of the Track
 				 */
+				//TODO
 
 				/*
 				 * Catch any Subscribe Update or any error from the subscriber
 				 */
 				for {
-					update, err := readSubscribeUpdate(subscription, stream)
+					update, err := sr.ReceiveUpdate()
 					if err != nil {
-						slog.Info("catched an error from the subscriber", slog.String("error", err.Error()))
+						slog.Info("failed to read a subscribe update", slog.String("error", err.Error()))
 						break
 					}
 
-					slog.Info("received a subscribe update request", slog.Any("subscription", update))
-
-					sw := SubscribeResponceWriter{
-						stream: stream,
-					}
+					slog.Info("received a subscribe update", slog.Any("update", update))
 
 					// Get any Infomation of the track
 					info, ok := r.RelayManager.GetInfo(subscription.TrackPath)
 					if ok {
 						// Accept the request if information exists
-						sw.Accept(info)
+						sr.Inform(info)
 					} else {
 						// Reject the request if information does not exist
-						sw.Reject(ErrTrackDoesNotExist)
+						sr.CancelRead(ErrTrackDoesNotExist)
 						return
 					}
 
 					slog.Info("updated a subscription", slog.Any("from", subscription), slog.Any("to", update))
 
 					/*
-					 * Update the subscription
+					 * Update the subscription by overwriting the receiver
 					 */
-					sess.updateSubscription(update)
-					subscription = update
+					sr.updateSubscription(update)
 				}
 
-				sess.removeSubscription(subscription)
+				sess.deleteSubscription(subscription)
 
 				slog.Info("subscription has ended", slog.Any("subscription", subscription))
 
 				// Close the Stream gracefully
-				sw.Close()
+				sr.Close()
 				return
 			case stream_type_fetch:
-				slog.Info("fetch stream was opened")
+				slog.Debug("fetch stream was opened")
 
 				// Initialize a fetch responce writer
 				frw := FetchResponceWriter{
@@ -214,7 +214,7 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 					return
 				}
 
-				slog.Info("get a fetch request", slog.Any("fetch request", req))
+				slog.Info("Got a fetch request", slog.Any("fetch request", req))
 
 				// Get a data rader
 				r, err := r.CacheManager.GetFrame(req.TrackPath, req.GroupSequence, req.FrameSequence)
@@ -225,32 +225,33 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 				}
 
 				// Verify if subscriptions corresponding to the ftch request exists
-				for _, subscription := range sess.receivedSubscriptions {
-					if subscription.TrackPath != req.TrackPath {
-						continue
-					}
+				for _, sr := range sess.subscribeReceivers {
+					if sr.subscription.TrackPath != req.TrackPath {
+						// Initialize a group
+						group := Group{
+							subscribeID:       sr.subscription.subscribeID,
+							groupSequence:     req.GroupSequence,
+							PublisherPriority: PublisherPriority(req.SubscriberPriority), // TODO: Handle Publisher Priority
+						}
 
-					// Send the group data
-					w, err := frw.SendGroup(Group{
-						subscribeID:       subscription.subscribeID,
-						groupSequence:     req.GroupSequence,
-						PublisherPriority: PublisherPriority(req.SubscriberPriority), // TODO: Handle Publisher Priority
-					})
-					if err != nil {
-						slog.Error("failed to send a group", slog.String("error", err.Error()))
-						frw.Reject(err)
-						return
-					}
+						// Send the group data
+						w, err := frw.SendGroup(group)
+						if err != nil {
+							slog.Error("failed to send a group", slog.String("error", err.Error()))
+							frw.Reject(err)
+							return
+						}
 
-					// Send the data by copying it from the reader
-					io.Copy(w, r)
+						// Send the data by copying it from the reader
+						io.Copy(w, r)
+					}
 				}
 
 				// Close the Fetch Stream gracefully
 				frw.Close()
 				return
 			case stream_type_info:
-				slog.Info("info stream was opened")
+				slog.Debug("info stream was opened")
 
 				// Get a info request
 				infoRequest, err := readInfoRequest(stream)
@@ -265,9 +266,9 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 
 				info, ok := r.RelayManager.GetInfo(infoRequest.TrackPath)
 				if ok {
-					iw.Answer(info)
+					iw.Inform(info)
 				} else {
-					iw.Reject(ErrTrackDoesNotExist)
+					iw.CancelInform(ErrTrackDoesNotExist)
 					return
 				}
 
@@ -297,10 +298,10 @@ func (r Relayer) listenUniStreams(sess *ServerSession) {
 			/*
 			 * Verify if subscribed or not by finding a subscription having the Subscribe ID in the Group
 			 */
-			sess.rsMu.RLock()
-			defer sess.rsMu.RUnlock()
+			sess.srMu.RLock()
+			defer sess.srMu.RUnlock()
 
-			sw, ok := sess.subscribeWriters[group.subscribeID]
+			sw, ok := sess.subscribeSenders[group.subscribeID]
 			if !ok {
 				slog.Error("received a group of unsubscribed track", slog.Any("group", group))
 				return
@@ -314,7 +315,7 @@ func (r Relayer) listenUniStreams(sess *ServerSession) {
 			 */
 			// Find destinations subscribing the Group's Track
 			tp := strings.Split(subscription.TrackPath, "/")
-			dests, ok := r.RelayManager.findDestinations(tp[:len(tp)-1], tp[len(tp)], subscription.GroupOrder)
+			dests, ok := r.RelayManager.findDestinations(tp[:len(tp)-1], tp[len(tp)-1], subscription.GroupOrder)
 			if !ok {
 				slog.Error("no destinations")
 				return
@@ -335,8 +336,10 @@ func (r Relayer) listenUniStreams(sess *ServerSession) {
 					mu.Lock()
 					defer mu.Unlock()
 
-					// Verify if the Group is needed
-					for _, subscription := range destSess.receivedSubscriptions {
+					// Verify if the group is required for the subscription
+					for _, sr := range destSess.subscribeReceivers {
+						subscription := sr.subscription
+
 						if subscription.MinGroupSequence > group.groupSequence {
 							continue
 						}
@@ -410,10 +413,10 @@ func (r Relayer) listenDatagrams(sess *ServerSession) {
 		 *
 		 * Verify if subscribed or not by finding a subscription having the Group's Subscribe ID
 		 */
-		sess.rsMu.RLock()
-		defer sess.rsMu.RUnlock()
+		sess.srMu.RLock()
+		defer sess.srMu.RUnlock()
 
-		sw, ok := sess.subscribeWriters[group.subscribeID]
+		sw, ok := sess.subscribeSenders[group.subscribeID]
 		if !ok {
 			slog.Error("received a group of unsubscribed track", slog.Any("group", group))
 			return
@@ -426,7 +429,7 @@ func (r Relayer) listenDatagrams(sess *ServerSession) {
 		 */
 		// Find destinations subscribing the Group's Track
 		tp := strings.Split(subscription.TrackPath, "/")
-		dests, ok := r.RelayManager.findDestinations(tp[:len(tp)-1], tp[len(tp)], subscription.GroupOrder)
+		dests, ok := r.RelayManager.findDestinations(tp[:len(tp)-1], tp[len(tp)-1], subscription.GroupOrder)
 		if !ok {
 			slog.Error("destinations not found")
 			return
@@ -447,12 +450,12 @@ func (r Relayer) listenDatagrams(sess *ServerSession) {
 				mu.Lock()
 				defer mu.Unlock()
 
-				for _, subscription := range sess.receivedSubscriptions {
-					if subscription.MinGroupSequence > group.groupSequence {
+				for _, sr := range sess.subscribeReceivers {
+					if sr.subscription.MinGroupSequence > group.groupSequence {
 						continue
 					}
 
-					if subscription.MaxGroupSequence < group.groupSequence {
+					if sr.subscription.MaxGroupSequence < group.groupSequence {
 						continue
 					}
 

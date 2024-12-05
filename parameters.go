@@ -1,151 +1,112 @@
 package moqt
 
 import (
+	"bytes"
+	"errors"
+	"fmt"
+	"log/slog"
+	"reflect"
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
+	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type Parameters message.Parameters
 
-func (p Parameters) Add(key uint64, value any) {
+func (p Parameters) Add(key uint64, value any) error {
+	encode := func(v uint64) []byte {
+		value := make([]byte, quicvarint.Len(uint64(v)))
+		return quicvarint.Append(value, uint64(v))
+	}
 	switch v := value.(type) {
-	case int64:
-		p[key] = uint64(v)
-	case int32:
-		p[key] = uint64(v)
-	case int16:
-		p[key] = uint64(v)
-	case int8:
-		p[key] = uint64(v)
-	case uint32:
-		p[key] = uint64(v)
-	case uint16:
-		p[key] = uint64(v)
-	case uint8:
-		p[key] = uint64(v)
-	case uint64:
-		p[key] = v
+	case int64, int32, int16, int8:
+		p[key] = encode(uint64(reflect.ValueOf(v).Int()))
+	case uint64, uint32, uint16, uint8:
+		p[key] = encode(reflect.ValueOf(v).Uint())
 	case bool:
 		if v {
-			p[key] = 1
+			p[key] = encode(1)
 		} else if !v {
-			p[key] = 0
+			p[key] = encode(0)
 		}
 	case string:
 		p[key] = []byte(v)
 	case []byte:
 		p[key] = v
 	default:
-		panic("invalid type")
+		return fmt.Errorf("invalid type: %T", value)
 	}
+
+	return nil
 }
 
 func (p Parameters) Remove(key uint64) {
 	delete(p, key)
 }
 
-func (p Parameters) ReadAsByteArray(key uint64) ([]byte, bool) {
+func (p Parameters) ReadAsByteArray(key uint64) ([]byte, error) {
 	value, ok := p[key]
 	if !ok {
-		return nil, false
+		return nil, ErrParameterNotFound
 	}
-	switch v := value.(type) {
-	case []byte:
-		return v, true
+
+	return value, nil
+}
+
+func (p Parameters) ReadAsString(key uint64) (string, error) {
+	value, err := p.ReadAsByteArray(key)
+	if err != nil {
+		slog.Error("failed to read a parameter as byte array")
+		return "", err
+	}
+
+	return string(value), nil
+}
+
+func (p Parameters) ReadAsInt(key uint64) (int64, error) {
+	num, err := p.ReadAsUint(key)
+	if err != nil {
+		slog.Error("failed to read a parameter as uint", slog.String("error", err.Error()))
+		return 0, err
+	}
+
+	return int64(num), nil
+}
+
+func (p Parameters) ReadAsUint(key uint64) (uint64, error) {
+	value, ok := p[key]
+	if !ok {
+		return 0, ErrParameterNotFound
+	}
+
+	num, err := quicvarint.Read(quicvarint.NewReader(bytes.NewReader(value)))
+	if err != nil {
+		slog.Error("failed to read the bytes as uint64")
+		return 0, err
+	}
+
+	return num, nil
+}
+
+func (p Parameters) ReadAsBool(key uint64) (bool, error) {
+	num, err := p.ReadAsUint(key)
+	if err != nil {
+		slog.Error("failed to read a parameter as uint", slog.String("error", err.Error()))
+		return false, err
+	}
+
+	switch num {
+	case 0:
+		return false, nil
+	case 1:
+		return true, nil
 	default:
-		return nil, false
+		return false, errors.New("invalid value as bool")
 	}
 }
 
-func (p Parameters) ReadAsString(key uint64) (string, bool) {
-	value, ok := p.ReadAsByteArray(key)
-	if !ok {
-		return "", false
-	}
-	return string(value), true
-}
-
-func (p Parameters) ReadAsInt(key uint64) (int64, bool) {
-	value, ok := p[key]
-	if !ok {
-		return 0, false
-	}
-	switch v := value.(type) {
-	case int:
-		return int64(v), true
-	case int8:
-		return int64(v), true
-	case int16:
-		return int64(v), true
-	case int32:
-		return int64(v), true
-	case int64:
-		return v, true
-	case uint:
-		return int64(v), true
-	case uint8:
-		return int64(v), true
-	case uint16:
-		return int64(v), true
-	case uint32:
-		return int64(v), true
-	case uint64:
-		return int64(v), true
-	default:
-		return 0, false
-	}
-}
-
-func (p Parameters) ReadAsUint(key uint64) (uint64, bool) {
-	value, ok := p[key]
-	if !ok {
-		return 0, false
-	}
-	switch v := value.(type) {
-	case int:
-		return uint64(v), true
-	case int8:
-		return uint64(v), true
-	case int16:
-		return uint64(v), true
-	case int32:
-		return uint64(v), true
-	case int64:
-		return uint64(v), true
-	case uint:
-		return uint64(v), true
-	case uint8:
-		return uint64(v), true
-	case uint16:
-		return uint64(v), true
-	case uint32:
-		return uint64(v), true
-	case uint64:
-		return v, true
-	default:
-		return 0, false
-	}
-}
-
-func (p Parameters) ReadAsBool(key uint64) (bool, bool) {
-	value, ok := p[key]
-	if !ok {
-		return false, false
-	}
-	switch v := value.(type) {
-	case uint64:
-		if v == 0 {
-			return false, true
-		} else if v == 1 {
-			return true, true
-		} else {
-			return false, false
-		}
-	default:
-		return false, false
-	}
-}
+var ErrParameterNotFound = errors.New("parameter not found")
 
 const (
 	ROLE               uint64 = 0x00
@@ -157,16 +118,16 @@ const (
 )
 
 func getPath(params Parameters) (string, bool) {
-	num, ok := params.ReadAsString(PATH)
-	if !ok {
+	num, err := params.ReadAsString(PATH)
+	if err != nil {
 		return "", false
 	}
 	return num, true
 }
 
 func getMaxSubscribeID(params Parameters) (SubscribeID, bool) {
-	num, ok := params.ReadAsUint(MAX_SUBSCRIBE_ID)
-	if !ok {
+	num, err := params.ReadAsUint(MAX_SUBSCRIBE_ID)
+	if err != nil {
 		return 0, false
 	}
 
@@ -174,8 +135,8 @@ func getMaxSubscribeID(params Parameters) (SubscribeID, bool) {
 }
 
 func getMaxCacheDuration(params Parameters) (time.Duration, bool) {
-	num, ok := params.ReadAsUint(MAX_CACHE_DURATION)
-	if !ok {
+	num, err := params.ReadAsUint(MAX_CACHE_DURATION)
+	if err != nil {
 		return 0, false
 	}
 
@@ -183,8 +144,8 @@ func getMaxCacheDuration(params Parameters) (time.Duration, bool) {
 }
 
 func getAuthorizationInfo(params Parameters) (string, bool) {
-	str, ok := params.ReadAsString(AUTHORIZATION_INFO)
-	if !ok {
+	str, err := params.ReadAsString(AUTHORIZATION_INFO)
+	if err != nil {
 		return "", false
 	}
 
@@ -192,8 +153,8 @@ func getAuthorizationInfo(params Parameters) (string, bool) {
 }
 
 func getDeliveryTimeout(params Parameters) (time.Duration, bool) {
-	num, ok := params.ReadAsUint(DELIVERY_TIMEOUT)
-	if !ok {
+	num, err := params.ReadAsUint(DELIVERY_TIMEOUT)
+	if err != nil {
 		return 0, false
 	}
 

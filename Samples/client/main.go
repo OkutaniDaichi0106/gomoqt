@@ -5,19 +5,21 @@ import (
 	"crypto/tls"
 	"log"
 	"log/slog"
-	"os"
 	"strconv"
 	"time"
 
 	moqt "github.com/OkutaniDaichi0106/gomoqt"
 )
 
+var echoTrackPrefix = "japan/kyoto"
+var echoTrackPath = "japan/kyoto/kiu/text"
+
 func main() {
 	/*
 	 * Set Log Level to "DEBUG"
 	 */
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	slog.SetDefault(logger)
+	// logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	// slog.SetDefault(logger)
 
 	c := moqt.Client{
 		URL:               "https://localhost:8443/path",
@@ -25,6 +27,8 @@ func main() {
 		TLSConfig:         &tls.Config{},
 		SessionHandler:    moqt.ClientSessionHandlerFunc(handleClientSession),
 	}
+
+	c.AddAnnouncement(moqt.Announcement{TrackPath: echoTrackPath})
 
 	err := c.Run(context.Background())
 	if err != nil {
@@ -38,10 +42,6 @@ func main() {
  * Client Session Handler
  */
 func handleClientSession(sess *moqt.ClientSession) {
-	echoTrackPrefix := "japan/kyoto"
-	echoTrackNamespace := "japan/kyoto/kiu"
-	echoTrackPath := "text"
-
 	/*
 	 * Publish data
 	 */
@@ -49,9 +49,9 @@ func handleClientSession(sess *moqt.ClientSession) {
 		var sequence moqt.GroupSequence = 1
 		for i := 0; i < 10; i++ {
 			//
-			time.Sleep(33 * time.Millisecond)
+			time.Sleep(3 * time.Second)
 
-			streams, err := sess.OpenDataStreams(echoTrackPath, sequence, 0)
+			streams, err := sess.OpenDataStreams(echoTrackPath, sequence, 0, 1*time.Second)
 			if err != nil {
 				slog.Error("failed to open a data stream", slog.String("error", err.Error()))
 				return
@@ -75,8 +75,6 @@ func handleClientSession(sess *moqt.ClientSession) {
 		}
 	}()
 
-	time.Sleep(1 * time.Second)
-
 	/*
 	 * Subscribe data
 	 */
@@ -91,14 +89,14 @@ func handleClientSession(sess *moqt.ClientSession) {
 
 	//  Get Announcements
 	for {
-		ann, err := annstr.ReadAnnouncement()
+		ann, err := annstr.Read()
 		if err != nil {
 			slog.Error("failed to read an announcement", slog.String("error", err.Error()))
 			return
 		}
-		slog.Info("received an announcement", slog.Any("announcement", ann))
+		slog.Info("Received an announcement", slog.Any("announcement", ann))
 
-		if ann.TrackPath == echoTrackNamespace {
+		if ann.TrackPath == echoTrackPath {
 			break
 		}
 	}

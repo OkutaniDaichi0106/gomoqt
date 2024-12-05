@@ -22,7 +22,19 @@ type RelayManager struct {
 	trackNamespaceTree trackNamespaceTree
 }
 
-func (rm RelayManager) RegisterOrigin(origin *ServerSession, ann Announcement) {
+func (rm RelayManager) GetAnnouncements(trackPathPrefix string) []Announcement {
+	tp := strings.Split(trackPathPrefix, "/")
+	tnsNode, ok := rm.findTrackNamespace(tp[:len(tp)-1])
+	if !ok {
+		return nil
+
+	}
+	// Get any Announcements under the Track Namespace
+	return tnsNode.getAnnouncements()
+}
+
+// TODO:
+func (rm RelayManager) registerOrigin(origin *ServerSession, ann Announcement) {
 	slog.Info("Registering an origin session")
 
 	tnsNode := rm.newTrackNamespace(strings.Split(ann.TrackPath, "/"))
@@ -38,7 +50,7 @@ func (rm RelayManager) RegisterOrigin(origin *ServerSession, ann Announcement) {
 	tnsNode.origin = origin
 }
 
-func (rm RelayManager) RegisterFollower(trackPrefix string, aw AnnounceWriter) {
+func (rm RelayManager) registerFollower(trackPrefix string, annCh chan Announcement) {
 	slog.Info("Registering a follower")
 
 	tns := strings.Split(trackPrefix, "/")
@@ -46,10 +58,10 @@ func (rm RelayManager) RegisterFollower(trackPrefix string, aw AnnounceWriter) {
 	tnsNode := rm.newTrackNamespace(tns)
 
 	if tnsNode.followers == nil {
-		tnsNode.followers = make([]*AnnounceWriter, 1) // TODO: Tune the size
+		tnsNode.followers = make([]chan Announcement, 1) // TODO: Tune the size
 	}
 
-	tnsNode.followers = append(tnsNode.followers, &aw)
+	tnsNode.followers = append(tnsNode.followers, annCh)
 }
 
 func (rm RelayManager) RemoveAnnouncement(ann Announcement) {
@@ -74,15 +86,11 @@ func (rm RelayManager) PublishAnnouncement(ann Announcement) {
 			break
 		}
 
-		for _, aw := range tnsNode.followers {
-			aw.Announce(ann)
+		for _, annCh := range tnsNode.followers {
+			annCh <- ann
 		}
 	}
 }
-
-// func (rm RelayManager) RegisterTrack(subscription Subscription) {
-// 	//TODO
-// }
 
 func (rm RelayManager) GetInfo(trackPath string) (Info, bool) {
 	tp := strings.Split(trackPath, "/")
@@ -91,7 +99,7 @@ func (rm RelayManager) GetInfo(trackPath string) (Info, bool) {
 		return Info{}, false
 	}
 
-	tnNode, ok := tnsNode.findTrackName(tp[len(tp)])
+	tnNode, ok := tnsNode.findTrackName(tp[len(tp)-1])
 	if !ok {
 		return Info{}, false
 	}
@@ -99,16 +107,25 @@ func (rm RelayManager) GetInfo(trackPath string) (Info, bool) {
 	return tnNode.info, true
 }
 
-func (rm RelayManager) RecordInfo(trackNamespace string, trackName string, info Info) error {
-	slog.Info("Recording a track information")
-	tns := strings.Split(trackNamespace, "/")
+func (rm RelayManager) NewPublisher(sess ServerSession) {
 
-	tnsNode, ok := rm.findTrackNamespace(tns)
+}
+
+func (rm RelayManager) NewSubscriber(sess ServerSession) {
+
+}
+
+// TODO
+func (rm RelayManager) recordInfo(trackPath string, info Info) error {
+	slog.Info("Recording a track information")
+	tp := strings.Split(trackPath, "/")
+
+	tnsNode, ok := rm.findTrackNamespace(tp[:len(tp)-1])
 	if !ok {
 		return errors.New("track namespace not found")
 	}
 
-	tnNode, ok := tnsNode.findTrackName(trackName)
+	tnNode, ok := tnsNode.findTrackName(tp[len(tp)-1])
 	if !ok {
 		return errors.New("track name not found")
 	}
@@ -143,7 +160,7 @@ func (rm RelayManager) findDestinations(trackNamespace []string, trackName strin
 		return nil, false
 	}
 
-	return tnNode.destinations, true
+	return tnNode.subscribers, true
 }
 
 type trackNamespaceTree struct {
@@ -199,20 +216,10 @@ type trackNamespaceNode struct {
 	 */
 	tracks map[string]*trackNameNode
 
-	/*
-	 * The origin session
-	 */
-	origin *ServerSession
-
-	/*
-	 * Announcement
-	 */
-	announcement *Announcement
-
-	/*
-	 * Announce Streams of followers to the Track Namespace
-	 */
-	followers []*AnnounceWriter
+	// /*
+	//  * Announce Streams of followers to the Track Namespace
+	//  */
+	// followers []chan Announcement
 }
 
 type trackNameNode struct {
@@ -224,9 +231,14 @@ type trackNameNode struct {
 	value string
 
 	/*
+	 * The session with publisher
+	 */
+	publishers ServerSession
+
+	/*
 	 * The destination session
 	 */
-	destinations []*session
+	subscribers []ServerSession
 
 	/*
 	 * Information of the Track

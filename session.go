@@ -15,19 +15,18 @@ import (
 type session struct {
 	conn   moq.Connection
 	stream SessionStream
-	//version Version
 
 	/*
 	 * Sent Subscriptions
 	 */
-	subscribeWriters map[SubscribeID]*SubscribeWriter
+	subscribeSenders map[SubscribeID]*SubscribeSender
 	ssMu             sync.RWMutex
 
 	/*
-	 *
+	 * Received Subscriptions
 	 */
-	receivedSubscriptions map[string]Subscription
-	rsMu                  sync.RWMutex
+	subscribeReceivers map[SubscribeID]*SubscribeReceiver
+	srMu               sync.RWMutex
 }
 
 func (sess *session) Terminate(err error) {
@@ -54,7 +53,7 @@ func (sess *session) Terminate(err error) {
 	slog.Info("terminated a Session")
 }
 
-func (sess *session) Interest(interest Interest) (AnnounceStream, error) {
+func (sess *session) Interest(interest Interest) (AnnounceReader, error) {
 	slog.Debug("indicating interest", slog.Any("interest", interest))
 	/*
 	 * Open an Announce Stream
@@ -62,7 +61,7 @@ func (sess *session) Interest(interest Interest) (AnnounceStream, error) {
 	stream, err := sess.openAnnounceStream()
 	if err != nil {
 		slog.Error("failed to open an Announce Stream")
-		return AnnounceStream{}, err
+		return AnnounceReader{}, err
 	}
 
 	aim := message.AnnounceInterestMessage{
@@ -73,17 +72,17 @@ func (sess *session) Interest(interest Interest) (AnnounceStream, error) {
 	err = aim.Encode(stream)
 	if err != nil {
 		slog.Error("failed to send an ANNOUNCE_INTEREST message", slog.String("error", err.Error()))
-		return AnnounceStream{}, err
+		return AnnounceReader{}, err
 	}
 
 	slog.Info("Successfully indicated interest", slog.Any("interest", interest))
 
-	return AnnounceStream{
+	return AnnounceReader{
 		stream: stream,
 	}, nil
 }
 
-func (sess *session) Subscribe(subscription Subscription) (*SubscribeWriter, Info, error) {
+func (sess *session) Subscribe(subscription Subscription) (*SubscribeSender, Info, error) {
 	slog.Debug("making a subscription", slog.Any("subscription", subscription))
 
 	sess.ssMu.Lock()
@@ -96,12 +95,12 @@ func (sess *session) Subscribe(subscription Subscription) (*SubscribeWriter, Inf
 		return nil, Info{}, err
 	}
 
-	if sess.subscribeWriters == nil {
-		sess.subscribeWriters = make(map[SubscribeID]*SubscribeWriter)
+	if sess.subscribeSenders == nil {
+		sess.subscribeSenders = make(map[SubscribeID]*SubscribeSender)
 	}
 
 	// Set the next Subscribe ID to the Subscription
-	subscription.subscribeID = SubscribeID(len(sess.subscribeWriters))
+	subscription.subscribeID = SubscribeID(len(sess.subscribeSenders))
 
 	sm := message.SubscribeMessage{
 		SubscribeID:        message.SubscribeID(subscription.subscribeID),
@@ -133,13 +132,13 @@ func (sess *session) Subscribe(subscription Subscription) (*SubscribeWriter, Inf
 
 	slog.Info("Successfully subscribed", slog.Any("subscription", subscription), slog.Any("info", info))
 
-	sw := SubscribeWriter{
+	sw := SubscribeSender{
 		stream:       stream,
 		subscription: subscription,
 	}
 
 	// Register the Subscribe Writer
-	sess.subscribeWriters[subscription.subscribeID] = &sw
+	sess.subscribeSenders[subscription.subscribeID] = &sw
 
 	return &sw, info, nil
 }
@@ -242,7 +241,7 @@ func (sess *session) RequestInfo(req InfoRequest) (Info, error) {
 }
 
 func (sess *session) openSessionStream() (moq.Stream, error) {
-	slog.Debug("opening a Session Stream")
+	slog.Debug("opening a session stream")
 
 	/***/
 	stream, err := sess.conn.OpenStream()
@@ -500,48 +499,43 @@ func (sess *session) receiveDatagram(ctx context.Context) (Group, []byte, error)
 	return group, buf, nil
 }
 
-func (sess *session) acceptSubscription(subscription Subscription) {
-	sess.rsMu.Lock()
-	defer sess.rsMu.Unlock()
+func (sess *session) acceptNewSubscription(sr *SubscribeReceiver) {
+	sess.srMu.Lock()
+	defer sess.srMu.Unlock()
 
 	// Verify if the subscription is duplicated or not
-	_, ok := sess.receivedSubscriptions[subscription.TrackPath]
+	_, ok := sess.subscribeReceivers[sr.subscription.subscribeID]
 	if ok {
-		slog.Debug("duplicated subscription", slog.Any("Subscribe ID", subscription.subscribeID))
+		slog.Debug("duplicated subscription", slog.Any("Subscribe ID", sr.subscription.subscribeID))
 		return
 	}
 
 	// Register the subscription
-	sess.receivedSubscriptions[subscription.TrackPath] = subscription
+	sess.subscribeReceivers[sr.subscription.subscribeID] = sr
 
-	slog.Info("Accepted a new subscription", slog.Any("subscription", subscription))
+	slog.Info("Accepted a new subscription", slog.Any("subscription", sr.subscription))
 }
 
-func (sess *session) updateSubscription(subscription Subscription) {
-	sess.rsMu.Lock()
-	defer sess.rsMu.Unlock()
+// func (sess *session) updateSubscription(subscription SubscribeUpdate) {
+// 	sess.rsMu.Lock()
+// 	defer sess.rsMu.Unlock()
 
-	old, ok := sess.receivedSubscriptions[subscription.TrackPath]
-	if !ok {
-		slog.Debug("no subscription", slog.Any("Subscribe ID", subscription.subscribeID))
-		return
-	}
+// 	old, ok := sess.receivedSubscriptions[subscription.TrackPath]
+// 	if !ok {
+// 		slog.Debug("no subscription", slog.Any("Subscribe ID", subscription.subscribeID))
+// 		return
+// 	}
 
-	sess.receivedSubscriptions[subscription.TrackPath] = subscription
+// 	old.acceptUpdate(subscription)
 
-	slog.Info("updated a subscription", slog.Any("from", old), slog.Any("to", subscription))
-}
+// 	slog.Info("updated a subscription", slog.Any("from", old), slog.Any("to", subscription))
+// }
 
-func (sess *session) removeSubscription(subscription Subscription) {
-	sess.rsMu.Lock()
-	defer sess.rsMu.Unlock()
+func (sess *session) deleteSubscription(subscription Subscription) {
+	sess.srMu.Lock()
+	defer sess.srMu.Unlock()
 
-	if subscription, ok := sess.receivedSubscriptions[subscription.TrackPath]; !ok {
-		slog.Debug("no subscription", slog.Any("Subscribe ID", subscription.subscribeID))
-		return
-	}
-
-	delete(sess.receivedSubscriptions, subscription.TrackPath)
+	delete(sess.subscribeReceivers, subscription.subscribeID)
 }
 
 /*

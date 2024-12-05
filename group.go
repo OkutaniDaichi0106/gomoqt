@@ -8,8 +8,6 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 )
 
-type PublisherPriority message.PublisherPriority
-
 type Group struct {
 	subscribeID SubscribeID
 

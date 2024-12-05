@@ -33,7 +33,7 @@ type InfoWriter struct {
 	stream moq.Stream
 }
 
-func (w InfoWriter) Answer(i Info) {
+func (w InfoWriter) Inform(i Info) {
 	im := message.InfoMessage{
 		PublisherPriority:   message.PublisherPriority(i.PublisherPriority),
 		LatestGroupSequence: message.GroupSequence(i.LatestGroupSequence),
@@ -44,16 +44,17 @@ func (w InfoWriter) Answer(i Info) {
 	err := im.Encode(w.stream)
 	if err != nil {
 		slog.Error("failed to send an INFO message", slog.String("error", err.Error()))
-		w.Reject(err)
+		w.CancelInform(err)
 		return
 	}
 
 	slog.Info("answered an info")
 }
 
-func (w InfoWriter) Reject(err error) {
+func (w InfoWriter) CancelInform(err error) {
 	if err == nil {
 		w.Close()
+		return
 	}
 
 	var code moq.StreamErrorCode

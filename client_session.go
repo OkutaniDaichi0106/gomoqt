@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
 )
@@ -24,9 +25,9 @@ type ClientSession struct {
 
 func (clisess *ClientSession) init(conn moq.Connection) error {
 	sess := session{
-		conn:                  conn,
-		subscribeWriters:      make(map[SubscribeID]*SubscribeWriter),
-		receivedSubscriptions: make(map[string]Subscription),
+		conn:               conn,
+		subscribeSenders:   make(map[SubscribeID]*SubscribeSender),
+		subscribeReceivers: make(map[SubscribeID]*SubscribeReceiver),
 	}
 
 	/*
@@ -48,47 +49,45 @@ func (clisess *ClientSession) init(conn moq.Connection) error {
 	return nil
 }
 
-func (sess *ClientSession) OpenDataStreams(trackPath string, sequence GroupSequence, priority PublisherPriority) ([]moq.SendStream, error) {
+func (sess *ClientSession) OpenDataStreams(trackPath string, sequence GroupSequence, priority PublisherPriority, expires time.Duration) ([]moq.SendStream, error) {
 	/*
 	 * Find any Subscriptions
 	 */
-	sess.rsMu.RLock()
-	defer sess.rsMu.RUnlock()
+	sess.srMu.RLock()
+	defer sess.srMu.RUnlock()
 
 	/*
 	 *
 	 */
 	streams := make([]moq.SendStream, 0, 1)
 
-	for _, subscription := range sess.receivedSubscriptions {
-		g := Group{
-			subscribeID:       subscription.subscribeID,
-			groupSequence:     sequence,
-			PublisherPriority: priority,
-		}
+	for _, sr := range sess.subscribeReceivers {
+		if sr.subscription.TrackPath == trackPath {
+			g := Group{
+				subscribeID:       sr.subscription.subscribeID,
+				groupSequence:     sequence,
+				PublisherPriority: priority,
+			}
 
-		stream, err := sess.openDataStream(g)
-		if err != nil {
-			slog.Error("failed to open a data stream", slog.String("error", err.Error()))
-			continue
-		}
+			stream, err := sess.openDataStream(g)
+			if err != nil {
+				slog.Error("failed to open a data stream", slog.String("error", err.Error()))
+				continue
+			}
 
-		streams = append(streams, stream)
+			streams = append(streams, stream)
+		}
 	}
 
 	/*
 	 * Update the Track Information
 	 */
 	go func() {
-		info, ok := sess.getInfo(trackPath)
-		if !ok {
-			return
-		}
-
-		// Update the Track's latest group sequence
-		info.LatestGroupSequence = sequence
-
-		sess.updateInfo(trackPath, info)
+		sess.updateInfo(trackPath, Info{
+			PublisherPriority:   priority,
+			LatestGroupSequence: sequence,
+			GroupExpires:        expires,
+		})
 	}()
 
 	return streams, nil
@@ -116,12 +115,28 @@ func (sess *ClientSession) updateInfo(trackPath string, info Info) {
 	sess.iMu.Lock()
 	defer sess.iMu.Unlock()
 
-	sess.infos[trackPath] = info
+	oldInfo, ok := sess.infos[trackPath]
+	if !ok {
+		sess.infos[trackPath] = info
+	} else {
+		if info.PublisherPriority != 0 {
+			info.PublisherPriority = oldInfo.PublisherPriority
+		}
+		if info.LatestGroupSequence != 0 {
+			info.LatestGroupSequence = oldInfo.LatestGroupSequence
+		}
+		if info.GroupOrder != 0 {
+			info.GroupOrder = oldInfo.GroupOrder
+		}
+		if info.GroupExpires != 0 {
+			info.GroupExpires = oldInfo.GroupExpires
+		}
+	}
 }
 
-func (sess *ClientSession) getInfo(trackPath string) (Info, bool) {
-	sess.iMu.Lock()
-	defer sess.iMu.Unlock()
+func (sess *ClientSession) getCurrentInfo(trackPath string) (Info, bool) {
+	sess.iMu.RLock()
+	defer sess.iMu.RUnlock()
 
 	info, ok := sess.infos[trackPath]
 	if !ok {

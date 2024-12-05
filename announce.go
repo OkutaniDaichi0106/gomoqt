@@ -24,15 +24,15 @@ type Announcement struct {
 	Parameters        Parameters
 }
 
-type AnnounceStream struct {
+type AnnounceReader struct {
 	stream moq.Stream
 }
 
-func (a AnnounceStream) ReadAnnouncement() (Announcement, error) {
+func (a AnnounceReader) Read() (Announcement, error) {
 	return readAnnouncement(a.stream)
 }
 
-func (a AnnounceStream) Reject(err error) {
+func (a AnnounceReader) CancelRead(err error) {
 	if err == nil {
 		a.Close()
 	}
@@ -48,7 +48,7 @@ func (a AnnounceStream) Reject(err error) {
 	a.stream.CancelRead(moq.StreamErrorCode(annerr.AnnounceErrorCode()))
 }
 
-func (a AnnounceStream) Close() {
+func (a AnnounceReader) Close() {
 	err := a.stream.Close()
 	if err != nil {
 		slog.Error("failed to close the stream", slog.String("error", err.Error()))
@@ -57,6 +57,7 @@ func (a AnnounceStream) Close() {
 }
 
 func readAnnouncement(r io.Reader) (Announcement, error) {
+	slog.Debug("reading an announcement")
 	// Read an ANNOUNCE message
 	var am message.AnnounceMessage
 	err := am.Decode(r)
@@ -106,7 +107,7 @@ func (w AnnounceWriter) Announce(announcement Announcement) {
 	slog.Info("Successfully announced", slog.Any("announcement", announcement))
 }
 
-func (aw AnnounceWriter) Reject(err error) {
+func (aw AnnounceWriter) CancelWrite(err error) {
 	if err == nil {
 		aw.Close()
 	}

@@ -37,6 +37,8 @@ type Server struct {
 	SetupHijackerFunc func(SetupRequest) SetupResponce
 	//SetupHandler
 
+	RelayManager *RelayManager
+
 	// Relayers running on QUIC
 	quicRelayers map[string]Relayer
 
@@ -163,7 +165,7 @@ func (s *Server) ListenAndServe() error {
 
 }
 
-func (s *Server) RunOnQUIC(relayer Relayer) {
+func (s *Server) RunOnQUIC(path string) {
 	if s.quicRelayers == nil {
 		s.quicRelayers = make(map[string]Relayer)
 	}
@@ -175,7 +177,7 @@ func (s *Server) RunOnQUIC(relayer Relayer) {
 	s.quicRelayers[relayer.Path] = relayer
 }
 
-func (s *Server) RunOnWebTransport(relayer Relayer) {
+func (s *Server) RunOnWebTransport(path string) {
 	s.wtsMu.Lock()
 	defer s.wtsMu.Unlock()
 
@@ -190,7 +192,7 @@ func (s *Server) RunOnWebTransport(relayer Relayer) {
 
 	}
 
-	http.HandleFunc(relayer.Path, func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 		/*
 		 *
 		 */

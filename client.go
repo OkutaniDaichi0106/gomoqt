@@ -22,34 +22,26 @@ import (
 )
 
 type Client struct {
-	URL string
-
 	SupportedVersions []Version
 
 	TLSConfig *tls.Config
 
 	QUICConfig *quic.Config
 
-	SetupParameters Parameters
+	session *session
 
-	SetupHijackerFunc func(SetupResponce) error
+	SetupRequestParameters Parameters
 
-	announcements map[string]Announcement
+	// SetupHijackerFunc func(SetupResponce) error
 
-	SessionHandler ClientSessionHandler
+	// announcements map[string]Announcement
 
-	CacheManager CacheManager
+	// SessionHandler ClientSessionHandler
+
+	// CacheManager CacheManager
 }
 
-func (c *Client) AddAnnouncement(announcement Announcement) {
-	if len(c.announcements) == 0 {
-		c.announcements = make(map[string]Announcement)
-	}
-
-	c.announcements[announcement.TrackPath] = announcement
-}
-
-func (c Client) Run(ctx context.Context) error {
+func (c *Client) Run(urlstr string, ctx context.Context) error {
 	/*
 	 * Initialize the Client
 	 */
@@ -64,7 +56,7 @@ func (c Client) Run(ctx context.Context) error {
 	 * Dial
 	 */
 	// Verify the URI
-	parsedURL, err := url.ParseRequestURI(c.URL)
+	parsedURL, err := url.ParseRequestURI(urlstr)
 	if err != nil {
 		slog.Error("failed to parse the url", slog.String("error", err.Error()))
 		return err
@@ -77,7 +69,7 @@ func (c Client) Run(ctx context.Context) error {
 	case "https":
 		// Dial with webtransport
 		var d webtransport.Dialer
-		_, sess, err := d.Dial(ctx, c.URL, http.Header{}) // TODO: configure the header
+		_, sess, err := d.Dial(ctx, urlstr, http.Header{}) // TODO: configure the header
 		if err != nil {
 			slog.Error("failed to dial with webtransport", slog.String("error", err.Error()))
 			return err
@@ -87,7 +79,7 @@ func (c Client) Run(ctx context.Context) error {
 
 		req = SetupRequest{
 			SupportedVersions: c.SupportedVersions,
-			Parameters:        c.SetupParameters,
+			Parameters:        c.SetupRequestParameters,
 		}
 	case "moqt":
 		// Dial with raw quic
@@ -125,7 +117,7 @@ func (c Client) Run(ctx context.Context) error {
 
 		req = SetupRequest{
 			SupportedVersions: c.SupportedVersions,
-			Parameters:        c.SetupParameters,
+			Parameters:        c.SetupRequestParameters,
 		}
 
 		// Add the path to the parameters

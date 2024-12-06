@@ -27,6 +27,11 @@ var (
 		reason: "invalid range",
 	}
 
+	ErrDuplicatedSubscribeID = defaultSubscribeError{
+		code:   subscriber_duplicated_id,
+		reason: "duplicated subscribe id",
+	}
+
 	ErrSubscribeTimeout = defaultSubscribeError{
 		code:   subscribe_timeout,
 		reason: "time out",
@@ -130,6 +135,7 @@ type SubscribeErrorCode uint32
 const (
 	subscribe_internal_error       SubscribeErrorCode = 0x00
 	subscribe_invlid_range         SubscribeErrorCode = 0x01
+	subscriber_duplicated_id       SubscribeErrorCode = 0x02
 	subscribe_track_does_not_exist SubscribeErrorCode = 0x03
 	subscribe_unauthorized         SubscribeErrorCode = 0x04
 	subscribe_timeout              SubscribeErrorCode = 0x05

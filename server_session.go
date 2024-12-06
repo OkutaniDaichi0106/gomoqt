@@ -9,10 +9,10 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
 )
 
-type ServerSession struct {
-	//relayManager *RelayManager
-	*session
-}
+// type ServerSession struct {
+// 	//relayManager *RelayManager
+// 	*session
+// }
 
 func (svrsess *ServerSession) init(conn moq.Connection) error {
 	sess := session{
@@ -82,4 +82,6 @@ func (sess *ServerSession) GoAway(uri string, timeout time.Duration) {
 
 		return
 	}
+
+	sess.Terminate(NoErrTerminate)
 }

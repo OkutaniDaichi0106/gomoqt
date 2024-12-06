@@ -14,21 +14,28 @@ import (
 var defaultRelayManager = NewRelayManager()
 
 type Relayer struct {
-	Path string
+	TrackPath string
 
-	SessionHandler ServerSessionHandler
+	upstream Subscriber
 
-	/*
-	 * Relay Manager
-	 * This field is optional
-	 * If no value is set, default Relay Manger will be used
-	 */
-	RelayManager *RelayManager
+	downstreams []Publisher
+	dsMu        sync.RWMutex
+
+	//SessionHandler ServerSessionHandler
+
+	// /*
+	//  * Relay Manager
+	//  * This field is optional
+	//  * If no value is set, default Relay Manger will be used
+	//  */
+	// RelayManager *RelayManager
 
 	BufferSize int
 
 	CacheManager CacheManager
 }
+
+func NewRelayer(session)
 
 func (r Relayer) run(sess *ServerSession) {
 	if r.RelayManager == nil {

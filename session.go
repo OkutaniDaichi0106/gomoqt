@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
@@ -16,17 +15,9 @@ type session struct {
 	conn   moq.Connection
 	stream SessionStream
 
-	/*
-	 * Sent Subscriptions
-	 */
-	subscribeSenders map[SubscribeID]*SubscribeSender
-	ssMu             sync.RWMutex
+	subscriberManager
 
-	/*
-	 * Received Subscriptions
-	 */
-	subscribeReceivers map[SubscribeID]*SubscribeReceiver
-	srMu               sync.RWMutex
+	publisherManager
 }
 
 func (sess *session) Terminate(err error) {
@@ -53,7 +44,7 @@ func (sess *session) Terminate(err error) {
 	slog.Info("terminated a Session")
 }
 
-func (sess *session) Interest(interest Interest) (AnnounceReader, error) {
+func (sess *session) Interest(interest Interest) (AnnounceReceiver, error) {
 	slog.Debug("indicating interest", slog.Any("interest", interest))
 	/*
 	 * Open an Announce Stream
@@ -61,7 +52,7 @@ func (sess *session) Interest(interest Interest) (AnnounceReader, error) {
 	stream, err := sess.openAnnounceStream()
 	if err != nil {
 		slog.Error("failed to open an Announce Stream")
-		return AnnounceReader{}, err
+		return AnnounceReceiver{}, err
 	}
 
 	aim := message.AnnounceInterestMessage{
@@ -72,12 +63,12 @@ func (sess *session) Interest(interest Interest) (AnnounceReader, error) {
 	err = aim.Encode(stream)
 	if err != nil {
 		slog.Error("failed to send an ANNOUNCE_INTEREST message", slog.String("error", err.Error()))
-		return AnnounceReader{}, err
+		return AnnounceReceiver{}, err
 	}
 
 	slog.Info("Successfully indicated interest", slog.Any("interest", interest))
 
-	return AnnounceReader{
+	return AnnounceReceiver{
 		stream: stream,
 	}, nil
 }

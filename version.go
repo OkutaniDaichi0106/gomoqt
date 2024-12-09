@@ -6,9 +6,13 @@ import (
 
 type Version protocol.Version
 
+var DefaultClientVersions = []Version{Default}
+
+var DefaultServerVersion = Default
+
 const (
-	Default         = Develop
-	Draft01 Version = Version(protocol.Draft01)
+	Default = Develop
+	//Draft01 Version = Version(protocol.Draft01)
 	Develop Version = Version(protocol.Develop)
 )
 

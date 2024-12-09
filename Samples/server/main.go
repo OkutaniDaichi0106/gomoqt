@@ -26,7 +26,7 @@ func main() {
 	/*
 	 * Initialize a Server
 	 */
-	moqs := moqt.Server{
+	moqServer := moqt.Server{
 		Addr: "localhost:8443",
 		TLSConfig: &tls.Config{
 			NextProtos:         []string{"h3", "moq-00"},
@@ -39,65 +39,55 @@ func main() {
 		},
 	}
 
-	// Initialize a Relayer
-	relayer := moqt.Relayer{
-		Path:           "/path",
-		SessionHandler: moqt.ServerSessionHandlerFunc(handleServerSession),
-		RelayManager:   nil,
-	}
-
-	// Run the Relayer on WebTransport
-	moqs.RunOnWebTransport(relayer)
-
-	moqs.ListenAndServe()
-}
-
-func handleServerSession(sess *moqt.ServerSession) {
-	echoTrackPrefix := "japan/kyoto"
-	echoTrackPath := "japan/kyoto/kiu/text"
-
 	/*
-	 * Interest
+	 * Set a handler function
 	 */
-	interest := moqt.Interest{
-		TrackPrefix: echoTrackPrefix,
-	}
-	annstr, err := sess.Interest(interest)
-	if err != nil {
-		slog.Error("failed to interest", slog.String("error", err.Error()))
-		return
-	}
+	moqt.HandleFunc("/path", func(ss moqt.ServerSession) {
+		echoTrackPrefix := "japan/kyoto"
+		echoTrackPath := "japan/kyoto/kiu/text"
 
-	/*
-	 * Get Announcements
-	 */
-	for {
-		ann, err := annstr.Read()
+		subscriber := ss.Subscriber()
+		/*
+		 * Interest
+		 */
+		interest := moqt.Interest{
+			TrackPrefix: echoTrackPrefix,
+		}
+		annstr, err := subscriber.Interest(interest)
 		if err != nil {
-			slog.Error("failed to read an announcement", slog.String("error", err.Error()))
+			slog.Error("failed to interest", slog.String("error", err.Error()))
 			return
 		}
-		slog.Info("Received an announcement", slog.Any("announcement", ann))
 
-		if ann.TrackPath == echoTrackPath {
-			break
+		/*
+		 * Get Announcements
+		 */
+		for {
+			ann, err := annstr.Read()
+			if err != nil {
+				slog.Error("failed to read an announcement", slog.String("error", err.Error()))
+				return
+			}
+			slog.Info("Received an announcement", slog.Any("announcement", ann))
+
+			/*
+			 * Subscribe
+			 */
+			subscription := moqt.Subscription{
+				TrackPath: echoTrackPath,
+			}
+
+			_, info, err := subscriber.Subscribe(subscription)
+			if err != nil {
+				slog.Error("failed to subscribe", slog.String("error", err.Error()))
+				return
+			}
+
+			slog.Info("successfully subscribed", slog.Any("subscription", subscription), slog.Any("info", info))
 		}
-	}
+	})
 
-	/*
-	 * Subscribe
-	 */
-	subscription := moqt.Subscription{
-		TrackPath: echoTrackPath,
-	}
-
-	_, info, err := sess.Subscribe(subscription)
-	if err != nil {
-		slog.Error("failed to subscribe", slog.String("error", err.Error()))
-		return
-	}
-
-	slog.Info("successfully subscribed", slog.Any("subscription", subscription), slog.Any("info", info))
+	moqServer.ListenAndServe()
 }
 
 func getCertificates(certFile, keyFile string) ([]tls.Certificate, error) {

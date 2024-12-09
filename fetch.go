@@ -13,7 +13,6 @@ import (
  */
 
 type FetchStream struct {
-	group  Group
 	stream moq.Stream
 }
 
@@ -21,9 +20,9 @@ func (f FetchStream) Read(buf []byte) (int, error) {
 	return f.stream.Read(buf)
 }
 
-func (f FetchStream) Group() Group {
-	return f.group
-}
+// func (f FetchStream) Group() Group {
+// 	return f.group
+// }
 
 func (f FetchStream) CancelRead(code moq.StreamErrorCode) {
 	f.stream.CancelRead(code)

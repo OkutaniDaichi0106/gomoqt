@@ -16,7 +16,7 @@ type Group struct {
 	PublisherPriority PublisherPriority
 
 	/*
-	 * Not in wire
+	 * Fields not in wire
 	 */
 	timestamp time.Time // TODO:
 }

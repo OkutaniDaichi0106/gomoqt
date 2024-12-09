@@ -79,6 +79,13 @@ var (
 )
 
 /*
+ * Session Error
+ */
+const (
+	session_internal_error moq.SessionErrorCode = 0x00
+)
+
+/*
  * Stream Error
  */
 const (

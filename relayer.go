@@ -16,31 +16,17 @@ var defaultRelayManager = NewRelayManager()
 type Relayer struct {
 	TrackPath string
 
-	upstream Subscriber
+	upstream ServerSession
 
-	downstreams []Publisher
+	downstreams []ServerSession
 	dsMu        sync.RWMutex
-
-	//SessionHandler ServerSessionHandler
-
-	// /*
-	//  * Relay Manager
-	//  * This field is optional
-	//  * If no value is set, default Relay Manger will be used
-	//  */
-	// RelayManager *RelayManager
 
 	BufferSize int
 
-	CacheManager CacheManager
+	//CacheManager CacheManager
 }
 
-func NewRelayer(session)
-
-func (r Relayer) run(sess *ServerSession) {
-	if r.RelayManager == nil {
-		r.RelayManager = defaultRelayManager
-	}
+func (r *Relayer) listen(sess *ServerSession) {
 	if r.BufferSize < 1 {
 		r.BufferSize = 1
 	}
@@ -48,7 +34,6 @@ func (r Relayer) run(sess *ServerSession) {
 	/*
 	 * Handle Session
 	 */
-	go r.SessionHandler.HandleServerSession(sess)
 
 	/*
 	 * Listen bidirectional streams

@@ -1,3 +1,3 @@
 package moqt
 
-type JitterManager struct{} //TODO
+type JitterManager interface{} //TODO

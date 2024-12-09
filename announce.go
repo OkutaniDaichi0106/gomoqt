@@ -25,7 +25,8 @@ type Announcement struct {
 }
 
 type AnnounceReceiver struct {
-	stream moq.Stream
+	interest Interest
+	stream   moq.Stream
 }
 
 func (a AnnounceReceiver) Read() (Announcement, error) {

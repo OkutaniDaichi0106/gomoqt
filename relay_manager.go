@@ -2,36 +2,47 @@ package moqt
 
 import (
 	"errors"
-	"log/slog"
 	"strings"
 	"sync"
 )
 
 func NewRelayManager() *RelayManager {
 	return &RelayManager{
-		trackNamespaceTree: trackNamespaceTree{
-			rootNode: &relayTrackNamespaceNode{
-				value:    "",
-				children: make(map[string]*relayTrackNamespaceNode),
+		trackPathTree: trackPathTree{
+			rootNode: &trackPrefixNode{
+				trackPrefixPart: "",
+				children:        make(map[string]*trackPrefixNode),
 			},
 		},
 	}
 }
 
 type RelayManager struct {
-	trackNamespaceTree trackNamespaceTree
+	trackPathTree trackPathTree
 }
 
-func (rm RelayManager) GetAnnouncements(trackPathPrefix string) []Announcement {
-	tp := strings.Split(trackPathPrefix, "/")
-	tnsNode, ok := rm.findTrackNamespace(tp[:len(tp)-1])
-	if !ok {
-		return nil
-
+func (rm RelayManager) addRelayer(relayer *Relayer) error {
+	trackNameNode, ok := rm.newTrackPath(relayer.TrackPath)
+	if ok {
+		return errors.New("duplicated relayer")
 	}
-	// Get any Announcements under the Track Namespace
-	return tnsNode.getAnnouncements()
+
+	trackNameNode.mu.Lock()
+	defer trackNameNode.mu.Unlock()
+
+	trackNameNode.relayer = relayer
 }
+
+// func (rm RelayManager) GetAnnouncements(trackPathPrefix string) []Announcement {
+// 	tp := strings.Split(trackPathPrefix, "/")
+// 	tnsNode, ok := rm.findTrackNamespace(tp[:len(tp)-1])
+// 	if !ok {
+// 		return nil
+
+// 	}
+// 	// Get any Announcements under the Track Namespace
+// 	return tnsNode.getAnnouncements()
+// }
 
 // // TODO:
 // func (rm RelayManager) registerOrigin(origin *ServerSession, ann Announcement) {
@@ -64,16 +75,16 @@ func (rm RelayManager) GetAnnouncements(trackPathPrefix string) []Announcement {
 // 	tnsNode.followers = append(tnsNode.followers, annCh)
 // }
 
-func (rm RelayManager) RemoveAnnouncement(ann Announcement) {
-	slog.Info("Remove an announcement")
-	tns := strings.Split(ann.TrackPath, "/")
+// func (rm RelayManager) RemoveAnnouncement(ann Announcement) {
+// 	slog.Info("Remove an announcement")
+// 	tns := strings.Split(ann.TrackPath, "/")
 
-	err := rm.removeTrackNamespace(tns)
-	if err != nil {
-		slog.Error("failed to remove a Track Namespace", slog.String("error", err.Error()))
-		return
-	}
-}
+// 	err := rm.removeTrackNamespace(tns)
+// 	if err != nil {
+// 		slog.Error("failed to remove a Track Namespace", slog.String("error", err.Error()))
+// 		return
+// 	}
+// }
 
 // func (rm RelayManager) PublishAnnouncement(ann Announcement) {
 // 	slog.Info("Publishing an announcement")
@@ -92,129 +103,128 @@ func (rm RelayManager) RemoveAnnouncement(ann Announcement) {
 // 	}
 // }
 
-func (rm RelayManager) GetInfo(trackPath string) (Info, bool) {
-	tp := strings.Split(trackPath, "/")
-	tnsNode, ok := rm.findTrackNamespace(tp[:len(tp)-1])
-	if !ok {
-		return Info{}, false
-	}
+// func (rm RelayManager) GetInfo(trackPath string) (Info, bool) {
+// 	tp := strings.Split(trackPath, "/")
+// 	tnsNode, ok := rm.findTrackNamespace(tp[:len(tp)-1])
+// 	if !ok {
+// 		return Info{}, false
+// 	}
 
-	tnNode, ok := tnsNode.findTrackName(tp[len(tp)-1])
-	if !ok {
-		return Info{}, false
-	}
+// 	tnNode, ok := tnsNode.findTrackName(tp[len(tp)-1])
+// 	if !ok {
+// 		return Info{}, false
+// 	}
 
-	return tnNode.info, true
-}
-
-func (rm RelayManager) NewPublisher(sess ServerSession) {
-
-}
-
-func (rm RelayManager) NewSubscriber(sess ServerSession) {
-
-}
+// 	return tnNode.info, true
+// }
 
 // TODO
-func (rm RelayManager) recordInfo(trackPath string, info Info) error {
-	slog.Info("Recording a track information")
-	tp := strings.Split(trackPath, "/")
+// func (rm RelayManager) recordInfo(trackPath string, info Info) error {
+// 	slog.Info("Recording a track information")
+// 	tp := strings.Split(trackPath, "/")
 
-	tnsNode, ok := rm.findTrackNamespace(tp[:len(tp)-1])
-	if !ok {
-		return errors.New("track namespace not found")
-	}
+// 	tnsNode, ok := rm.findTrackNamespace(tp[:len(tp)-1])
+// 	if !ok {
+// 		return errors.New("track namespace not found")
+// 	}
 
-	tnNode, ok := tnsNode.findTrackName(tp[len(tp)-1])
-	if !ok {
-		return errors.New("track name not found")
-	}
+// 	tnNode, ok := tnsNode.findTrackName(tp[len(tp)-1])
+// 	if !ok {
+// 		return errors.New("track name not found")
+// 	}
 
-	tnNode.info = info
+// 	return nil
+// }
 
-	return nil
+func (rm RelayManager) newTrackPath(trackPath string) (*trackNameNode, bool)
+
+func (rm RelayManager) newTrackPrefix(trackPrefix string) (*trackPrefixNode, bool) {
+	return rm.trackPathTree.insert(strings.Split(trackPrefix, "/"))
 }
 
-func (rm RelayManager) newTrackNamespace(trackNamespace []string) *relayTrackNamespaceNode {
-	return rm.trackNamespaceTree.insert(trackNamespace)
+func (rm RelayManager) findTrackNamespace(trackNamespace []string) (*trackPrefixNode, bool) {
+	return rm.trackPathTree.trace(trackNamespace)
 }
 
-func (rm RelayManager) findTrackNamespace(trackNamespace []string) (*relayTrackNamespaceNode, bool) {
-	return rm.trackNamespaceTree.trace(trackNamespace)
+func (rm RelayManager) removeTrackPrefix(trackNamespace []string) error {
+	return rm.trackPathTree.remove(trackNamespace)
 }
 
-func (rm RelayManager) removeTrackNamespace(trackNamespace []string) error {
-	return rm.trackNamespaceTree.remove(trackNamespace)
+// func (rm RelayManager) findDestinations(trackNamespace []string, trackName string, order GroupOrder) ([]*session, bool) {
+// 	// Find the Track Namespace
+// 	tnsNode, ok := rm.findTrackNamespace(trackNamespace)
+// 	if !ok {
+// 		return nil, false
+// 	}
+
+// 	// Find the Track Name
+// 	tnNode, ok := tnsNode.findTrackName(trackName)
+// 	if !ok {
+// 		return nil, false
+// 	}
+
+// 	return tnNode.subscribers, true
+// }
+
+type trackPathTree struct {
+	rootNode *trackPrefixNode
 }
 
-func (rm RelayManager) findDestinations(trackNamespace []string, trackName string, order GroupOrder) ([]*session, bool) {
-	// Find the Track Namespace
-	tnsNode, ok := rm.findTrackNamespace(trackNamespace)
-	if !ok {
-		return nil, false
-	}
-
-	// Find the Track Name
-	tnNode, ok := tnsNode.findTrackName(trackName)
-	if !ok {
-		return nil, false
-	}
-
-	return tnNode.subscribers, true
-}
-
-type trackNamespaceTree struct {
-	rootNode *relayTrackNamespaceNode
-}
-
-func (tree trackNamespaceTree) insert(tns []string) *relayTrackNamespaceNode {
+func (tree trackPathTree) insert(trackParts []string) (*trackPrefixNode, bool) {
+	// Set the current node to the root node
 	currentNode := tree.rootNode
-	for _, nodeValue := range tns {
+	//
+	var exists bool
+
+	// track the tree
+	for _, trackPart := range trackParts {
 		// Verify the node has a child with the node value
-		child, exists := currentNode.children[nodeValue]
+		var child *trackPrefixNode
+		child, exists = currentNode.children[trackPart]
 		if exists && child != nil {
 			// Move to the next child node
 			currentNode = child
 		} else {
 			// Create new node and move to the new node
-			newNode := &relayTrackNamespaceNode{
-				value:    nodeValue,
-				children: make(map[string]*relayTrackNamespaceNode),
+			newNode := &trackPrefixNode{
+				trackPrefixPart: trackPart,
+				children:        make(map[string]*trackPrefixNode),
 			}
-			currentNode.children[nodeValue] = newNode
+			currentNode.children[trackPart] = newNode
 
 			currentNode = newNode
 		}
 	}
-	return currentNode
+
+	return currentNode, exists
 }
 
-func (tree trackNamespaceTree) remove(tns []string) error {
+func (tree trackPathTree) remove(tns []string) error {
 	_, err := tree.rootNode.removeDescendants(tns, 0)
 	return err
 }
 
-func (tree trackNamespaceTree) trace(tns []string) (*relayTrackNamespaceNode, bool) {
+func (tree trackPathTree) trace(tns []string) (*trackPrefixNode, bool) {
 	return tree.rootNode.trace(tns...)
 }
 
-type relayTrackNamespaceNode struct {
+type trackPrefixNode struct {
 	mu sync.RWMutex
 
 	/*
-	 * The string value in the tuple of the Track Namespace
+	 * A Part of the Track Prefix
 	 */
-	value string
+	trackPrefixPart string
 
 	/*
 	 * Children of the node
 	 */
-	children map[string]*relayTrackNamespaceNode
+	children map[string]*trackPrefixNode
 
 	/*
 	 * Track Name Nodes
 	 */
-	tracks map[string]*relayTrackNameNode
+	tracks map[string]*trackNameNode
 
 	// /*
 	//  * Announce Streams of followers to the Track Namespace
@@ -222,31 +232,15 @@ type relayTrackNamespaceNode struct {
 	// followers []chan Announcement
 }
 
-type relayTrackNameNode struct {
+type trackNameNode struct {
 	mu sync.RWMutex
 
-	/*
-	 * The string value of the Track Name
-	 */
-	value string
+	trackNamePart string
 
-	/*
-	 * The session with publisher
-	 */
-	publishers ServerSession
-
-	/*
-	 * The destination session
-	 */
-	subscribers []ServerSession
-
-	/*
-	 * Information of the Track
-	 */
-	info Info
+	relayer Relayer
 }
 
-func (node *relayTrackNamespaceNode) removeDescendants(tns []string, depth int) (bool, error) {
+func (node *trackPrefixNode) removeDescendants(tns []string, depth int) (bool, error) {
 	if node == nil {
 		return false, errors.New("track namespace not found at " + tns[depth])
 	}
@@ -290,7 +284,7 @@ func (node *relayTrackNamespaceNode) removeDescendants(tns []string, depth int) 
 	return false, nil
 }
 
-func (node *relayTrackNamespaceNode) trace(values ...string) (*relayTrackNamespaceNode, bool) {
+func (node *trackPrefixNode) trace(values ...string) (*trackPrefixNode, bool) {
 	node.mu.RLock()
 	defer node.mu.RUnlock()
 
@@ -309,7 +303,7 @@ func (node *relayTrackNamespaceNode) trace(values ...string) (*relayTrackNamespa
 	return currentNode, true
 }
 
-func (node *relayTrackNamespaceNode) findTrackName(trackName string) (*relayTrackNameNode, bool) {
+func (node *trackPrefixNode) findTrackName(trackName string) (*trackNameNode, bool) {
 	node.mu.RLock()
 	defer node.mu.RUnlock()
 
@@ -325,18 +319,18 @@ func (node *relayTrackNamespaceNode) findTrackName(trackName string) (*relayTrac
  * Create a new Track Name node when a subscriber makes a new subscription
  *
  */
-func (tnsNode *relayTrackNamespaceNode) newTrackName(trackName string) *relayTrackNameNode {
+func (tnsNode *trackPrefixNode) newTrackName(trackName string) *trackNameNode {
 	tnsNode.mu.Lock()
 	defer tnsNode.mu.Unlock()
 
-	tnsNode.tracks[trackName] = &relayTrackNameNode{
+	tnsNode.tracks[trackName] = &trackNameNode{
 		value: trackName,
 	}
 
 	return tnsNode.tracks[trackName]
 }
 
-func (node *relayTrackNamespaceNode) getAnnouncements() []Announcement {
+func (node *trackPrefixNode) getAnnouncements() []Announcement {
 	var announcements []Announcement
 	for _, childNode := range node.children {
 		if childNode == nil {

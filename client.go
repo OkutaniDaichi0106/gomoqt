@@ -8,11 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/url"
-	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
@@ -22,71 +18,53 @@ import (
 )
 
 type Client struct {
-	SupportedVersions []Version
-
 	TLSConfig *tls.Config
 
 	QUICConfig *quic.Config
 
-	session *session
-
-	SetupRequestParameters Parameters
-
-	// SetupHijackerFunc func(SetupResponce) error
-
-	// announcements map[string]Announcement
-
-	// SessionHandler ClientSessionHandler
+	supportedVersions []Version
 
 	// CacheManager CacheManager
 }
 
-func (c *Client) Run(urlstr string, ctx context.Context) error {
-	/*
-	 * Initialize the Client
-	 */
-	if c.SupportedVersions == nil {
-		c.SupportedVersions = []Version{Default}
-	}
-	if c.CacheManager == nil {
-		// TODO: Handle the nil Cache Manager
-	}
-
-	/*
-	 * Dial
-	 */
-	// Verify the URI
-	parsedURL, err := url.ParseRequestURI(urlstr)
+func (c Client) Dial(urlstr string, ctx context.Context) (sess clientSession, rsp SetupResponce, err error) {
+	//
+	req, err := NewSetupRequest(urlstr, nil)
 	if err != nil {
-		slog.Error("failed to parse the url", slog.String("error", err.Error()))
-		return err
+		slog.Error("failed to get a set-up request", slog.String("error", err.Error()))
+		return
 	}
 
-	// Handle the scheme
+	return c.DialWithRequest(req, ctx)
+}
+
+func (c Client) DialWithRequest(req SetupRequest, ctx context.Context) (sess clientSession, rsp SetupResponce, err error) {
+
+	/*
+	 * Connect on QUIC or WebTransport
+	 */
 	var conn moq.Connection
-	var req SetupRequest
-	switch parsedURL.Scheme {
+	switch req.parsedURL.Scheme {
 	case "https":
-		// Dial with webtransport
+		// Dial on webtransport
+		var wtsess *webtransport.Session
 		var d webtransport.Dialer
-		_, sess, err := d.Dial(ctx, urlstr, http.Header{}) // TODO: configure the header
+		_, wtsess, err = d.Dial(ctx, req.urlstr, http.Header{}) // TODO: configure the header
 		if err != nil {
 			slog.Error("failed to dial with webtransport", slog.String("error", err.Error()))
-			return err
+			return
 		}
 
-		conn = moq.NewMOWTConnection(sess)
-
-		req = SetupRequest{
-			SupportedVersions: c.SupportedVersions,
-			Parameters:        c.SetupRequestParameters,
-		}
+		conn = moq.NewMOWTConnection(wtsess)
 	case "moqt":
-		// Dial with raw quic
-		ips, err := net.LookupIP(parsedURL.Hostname())
+		/*
+		 * Dial on raw quic
+		 */
+		var ips []net.IP
+		ips, err = net.LookupIP(req.parsedURL.Hostname())
 		if err != nil {
 			slog.Error("failed to look up IP address", slog.String("error", err.Error()))
-			return err
+			return
 		}
 
 		// Try all IPs
@@ -96,16 +74,20 @@ func (c *Client) Run(urlstr string, ctx context.Context) error {
 			if strings.Contains(addr, ":") && !strings.HasPrefix(addr, "[") {
 				addr = "[" + addr + "]"
 			}
-			addr += ":" + parsedURL.Port()
+			addr += ":" + req.parsedURL.Port()
 
 			// Dial
-			qconn, err := quic.DialAddrEarly(ctx, addr, c.TLSConfig, c.QUICConfig)
+			var qconn quic.Connection
+			qconn, err = quic.DialAddrEarly(ctx, addr, c.TLSConfig, c.QUICConfig)
 			if err != nil {
 				slog.Error("failed to dial with quic", slog.String("error", err.Error()))
 				if i+1 >= len(ips) {
 					err = errors.New("no more IPs")
-					slog.Error("failed to dial to the host", slog.String("error", err.Error()), slog.String("host", parsedURL.Hostname()))
-					return err
+					slog.Error("failed to dial to the host",
+						slog.String("error", err.Error()),
+						slog.String("host", req.parsedURL.Hostname()),
+					)
+					return
 				}
 				continue
 			}
@@ -115,84 +97,90 @@ func (c *Client) Run(urlstr string, ctx context.Context) error {
 			break
 		}
 
-		req = SetupRequest{
-			SupportedVersions: c.SupportedVersions,
-			Parameters:        c.SetupRequestParameters,
-		}
-
-		// Add the path to the parameters
-		req.Parameters.Add(PATH, parsedURL.Path)
-
 	default:
-		err := errors.New("invalid scheme")
-		slog.Error("url scheme must be https or moqt", slog.String("scheme", parsedURL.Scheme))
-		return err
+		err = errors.New("invalid scheme")
+		slog.Error("url scheme must be https or moqt", slog.String("scheme", req.parsedURL.Scheme))
+		return
 	}
 
 	/*
-	 * Get a new Session
+	 * Open a Session Stream
 	 */
-	// Open a bidirectional Stream for the Session Stream
-	var sess ClientSession
-	err = sess.init(conn)
+	stream, err := openSessionStream(conn)
 	if err != nil {
-		slog.Error("failed to open a Session Stream", slog.String("error", err.Error()))
-		return err
+		slog.Error("failed to open a Session Stream")
+		return
+	}
+
+	sess = &ClientSession{
+		session: session{
+			conn:              conn,
+			stream:            stream,
+			publisherManager:  newPublisherManager(),
+			subscriberManager: newSubscriberManager(),
+		},
+	}
+
+	//
+
+	// Handle the request
+	switch req.parsedURL.Path {
+	case "https":
+	case "moqt":
+		req.Parameters.Add(AUTHORIZATION_INFO, req.parsedURL.Path)
+	default:
+		err = errors.New("unsupported request scheme")
+		return
 	}
 
 	/*
 	 * Set up
 	 */
 	// Send a set-up request
-	err = sendSetupRequest(sess.stream, req)
+	err = sendSetupRequest(stream, req)
 	if err != nil {
 		slog.Error("failed to request to set up", slog.String("error", err.Error()))
-		return err
+		return
 	}
 
 	// Receive a set-up responce
-	rsp, err := readSetupResponce(sess.stream)
+	rsp, err = readSetupResponce(stream)
 	if err != nil {
 		slog.Error("failed to receive a SESSION_SERVER message", slog.String("error", err.Error()))
-		return err
+		return
 	}
 
 	// Verify the selceted version is contained in the supported versions
-	if !ContainVersion(rsp.SelectedVersion, req.SupportedVersions) {
+	if !ContainVersion(rsp.SelectedVersion, req.supportedVersions) {
 		err = errors.New("unexpected version was seleted")
 		slog.Error("failed to negotiate versions", slog.String("error", err.Error()), slog.Any("selected version", rsp.SelectedVersion))
-		return err
+		return
 	}
 
-	// Handle the responce
-	if c.SetupHijackerFunc != nil {
-		err := c.SetupHijackerFunc(rsp)
-		if err != nil {
-			slog.Error("setup hijacker returns an error", slog.String("error", err.Error()))
-			return err
-		}
+	return sess, rsp, nil
+}
+
+func openSessionStream(conn moq.Connection) (SessionStream, error) {
+	slog.Debug("opening a session stream")
+
+	/***/
+	stream, err := conn.OpenStream()
+	if err != nil {
+		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
+		return nil, err
 	}
 
-	/*
-	 * Handle the Client Session
-	 */
-	go c.SessionHandler.HandleClientSession(&sess)
+	stm := message.StreamTypeMessage{
+		StreamType: stream_type_session,
+	}
 
-	/*
-	 * Listen a bidirectional stream
-	 */
-	go c.listenBiStreams(&sess)
+	err = stm.Encode(stream)
+	if err != nil {
+		slog.Error("failed to send a Stream Type message", slog.String("error", err.Error()))
+		return nil, err
+	}
 
-	// Catch a shutting down signal
-	signalCh := make(chan os.Signal, 1)
-	signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM)
-
-	slog.Info("Client is running. Press ctrl+C to exit.")
-	<-signalCh
-
-	slog.Info("Shunnting down client")
-
-	return nil
+	return stream, nil
 }
 
 func sendSetupRequest(w io.Writer, req SetupRequest) error {
@@ -201,7 +189,7 @@ func sendSetupRequest(w io.Writer, req SetupRequest) error {
 		Parameters:        message.Parameters(req.Parameters),
 	}
 
-	for _, v := range req.SupportedVersions {
+	for _, v := range req.supportedVersions {
 		scm.SupportedVersions = append(scm.SupportedVersions, protocol.Version(v))
 	}
 
@@ -214,9 +202,9 @@ func sendSetupRequest(w io.Writer, req SetupRequest) error {
 	return nil
 }
 
-func (c Client) listenBiStreams(sess *ClientSession) {
+func (c Client) listenBiStreams(sess *ClientSession, ctx context.Context) {
 	for {
-		stream, err := sess.conn.AcceptStream(context.Background())
+		stream, err := sess.conn.AcceptStream(ctx)
 		if err != nil {
 			slog.Error("failed to accept a bidirectional stream", slog.String("error", err.Error()))
 			return

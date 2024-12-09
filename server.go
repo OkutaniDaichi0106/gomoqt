@@ -33,244 +33,273 @@ type Server struct {
 	 */
 	QUICConfig *quic.Config
 
+	/*
+	 *
+	 */
+	ServeMux *ServeMux
+
 	//
 	SetupHijackerFunc func(SetupRequest) SetupResponce
 	//SetupHandler
 
 	RelayManager *RelayManager
 
-	// Relayers running on QUIC
-	quicRelayers map[string]Relayer
+	// QUIC Listener
+	quicListener *quic.EarlyListener
 
+	// Webtransport Server
 	wts   *webtransport.Server
 	wtsMu sync.Mutex
 }
 
-func (s *Server) ListenAndServe() error {
-	s.wtsMu.Lock()
-	defer s.wtsMu.Unlock()
-
-	ln, err := quic.ListenAddrEarly(s.Addr, s.TLSConfig, s.QUICConfig)
+func (s *Server) init() (err error) {
+	/*
+	 * Raw QUIC
+	 */
+	s.quicListener, err = quic.ListenAddrEarly(s.Addr, s.TLSConfig, s.QUICConfig)
 	if err != nil {
 		slog.Error("failed to listen address", slog.String("error", err.Error()))
 		return err
 	}
 
+	/*
+	 * WebTransport
+	 */
+	s.wts = &webtransport.Server{
+		H3: http3.Server{
+			Addr:       s.Addr,
+			TLSConfig:  s.TLSConfig,
+			QUICConfig: s.QUICConfig,
+		},
+	}
+
+	s.ServeMux.mu.Lock()
+	defer s.ServeMux.mu.Unlock()
+	for path, op := range s.ServeMux.handlerFuncs {
+		http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+			/*
+			 *
+			 */
+			wtsess, err := s.wts.Upgrade(w, r)
+			if err != nil {
+				log.Printf("upgrading failed: %s", err)
+				w.WriteHeader(500)
+				return
+			}
+
+			// Get a Connection
+			conn := moq.NewMOWTConnection(wtsess)
+
+			/*
+			 * Set up
+			 */
+			stream, err := acceptSessionStream(conn)
+			if err != nil {
+				slog.Error("failed to accept an session stream", slog.String("error", err.Error()))
+				return
+			}
+
+			// Receive a set-up request
+			req, err := readSetupRequest(stream)
+			if err != nil {
+				slog.Error("failed to get a set-up request", slog.String("error", err.Error()))
+				return
+			}
+
+			// Verify if the request contains a valid path
+			if req.parsedURL.Path == "" {
+				slog.Error("path not found")
+				return
+			}
+
+			// Select the default version
+			if !ContainVersion(Default, req.supportedVersions) {
+				slog.Error("no available version", slog.Any("versions", req.supportedVersions))
+				return
+			}
+
+			// Send a set-up responce
+			var rsp SetupResponce
+			if s.SetupHijackerFunc != nil {
+				rsp = s.SetupHijackerFunc(req)
+			} else {
+				rsp = SetupResponce{
+					SelectedVersion: Default,
+					Parameters:      make(Parameters),
+				}
+			}
+			err = sendSetupResponce(stream, rsp)
+			if err != nil {
+				slog.Error("failed to send a set-up responce")
+				return
+			}
+
+			// Initialize a Session
+			sess := ServerSession{
+				session: session{
+					conn:   conn,
+					stream: stream,
+				},
+			}
+
+			op(sess)
+		})
+	}
+
+	return nil
+}
+
+func (s *Server) ListenAndServe() error {
+	err := s.init()
+	if err != nil {
+		slog.Error("failed to initialize a server")
+		return err
+	}
+
+	/***/
 	for {
-		qconn, err := ln.Accept(context.Background())
+		qconn, err := s.quicListener.Accept(context.Background())
 		if err != nil {
 			slog.Error("failed to accept", slog.String("error", err.Error()))
 			return err
 		}
 
-		switch qconn.ConnectionState().TLS.NegotiatedProtocol {
-		case "h3":
-			/*
-			 * Listen and serve on Webtransport
-			 */
-			if s.wts == nil {
-				continue
-			}
-
-			go s.wts.ServeQUICConn(qconn)
-		case "moq-00":
-			/*
-			 * Listen and serve on raw QUIC
-			 */
-			conn := moq.NewMORQConnection(qconn)
-
-			/***/
-			go func() {
+		go func(qconn quic.Connection) {
+			switch qconn.ConnectionState().TLS.NegotiatedProtocol {
+			case "h3":
 				/*
-				 * Set up
+				 * Listen and serve on Webtransport
 				 */
-				// Accept a Bidirectional Stream, which must be a Sesson Stream
-				stream, err := conn.AcceptStream(context.Background())
-				if err != nil {
-					slog.Error("failed to accept a stream", slog.String("error", err.Error()))
-					return
+				if s.wts == nil {
+					panic("webtranport.Server is nil")
 				}
 
-				// Get a Stream Type message
-				var stm message.StreamTypeMessage
-				err = stm.Decode(stream)
-				if err != nil {
-					slog.Error("failed to read a Stream Type", slog.String("error", err.Error()))
-					return
-				}
+				/*
+				 * Serve the QUIC Connection
+				 */
+				go s.wts.ServeQUICConn(qconn)
 
-				// Verify if the Stream is the Session Stream
-				if stm.StreamType != stream_type_session {
-					slog.Error("unexpected Stream Type ID", slog.Any("ID", stm.StreamType))
-					return
-				}
+				/*
+				 * The quic.Connection will be handled in the ServeQUICConn()
+				 * and will be served as a webtransport.Session in a http.HandlerFunc()
+				 * In the HandlerFunc() the ServerSession will be handled
+				 */
+			case "moq-00":
+				/*
+				 * Serve the QUIC Connection
+				 */
+				go func(qconn quic.Connection) {
+					/*
+					 * Listen and serve on raw QUIC
+					 */
+					conn := moq.NewMORQConnection(qconn)
 
-				// Initialize a Session
-				sess := ServerSession{
-					session: &session{
-						conn:               conn,
-						stream:             stream,
-						subscribeSenders:   make(map[SubscribeID]*SubscribeSender),
-						subscribeReceivers: make(map[SubscribeID]*SubscribeReceiver),
-					},
-				}
-
-				// Receive a set-up request
-				req, err := readSetupRequest(sess.stream)
-				if err != nil {
-					slog.Error("failed to get a set-up request", slog.String("error", err.Error()))
-					return
-				}
-
-				// Verify if the request contains a valid path
-				if req.Path == "" {
-					slog.Error("path not found")
-					return
-				}
-
-				// Select the default version
-				if !ContainVersion(Default, req.SupportedVersions) {
-					slog.Error("no available version", slog.Any("versions", req.SupportedVersions))
-					return
-				}
-
-				// Send a set-up responce
-				var rsp SetupResponce
-				if s.SetupHijackerFunc != nil {
-					rsp = s.SetupHijackerFunc(req)
-				} else {
-					rsp = SetupResponce{
-						SelectedVersion: Default,
-						Parameters:      make(Parameters),
+					/*
+					 * Set up
+					 */
+					stream, err := acceptSessionStream(conn)
+					if err != nil {
+						slog.Error("failed to accept an session stream", slog.String("error", err.Error()))
+						return
 					}
-				}
-				err = sendSetupResponce(sess.stream, rsp)
-				if err != nil {
-					slog.Error("failed to send a set-up responce")
-					return
-				}
 
-				relayer, ok := s.quicRelayers[req.Path]
-				if !ok {
-					slog.Error("relayer not found", slog.String("path", req.Path))
-					return
-				}
+					// Receive a set-up request
+					req, err := readSetupRequest(stream)
+					if err != nil {
+						slog.Error("failed to get a set-up request", slog.String("error", err.Error()))
+						return
+					}
 
-				relayer.run(&sess)
-			}()
-		default:
-			continue
-		}
-	}
+					// Verify if the request contains a valid path
+					if req.parsedURL.Path == "" {
+						slog.Error("path not found")
+						return
+					}
 
-}
+					// Select the default version
+					if !ContainVersion(Default, req.supportedVersions) {
+						slog.Error("no available version", slog.Any("versions", req.supportedVersions))
+						return
+					}
 
-func (s *Server) RunOnQUIC(path string) {
-	if s.quicRelayers == nil {
-		s.quicRelayers = make(map[string]Relayer)
-	}
+					// Send a set-up responce
+					var rsp SetupResponce
+					if s.SetupHijackerFunc != nil {
+						rsp = s.SetupHijackerFunc(req)
+					} else {
+						rsp = SetupResponce{
+							SelectedVersion: Default,
+							Parameters:      make(Parameters),
+						}
+					}
+					err = sendSetupResponce(stream, rsp)
+					if err != nil {
+						slog.Error("failed to send a set-up responce")
+						return
+					}
 
-	if _, ok := s.quicRelayers[relayer.Path]; ok {
-		panic("relayer overwrite")
-	}
+					// Initialize a Session
+					sess := ServerSession{
+						session: session{
+							conn:   conn,
+							stream: stream,
+						},
+					}
 
-	s.quicRelayers[relayer.Path] = relayer
-}
+					handler := s.ServeMux.findHandlerFunc(req.parsedURL.Path)
 
-func (s *Server) RunOnWebTransport(path string) {
-	s.wtsMu.Lock()
-	defer s.wtsMu.Unlock()
-
-	if s.wts == nil {
-		s.wts = &webtransport.Server{
-			H3: http3.Server{
-				Addr:       s.Addr,
-				TLSConfig:  s.TLSConfig,
-				QUICConfig: s.QUICConfig,
-			},
-		}
-
-	}
-
-	http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
-		/*
-		 *
-		 */
-		wtsess, err := s.wts.Upgrade(w, r)
-		if err != nil {
-			log.Printf("upgrading failed: %s", err)
-			w.WriteHeader(500)
-			return
-		}
-
-		// Get a Connection
-		conn := moq.NewMOWTConnection(wtsess)
-
-		/*
-		 * Get a Session
-		 */
-		var sess ServerSession
-		err = sess.init(conn)
-		if err != nil {
-			slog.Error("failed to initialize a Server Session", slog.String("error", err.Error()))
-			return
-		}
-
-		// Receive a set-up request
-		req, err := readSetupRequest(sess.stream)
-		if err != nil {
-			slog.Error("failed to get a set-up request", slog.String("error", err.Error()))
-			return
-		}
-
-		// Select the default version
-		if !ContainVersion(Default, req.SupportedVersions) {
-			slog.Error("no available version", slog.Any("versions", req.SupportedVersions))
-			return
-		}
-
-		// Send a set-up responce
-		var rsp SetupResponce
-		if s.SetupHijackerFunc != nil {
-			rsp = s.SetupHijackerFunc(req)
-		} else {
-			rsp = SetupResponce{
-				SelectedVersion: Default,
-				Parameters:      make(Parameters),
+					handler(sess)
+				}(qconn)
+			default:
+				return
 			}
-		}
-		err = sendSetupResponce(sess.stream, rsp)
-		if err != nil {
-			slog.Error("failed to send a set-up responce")
-			return
-		}
+		}(qconn)
 
-		/*
-		 * Set up
-		 */
+	}
 
-		relayer.run(&sess)
-	})
 }
 
-func readSetupRequest(r io.Reader) (SetupRequest, error) {
+func acceptSessionStream(conn moq.Connection) (SessionStream, error) {
+	// Accept a Bidirectional Stream, which must be a Sesson Stream
+	stream, err := conn.AcceptStream(context.Background())
+	if err != nil {
+		slog.Error("failed to accept a stream", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	// Get a Stream Type message
+	var stm message.StreamTypeMessage
+	err = stm.Decode(stream)
+	if err != nil {
+		slog.Error("failed to read a Stream Type", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	// Verify if the Stream is the Session Stream
+	if stm.StreamType != stream_type_session {
+		slog.Error("unexpected Stream Type ID", slog.Any("ID", stm.StreamType))
+		return nil, err
+	}
+
+	return stream, nil
+}
+
+func readSetupRequest(r io.Reader) (req SetupRequest, err error) {
 	/*
 	 * Receive a SESSION_CLIENT message
 	 */
 
 	// Decode
 	var scm message.SessionClientMessage
-	err := scm.Decode(r)
+	err = scm.Decode(r)
 	if err != nil {
 		slog.Error("failed to read a SESSION_CLIENT message", slog.String("error", err.Error())) // TODO
-		return SetupRequest{}, err
+		return
 	}
-
-	var req SetupRequest
 
 	// Set versions
 	for _, v := range scm.SupportedVersions {
-		req.SupportedVersions = append(req.SupportedVersions, Version(v))
+		req.supportedVersions = append(req.supportedVersions, Version(v))
 	}
 	// Set parameters
 	req.Parameters = Parameters(scm.Parameters)
@@ -278,7 +307,7 @@ func readSetupRequest(r io.Reader) (SetupRequest, error) {
 	// Get any PATH parameter
 	path, ok := getPath(req.Parameters)
 	if ok {
-		req.Path = path
+		req.parsedURL.Path = path
 	}
 
 	// Get any MAX_SUBSCRIBE_ID parameter

@@ -6,6 +6,8 @@ import (
 	"sync"
 )
 
+var defaultRelayManager = NewRelayManager()
+
 func NewRelayManager() *RelayManager {
 	return &RelayManager{
 		trackPathTree: trackPathTree{

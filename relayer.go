@@ -11,8 +11,6 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
 )
 
-var defaultRelayManager = NewRelayManager()
-
 type Relayer struct {
 	TrackPath string
 

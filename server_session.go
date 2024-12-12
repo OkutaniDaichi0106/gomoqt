@@ -8,8 +8,8 @@ import (
 )
 
 type serverSession interface {
-	Publisher() Publisher
-	Subscriber() Subscriber
+	Publisher() publisher
+	Subscriber() subscriber
 	Terminate(error)
 	GoAway(string /* New Session URI */, time.Duration /* Timeout to terminate */)
 }

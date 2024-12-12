@@ -14,20 +14,20 @@ type session struct {
 
 	publisherManager *publisherManager
 
-	subscriberManager *subscribeManager
+	subscriberManager *subscriberManager
 }
 
-func (sess *session) Publisher() Publisher {
-	return &publisher{
-		sess:    sess,
-		manager: sess.publisherManager,
+func (sess *session) Publisher() publisher {
+	return &Publisher{
+		sess:             sess,
+		publisherManager: sess.publisherManager,
 	}
 }
 
-func (sess *session) Subscriber() Subscriber {
-	return &subscriber{
-		sess:             sess,
-		subscribeManager: sess.subscriberManager,
+func (sess *session) Subscriber() subscriber {
+	return &Subscriber{
+		sess:              sess,
+		subscriberManager: sess.subscriberManager,
 	}
 }
 

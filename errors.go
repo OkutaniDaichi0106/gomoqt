@@ -17,9 +17,14 @@ var (
 		reason: "invalid stream type",
 	}
 
-	ErrDuplicatedTrackNamespace = defaultAnnounceError{
-		reason: "duplicate track namespace",
-		code:   announce_duplicate_track_namespace,
+	ErrDuplicatedTrackPath = defaultAnnounceError{
+		reason: "duplicated track path",
+		code:   announce_duplicated_track_path,
+	}
+
+	ErrDuplicatedInterest = defaultAnnounceError{
+		reason: "duplicated interest",
+		code:   announce_duplicated_interest,
 	}
 
 	ErrInvalidRange = defaultSubscribeError{
@@ -36,6 +41,9 @@ var (
 		code:   subscribe_timeout,
 		reason: "time out",
 	}
+
+	// TODO:
+	// ErrSubscriptionLimitExceeded
 
 	ErrSubscribeExpired = defaultSubscribeDoneError{
 		code:   subscribe_done_expired,
@@ -112,8 +120,9 @@ func (err defaultStreamError) StreamErrorCode() moq.StreamErrorCode {
 type AnnounceErrorCode uint32
 
 const (
-	announce_internal_error            AnnounceErrorCode = 0x0
-	announce_duplicate_track_namespace AnnounceErrorCode = 0x1
+	announce_internal_error        AnnounceErrorCode = 0x0
+	announce_duplicated_track_path AnnounceErrorCode = 0x1
+	announce_duplicated_interest   AnnounceErrorCode = 0x2
 )
 
 type AnnounceError interface {

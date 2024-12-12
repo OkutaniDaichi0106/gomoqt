@@ -82,7 +82,7 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 				slog.Info("Received an interest", slog.Any("interest", interest))
 
 				// Initialize a Announce Writer
-				aw := AnnounceWriter{
+				aw := AnnounceSender{
 					stream: stream,
 				}
 
@@ -112,7 +112,7 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 				slog.Debug("subscribe stream was opened")
 
 				// Initialize a Subscriber Responce Writer
-				sr := SubscribeReceiver{
+				sr := receivedSubscription{
 					stream: stream,
 				}
 
@@ -221,7 +221,7 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 						group := Group{
 							subscribeID:       sr.subscription.subscribeID,
 							groupSequence:     req.GroupSequence,
-							PublisherPriority: PublisherPriority(req.SubscriberPriority), // TODO: Handle Publisher Priority
+							PublisherPriority: Priority(req.SubscriberPriority), // TODO: Handle Publisher Priority
 						}
 
 						// Send the group data

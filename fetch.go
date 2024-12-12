@@ -54,7 +54,7 @@ type FetchHandler interface {
 
 type FetchRequest struct {
 	TrackPath          string
-	SubscriberPriority SubscriberPriority
+	SubscriberPriority Priority
 	GroupSequence      GroupSequence
 	FrameSequence      FrameSequence
 }
@@ -74,7 +74,7 @@ func (w *FetchResponceWriter) SendGroup(group Group) (moq.SendStream, error) {
 	gm := message.GroupMessage{
 		SubscribeID:       message.SubscribeID(group.subscribeID),
 		GroupSequence:     message.GroupSequence(group.groupSequence),
-		PublisherPriority: message.PublisherPriority(group.PublisherPriority),
+		PublisherPriority: message.Priority(group.PublisherPriority),
 	}
 
 	err := gm.Encode(w.stream)

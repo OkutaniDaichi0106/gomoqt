@@ -77,7 +77,7 @@ func main() {
 				TrackPath: echoTrackPath,
 			}
 
-			_, info, err := subscriber.Subscribe(subscription)
+			info, err := subscriber.Subscribe(subscription)
 			if err != nil {
 				slog.Error("failed to subscribe", slog.String("error", err.Error()))
 				return

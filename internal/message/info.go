@@ -9,7 +9,7 @@ import (
 )
 
 type InfoMessage struct {
-	PublisherPriority   PublisherPriority
+	PublisherPriority   Priority
 	LatestGroupSequence GroupSequence
 	GroupOrder          GroupOrder
 	GroupExpires        time.Duration
@@ -79,7 +79,7 @@ func (im *InfoMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	im.PublisherPriority = PublisherPriority(num)
+	im.PublisherPriority = Priority(num)
 
 	// Get a Latest Group ID
 	num, err = quicvarint.Read(mr)

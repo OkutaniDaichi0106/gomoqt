@@ -11,7 +11,7 @@ import (
 type SubscribeUpdateMessage struct {
 	SubscribeID SubscribeID
 
-	SubscriberPriority SubscriberPriority
+	SubscriberPriority Priority
 	GroupOrder         GroupOrder
 	GroupExpires       time.Duration
 	MinGroupSequence   GroupSequence
@@ -109,7 +109,7 @@ func (sum *SubscribeUpdateMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	sum.SubscriberPriority = SubscriberPriority(priorityBuf[0])
+	sum.SubscriberPriority = Priority(priorityBuf[0])
 
 	// Get Subscribe Update Parameters
 	sum.Parameters, err = readParameters(mr)

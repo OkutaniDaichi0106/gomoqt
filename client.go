@@ -39,9 +39,8 @@ func (c Client) Dial(urlstr string, ctx context.Context) (sess clientSession, rs
 }
 
 func (c Client) DialWithRequest(req SetupRequest, ctx context.Context) (sess clientSession, rsp SetupResponce, err error) {
-
 	/*
-	 * Connect on QUIC or WebTransport
+	 * Dial
 	 */
 	var conn moq.Connection
 	switch req.parsedURL.Scheme {
@@ -55,6 +54,7 @@ func (c Client) DialWithRequest(req SetupRequest, ctx context.Context) (sess cli
 			return
 		}
 
+		// Get a moq.Connection
 		conn = moq.NewMOWTConnection(wtsess)
 	case "moqt":
 		/*
@@ -92,6 +92,7 @@ func (c Client) DialWithRequest(req SetupRequest, ctx context.Context) (sess cli
 				continue
 			}
 
+			// Get a moq.Connection
 			conn = moq.NewMORQConnection(qconn)
 
 			break
@@ -116,7 +117,7 @@ func (c Client) DialWithRequest(req SetupRequest, ctx context.Context) (sess cli
 		session: session{
 			conn:              conn,
 			stream:            stream,
-			publisherManager:  newPublisherManager(),
+			publisherManager:  newPublishManager(),
 			subscriberManager: newSubscriberManager(),
 		},
 	}
@@ -202,7 +203,7 @@ func sendSetupRequest(w io.Writer, req SetupRequest) error {
 	return nil
 }
 
-func (c Client) listenBiStreams(sess ClientSession, ctx context.Context) {
+func listenBiStreams(sess *ClientSession, ctx context.Context) {
 	for {
 		stream, err := sess.conn.AcceptStream(ctx)
 		if err != nil {
@@ -227,28 +228,30 @@ func (c Client) listenBiStreams(sess ClientSession, ctx context.Context) {
 			case stream_type_announce:
 				slog.Debug("announce stream was opened")
 
+				//
 				interest, err := readInterest(stream)
 				if err != nil {
 					slog.Error("failed to get an Interest", slog.String("error", err.Error()))
 					return
 				}
 
-				aw := AnnounceWriter{
-					stream: stream,
+				as := AnnounceSender{
+					interest: interest,
+					stream:   stream,
 				}
 				// Announce
-				for _, announcement := range c.announcements {
-					// Verify if the Announcement's Track Namespace has the Track Prefix
-					if strings.HasPrefix(announcement.TrackPath, interest.TrackPrefix) {
-						// Announce the Track Namespace
-						aw.Announce(announcement)
-					}
-				}
+				// for _, announcement := range c.announcements {
+				// 	// Verify if the Announcement's Track Namespace has the Track Prefix
+				// 	if strings.HasPrefix(announcement.TrackPath, interest.TrackPrefix) {
+				// 		// Announce the Track Namespace
+				// 		aw.Announce(announcement)
+				// 	}
+				// }
 			case stream_type_subscribe:
 				slog.Debug("subscribe stream was opened")
 
 				//
-				sr := SubscribeReceiver{
+				sr := receivedSubscription{
 					stream: stream,
 				}
 
@@ -293,7 +296,7 @@ func (c Client) listenBiStreams(sess ClientSession, ctx context.Context) {
 
 					slog.Info("received a subscribe update request", slog.Any("subscription", update))
 
-					sw := SubscribeReceiver{
+					sw := receivedSubscription{
 						stream: stream,
 					}
 

@@ -9,14 +9,12 @@ import (
 
 type GroupSequence uint64
 
-type PublisherPriority byte
-
 type GroupMessage struct {
 	SubscribeID SubscribeID
 
 	GroupSequence GroupSequence
 
-	PublisherPriority PublisherPriority
+	PublisherPriority Priority
 }
 
 func (g GroupMessage) Encode(w io.Writer) error {
@@ -91,7 +89,7 @@ func (g *GroupMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	g.PublisherPriority = PublisherPriority(num)
+	g.PublisherPriority = Priority(num)
 
 	slog.Debug("decoded a GROUP message")
 

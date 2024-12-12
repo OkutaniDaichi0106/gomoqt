@@ -2,9 +2,7 @@ package moqt
 
 import "github.com/OkutaniDaichi0106/gomoqt/internal/message"
 
-type SubscriberPriority message.SubscriberPriority
-
-type PublisherPriority message.PublisherPriority
+type Priority message.Priority
 
 type GroupOrder message.GroupOrder
 

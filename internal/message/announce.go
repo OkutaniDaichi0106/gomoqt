@@ -8,21 +8,23 @@ import (
 )
 
 const (
-	ended  byte = 0x0
-	active byte = 0x1
-	live   byte = 0x2
+	ENDED  AnnounceStatus = 0x0
+	ACTIVE AnnounceStatus = 0x1
+	LIVE   AnnounceStatus = 0x2
 )
+
+type AnnounceStatus byte
 
 type AnnounceMessage struct {
 	/*
 	 * Announce Status
 	 */
-	AnnounceStatus byte
+	AnnounceStatus AnnounceStatus
 
 	/*
 	 * Track Namespace
 	 */
-	TrackPath string
+	TrackPathSuffix string
 
 	/*
 	 * Announce Parameters
@@ -47,8 +49,8 @@ func (a AnnounceMessage) Encode(w io.Writer) error {
 	p := make([]byte, 0, 1<<6) // TODO: Tune the size
 
 	// Append the Track Namespace
-	p = quicvarint.Append(p, uint64(len(a.TrackPath)))
-	p = append(p, []byte(a.TrackPath)...)
+	p = quicvarint.Append(p, uint64(len(a.TrackPathSuffix)))
+	p = append(p, []byte(a.TrackPathSuffix)...)
 
 	// Append the Parameters
 	p = appendParameters(p, a.Parameters)
@@ -91,7 +93,7 @@ func (am *AnnounceMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	am.TrackPath = string(buf)
+	am.TrackPathSuffix = string(buf)
 
 	// Get Parameters
 	am.Parameters, err = readParameters(mr)

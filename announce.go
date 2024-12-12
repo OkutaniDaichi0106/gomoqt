@@ -15,46 +15,25 @@ type Interest struct {
 }
 
 type InterestHandler interface {
-	HandleInterest(Interest, AnnounceWriter)
+	HandleInterest(Interest, AnnounceSender)
 }
+
+const (
+	ENDED  AnnounceStatus = AnnounceStatus(message.ENDED)
+	ACTIVE AnnounceStatus = AnnounceStatus(message.ACTIVE)
+	LIVE   AnnounceStatus = AnnounceStatus(message.LIVE)
+)
+
+type AnnounceStatus message.AnnounceStatus
 
 type Announcement struct {
-	TrackPath         string
+	// /***/
+	// status AnnounceStatus
+	/***/
+	TrackPath string
+	/***/
 	AuthorizationInfo string
 	Parameters        Parameters
-}
-
-type AnnounceReceiver struct {
-	interest Interest
-	stream   moq.Stream
-}
-
-func (a AnnounceReceiver) Read() (Announcement, error) {
-	return readAnnouncement(a.stream)
-}
-
-func (a AnnounceReceiver) CancelRead(err error) {
-	if err == nil {
-		a.Close()
-	}
-
-	annerr, ok := err.(AnnounceError)
-	if !ok {
-		annerr = ErrInternalError
-	}
-
-	slog.Info("trying to close an Announce Stream", slog.String("reason", annerr.Error()))
-
-	a.stream.CancelWrite(moq.StreamErrorCode(annerr.AnnounceErrorCode()))
-	a.stream.CancelRead(moq.StreamErrorCode(annerr.AnnounceErrorCode()))
-}
-
-func (a AnnounceReceiver) Close() {
-	err := a.stream.Close()
-	if err != nil {
-		slog.Error("failed to close the stream", slog.String("error", err.Error()))
-		return
-	}
 }
 
 func readAnnouncement(r io.Reader) (Announcement, error) {
@@ -69,7 +48,7 @@ func readAnnouncement(r io.Reader) (Announcement, error) {
 
 	// Initialize an Announcement
 	announcement := Announcement{
-		TrackPath:  am.TrackPath,
+		TrackPath:  am.TrackPathSuffix,
 		Parameters: Parameters(am.Parameters),
 	}
 
@@ -82,35 +61,87 @@ func readAnnouncement(r io.Reader) (Announcement, error) {
 	return announcement, nil
 }
 
-type AnnounceWriter struct {
+func listenAnnounceReceiver(ar *AnnounceReceiver) {
+	go func() {
+		for {
+			announcement, err := readAnnouncement(ar.stream)
+			if err != nil {
+				slog.Error("failed to read an announcement", slog.String("error", err.Error()))
+				return
+			}
+
+			func() {
+				ar.mu.Lock()
+				defer ar.mu.Unlock()
+
+				switch announcement.status {
+				case ENDED:
+					_, ok := ar.announcementsMap[announcement.TrackPath]
+					if !ok {
+						// TODO: Protocol Error
+						ar.CancelInterest(ErrProtocolViolation)
+						return
+					}
+					delete(ar.announcementsMap, announcement.TrackPath)
+				case ACTIVE:
+					_, ok := ar.announcementsMap[announcement.TrackPath]
+					if ok {
+						// TODO: Protocol Error
+						ar.CancelInterest(ErrProtocolViolation)
+						return
+					}
+
+					ar.announcementsMap[announcement.TrackPath] = announcement
+				case LIVE:
+					ar.liveCh <- struct{}{}
+				}
+			}()
+		}
+	}()
+}
+
+/*
+ *
+ */
+type AnnounceSender struct {
+	/*
+	 * Received interest
+	 */
+	interest Interest
+
+	/*
+	 *
+	 */
 	stream moq.Stream
 }
 
-func (w AnnounceWriter) Announce(announcement Announcement) {
-	// Add AUTHORIZATION_INFO parameter
-	if announcement.AuthorizationInfo != "" {
-		announcement.Parameters.Add(AUTHORIZATION_INFO, announcement.AuthorizationInfo)
-	}
+func (as *AnnounceSender) Announce(announcement Announcement) {
 
-	// Initialize an ANNOUNCE message
-	am := message.AnnounceMessage{
-		TrackPath:  announcement.TrackPath,
-		Parameters: message.Parameters(announcement.Parameters),
-	}
-
-	// Encode the ANNOUNCE message
-	err := am.Encode(w.stream)
+	announcement.status = ACTIVE
+	//
+	err := writeAnnouncement(as.stream, announcement)
 	if err != nil {
-		slog.Error("failed to send an ANNOUNCE message.", slog.String("error", err.Error()))
+		slog.Error("failed to write an announcement", slog.String("error", err.Error()))
+		return
+	}
+}
+
+func (as *AnnounceSender) Unannounce(announcement Announcement) {
+	//
+	announcement.status = ENDED
+	//
+	err := writeAnnouncement(as.stream, announcement)
+	if err != nil {
+		slog.Error("failed to write an announcement", slog.String("error", err.Error()))
 		return
 	}
 
-	slog.Info("Successfully announced", slog.Any("announcement", announcement))
+	//
 }
 
-func (aw AnnounceWriter) CancelWrite(err error) {
+func (as *AnnounceSender) CancelAnnounce(err error) {
 	if err == nil {
-		aw.Close()
+		as.Close()
 	}
 
 	var code moq.StreamErrorCode
@@ -127,15 +158,41 @@ func (aw AnnounceWriter) CancelWrite(err error) {
 		}
 	}
 
-	aw.stream.CancelRead(code)
-	aw.stream.CancelWrite(code)
+	as.stream.CancelRead(code)
+	as.stream.CancelWrite(code)
 
 	slog.Info("closed an Announce Stream")
 }
 
-func (aw AnnounceWriter) Close() {
-	err := aw.stream.Close()
+func (as *AnnounceSender) Close() {
+	err := as.stream.Close()
 	if err != nil {
 		slog.Error("catch an erro when closing an Announce Stream", slog.String("error", err.Error()))
 	}
+}
+
+func writeAnnouncement(w io.Writer, announcement Announcement) error {
+	slog.Debug("writing an announcement")
+
+	// Add AUTHORIZATION_INFO parameter
+	if announcement.AuthorizationInfo != "" {
+		announcement.Parameters.Add(AUTHORIZATION_INFO, announcement.AuthorizationInfo)
+	}
+
+	// Initialize an ANNOUNCE message
+	am := message.AnnounceMessage{
+		TrackPathSuffix: announcement.TrackPath,
+		Parameters:      message.Parameters(announcement.Parameters),
+	}
+
+	// Encode the ANNOUNCE message
+	err := am.Encode(w)
+	if err != nil {
+		slog.Error("failed to send an ANNOUNCE message.", slog.String("error", err.Error()))
+		return err
+	}
+
+	slog.Info("Successfully announced", slog.Any("announcement", announcement))
+
+	return nil
 }

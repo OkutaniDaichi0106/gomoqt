@@ -202,7 +202,7 @@ func sendSetupRequest(w io.Writer, req SetupRequest) error {
 	return nil
 }
 
-func (c Client) listenBiStreams(sess *ClientSession, ctx context.Context) {
+func (c Client) listenBiStreams(sess ClientSession, ctx context.Context) {
 	for {
 		stream, err := sess.conn.AcceptStream(ctx)
 		if err != nil {

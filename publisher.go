@@ -45,8 +45,7 @@ func (p *Publisher) OpenDataStream(t Track, g Group) (moq.SendStream, error) {
 	}
 
 	//TODO: Verify the Track was subscribed
-p.publisherManager.
-
+	// p.publisherManager
 
 	return p.openDataStream(g)
 }
@@ -142,9 +141,9 @@ func (p *Publisher) sendDatagram(g Group, payload []byte) error {
  */
 func newPublishManager() *publisherManager {
 	return &publisherManager{
-		activeAnnouncements:  make(map[string]Announcement),
-		sentAnnouncements:    make(map[string]*sentAnnouncements),
-		receivedSubscription: make(map[SubscribeID]*receivedSubscription),
+		activeAnnouncements:     make(map[string]Announcement),
+		interestReceivedStreams: make(map[string]*interestReceivedStream),
+		receivedSubscription:    make(map[SubscribeID]*receivedSubscription),
 	}
 }
 
@@ -157,10 +156,10 @@ type publisherManager struct {
 
 	/*
 	 * Sent announcements
-	 * Track Prefix -> sentAnnouncements
+	 * Track Prefix -> interestReceivedStream
 	 */
-	sentAnnouncements map[string]*sentAnnouncements
-	saMu              sync.RWMutex
+	interestReceivedStreams map[string]*interestReceivedStream
+	saMu                    sync.RWMutex
 
 	/*
 	 * Received Subscriptions
@@ -168,7 +167,6 @@ type publisherManager struct {
 	receivedSubscription map[SubscribeID]*receivedSubscription
 	rsMu                 sync.RWMutex
 }
-
 
 func (pm *publisherManager) publishAnnouncement(announcement Announcement) {
 	pm.saMu.RLock()
@@ -178,7 +176,7 @@ func (pm *publisherManager) publishAnnouncement(announcement Announcement) {
 		return
 	}
 
-	for prefix, sentAnnouncements := range pm.sentAnnouncements {
+	for prefix, sentAnnouncements := range pm.interestReceivedStreams {
 		// Skip to announce
 		if !strings.HasPrefix(announcement.TrackPath, prefix) {
 			continue
@@ -203,7 +201,7 @@ func (pm *publisherManager) cancelAnnouncement(announcement Announcement) {
 		return
 	}
 
-	for prefix, sentAnnouncements := range pm.sentAnnouncements {
+	for prefix, sentAnnouncements := range pm.interestReceivedStreams {
 		// Skip to announce
 		if !strings.HasPrefix(announcement.TrackPath, prefix) {
 			continue
@@ -223,18 +221,18 @@ func (pm *publisherManager) newAnnouncementsFollower(interest Interest, stream m
 	pm.saMu.Lock()
 	defer pm.saMu.Unlock()
 
-	_, ok := pm.sentAnnouncements[interest.TrackPrefix]
+	_, ok := pm.interestReceivedStreams[interest.TrackPrefix]
 	if ok {
 		return ErrDuplicatedInterest
 	}
 
-	sas := sentAnnouncements{
+	sas := interestReceivedStream{
 		interest:      interest,
 		announcements: make(map[string]Announcement),
 		stream:        stream,
 	}
 
-	pm.sentAnnouncements[interest.TrackPrefix] = &sas
+	pm.interestReceivedStreams[interest.TrackPrefix] = &sas
 
 	for _, announcement := range pm.activeAnnouncements {
 		err := sas.activateAnnouncement(announcement)
@@ -268,7 +266,7 @@ func (pm *publisherManager) removeReceivedSubscription(id SubscribeID) {
 	delete(pm.receivedSubscription, id)
 }
 
-type sentAnnouncements struct {
+type interestReceivedStream struct {
 	interest Interest
 	/*
 	 * Sent announcements
@@ -279,7 +277,7 @@ type sentAnnouncements struct {
 	mu            sync.RWMutex
 }
 
-func (sas *sentAnnouncements) activateAnnouncement(announcement Announcement) error {
+func (sas *interestReceivedStream) activateAnnouncement(announcement Announcement) error {
 	sas.mu.Lock()
 	defer sas.mu.Unlock()
 
@@ -319,7 +317,7 @@ func (sas *sentAnnouncements) activateAnnouncement(announcement Announcement) er
 	return nil
 }
 
-func (sas *sentAnnouncements) endAnnouncement(announcement Announcement) error {
+func (sas *interestReceivedStream) endAnnouncement(announcement Announcement) error {
 	sas.mu.Lock()
 	defer sas.mu.Unlock()
 

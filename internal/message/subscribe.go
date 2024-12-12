@@ -29,7 +29,7 @@ type SubscribeMessage struct {
 	 */
 	GroupOrder GroupOrder
 
-	Expires time.Duration
+	GroupExpires time.Duration
 
 	/***/
 	MinGroupSequence GroupSequence
@@ -159,7 +159,7 @@ func (s *SubscribeMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	s.Expires = time.Duration(num)
+	s.GroupExpires = time.Duration(num)
 
 	// Get Min Group Sequence
 	num, err = quicvarint.Read(mr)

@@ -3,6 +3,7 @@ package moqt
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 
@@ -12,26 +13,35 @@ import (
 )
 
 type subscriber interface {
-	// Interest
 	Interest(Interest) error
-	// Subscribe
+
 	Subscribe(Subscription) (Info, error)
 	Unsubscribe(Subscription)
 	UpdateSubscription(Subscription, SubscribeUpdate) (Info, error)
-	// Fetch
+
 	Fetch(FetchRequest) (Group, moq.ReceiveStream, error)
-	// Info
+
 	RequestInfo(InfoRequest) (Info, error)
-	// Data
+
 	AcceptDataStream(context.Context) (DataReceiver, error)
 }
 
 var _ subscriber = (*Subscriber)(nil)
 
 type Subscriber struct {
+	isInit bool
+
 	sess              *session
 	dataReceiverQueue dataReceiverQueue
 	subscriberManager *subscriberManager
+}
+
+func (s Subscriber) init() {
+	if s.isInit {
+		return
+	}
+
+	s.isInit = true
 }
 
 func (s Subscriber) AcceptDataStream(ctx context.Context) (DataReceiver, error) {
@@ -82,7 +92,7 @@ func (s Subscriber) Subscribe(subscription Subscription) (info Info, err error) 
 	slog.Debug("making a subscription", slog.Any("subscription", subscription))
 
 	// Initialize
-	if s.subscriberManager.sentSubscriptions == nil {
+	if s.subscriberManager.subscribeSendStreams == nil {
 		s.subscriberManager = newSubscriberManager()
 	}
 
@@ -345,7 +355,7 @@ func (s Subscriber) RequestInfo(req InfoRequest) (Info, error) {
 	}
 
 	info := Info{
-		PublisherPriority:   PublisherPriority(im.PublisherPriority),
+		PublisherPriority:   Priority(im.PublisherPriority),
 		LatestGroupSequence: GroupSequence(im.LatestGroupSequence),
 		GroupOrder:          GroupOrder(im.GroupOrder),
 		GroupExpires:        im.GroupExpires,
@@ -553,7 +563,7 @@ func receiveDatagram(conn moq.Connection, ctx context.Context) (Group, []byte, e
 
 func newSubscriberManager() *subscriberManager {
 	return &subscriberManager{
-		sentSubscriptions: make(map[SubscribeID]*sentSubscription),
+		subscribeSendStreams: make(map[SubscribeID]*subscribeSendStream),
 	}
 }
 
@@ -561,14 +571,8 @@ type subscriberManager struct {
 	/*
 	 *
 	 */
-	sentInterest map[string]sentInterest
-
-	/*
-	 *
-	 */
-	receivedAnnouncements map[string]Announcement
-	// liveCh                chan struct{}
-	raMu sync.RWMutex
+	interestSentStreams map[string]*interestSentStream
+	issMu               sync.RWMutex
 
 	/*
 	 *
@@ -578,22 +582,22 @@ type subscriberManager struct {
 	/*
 	 *
 	 */
-	sentSubscriptions map[SubscribeID]*sentSubscription
-	ssMu              sync.RWMutex
+	subscribeSendStreams map[SubscribeID]*subscribeSendStream
+	sssMu                sync.RWMutex
 }
 
-func (sm *subscriberManager) getAnnouncements() (announcements []Announcement) {
-	sm.raMu.RLock()
-	defer sm.raMu.RUnlock()
+// func (sm *subscriberManager) getAnnouncements() (announcements []Announcement) {
+// 	sm.raMu.RLock()
+// 	defer sm.raMu.RUnlock()
 
-	announcements = make([]Announcement, len(sm.receivedAnnouncements))
+// 	announcements = make([]Announcement, len(sm.receivedAnnouncements))
 
-	for _, announcement := range announcements {
-		announcements = append(announcements, announcement)
-	}
+// 	for _, announcement := range announcements {
+// 		announcements = append(announcements, announcement)
+// 	}
 
-	return announcements
-}
+// 	return announcements
+// }
 
 func (sm *subscriberManager) nextSubscribeID() SubscribeID {
 	// Get a new Subscribe ID
@@ -604,11 +608,11 @@ func (sm *subscriberManager) nextSubscribeID() SubscribeID {
 	return new
 }
 
-func (sm *subscriberManager) findSentSubscription(id SubscribeID) (*sentSubscription, bool) {
-	sm.ssMu.RLock()
-	defer sm.ssMu.RUnlock()
+func (sm *subscriberManager) findSentSubscription(id SubscribeID) (*subscribeSendStream, bool) {
+	sm.sssMu.RLock()
+	defer sm.sssMu.RUnlock()
 
-	sentSubscription, ok := sm.sentSubscriptions[id]
+	sentSubscription, ok := sm.subscribeSendStreams[id]
 	if !ok {
 		return nil, false
 	}
@@ -617,15 +621,15 @@ func (sm *subscriberManager) findSentSubscription(id SubscribeID) (*sentSubscrip
 }
 
 func (sm *subscriberManager) addSubscription(subscription Subscription, stream moq.Stream) error {
-	sm.ssMu.Lock()
-	defer sm.ssMu.Unlock()
+	sm.sssMu.Lock()
+	defer sm.sssMu.Unlock()
 
-	_, ok := sm.sentSubscriptions[subscription.subscribeID]
+	_, ok := sm.subscribeSendStreams[subscription.subscribeID]
 	if ok {
 		return ErrDuplicatedSubscribeID
 	}
 
-	sm.sentSubscriptions[subscription.subscribeID] = &sentSubscription{
+	sm.subscribeSendStreams[subscription.subscribeID] = &subscribeSendStream{
 		Subscription: subscription,
 		stream:       stream,
 	}
@@ -634,8 +638,152 @@ func (sm *subscriberManager) addSubscription(subscription Subscription, stream m
 }
 
 func (sm *subscriberManager) removeSubscriberSender(id SubscribeID) {
-	sm.ssMu.Lock()
-	defer sm.ssMu.Unlock()
+	sm.sssMu.Lock()
+	defer sm.sssMu.Unlock()
 
-	delete(sm.sentSubscriptions, id)
+	delete(sm.subscribeSendStreams, id)
+}
+
+func (sm *subscriberManager) addInterestSendStream(iss *interestSentStream) {
+	sm.issMu.Lock()
+	defer sm.issMu.Unlock()
+
+	old, ok := sm.interestSentStreams[iss.interest.TrackPrefix]
+	if ok {
+		// TODO:terminate the stream
+		sm.removeInterestSendStream(old)
+	}
+
+	sm.interestSentStreams[iss.interest.TrackPrefix] = iss
+}
+
+func (sm *subscriberManager) removeInterestSendStream(iss *interestSentStream) {
+	sm.issMu.Lock()
+	defer sm.issMu.Unlock()
+
+	iss.close()
+
+	delete(sm.interestSentStreams, iss.interest.TrackPrefix)
+}
+
+type interestSentStream struct {
+	interest      Interest
+	liveCh        chan struct{}
+	announcements map[string]Announcement
+	stream        moq.Stream
+	mu            sync.RWMutex
+	closeCh       chan struct{}
+}
+
+func (iss *interestSentStream) getAnnouncements() []Announcement {
+	<-iss.liveCh
+
+	iss.mu.RLock()
+	defer iss.mu.RUnlock()
+
+	announcements := make([]Announcement, 0, len(iss.announcements))
+
+	for _, announcement := range iss.announcements {
+		announcements = append(announcements, announcement)
+	}
+
+	return announcements
+}
+
+func (iss *interestSentStream) close() {
+	iss.closeCh <- struct{}{}
+
+	iss.mu.Lock()
+	defer iss.mu.Unlock()
+
+	err := iss.stream.Close()
+	if err != nil {
+		slog.Error("failed to close an interest send stream", slog.String("error", err.Error()))
+		return
+	}
+}
+
+func (iss *interestSentStream) closeWithError(err error) {
+	if err == nil {
+		iss.close()
+		return
+	}
+
+	var code moq.StreamErrorCode
+
+	var strerr moq.StreamError
+	if errors.As(err, &strerr) {
+		code = strerr.StreamErrorCode()
+	} else {
+		annerr, ok := err.(AnnounceError)
+		if ok {
+			code = moq.StreamErrorCode(annerr.AnnounceErrorCode())
+		} else {
+			code = ErrInternalError.StreamErrorCode()
+		}
+	}
+
+	iss.stream.CancelRead(code)
+	iss.stream.CancelWrite(code)
+
+	if err != nil {
+		slog.Error("failed to close an interest send stream", slog.String("error", err.Error()))
+		return
+	}
+
+	iss.close()
+}
+
+func (iss *interestSentStream) listen(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			// TODO:
+			return ctx.Err()
+		case <-iss.closeCh:
+			// TOOD:
+			return nil
+		default:
+			announcemnt, err := readAnnouncement(iss.stream)
+			if err != nil {
+				slog.Error("failed to read an announcement", slog.String("error", err.Error()))
+				//
+				iss.closeWithError(err)
+				return err
+			}
+
+			// handle the announcement
+			err = func() error {
+				iss.mu.Lock()
+				defer iss.mu.Unlock()
+
+				_, ok := iss.announcements[announcemnt.TrackPath]
+				switch announcemnt.status {
+				case ACTIVE:
+					if !ok {
+						// Add
+						iss.announcements[announcemnt.TrackPath] = announcemnt
+					} else {
+						return errors.New("invalid active announcement")
+					}
+				case ENDED:
+					if ok {
+						// Remove
+						delete(iss.announcements, announcemnt.TrackPath)
+					} else {
+						return errors.New("invalid ended announcement")
+					}
+				case LIVE:
+					iss.liveCh <- struct{}{}
+				default:
+					return ErrProtocolViolation
+				}
+
+				return nil
+			}()
+			if err != nil {
+				return err
+			}
+		}
+	}
 }

@@ -13,13 +13,14 @@ import (
 type SubscribeID uint64
 
 type Subscription struct {
-	subscribeID        SubscribeID
-	TrackPath          string
+	Track
+	subscribeID SubscribeID
+	//TrackPath          string
 	SubscriberPriority Priority
-	GroupOrder         GroupOrder
-	GroupExpires       time.Duration
-	MinGroupSequence   GroupSequence
-	MaxGroupSequence   GroupSequence
+	//GroupOrder         GroupOrder
+	//GroupExpires     time.Duration
+	MinGroupSequence GroupSequence
+	MaxGroupSequence GroupSequence
 
 	/*
 	 * Parameters
@@ -41,7 +42,7 @@ func (s Subscription) getGroup(seq GroupSequence, priority Priority) Group {
 	}
 }
 
-type sentSubscription struct {
+type subscribeSendStream struct {
 	Subscription
 	stream moq.Stream
 	mu     sync.Mutex
@@ -126,10 +127,13 @@ func readSubscription(r moq.Stream) (Subscription, error) {
 	}
 
 	return Subscription{
-		subscribeID:        SubscribeID(sm.SubscribeID),
-		TrackPath:          sm.TrackPath,
+		subscribeID: SubscribeID(sm.SubscribeID),
+		Track: Track{
+			TrackPath:    sm.TrackPath,
+			GroupOrder:   GroupOrder(sm.GroupOrder),
+			GroupExpires: sm.GroupExpires,
+		},
 		SubscriberPriority: Priority(sm.SubscriberPriority),
-		GroupOrder:         GroupOrder(sm.GroupOrder),
 		MinGroupSequence:   GroupSequence(sm.MinGroupSequence),
 		MaxGroupSequence:   GroupSequence(sm.MaxGroupSequence),
 		Parameters:         Parameters(sm.Parameters),

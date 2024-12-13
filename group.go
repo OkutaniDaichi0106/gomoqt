@@ -13,7 +13,7 @@ type Group struct {
 
 	groupSequence GroupSequence
 
-	PublisherPriority Priority
+	GroupPriority Priority
 
 	/*
 	 * Fields not in wire
@@ -42,9 +42,9 @@ func readGroup(r io.Reader) (Group, error) {
 
 	//
 	return Group{
-		subscribeID:       SubscribeID(gm.SubscribeID),
-		groupSequence:     GroupSequence(gm.GroupSequence),
-		PublisherPriority: Priority(gm.PublisherPriority),
-		timestamp:         time.Now(),
+		subscribeID:   SubscribeID(gm.SubscribeID),
+		groupSequence: GroupSequence(gm.GroupSequence),
+		GroupPriority: Priority(gm.GroupPriority),
+		timestamp:     time.Now(),
 	}, nil
 }

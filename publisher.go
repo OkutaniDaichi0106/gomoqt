@@ -84,9 +84,9 @@ func (p *Publisher) openDataStream(g Group) (moq.SendStream, error) {
 	}
 
 	gm := message.GroupMessage{
-		SubscribeID:       message.SubscribeID(g.subscribeID),
-		GroupSequence:     message.GroupSequence(g.groupSequence),
-		PublisherPriority: message.Priority(g.PublisherPriority),
+		SubscribeID:   message.SubscribeID(g.subscribeID),
+		GroupSequence: message.GroupSequence(g.groupSequence),
+		GroupPriority: message.Priority(g.GroupPriority),
 	}
 
 	// Send the GROUP message
@@ -105,9 +105,9 @@ func (p *Publisher) sendDatagram(g Group, payload []byte) error {
 	}
 
 	gm := message.GroupMessage{
-		SubscribeID:       message.SubscribeID(g.subscribeID),
-		GroupSequence:     message.GroupSequence(g.groupSequence),
-		PublisherPriority: message.Priority(g.PublisherPriority),
+		SubscribeID:   message.SubscribeID(g.subscribeID),
+		GroupSequence: message.GroupSequence(g.groupSequence),
+		GroupPriority: message.Priority(g.GroupPriority),
 	}
 
 	var buf bytes.Buffer
@@ -143,7 +143,7 @@ func newPublishManager() *publisherManager {
 	return &publisherManager{
 		activeAnnouncements:     make(map[string]Announcement),
 		interestReceivedStreams: make(map[string]*interestReceivedStream),
-		receivedSubscription:    make(map[SubscribeID]*subscribeReceiveStream),
+		subscribeReceiveStreams: make(map[SubscribeID]*subscribeReceiveStream),
 	}
 }
 
@@ -164,10 +164,18 @@ type publisherManager struct {
 	/*
 	 * Received Subscriptions
 	 */
-	receivedSubscription map[SubscribeID]*subscribeReceiveStream
-	rsMu                 sync.RWMutex
+	subscribeReceiveStreams map[SubscribeID]*subscribeReceiveStream
+	rsMu                    sync.RWMutex
+
+	/*
+	 *
+	 */
+	tracks map[string]Track
 }
 
+/*
+ *
+ */
 func (pm *publisherManager) publishAnnouncement(announcement Announcement) {
 	pm.irsMu.RLock()
 	defer pm.irsMu.RUnlock()
@@ -192,7 +200,10 @@ func (pm *publisherManager) publishAnnouncement(announcement Announcement) {
 	pm.activeAnnouncements[announcement.TrackPath] = announcement
 }
 
-/****/
+/*
+ *
+ *
+ */
 func (pm *publisherManager) cancelAnnouncement(announcement Announcement) {
 	pm.irsMu.RLock()
 	defer pm.irsMu.RUnlock()
@@ -217,7 +228,8 @@ func (pm *publisherManager) cancelAnnouncement(announcement Announcement) {
 	delete(pm.activeAnnouncements, announcement.TrackPath)
 }
 
-func (pm *publisherManager) addInterestReceivedStream(irs *interestReceivedStream) error {
+func (pm *publisherManager) addInterestReceiveStream(irs *interestReceivedStream) error {
+	slog.Debug("adding an interest receive stream", slog.Any("stream id", irs.stream.StreamID()))
 	pm.irsMu.Lock()
 	defer pm.irsMu.Unlock()
 
@@ -236,35 +248,49 @@ func (pm *publisherManager) addInterestReceivedStream(irs *interestReceivedStrea
 		}
 	}
 
+	slog.Debug("added an interest receive stream", slog.Any("stream id", irs.stream.StreamID()))
+
 	return nil
 }
 
 func (pm *publisherManager) removeInterestReceiveStream(irs *interestReceivedStream) {
+	slog.Debug("removing an interest receive stream", slog.Any("stream id", irs.stream.StreamID()))
+
 	pm.irsMu.Lock()
 	defer pm.irsMu.Unlock()
 
 	delete(pm.interestReceivedStreams, irs.interest.TrackPrefix)
+
+	slog.Debug("removed an interest receive stream", slog.Any("stream id", irs.stream.StreamID()))
 }
 
-func (pm *publisherManager) addSubscribeSendStream(srs *subscribeReceiveStream) error {
+func (pm *publisherManager) addSubscribeReceiveStream(srs *subscribeReceiveStream) error {
+	slog.Debug("adding an subscribe receive stream", slog.Any("stream id", srs.stream.StreamID()))
+
 	pm.rsMu.Lock()
 	defer pm.rsMu.Unlock()
 
-	_, ok := pm.receivedSubscription[srs.subscription.subscribeID]
+	_, ok := pm.subscribeReceiveStreams[srs.subscription.subscribeID]
 	if ok {
 		return ErrDuplicatedSubscribeID
 	}
 
-	pm.receivedSubscription[srs.subscription.subscribeID] = srs
+	pm.subscribeReceiveStreams[srs.subscription.subscribeID] = srs
+
+	slog.Debug("added an subscribe receive stream", slog.Any("stream id", srs.stream.StreamID()))
 
 	return nil
 }
 
-func (pm *publisherManager) removeSubscribeSendStream(id SubscribeID) {
+func (pm *publisherManager) removeSubscribeSendStream(srs *subscribeReceiveStream) {
+	slog.Debug("removing an subscribe receive stream", slog.Any("stream id", srs.stream.StreamID()))
+
 	pm.rsMu.Lock()
 	defer pm.rsMu.Unlock()
 
-	delete(pm.receivedSubscription, id)
+	delete(pm.subscribeReceiveStreams, srs.subscription.subscribeID)
+
+	slog.Debug("removed an subscribe receive stream", slog.Any("stream id", srs.stream.StreamID()))
 }
 
 type interestReceivedStream struct {

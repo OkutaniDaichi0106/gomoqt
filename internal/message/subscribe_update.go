@@ -11,11 +11,11 @@ import (
 type SubscribeUpdateMessage struct {
 	SubscribeID SubscribeID
 
-	SubscriberPriority Priority
-	GroupOrder         GroupOrder
-	GroupExpires       time.Duration
-	MinGroupSequence   GroupSequence
-	MaxGroupSequence   GroupSequence
+	TrackPriority    Priority
+	GroupOrder       GroupOrder
+	GroupExpires     time.Duration
+	MinGroupSequence GroupSequence
+	MaxGroupSequence GroupSequence
 
 	Parameters Parameters
 }
@@ -43,7 +43,7 @@ func (su SubscribeUpdateMessage) Encode(w io.Writer) error {
 	p = quicvarint.Append(p, uint64(su.SubscribeID))
 
 	// Append the Subscriber Priority
-	p = quicvarint.Append(p, uint64(su.SubscriberPriority))
+	p = quicvarint.Append(p, uint64(su.TrackPriority))
 
 	// Append the Min Group Number
 	p = quicvarint.Append(p, uint64(su.MinGroupSequence))
@@ -109,7 +109,7 @@ func (sum *SubscribeUpdateMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	sum.SubscriberPriority = Priority(priorityBuf[0])
+	sum.TrackPriority = Priority(priorityBuf[0])
 
 	// Get Subscribe Update Parameters
 	sum.Parameters, err = readParameters(mr)

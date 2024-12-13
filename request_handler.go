@@ -38,10 +38,10 @@ func readFetchRequest(r io.Reader) (FetchRequest, error) {
 	}
 
 	req := FetchRequest{
-		TrackPath:          frm.TrackPath,
-		SubscriberPriority: Priority(frm.SubscriberPriority),
-		GroupSequence:      GroupSequence(frm.GroupSequence),
-		FrameSequence:      FrameSequence(frm.FrameSequence),
+		TrackPath:     frm.TrackPath,
+		TrackPriority: Priority(frm.TrackPriority),
+		GroupSequence: GroupSequence(frm.GroupSequence),
+		FrameSequence: FrameSequence(frm.FrameSequence),
 	}
 
 	return req, nil

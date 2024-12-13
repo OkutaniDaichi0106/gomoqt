@@ -17,7 +17,7 @@ type ClientSession struct {
 	session
 }
 
-// func (sess *clientSession) OpenDataStreams(trackPath string, sequence GroupSequence, priority PublisherPriority, expires time.Duration) ([]moq.SendStream, error) {
+// func (sess *clientSession) OpenDataStreams(trackPath string, sequence GroupSequence, priority GroupPriority, expires time.Duration) ([]moq.SendStream, error) {
 // 	/*
 // 	 * Find any Subscriptions
 // 	 */
@@ -34,7 +34,7 @@ type ClientSession struct {
 // 			g := Group{
 // 				subscribeID:       sr.subscription.subscribeID,
 // 				groupSequence:     sequence,
-// 				PublisherPriority: priority,
+// 				GroupPriority: priority,
 // 			}
 
 // 			stream, err := sess.openDataStream(g)
@@ -52,7 +52,7 @@ type ClientSession struct {
 // 	 */
 // 	go func() {
 // 		sess.updateInfo(trackPath, Info{
-// 			PublisherPriority:   priority,
+// 			GroupPriority:   priority,
 // 			LatestGroupSequence: sequence,
 // 			GroupExpires:        expires,
 // 		})
@@ -65,11 +65,11 @@ type ClientSession struct {
 // 	return sess.acceptDataStream(ctx)
 // }
 
-// func (sess *ClientSession) SendDatagram(subscription Subscription, sequence GroupSequence, priority PublisherPriority, data []byte) error {
+// func (sess *ClientSession) SendDatagram(subscription Subscription, sequence GroupSequence, priority GroupPriority, data []byte) error {
 // 	g := Group{
 // 		subscribeID:       subscription.subscribeID,
 // 		groupSequence:     sequence,
-// 		PublisherPriority: priority,
+// 		GroupPriority: priority,
 // 	}
 
 // 	return sess.sendDatagram(g, data)
@@ -87,8 +87,8 @@ type ClientSession struct {
 // 	if !ok {
 // 		sess.infos[trackPath] = info
 // 	} else {
-// 		if info.PublisherPriority != 0 {
-// 			info.PublisherPriority = oldInfo.PublisherPriority
+// 		if info.GroupPriority != 0 {
+// 			info.GroupPriority = oldInfo.GroupPriority
 // 		}
 // 		if info.LatestGroupSequence != 0 {
 // 			info.LatestGroupSequence = oldInfo.LatestGroupSequence

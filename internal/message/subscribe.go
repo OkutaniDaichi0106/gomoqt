@@ -21,7 +21,7 @@ type SubscribeMessage struct {
 
 	TrackPath string
 
-	SubscriberPriority Priority
+	TrackPriority Priority
 
 	/*
 	 * The order of the group
@@ -74,7 +74,7 @@ func (s SubscribeMessage) Encode(w io.Writer) error {
 	p = append(p, []byte(s.TrackPath)...)
 
 	// Append the Subscriber Priority
-	p = append(p, []byte{byte(s.SubscriberPriority)}...)
+	p = append(p, []byte{byte(s.TrackPriority)}...)
 
 	// Append the Group Order
 	p = append(p, []byte{byte(s.GroupOrder)}...)
@@ -145,7 +145,7 @@ func (s *SubscribeMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	s.SubscriberPriority = Priority(bnum)
+	s.TrackPriority = Priority(bnum)
 
 	// Get Group Order
 	bnum, err = mr.ReadByte()

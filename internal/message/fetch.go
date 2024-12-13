@@ -8,10 +8,10 @@ import (
 )
 
 type FetchMessage struct {
-	TrackPath          string
-	SubscriberPriority Priority
-	GroupSequence      GroupSequence
-	FrameSequence      FrameSequence // TODO: consider the necessity type FrameSequence
+	TrackPath     string
+	TrackPriority Priority
+	GroupSequence GroupSequence
+	FrameSequence FrameSequence // TODO: consider the necessity type FrameSequence
 }
 
 func (fm FetchMessage) Encode(w io.Writer) error {
@@ -34,7 +34,7 @@ func (fm FetchMessage) Encode(w io.Writer) error {
 	p = append(p, []byte(fm.TrackPath)...)
 
 	// Append the Subscriber Priority
-	p = quicvarint.Append(p, uint64(fm.SubscriberPriority))
+	p = quicvarint.Append(p, uint64(fm.TrackPriority))
 
 	// Append the Group Sequence
 	p = quicvarint.Append(p, uint64(fm.GroupSequence))
@@ -89,7 +89,7 @@ func (fm *FetchMessage) Decode(r io.Reader) error {
 		return err
 	}
 
-	fm.SubscriberPriority = Priority(num)
+	fm.TrackPriority = Priority(num)
 
 	// Get a Group Sequence
 	num, err = quicvarint.Read(mr)

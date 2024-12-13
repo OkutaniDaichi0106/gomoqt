@@ -118,13 +118,13 @@ func (s Subscriber) Subscribe(subscription Subscription) (info Info, err error) 
 	}
 	// Initialize a SUBSCRIBE message
 	sm := message.SubscribeMessage{
-		SubscribeID:        message.SubscribeID(subscription.subscribeID),
-		TrackPath:          subscription.TrackPath,
-		SubscriberPriority: message.Priority(subscription.SubscriberPriority),
-		GroupOrder:         message.GroupOrder(subscription.GroupOrder),
-		MinGroupSequence:   message.GroupSequence(subscription.MinGroupSequence),
-		MaxGroupSequence:   message.GroupSequence(subscription.MaxGroupSequence),
-		Parameters:         message.Parameters(subscription.Parameters),
+		SubscribeID:      message.SubscribeID(subscription.subscribeID),
+		TrackPath:        subscription.TrackPath,
+		TrackPriority:    message.Priority(subscription.TrackPriority),
+		GroupOrder:       message.GroupOrder(subscription.GroupOrder),
+		MinGroupSequence: message.GroupSequence(subscription.MinGroupSequence),
+		MaxGroupSequence: message.GroupSequence(subscription.MaxGroupSequence),
+		Parameters:       message.Parameters(subscription.Parameters),
 	}
 	err = sm.Encode(stream)
 	if err != nil {
@@ -196,13 +196,13 @@ func (s Subscriber) UpdateSubscription(subscription Subscription, update Subscri
 	}
 	// Initialize
 	sum := message.SubscribeUpdateMessage{
-		SubscribeID:        message.SubscribeID(subscription.subscribeID),
-		SubscriberPriority: message.Priority(update.SubscriberPriority),
-		GroupOrder:         message.GroupOrder(update.GroupOrder),
-		GroupExpires:       update.GroupExpires,
-		MinGroupSequence:   message.GroupSequence(update.MinGroupSequence),
-		MaxGroupSequence:   message.GroupSequence(update.MaxGroupSequence),
-		Parameters:         message.Parameters(update.Parameters),
+		SubscribeID:      message.SubscribeID(subscription.subscribeID),
+		TrackPriority:    message.Priority(update.TrackPriority),
+		GroupOrder:       message.GroupOrder(update.GroupOrder),
+		GroupExpires:     update.GroupExpires,
+		MinGroupSequence: message.GroupSequence(update.MinGroupSequence),
+		MaxGroupSequence: message.GroupSequence(update.MaxGroupSequence),
+		Parameters:       message.Parameters(update.Parameters),
 	}
 
 	err = sum.Encode(sentSubscription.stream)
@@ -218,8 +218,8 @@ func (s Subscriber) UpdateSubscription(subscription Subscription, update Subscri
 	}
 
 	// Update the subscription
-	if update.SubscriberPriority != 0 {
-		subscription.SubscriberPriority = update.SubscriberPriority
+	if update.TrackPriority != 0 {
+		subscription.TrackPriority = update.TrackPriority
 	}
 	if update.GroupExpires != 0 {
 		subscription.GroupExpires = update.GroupExpires
@@ -270,10 +270,10 @@ func (s Subscriber) Fetch(req FetchRequest) (group Group, rcvstream moq.ReceiveS
 	 * Send a FETCH message
 	 */
 	fm := message.FetchMessage{
-		TrackPath:          req.TrackPath,
-		SubscriberPriority: message.Priority(req.SubscriberPriority),
-		GroupSequence:      message.GroupSequence(req.GroupSequence),
-		FrameSequence:      message.FrameSequence(req.FrameSequence),
+		TrackPath:     req.TrackPath,
+		TrackPriority: message.Priority(req.TrackPriority),
+		GroupSequence: message.GroupSequence(req.GroupSequence),
+		FrameSequence: message.FrameSequence(req.FrameSequence),
 	}
 
 	err = fm.Encode(stream)
@@ -339,7 +339,7 @@ func (s Subscriber) RequestInfo(req InfoRequest) (Info, error) {
 	}
 
 	info := Info{
-		PublisherPriority:   Priority(im.PublisherPriority),
+		GroupPriority:       Priority(im.GroupPriority),
 		LatestGroupSequence: GroupSequence(im.LatestGroupSequence),
 		GroupOrder:          GroupOrder(im.GroupOrder),
 		GroupExpires:        im.GroupExpires,

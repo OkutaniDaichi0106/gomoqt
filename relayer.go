@@ -219,9 +219,9 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 					if sr.subscription.TrackPath != req.TrackPath {
 						// Initialize a group
 						group := Group{
-							subscribeID:       sr.subscription.subscribeID,
-							groupSequence:     req.GroupSequence,
-							PublisherPriority: Priority(req.SubscriberPriority), // TODO: Handle Publisher Priority
+							subscribeID:   sr.subscription.subscribeID,
+							groupSequence: req.GroupSequence,
+							GroupPriority: Priority(req.TrackPriority), // TODO: Handle Publisher Priority
 						}
 
 						// Send the group data

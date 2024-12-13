@@ -13,12 +13,12 @@ const (
 )
 
 func comparePriority(s1, s2 Subscription, g1, g2 Group) bool {
-	if s1.SubscriberPriority != s2.SubscriberPriority {
-		return s1.SubscriberPriority > s2.SubscriberPriority
+	if s1.TrackPriority != s2.TrackPriority {
+		return s1.TrackPriority > s2.TrackPriority
 	}
 
-	if g1.PublisherPriority != g2.PublisherPriority {
-		return g1.PublisherPriority > g2.PublisherPriority
+	if g1.GroupPriority != g2.GroupPriority {
+		return g1.GroupPriority > g2.GroupPriority
 	}
 
 	if s1.subscribeID != s2.subscribeID {

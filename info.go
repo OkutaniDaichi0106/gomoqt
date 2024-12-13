@@ -23,7 +23,7 @@ type InfoRequest struct {
 }
 
 type Info struct {
-	PublisherPriority   Priority
+	GroupPriority       Priority
 	LatestGroupSequence GroupSequence
 	GroupOrder          GroupOrder
 	GroupExpires        time.Duration
@@ -35,7 +35,7 @@ type InfoWriter struct {
 
 func (w InfoWriter) Inform(i Info) {
 	im := message.InfoMessage{
-		PublisherPriority:   message.Priority(i.PublisherPriority),
+		GroupPriority:       message.Priority(i.GroupPriority),
 		LatestGroupSequence: message.GroupSequence(i.LatestGroupSequence),
 		GroupOrder:          message.GroupOrder(i.GroupOrder),
 		GroupExpires:        i.GroupExpires,
@@ -94,7 +94,7 @@ func readInfo(r io.Reader) (Info, error) {
 	}
 
 	info := Info{
-		PublisherPriority:   Priority(im.PublisherPriority),
+		GroupPriority:       Priority(im.GroupPriority),
 		LatestGroupSequence: GroupSequence(im.LatestGroupSequence),
 		GroupOrder:          GroupOrder(im.GroupOrder),
 		GroupExpires:        im.GroupExpires,

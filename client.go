@@ -235,42 +235,25 @@ func listenBiStreams(sess *ClientSession, ctx context.Context) {
 					return
 				}
 
+				// Get
 				irs := newInterestReceiveStream(interest, stream)
 
-				sess.publisherManager.
-				// Announce
-				// for _, announcement := range c.announcements {
-				// 	// Verify if the Announcement's Track Namespace has the Track Prefix
-				// 	if strings.HasPrefix(announcement.TrackPath, interest.TrackPrefix) {
-				// 		// Announce the Track Namespace
-				// 		aw.Announce(announcement)
-				// 	}
-				// }
+				// Add
+				sess.publisherManager.addInterestReceiveStream(irs)
 			case stream_type_subscribe:
 				slog.Debug("subscribe stream was opened")
-
-				//
-				sr := rsubscribeReceiveStream
-					stream: stream,
-				}
 
 				subscription, err := readSubscription(stream)
 				if err != nil {
 					slog.Error("failed to get a subscription", slog.String("error", err.Error()))
 					//
-					sr.CancelRead(err)
 					return
 				}
 
-				// Verify if the Track Path in the subscription is valid
-				_, ok := c.announcements[subscription.TrackPath]
-				if !ok {
-					sr.CancelRead(ErrTrackDoesNotExist)
-					return
-				}
+				// Get
+				srs := newSubscribeReceiveStream(subscription, stream)
 
-				// Set the subscription to the receiver
-				sr.subscription = subscription
+				sess.publisherManager.addSubscribeReceiveStream(srs)
 
 				// Get any Infomation of the track
 				info, _ := sess.getCurrentInfo(subscription.TrackPath)
@@ -281,13 +264,13 @@ func listenBiStreams(sess *ClientSession, ctx context.Context) {
 				/*
 				 * Accept the new subscription
 				 */
-				sess.acceptNewSubscription(&sr)
+				sess.publisherManager.addSubscribeReceiveStream()
 
 				/*
 				 * Catch any Subscribe Update or any error from the subscriber
 				 */
 				for {
-					update, err := sr.ReceiveUpdate()
+					update, err := srs.ReceiveUpdate()
 					if err != nil {
 						slog.Info("catched an error from the subscriber", slog.String("error", err.Error()))
 						break
@@ -295,7 +278,7 @@ func listenBiStreams(sess *ClientSession, ctx context.Context) {
 
 					slog.Info("received a subscribe update request", slog.Any("subscription", update))
 
-					sw := rsubscribeReceiveStream
+					sw := rsubscribeReceiveStream{
 						stream: stream,
 					}
 
@@ -350,9 +333,9 @@ func listenBiStreams(sess *ClientSession, ctx context.Context) {
 					if subscription.TrackPath == req.TrackPath {
 						// Send the group data
 						w, err := frw.SendGroup(Group{
-							subscribeID:       subscription.subscribeID,
-							groupSequence:     req.GroupSequence,
-							PublisherPriority: PublisherPriority(req.SubscriberPriority), // TODO: Handle Publisher Priority
+							subscribeID:   subscription.subscribeID,
+							groupSequence: req.GroupSequence,
+							GroupPriority: GroupPriority(req.TrackPriority), // TODO: Handle Publisher Priority
 						})
 						if err != nil {
 							slog.Error("failed to send a group", slog.String("error", err.Error()))

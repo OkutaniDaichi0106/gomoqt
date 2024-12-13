@@ -28,6 +28,8 @@ type Track struct {
 	 *
 	 */
 	groups map[GroupSequence]Group
+
+	// Subscription
 }
 
 func (t Track) Announcement() Announcement {
@@ -39,5 +41,10 @@ func (t Track) Announcement() Announcement {
 }
 
 func (t Track) Info() Info {
-	return Info{}
+	return Info{
+		GroupPriority:       0, // TODO:
+		LatestGroupSequence: 0, // TODO:
+		GroupOrder:          t.GroupOrder,
+		GroupExpires:        t.GroupExpires,
+	}
 }

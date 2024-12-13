@@ -17,7 +17,7 @@ type Subscription struct {
 	Track
 	subscribeID SubscribeID
 	//TrackPath          string
-	SubscriberPriority Priority
+	TrackPriority Priority
 	//GroupOrder         GroupOrder
 	//GroupExpires     time.Duration
 	MinGroupSequence GroupSequence
@@ -37,9 +37,9 @@ type Subscription struct {
 
 func (s Subscription) getGroup(seq GroupSequence, priority Priority) Group {
 	return Group{
-		subscribeID:       s.subscribeID,
-		groupSequence:     seq,
-		PublisherPriority: priority,
+		subscribeID:   s.subscribeID,
+		groupSequence: seq,
+		GroupPriority: priority,
 	}
 }
 
@@ -59,6 +59,12 @@ type subscribeSendStream struct {
 /*
  *
  */
+func newSubscribeReceiveStream(subscription Subscription, stream moq.Stream) *subscribeReceiveStream {
+	return &subscribeReceiveStream{
+		subscription: subscription,
+		stream:       stream,
+	}
+}
 
 type subscribeReceiveStream struct {
 	subscription Subscription
@@ -74,7 +80,7 @@ func (sr *subscribeReceiveStream) Inform(info Info) {
 	slog.Debug("Accepting the subscription")
 
 	im := message.InfoMessage{
-		PublisherPriority:   message.Priority(info.PublisherPriority),
+		GroupPriority:       message.Priority(info.GroupPriority),
 		LatestGroupSequence: message.GroupSequence(info.LatestGroupSequence),
 		GroupOrder:          message.GroupOrder(info.GroupOrder),
 		GroupExpires:        info.GroupExpires,
@@ -140,19 +146,19 @@ func readSubscription(r moq.Stream) (Subscription, error) {
 			GroupOrder:   GroupOrder(sm.GroupOrder),
 			GroupExpires: sm.GroupExpires,
 		},
-		SubscriberPriority: Priority(sm.SubscriberPriority),
-		MinGroupSequence:   GroupSequence(sm.MinGroupSequence),
-		MaxGroupSequence:   GroupSequence(sm.MaxGroupSequence),
-		Parameters:         Parameters(sm.Parameters),
+		TrackPriority:    Priority(sm.TrackPriority),
+		MinGroupSequence: GroupSequence(sm.MinGroupSequence),
+		MaxGroupSequence: GroupSequence(sm.MaxGroupSequence),
+		Parameters:       Parameters(sm.Parameters),
 	}, nil
 }
 
 type SubscribeUpdate struct {
-	SubscriberPriority Priority
-	GroupOrder         GroupOrder
-	GroupExpires       time.Duration
-	MinGroupSequence   GroupSequence
-	MaxGroupSequence   GroupSequence
+	TrackPriority    Priority
+	GroupOrder       GroupOrder
+	GroupExpires     time.Duration
+	MinGroupSequence GroupSequence
+	MaxGroupSequence GroupSequence
 
 	/*
 	 * Parameters
@@ -179,12 +185,12 @@ func readSubscribeUpdate(r io.Reader) (SubscribeUpdate, error) {
 	}
 
 	return SubscribeUpdate{
-		SubscriberPriority: Priority(sum.SubscriberPriority),
-		GroupOrder:         GroupOrder(sum.GroupOrder),
-		GroupExpires:       sum.GroupExpires,
-		MinGroupSequence:   GroupSequence(sum.MinGroupSequence),
-		MaxGroupSequence:   GroupSequence(sum.MaxGroupSequence),
-		Parameters:         Parameters(sum.Parameters),
-		DeliveryTimeout:    timeout,
+		TrackPriority:    Priority(sum.TrackPriority),
+		GroupOrder:       GroupOrder(sum.GroupOrder),
+		GroupExpires:     sum.GroupExpires,
+		MinGroupSequence: GroupSequence(sum.MinGroupSequence),
+		MaxGroupSequence: GroupSequence(sum.MaxGroupSequence),
+		Parameters:       Parameters(sum.Parameters),
+		DeliveryTimeout:  timeout,
 	}, nil
 }

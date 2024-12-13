@@ -1,6 +1,7 @@
 package moqt
 
 import (
+	"errors"
 	"io"
 	"log/slog"
 	"sync"
@@ -42,27 +43,34 @@ func (s Subscription) getGroup(seq GroupSequence, priority Priority) Group {
 	}
 }
 
+func newSubscribeSendStream(subscription Subscription, stream moq.Stream) *subscribeSendStream {
+	return &subscribeSendStream{
+		subscription: subscription,
+		stream:       stream,
+	}
+}
+
 type subscribeSendStream struct {
-	Subscription
-	stream moq.Stream
-	mu     sync.Mutex
+	subscription Subscription
+	stream       moq.Stream
+	mu           sync.Mutex
 }
 
 /*
  *
  */
 
-type receivedSubscription struct {
-	Subscription
-	stream moq.Stream
-	mu     sync.Mutex
+type subscribeReceiveStream struct {
+	subscription Subscription
+	stream       moq.Stream
+	mu           sync.Mutex
 }
 
-func (sr *receivedSubscription) ReceiveUpdate() (SubscribeUpdate, error) {
+func (sr *subscribeReceiveStream) ReceiveUpdate() (SubscribeUpdate, error) {
 	return readSubscribeUpdate(sr.stream)
 }
 
-func (sr *receivedSubscription) Inform(info Info) {
+func (sr *subscribeReceiveStream) Inform(info Info) {
 	slog.Debug("Accepting the subscription")
 
 	im := message.InfoMessage{
@@ -81,37 +89,36 @@ func (sr *receivedSubscription) Inform(info Info) {
 	slog.Info("Informed", slog.Any("info", info))
 }
 
-// // TODO: rename this to CancelReceive
-// func (sr receivedSubscription) CancelRead(err error) {
-// 	slog.Debug("canceling a subscription", slog.Any("subscription", sr.subscription))
+func (srs *subscribeReceiveStream) CloseWithError(err error) {
+	if err == nil {
+		srs.Close()
+	}
 
-// 	if err == nil {
-// 		sr.Close()
-// 		return
-// 	}
+	// TODO:
 
-// 	var code moq.StreamErrorCode
+	var code moq.StreamErrorCode
 
-// 	var strerr moq.StreamError
-// 	if errors.As(err, &strerr) {
-// 		code = strerr.StreamErrorCode()
-// 	} else {
-// 		suberr, ok := err.(SubscribeError)
-// 		if ok {
-// 			code = moq.StreamErrorCode(suberr.SubscribeErrorCode())
-// 		} else {
-// 			code = ErrInternalError.StreamErrorCode()
-// 		}
-// 	}
+	var strerr moq.StreamError
+	if errors.As(err, &strerr) {
+		code = strerr.StreamErrorCode()
+	} else {
+		var ok bool
+		feterr, ok := err.(FetchError)
+		if ok {
+			code = moq.StreamErrorCode(feterr.FetchErrorCode())
+		} else {
+			code = ErrInternalError.StreamErrorCode()
+		}
+	}
 
-// 	sr.stream.CancelRead(code)
-// 	sr.stream.CancelWrite(code)
+	srs.stream.CancelRead(code)
+	srs.stream.CancelWrite(code)
 
-// 	slog.Debug("Rejected a subscription", slog.String("error", err.Error()))
-// }
+	slog.Info("rejcted the fetch request")
+}
 
-func (sr *receivedSubscription) Close() {
-	slog.Info("Closing a Subscrbe Receiver", slog.Any("subscription", sr.Subscription))
+func (sr *subscribeReceiveStream) Close() {
+	slog.Info("Closing a subscrbe receive stream", slog.Any("subscription", sr.subscription))
 	err := sr.stream.Close()
 	if err != nil {
 		slog.Debug("catch an error when closing a Subscribe Stream", slog.String("error", err.Error()))

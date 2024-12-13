@@ -235,10 +235,9 @@ func listenBiStreams(sess *ClientSession, ctx context.Context) {
 					return
 				}
 
-				as := AnnounceSender{
-					interest: interest,
-					stream:   stream,
-				}
+				irs := newInterestReceiveStream(interest, stream)
+
+				sess.publisherManager.
 				// Announce
 				// for _, announcement := range c.announcements {
 				// 	// Verify if the Announcement's Track Namespace has the Track Prefix
@@ -251,7 +250,7 @@ func listenBiStreams(sess *ClientSession, ctx context.Context) {
 				slog.Debug("subscribe stream was opened")
 
 				//
-				sr := receivedSubscription{
+				sr := rsubscribeReceiveStream
 					stream: stream,
 				}
 
@@ -296,7 +295,7 @@ func listenBiStreams(sess *ClientSession, ctx context.Context) {
 
 					slog.Info("received a subscribe update request", slog.Any("subscription", update))
 
-					sw := receivedSubscription{
+					sw := rsubscribeReceiveStream
 						stream: stream,
 					}
 

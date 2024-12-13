@@ -143,7 +143,7 @@ func newPublishManager() *publisherManager {
 	return &publisherManager{
 		activeAnnouncements:     make(map[string]Announcement),
 		interestReceivedStreams: make(map[string]*interestReceivedStream),
-		receivedSubscription:    make(map[SubscribeID]*receivedSubscription),
+		receivedSubscription:    make(map[SubscribeID]*subscribeReceiveStream),
 	}
 }
 
@@ -159,18 +159,18 @@ type publisherManager struct {
 	 * Track Prefix -> interestReceivedStream
 	 */
 	interestReceivedStreams map[string]*interestReceivedStream
-	saMu                    sync.RWMutex
+	irsMu                   sync.RWMutex
 
 	/*
 	 * Received Subscriptions
 	 */
-	receivedSubscription map[SubscribeID]*receivedSubscription
+	receivedSubscription map[SubscribeID]*subscribeReceiveStream
 	rsMu                 sync.RWMutex
 }
 
 func (pm *publisherManager) publishAnnouncement(announcement Announcement) {
-	pm.saMu.RLock()
-	defer pm.saMu.RUnlock()
+	pm.irsMu.RLock()
+	defer pm.irsMu.RUnlock()
 
 	if _, ok := pm.activeAnnouncements[announcement.TrackPath]; ok {
 		return
@@ -194,8 +194,8 @@ func (pm *publisherManager) publishAnnouncement(announcement Announcement) {
 
 /****/
 func (pm *publisherManager) cancelAnnouncement(announcement Announcement) {
-	pm.saMu.RLock()
-	defer pm.saMu.RUnlock()
+	pm.irsMu.RLock()
+	defer pm.irsMu.RUnlock()
 
 	if _, ok := pm.activeAnnouncements[announcement.TrackPath]; !ok {
 		return
@@ -217,25 +217,19 @@ func (pm *publisherManager) cancelAnnouncement(announcement Announcement) {
 	delete(pm.activeAnnouncements, announcement.TrackPath)
 }
 
-func (pm *publisherManager) newAnnouncementsFollower(interest Interest, stream moq.Stream) error {
-	pm.saMu.Lock()
-	defer pm.saMu.Unlock()
+func (pm *publisherManager) addInterestReceivedStream(irs *interestReceivedStream) error {
+	pm.irsMu.Lock()
+	defer pm.irsMu.Unlock()
 
-	_, ok := pm.interestReceivedStreams[interest.TrackPrefix]
+	_, ok := pm.interestReceivedStreams[irs.interest.TrackPrefix]
 	if ok {
 		return ErrDuplicatedInterest
 	}
 
-	sas := interestReceivedStream{
-		interest:      interest,
-		announcements: make(map[string]Announcement),
-		stream:        stream,
-	}
-
-	pm.interestReceivedStreams[interest.TrackPrefix] = &sas
+	pm.interestReceivedStreams[irs.interest.TrackPrefix] = irs
 
 	for _, announcement := range pm.activeAnnouncements {
-		err := sas.activateAnnouncement(announcement)
+		err := irs.activateAnnouncement(announcement)
 		if err != nil {
 			slog.Error("failed to activate an announcement")
 			return err
@@ -245,21 +239,28 @@ func (pm *publisherManager) newAnnouncementsFollower(interest Interest, stream m
 	return nil
 }
 
-func (pm *publisherManager) addReceivedSubscription(rs *receivedSubscription) error {
+func (pm *publisherManager) removeInterestReceiveStream(irs *interestReceivedStream) {
+	pm.irsMu.Lock()
+	defer pm.irsMu.Unlock()
+
+	delete(pm.interestReceivedStreams, irs.interest.TrackPrefix)
+}
+
+func (pm *publisherManager) addSubscribeSendStream(srs *subscribeReceiveStream) error {
 	pm.rsMu.Lock()
 	defer pm.rsMu.Unlock()
 
-	_, ok := pm.receivedSubscription[rs.subscribeID]
+	_, ok := pm.receivedSubscription[srs.subscription.subscribeID]
 	if ok {
 		return ErrDuplicatedSubscribeID
 	}
 
-	pm.receivedSubscription[rs.subscribeID] = rs
+	pm.receivedSubscription[srs.subscription.subscribeID] = srs
 
 	return nil
 }
 
-func (pm *publisherManager) removeReceivedSubscription(id SubscribeID) {
+func (pm *publisherManager) removeSubscribeSendStream(id SubscribeID) {
 	pm.rsMu.Lock()
 	defer pm.rsMu.Unlock()
 
@@ -275,6 +276,14 @@ type interestReceivedStream struct {
 	announcements map[string]Announcement
 	stream        moq.Stream
 	mu            sync.RWMutex
+}
+
+func newInterestReceiveStream(interest Interest, stream moq.Stream) *interestReceivedStream {
+	return &interestReceivedStream{
+		interest:      interest,
+		announcements: make(map[string]Announcement),
+		stream:        stream,
+	}
 }
 
 func (sas *interestReceivedStream) activateAnnouncement(announcement Announcement) error {

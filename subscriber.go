@@ -143,8 +143,10 @@ func (s Subscriber) Subscribe(subscription Subscription) (info Info, err error) 
 
 	slog.Info("Successfully subscribed", slog.Any("subscription", subscription), slog.Any("info", info))
 
-	// Register the Subscribe Writer
-	err = s.subscriberManager.addSubscription(subscription, stream)
+	// Get a new subscribe send stream
+	sss := newSubscribeSendStream(subscription, stream)
+	// Register the subscribe send stream
+	err = s.subscriberManager.addSubscribeSendStream(sss)
 	if err != nil {
 		slog.Error("failed to add subscribe sender", slog.String("error", err.Error()))
 		return
@@ -237,39 +239,21 @@ func (s Subscriber) UpdateSubscription(subscription Subscription, update Subscri
 
 func (s Subscriber) Unsubscribe(subscription Subscription) {
 	// Find sent subscription
-	sentSubscription, ok := s.subscriberManager.findSentSubscription(subscription.subscribeID)
+	srs, ok := s.subscriberManager.findSentSubscription(subscription.subscribeID)
 	if !ok {
 		return
 	}
 
 	// Close gracefully
-	err := sentSubscription.stream.Close()
+	err := srs.stream.Close()
 	if err != nil {
 		slog.Error("failed to close a subscribe stream", slog.String("error", err.Error()))
 	}
 
-	// var code moq.StreamErrorCode
-
-	// var strerr moq.StreamError
-	// if errors.As(err, &strerr) {
-	// 	code = strerr.StreamErrorCode()
-	// } else {
-	// 	suberr, ok := err.(SubscribeError)
-	// 	if ok {
-	// 		code = moq.StreamErrorCode(suberr.SubscribeErrorCode())
-	// 	} else {
-	// 		code = ErrInternalError.StreamErrorCode()
-	// 	}
-	// }
-
-	// // Send the error
-	// sentSubscription.stream.CancelRead(code)
-	// sentSubscription.stream.CancelWrite(code)
-
 	// Remove
-	s.subscriberManager.removeSubscriberSender(sentSubscription.subscribeID)
+	s.subscriberManager.removeSubscriberSender(srs.subscription.subscribeID)
 
-	slog.Info("unsubscribed")
+	slog.Info("Unsubscribed")
 }
 
 func (s Subscriber) Fetch(req FetchRequest) (group Group, rcvstream moq.ReceiveStream, err error) {
@@ -620,19 +604,16 @@ func (sm *subscriberManager) findSentSubscription(id SubscribeID) (*subscribeSen
 	return sentSubscription, true
 }
 
-func (sm *subscriberManager) addSubscription(subscription Subscription, stream moq.Stream) error {
+func (sm *subscriberManager) addSubscribeSendStream(sss *subscribeSendStream) error {
 	sm.sssMu.Lock()
 	defer sm.sssMu.Unlock()
 
-	_, ok := sm.subscribeSendStreams[subscription.subscribeID]
+	_, ok := sm.subscribeSendStreams[sss.subscription.subscribeID]
 	if ok {
 		return ErrDuplicatedSubscribeID
 	}
 
-	sm.subscribeSendStreams[subscription.subscribeID] = &subscribeSendStream{
-		Subscription: subscription,
-		stream:       stream,
-	}
+	sm.subscribeSendStreams[sss.subscription.subscribeID] = sss
 
 	return nil
 }

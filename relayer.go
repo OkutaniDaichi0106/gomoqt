@@ -112,7 +112,7 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 				slog.Debug("subscribe stream was opened")
 
 				// Initialize a Subscriber Responce Writer
-				sr := receivedSubscription{
+				sr := subscribeReceiveStream{
 					stream: stream,
 				}
 

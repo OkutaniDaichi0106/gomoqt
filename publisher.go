@@ -2,20 +2,26 @@ package moqt
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"log/slog"
-	"strings"
-	"sync"
+	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
+	"github.com/OkutaniDaichi0106/gomoqt/internal/transport"
 )
 
 type publisher interface {
-	//NewTrack(Announcement) Track
-	Announce(Announcement)
-	Unannounce(Announcement)
-	OpenDataStream(Track, Group) (moq.SendStream, error)
+	StartTrack(Track) error
+	EndTrack(Track) error
+
+	AcceptInterest(context.Context) (*ReceivedInterest, error)
+
+	AcceptSubscription(context.Context) (*ReceivedSubscription, error)
+
+	AcceptFetch(context.Context) (*ReceivedFetch, error)
+
+	OpenDataStream(SubscribeID, GroupSequence, GroupPriority) (DataSendStream, error)
 }
 
 var _ publisher = (*Publisher)(nil)
@@ -23,34 +29,117 @@ var _ publisher = (*Publisher)(nil)
 type Publisher struct {
 	sess *session
 
-	publisherManager *publisherManager
-}
-
-func (p *Publisher) Announce(ann Announcement) {
-	p.publisherManager.publishAnnouncement(ann)
-}
-
-func (p *Publisher) Unannounce(ann Announcement) {
-	p.publisherManager.cancelAnnouncement(ann)
-}
-
-func (p *Publisher) OpenDataStream(t Track, g Group) (moq.SendStream, error) {
 	/*
 	 *
 	 */
-	// Verify the group is a new one in the track
-	_, ok := t.groups[g.groupSequence]
-	if ok {
-		return nil, errors.New("duplicated group")
-	}
-
-	//TODO: Verify the Track was subscribed
-	// p.publisherManager
-
-	return p.openDataStream(g)
+	*publisherManager
 }
 
-func (p *Publisher) openGroupStream() (moq.SendStream, error) {
+func (p *Publisher) StartTrack(t Track) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	_, ok := p.tracks[t.TrackPath]
+	if !ok {
+		return ErrDuplicatedTrackPath
+	}
+
+	p.tracks[t.TrackPath] = t
+
+	return nil
+}
+
+func (p *Publisher) EndTrack(t Track) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	_, ok := p.tracks[t.TrackPath]
+	if !ok {
+		return ErrTrackDoesNotExist
+	}
+
+	delete(p.tracks, t.TrackPath)
+
+	return nil
+}
+
+func (p *Publisher) AcceptInterest(ctx context.Context) (*ReceivedInterest, error) {
+	for {
+		if p.receivedSubscriptionQueue.Len() != 0 {
+			return p.receivedInterestQueue.Dequeue(), nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-p.receivedInterestQueue.Chan():
+		}
+	}
+}
+
+func (p *Publisher) AcceptSubscription(ctx context.Context) (*ReceivedSubscription, error) {
+	for {
+		if p.receivedSubscriptionQueue.Len() != 0 {
+			return p.receivedSubscriptionQueue.Dequeue(), nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-p.receivedInterestQueue.Chan():
+		}
+	}
+}
+
+func (p *Publisher) AcceptFetch(ctx context.Context) (*ReceivedFetch, error) {
+	for {
+		if p.receivedFetchQueue.Len() != 0 {
+			return p.receivedFetchQueue.Dequeue(), nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-p.receivedFetchQueue.Chan():
+		}
+	}
+}
+
+func (p *Publisher) OpenDataStream(id SubscribeID, sequence GroupSequence, priority GroupPriority) (DataSendStream, error) {
+	// Verify
+	if sequence == 0 {
+		return nil, errors.New("0 sequence number")
+	}
+
+	// Open
+	stream, err := p.openGroupStream()
+	if err != nil {
+		slog.Error("failed to open a group stream", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	// Send the GROUP message
+	gm := message.GroupMessage{
+		SubscribeID:   message.SubscribeID(id),
+		GroupSequence: message.GroupSequence(sequence),
+		GroupPriority: message.GroupPriority(priority),
+	}
+	err = gm.Encode(stream)
+	if err != nil {
+		slog.Error("failed to send a GROUP message", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	return dataSendStream{
+			SendStream: stream,
+			SentGroup: SentGroup{
+				subscribeID:   id,
+				groupSequence: sequence,
+				groupPriority: priority,
+				sentAt:        time.Now(),
+			},
+		},
+		nil
+}
+
+func (p *Publisher) openGroupStream() (transport.SendStream, error) {
 	slog.Debug("opening an Group Stream")
 
 	stream, err := p.sess.conn.OpenUniStream()
@@ -72,34 +161,7 @@ func (p *Publisher) openGroupStream() (moq.SendStream, error) {
 	return stream, nil
 }
 
-func (p *Publisher) openDataStream(g Group) (moq.SendStream, error) {
-	if g.groupSequence == 0 {
-		return nil, errors.New("0 sequence number")
-	}
-
-	stream, err := p.openGroupStream()
-	if err != nil {
-		slog.Error("failed to open a group stream", slog.String("error", err.Error()))
-		return nil, err
-	}
-
-	gm := message.GroupMessage{
-		SubscribeID:   message.SubscribeID(g.subscribeID),
-		GroupSequence: message.GroupSequence(g.groupSequence),
-		GroupPriority: message.Priority(g.GroupPriority),
-	}
-
-	// Send the GROUP message
-	err = gm.Encode(stream)
-	if err != nil {
-		slog.Error("failed to send a GROUP message", slog.String("error", err.Error()))
-		return nil, err
-	}
-
-	return stream, nil
-}
-
-func (p *Publisher) sendDatagram(g Group, payload []byte) error {
+func (p *Publisher) sendDatagram(g SentGroup, payload []byte) error {
 	if g.groupSequence == 0 {
 		return errors.New("0 sequence number")
 	}
@@ -107,7 +169,7 @@ func (p *Publisher) sendDatagram(g Group, payload []byte) error {
 	gm := message.GroupMessage{
 		SubscribeID:   message.SubscribeID(g.subscribeID),
 		GroupSequence: message.GroupSequence(g.groupSequence),
-		GroupPriority: message.Priority(g.GroupPriority),
+		GroupPriority: message.GroupPriority(g.groupPriority),
 	}
 
 	var buf bytes.Buffer
@@ -136,258 +198,17 @@ func (p *Publisher) sendDatagram(g Group, payload []byte) error {
 	return nil
 }
 
-/*
- *
- */
-func newPublishManager() *publisherManager {
-	return &publisherManager{
-		activeAnnouncements:     make(map[string]Announcement),
-		interestReceivedStreams: make(map[string]*interestReceivedStream),
-		subscribeReceiveStreams: make(map[SubscribeID]*subscribeReceiveStream),
-	}
-}
-
-type publisherManager struct {
-	/*
-	 * Active announcements
-	 * Track Path -> Announcement
-	 */
-	activeAnnouncements map[string]Announcement
-
-	/*
-	 * Sent announcements
-	 * Track Prefix -> interestReceivedStream
-	 */
-	interestReceivedStreams map[string]*interestReceivedStream
-	irsMu                   sync.RWMutex
-
-	/*
-	 * Received Subscriptions
-	 */
-	subscribeReceiveStreams map[SubscribeID]*subscribeReceiveStream
-	rsMu                    sync.RWMutex
-
-	/*
-	 *
-	 */
-	tracks map[string]Track
-}
-
-/*
- *
- */
-func (pm *publisherManager) publishAnnouncement(announcement Announcement) {
-	pm.irsMu.RLock()
-	defer pm.irsMu.RUnlock()
-
-	if _, ok := pm.activeAnnouncements[announcement.TrackPath]; ok {
-		return
-	}
-
-	for prefix, sentAnnouncements := range pm.interestReceivedStreams {
-		// Skip to announce
-		if !strings.HasPrefix(announcement.TrackPath, prefix) {
-			continue
-		}
-
-		err := sentAnnouncements.activateAnnouncement(announcement)
-		if err != nil {
-			slog.Error("failed to active an announcement", slog.String("error", err.Error()))
-			continue
-		}
-	}
-
-	pm.activeAnnouncements[announcement.TrackPath] = announcement
-}
-
-/*
- *
- *
- */
-func (pm *publisherManager) cancelAnnouncement(announcement Announcement) {
-	pm.irsMu.RLock()
-	defer pm.irsMu.RUnlock()
-
-	if _, ok := pm.activeAnnouncements[announcement.TrackPath]; !ok {
-		return
-	}
-
-	for prefix, sentAnnouncements := range pm.interestReceivedStreams {
-		// Skip to announce
-		if !strings.HasPrefix(announcement.TrackPath, prefix) {
-			continue
-		}
-
-		err := sentAnnouncements.endAnnouncement(announcement)
-		if err != nil {
-			slog.Error("failed to active an announcement", slog.String("error", err.Error()))
-			continue
-		}
-	}
-
-	delete(pm.activeAnnouncements, announcement.TrackPath)
-}
-
-func (pm *publisherManager) addInterestReceiveStream(irs *interestReceivedStream) error {
-	slog.Debug("adding an interest receive stream", slog.Any("stream id", irs.stream.StreamID()))
-	pm.irsMu.Lock()
-	defer pm.irsMu.Unlock()
-
-	_, ok := pm.interestReceivedStreams[irs.interest.TrackPrefix]
-	if ok {
-		return ErrDuplicatedInterest
-	}
-
-	pm.interestReceivedStreams[irs.interest.TrackPrefix] = irs
-
-	for _, announcement := range pm.activeAnnouncements {
-		err := irs.activateAnnouncement(announcement)
-		if err != nil {
-			slog.Error("failed to activate an announcement")
-			return err
-		}
-	}
-
-	slog.Debug("added an interest receive stream", slog.Any("stream id", irs.stream.StreamID()))
-
-	return nil
-}
-
-func (pm *publisherManager) removeInterestReceiveStream(irs *interestReceivedStream) {
-	slog.Debug("removing an interest receive stream", slog.Any("stream id", irs.stream.StreamID()))
-
-	pm.irsMu.Lock()
-	defer pm.irsMu.Unlock()
-
-	delete(pm.interestReceivedStreams, irs.interest.TrackPrefix)
-
-	slog.Debug("removed an interest receive stream", slog.Any("stream id", irs.stream.StreamID()))
-}
-
-func (pm *publisherManager) addSubscribeReceiveStream(srs *subscribeReceiveStream) error {
-	slog.Debug("adding an subscribe receive stream", slog.Any("stream id", srs.stream.StreamID()))
-
-	pm.rsMu.Lock()
-	defer pm.rsMu.Unlock()
-
-	_, ok := pm.subscribeReceiveStreams[srs.subscription.subscribeID]
-	if ok {
-		return ErrDuplicatedSubscribeID
-	}
-
-	pm.subscribeReceiveStreams[srs.subscription.subscribeID] = srs
-
-	slog.Debug("added an subscribe receive stream", slog.Any("stream id", srs.stream.StreamID()))
-
-	return nil
-}
-
-func (pm *publisherManager) removeSubscribeSendStream(srs *subscribeReceiveStream) {
-	slog.Debug("removing an subscribe receive stream", slog.Any("stream id", srs.stream.StreamID()))
-
-	pm.rsMu.Lock()
-	defer pm.rsMu.Unlock()
-
-	delete(pm.subscribeReceiveStreams, srs.subscription.subscribeID)
-
-	slog.Debug("removed an subscribe receive stream", slog.Any("stream id", srs.stream.StreamID()))
-}
-
-type interestReceivedStream struct {
-	interest Interest
-	/*
-	 * Sent announcements
-	 * Track Path -> Announcement
-	 */
-	announcements map[string]Announcement
-	stream        moq.Stream
-	mu            sync.RWMutex
-}
-
-func newInterestReceiveStream(interest Interest, stream moq.Stream) *interestReceivedStream {
-	return &interestReceivedStream{
-		interest:      interest,
-		announcements: make(map[string]Announcement),
-		stream:        stream,
-	}
-}
-
-func (sas *interestReceivedStream) activateAnnouncement(announcement Announcement) error {
-	sas.mu.Lock()
-	defer sas.mu.Unlock()
-
-	// Verify if the announcement has the track prefix
-	if !strings.HasPrefix(announcement.TrackPath, sas.interest.TrackPrefix) {
-		return ErrInternalError
-	}
-
-	// Verify if the Track Path has been already announced
-	_, ok := sas.announcements[announcement.TrackPath]
-	if ok {
-		return ErrDuplicatedTrackPath
-	}
-
-	// Get a suffix part of the Track Path
-	suffix := strings.TrimPrefix(announcement.TrackPath, sas.interest.TrackPrefix+"/")
-
-	//
-	if announcement.AuthorizationInfo != "" {
-		announcement.Parameters.Add(AUTHORIZATION_INFO, announcement.AuthorizationInfo)
-	}
-
-	// Send
-	am := message.AnnounceMessage{
-		AnnounceStatus:  message.ACTIVE,
-		TrackPathSuffix: suffix,
-		Parameters:      message.Parameters(announcement.Parameters),
-	}
-	err := am.Encode(sas.stream)
+func newReceivedInterest(stream transport.Stream) (*ReceivedInterest, error) {
+	// Get an Interest
+	interest, err := readInterest(stream)
 	if err != nil {
-		return err
+		slog.Error("failed to get an Interest", slog.String("error", err.Error()))
+		return nil, err
 	}
 
-	// Register
-	sas.announcements[announcement.TrackPath] = announcement
-
-	return nil
-}
-
-func (sas *interestReceivedStream) endAnnouncement(announcement Announcement) error {
-	sas.mu.Lock()
-	defer sas.mu.Unlock()
-
-	// Verify if the announcement has the track prefix
-	if !strings.HasPrefix(announcement.TrackPath, sas.interest.TrackPrefix) {
-		return ErrInternalError
-	}
-
-	// Verify if the Track Path has been already announced
-	_, ok := sas.announcements[announcement.TrackPath]
-	if !ok {
-		return ErrTrackDoesNotExist
-	}
-
-	// Get a suffix part of the Track Path
-	suffix := strings.TrimPrefix(announcement.TrackPath, sas.interest.TrackPrefix+"/")
-
-	//
-	if announcement.AuthorizationInfo != "" {
-		announcement.Parameters.Add(AUTHORIZATION_INFO, announcement.AuthorizationInfo)
-	}
-
-	// Send
-	am := message.AnnounceMessage{
-		AnnounceStatus:  message.ENDED,
-		TrackPathSuffix: suffix,
-		Parameters:      message.Parameters(announcement.Parameters),
-	}
-	err := am.Encode(sas.stream)
-	if err != nil {
-		return err
-	}
-
-	// Remove
-	delete(sas.announcements, announcement.TrackPath)
-
-	return nil
+	return &ReceivedInterest{
+		Interest: interest,
+		active:   make(map[string]Track),
+		stream:   stream,
+	}, nil
 }

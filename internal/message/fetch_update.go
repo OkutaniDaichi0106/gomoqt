@@ -9,7 +9,7 @@ import (
 )
 
 type FetchUpdateMessage struct {
-	TrackPriority Priority
+	TrackPriority TrackPriority
 }
 
 func (fum FetchUpdateMessage) Encode(w io.Writer) error {
@@ -68,7 +68,7 @@ func (fum *FetchUpdateMessage) Decode(r io.Reader) error {
 		return err
 	}
 
-	fum.TrackPriority = Priority(num)
+	fum.TrackPriority = TrackPriority(num)
 
 	slog.Debug("decoded a FETCH_UPDATE message")
 

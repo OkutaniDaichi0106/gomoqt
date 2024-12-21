@@ -11,7 +11,7 @@ import (
 type SubscribeUpdateMessage struct {
 	SubscribeID SubscribeID
 
-	TrackPriority    Priority
+	TrackPriority    TrackPriority
 	GroupOrder       GroupOrder
 	GroupExpires     time.Duration
 	MinGroupSequence GroupSequence
@@ -109,7 +109,7 @@ func (sum *SubscribeUpdateMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	sum.TrackPriority = Priority(priorityBuf[0])
+	sum.TrackPriority = TrackPriority(priorityBuf[0])
 
 	// Get Subscribe Update Parameters
 	sum.Parameters, err = readParameters(mr)

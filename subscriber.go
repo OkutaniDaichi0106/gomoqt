@@ -3,62 +3,53 @@ package moqt
 import (
 	"bytes"
 	"context"
-	"errors"
 	"log/slog"
-	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
+	"github.com/OkutaniDaichi0106/gomoqt/internal/transport"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type subscriber interface {
-	Interest(Interest) error
+	Interest(Interest) (*SentInterest, error)
 
-	Subscribe(Subscription) (Info, error)
-	Unsubscribe(Subscription)
-	UpdateSubscription(Subscription, SubscribeUpdate) (Info, error)
+	Subscribe(Subscription) (*SentSubscription, error)
+	Unsubscribe(*SentSubscription)
+	UpdateSubscription(*SentSubscription, SubscribeUpdate) error
 
-	Fetch(FetchRequest) (Group, moq.ReceiveStream, error)
+	Fetch(Fetch) (DataReceiveStream, error)
 
 	RequestInfo(InfoRequest) (Info, error)
 
-	AcceptDataStream(context.Context) (DataReceiver, error)
+	AcceptDataStream(context.Context) (DataReceiveStream, error)
 }
 
 var _ subscriber = (*Subscriber)(nil)
 
 type Subscriber struct {
-	isInit bool
+	sess *session
 
-	sess              *session
-	dataReceiverQueue dataReceiverQueue
-	subscriberManager *subscriberManager
+	*subscriberManager
 }
 
-func (s Subscriber) init() {
-	if s.isInit {
-		return
+func (s *Subscriber) AcceptDataStream(ctx context.Context) (DataReceiveStream, error) {
+	slog.Debug("accepting a data stream")
+
+	for {
+		if s.dataReceiverQueue.Len() > 0 {
+			return s.dataReceiverQueue.Dequeue(), nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-s.dataReceiverQueue.Chan():
+		default:
+		}
 	}
 
-	s.isInit = true
 }
 
-func (s Subscriber) AcceptDataStream(ctx context.Context) (DataReceiver, error) {
-	stream, err := acceptGroupStream(s.sess.conn, ctx)
-	if err != nil {
-		slog.Error("failed to accept an unidirectional stream")
-	}
-
-	group, err := readGroup(stream)
-
-	return dataReceiver{
-		Group:  group,
-		stream: stream,
-	}, nil
-}
-
-func (s Subscriber) Interest(interest Interest) error {
+func (s *Subscriber) Interest(interest Interest) (*SentInterest, error) {
 	slog.Debug("indicating interest", slog.Any("interest", interest))
 	/*
 	 * Open an Announce Stream
@@ -66,7 +57,7 @@ func (s Subscriber) Interest(interest Interest) error {
 	stream, err := openAnnounceStream(s.sess.conn)
 	if err != nil {
 		slog.Error("failed to open an Announce Stream")
-		return err
+		return nil, err
 	}
 
 	aim := message.AnnounceInterestMessage{
@@ -77,193 +68,227 @@ func (s Subscriber) Interest(interest Interest) error {
 	err = aim.Encode(stream)
 	if err != nil {
 		slog.Error("failed to send an ANNOUNCE_INTEREST message", slog.String("error", err.Error()))
-		return err
+		return nil, err
 	}
 
 	slog.Info("Successfully indicated interest", slog.Any("interest", interest))
 
 	for {
-
+		// TODO:
 	}
 
 }
 
-func (s Subscriber) Subscribe(subscription Subscription) (info Info, err error) {
-	slog.Debug("making a subscription", slog.Any("subscription", subscription))
+func (s *Subscriber) Subscribe(subscription Subscription) (*SentSubscription, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	// Initialize
-	if s.subscriberManager.subscribeSendStreams == nil {
-		s.subscriberManager = newSubscriberManager()
-	}
+	slog.Debug("making a subscription", slog.Any("subscription", subscription))
 
 	// Open a Subscribe Stream
 	stream, err := openSubscribeStream(s.sess.conn)
 	if err != nil {
 		slog.Error("failed to open a Subscribe Stream", slog.String("error", err.Error()))
-		return
+		return nil, err
 	}
-
-	// Set the next Subscribe ID to the Subscription
-	subscription.subscribeID = s.subscriberManager.nextSubscribeID()
 
 	/*
 	 * Send a SUBSCRIBE message
 	 */
 	// Set parameters
-	if subscription.Parameters == nil {
-		subscription.Parameters = make(Parameters)
+	if subscription.SubscribeParameters == nil {
+		subscription.SubscribeParameters = make(Parameters)
 	}
-	if subscription.DeliveryTimeout > 0 {
-		subscription.Parameters.Add(DELIVERY_TIMEOUT, subscription.DeliveryTimeout)
+	if subscription.Track.DeliveryTimeout > 0 {
+		subscription.SubscribeParameters.Add(DELIVERY_TIMEOUT, subscription.Track.DeliveryTimeout)
 	}
+
 	// Initialize a SUBSCRIBE message
 	sm := message.SubscribeMessage{
-		SubscribeID:      message.SubscribeID(subscription.subscribeID),
-		TrackPath:        subscription.TrackPath,
-		TrackPriority:    message.Priority(subscription.TrackPriority),
-		GroupOrder:       message.GroupOrder(subscription.GroupOrder),
+		SubscribeID:      message.SubscribeID(s.subscribeIDCounter),
+		TrackPath:        subscription.Track.TrackPath,
+		TrackPriority:    message.TrackPriority(subscription.Track.TrackPriority),
+		GroupOrder:       message.GroupOrder(subscription.Track.GroupOrder),
+		GroupExpires:     subscription.Track.GroupExpires,
 		MinGroupSequence: message.GroupSequence(subscription.MinGroupSequence),
 		MaxGroupSequence: message.GroupSequence(subscription.MaxGroupSequence),
-		Parameters:       message.Parameters(subscription.Parameters),
+		Parameters:       message.Parameters(subscription.SubscribeParameters),
 	}
 	err = sm.Encode(stream)
 	if err != nil {
 		slog.Error("failed to encode a SUBSCRIBE message", slog.String("error", err.Error()), slog.Any("message", sm))
-		return
+		return nil, err
 	}
 
 	/*
 	 * Receive an INFO message
 	 */
-	info, err = readInfo(stream)
+	info, err := readInfo(stream)
 	if err != nil {
 		slog.Error("failed to get a Info", slog.String("error", err.Error()))
-		return
+		return nil, err
 	}
 
-	slog.Info("Successfully subscribed", slog.Any("subscription", subscription), slog.Any("info", info))
-
-	// Get a new subscribe send stream
-	sss := newSubscribeSendStream(subscription, stream)
-	// Register the subscribe send stream
-	err = s.subscriberManager.addSubscribeSendStream(sss)
-	if err != nil {
-		slog.Error("failed to add subscribe sender", slog.String("error", err.Error()))
-		return
+	/*
+	 * 	Update the subscription
+	 */
+	// Update the TrackPriority
+	if info.TrackPriority != subscription.Track.TrackPriority {
+		slog.Debug("TrackPriority is not updated")
+		return nil, ErrPriorityMismatch
 	}
 
-	return info, nil
+	// Update the GroupOrder
+	if subscription.Track.GroupOrder == 0 {
+		subscription.Track.GroupOrder = info.GroupOrder
+	} else {
+		if info.GroupOrder != subscription.Track.GroupOrder {
+			slog.Debug("GroupOrder is not updated")
+			return nil, ErrGroupOrderMismatch
+		}
+	}
+
+	// Update the GroupExpires
+	if info.GroupExpires < subscription.Track.GroupExpires {
+		subscription.Track.GroupExpires = info.GroupExpires
+	}
+
+	// Increment the subscribeIDCounter
+	s.subscribeIDCounter++
+
+	return &SentSubscription{
+		Subscription: subscription,
+		stream:       stream,
+	}, err
 }
 
-func (s Subscriber) UpdateSubscription(subscription Subscription, update SubscribeUpdate) (info Info, err error) {
+func (s *Subscriber) UpdateSubscription(subscription *SentSubscription, update SubscribeUpdate) error {
+	subscription.mu.Lock()
+	defer subscription.mu.Unlock()
+
 	//
 	slog.Debug("updating a subscription",
 		slog.Any("subscription", subscription),
 		slog.Any("to", update),
 	)
 
+	/*
+	 * Verify the update
+	 */
 	// Verify if the new group range is valid
 	if update.MinGroupSequence > update.MaxGroupSequence {
 		slog.Debug("MinGroupSequence is larger than MaxGroupSequence")
-		return info, ErrInvalidRange
+		return ErrInvalidRange
 	}
 	// Verify if the minimum group sequence become larger
 	if subscription.MinGroupSequence > update.MinGroupSequence {
 		slog.Debug("the new MinGroupSequence is smaller than the old MinGroupSequence")
-		return info, ErrInvalidRange
+		return ErrInvalidRange
 	}
 	// Verify if the maximum group sequence become smaller
 	if subscription.MaxGroupSequence < update.MaxGroupSequence {
 		slog.Debug("the new MaxGroupSequence is larger than the old MaxGroupSequence")
-		return info, ErrInvalidRange
-	}
-
-	// Find a sent subscription
-	sentSubscription, ok := s.subscriberManager.findSentSubscription(subscription.subscribeID)
-	if !ok {
-		return info, ErrTrackDoesNotExist
+		return ErrInvalidRange
 	}
 
 	/*
 	 * Send a SUBSCRIBE_UPDATE message
 	 */
 	// Set parameters
-	if update.Parameters == nil {
-		update.Parameters = make(Parameters)
+	if update.SubscribeParameters == nil {
+		update.SubscribeParameters = make(Parameters)
 	}
 	if update.DeliveryTimeout > 0 {
-		update.Parameters.Add(DELIVERY_TIMEOUT, update.DeliveryTimeout)
+		update.SubscribeParameters.Add(DELIVERY_TIMEOUT, update.DeliveryTimeout)
 	}
-	// Initialize
+	// Initialize a SUBSCRIBE_UPDATE message
 	sum := message.SubscribeUpdateMessage{
 		SubscribeID:      message.SubscribeID(subscription.subscribeID),
-		TrackPriority:    message.Priority(update.TrackPriority),
+		TrackPriority:    message.TrackPriority(update.TrackPriority),
 		GroupOrder:       message.GroupOrder(update.GroupOrder),
 		GroupExpires:     update.GroupExpires,
 		MinGroupSequence: message.GroupSequence(update.MinGroupSequence),
 		MaxGroupSequence: message.GroupSequence(update.MaxGroupSequence),
-		Parameters:       message.Parameters(update.Parameters),
+		Parameters:       message.Parameters(update.SubscribeParameters),
 	}
 
-	err = sum.Encode(sentSubscription.stream)
+	err := sum.Encode(subscription.stream)
 	if err != nil {
 		slog.Debug("failed to send a SUBSCRIBE_UPDATE message", slog.String("error", err.Error()))
-		return
+		return err
 	}
 
-	info, err = readInfo(sentSubscription.stream)
+	// Receive an INFO message
+	info, err := readInfo(subscription.stream)
 	if err != nil {
 		slog.Debug("failed to get an Info")
-		return
+		return err
 	}
 
-	// Update the subscription
-	if update.TrackPriority != 0 {
-		subscription.TrackPriority = update.TrackPriority
+	// Update the TrackPriority
+	if info.TrackPriority == update.TrackPriority {
+		subscription.Track.TrackPriority = info.TrackPriority
+	} else {
+		slog.Debug("TrackPriority is not updated")
+		return ErrPriorityMismatch
 	}
-	if update.GroupExpires != 0 {
-		subscription.GroupExpires = update.GroupExpires
+
+	// Update the GroupOrder
+	if update.GroupOrder == 0 {
+		subscription.Track.GroupOrder = info.GroupOrder
+	} else {
+		if info.GroupOrder != update.GroupOrder {
+			slog.Debug("GroupOrder is not updated")
+			return ErrGroupOrderMismatch
+		}
+
+		subscription.Track.GroupOrder = update.GroupOrder
 	}
-	if update.GroupOrder != 0 {
-		subscription.GroupOrder = update.GroupOrder
+
+	// Update the GroupExpires
+	if info.GroupExpires < update.GroupExpires {
+		subscription.Track.GroupExpires = info.GroupExpires
+	} else {
+		subscription.Track.GroupExpires = update.GroupExpires
 	}
+
+	// Update the MinGroupSequence and MaxGroupSequence
 	subscription.MinGroupSequence = update.MinGroupSequence
 	subscription.MaxGroupSequence = update.MaxGroupSequence
-	subscription.Parameters = update.Parameters
+
+	// Update the SubscribeParameters
+	subscription.SubscribeParameters = update.SubscribeParameters
+
+	// Update the DeliveryTimeout
 	if update.DeliveryTimeout != 0 {
-		subscription.DeliveryTimeout = update.DeliveryTimeout
+		subscription.Track.DeliveryTimeout = update.DeliveryTimeout
 	}
 
-	return info, nil
+	return nil
 }
 
-func (s Subscriber) Unsubscribe(subscription Subscription) {
-	// Find sent subscription
-	srs, ok := s.subscriberManager.findSentSubscription(subscription.subscribeID)
-	if !ok {
-		return
-	}
-
+func (s *Subscriber) Unsubscribe(subscription *SentSubscription) {
 	// Close gracefully
-	err := srs.stream.Close()
+	err := subscription.stream.Close()
 	if err != nil {
 		slog.Error("failed to close a subscribe stream", slog.String("error", err.Error()))
 	}
 
-	// Remove
-	s.subscriberManager.removeSubscriberSender(srs.subscription.subscribeID)
-
 	slog.Info("Unsubscribed")
 }
 
-func (s Subscriber) Fetch(req FetchRequest) (group Group, rcvstream moq.ReceiveStream, err error) {
+// func (s Subscriber) UnsubscribeWithError(subscription *SentSubscription, err error) {
+
+// }
+
+func (s *Subscriber) Fetch(req Fetch) (DataReceiveStream, error) {
 	/*
 	 * Open a Fetch Stream
 	 */
 	stream, err := openFetchStream(s.sess.conn)
 	if err != nil {
 		slog.Error("failed to open a Fetch Stream", slog.String("error", err.Error()))
-		return
+		return nil, err
 	}
 
 	/*
@@ -271,7 +296,7 @@ func (s Subscriber) Fetch(req FetchRequest) (group Group, rcvstream moq.ReceiveS
 	 */
 	fm := message.FetchMessage{
 		TrackPath:     req.TrackPath,
-		TrackPriority: message.Priority(req.TrackPriority),
+		GroupPriority: message.GroupPriority(req.GroupPriority),
 		GroupSequence: message.GroupSequence(req.GroupSequence),
 		FrameSequence: message.FrameSequence(req.FrameSequence),
 	}
@@ -279,24 +304,25 @@ func (s Subscriber) Fetch(req FetchRequest) (group Group, rcvstream moq.ReceiveS
 	err = fm.Encode(stream)
 	if err != nil {
 		slog.Error("failed to send a FETCH message", slog.String("error", err.Error()))
-		return
+		return nil, err
 	}
 
 	/*
 	 * Receive a GROUP message
 	 */
-	group, err = readGroup(stream)
+	group, err := readGroup(stream)
 	if err != nil {
 		slog.Error("failed to get a Group", slog.String("error", err.Error()))
-		return
+		return nil, err
 	}
 
-	rcvstream = stream
-
-	return
+	return dataReceiveStream{
+		ReceiveStream: stream,
+		ReceivedGroup: group,
+	}, nil
 }
 
-func (s Subscriber) RequestInfo(req InfoRequest) (Info, error) {
+func (s *Subscriber) RequestInfo(req InfoRequest) (Info, error) {
 	slog.Debug("requesting information of a track", slog.Any("info request", req))
 
 	/*
@@ -339,7 +365,7 @@ func (s Subscriber) RequestInfo(req InfoRequest) (Info, error) {
 	}
 
 	info := Info{
-		GroupPriority:       Priority(im.GroupPriority),
+		TrackPriority:       TrackPriority(im.GroupPriority),
 		LatestGroupSequence: GroupSequence(im.LatestGroupSequence),
 		GroupOrder:          GroupOrder(im.GroupOrder),
 		GroupExpires:        im.GroupExpires,
@@ -350,7 +376,7 @@ func (s Subscriber) RequestInfo(req InfoRequest) (Info, error) {
 	return info, nil
 }
 
-func openAnnounceStream(conn moq.Connection) (moq.Stream, error) {
+func openAnnounceStream(conn transport.Connection) (transport.Stream, error) {
 	slog.Debug("opening an Announce Stream")
 
 	stream, err := conn.OpenStream()
@@ -372,7 +398,7 @@ func openAnnounceStream(conn moq.Connection) (moq.Stream, error) {
 	return stream, nil
 }
 
-func openSubscribeStream(conn moq.Connection) (moq.Stream, error) {
+func openSubscribeStream(conn transport.Connection) (transport.Stream, error) {
 	slog.Debug("opening an Subscribe Stream")
 
 	stream, err := conn.OpenStream()
@@ -394,7 +420,7 @@ func openSubscribeStream(conn moq.Connection) (moq.Stream, error) {
 	return stream, nil
 }
 
-func openInfoStream(conn moq.Connection) (moq.Stream, error) {
+func openInfoStream(conn transport.Connection) (transport.Stream, error) {
 	slog.Debug("opening an Info Stream")
 
 	stream, err := conn.OpenStream()
@@ -416,7 +442,7 @@ func openInfoStream(conn moq.Connection) (moq.Stream, error) {
 	return stream, nil
 }
 
-func openFetchStream(conn moq.Connection) (moq.Stream, error) {
+func openFetchStream(conn transport.Connection) (transport.Stream, error) {
 	slog.Debug("opening an Fetch Stream")
 
 	stream, err := conn.OpenStream()
@@ -438,46 +464,11 @@ func openFetchStream(conn moq.Connection) (moq.Stream, error) {
 	return stream, nil
 }
 
-// func acceptDataStream(conn moq.Connection, ctx context.Context) (Group, moq.ReceiveStream, error) {
-// 	stream, err := acceptGroupStream(conn, ctx)
-// 	if err != nil {
-// 		slog.Error("failed to accept a Group Stream", slog.String("error", err.Error()))
-// 		return Group{}, nil, err
-// 	}
-
-// 	group, err := readGroup(stream)
-// 	if err != nil {
-// 		slog.Error("failed to get a Group", slog.String("error", err.Error()))
-// 		return Group{}, nil, err
-// 	}
-
-// 	return group, stream, nil
-// }
-
-func acceptGroupStream(conn moq.Connection, ctx context.Context) (moq.ReceiveStream, error) {
-	// Accept an unidirectional stream
-	stream, err := conn.AcceptUniStream(ctx)
-	if err != nil {
-		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
-		return nil, err
-	}
-
-	// Receive a STREAM_TYPE message
-	var stm message.StreamTypeMessage
-	err = stm.Decode(stream)
-	if err != nil {
-		slog.Error("failed to receive a Stream Type message", slog.String("error", err.Error()))
-		return nil, err
-	}
-
-	return stream, nil
-}
-
-func receiveDatagram(conn moq.Connection, ctx context.Context) (Group, []byte, error) {
+func receiveDatagram(conn transport.Connection, ctx context.Context) (ReceivedGroup, []byte, error) {
 	data, err := conn.ReceiveDatagram(ctx)
 	if err != nil {
 		slog.Error("failed to receive a datagram", slog.String("error", err.Error()))
-		return Group{}, nil, err
+		return ReceivedGroup{}, nil, err
 	}
 
 	reader := bytes.NewReader(data)
@@ -485,7 +476,7 @@ func receiveDatagram(conn moq.Connection, ctx context.Context) (Group, []byte, e
 	group, err := readGroup(quicvarint.NewReader(reader))
 	if err != nil {
 		slog.Error("failed to get a Group", slog.String("error", err.Error()))
-		return Group{}, nil, err
+		return ReceivedGroup{}, nil, err
 	}
 
 	// Read payload in the rest of the data
@@ -498,273 +489,4 @@ func receiveDatagram(conn moq.Connection, ctx context.Context) (Group, []byte, e
 	}
 
 	return group, buf, nil
-}
-
-/*
- * Interest Manager
- */
-// func newInterestManager() *interestManager {
-// 	return &interestManager{
-// 		//announceReceivers: make(map[string]*AnnounceReceiver),
-// 	}
-// }
-
-// type interestManager struct {
-// 	/***/
-// 	interests map[string]Interest
-
-// 	/*
-// 	 * Received announcements
-// 	 */
-// 	receivedAnnouncements map[string]Announcement
-// 	anMu                  sync.RWMutex
-// }
-
-// func (im *interestManager) addAnnounceReceiver(ar *AnnounceReceiver) error {
-// 	im.anMu.Lock()
-// 	defer im.anMu.Unlock()
-
-// 	_, ok := im.receivedAnnouncements[ar.interest.TrackPrefix]
-// 	if ok {
-// 		return errors.New("duplicated interest")
-// 	}
-
-// 	im.receivedAnnouncements[ar.interest.TrackPrefix] = ar
-
-// 	return nil
-// }
-
-// func (im *interestManager) removeAnnounceReceiver(trackPrefix string) {
-// 	im.anMu.Lock()
-// 	defer im.anMu.Unlock()
-
-// 	delete(im.receivedAnnouncements, trackPrefix)
-// }
-
-/*
- * Subscribe Manager
- */
-
-func newSubscriberManager() *subscriberManager {
-	return &subscriberManager{
-		subscribeSendStreams: make(map[SubscribeID]*subscribeSendStream),
-	}
-}
-
-type subscriberManager struct {
-	/*
-	 *
-	 */
-	interestSentStreams map[string]*interestSentStream
-	issMu               sync.RWMutex
-
-	/*
-	 *
-	 */
-	subscribeIDCounter uint64
-
-	/*
-	 *
-	 */
-	subscribeSendStreams map[SubscribeID]*subscribeSendStream
-	sssMu                sync.RWMutex
-}
-
-// func (sm *subscriberManager) getAnnouncements() (announcements []Announcement) {
-// 	sm.raMu.RLock()
-// 	defer sm.raMu.RUnlock()
-
-// 	announcements = make([]Announcement, len(sm.receivedAnnouncements))
-
-// 	for _, announcement := range announcements {
-// 		announcements = append(announcements, announcement)
-// 	}
-
-// 	return announcements
-// }
-
-func (sm *subscriberManager) nextSubscribeID() SubscribeID {
-	// Get a new Subscribe ID
-	new := SubscribeID(sm.subscribeIDCounter)
-	// Increment
-	sm.subscribeIDCounter++
-
-	return new
-}
-
-func (sm *subscriberManager) findSentSubscription(id SubscribeID) (*subscribeSendStream, bool) {
-	sm.sssMu.RLock()
-	defer sm.sssMu.RUnlock()
-
-	sentSubscription, ok := sm.subscribeSendStreams[id]
-	if !ok {
-		return nil, false
-	}
-
-	return sentSubscription, true
-}
-
-func (sm *subscriberManager) addSubscribeSendStream(sss *subscribeSendStream) error {
-	sm.sssMu.Lock()
-	defer sm.sssMu.Unlock()
-
-	_, ok := sm.subscribeSendStreams[sss.subscription.subscribeID]
-	if ok {
-		return ErrDuplicatedSubscribeID
-	}
-
-	sm.subscribeSendStreams[sss.subscription.subscribeID] = sss
-
-	return nil
-}
-
-func (sm *subscriberManager) removeSubscriberSender(id SubscribeID) {
-	sm.sssMu.Lock()
-	defer sm.sssMu.Unlock()
-
-	delete(sm.subscribeSendStreams, id)
-}
-
-func (sm *subscriberManager) addInterestSendStream(iss *interestSentStream) {
-	sm.issMu.Lock()
-	defer sm.issMu.Unlock()
-
-	old, ok := sm.interestSentStreams[iss.interest.TrackPrefix]
-	if ok {
-		// TODO:terminate the stream
-		sm.removeInterestSendStream(old)
-	}
-
-	sm.interestSentStreams[iss.interest.TrackPrefix] = iss
-}
-
-func (sm *subscriberManager) removeInterestSendStream(iss *interestSentStream) {
-	sm.issMu.Lock()
-	defer sm.issMu.Unlock()
-
-	iss.close()
-
-	delete(sm.interestSentStreams, iss.interest.TrackPrefix)
-}
-
-type interestSentStream struct {
-	interest      Interest
-	liveCh        chan struct{}
-	announcements map[string]Announcement
-	stream        moq.Stream
-	mu            sync.RWMutex
-	closeCh       chan struct{}
-}
-
-func (iss *interestSentStream) getAnnouncements() []Announcement {
-	<-iss.liveCh
-
-	iss.mu.RLock()
-	defer iss.mu.RUnlock()
-
-	announcements := make([]Announcement, 0, len(iss.announcements))
-
-	for _, announcement := range iss.announcements {
-		announcements = append(announcements, announcement)
-	}
-
-	return announcements
-}
-
-func (iss *interestSentStream) close() {
-	iss.closeCh <- struct{}{}
-
-	iss.mu.Lock()
-	defer iss.mu.Unlock()
-
-	err := iss.stream.Close()
-	if err != nil {
-		slog.Error("failed to close an interest send stream", slog.String("error", err.Error()))
-		return
-	}
-}
-
-func (iss *interestSentStream) closeWithError(err error) {
-	if err == nil {
-		iss.close()
-		return
-	}
-
-	var code moq.StreamErrorCode
-
-	var strerr moq.StreamError
-	if errors.As(err, &strerr) {
-		code = strerr.StreamErrorCode()
-	} else {
-		annerr, ok := err.(AnnounceError)
-		if ok {
-			code = moq.StreamErrorCode(annerr.AnnounceErrorCode())
-		} else {
-			code = ErrInternalError.StreamErrorCode()
-		}
-	}
-
-	iss.stream.CancelRead(code)
-	iss.stream.CancelWrite(code)
-
-	if err != nil {
-		slog.Error("failed to close an interest send stream", slog.String("error", err.Error()))
-		return
-	}
-
-	iss.close()
-}
-
-func (iss *interestSentStream) listen(ctx context.Context) error {
-	for {
-		select {
-		case <-ctx.Done():
-			// TODO:
-			return ctx.Err()
-		case <-iss.closeCh:
-			// TOOD:
-			return nil
-		default:
-			announcemnt, err := readAnnouncement(iss.stream)
-			if err != nil {
-				slog.Error("failed to read an announcement", slog.String("error", err.Error()))
-				//
-				iss.closeWithError(err)
-				return err
-			}
-
-			// handle the announcement
-			err = func() error {
-				iss.mu.Lock()
-				defer iss.mu.Unlock()
-
-				_, ok := iss.announcements[announcemnt.TrackPath]
-				switch announcemnt.status {
-				case ACTIVE:
-					if !ok {
-						// Add
-						iss.announcements[announcemnt.TrackPath] = announcemnt
-					} else {
-						return errors.New("invalid active announcement")
-					}
-				case ENDED:
-					if ok {
-						// Remove
-						delete(iss.announcements, announcemnt.TrackPath)
-					} else {
-						return errors.New("invalid ended announcement")
-					}
-				case LIVE:
-					iss.liveCh <- struct{}{}
-				default:
-					return ErrProtocolViolation
-				}
-
-				return nil
-			}()
-			if err != nil {
-				return err
-			}
-		}
-	}
 }

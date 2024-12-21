@@ -3,31 +3,29 @@ package moqt
 import (
 	"log/slog"
 
-	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
+	"github.com/OkutaniDaichi0106/gomoqt/internal/transport"
 )
 
-type SessionStream moq.Stream //TODO:
+type SessionStream transport.Stream //TODO:
 
 type session struct {
-	conn   moq.Connection
+	conn   transport.Connection
 	stream SessionStream
 
-	publisherManager *publisherManager
-
+	publisherManager  *publisherManager
 	subscriberManager *subscriberManager
 }
 
-func (sess *session) Publisher() publisher {
+func (sess *session) Publisher() *Publisher {
 	return &Publisher{
-		sess:             sess,
-		publisherManager: sess.publisherManager,
+		sess:   sess,
+		tracks: sess.tracks,
 	}
 }
 
-func (sess *session) Subscriber() subscriber {
+func (sess *session) Subscriber() *Subscriber {
 	return &Subscriber{
-		sess:              sess,
-		subscriberManager: sess.subscriberManager,
+		sess: sess,
 	}
 }
 
@@ -46,7 +44,7 @@ func (sess *session) Terminate(err error) {
 		}
 	}
 
-	err = sess.conn.CloseWithError(moq.SessionErrorCode(tererr.TerminateErrorCode()), err.Error())
+	err = sess.conn.CloseWithError(transport.SessionErrorCode(tererr.TerminateErrorCode()), err.Error())
 	if err != nil {
 		slog.Error("failed to close the Connection", slog.String("error", err.Error()))
 		return

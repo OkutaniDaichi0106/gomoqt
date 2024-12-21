@@ -4,10 +4,11 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
+	"github.com/OkutaniDaichi0106/gomoqt/internal/transport"
 )
 
 // type InfoHandler interface {
@@ -15,7 +16,7 @@ import (
 // }
 
 type InfoRequestHandler interface {
-	HandleInfoRequest(InfoRequest, *Info, InfoWriter)
+	HandleInfoRequest(InfoRequest, *Info, ReceivedInfoRequest)
 }
 
 type InfoRequest struct {
@@ -23,65 +24,92 @@ type InfoRequest struct {
 }
 
 type Info struct {
-	GroupPriority       Priority
+	TrackPriority       TrackPriority
 	LatestGroupSequence GroupSequence
 	GroupOrder          GroupOrder
 	GroupExpires        time.Duration
 }
 
-type InfoWriter struct {
-	stream moq.Stream
+func newReceivedInfoRequest(stream transport.Stream) (*ReceivedInfoRequest, error) {
+	req, err := readInfoRequest(stream)
+	if err != nil {
+		slog.Error("failed to get a info-request", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	return &ReceivedInfoRequest{
+		InfoRequest: req,
+		stream:      stream,
+	}, nil
 }
 
-func (w InfoWriter) Inform(i Info) {
+type ReceivedInfoRequest struct {
+	InfoRequest
+	stream transport.Stream
+	mu     sync.Mutex
+}
+
+func (req *ReceivedInfoRequest) Inform(i Info) {
+	req.mu.Lock()
+	defer req.mu.Unlock()
+
 	im := message.InfoMessage{
-		GroupPriority:       message.Priority(i.GroupPriority),
+		GroupPriority:       message.GroupPriority(i.TrackPriority),
 		LatestGroupSequence: message.GroupSequence(i.LatestGroupSequence),
 		GroupOrder:          message.GroupOrder(i.GroupOrder),
 		GroupExpires:        i.GroupExpires,
 	}
 
-	err := im.Encode(w.stream)
+	err := im.Encode(req.stream)
 	if err != nil {
 		slog.Error("failed to send an INFO message", slog.String("error", err.Error()))
-		w.CancelInform(err)
+		req.CloseWithError(err)
 		return
 	}
 
 	slog.Info("answered an info")
+
+	req.Close()
 }
 
-func (w InfoWriter) CancelInform(err error) {
+func (req *ReceivedInfoRequest) CloseWithError(err error) error {
+	req.mu.Lock()
+	defer req.mu.Unlock()
+
 	if err == nil {
-		w.Close()
-		return
+		return req.Close()
 	}
 
-	var code moq.StreamErrorCode
+	req.mu.Lock()
+	defer req.mu.Unlock()
 
-	var strerr moq.StreamError
+	var code transport.StreamErrorCode
+
+	var strerr transport.StreamError
 	if errors.As(err, &strerr) {
 		code = strerr.StreamErrorCode()
 	} else {
 		inferr, ok := err.(InfoError)
 		if ok {
-			code = moq.StreamErrorCode(inferr.InfoErrorCode())
+			code = transport.StreamErrorCode(inferr.InfoErrorCode())
 		} else {
 			code = ErrInternalError.StreamErrorCode()
 		}
 	}
 
-	w.stream.CancelRead(code)
-	w.stream.CancelWrite(code)
+	req.stream.CancelRead(code)
+	req.stream.CancelWrite(code)
 
 	slog.Info("rejected an info request")
+
+	return nil
 }
 
-func (w InfoWriter) Close() {
-	err := w.stream.Close()
-	if err != nil {
-		slog.Debug("failed to close an Info Stream", slog.String("error", err.Error()))
-	}
+func (req *ReceivedInfoRequest) Close() error {
+	req.mu.Lock()
+	defer req.mu.Unlock()
+
+	return req.stream.Close()
 }
 
 func readInfo(r io.Reader) (Info, error) {
@@ -94,7 +122,7 @@ func readInfo(r io.Reader) (Info, error) {
 	}
 
 	info := Info{
-		GroupPriority:       Priority(im.GroupPriority),
+		TrackPriority:       TrackPriority(im.GroupPriority),
 		LatestGroupSequence: GroupSequence(im.LatestGroupSequence),
 		GroupOrder:          GroupOrder(im.GroupOrder),
 		GroupExpires:        im.GroupExpires,

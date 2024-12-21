@@ -1,9 +1,8 @@
 package moqt
 
 type clientSession interface {
-	//Setup(SetupRequest) (SetupResponce, error)
-	Publisher() publisher
-	Subscriber() subscriber
+	Publisher() *Publisher
+	Subscriber() *Subscriber
 	Terminate(error)
 }
 

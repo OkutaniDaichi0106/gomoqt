@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
 	"github.com/OkutaniDaichi0106/gomoqt/internal/protocol"
+	"github.com/OkutaniDaichi0106/gomoqt/internal/transport"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/webtransport-go"
 )
@@ -22,146 +22,166 @@ type Client struct {
 
 	QUICConfig *quic.Config
 
-	supportedVersions []Version
+	//supportedVersions []Version
 
-	// CacheManager CacheManager
+	CacheManager  CacheManager
+	JitterManager JitterManager
 }
 
-func (c Client) Dial(urlstr string, ctx context.Context) (sess clientSession, rsp SetupResponce, err error) {
-	//
-	req, err := NewSetupRequest(urlstr, nil)
+func (c Client) Dial(req SetupRequest, ctx context.Context) (ClientSession, SetupResponce, error) {
+	// Initialize the request
+	err := req.init()
 	if err != nil {
-		slog.Error("failed to get a set-up request", slog.String("error", err.Error()))
-		return
+		slog.Error("failed to initialize the request", slog.String("error", err.Error()))
+		return ClientSession{}, SetupResponce{}, err
 	}
 
-	return c.DialWithRequest(req, ctx)
-}
-
-func (c Client) DialWithRequest(req SetupRequest, ctx context.Context) (sess clientSession, rsp SetupResponce, err error) {
 	/*
 	 * Dial
 	 */
-	var conn moq.Connection
 	switch req.parsedURL.Scheme {
 	case "https":
-		// Dial on webtransport
-		var wtsess *webtransport.Session
-		var d webtransport.Dialer
-		_, wtsess, err = d.Dial(ctx, req.urlstr, http.Header{}) // TODO: configure the header
+		return c.DialWebTransport(req, ctx)
+	case "moqt":
+		return c.DialQUIC(req, ctx)
+	default:
+		err = errors.New("invalid scheme")
+		slog.Error("unsupported url scheme", slog.String("scheme", req.parsedURL.Scheme))
+		return ClientSession{}, SetupResponce{}, err
+	}
+}
+
+func (c Client) DialWebTransport(req SetupRequest, ctx context.Context) (ClientSession, SetupResponce, error) {
+	// Initialize the request
+	err := req.init()
+	if err != nil {
+		slog.Error("failed to initialize the request", slog.String("error", err.Error()))
+		return ClientSession{}, SetupResponce{}, err
+	}
+
+	// Check the scheme
+	if req.parsedURL.Scheme != "https" {
+		slog.Error("unsupported url scheme", slog.String("scheme", req.parsedURL.Scheme))
+		return ClientSession{}, SetupResponce{}, errors.New("invalid scheme")
+	}
+
+	// Dial on webtransport
+	var wtsess *webtransport.Session
+	var d webtransport.Dialer
+	_, wtsess, err = d.Dial(ctx, req.URL, http.Header{}) // TODO: configure the header
+	if err != nil {
+		slog.Error("failed to dial with webtransport", slog.String("error", err.Error()))
+		return ClientSession{}, SetupResponce{}, err
+	}
+
+	// Get a moq.Connection
+	conn := transport.NewMOWTConnection(wtsess)
+
+	return setupConnection(req, conn)
+}
+
+func (c Client) DialQUIC(req SetupRequest, ctx context.Context) (ClientSession, SetupResponce, error) {
+	// Initialize the request
+	err := req.init()
+	if err != nil {
+		slog.Error("failed to initialize the request", slog.String("error", err.Error()))
+		return ClientSession{}, SetupResponce{}, err
+	}
+
+	// Check the scheme
+	if req.parsedURL.Scheme != "moqt" {
+		err = errors.New("invalid scheme")
+		slog.Error("unsupported url scheme", slog.String("scheme", req.parsedURL.Scheme))
+		return ClientSession{}, SetupResponce{}, err
+	}
+
+	// Look up the IP address
+	var ips []net.IP
+	ips, err = net.LookupIP(req.parsedURL.Hostname())
+	if err != nil {
+		slog.Error("failed to look up IP address", slog.String("error", err.Error()))
+		return ClientSession{}, SetupResponce{}, err
+	}
+
+	var conn transport.Connection
+
+	// Try all IPs
+	for i, ip := range ips {
+		// Get Address
+		addr := ip.String()
+		if strings.Contains(addr, ":") && !strings.HasPrefix(addr, "[") {
+			addr = "[" + addr + "]"
+		}
+		addr += ":" + req.parsedURL.Port()
+
+		// Dial
+		var qconn quic.Connection
+		qconn, err = quic.DialAddrEarly(ctx, addr, c.TLSConfig, c.QUICConfig)
 		if err != nil {
-			slog.Error("failed to dial with webtransport", slog.String("error", err.Error()))
-			return
+			slog.Error("failed to dial with quic", slog.String("error", err.Error()))
+			if i+1 >= len(ips) {
+				err = errors.New("no more IPs")
+				slog.Error("failed to dial to the host",
+					slog.String("error", err.Error()),
+					slog.String("host", req.parsedURL.Hostname()),
+				)
+				return ClientSession{}, SetupResponce{}, err
+			}
+			continue
 		}
 
 		// Get a moq.Connection
-		conn = moq.NewMOWTConnection(wtsess)
-	case "moqt":
-		/*
-		 * Dial on raw quic
-		 */
-		var ips []net.IP
-		ips, err = net.LookupIP(req.parsedURL.Hostname())
-		if err != nil {
-			slog.Error("failed to look up IP address", slog.String("error", err.Error()))
-			return
-		}
+		conn = transport.NewMORQConnection(qconn)
 
-		// Try all IPs
-		for i, ip := range ips {
-			// Get Address
-			addr := ip.String()
-			if strings.Contains(addr, ":") && !strings.HasPrefix(addr, "[") {
-				addr = "[" + addr + "]"
-			}
-			addr += ":" + req.parsedURL.Port()
-
-			// Dial
-			var qconn quic.Connection
-			qconn, err = quic.DialAddrEarly(ctx, addr, c.TLSConfig, c.QUICConfig)
-			if err != nil {
-				slog.Error("failed to dial with quic", slog.String("error", err.Error()))
-				if i+1 >= len(ips) {
-					err = errors.New("no more IPs")
-					slog.Error("failed to dial to the host",
-						slog.String("error", err.Error()),
-						slog.String("host", req.parsedURL.Hostname()),
-					)
-					return
-				}
-				continue
-			}
-
-			// Get a moq.Connection
-			conn = moq.NewMORQConnection(qconn)
-
-			break
-		}
-
-	default:
-		err = errors.New("invalid scheme")
-		slog.Error("url scheme must be https or moqt", slog.String("scheme", req.parsedURL.Scheme))
-		return
+		break
 	}
 
-	/*
-	 * Open a Session Stream
-	 */
+	return setupConnection(req, conn)
+}
+
+func setupConnection(req SetupRequest, conn transport.Connection) (ClientSession, SetupResponce, error) {
+	// Open a Session Stream
 	stream, err := openSessionStream(conn)
 	if err != nil {
 		slog.Error("failed to open a Session Stream")
-		return
+		return ClientSession{}, SetupResponce{}, err
 	}
 
-	sess = &ClientSession{
-		session: session{
-			conn:              conn,
-			stream:            stream,
-			publisherManager:  newPublishManager(),
-			subscriberManager: newSubscriberManager(),
-		},
-	}
-
-	//
-
-	// Handle the request
-	switch req.parsedURL.Path {
-	case "https":
-	case "moqt":
-		req.Parameters.Add(AUTHORIZATION_INFO, req.parsedURL.Path)
-	default:
-		err = errors.New("unsupported request scheme")
-		return
-	}
-
-	/*
-	 * Set up
-	 */
 	// Send a set-up request
 	err = sendSetupRequest(stream, req)
 	if err != nil {
 		slog.Error("failed to request to set up", slog.String("error", err.Error()))
-		return
+		return ClientSession{}, SetupResponce{}, err
 	}
 
 	// Receive a set-up responce
-	rsp, err = readSetupResponce(stream)
+	rsp, err := readSetupResponce(stream)
 	if err != nil {
 		slog.Error("failed to receive a SESSION_SERVER message", slog.String("error", err.Error()))
-		return
+		return ClientSession{}, SetupResponce{}, err
 	}
 
-	// Verify the selceted version is contained in the supported versions
-	if !ContainVersion(rsp.SelectedVersion, req.supportedVersions) {
-		err = errors.New("unexpected version was seleted")
-		slog.Error("failed to negotiate versions", slog.String("error", err.Error()), slog.Any("selected version", rsp.SelectedVersion))
-		return
+	sess := ClientSession{
+		session: session{
+			conn:   conn,
+			stream: stream,
+			//publisherManager: ,
+			// subscriberManager: ,
+		},
 	}
 
 	return sess, rsp, nil
 }
 
-func openSessionStream(conn moq.Connection) (SessionStream, error) {
+func listen(sess *ClientSession, ctx context.Context) {
+	// Listen the bidirectional streams
+	listenBiStreams(sess, ctx)
+
+	// Listen the unidirectional streams
+	listenUniStreams(sess, ctx)
+}
+
+func openSessionStream(conn transport.Connection) (SessionStream, error) {
 	slog.Debug("opening a session stream")
 
 	/***/
@@ -187,7 +207,7 @@ func openSessionStream(conn moq.Connection) (SessionStream, error) {
 func sendSetupRequest(w io.Writer, req SetupRequest) error {
 	scm := message.SessionClientMessage{
 		SupportedVersions: make([]protocol.Version, 0),
-		Parameters:        message.Parameters(req.Parameters),
+		Parameters:        message.Parameters(req.SetupParameters),
 	}
 
 	for _, v := range req.supportedVersions {
@@ -205,6 +225,9 @@ func sendSetupRequest(w io.Writer, req SetupRequest) error {
 
 func listenBiStreams(sess *ClientSession, ctx context.Context) {
 	for {
+		/*
+		 * Accept a bidirectional stream
+		 */
 		stream, err := sess.conn.AcceptStream(ctx)
 		if err != nil {
 			slog.Error("failed to accept a bidirectional stream", slog.String("error", err.Error()))
@@ -213,9 +236,10 @@ func listenBiStreams(sess *ClientSession, ctx context.Context) {
 
 		slog.Debug("some control stream was opened")
 
-		go func(stream moq.Stream) {
+		// Handle the stream
+		go func(stream transport.Stream) {
 			/*
-			 * Read a Stream Type
+			 * Get a Stream Type ID
 			 */
 			var stm message.StreamTypeMessage
 			err := stm.Decode(stream)
@@ -224,169 +248,172 @@ func listenBiStreams(sess *ClientSession, ctx context.Context) {
 				return
 			}
 
+			// Handle the stream by the Stream Type ID
 			switch stm.StreamType {
 			case stream_type_announce:
+				// Handle the announce stream
 				slog.Debug("announce stream was opened")
 
-				//
-				interest, err := readInterest(stream)
+				// Get a received interest
+				ri, err := newReceivedInterest(stream)
 				if err != nil {
-					slog.Error("failed to get an Interest", slog.String("error", err.Error()))
+					slog.Error("failed to get a received interest", slog.String("error", err.Error()))
+					closeStreamWithInternalError(stream, err)
 					return
 				}
 
-				// Get
-				irs := newInterestReceiveStream(interest, stream)
-
-				// Add
-				sess.publisherManager.addInterestReceiveStream(irs)
+				// Enqueue the interest
+				sess.publisherManager.receivedInterestQueue.Enqueue(ri)
 			case stream_type_subscribe:
 				slog.Debug("subscribe stream was opened")
 
-				subscription, err := readSubscription(stream)
+				// Get a received subscription
+				subscription, err := newReceivedSubscription(stream)
 				if err != nil {
-					slog.Error("failed to get a subscription", slog.String("error", err.Error()))
-					//
+					slog.Error("failed to get a received subscription", slog.String("error", err.Error()))
+					closeStreamWithInternalError(stream, err)
 					return
 				}
 
-				// Get
-				srs := newSubscribeReceiveStream(subscription, stream)
-
-				sess.publisherManager.addSubscribeReceiveStream(srs)
-
-				// Get any Infomation of the track
-				info, _ := sess.getCurrentInfo(subscription.TrackPath)
-
-				// Send the current track information
-				sr.Inform(info)
-
-				/*
-				 * Accept the new subscription
-				 */
-				sess.publisherManager.addSubscribeReceiveStream()
-
-				/*
-				 * Catch any Subscribe Update or any error from the subscriber
-				 */
-				for {
-					update, err := srs.ReceiveUpdate()
-					if err != nil {
-						slog.Info("catched an error from the subscriber", slog.String("error", err.Error()))
-						break
-					}
-
-					slog.Info("received a subscribe update request", slog.Any("subscription", update))
-
-					sw := rsubscribeReceiveStream{
-						stream: stream,
-					}
-
-					// Get any Infomation of the track
-					info, ok := sess.getCurrentInfo(subscription.TrackPath)
-					if ok {
-						sw.Inform(info)
-					} else {
-						sw.CancelRead(ErrTrackDoesNotExist)
-						return
-					}
-
-					slog.Info("updated a subscription", slog.Any("from", subscription), slog.Any("to", update))
-
-					/*
-					 * Update the subscription
-					 */
-					sr.updateSubscription(update)
-				}
-
-				sess.deleteSubscription(subscription)
-
-				// Close the Stream gracefully
-				sr.Close()
-				return
+				// Enqueue the subscription
+				sess.publisherManager.receivedSubscriptionQueue.Enqueue(subscription)
 			case stream_type_fetch:
 				slog.Debug("fetch stream was opened")
 
-				frw := FetchResponceWriter{
-					stream: stream,
-				}
-
-				req, err := readFetchRequest(stream)
+				// Get a received fetch
+				fetch, err := newReceivedFetch(stream)
 				if err != nil {
-					slog.Error("failed to get a fetch-request", slog.String("error", err.Error()))
-					frw.Reject(err)
+					slog.Error("failed to get a received fetch", slog.String("error", err.Error()))
+					closeStreamWithInternalError(stream, err)
 					return
 				}
 
-				// Get a data reader
-				r, err := c.CacheManager.GetFrame(req.TrackPath, req.GroupSequence, req.FrameSequence)
-				if err != nil {
-					slog.Error("failed to get a frame", slog.String("error", err.Error()))
-					frw.Reject(err)
-					return
-				}
-
-				// Send the data if valid subscription exists
-				for _, sr := range sess.subscribeReceivers {
-					subscription := sr.subscription
-
-					if subscription.TrackPath == req.TrackPath {
-						// Send the group data
-						w, err := frw.SendGroup(Group{
-							subscribeID:   subscription.subscribeID,
-							groupSequence: req.GroupSequence,
-							GroupPriority: GroupPriority(req.TrackPriority), // TODO: Handle Publisher Priority
-						})
-						if err != nil {
-							slog.Error("failed to send a group", slog.String("error", err.Error()))
-							frw.Reject(err)
-							return
-						}
-
-						// Send the data by copying it from the reader
-						io.Copy(w, r)
-
-						// Break becase data
-						break
-					}
-				}
-
-				// Close the Fetch Stream gracefully
-				frw.Reject(nil)
-				return
+				// Enqueue the fetch
+				sess.publisherManager.receivedFetchQueue.Enqueue(fetch)
 			case stream_type_info:
 				slog.Debug("info stream was opened")
 
-				req, err := readInfoRequest(stream)
+				// Get a received info-request
+				req, err := newReceivedInfoRequest(stream)
 				if err != nil {
-					slog.Error("failed to get a info-request", slog.String("error", err.Error()))
+					slog.Error("failed to get a received info-request", slog.String("error", err.Error()))
+					closeStreamWithInternalError(stream, err)
 					return
 				}
 
-				// Initialize an Info Writer
-				iw := InfoWriter{
-					stream: stream,
-				}
-
-				info, ok := sess.getCurrentInfo(req.TrackPath)
-				if ok {
-					iw.Inform(info)
-				} else {
-					iw.CancelInform(ErrTrackDoesNotExist)
+				// Get the track
+				track, ok := sess.publisherManager.tracks[req.TrackPath]
+				if !ok {
+					slog.Error("track does not exist", slog.String("track path", req.TrackPath))
+					req.CloseWithError(ErrTrackDoesNotExist)
 					return
 				}
 
-				// Close the Info Stream gracefully
-				iw.CancelInform(nil)
-				return
+				req.Inform(track.Info())
 			default:
-				slog.Debug("unknown stream was opend")
+				slog.Debug("An unknown type of stream was opend")
 
 				// Terminate the session
-				sess.Terminate(ErrInvalidStreamType)
+				sess.Terminate(ErrProtocolViolation)
 
 				return
 			}
 		}(stream)
 	}
+}
+
+func listenUniStreams(sess *ClientSession, ctx context.Context) {
+	for {
+		/*
+		 * Accept a unidirectional stream
+		 */
+		stream, err := sess.conn.AcceptUniStream(ctx)
+		if err != nil {
+			slog.Error("failed to accept a unidirectional stream", slog.String("error", err.Error()))
+			return
+		}
+
+		slog.Debug("some data stream was opened")
+
+		// Handle the stream
+		go func(stream transport.ReceiveStream) {
+			/*
+			 * Get a Stream Type ID
+			 */
+			var stm message.StreamTypeMessage
+			err := stm.Decode(stream)
+			if err != nil {
+				slog.Error("failed to get a Stream Type ID", slog.String("error", err.Error()))
+				return
+			}
+
+			// Handle the stream by the Stream Type ID
+			switch stm.StreamType {
+			case stream_type_group:
+				slog.Debug("data stream was opened")
+
+				data, err := newDataReceiveStream(stream)
+				if err != nil {
+					slog.Error("failed to get a data receive stream", slog.String("error", err.Error()))
+					closeReceiveStreamWithInternalError(stream, err) // TODO:
+					return
+				}
+
+				// Enqueue the receiver
+				sess.subscriberManager.dataReceiverQueue.Enqueue(data)
+			default:
+				slog.Debug("An unknown type of stream was opend")
+
+				// Terminate the session
+				sess.Terminate(ErrProtocolViolation)
+
+				return
+			}
+		}(stream)
+	}
+}
+
+func closeStreamWithInternalError(stream transport.Stream, err error) {
+	if err == nil {
+		stream.Close()
+	}
+
+	// TODO:
+
+	var code transport.StreamErrorCode
+
+	var strerr transport.StreamError
+	if errors.As(err, &strerr) {
+		code = strerr.StreamErrorCode()
+	} else {
+		var ok bool
+		feterr, ok := err.(FetchError)
+		if ok {
+			code = transport.StreamErrorCode(feterr.FetchErrorCode())
+		} else {
+			code = ErrInternalError.StreamErrorCode()
+		}
+	}
+
+	stream.CancelRead(code)
+	stream.CancelWrite(code)
+}
+
+func closeReceiveStreamWithInternalError(stream transport.ReceiveStream, err error) {
+	var code transport.StreamErrorCode
+
+	var strerr transport.StreamError
+	if errors.As(err, &strerr) {
+		code = strerr.StreamErrorCode()
+	} else {
+		var ok bool
+		feterr, ok := err.(FetchError)
+		if ok {
+			code = transport.StreamErrorCode(feterr.FetchErrorCode())
+		} else {
+			code = ErrInternalError.StreamErrorCode()
+		}
+	}
+
+	stream.CancelRead(code)
 }

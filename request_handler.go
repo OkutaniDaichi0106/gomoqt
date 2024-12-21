@@ -29,17 +29,17 @@ func readInterest(r io.Reader) (Interest, error) {
 	}, nil
 }
 
-func readFetchRequest(r io.Reader) (FetchRequest, error) {
+func readFetch(r io.Reader) (Fetch, error) {
 	var frm message.FetchMessage
 	err := frm.Decode(r)
 	if err != nil {
 		slog.Error("failed to read a FETCH message", slog.String("error", err.Error()))
-		return FetchRequest{}, err
+		return Fetch{}, err
 	}
 
-	req := FetchRequest{
+	req := Fetch{
 		TrackPath:     frm.TrackPath,
-		TrackPriority: Priority(frm.TrackPriority),
+		GroupPriority: GroupPriority(frm.GroupPriority),
 		GroupSequence: GroupSequence(frm.GroupSequence),
 		FrameSequence: FrameSequence(frm.FrameSequence),
 	}

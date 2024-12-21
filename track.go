@@ -1,49 +1,35 @@
 package moqt
 
-import "time"
-
-func NewTrack()
+import (
+	"time"
+)
 
 type Track struct {
 	TrackPath string
 
-	/*
-	 *
-	 */
-	//TrackPriority    Priority
-	GroupOrder   GroupOrder
-	GroupExpires time.Duration
-	// MinGroupSequence GroupSequence
-	// MaxGroupSequence GroupSequence
+	TrackPriority TrackPriority
+	GroupOrder    GroupOrder
+	GroupExpires  time.Duration
 
 	/*
 	 * Parameters
 	 */
-	announceParameters Parameters
-	AuthorizationInfo  string
+	AuthorizationInfo string
 
 	DeliveryTimeout time.Duration //TODO
+
+	AnnounceParameters Parameters
 
 	/*
 	 *
 	 */
-	groups map[GroupSequence]Group
-
-	// Subscription
+	latestGroupSequence GroupSequence
 }
 
-func (t Track) Announcement() Announcement {
-	return Announcement{
-		TrackPath:         t.TrackPath,
-		AuthorizationInfo: t.AuthorizationInfo,
-		Parameters:        t.announceParameters,
-	}
-}
-
-func (t Track) Info() Info {
+func (t *Track) Info() Info {
 	return Info{
-		GroupPriority:       0, // TODO:
-		LatestGroupSequence: 0, // TODO:
+		TrackPriority:       t.TrackPriority,
+		LatestGroupSequence: t.latestGroupSequence,
 		GroupOrder:          t.GroupOrder,
 		GroupExpires:        t.GroupExpires,
 	}

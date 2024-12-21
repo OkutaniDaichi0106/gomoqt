@@ -8,43 +8,78 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 )
 
-type Group struct {
+type Group interface {
+	SubscribeID() SubscribeID
+	GroupSequence() GroupSequence
+	GroupPriority() GroupPriority
+}
+
+type ReceivedGroup struct {
 	subscribeID SubscribeID
 
 	groupSequence GroupSequence
 
-	GroupPriority Priority
+	groupPriority GroupPriority
 
 	/*
 	 * Fields not in wire
 	 */
 	// Time when the Group was received
-	timestamp time.Time // TODO:
+	receivedAt time.Time // TODO:
 }
 
-func (g Group) SubscribeID() SubscribeID {
+func (g ReceivedGroup) SubscribeID() SubscribeID {
 	return g.subscribeID
 }
 
-func (g Group) GroupSequence() GroupSequence {
+func (g ReceivedGroup) GroupSequence() GroupSequence {
 	return g.groupSequence
 }
 
-// type GroupDrop message.GroupDrop
-func readGroup(r io.Reader) (Group, error) {
+func (g ReceivedGroup) GroupPriority() GroupPriority {
+	return g.groupPriority
+}
+
+type SentGroup struct {
+	subscribeID SubscribeID
+
+	groupSequence GroupSequence
+
+	groupPriority GroupPriority
+
+	/*
+	 * Fields not in wire
+	 */
+	// Time when the Group was sent
+	sentAt time.Time // TODO:
+}
+
+func (g SentGroup) SubscribeID() SubscribeID {
+	return g.subscribeID
+}
+
+func (g SentGroup) GroupSequence() GroupSequence {
+	return g.groupSequence
+}
+
+func (g SentGroup) GroupPriority() GroupPriority {
+	return g.groupPriority
+}
+
+func readGroup(r io.Reader) (ReceivedGroup, error) {
 	// Read a GROUP message
 	var gm message.GroupMessage
 	err := gm.Decode(r)
 	if err != nil {
 		slog.Error("failed to read a GROUP message", slog.String("error", err.Error()))
-		return Group{}, err
+		return ReceivedGroup{}, err
 	}
 
 	//
-	return Group{
+	return ReceivedGroup{
 		subscribeID:   SubscribeID(gm.SubscribeID),
 		groupSequence: GroupSequence(gm.GroupSequence),
-		GroupPriority: Priority(gm.GroupPriority),
-		timestamp:     time.Now(),
+		groupPriority: GroupPriority(gm.GroupPriority),
+		receivedAt:    time.Now(),
 	}, nil
 }

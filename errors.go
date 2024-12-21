@@ -2,7 +2,7 @@ package moqt
 
 import (
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
+	"github.com/OkutaniDaichi0106/gomoqt/internal/transport"
 )
 
 var (
@@ -12,10 +12,10 @@ var (
 
 	ErrTrackDoesNotExist = trackDoesNotExistError{}
 
-	ErrInvalidStreamType = defaultStreamError{
-		code:   invalid_stream_type,
-		reason: "invalid stream type",
-	}
+	// ErrInvalidStreamType = defaultStreamError{
+	// 	code:   invalid_stream_type,
+	// 	reason: "invalid stream type",
+	// }
 
 	ErrDuplicatedTrackPath = defaultAnnounceError{
 		reason: "duplicated track path",
@@ -40,6 +40,16 @@ var (
 	ErrSubscribeTimeout = defaultSubscribeError{
 		code:   subscribe_timeout,
 		reason: "time out",
+	}
+
+	ErrPriorityMismatch = defaultSubscribeError{
+		code:   subscribe_priority_mismatch_error,
+		reason: "update failed",
+	}
+
+	ErrGroupOrderMismatch = defaultSubscribeError{
+		code:   subscribe_order_mismatch_error,
+		reason: "group order mismatch",
 	}
 
 	// TODO:
@@ -84,25 +94,30 @@ var (
 		code:   fetch_invalid_offset,
 		reason: "invalid offset",
 	}
+
+	ErrDuplicatedGroup = defaultGroupError{
+		code:   group_duplicated_group,
+		reason: "duplicated group",
+	}
 )
 
 /*
  * Session Error
  */
 const (
-	session_internal_error moq.SessionErrorCode = 0x00
+	session_internal_error transport.SessionErrorCode = 0x00
 )
 
 /*
  * Stream Error
  */
 const (
-	stream_internal_error moq.StreamErrorCode = 0x00
-	invalid_stream_type   moq.StreamErrorCode = 0x10 // TODO: See spec
+	stream_internal_error transport.StreamErrorCode = 0x00
+	invalid_stream_type   transport.StreamErrorCode = 0x10 // TODO: See spec
 )
 
 type defaultStreamError struct {
-	code   moq.StreamErrorCode
+	code   transport.StreamErrorCode
 	reason string
 }
 
@@ -110,7 +125,7 @@ func (err defaultStreamError) Error() string {
 	return err.reason
 }
 
-func (err defaultStreamError) StreamErrorCode() moq.StreamErrorCode {
+func (err defaultStreamError) StreamErrorCode() transport.StreamErrorCode {
 	return err.code
 }
 
@@ -149,12 +164,15 @@ func (err defaultAnnounceError) AnnounceErrorCode() AnnounceErrorCode {
 type SubscribeErrorCode uint32
 
 const (
-	subscribe_internal_error       SubscribeErrorCode = 0x00
-	subscribe_invlid_range         SubscribeErrorCode = 0x01
-	subscriber_duplicated_id       SubscribeErrorCode = 0x02
-	subscribe_track_does_not_exist SubscribeErrorCode = 0x03
-	subscribe_unauthorized         SubscribeErrorCode = 0x04
-	subscribe_timeout              SubscribeErrorCode = 0x05
+	subscribe_internal_error          SubscribeErrorCode = 0x00
+	subscribe_invlid_range            SubscribeErrorCode = 0x01
+	subscriber_duplicated_id          SubscribeErrorCode = 0x02
+	subscribe_track_does_not_exist    SubscribeErrorCode = 0x03
+	subscribe_unauthorized            SubscribeErrorCode = 0x04
+	subscribe_timeout                 SubscribeErrorCode = 0x05
+	subscribe_update_error            SubscribeErrorCode = 0x06
+	subscribe_priority_mismatch_error SubscribeErrorCode = 0x07
+	subscribe_order_mismatch_error    SubscribeErrorCode = 0x08
 )
 
 type SubscribeError interface {
@@ -369,25 +387,26 @@ type GroupErrorCode message.GroupErrorCode
 const (
 	group_drop_track_does_not_exist GroupErrorCode = 0x00
 	group_drop_internal_error       GroupErrorCode = 0x01
+	group_duplicated_group          GroupErrorCode = 0x02
 )
 
-// type defaultGroupError struct {
-// 	code   GroupErrorCode
-// 	reason string
-// }
+type defaultGroupError struct {
+	code   GroupErrorCode
+	reason string
+}
 
-// func (err defaultGroupError) Error() string {
-// 	return err.reason
-// }
+func (err defaultGroupError) Error() string {
+	return err.reason
+}
 
-// func (err defaultGroupError) GroupErrorCode() GroupErrorCode {
-// 	return err.code
-// }
+func (err defaultGroupError) GroupErrorCode() GroupErrorCode {
+	return err.code
+}
 
 /*
  * Internal Error
  */
-var _ moq.StreamError = (*internalError)(nil)
+var _ transport.StreamError = (*internalError)(nil)
 var _ AnnounceError = (*internalError)(nil)
 var _ SubscribeError = (*internalError)(nil)
 var _ SubscribeDoneError = (*internalError)(nil)
@@ -417,7 +436,7 @@ func (internalError) TerminateErrorCode() TerminateErrorCode {
 	return terminate_internal_error
 }
 
-func (internalError) StreamErrorCode() moq.StreamErrorCode {
+func (internalError) StreamErrorCode() transport.StreamErrorCode {
 	return stream_internal_error
 }
 

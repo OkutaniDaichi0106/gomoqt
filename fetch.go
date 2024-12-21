@@ -3,9 +3,11 @@ package moqt
 import (
 	"errors"
 	"log/slog"
+	"sync"
+	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
+	"github.com/OkutaniDaichi0106/gomoqt/internal/transport"
 )
 
 /*
@@ -13,7 +15,7 @@ import (
  */
 
 type FetchStream struct {
-	stream moq.Stream
+	stream transport.Stream
 }
 
 func (f FetchStream) Read(buf []byte) (int, error) {
@@ -24,7 +26,7 @@ func (f FetchStream) Read(buf []byte) (int, error) {
 // 	return f.group
 // }
 
-func (f FetchStream) CancelRead(code moq.StreamErrorCode) {
+func (f FetchStream) CancelRead(code transport.StreamErrorCode) {
 	f.stream.CancelRead(code)
 }
 
@@ -48,73 +50,132 @@ type GroupSequence message.GroupSequence
 
 /***/
 
-type FetchHandler interface {
-	HandleFetch(FetchRequest, FetchResponceWriter)
-}
-
-type FetchRequest struct {
+type Fetch struct {
 	TrackPath     string
-	TrackPriority Priority
+	GroupPriority GroupPriority
 	GroupSequence GroupSequence
 	FrameSequence FrameSequence
 }
 
-type FetchResponceWriter struct {
-	groupSent bool
-	stream    moq.Stream
+func newReceivedFetch(stream transport.Stream) (*ReceivedFetch, error) {
+	// Get a fetch-request
+	fetch, err := readFetch(stream)
+	if err != nil {
+		slog.Error("failed to get a fetch-request", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	return &ReceivedFetch{
+		fetch:  fetch,
+		stream: stream,
+	}, nil
 }
 
-func (w *FetchResponceWriter) SendGroup(group Group) (moq.SendStream, error) {
-	if w.groupSent {
-		return nil, errors.New("a Group was already sent")
-	} else {
-		w.groupSent = true
+type ReceivedFetch struct {
+	fetch     Fetch
+	groupSent bool
+	stream    transport.Stream
+}
+
+func (fetch *ReceivedFetch) OpenDataStream(id SubscribeID, sequence GroupSequence, priority GroupPriority) (DataSendStream, error) {
+	if fetch.groupSent {
+		return nil, errors.New("a group has already been sent")
 	}
 
+	// Send a GROUP message
 	gm := message.GroupMessage{
-		SubscribeID:   message.SubscribeID(group.subscribeID),
-		GroupSequence: message.GroupSequence(group.groupSequence),
-		GroupPriority: message.Priority(group.GroupPriority),
+		SubscribeID:   message.SubscribeID(id),
+		GroupSequence: message.GroupSequence(sequence),
+		GroupPriority: message.GroupPriority(priority),
 	}
-
-	err := gm.Encode(w.stream)
+	err := gm.Encode(fetch.stream)
 	if err != nil {
 		slog.Error("failed to send a GROUP message", slog.String("error", err.Error()))
 		return nil, err
 	}
 
-	return w.stream, nil
+	fetch.groupSent = true
+
+	return dataSendStream{
+		SendStream: fetch.stream,
+		SentGroup: SentGroup{
+			subscribeID:   id,
+			groupSequence: sequence,
+			groupPriority: priority,
+			sentAt:        time.Now(),
+		},
+	}, nil
 }
 
-func (frw FetchResponceWriter) Reject(err error) {
+func (fetch ReceivedFetch) Reject(err error) {
 	if err == nil {
-		frw.Close()
+		fetch.Close()
 	}
 
-	var code moq.StreamErrorCode
+	var code transport.StreamErrorCode
 
-	var strerr moq.StreamError
+	var strerr transport.StreamError
 	if errors.As(err, &strerr) {
 		code = strerr.StreamErrorCode()
 	} else {
 		var ok bool
 		feterr, ok := err.(FetchError)
 		if ok {
-			code = moq.StreamErrorCode(feterr.FetchErrorCode())
+			code = transport.StreamErrorCode(feterr.FetchErrorCode())
 		} else {
 			code = ErrInternalError.StreamErrorCode()
 		}
 	}
 
-	frw.stream.CancelRead(code)
-	frw.stream.CancelWrite(code)
+	fetch.stream.CancelRead(code)
+	fetch.stream.CancelWrite(code)
 
 	slog.Info("rejcted the fetch request")
 }
 
-func (frw FetchResponceWriter) Close() {
-	err := frw.stream.Close()
-	if err != nil {
-		slog.Error("catch an error when closing a Fetch Stream", slog.String("error", err.Error()))
+func (frw ReceivedFetch) Close() error {
+	return frw.stream.Close()
+}
+
+type receivedFetchQueue struct {
+	queue []*ReceivedFetch
+	mu    sync.Mutex
+	ch    chan struct{}
+}
+
+func (q *receivedFetchQueue) Len() int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	return len(q.queue)
+}
+
+func (q *receivedFetchQueue) Chan() <-chan struct{} {
+	return q.ch
+}
+
+func (q *receivedFetchQueue) Enqueue(fetch *ReceivedFetch) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	q.queue = append(q.queue, fetch)
+
+	select {
+	case q.ch <- struct{}{}:
+	default:
 	}
+}
+
+func (q *receivedFetchQueue) Dequeue() *ReceivedFetch {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if len(q.queue) == 0 {
+		return nil
+	}
+
+	next := q.queue[0]
+	q.queue = q.queue[1:]
+
+	return next
 }

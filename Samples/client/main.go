@@ -34,8 +34,8 @@ func main() {
 	go func() {
 		pub := sess.Publisher()
 
-		track := pub.NewTrack(moqt.Announcement{TrackPath: "japan/kyoto/kiu"})
-
+		pub.Announce(moqt.Announcement{TrackPathSuffix: "japan/kyoto/kiu"})
+		moqt.NewTrack()
 		for {
 			stream, err := pub.OpenDataStream(track, moqt.Group{})
 			if err != nil {

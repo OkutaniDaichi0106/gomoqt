@@ -1,4 +1,4 @@
-package moq
+package transport
 
 import (
 	"io"

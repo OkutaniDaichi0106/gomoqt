@@ -8,15 +8,29 @@ import (
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
+	"github.com/OkutaniDaichi0106/gomoqt/internal/transport"
 )
+
+type relayer interface {
+}
+
+var _ relayer = (*Relayer)(nil)
+
+// func newRelayer(path string, upstream ServerSession) *Relayer {
+// 	return &Relayer{
+// 		TrackPath:   path,
+// 		upstream:    upstream,
+// 		downstreams: make([]ServerSession, 0),
+// 		// BufferSize: 1,
+// 	}
+// }
 
 type Relayer struct {
 	TrackPath string
 
-	upstream ServerSession
+	upstream *Subscriber
 
-	downstreams []ServerSession
+	downstreams []*Publisher
 	dsMu        sync.RWMutex
 
 	BufferSize int
@@ -24,34 +38,49 @@ type Relayer struct {
 	//CacheManager CacheManager
 }
 
-func (r *Relayer) listen(sess *ServerSession) {
-	if r.BufferSize < 1 {
-		r.BufferSize = 1
-	}
+func (r *Relayer) run() {
+	// Listen bidirectional streams
+	go r.listenBiStreams()
 
-	/*
-	 * Handle Session
-	 */
+	go r.listenUniStreams()
 
-	/*
-	 * Listen bidirectional streams
-	 */
-	go r.listenBiStreams(sess)
-
-	/*
-	 * Listen unidirectional streams
-	 */
-	go r.listenUniStreams(sess)
-
-	/*
-	 * Listen datagrams
-	 */
-	go r.listenDatagrams(sess)
-
-	select {}
 }
 
-func (r Relayer) listenBiStreams(sess *ServerSession) {
+func (r *Relayer) AddDownstream(sess ServerSession) {
+	r.dsMu.Lock()
+	defer r.dsMu.Unlock()
+
+	r.downstreams = append(r.downstreams, sess)
+}
+
+// func (r *Relayer) listen(sess *ServerSession) {
+// 	if r.BufferSize < 1 {
+// 		r.BufferSize = 1
+// 	}
+
+// 	/*
+// 	 * Handle Session
+// 	 */
+
+// 	/*
+// 	 * Listen bidirectional streams
+// 	 */
+// 	go r.listenBiStreams(sess)
+
+// 	/*
+// 	 * Listen unidirectional streams
+// 	 */
+// 	go r.listenUniStreams(sess)
+
+// 	/*
+// 	 * Listen datagrams
+// 	 */
+// 	go r.listenDatagrams(sess)
+
+// 	select {}
+// }
+
+func (r *Relayer) listenBiStreams(sess *ServerSession) {
 	for {
 		stream, err := sess.conn.AcceptStream(context.Background())
 		if err != nil {
@@ -61,7 +90,7 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 
 		slog.Debug("some control stream was opened")
 
-		go func(stream moq.Stream) {
+		go func(stream transport.Stream) {
 			var stm message.StreamTypeMessage
 			err := stm.Decode(stream)
 			if err != nil {
@@ -112,7 +141,7 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 				slog.Debug("subscribe stream was opened")
 
 				// Initialize a Subscriber Responce Writer
-				sr := subscribeReceiveStream{
+				sr := ReceivedSubscription{
 					stream: stream,
 				}
 
@@ -192,12 +221,12 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 				slog.Debug("fetch stream was opened")
 
 				// Initialize a fetch responce writer
-				frw := FetchResponceWriter{
+				frw := ReceivedFetch{
 					stream: stream,
 				}
 
 				// Get a fetch request
-				req, err := readFetchRequest(stream)
+				req, err := readFetch(stream)
 				if err != nil {
 					slog.Error("failed to get a fetch-request", slog.String("error", err.Error()))
 					frw.Reject(err)
@@ -221,7 +250,7 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 						group := Group{
 							subscribeID:   sr.subscription.subscribeID,
 							groupSequence: req.GroupSequence,
-							GroupPriority: Priority(req.TrackPriority), // TODO: Handle Publisher Priority
+							GroupPriority: TrackPriority(req.TrackPriority), // TODO: Handle Publisher Priority
 						}
 
 						// Send the group data
@@ -250,7 +279,7 @@ func (r Relayer) listenBiStreams(sess *ServerSession) {
 					return
 				}
 
-				iw := InfoWriter{
+				iw := ReceivedInfoRequest{
 					stream: stream,
 				}
 
@@ -284,7 +313,7 @@ func (r Relayer) listenUniStreams(sess *ServerSession) {
 			return
 		}
 
-		go func(stream moq.ReceiveStream) {
+		go func(stream transport.ReceiveStream) {
 			/*
 			 * Verify if subscribed or not by finding a subscription having the Subscribe ID in the Group
 			 */
@@ -314,7 +343,7 @@ func (r Relayer) listenUniStreams(sess *ServerSession) {
 			/*
 			 * Open Streams
 			 */
-			streams := make([]moq.SendStream, len(dests))
+			streams := make([]transport.SendStream, len(dests))
 			var mu sync.Mutex
 			for _, destSess := range dests {
 				// Skip to send data if the Session is nil
@@ -370,7 +399,7 @@ func (r Relayer) listenUniStreams(sess *ServerSession) {
 
 				// Distribute the data
 				for _, stream := range streams {
-					go func(stream moq.SendStream) {
+					go func(stream transport.SendStream) {
 						_, err := stream.Write(buf[:n])
 						if err != nil {
 							slog.Error("failed to send data", slog.String("error", err.Error()))

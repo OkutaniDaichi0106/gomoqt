@@ -7,11 +7,6 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 )
 
-type Interest struct {
-	TrackPrefix string
-	Parameters  Parameters
-}
-
 // type InterestHandler interface {
 // 	HandleInterest(Interest, AnnounceSender)
 // }
@@ -29,7 +24,7 @@ type Announcement struct {
 	status AnnounceStatus
 
 	/***/
-	TrackPath string
+	TrackPathSuffix string
 	/***/
 	AuthorizationInfo string
 	Parameters        Parameters
@@ -47,9 +42,9 @@ func readAnnouncement(r io.Reader) (Announcement, error) {
 
 	// Initialize an Announcement
 	announcement := Announcement{
-		status:     AnnounceStatus(am.AnnounceStatus),
-		TrackPath:  am.TrackPathSuffix,
-		Parameters: Parameters(am.Parameters),
+		status:          AnnounceStatus(am.AnnounceStatus),
+		TrackPathSuffix: am.TrackPathSuffix,
+		Parameters:      Parameters(am.Parameters),
 	}
 
 	//
@@ -61,109 +56,6 @@ func readAnnouncement(r io.Reader) (Announcement, error) {
 	return announcement, nil
 }
 
-// func listenAnnounceReceiver(ar *AnnounceReceiver) {
-// 	go func() {
-// 		for {
-// 			announcement, err := readAnnouncement(ar.stream)
-// 			if err != nil {
-// 				slog.Error("failed to read an announcement", slog.String("error", err.Error()))
-// 				return
-// 			}
-
-// 			func() {
-// 				ar.mu.Lock()
-// 				defer ar.mu.Unlock()
-
-// 				switch announcement.status {
-// 				case ENDED:
-// 					_, ok := ar.announcementsMap[announcement.TrackPath]
-// 					if !ok {
-// 						// TODO: Protocol Error
-// 						ar.CancelInterest(ErrProtocolViolation)
-// 						return
-// 					}
-// 					delete(ar.announcementsMap, announcement.TrackPath)
-// 				case ACTIVE:
-// 					_, ok := ar.announcementsMap[announcement.TrackPath]
-// 					if ok {
-// 						// TODO: Protocol Error
-// 						ar.CancelInterest(ErrProtocolViolation)
-// 						return
-// 					}
-
-// 					ar.announcementsMap[announcement.TrackPath] = announcement
-// 				case LIVE:
-// 					ar.liveCh <- struct{}{}
-// 				}
-// 			}()
-// 		}
-// 	}()
-// }
-
-/*
- *
- */
-// type AnnounceSender struct {
-// 	/*
-// 	 * Received interest
-// 	 */
-// 	interest Interest
-
-// 	/*
-// 	 *
-// 	 */
-// 	stream moq.Stream
-// }
-
-// func (as *interestReceivedStream) Announce(announcement Announcement) {
-
-// 	announcement.status = ACTIVE
-// 	//
-// 	err := writeAnnouncement(as.stream, announcement)
-// 	if err != nil {
-// 		slog.Error("failed to write an announcement", slog.String("error", err.Error()))
-// 		return
-// 	}
-// }
-
-// func (as *AnnounceSender) Unannounce(announcement Announcement) {
-// 	//
-// 	announcement.status = ENDED
-// 	//
-// 	err := writeAnnouncement(as.stream, announcement)
-// 	if err != nil {
-// 		slog.Error("failed to write an announcement", slog.String("error", err.Error()))
-// 		return
-// 	}
-
-// 	//
-// }
-
-// func (as *AnnounceSender) CancelAnnounce(err error) {
-// 	if err == nil {
-// 		as.Close()
-// 	}
-
-// 	var code moq.StreamErrorCode
-
-// 	var strerr moq.StreamError
-// 	if errors.As(err, &strerr) {
-// 		code = strerr.StreamErrorCode()
-// 	} else {
-// 		annerr, ok := err.(AnnounceError)
-// 		if ok {
-// 			code = moq.StreamErrorCode(annerr.AnnounceErrorCode())
-// 		} else {
-// 			code = ErrInternalError.StreamErrorCode()
-// 		}
-// 	}
-
-// 	as.stream.CancelRead(code)
-// 	as.stream.CancelWrite(code)
-
-// 	slog.Info("closed an Announce Stream")
-// }
-
 func writeAnnouncement(w io.Writer, announcement Announcement) error {
 	slog.Debug("writing an announcement")
 
@@ -174,7 +66,7 @@ func writeAnnouncement(w io.Writer, announcement Announcement) error {
 
 	// Initialize an ANNOUNCE message
 	am := message.AnnounceMessage{
-		TrackPathSuffix: announcement.TrackPath,
+		TrackPathSuffix: announcement.TrackPathSuffix,
 		Parameters:      message.Parameters(announcement.Parameters),
 	}
 

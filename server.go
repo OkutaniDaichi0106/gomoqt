@@ -10,8 +10,8 @@ import (
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/internal/moq"
 	"github.com/OkutaniDaichi0106/gomoqt/internal/protocol"
+	"github.com/OkutaniDaichi0106/gomoqt/internal/transport"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
@@ -88,7 +88,7 @@ func (s *Server) init() (err error) {
 			}
 
 			// Get a Connection
-			conn := moq.NewMOWTConnection(wtsess)
+			conn := transport.NewMOWTConnection(wtsess)
 
 			/*
 			 * Set up
@@ -192,7 +192,7 @@ func (s *Server) ListenAndServe() error {
 					/*
 					 * Listen and serve on raw QUIC
 					 */
-					conn := moq.NewMORQConnection(qconn)
+					conn := transport.NewMORQConnection(qconn)
 
 					/*
 					 * Set up
@@ -259,7 +259,7 @@ func (s *Server) ListenAndServe() error {
 
 }
 
-func acceptSessionStream(conn moq.Connection) (SessionStream, error) {
+func acceptSessionStream(conn transport.Connection) (SessionStream, error) {
 	// Accept a Bidirectional Stream, which must be a Sesson Stream
 	stream, err := conn.AcceptStream(context.Background())
 	if err != nil {
@@ -302,16 +302,16 @@ func readSetupRequest(r io.Reader) (req SetupRequest, err error) {
 		req.supportedVersions = append(req.supportedVersions, Version(v))
 	}
 	// Set parameters
-	req.Parameters = Parameters(scm.Parameters)
+	req.SetupParameters = Parameters(scm.Parameters)
 
 	// Get any PATH parameter
-	path, ok := getPath(req.Parameters)
+	path, ok := getPath(req.SetupParameters)
 	if ok {
 		req.parsedURL.Path = path
 	}
 
 	// Get any MAX_SUBSCRIBE_ID parameter
-	maxID, ok := getMaxSubscribeID(req.Parameters)
+	maxID, ok := getMaxSubscribeID(req.SetupParameters)
 	if ok {
 		req.MaxSubscribeID = uint64(maxID)
 	}

@@ -7,6 +7,8 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
+type GroupPriority byte
+
 type GroupSequence uint64
 
 type GroupMessage struct {
@@ -14,7 +16,7 @@ type GroupMessage struct {
 
 	GroupSequence GroupSequence
 
-	GroupPriority Priority
+	GroupPriority GroupPriority
 }
 
 func (g GroupMessage) Encode(w io.Writer) error {
@@ -89,7 +91,7 @@ func (g *GroupMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	g.GroupPriority = Priority(num)
+	g.GroupPriority = GroupPriority(num)
 
 	slog.Debug("decoded a GROUP message")
 

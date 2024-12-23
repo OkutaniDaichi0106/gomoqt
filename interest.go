@@ -24,27 +24,84 @@ type SentInterest struct {
 	mu     sync.RWMutex
 }
 
+func (interest *SentInterest) NextActiveTracks() (Tracks, error) {
+	interest.mu.Lock()
+	defer interest.mu.Unlock()
+
+	// Read announcements
+	for {
+		ann, err := readAnnouncement(interest.stream)
+		if err != nil {
+			slog.Error("failed to read an announcement", slog.String("error", err.Error()))
+			return nil, err
+		}
+
+		// Get the full track path
+		trackPath := interest.TrackPrefix + "/" + ann.TrackPathSuffix
+
+		// Update the active tracks
+		if ann.status == ACTIVE {
+			_, ok := interest.active[trackPath]
+			if ok {
+				return nil, ErrInternalError
+			}
+
+			interest.active[trackPath] = Track{
+				TrackPath:          trackPath,
+				AuthorizationInfo:  ann.AuthorizationInfo,
+				AnnounceParameters: ann.Parameters,
+			}
+		}
+
+		// Delete the active tracks if the it is ended
+		if ann.status == ENDED {
+			_, ok := interest.active[trackPath]
+			if !ok {
+				return nil, ErrInternalError
+			}
+
+			delete(interest.active, trackPath)
+		}
+
+		if ann.status == LIVE {
+			break
+		}
+	}
+
+	return interest.active, nil
+}
+
 type ReceivedInterest struct {
 	Interest
 	/*
 	 * Sent announcements
 	 * Track Path -> Announcement
 	 */
-	active map[string]Track
-	stream transport.Stream
-	mu     sync.RWMutex
+	activeTracks map[string]Track
+	stream       transport.Stream
+	mu           sync.RWMutex
 }
 
-func (interest *ReceivedInterest) Announce(tracks []Track) error {
-	//
+func (interest *ReceivedInterest) Announce(tracks Tracks) error {
+	interest.mu.Lock()
+	defer interest.mu.Unlock()
+
+	// Create a new active tracks
 	newActives := make(map[string]Track, len(tracks))
 
-	for _, track := range tracks {
-		_, ok := interest.active[track.TrackPath]
-		if !ok {
-			err := interest.announce(track, ACTIVE)
+	// Announce active tracks
+	for path, track := range tracks {
+
+		if _, ok := newActives[path]; ok {
+			return ErrDuplicatedTrack
+		}
+
+		if _, ok := interest.activeTracks[track.TrackPath]; !ok {
+			err := interest.announceActiveTrack(track)
 			if err != nil {
-				slog.Error("failed to announce")
+				slog.Error("failed to announce active track",
+					slog.String("path", track.TrackPath),
+					slog.String("error", err.Error()))
 				return err
 			}
 		}
@@ -52,43 +109,72 @@ func (interest *ReceivedInterest) Announce(tracks []Track) error {
 		newActives[track.TrackPath] = track
 	}
 
-	for path, track := range interest.active {
-		_, ok := newActives[path]
-		if !ok {
-			err := interest.announce(track, ENDED)
+	// Announce ended tracks
+	for path, track := range interest.activeTracks {
+		if _, ok := newActives[path]; !ok {
+			err := interest.announceEndedTrack(track)
 			if err != nil {
-				slog.Error("failed to announce")
+				slog.Error("failed to announce ended track",
+					slog.String("path", path),
+					slog.String("error", err.Error()))
 				return err
 			}
 		}
 	}
 
 	// Update
-	interest.active = newActives
+	interest.activeTracks = newActives
+
+	//
+	interest.announceLive()
 
 	return nil
 }
 
-func (interest *ReceivedInterest) announce(track Track, status AnnounceStatus) error {
-	interest.mu.Lock()
-	defer interest.mu.Unlock()
-
-	// Verify if the announcement has the track prefix
+func (interest *ReceivedInterest) announceActiveTrack(track Track) error {
+	// Verify if the track path has the track prefix
 	if !strings.HasPrefix(track.TrackPath, interest.TrackPrefix) {
 		return ErrInternalError
-	}
-
-	//
-	_, ok := interest.active[track.TrackPath]
-	if ok {
-		return ErrDuplicatedTrackPath
 	}
 
 	// Get a suffix part of the Track Path
 	suffix := strings.TrimPrefix(track.TrackPath, interest.TrackPrefix+"/")
 
+	// Create an announcement
 	ann := Announcement{
-		status:            status,
+		status:            ACTIVE,
+		TrackPathSuffix:   suffix,
+		AuthorizationInfo: track.AuthorizationInfo,
+		Parameters:        track.AnnounceParameters,
+	}
+
+	// Add the Authorization Info
+	if track.AuthorizationInfo != "" {
+		ann.Parameters.Add(AUTHORIZATION_INFO, track.AuthorizationInfo)
+	}
+
+	// Write the announcement
+	err := writeAnnouncement(interest.stream, ann)
+	if err != nil {
+		slog.Error("failed to write an announcement")
+		return err
+	}
+
+	return nil
+}
+
+func (interest *ReceivedInterest) announceEndedTrack(track Track) error {
+	// Verify if the track path has the track prefix
+	if !strings.HasPrefix(track.TrackPath, interest.TrackPrefix) {
+		return ErrInternalError
+	}
+
+	// Get a suffix part of the Track Path
+	suffix := strings.TrimPrefix(track.TrackPath, interest.TrackPrefix+"/")
+
+	//
+	ann := Announcement{
+		status:            ENDED,
 		TrackPathSuffix:   suffix,
 		AuthorizationInfo: track.AuthorizationInfo,
 		Parameters:        track.AnnounceParameters,
@@ -97,6 +183,20 @@ func (interest *ReceivedInterest) announce(track Track, status AnnounceStatus) e
 	//
 	if track.AuthorizationInfo != "" {
 		ann.Parameters.Add(AUTHORIZATION_INFO, track.AuthorizationInfo)
+	}
+
+	err := writeAnnouncement(interest.stream, ann)
+	if err != nil {
+		slog.Error("failed to write an announcement")
+		return err
+	}
+
+	return nil
+}
+
+func (interest *ReceivedInterest) announceLive() error {
+	ann := Announcement{
+		status: ACTIVE,
 	}
 
 	err := writeAnnouncement(interest.stream, ann)

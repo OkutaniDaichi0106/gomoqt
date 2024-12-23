@@ -7,7 +7,7 @@ import (
 
 type HandlerFunc func(ServerSession)
 
-var NotFoundFunc HandlerFunc = func(ServerSession) { return }
+var NotFoundFunc HandlerFunc = func(ServerSession) {}
 
 var DefaultHandler ServeMux = NewServeMux()
 

@@ -170,15 +170,20 @@ func setupConnection(req SetupRequest, conn transport.Connection) (ClientSession
 		},
 	}
 
+	go listenSession(&sess.session, context.Background()) // TODO:
+
 	return sess, rsp, nil
 }
 
-func listen(sess *ClientSession, ctx context.Context) {
+func listenSession(sess *session, ctx context.Context) {
 	// Listen the bidirectional streams
-	listenBiStreams(sess, ctx)
+	go listenBiStreams(sess, ctx)
 
 	// Listen the unidirectional streams
-	listenUniStreams(sess, ctx)
+	go listenUniStreams(sess, ctx)
+
+	// Listen the datagrams
+	go listenDatagrams(sess, ctx)
 }
 
 func openSessionStream(conn transport.Connection) (SessionStream, error) {
@@ -223,7 +228,7 @@ func sendSetupRequest(w io.Writer, req SetupRequest) error {
 	return nil
 }
 
-func listenBiStreams(sess *ClientSession, ctx context.Context) {
+func listenBiStreams(sess *session, ctx context.Context) {
 	for {
 		/*
 		 * Accept a bidirectional stream
@@ -301,15 +306,8 @@ func listenBiStreams(sess *ClientSession, ctx context.Context) {
 					return
 				}
 
-				// Get the track
-				track, ok := sess.publisherManager.tracks[req.TrackPath]
-				if !ok {
-					slog.Error("track does not exist", slog.String("track path", req.TrackPath))
-					req.CloseWithError(ErrTrackDoesNotExist)
-					return
-				}
-
-				req.Inform(track.Info())
+				// Enqueue the info-request
+				sess.publisherManager.receivedInfoRequestQueue.Enqueue(req)
 			default:
 				slog.Debug("An unknown type of stream was opend")
 
@@ -322,7 +320,7 @@ func listenBiStreams(sess *ClientSession, ctx context.Context) {
 	}
 }
 
-func listenUniStreams(sess *ClientSession, ctx context.Context) {
+func listenUniStreams(sess *session, ctx context.Context) {
 	for {
 		/*
 		 * Accept a unidirectional stream
@@ -359,8 +357,15 @@ func listenUniStreams(sess *ClientSession, ctx context.Context) {
 					return
 				}
 
+				subscription, ok := sess.subscriberManager.getSentSubscription(data.SubscribeID())
+				if !ok {
+					slog.Error("failed to get a subscription", slog.String("error", "subscription not found"))
+					closeReceiveStreamWithInternalError(stream, ErrProtocolViolation) // TODO:
+					return
+				}
+
 				// Enqueue the receiver
-				sess.subscriberManager.dataReceiverQueue.Enqueue(data)
+				subscription.dataReceiveStreamQueue.Enqueue(data)
 			default:
 				slog.Debug("An unknown type of stream was opend")
 
@@ -370,6 +375,37 @@ func listenUniStreams(sess *ClientSession, ctx context.Context) {
 				return
 			}
 		}(stream)
+	}
+}
+
+func listenDatagrams(sess *session, ctx context.Context) {
+	for {
+		/*
+		 * Receive a datagram
+		 */
+		buf, err := sess.conn.ReceiveDatagram(ctx)
+		if err != nil {
+			slog.Error("failed to receive a datagram", slog.String("error", err.Error()))
+			return
+		}
+
+		// Handle the datagram
+		go func(buf []byte) {
+			data, err := newReceivedDatagram(buf)
+			if err != nil {
+				slog.Error("failed to get a received datagram", slog.String("error", err.Error()))
+				return
+			}
+
+			subscription, ok := sess.subscriberManager.getSentSubscription(data.SubscribeID())
+			if !ok {
+				slog.Error("failed to get a subscription", slog.String("error", "subscription not found"))
+				return
+			}
+
+			// Enqueue the datagram
+			subscription.receivedDatagramQueue.Enqueue(data)
+		}(buf)
 	}
 }
 

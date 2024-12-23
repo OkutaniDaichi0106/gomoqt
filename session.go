@@ -18,14 +18,15 @@ type session struct {
 
 func (sess *session) Publisher() *Publisher {
 	return &Publisher{
-		sess:   sess,
-		tracks: sess.tracks,
+		sess:             sess,
+		publisherManager: sess.publisherManager,
 	}
 }
 
 func (sess *session) Subscriber() *Subscriber {
 	return &Subscriber{
-		sess: sess,
+		sess:              sess,
+		subscriberManager: sess.subscriberManager,
 	}
 }
 
@@ -52,42 +53,3 @@ func (sess *session) Terminate(err error) {
 
 	slog.Info("Terminated a session")
 }
-
-// func (sess *session) acceptNewSubscription(sr *SubscribeReceiver) {
-// 	sess.mu.Lock()
-// 	defer sess.mu.Unlock()
-
-// 	// Verify if the subscription is duplicated or not
-// 	_, ok := sess.subscribeReceivers[sr.subscription.subscribeID]
-// 	if ok {
-// 		slog.Debug("duplicated subscription", slog.Any("Subscribe ID", sr.subscription.subscribeID))
-// 		return
-// 	}
-
-// 	// Register the subscription
-// 	sess.subscribeReceivers[sr.subscription.subscribeID] = sr
-
-// 	slog.Info("Accepted a new subscription", slog.Any("subscription", sr.subscription))
-// }
-
-// func (sess *session) updateSubscription(subscription SubscribeUpdate) {
-// 	sess.rsMu.Lock()
-// 	defer sess.rsMu.Unlock()
-
-// 	old, ok := sess.receivedSubscriptions[subscription.TrackPath]
-// 	if !ok {
-// 		slog.Debug("no subscription", slog.Any("Subscribe ID", subscription.subscribeID))
-// 		return
-// 	}
-
-// 	old.acceptUpdate(subscription)
-
-// 	slog.Info("updated a subscription", slog.Any("from", old), slog.Any("to", subscription))
-// }
-
-// func (sess *session) deleteSubscription(subscription Subscription) {
-// 	sess.mu.Lock()
-// 	defer sess.mu.Unlock()
-
-// 	delete(sess.subscribeReceivers, subscription.subscribeID)
-// }

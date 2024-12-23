@@ -5,5 +5,3 @@ type SubscribeGap struct {
 	Count              uint64
 	GroupErrorCode     GroupErrorCode
 }
-
-func (SubscribeGap) Update()

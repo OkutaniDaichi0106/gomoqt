@@ -12,12 +12,7 @@ var (
 
 	ErrTrackDoesNotExist = trackDoesNotExistError{}
 
-	// ErrInvalidStreamType = defaultStreamError{
-	// 	code:   invalid_stream_type,
-	// 	reason: "invalid stream type",
-	// }
-
-	ErrDuplicatedTrackPath = defaultAnnounceError{
+	ErrDuplicatedTrack = defaultAnnounceError{
 		reason: "duplicated track path",
 		code:   announce_duplicated_track_path,
 	}
@@ -104,9 +99,9 @@ var (
 /*
  * Session Error
  */
-const (
-	session_internal_error transport.SessionErrorCode = 0x00
-)
+// const (
+// 	session_internal_error transport.SessionErrorCode = 0x00
+// )
 
 /*
  * Stream Error
@@ -116,18 +111,18 @@ const (
 	invalid_stream_type   transport.StreamErrorCode = 0x10 // TODO: See spec
 )
 
-type defaultStreamError struct {
-	code   transport.StreamErrorCode
-	reason string
-}
+// type defaultStreamError struct {
+// 	code   transport.StreamErrorCode
+// 	reason string
+// }
 
-func (err defaultStreamError) Error() string {
-	return err.reason
-}
+// func (err defaultStreamError) Error() string {
+// 	return err.reason
+// }
 
-func (err defaultStreamError) StreamErrorCode() transport.StreamErrorCode {
-	return err.code
-}
+// func (err defaultStreamError) StreamErrorCode() transport.StreamErrorCode {
+// 	return err.code
+// }
 
 /*
  * Announce Errors

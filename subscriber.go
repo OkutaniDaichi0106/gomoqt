@@ -20,8 +20,6 @@ type subscriber interface {
 	Fetch(Fetch) (DataReceiveStream, error)
 
 	RequestInfo(InfoRequest) (Info, error)
-
-	AcceptDataStream(context.Context) (DataReceiveStream, error)
 }
 
 var _ subscriber = (*Subscriber)(nil)
@@ -30,23 +28,6 @@ type Subscriber struct {
 	sess *session
 
 	*subscriberManager
-}
-
-func (s *Subscriber) AcceptDataStream(ctx context.Context) (DataReceiveStream, error) {
-	slog.Debug("accepting a data stream")
-
-	for {
-		if s.dataReceiverQueue.Len() > 0 {
-			return s.dataReceiverQueue.Dequeue(), nil
-		}
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-s.dataReceiverQueue.Chan():
-		default:
-		}
-	}
-
 }
 
 func (s *Subscriber) Interest(interest Interest) (*SentInterest, error) {
@@ -80,8 +61,8 @@ func (s *Subscriber) Interest(interest Interest) (*SentInterest, error) {
 }
 
 func (s *Subscriber) Subscribe(subscription Subscription) (*SentSubscription, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.couterMu.Lock()
+	defer s.couterMu.Unlock()
 
 	slog.Debug("making a subscription", slog.Any("subscription", subscription))
 

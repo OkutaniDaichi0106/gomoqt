@@ -1,6 +1,7 @@
 package moqt
 
 import (
+	"context"
 	"errors"
 	"io"
 	"log/slog"
@@ -14,9 +15,7 @@ import (
 type SubscribeID uint64
 
 type Subscription struct {
-	//subscribeID SubscribeID
-
-	Track Track
+	Track
 
 	MinGroupSequence GroupSequence
 	MaxGroupSequence GroupSequence
@@ -33,14 +32,54 @@ type SentSubscription struct {
 	Subscription
 	stream transport.Stream
 	mu     sync.Mutex
+
+	dataReceiveStreamQueue *dataReceiveStreamQueue
+
+	receivedDatagramQueue *receivedDatagramQueue
 }
 
 func (ss *SentSubscription) SubscribeID() SubscribeID {
 	return ss.subscribeID
 }
 
-func (ss *SentSubscription) TrackInfo() Info {
-	return ss.Track.Info()
+func (ss *SentSubscription) AcceptDataStream(ctx context.Context) (DataReceiveStream, error) {
+	slog.Debug("accepting a data stream")
+
+	for {
+		if ss.dataReceiveStreamQueue.Len() > 0 {
+			stream := ss.dataReceiveStreamQueue.Dequeue()
+			if stream.SubscribeID() != ss.SubscribeID() {
+				panic("invalid SubscribeID")
+			}
+			return stream, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ss.dataReceiveStreamQueue.Chan():
+		default:
+		}
+	}
+}
+
+func (ss *SentSubscription) AcceptDatagram(ctx context.Context) (ReceivedDatagram, error) {
+	slog.Debug("accepting a datagram")
+
+	for {
+		if ss.receivedDatagramQueue.Len() > 0 {
+			datagram := ss.receivedDatagramQueue.Dequeue()
+			if datagram.SubscribeID() != ss.SubscribeID() {
+				panic("invalid SubscribeID")
+			}
+			return datagram, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ss.receivedDatagramQueue.Chan():
+		default:
+		}
+	}
 }
 
 func newReceivedSubscription(stream transport.Stream) (*ReceivedSubscription, error) {
@@ -62,6 +101,8 @@ type ReceivedSubscription struct {
 	Subscription
 	stream transport.Stream
 	mu     sync.Mutex
+
+	conn transport.Connection
 }
 
 func (rs *ReceivedSubscription) SubscribeID() SubscribeID {
@@ -136,10 +177,78 @@ func (rs *ReceivedSubscription) UpdateSubscription(update SubscribeUpdate) error
 	return nil
 }
 
-func (rs *ReceivedSubscription) CountDataGap(err error) error {
-	// TODO
-	sgm := message.SubscribeGapMessage{}
-	err = sgm.Encode(rs.stream)
+func (rs *ReceivedSubscription) OpenDataStream(sequence GroupSequence, priority GroupPriority) (DataSendStream, error) {
+	// Verify
+	if sequence == 0 {
+		return nil, errors.New("0 sequence number")
+	}
+
+	// Open
+	stream, err := openGroupStream(rs.conn)
+	if err != nil {
+		slog.Error("failed to open a group stream", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	// Send the GROUP message
+	gm := message.GroupMessage{
+		SubscribeID:   message.SubscribeID(rs.SubscribeID()),
+		GroupSequence: message.GroupSequence(sequence),
+		GroupPriority: message.GroupPriority(priority),
+	}
+	err = gm.Encode(stream)
+	if err != nil {
+		slog.Error("failed to send a GROUP message", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	return dataSendStream{
+			SendStream: stream,
+			SentGroup: SentGroup{
+				subscribeID:   rs.SubscribeID(),
+				groupSequence: sequence,
+				groupPriority: priority,
+				sentAt:        time.Now(),
+			},
+		},
+		nil
+}
+
+func (rs *ReceivedSubscription) SendDatagram(id SubscribeID, sequence GroupSequence, priority GroupPriority, payload []byte) (SentDatagram, error) {
+	// Verify
+	if sequence == 0 {
+		return nil, errors.New("0 sequence number")
+
+	}
+
+	group := SentGroup{
+		subscribeID:   id,
+		groupSequence: sequence,
+		groupPriority: priority,
+		sentAt:        time.Now(),
+	}
+
+	// Send
+	err := sendDatagram(rs.conn, group, payload)
+	if err != nil {
+		slog.Error("failed to send a datagram", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	return &sentDatagram{
+		payload:   payload,
+		SentGroup: group,
+	}, nil
+}
+
+func (rs *ReceivedSubscription) CountDataGap(code uint64) error {
+	// TODO: Implement
+	sgm := message.SubscribeGapMessage{
+		// GroupStartSequence: ,
+		// Count: ,
+		// GroupErrorCode: ,
+	}
+	err := sgm.Encode(rs.stream)
 	if err != nil {
 		slog.Error("failed to encode SUBSCRIBE_GAP message")
 		return err

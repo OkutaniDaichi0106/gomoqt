@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"log/slog"
+	"time"
 
 	moqt "github.com/OkutaniDaichi0106/gomoqt"
 	"github.com/quic-go/quic-go"
@@ -50,40 +52,63 @@ func main() {
 		/*
 		 * Interest
 		 */
-		interest := moqt.Interest{
+
+		interest, err := subscriber.Interest(moqt.Interest{
 			TrackPrefix: echoTrackPrefix,
-		}
-		annstr, err := subscriber.Interest(interest)
+		})
 		if err != nil {
 			slog.Error("failed to interest", slog.String("error", err.Error()))
 			return
 		}
 
-		/*
-		 * Get Announcements
-		 */
+		anns, err := interest.NextActiveTracks()
+		if err != nil {
+			slog.Error("failed to get active tracks", slog.String("error", err.Error()))
+			return
+		}
+
+		_, ok := anns[echoTrackPath]
+		if !ok {
+			slog.Error("failed to get the active track", slog.String("error", "track is not active"))
+			return
+		}
+
+		subscription, err := subscriber.Subscribe(moqt.Subscription{
+			Track: moqt.Track{
+				TrackPath:     echoTrackPath,
+				TrackPriority: 0,
+				GroupOrder:    0,
+				GroupExpires:  1 * time.Second,
+			},
+		})
+		if err != nil {
+			slog.Error("failed to subscribe", slog.String("error", err.Error()))
+			return
+		}
+
+		// Publish to the
+
 		for {
-			ann, err := annstr.Read()
-			if err != nil {
-				slog.Error("failed to read an announcement", slog.String("error", err.Error()))
-				return
-			}
-			slog.Info("Received an announcement", slog.Any("announcement", ann))
 
-			/*
-			 * Subscribe
-			 */
-			subscription := moqt.Subscription{
-				TrackPath: echoTrackPath,
-			}
-
-			info, err := subscriber.Subscribe(subscription)
+			stream, err := subscription.AcceptDataStream(context.Background())
 			if err != nil {
-				slog.Error("failed to subscribe", slog.String("error", err.Error()))
+				slog.Error("failed to accept a data stream", slog.String("error", err.Error()))
 				return
 			}
 
-			slog.Info("successfully subscribed", slog.Any("subscription", subscription), slog.Any("info", info))
+			go func(stream moqt.DataReceiveStream) {
+				for {
+					buf := make([]byte, 1024)
+					n, err := stream.Read(buf)
+					if err != nil {
+						slog.Error("failed to read data", slog.String("error", err.Error()))
+						return
+					}
+					slog.Info("Received", slog.String("data", string(buf[:n])))
+
+				}
+
+			}(stream)
 		}
 	})
 

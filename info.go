@@ -112,6 +112,44 @@ func (req *ReceivedInfoRequest) Close() error {
 	return req.stream.Close()
 }
 
+type receivedInfoRequestQueue struct {
+	queue []*ReceivedInfoRequest
+	mu    sync.Mutex
+	ch    chan struct{}
+}
+
+func (q *receivedInfoRequestQueue) Len() int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	return len(q.queue)
+}
+
+func (q *receivedInfoRequestQueue) Enqueue(req *ReceivedInfoRequest) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	q.queue = append(q.queue, req)
+}
+
+func (q *receivedInfoRequestQueue) Dequeue() *ReceivedInfoRequest {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if len(q.queue) == 0 {
+		return nil
+	}
+
+	req := q.queue[0]
+	q.queue = q.queue[1:]
+
+	return req
+}
+
+func (q *receivedInfoRequestQueue) Chan() <-chan struct{} {
+	return q.ch
+}
+
 func readInfo(r io.Reader) (Info, error) {
 	// Read an INFO message
 	var im message.InfoMessage

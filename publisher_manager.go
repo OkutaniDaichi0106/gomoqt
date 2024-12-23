@@ -1,15 +1,12 @@
 package moqt
 
-import "sync"
+func newPublisherManager() *publisherManager {
+	return &publisherManager{
+		// tracks: make(map[string]Track),
+	}
+}
 
 type publisherManager struct {
-	/*
-	 * Tracks
-	 * Track Path -> Track
-	 */
-	tracks map[string]Track
-	mu     sync.RWMutex
-
 	//
 	receivedSubscriptionQueue receivedSubscriptionQueue
 
@@ -17,4 +14,6 @@ type publisherManager struct {
 	receivedInterestQueue receivedInterestQueue
 
 	receivedFetchQueue receivedFetchQueue
+
+	receivedInfoRequestQueue receivedInfoRequestQueue
 }

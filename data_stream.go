@@ -69,31 +69,31 @@ func (stream dataReceiveStream) Read(buf []byte) (int, error) {
 	return n, nil
 }
 
-type dataReceiverQueue struct {
+type dataReceiveStreamQueue struct {
 	queue []DataReceiveStream
 	ch    chan struct{}
 	mu    sync.Mutex
 }
 
-func (q *dataReceiverQueue) Len() int {
+func (q *dataReceiveStreamQueue) Len() int {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	return len(q.queue)
 }
 
-func (q *dataReceiverQueue) Chan() <-chan struct{} {
+func (q *dataReceiveStreamQueue) Chan() <-chan struct{} {
 	return q.ch
 }
 
-func (q *dataReceiverQueue) Enqueue(stream DataReceiveStream) {
+func (q *dataReceiveStreamQueue) Enqueue(stream DataReceiveStream) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	q.queue = append(q.queue, stream)
 }
 
-func (q *dataReceiverQueue) Dequeue() DataReceiveStream {
+func (q *dataReceiveStreamQueue) Dequeue() DataReceiveStream {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 

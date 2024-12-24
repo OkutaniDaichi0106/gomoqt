@@ -15,44 +15,37 @@ const (
 	DESCENDING GroupOrder = 0x2
 )
 
-type priorityArgs struct {
-	TrackPriority TrackPriority
-	groupOrder    GroupOrder
-	subscribeID   SubscribeID
-	groupSequence GroupSequence
-	groupPriority GroupPriority
+type data interface {
+	//
+	SubscribeID() SubscribeID
+	TrackPriority() TrackPriority
+	GroupOrder() GroupOrder
+
+	//
+	GroupPriority() GroupPriority
+	GroupSequence() GroupSequence
 }
 
-func comparePriority(arg1, arg2 priorityArgs) bool {
-	if arg1.TrackPriority != arg2.TrackPriority {
-		return arg1.TrackPriority > arg2.TrackPriority
+func schedule(a, b data) bool {
+	if a.SubscribeID() == b.SubscribeID() {
+		switch a.GroupOrder() {
+		case DEFAULT:
+			return a.GroupPriority() < b.GroupPriority()
+		case ASCENDING:
+			return a.GroupSequence() < b.GroupSequence()
+		case DESCENDING:
+			return a.GroupSequence() > b.GroupSequence()
+		default:
+			return false
+		}
 	}
 
-	if arg1.groupPriority != arg2.groupPriority {
-		return arg1.groupPriority > arg2.groupPriority
+	if a.TrackPriority() != b.TrackPriority() {
+		return a.TrackPriority() < b.TrackPriority()
 	}
 
-	if arg1.subscribeID != arg2.subscribeID {
-
-		// TODO:
-		return true
+	if a.GroupPriority() != b.GroupPriority() {
+		return a.GroupPriority() < b.GroupPriority()
 	}
-
-	// if arg1.TrackPath != arg2.TrackPath {
-	// 	return false // TODO: handle this situation as an error
-	// }
-	if arg1.groupOrder != arg2.groupOrder {
-		return false // TODO: handle this situation as an error
-	}
-
-	switch arg1.groupOrder {
-	case DEFAULT:
-		return true
-	case ASCENDING:
-		return arg1.groupSequence < arg2.groupSequence
-	case DESCENDING:
-		return arg1.groupSequence > arg2.groupSequence
-	default:
-		return false
-	}
+	return a.GroupSequence() < b.GroupSequence()
 }

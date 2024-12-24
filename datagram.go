@@ -94,12 +94,12 @@ type SentDatagram interface {
 	Group
 }
 
-func newSentDatagram(group SentGroup, payload []byte) SentDatagram {
-	return &sentDatagram{
-		SentGroup: group,
-		payload:   payload,
-	}
-}
+// func newSentDatagram(group SentGroup, payload []byte) SentDatagram {
+// 	return &sentDatagram{
+// 		SentGroup: group,
+// 		payload:   payload,
+// 	}
+// }
 
 var _ SentDatagram = (*sentDatagram)(nil)
 
@@ -116,46 +116,46 @@ func (d *sentDatagram) Write(buf []byte) (int, error) {
 	return copy(d.payload, buf), nil
 }
 
-type sentDatagramQueue struct {
-	mu    sync.Mutex
-	queue []SentDatagram
-	ch    chan struct{}
-}
+// type sentDatagramQueue struct {
+// 	mu    sync.Mutex
+// 	queue []SentDatagram
+// 	ch    chan struct{}
+// }
 
-func (q *sentDatagramQueue) Len() int {
-	q.mu.Lock()
-	defer q.mu.Unlock()
+// func (q *sentDatagramQueue) Len() int {
+// 	q.mu.Lock()
+// 	defer q.mu.Unlock()
 
-	return len(q.queue)
-}
+// 	return len(q.queue)
+// }
 
-func (q *sentDatagramQueue) Chan() <-chan struct{} {
+// func (q *sentDatagramQueue) Chan() <-chan struct{} {
 
-	return q.ch
-}
+// 	return q.ch
+// }
 
-func (q *sentDatagramQueue) Enqueue(datagram SentDatagram) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
+// func (q *sentDatagramQueue) Enqueue(datagram SentDatagram) {
+// 	q.mu.Lock()
+// 	defer q.mu.Unlock()
 
-	q.queue = append(q.queue, datagram)
+// 	q.queue = append(q.queue, datagram)
 
-	select {
-	case q.ch <- struct{}{}:
-	default:
-	}
-}
+// 	select {
+// 	case q.ch <- struct{}{}:
+// 	default:
+// 	}
+// }
 
-func (q *sentDatagramQueue) Dequeue() SentDatagram {
-	q.mu.Lock()
-	defer q.mu.Unlock()
+// func (q *sentDatagramQueue) Dequeue() SentDatagram {
+// 	q.mu.Lock()
+// 	defer q.mu.Unlock()
 
-	if len(q.queue) == 0 {
-		return nil
-	}
+// 	if len(q.queue) == 0 {
+// 		return nil
+// 	}
 
-	next := q.queue[0]
-	q.queue = q.queue[1:]
+// 	next := q.queue[0]
+// 	q.queue = q.queue[1:]
 
-	return next
-}
+// 	return next
+// }

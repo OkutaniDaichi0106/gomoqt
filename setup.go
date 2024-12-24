@@ -47,7 +47,7 @@ type SetupRequest struct {
 	once              bool
 }
 
-func (r SetupRequest) init() error {
+func (r *SetupRequest) init() error {
 	if r.once {
 		return nil
 	}

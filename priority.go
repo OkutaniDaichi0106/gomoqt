@@ -27,25 +27,25 @@ type data interface {
 }
 
 func schedule(a, b data) bool {
-	if a.SubscribeID() == b.SubscribeID() {
-		switch a.GroupOrder() {
-		case DEFAULT:
-			return a.GroupPriority() < b.GroupPriority()
-		case ASCENDING:
-			return a.GroupSequence() < b.GroupSequence()
-		case DESCENDING:
-			return a.GroupSequence() > b.GroupSequence()
-		default:
-			return false
+	if a.SubscribeID() != b.SubscribeID() {
+		if a.TrackPriority() != b.TrackPriority() {
+			return a.TrackPriority() < b.TrackPriority()
 		}
-	}
-
-	if a.TrackPriority() != b.TrackPriority() {
-		return a.TrackPriority() < b.TrackPriority()
 	}
 
 	if a.GroupPriority() != b.GroupPriority() {
 		return a.GroupPriority() < b.GroupPriority()
 	}
-	return a.GroupSequence() < b.GroupSequence()
+
+	switch a.GroupOrder() {
+	case DEFAULT:
+		return true
+	case ASCENDING:
+		return a.GroupSequence() < b.GroupSequence()
+	case DESCENDING:
+		return a.GroupSequence() > b.GroupSequence()
+	default:
+	}
+
+	return false
 }

@@ -18,10 +18,6 @@ type publisher interface {
 	AcceptFetch(context.Context) (*ReceivedFetch, error)
 
 	AcceptInfoRequest(context.Context) (*ReceivedInfoRequest, error)
-
-	//OpenDataStream(SubscribeID, GroupSequence, GroupPriority) (DataSendStream, error)
-
-	// SendDatagram(SubscribeID, GroupSequence, GroupPriority, []byte) (SentDatagram, error)
 }
 
 var _ publisher = (*Publisher)(nil)

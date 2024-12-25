@@ -106,7 +106,7 @@ func main() {
 			return
 		}
 
-		if _, ok := tracks[echoTrackPath]; !ok {
+		if _, ok := tracks.Get(echoTrackPath); !ok {
 			slog.Error("failed to get a track", slog.String("error", "track is not found"))
 			return
 		}

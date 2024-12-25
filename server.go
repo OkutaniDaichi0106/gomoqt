@@ -7,7 +7,6 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
-	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/internal/protocol"
@@ -40,16 +39,15 @@ type Server struct {
 
 	//
 	SetupHijackerFunc func(SetupRequest) SetupResponce
-	//SetupHandler
+	// TODO:
 
-	RelayManager *RelayManager
+	//elayManager *RelayManager
 
 	// QUIC Listener
 	quicListener *quic.EarlyListener
 
 	// Webtransport Server
-	wts   *webtransport.Server
-	wtsMu sync.Mutex
+	wts *webtransport.Server
 }
 
 func (s *Server) init() (err error) {

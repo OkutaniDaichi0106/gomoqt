@@ -1,6 +1,9 @@
 package moqt
 
-import "sync"
+import (
+	"sync"
+	"sync/atomic"
+)
 
 type subscriberManager struct {
 	//dataReceiveStreamQueue dataReceiveStreamQueue
@@ -11,15 +14,16 @@ type subscriberManager struct {
 	ssMu              sync.Mutex
 
 	subscribeIDCounter uint64
-	couterMu           sync.Mutex
 }
 
-func (sm *subscriberManager) newSubscribeID() SubscribeID {
-	sm.couterMu.Lock()
-	defer sm.couterMu.Unlock()
+func (sm *subscriberManager) addSubscribeID() SubscribeID {
+	new := atomic.AddUint64(&sm.subscribeIDCounter, 1)
 
-	sm.subscribeIDCounter++
-	return SubscribeID(sm.subscribeIDCounter)
+	return SubscribeID(new)
+}
+
+func (sm *subscriberManager) getSubscribeID() SubscribeID {
+	return SubscribeID(atomic.LoadUint64(&sm.subscribeIDCounter))
 }
 
 func (sm *subscriberManager) addSentSubscription(ss *SentSubscription) error {
@@ -42,4 +46,11 @@ func (sm *subscriberManager) getSentSubscription(id SubscribeID) (*SentSubscript
 	subscription, ok := sm.sentSubscritpions[id]
 
 	return subscription, ok
+}
+
+func (sm *subscriberManager) removeSentSubscription(id SubscribeID) {
+	sm.ssMu.Lock()
+	defer sm.ssMu.Unlock()
+
+	delete(sm.sentSubscritpions, id)
 }

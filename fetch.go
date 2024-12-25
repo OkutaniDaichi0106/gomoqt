@@ -14,31 +14,31 @@ import (
  * Fetch Stream
  */
 
-type FetchStream struct {
-	stream transport.Stream
-}
-
-func (f FetchStream) Read(buf []byte) (int, error) {
-	return f.stream.Read(buf)
-}
-
-// func (f FetchStream) Group() Group {
-// 	return f.group
+// type FetchStream struct {
+// 	stream transport.Stream
 // }
 
-func (f FetchStream) CancelRead(code transport.StreamErrorCode) {
-	f.stream.CancelRead(code)
-}
+// func (f FetchStream) Read(buf []byte) (int, error) {
+// 	return f.stream.Read(buf)
+// }
 
-func (f FetchStream) Close() error {
-	err := f.stream.Close()
-	if err != nil {
-		slog.Error("failed to close a Fetch Stream", slog.String("error", err.Error()))
-		return err
-	}
+// // func (f FetchStream) Group() Group {
+// // 	return f.group
+// // }
 
-	return nil
-}
+// func (f FetchStream) CancelRead(code transport.StreamErrorCode) {
+// 	f.stream.CancelRead(code)
+// }
+
+// func (f FetchStream) Close() error {
+// 	err := f.stream.Close()
+// 	if err != nil {
+// 		slog.Error("failed to close a Fetch Stream", slog.String("error", err.Error()))
+// 		return err
+// 	}
+
+// 	return nil
+// }
 
 /*
  * Sequence number of a group in a track

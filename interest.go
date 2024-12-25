@@ -19,14 +19,18 @@ type SentInterest struct {
 	 * Sent announcements
 	 * Track Path -> Announcement
 	 */
-	active map[string]Track
+	active Tracks
 	stream transport.Stream
 	mu     sync.RWMutex
 }
 
-func (interest *SentInterest) NextActiveTracks() (Tracks, error) {
+func (interest *SentInterest) NextActiveTracks() (*Tracks, error) {
 	interest.mu.Lock()
 	defer interest.mu.Unlock()
+
+	if interest.active.Len() == 0 {
+		interest.active = makeTracks(1)
+	}
 
 	// Read announcements
 	for {
@@ -41,26 +45,26 @@ func (interest *SentInterest) NextActiveTracks() (Tracks, error) {
 
 		// Update the active tracks
 		if ann.status == ACTIVE {
-			_, ok := interest.active[trackPath]
+			_, ok := interest.active.Get(trackPath)
 			if ok {
 				return nil, ErrInternalError
 			}
 
-			interest.active[trackPath] = Track{
+			interest.active.Add(Track{
 				TrackPath:          trackPath,
 				AuthorizationInfo:  ann.AuthorizationInfo,
 				AnnounceParameters: ann.Parameters,
-			}
+			})
 		}
 
 		// Delete the active tracks if the it is ended
 		if ann.status == ENDED {
-			_, ok := interest.active[trackPath]
+			_, ok := interest.active.Get(trackPath)
 			if !ok {
 				return nil, ErrInternalError
 			}
 
-			delete(interest.active, trackPath)
+			interest.active.Delete(trackPath)
 		}
 
 		if ann.status == LIVE {
@@ -68,7 +72,7 @@ func (interest *SentInterest) NextActiveTracks() (Tracks, error) {
 		}
 	}
 
-	return interest.active, nil
+	return &interest.active, nil
 }
 
 type ReceivedInterest struct {
@@ -82,16 +86,15 @@ type ReceivedInterest struct {
 	mu           sync.RWMutex
 }
 
-func (interest *ReceivedInterest) Announce(tracks Tracks) error {
+func (interest *ReceivedInterest) Announce(tracks *Tracks) error {
 	interest.mu.Lock()
 	defer interest.mu.Unlock()
 
 	// Create a new active tracks
-	newActives := make(map[string]Track, len(tracks))
+	newActives := make(map[string]Track, tracks.Len())
 
 	// Announce active tracks
-	for path, track := range tracks {
-
+	for path, track := range tracks.Map() {
 		if _, ok := newActives[path]; ok {
 			return ErrDuplicatedTrack
 		}

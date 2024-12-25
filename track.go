@@ -2,6 +2,7 @@ package moqt
 
 import (
 	"log/slog"
+	"sync"
 	"time"
 )
 
@@ -40,42 +41,87 @@ func (t *Track) Info() Info {
 	}
 }
 
-func NewTracks(ts []Track) Tracks {
-	tracks := make(Tracks, len(ts))
+func NewTracks(ts []Track) *Tracks {
+	tracks := makeTracks(len(ts))
 
 	for _, t := range ts {
-		err := tracks.Add(t.TrackPath, t)
+		err := tracks.Add(t)
 		if err != nil {
 			slog.Error("failed to add a track", slog.String("error", err.Error()))
 			return nil
 		}
 	}
 
+	return &tracks
+}
+
+func makeTracks(len int) Tracks {
+	return Tracks{
+		trackMap: make(map[string]Track, len),
+	}
+}
+
+type Tracks struct {
+	trackMap map[string]Track
+	mu       sync.RWMutex
+}
+
+func (t *Tracks) Slice() []Track {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	tracks := make([]Track, 0, len(t.trackMap))
+	for _, track := range t.trackMap {
+		tracks = append(tracks, track)
+	}
+
 	return tracks
 }
 
-type Tracks map[string]Track
+func (t *Tracks) Map() map[string]Track {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
 
-func (t Tracks) Get(trackPath string) (Track, bool) {
-	track, ok := t[trackPath]
+	return t.trackMap
+}
+
+func (t *Tracks) Len() int {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	return len(t.trackMap)
+}
+
+func (t *Tracks) Get(trackPath string) (Track, bool) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	track, ok := t.trackMap[trackPath]
 	return track, ok
 }
 
-func (t Tracks) Add(trackPath string, track Track) error {
-	if t == nil {
-		t = make(Tracks)
+func (t *Tracks) Add(track Track) error {
+	if t.trackMap == nil {
+		newTracks := makeTracks(1)
+		t = &newTracks
 	}
 
-	_, ok := t[trackPath]
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	_, ok := t.trackMap[track.TrackPath]
 	if ok {
 		return ErrDuplicatedTrack
 	}
 
-	t[trackPath] = track
+	t.trackMap[track.TrackPath] = track
 
 	return nil
 }
 
-func (t Tracks) Delete(trackPath string) {
-	delete(t, trackPath)
+func (t *Tracks) Delete(trackPath string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	delete(t.trackMap, trackPath)
 }

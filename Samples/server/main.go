@@ -61,13 +61,13 @@ func main() {
 			return
 		}
 
-		anns, err := interest.NextActiveTracks()
+		tracks, err := interest.NextActiveTracks()
 		if err != nil {
 			slog.Error("failed to get active tracks", slog.String("error", err.Error()))
 			return
 		}
 
-		_, ok := anns[echoTrackPath]
+		_, ok := tracks.Get(echoTrackPath)
 		if !ok {
 			slog.Error("failed to get the active track", slog.String("error", "track is not active"))
 			return
@@ -86,10 +86,9 @@ func main() {
 			return
 		}
 
-		// Publish to the
+		// Receive data
 
 		for {
-
 			stream, err := subscription.AcceptDataStream(context.Background())
 			if err != nil {
 				slog.Error("failed to accept a data stream", slog.String("error", err.Error()))
@@ -105,9 +104,7 @@ func main() {
 						return
 					}
 					slog.Info("Received", slog.String("data", string(buf[:n])))
-
 				}
-
 			}(stream)
 		}
 	})

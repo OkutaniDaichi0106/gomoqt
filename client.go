@@ -163,10 +163,10 @@ func setupConnection(req SetupRequest, conn transport.Connection) (ClientSession
 
 	sess := ClientSession{
 		session: session{
-			conn:   conn,
-			stream: stream,
-			//publisherManager: ,
-			// subscriberManager: ,
+			conn:              conn,
+			stream:            stream,
+			publisherManager:  newPublisherManager(),
+			subscriberManager: newSubscriberManager(),
 		},
 	}
 

@@ -5,6 +5,13 @@ import (
 	"sync/atomic"
 )
 
+func newSubscriberManager() *subscriberManager {
+	return &subscriberManager{
+		sentSubscritpions:  make(map[SubscribeID]*SentSubscription),
+		subscribeIDCounter: 0,
+	}
+}
+
 type subscriberManager struct {
 	//dataReceiveStreamQueue dataReceiveStreamQueue
 

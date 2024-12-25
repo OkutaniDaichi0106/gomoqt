@@ -112,6 +112,13 @@ func (req *ReceivedInfoRequest) Close() error {
 	return req.stream.Close()
 }
 
+func newReceivedInfoRequestQueue() *receivedInfoRequestQueue {
+	return &receivedInfoRequestQueue{
+		queue: make([]*ReceivedInfoRequest, 0),
+		ch:    make(chan struct{}),
+	}
+}
+
 type receivedInfoRequestQueue struct {
 	queue []*ReceivedInfoRequest
 	mu    sync.Mutex

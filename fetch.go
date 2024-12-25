@@ -137,6 +137,13 @@ func (frw ReceivedFetch) Close() error {
 	return frw.stream.Close()
 }
 
+func newReceivedFetchQueue() *receivedFetchQueue {
+	return &receivedFetchQueue{
+		queue: make([]*ReceivedFetch, 0),
+		ch:    make(chan struct{}, 1),
+	}
+}
+
 type receivedFetchQueue struct {
 	queue []*ReceivedFetch
 	mu    sync.Mutex

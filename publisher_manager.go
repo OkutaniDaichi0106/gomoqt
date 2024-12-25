@@ -2,18 +2,24 @@ package moqt
 
 func newPublisherManager() *publisherManager {
 	return &publisherManager{
-		// tracks: make(map[string]Track),
+		receivedSubscriptionQueue: newReceivedSubscriptionQueue(),
+
+		receivedInterestQueue: newReceivedInterestQueue(),
+
+		receivedFetchQueue: newReceivedFetchQueue(),
+
+		receivedInfoRequestQueue: newReceivedInfoRequestQueue(),
 	}
 }
 
 type publisherManager struct {
 	//
-	receivedSubscriptionQueue receivedSubscriptionQueue
+	receivedSubscriptionQueue *receivedSubscriptionQueue
 
 	//
-	receivedInterestQueue receivedInterestQueue
+	receivedInterestQueue *receivedInterestQueue
 
-	receivedFetchQueue receivedFetchQueue
+	receivedFetchQueue *receivedFetchQueue
 
-	receivedInfoRequestQueue receivedInfoRequestQueue
+	receivedInfoRequestQueue *receivedInfoRequestQueue
 }

@@ -2,10 +2,9 @@ package moqt
 
 import (
 	"errors"
+	"strings"
 	"sync"
 )
-
-var defaultRelayManager = NewRelayManager()
 
 func NewRelayManager() *RelayManager {
 	return &RelayManager{
@@ -22,18 +21,138 @@ type RelayManager struct {
 	trackPathTree trackPathTree
 }
 
+func (rm *RelayManager) AddRelayer(trackPath string, relayer *Relayer) error {
+	trackParts := splitTrackPath(trackPath)
+
+	// Insert the track path to the tree
+	nameNode, err := rm.trackPathTree.insertTrackName(trackParts[:len(trackParts)-1], trackParts[len(trackParts)-1])
+	if nameNode == nil {
+		return err
+	}
+
+	nameNode.mu.Lock()
+	defer nameNode.mu.Unlock()
+
+	if nameNode.relayer != nil {
+		return ErrDuplicatedTrack
+	}
+
+	nameNode.relayer = relayer
+
+	return nil
+}
+
+func (rm *RelayManager) RemoveRelayer(trackPath string, relayer *Relayer) {
+	trackParts := splitTrackPath(trackPath)
+
+	// Trace the track path
+	prefixNode, ok := rm.trackPathTree.traceTrackPrefix(trackParts)
+	if !ok {
+		return
+	}
+
+	// Find the track name node
+	nameNode, ok := prefixNode.findTrackName(trackParts[len(trackParts)-1])
+	if !ok {
+		return
+	}
+
+	// Remove the track name node
+	nameNode.mu.Lock()
+	defer nameNode.mu.Unlock()
+
+	nameNode.relayer = nil
+
+	// Remove the track path if there is no track name node
+	if len(prefixNode.trackNames) == 0 {
+		rm.trackPathTree.removeTrackPrefix(trackParts)
+	}
+}
+
+func (rm *RelayManager) GetRelayer(trackPath string) *Relayer {
+	trackParts := splitTrackPath(trackPath)
+
+	// Trace the track path
+	prefixNode, ok := rm.trackPathTree.traceTrackPrefix(trackParts)
+	if !ok {
+		return nil
+	}
+
+	// Find the track name node
+	nameNode, ok := prefixNode.findTrackName(trackParts[len(trackParts)-1])
+	if !ok {
+		return nil
+	}
+
+	nameNode.mu.RLock()
+	defer nameNode.mu.RUnlock()
+
+	return nameNode.relayer
+}
+
+func (rm *RelayManager) AddInterest(trackPrefix string, interest *ReceivedInterest) error {
+	trackPrefixParts := splitTrackPath(trackPrefix)
+
+	// Trace the track path
+	prefixNode, ok := rm.trackPathTree.traceTrackPrefix(trackPrefixParts)
+	if !ok || prefixNode == nil {
+		return ErrTrackDoesNotExist
+	}
+
+	prefixNode.riMu.Lock()
+	defer prefixNode.riMu.Unlock()
+
+	prefixNode.interests = append(prefixNode.interests, interest)
+
+	return nil
+}
+
+func (rm *RelayManager) RemoveInterest(trackPrefix string, interest *ReceivedInterest) {
+	trackPrefixParts := splitTrackPath(trackPrefix)
+
+	// Trace the track path
+	prefixNode, ok := rm.trackPathTree.traceTrackPrefix(trackPrefixParts)
+	if !ok || prefixNode == nil {
+		return
+	}
+
+	prefixNode.riMu.Lock()
+	defer prefixNode.riMu.Unlock()
+
+	for i, ri := range prefixNode.interests {
+		if ri == interest {
+			prefixNode.interests = append(prefixNode.interests[:i], prefixNode.interests[i+1:]...)
+			break
+		}
+	}
+}
+
 type trackPathTree struct {
 	rootNode *trackPrefixNode
 }
 
-func (tree trackPathTree) insert(trackParts []string) (*trackPrefixNode, bool) {
+func (tree trackPathTree) insertTrackName(trackPrefixParts []string, trackName string) (*trackNameNode, error) {
+	// Trace the track prefix
+	prefixNode := tree.insertTrackPrefix(trackPrefixParts)
+
+	// Find the track name node
+	_, ok := prefixNode.findTrackName(trackName)
+	if ok {
+		return nil, ErrDuplicatedTrack
+	}
+
+	// Insert the track name node
+	return prefixNode.insertTrackName(trackName)
+}
+
+func (tree trackPathTree) insertTrackPrefix(trackPrefixParts []string) *trackPrefixNode {
 	// Set the current node to the root node
 	currentNode := tree.rootNode
 	//
 	var exists bool
 
 	// track the tree
-	for _, trackPart := range trackParts {
+	for _, trackPart := range trackPrefixParts {
 		// Verify the node has a child with the node value
 		var child *trackPrefixNode
 		child, exists = currentNode.children[trackPart]
@@ -52,20 +171,19 @@ func (tree trackPathTree) insert(trackParts []string) (*trackPrefixNode, bool) {
 		}
 	}
 
-	return currentNode, exists
+	return currentNode
 }
 
-func (tree trackPathTree) remove(tns []string) error {
-	_, err := tree.rootNode.removeDescendants(tns, 0)
+func (tree trackPathTree) removeTrackPrefix(trackPrefixParts []string) error {
+	_, err := tree.rootNode.removeDescendants(trackPrefixParts, 0)
 	return err
 }
 
-func (tree trackPathTree) trace(tns []string) (*trackPrefixNode, bool) {
-	return tree.rootNode.trace(tns...)
+func (tree trackPathTree) traceTrackPrefix(trackPrefixParts []string) (*trackPrefixNode, bool) {
+	return tree.rootNode.traceDescendant(trackPrefixParts)
 }
 
 type trackPrefixNode struct {
-	mu sync.RWMutex
 
 	/*
 	 * A Part of the Track Prefix
@@ -76,31 +194,31 @@ type trackPrefixNode struct {
 	 * Children of the node
 	 */
 	children map[string]*trackPrefixNode
+	cdMu     sync.RWMutex
 
 	/*
 	 * Track Name Nodes
 	 */
 	trackNames map[string]*trackNameNode
+	tnMu       sync.RWMutex
 
 	//
 	interests []*ReceivedInterest
+	riMu      sync.RWMutex
 }
 
 type trackNameNode struct {
-	relayer Relayer
+	trackNamePart string
+
+	relayer *Relayer
 
 	mu sync.RWMutex
-
-	trackNamePart string
 }
 
 func (node *trackPrefixNode) removeDescendants(tns []string, depth int) (bool, error) {
 	if node == nil {
 		return false, errors.New("track namespace not found at " + tns[depth])
 	}
-
-	node.mu.Lock()
-	defer node.mu.Unlock()
 
 	if depth > len(tns) {
 		return false, errors.New("invalid depth")
@@ -116,6 +234,8 @@ func (node *trackPrefixNode) removeDescendants(tns []string, depth int) (bool, e
 
 	value := tns[depth]
 
+	node.cdMu.RLock()
+	defer node.cdMu.RUnlock()
 	child, exists := node.children[value]
 
 	if !exists {
@@ -128,8 +248,6 @@ func (node *trackPrefixNode) removeDescendants(tns []string, depth int) (bool, e
 	}
 
 	if ok {
-		node.mu.Lock()
-		defer node.mu.Unlock()
 		delete(node.children, value)
 
 		return (len(node.children) == 0), nil
@@ -138,9 +256,9 @@ func (node *trackPrefixNode) removeDescendants(tns []string, depth int) (bool, e
 	return false, nil
 }
 
-func (node *trackPrefixNode) trace(values ...string) (*trackPrefixNode, bool) {
-	node.mu.RLock()
-	defer node.mu.RUnlock()
+func (node *trackPrefixNode) traceDescendant(values []string) (*trackPrefixNode, bool) {
+	node.cdMu.RLock()
+	defer node.cdMu.RUnlock()
 
 	currentNode := node
 	for _, nodeValue := range values {
@@ -158,8 +276,8 @@ func (node *trackPrefixNode) trace(values ...string) (*trackPrefixNode, bool) {
 }
 
 func (node *trackPrefixNode) findTrackName(trackName string) (*trackNameNode, bool) {
-	node.mu.RLock()
-	defer node.mu.RUnlock()
+	node.tnMu.RLock()
+	defer node.tnMu.RUnlock()
 
 	tnNode, ok := node.trackNames[trackName]
 	if !ok {
@@ -169,17 +287,23 @@ func (node *trackPrefixNode) findTrackName(trackName string) (*trackNameNode, bo
 	return tnNode, true
 }
 
-/*
- * Create a new Track Name node when a subscriber makes a new subscription
- *
- */
-func (tnsNode *trackPrefixNode) newTrackName(trackName string) *trackNameNode {
-	tnsNode.mu.Lock()
-	defer tnsNode.mu.Unlock()
+func (node *trackPrefixNode) insertTrackName(trackName string) (*trackNameNode, error) {
+	node.tnMu.Lock()
+	defer node.tnMu.Unlock()
 
-	tnsNode.trackNames[trackName] = &trackNameNode{
+	if _, ok := node.trackNames[trackName]; ok {
+		return nil, ErrDuplicatedTrack
+	}
+
+	trackNameNode := &trackNameNode{
 		trackNamePart: trackName,
 	}
 
-	return tnsNode.trackNames[trackName]
+	node.trackNames[trackName] = trackNameNode
+
+	return trackNameNode, nil
+}
+
+func splitTrackPath(trackPath string) []string {
+	return strings.Split(trackPath, "/")
 }

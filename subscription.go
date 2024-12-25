@@ -417,6 +417,13 @@ func (srs *ReceivedSubscription) Close() {
 	slog.Debug("closed a subscrbe receive stream", slog.Any("subscription", srs.Subscription))
 }
 
+func newReceivedSubscriptionQueue() *receivedSubscriptionQueue {
+	return &receivedSubscriptionQueue{
+		queue: make([]*ReceivedSubscription, 0),
+		ch:    make(chan struct{}, 1),
+	}
+}
+
 type receivedSubscriptionQueue struct {
 	queue []*ReceivedSubscription
 	mu    sync.Mutex

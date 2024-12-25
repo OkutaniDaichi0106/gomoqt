@@ -211,6 +211,13 @@ func (interest *ReceivedInterest) announceLive() error {
 	return nil
 }
 
+func newReceivedInterestQueue() *receivedInterestQueue {
+	return &receivedInterestQueue{
+		queue: make([]*ReceivedInterest, 0),
+		ch:    make(chan struct{}, 1),
+	}
+}
+
 type receivedInterestQueue struct {
 	queue []*ReceivedInterest
 	mu    sync.Mutex

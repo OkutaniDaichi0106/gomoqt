@@ -9,14 +9,20 @@ func Relay(RelayManager *RelayManager, sess ServerSession) {
 }
 
 type relayer interface {
-	AddDownstream(*Publisher)
+	Interest(Interest) (*SentInterest, error)
+
+	Subscribe(Subscription) (*SentSubscription, error)
+	Unsubscribe(*SentSubscription)
+
+	Fetch(Fetch) (DataReceiveStream, error)
+
+	RequestInfo(InfoRequest) (Info, error)
 }
 
 var _ relayer = (*Relayer)(nil)
 
-func NewRelayer(trackPath string, upstream Subscriber, buffSize int) *Relayer {
+func NewRelayer(upstream Subscriber, buffSize int) *Relayer {
 	return &Relayer{
-		trackPath:   trackPath,
 		upstream:    upstream,
 		downstreams: make([]*Publisher, 0),
 		BufferSize:  buffSize,
@@ -24,7 +30,7 @@ func NewRelayer(trackPath string, upstream Subscriber, buffSize int) *Relayer {
 }
 
 type Relayer struct {
-	trackPath string
+	//trackPath string
 
 	upstream Subscriber
 
@@ -36,14 +42,34 @@ type Relayer struct {
 	//CacheManager CacheManager
 }
 
-func (r *Relayer) AddDownstream(p *Publisher) {
+func (r *Relayer) Interest(interest Interest) (*SentInterest, error) {
+	return r.upstream.Interest(interest)
+}
+
+func (r *Relayer) Subscribe(sub Subscription) (*SentSubscription, error) {
+	return r.upstream.Subscribe(sub)
+}
+
+func (r *Relayer) Unsubscribe(sub *SentSubscription) {
+	r.upstream.Unsubscribe(sub)
+}
+
+func (r *Relayer) Fetch(fetch Fetch) (DataReceiveStream, error) {
+	return r.upstream.Fetch(fetch)
+}
+
+func (r *Relayer) RequestInfo(req InfoRequest) (Info, error) {
+	return r.upstream.RequestInfo(req)
+}
+
+func (r *Relayer) addDownstream(p *Publisher) {
 	r.dsMu.Lock()
 	defer r.dsMu.Unlock()
 
 	r.downstreams = append(r.downstreams, p)
 }
 
-func (r *Relayer) RemoveDownstream(p *Publisher) {
+func (r *Relayer) removeDownstream(p *Publisher) {
 	r.dsMu.Lock()
 	defer r.dsMu.Unlock()
 

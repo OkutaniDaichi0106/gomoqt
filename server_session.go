@@ -20,7 +20,7 @@ type ServerSession struct {
 	session
 }
 
-func (sess ServerSession) GoAway(uri string, timeout time.Duration) {
+func (sess *ServerSession) GoAway(uri string, timeout time.Duration) {
 	gam := message.GoAwayMessage{
 		NewSessionURI: uri,
 	}

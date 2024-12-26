@@ -13,8 +13,14 @@ type Group interface {
 	GroupSequence() GroupSequence
 	GroupPriority() GroupPriority
 }
+type ReceivedGroup interface {
+	Group
+	ReceivedAt() time.Time
+}
 
-type ReceivedGroup struct {
+var _ ReceivedGroup = (*receivedGroup)(nil)
+
+type receivedGroup struct {
 	subscribeID SubscribeID
 
 	groupSequence GroupSequence
@@ -28,19 +34,30 @@ type ReceivedGroup struct {
 	receivedAt time.Time // TODO:
 }
 
-func (g ReceivedGroup) SubscribeID() SubscribeID {
+func (g receivedGroup) SubscribeID() SubscribeID {
 	return g.subscribeID
 }
 
-func (g ReceivedGroup) GroupSequence() GroupSequence {
+func (g receivedGroup) GroupSequence() GroupSequence {
 	return g.groupSequence
 }
 
-func (g ReceivedGroup) GroupPriority() GroupPriority {
+func (g receivedGroup) GroupPriority() GroupPriority {
 	return g.groupPriority
 }
 
-type SentGroup struct {
+func (g receivedGroup) ReceivedAt() time.Time {
+	return g.receivedAt
+}
+
+type SentGroup interface {
+	Group
+	SentAt() time.Time
+}
+
+var _ SentGroup = (*sentGroup)(nil)
+
+type sentGroup struct {
 	subscribeID SubscribeID
 
 	groupSequence GroupSequence
@@ -54,29 +71,33 @@ type SentGroup struct {
 	sentAt time.Time // TODO:
 }
 
-func (g SentGroup) SubscribeID() SubscribeID {
+func (g sentGroup) SubscribeID() SubscribeID {
 	return g.subscribeID
 }
 
-func (g SentGroup) GroupSequence() GroupSequence {
+func (g sentGroup) GroupSequence() GroupSequence {
 	return g.groupSequence
 }
 
-func (g SentGroup) GroupPriority() GroupPriority {
+func (g sentGroup) GroupPriority() GroupPriority {
 	return g.groupPriority
 }
 
-func readGroup(r io.Reader) (ReceivedGroup, error) {
+func (g sentGroup) SentAt() time.Time {
+	return g.sentAt
+}
+
+func readGroup(r io.Reader) (receivedGroup, error) {
 	// Read a GROUP message
 	var gm message.GroupMessage
 	err := gm.Decode(r)
 	if err != nil {
 		slog.Error("failed to read a GROUP message", slog.String("error", err.Error()))
-		return ReceivedGroup{}, err
+		return receivedGroup{}, err
 	}
 
 	//
-	return ReceivedGroup{
+	return receivedGroup{
 		subscribeID:   SubscribeID(gm.SubscribeID),
 		groupSequence: GroupSequence(gm.GroupSequence),
 		groupPriority: GroupPriority(gm.GroupPriority),

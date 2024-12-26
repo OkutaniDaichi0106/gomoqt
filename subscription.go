@@ -323,7 +323,7 @@ func (rs *ReceivedSubscription) OpenDataStream(sequence GroupSequence, priority 
 
 	return dataSendStream{
 			SendStream: stream,
-			SentGroup: SentGroup{
+			sentGroup: sentGroup{
 				subscribeID:   rs.SubscribeID(),
 				groupSequence: sequence,
 				groupPriority: priority,
@@ -340,7 +340,7 @@ func (rs *ReceivedSubscription) SendDatagram(id SubscribeID, sequence GroupSeque
 
 	}
 
-	group := SentGroup{
+	group := sentGroup{
 		subscribeID:   id,
 		groupSequence: sequence,
 		groupPriority: priority,
@@ -356,7 +356,7 @@ func (rs *ReceivedSubscription) SendDatagram(id SubscribeID, sequence GroupSeque
 
 	return &sentDatagram{
 		payload:   payload,
-		SentGroup: group,
+		sentGroup: group,
 	}, nil
 }
 

@@ -223,7 +223,7 @@ func (s *Subscriber) Fetch(req Fetch) (DataReceiveStream, error) {
 
 	return dataReceiveStream{
 		ReceiveStream: stream,
-		ReceivedGroup: group,
+		receivedGroup: group,
 	}, nil
 }
 

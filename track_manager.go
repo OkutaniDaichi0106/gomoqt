@@ -6,8 +6,8 @@ import (
 	"sync"
 )
 
-func NewRelayManager() *RelayManager {
-	return &RelayManager{
+func NewRelayManager() *TrackManager {
+	return &TrackManager{
 		trackPathTree: trackPathTree{
 			rootNode: &trackPrefixNode{
 				trackPrefixPart: "",
@@ -17,11 +17,11 @@ func NewRelayManager() *RelayManager {
 	}
 }
 
-type RelayManager struct {
+type TrackManager struct {
 	trackPathTree trackPathTree
 }
 
-func (rm *RelayManager) AddRelayer(trackPath string, relayer *Relayer) error {
+func (rm *TrackManager) AddRelayer(trackPath string, relayer *Relayer) error {
 	trackParts := splitTrackPath(trackPath)
 
 	// Insert the track path to the tree
@@ -42,7 +42,7 @@ func (rm *RelayManager) AddRelayer(trackPath string, relayer *Relayer) error {
 	return nil
 }
 
-func (rm *RelayManager) RemoveRelayer(trackPath string, relayer *Relayer) {
+func (rm *TrackManager) RemoveRelayer(trackPath string, relayer *Relayer) {
 	trackParts := splitTrackPath(trackPath)
 
 	// Trace the track path
@@ -69,7 +69,7 @@ func (rm *RelayManager) RemoveRelayer(trackPath string, relayer *Relayer) {
 	}
 }
 
-func (rm *RelayManager) GetRelayer(trackPath string) *Relayer {
+func (rm *TrackManager) GetRelayer(trackPath string) *Relayer {
 	trackParts := splitTrackPath(trackPath)
 
 	// Trace the track path
@@ -90,7 +90,27 @@ func (rm *RelayManager) GetRelayer(trackPath string) *Relayer {
 	return nameNode.relayer
 }
 
-func (rm *RelayManager) AddInterest(trackPrefix string, interest *ReceivedInterest) error {
+func (rm *TrackManager) AddDownstream(trackPath string, downstream *ReceivedSubscription) error {
+	relayer := rm.GetRelayer(trackPath)
+	if relayer == nil {
+		return ErrTrackDoesNotExist
+	}
+
+	relayer.addDownstream(downstream)
+
+	return nil
+}
+
+func (rm *TrackManager) RemoveDownstream(trackPath string, downstream *ReceivedSubscription) {
+	relayer := rm.GetRelayer(trackPath)
+	if relayer == nil {
+		return
+	}
+
+	relayer.removeDownstream(downstream)
+}
+
+func (rm *TrackManager) AddInterest(trackPrefix string, interest *ReceivedInterest) error {
 	trackPrefixParts := splitTrackPath(trackPrefix)
 
 	// Trace the track path
@@ -107,7 +127,7 @@ func (rm *RelayManager) AddInterest(trackPrefix string, interest *ReceivedIntere
 	return nil
 }
 
-func (rm *RelayManager) RemoveInterest(trackPrefix string, interest *ReceivedInterest) {
+func (rm *TrackManager) RemoveInterest(trackPrefix string, interest *ReceivedInterest) {
 	trackPrefixParts := splitTrackPath(trackPrefix)
 
 	// Trace the track path

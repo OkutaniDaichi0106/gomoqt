@@ -10,14 +10,14 @@ import (
 
 type DataSendStream interface {
 	transport.SendStream
-	Group
+	SentGroup
 }
 
 var _ DataSendStream = (*dataSendStream)(nil)
 
 type dataSendStream struct {
 	transport.SendStream
-	SentGroup
+	sentGroup
 }
 
 func (stream dataSendStream) Write(buf []byte) (int, error) {
@@ -34,7 +34,7 @@ func (stream dataSendStream) Write(buf []byte) (int, error) {
 
 type DataReceiveStream interface {
 	transport.ReceiveStream
-	Group
+	ReceivedGroup
 }
 
 func newDataReceiveStream(stream transport.ReceiveStream) (DataReceiveStream, error) {
@@ -46,7 +46,7 @@ func newDataReceiveStream(stream transport.ReceiveStream) (DataReceiveStream, er
 
 	return &dataReceiveStream{
 		ReceiveStream: stream,
-		ReceivedGroup: group,
+		receivedGroup: group,
 	}, nil
 }
 
@@ -54,7 +54,7 @@ var _ DataReceiveStream = (*dataReceiveStream)(nil)
 
 type dataReceiveStream struct {
 	transport.ReceiveStream
-	ReceivedGroup
+	receivedGroup
 }
 
 func (stream dataReceiveStream) Read(buf []byte) (int, error) {

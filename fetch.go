@@ -98,7 +98,7 @@ func (fetch *ReceivedFetch) OpenDataStream(id SubscribeID, sequence GroupSequenc
 
 	return dataSendStream{
 		SendStream: fetch.stream,
-		SentGroup: SentGroup{
+		sentGroup: sentGroup{
 			subscribeID:   id,
 			groupSequence: sequence,
 			groupPriority: priority,

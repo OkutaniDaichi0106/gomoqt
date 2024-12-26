@@ -110,7 +110,7 @@ func openGroupStream(conn transport.Connection) (transport.SendStream, error) {
 	return stream, nil
 }
 
-func sendDatagram(conn transport.Connection, g SentGroup, payload []byte) error {
+func sendDatagram(conn transport.Connection, g sentGroup, payload []byte) error {
 	if g.groupSequence == 0 {
 		return errors.New("0 sequence number")
 	}

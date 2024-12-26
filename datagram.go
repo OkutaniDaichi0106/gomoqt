@@ -8,9 +8,9 @@ import (
 )
 
 type ReceivedDatagram interface {
-	io.Reader
+	// io.Reader
 	Payload() []byte
-	Group
+	ReceivedGroup
 }
 
 func newReceivedDatagram(datagram []byte) (ReceivedDatagram, error) {
@@ -25,7 +25,7 @@ func newReceivedDatagram(datagram []byte) (ReceivedDatagram, error) {
 	}
 
 	return &receivedDatagram{
-		ReceivedGroup: group,
+		receivedGroup: group,
 		payload:       datagram[len(datagram)-reader.Len():],
 	}, nil
 }
@@ -33,7 +33,7 @@ func newReceivedDatagram(datagram []byte) (ReceivedDatagram, error) {
 var _ ReceivedDatagram = (*receivedDatagram)(nil)
 
 type receivedDatagram struct {
-	ReceivedGroup
+	receivedGroup
 	payload []byte
 }
 
@@ -41,9 +41,9 @@ func (d receivedDatagram) Payload() []byte {
 	return d.payload
 }
 
-func (d receivedDatagram) Read(buf []byte) (int, error) {
-	return copy(buf, d.payload), nil
-}
+// func (d receivedDatagram) Read(buf []byte) (int, error) {
+// 	return copy(buf, d.payload), nil
+// }
 
 type receivedDatagramQueue struct {
 	mu    sync.Mutex
@@ -104,7 +104,7 @@ type SentDatagram interface {
 var _ SentDatagram = (*sentDatagram)(nil)
 
 type sentDatagram struct {
-	SentGroup
+	sentGroup
 	payload []byte
 }
 

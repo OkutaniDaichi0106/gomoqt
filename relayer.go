@@ -9,29 +9,43 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/internal/transport"
 )
 
-type relayer interface {
-	relay()
-}
-
-var _ relayer = (*Relayer)(nil)
-
-func NewRelayer(upstream *SentSubscription) *Relayer {
+func NewRelayer(bufferSize int) *Relayer {
 	relayer := &Relayer{
-		upstream: upstream,
+		servingTrackNames: make(map[SubscribeID]string),
+		upstream:          make(map[string]*SentSubscription),
+		downstreams:       make(map[string][]*ReceivedSubscription),
+		dataQueue:         make(dataQueue, 0, 1<<4),
+		ch:                make(chan struct{}, 1),
+		BufferSize:        bufferSize,
 	}
 
-	relayer.init()
+	// Initialize the relayer
+	relayer.run()
 
 	return relayer
 }
 
 type Relayer struct {
-	// The upstream
-	upstream map[SubscribeID]*SentSubscription
+	// Track Namespace
+	servingTrackNames map[SubscribeID]string
 
-	// The downstreams
-	downstreams map[SubscribeID][]*ReceivedSubscription
+	/*
+	 * The upstream
+	 * Track Name -> Sent Subscription
+	 */
+	upstream map[string]*SentSubscription
+	usMu     sync.RWMutex
+
+	/*
+	 * The downstreams
+	 * The key is the upstream's subscribe ID
+	 * Track Name -> downstreams
+	 */
+	downstreams map[string][]*ReceivedSubscription
 	dsMu        sync.RWMutex
+
+	// The track aliases
+	// trackAliases map[string]SubscribeID
 
 	// The data queue
 	dataQueue dataQueue
@@ -41,11 +55,62 @@ type Relayer struct {
 	BufferSize int
 }
 
-func (r *Relayer) init() {
-	r.downstreams = make(map[SubscribeID][]*ReceivedSubscription)
-	r.dataQueue = make(dataQueue, 0, 1<<4)
-	r.ch = make(chan struct{}, 1)
+func (r *Relayer) addUpstream(trackName string, upstream *SentSubscription) {
+	r.usMu.Lock()
+	defer r.usMu.Unlock()
 
+	r.servingTrackNames[upstream.SubscribeID()] = trackName
+
+	r.upstream[trackName] = upstream
+}
+
+func (r *Relayer) removeUpstream(trackName string) {
+	r.usMu.Lock()
+	defer r.usMu.Unlock()
+
+	delete(r.upstream, trackName)
+}
+
+func (r *Relayer) addDownstream(trackName string, downstream *ReceivedSubscription) {
+	r.dsMu.Lock()
+	defer r.dsMu.Unlock()
+
+	// Get the downstreams
+	downstreams, ok := r.downstreams[trackName]
+	if !ok {
+		downstreams = make([]*ReceivedSubscription, 0, 1)
+	}
+
+	// Append the downstream
+	downstreams = append(downstreams, downstream)
+
+	// Update the downstreams
+	r.downstreams[trackName] = downstreams
+}
+
+func (r *Relayer) removeDownstream(trackName string, downstream *ReceivedSubscription) {
+	r.dsMu.Lock()
+	defer r.dsMu.Unlock()
+
+	// Get the downstreams
+	downstreams, ok := r.downstreams[trackName]
+	if !ok {
+		return
+	}
+
+	// Remove the downstream
+	for i, ds := range downstreams {
+		if ds == downstream {
+			downstreams = append(downstreams[:i], downstreams[i+1:]...)
+			break
+		}
+	}
+
+	// Update the downstreams
+	r.downstreams[trackName] = downstreams
+}
+
+func (r *Relayer) run() {
 	ctx := context.TODO() // TODO: context
 
 	// Listen for data streams
@@ -144,99 +209,81 @@ func (r *Relayer) distribute(ctx context.Context) {
 
 	// Distribute data
 	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-			if r.dataQueue.Len() > 0 {
-				data := r.dataQueue.Pop().(dataFragment)
-				switch data.(type) {
-				case *streamDataFragment:
-					streamID := data.(*streamDataFragment).StreamID()
+		if r.dataQueue.Len() > 0 {
+			// Dequeue the data
+			data := r.dataQueue.Pop().(dataFragment)
 
-					subscriptions, ok := r.downstreams[data.SubscribeID()]
-					if !ok || len(subscriptions) == 0 {
-						slog.Error("no downstreams", slog.Any("subscribeID", data.SubscribeID()))
-						continue
-					}
+			trackName, ok := r.servingTrackNames[data.SubscribeID()]
+			if !ok {
+				slog.Error("track does not exist", slog.Any("subscribeID", data.SubscribeID()))
+				continue
+			}
 
-					// Verify if streams with the same ID exist
-					streams, ok := allStreams[streamID]
-					if !ok {
-						if len(streams) == 0 {
-							streams = make([]DataSendStream, 0, len(subscriptions))
-						}
+			// Get the downstreams for the subscribe ID
+			subscriptions, ok := r.downstreams[trackName]
+			if !ok || len(subscriptions) == 0 {
+				slog.Error("no downstreams", slog.Any("subscribeID", data.SubscribeID()))
+				continue
+			}
 
-						for _, rs := range subscriptions {
-							// Open a new data stream
-							stream, err := rs.OpenDataStream(data.GroupSequence(), data.GroupPriority())
-							if err != nil {
-								slog.Error("failed to open a data stream", slog.String("error", err.Error()))
-								continue
-							}
-
-							streams = append(streams, stream)
-						}
-					}
-
-					// Write the data to the stream
-					for _, stream := range streams {
-						go func(stream DataSendStream) {
-							// Write the data to the stream
-							_, err := stream.Write(data.Payload())
-							if err != nil {
-								slog.Error("failed to write data to the stream", slog.String("error", err.Error()))
-								return
-							}
-						}(stream)
-					}
-
-				case *datagramData:
-					subscriptions, ok := r.downstreams[data.SubscribeID()]
-					if !ok || len(subscriptions) == 0 {
-						slog.Error("no downstreams", slog.Any("subscribeID", data.SubscribeID()))
-						continue
+			// Handle the data
+			switch data := data.(type) {
+			case *streamDataFragment:
+				// Verify if servingStreams with the same ID exist
+				servingStreams, ok := allStreams[data.StreamID()]
+				if !ok {
+					if len(servingStreams) == 0 {
+						servingStreams = make([]DataSendStream, 0, len(subscriptions))
 					}
 
 					for _, rs := range subscriptions {
-						// Send the data to the downstream
-						_, err := rs.SendDatagram(data.SubscribeID(), data.GroupSequence(), data.GroupPriority(), data.Payload())
+						// Open a new data stream
+						stream, err := rs.OpenDataStream(data.GroupSequence(), data.GroupPriority())
+						if err != nil {
+							slog.Error("failed to open a data stream", slog.String("error", err.Error()))
+							continue
+						}
+
+						// Append the stream
+						servingStreams = append(servingStreams, stream)
+					}
+
+					// Register the streams
+					allStreams[data.StreamID()] = servingStreams
+				}
+
+				// Write the data to the stream
+				for _, stream := range servingStreams {
+					go func(stream DataSendStream) {
+						// Write the data to the stream
+						_, err := stream.Write(data.Payload())
 						if err != nil {
 							slog.Error("failed to write data to the stream", slog.String("error", err.Error()))
 							return
 						}
+					}(stream)
+				}
+
+			case *datagramData:
+
+				for _, subscription := range subscriptions {
+					// Send the data to the downstream
+					_, err := subscription.SendDatagram(data.SubscribeID(), data.GroupSequence(), data.GroupPriority(), data.Payload())
+					if err != nil {
+						slog.Error("failed to write data to the stream", slog.String("error", err.Error()))
+						return
 					}
 				}
 			}
-			select {
-			case <-r.ch:
-				continue
-			}
 		}
-	}
-}
 
-func (r *Relayer) addDownstream(rs *ReceivedSubscription) {
-	r.dsMu.Lock()
-	defer r.dsMu.Unlock()
-
-	r.downstreams[rs.SubscribeID()] = append(r.downstreams[rs.SubscribeID()], rs)
-}
-
-func (r *Relayer) removeDownstream(rs *ReceivedSubscription) {
-	r.dsMu.Lock()
-	defer r.dsMu.Unlock()
-
-	subscriptions, ok := r.downstreams[rs.SubscribeID()]
-	if !ok || len(subscriptions) == 0 {
-		return
-	}
-
-	for i, subscription := range subscriptions {
-		if subscription == rs {
-			subscriptions = append(subscriptions[:i], subscriptions[i+1:]...)
-			r.downstreams[rs.SubscribeID()] = subscriptions
-			break
+		// Wait for the next data
+		select {
+		case <-ctx.Done():
+			return
+		case <-r.ch:
+			continue
+		default:
 		}
 	}
 }

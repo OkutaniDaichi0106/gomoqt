@@ -90,25 +90,25 @@ func (rm *TrackManager) GetRelayer(trackPath string) *Relayer {
 	return nameNode.relayer
 }
 
-func (rm *TrackManager) AddDownstream(trackPath string, downstream *ReceivedSubscription) error {
-	relayer := rm.GetRelayer(trackPath)
-	if relayer == nil {
-		return ErrTrackDoesNotExist
-	}
+// func (rm *TrackManager) AddDownstream(trackPath string, downstream *ReceivedSubscription) error {
+// 	relayer := rm.GetRelayer(trackPath)
+// 	if relayer == nil {
+// 		return ErrTrackDoesNotExist
+// 	}
 
-	relayer.addDownstream(downstream)
+// 	relayer.addDownstream(downstream)
 
-	return nil
-}
+// 	return nil
+// }
 
-func (rm *TrackManager) RemoveDownstream(trackPath string, downstream *ReceivedSubscription) {
-	relayer := rm.GetRelayer(trackPath)
-	if relayer == nil {
-		return
-	}
+// func (rm *TrackManager) RemoveDownstream(trackPath string, downstream *ReceivedSubscription) {
+// 	relayer := rm.GetRelayer(trackPath)
+// 	if relayer == nil {
+// 		return
+// 	}
 
-	relayer.removeDownstream(downstream)
-}
+// 	relayer.removeDownstream(downstream)
+// }
 
 func (rm *TrackManager) AddInterest(trackPrefix string, interest *ReceivedInterest) error {
 	trackPrefixParts := splitTrackPath(trackPrefix)

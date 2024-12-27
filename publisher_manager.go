@@ -9,6 +9,8 @@ func newPublisherManager() *publisherManager {
 		receivedFetchQueue: newReceivedFetchQueue(),
 
 		receivedInfoRequestQueue: newReceivedInfoRequestQueue(),
+
+		acceptedSubscriptions: make(map[SubscribeID]*ReceivedSubscription),
 	}
 }
 
@@ -22,4 +24,7 @@ type publisherManager struct {
 	receivedFetchQueue *receivedFetchQueue
 
 	receivedInfoRequestQueue *receivedInfoRequestQueue
+
+	//
+	acceptedSubscriptions map[SubscribeID]*ReceivedSubscription
 }

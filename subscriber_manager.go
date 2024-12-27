@@ -13,10 +13,6 @@ func newSubscriberManager() *subscriberManager {
 }
 
 type subscriberManager struct {
-	//dataReceiveStreamQueue dataReceiveStreamQueue
-
-	//receivedDatagramQueue receivedDatagramQueue
-
 	sentSubscritpions map[SubscribeID]*SentSubscription
 	ssMu              sync.Mutex
 

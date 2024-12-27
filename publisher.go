@@ -47,12 +47,15 @@ func (p *Publisher) AcceptInterest(ctx context.Context) (*ReceivedInterest, erro
 func (p *Publisher) AcceptSubscription(ctx context.Context) (*ReceivedSubscription, error) {
 	for {
 		if p.receivedSubscriptionQueue.Len() != 0 {
-			stream := p.receivedSubscriptionQueue.Dequeue()
+			subscription := p.receivedSubscriptionQueue.Dequeue()
 
 			// Set the Connection
-			stream.conn = p.sess.conn
+			subscription.conn = p.sess.conn
 
-			return stream, nil
+			//
+			p.acceptedSubscriptions[subscription.SubscribeID()] = subscription
+
+			return subscription, nil
 		}
 		select {
 		case <-ctx.Done():

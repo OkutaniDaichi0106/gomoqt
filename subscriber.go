@@ -12,7 +12,7 @@ type subscriber interface {
 	Interest(Interest) (*SentInterest, error)
 
 	Subscribe(Subscription) (*SentSubscription, error)
-	Unsubscribe(*SentSubscription)
+	// Unsubscribe(*SentSubscription)
 
 	Fetch(Fetch) (DataReceiveStream, error)
 

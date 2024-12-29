@@ -12,6 +12,19 @@ type session struct {
 	conn   transport.Connection
 	stream SessionStream
 
+	//
+	receivedSubscriptionQueue *receivedSubscriptionQueue
+
+	receivedInterestQueue *receivedInterestQueue
+
+	receivedFetchQueue *receivedFetchQueue
+
+	receivedInfoRequestQueue *receivedInfoRequestQueue
+
+	dataReceiveStreamQueue map[SubscribeID]*dataReceiveStreamQueue
+
+	receivedDatagramQueue map[SubscribeID]*receivedDatagramQueue
+
 	publisherManager  *publisherManager
 	subscriberManager *subscriberManager
 }

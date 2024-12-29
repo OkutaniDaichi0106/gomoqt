@@ -10,7 +10,7 @@ func newPublisherManager() *publisherManager {
 
 		receivedInfoRequestQueue: newReceivedInfoRequestQueue(),
 
-		acceptedSubscriptions: make(map[SubscribeID]*ReceivedSubscription),
+		// acceptedSubscriptions: make(map[SubscribeID]*ReceivedSubscription),
 	}
 }
 
@@ -26,5 +26,5 @@ type publisherManager struct {
 	receivedInfoRequestQueue *receivedInfoRequestQueue
 
 	//
-	acceptedSubscriptions map[SubscribeID]*ReceivedSubscription
+	// acceptedSubscriptions map[SubscribeID]*ReceivedSubscription
 }

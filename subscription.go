@@ -296,14 +296,14 @@ func (rs *ReceivedSubscription) listenUpdate() {
 	}
 }
 
-func (rs *ReceivedSubscription) OpenDataStream(sequence GroupSequence, priority GroupPriority) (DataSendStream, error) {
+func (rs *Subscriber) OpenDataStream(sequence GroupSequence, priority GroupPriority) (DataSendStream, error) {
 	// Verify
 	if sequence == 0 {
 		return nil, errors.New("0 sequence number")
 	}
 
 	// Open
-	stream, err := openGroupStream(rs.conn)
+	stream, err := openGroupStream(rs.sess.conn)
 	if err != nil {
 		slog.Error("failed to open a group stream", slog.String("error", err.Error()))
 		return nil, err

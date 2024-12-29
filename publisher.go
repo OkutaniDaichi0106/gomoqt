@@ -52,9 +52,6 @@ func (p *Publisher) AcceptSubscription(ctx context.Context) (*ReceivedSubscripti
 			// Set the Connection
 			subscription.conn = p.sess.conn
 
-			//
-			p.acceptedSubscriptions[subscription.SubscribeID()] = subscription
-
 			return subscription, nil
 		}
 		select {

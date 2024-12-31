@@ -10,82 +10,14 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/internal/transport"
 )
 
-type publisher interface {
-	AcceptInterest(context.Context) (*ReceivedInterest, error)
+type Publisher interface {
+	AcceptInterest(context.Context) (*SendAnnounceStream, error)
 
-	AcceptSubscription(context.Context) (*ReceivedSubscription, error)
+	AcceptSubscription(context.Context) (*ReceivedSubscribeStream, error)
 
 	AcceptFetch(context.Context) (*ReceivedFetch, error)
 
-	AcceptInfoRequest(context.Context) (*ReceivedInfoRequest, error)
-}
-
-var _ publisher = (*Publisher)(nil)
-
-type Publisher struct {
-	sess *session
-
-	/*
-	 *
-	 */
-	*publisherManager
-}
-
-func (p *Publisher) AcceptInterest(ctx context.Context) (*ReceivedInterest, error) {
-	for {
-		if p.receivedSubscriptionQueue.Len() != 0 {
-			return p.receivedInterestQueue.Dequeue(), nil
-		}
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-p.receivedInterestQueue.Chan():
-		}
-	}
-}
-
-func (p *Publisher) AcceptSubscription(ctx context.Context) (*ReceivedSubscription, error) {
-	for {
-		if p.receivedSubscriptionQueue.Len() != 0 {
-			subscription := p.receivedSubscriptionQueue.Dequeue()
-
-			// Set the Connection
-			subscription.conn = p.sess.conn
-
-			return subscription, nil
-		}
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-p.receivedInterestQueue.Chan():
-		}
-	}
-}
-
-func (p *Publisher) AcceptFetch(ctx context.Context) (*ReceivedFetch, error) {
-	for {
-		if p.receivedFetchQueue.Len() != 0 {
-			return p.receivedFetchQueue.Dequeue(), nil
-		}
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-p.receivedFetchQueue.Chan():
-		}
-	}
-}
-
-func (p *Publisher) AcceptInfoRequest(ctx context.Context) (*ReceivedInfoRequest, error) {
-	for {
-		if p.receivedInfoRequestQueue.Len() != 0 {
-			return p.receivedInfoRequestQueue.Dequeue(), nil
-		}
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-p.receivedInfoRequestQueue.Chan():
-		}
-	}
+	AcceptInfoRequest(context.Context) (*SendInfoStream, error)
 }
 
 func openGroupStream(conn transport.Connection) (transport.SendStream, error) {
@@ -147,7 +79,7 @@ func sendDatagram(conn transport.Connection, g sentGroup, payload []byte) error 
 	return nil
 }
 
-func newReceivedInterest(stream transport.Stream) (*ReceivedInterest, error) {
+func newReceivedInterest(stream transport.Stream) (*SendAnnounceStream, error) {
 	// Get an Interest
 	interest, err := readInterest(stream)
 	if err != nil {
@@ -155,7 +87,7 @@ func newReceivedInterest(stream transport.Stream) (*ReceivedInterest, error) {
 		return nil, err
 	}
 
-	return &ReceivedInterest{
+	return &SendAnnounceStream{
 		Interest:     interest,
 		activeTracks: make(map[string]Track),
 		stream:       stream,

@@ -95,7 +95,7 @@ func main() {
 				return
 			}
 
-			go func(stream moqt.DataReceiveStream) {
+			go func(stream moqt.ReceiveDataStream) {
 				for {
 					buf := make([]byte, 1024)
 					n, err := stream.Read(buf)

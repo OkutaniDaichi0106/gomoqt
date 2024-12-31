@@ -7,20 +7,19 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 )
 
-type serverSession interface {
-	Publisher() *Publisher
-	Subscriber() *Subscriber
+type ServerSession interface {
+	Session
 	Terminate(error)
 	GoAway(string /* New Session URI */, time.Duration /* Timeout to terminate */)
 }
 
-var _ serverSession = (*ServerSession)(nil)
+// var _ serverSession = (*ServerSession)(nil)
 
-type ServerSession struct {
+type serverSession struct {
 	session
 }
 
-func (sess *ServerSession) GoAway(uri string, timeout time.Duration) {
+func (sess *serverSession) GoAway(uri string, timeout time.Duration) {
 	gam := message.GoAwayMessage{
 		NewSessionURI: uri,
 	}

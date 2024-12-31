@@ -110,7 +110,7 @@ func (rm *TrackManager) GetRelayer(trackPath string) *Relayer {
 // 	relayer.removeDownstream(downstream)
 // }
 
-func (rm *TrackManager) AddInterest(trackPrefix string, interest *ReceivedInterest) error {
+func (rm *TrackManager) AddInterest(trackPrefix string, interest *SendAnnounceStream) error {
 	trackPrefixParts := splitTrackPath(trackPrefix)
 
 	// Trace the track path
@@ -127,7 +127,7 @@ func (rm *TrackManager) AddInterest(trackPrefix string, interest *ReceivedIntere
 	return nil
 }
 
-func (rm *TrackManager) RemoveInterest(trackPrefix string, interest *ReceivedInterest) {
+func (rm *TrackManager) RemoveInterest(trackPrefix string, interest *SendAnnounceStream) {
 	trackPrefixParts := splitTrackPath(trackPrefix)
 
 	// Trace the track path
@@ -223,7 +223,7 @@ type trackPrefixNode struct {
 	tnMu       sync.RWMutex
 
 	//
-	interests []*ReceivedInterest
+	interests []*SendAnnounceStream
 	riMu      sync.RWMutex
 }
 

@@ -13,7 +13,7 @@ type Interest struct {
 	Parameters  Parameters
 }
 
-type SentInterest struct {
+type ReceiveAnnounceStream struct {
 	Interest
 	/*
 	 * Sent announcements
@@ -24,7 +24,7 @@ type SentInterest struct {
 	mu     sync.RWMutex
 }
 
-func (interest *SentInterest) NextActiveTracks() (*Tracks, error) {
+func (interest *ReceiveAnnounceStream) NextActiveTracks() (*Tracks, error) {
 	interest.mu.Lock()
 	defer interest.mu.Unlock()
 
@@ -75,7 +75,7 @@ func (interest *SentInterest) NextActiveTracks() (*Tracks, error) {
 	return &interest.active, nil
 }
 
-type ReceivedInterest struct {
+type SendAnnounceStream struct {
 	Interest
 	/*
 	 * Sent announcements
@@ -86,7 +86,7 @@ type ReceivedInterest struct {
 	mu           sync.RWMutex
 }
 
-func (interest *ReceivedInterest) Announce(tracks *Tracks) error {
+func (interest *SendAnnounceStream) Announce(tracks *Tracks) error {
 	interest.mu.Lock()
 	defer interest.mu.Unlock()
 
@@ -134,7 +134,7 @@ func (interest *ReceivedInterest) Announce(tracks *Tracks) error {
 	return nil
 }
 
-func (interest *ReceivedInterest) announceActiveTrack(track Track) error {
+func (interest *SendAnnounceStream) announceActiveTrack(track Track) error {
 	// Verify if the track path has the track prefix
 	if !strings.HasPrefix(track.TrackPath, interest.TrackPrefix) {
 		return ErrInternalError
@@ -166,7 +166,7 @@ func (interest *ReceivedInterest) announceActiveTrack(track Track) error {
 	return nil
 }
 
-func (interest *ReceivedInterest) announceEndedTrack(track Track) error {
+func (interest *SendAnnounceStream) announceEndedTrack(track Track) error {
 	// Verify if the track path has the track prefix
 	if !strings.HasPrefix(track.TrackPath, interest.TrackPrefix) {
 		return ErrInternalError
@@ -197,7 +197,7 @@ func (interest *ReceivedInterest) announceEndedTrack(track Track) error {
 	return nil
 }
 
-func (interest *ReceivedInterest) announceLive() error {
+func (interest *SendAnnounceStream) announceLive() error {
 	ann := Announcement{
 		status: ACTIVE,
 	}
@@ -213,13 +213,13 @@ func (interest *ReceivedInterest) announceLive() error {
 
 func newReceivedInterestQueue() *receivedInterestQueue {
 	return &receivedInterestQueue{
-		queue: make([]*ReceivedInterest, 0),
+		queue: make([]*SendAnnounceStream, 0),
 		ch:    make(chan struct{}, 1),
 	}
 }
 
 type receivedInterestQueue struct {
-	queue []*ReceivedInterest
+	queue []*SendAnnounceStream
 	mu    sync.Mutex
 	ch    chan struct{}
 }
@@ -232,7 +232,7 @@ func (q *receivedInterestQueue) Chan() <-chan struct{} {
 	return q.ch
 }
 
-func (q *receivedInterestQueue) Enqueue(interest *ReceivedInterest) {
+func (q *receivedInterestQueue) Enqueue(interest *SendAnnounceStream) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -244,7 +244,7 @@ func (q *receivedInterestQueue) Enqueue(interest *ReceivedInterest) {
 	}
 }
 
-func (q *receivedInterestQueue) Dequeue() *ReceivedInterest {
+func (q *receivedInterestQueue) Dequeue() *SendAnnounceStream {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 

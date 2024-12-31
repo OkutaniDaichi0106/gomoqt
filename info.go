@@ -16,7 +16,7 @@ import (
 // }
 
 type InfoRequestHandler interface {
-	HandleInfoRequest(InfoRequest, *Info, ReceivedInfoRequest)
+	HandleInfoRequest(InfoRequest, *Info, SendInfoStream)
 }
 
 type InfoRequest struct {
@@ -30,26 +30,26 @@ type Info struct {
 	GroupExpires        time.Duration
 }
 
-func newReceivedInfoRequest(stream transport.Stream) (*ReceivedInfoRequest, error) {
+func newReceivedInfoRequest(stream transport.Stream) (*SendInfoStream, error) {
 	req, err := readInfoRequest(stream)
 	if err != nil {
 		slog.Error("failed to get a info-request", slog.String("error", err.Error()))
 		return nil, err
 	}
 
-	return &ReceivedInfoRequest{
+	return &SendInfoStream{
 		InfoRequest: req,
 		stream:      stream,
 	}, nil
 }
 
-type ReceivedInfoRequest struct {
+type SendInfoStream struct {
 	InfoRequest
 	stream transport.Stream
 	mu     sync.Mutex
 }
 
-func (req *ReceivedInfoRequest) Inform(i Info) {
+func (req *SendInfoStream) Inform(i Info) {
 	req.mu.Lock()
 	defer req.mu.Unlock()
 
@@ -72,7 +72,7 @@ func (req *ReceivedInfoRequest) Inform(i Info) {
 	req.Close()
 }
 
-func (req *ReceivedInfoRequest) CloseWithError(err error) error {
+func (req *SendInfoStream) CloseWithError(err error) error {
 	req.mu.Lock()
 	defer req.mu.Unlock()
 
@@ -105,7 +105,7 @@ func (req *ReceivedInfoRequest) CloseWithError(err error) error {
 	return nil
 }
 
-func (req *ReceivedInfoRequest) Close() error {
+func (req *SendInfoStream) Close() error {
 	req.mu.Lock()
 	defer req.mu.Unlock()
 
@@ -114,13 +114,13 @@ func (req *ReceivedInfoRequest) Close() error {
 
 func newReceivedInfoRequestQueue() *receivedInfoRequestQueue {
 	return &receivedInfoRequestQueue{
-		queue: make([]*ReceivedInfoRequest, 0),
+		queue: make([]*SendInfoStream, 0),
 		ch:    make(chan struct{}),
 	}
 }
 
 type receivedInfoRequestQueue struct {
-	queue []*ReceivedInfoRequest
+	queue []*SendInfoStream
 	mu    sync.Mutex
 	ch    chan struct{}
 }
@@ -132,14 +132,14 @@ func (q *receivedInfoRequestQueue) Len() int {
 	return len(q.queue)
 }
 
-func (q *receivedInfoRequestQueue) Enqueue(req *ReceivedInfoRequest) {
+func (q *receivedInfoRequestQueue) Enqueue(req *SendInfoStream) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	q.queue = append(q.queue, req)
 }
 
-func (q *receivedInfoRequestQueue) Dequeue() *ReceivedInfoRequest {
+func (q *receivedInfoRequestQueue) Dequeue() *SendInfoStream {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 

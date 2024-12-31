@@ -12,8 +12,8 @@ import (
 func NewRelayer(bufferSize int) *Relayer {
 	relayer := &Relayer{
 		servingTrackNames: make(map[SubscribeID]string),
-		upstream:          make(map[string]*SentSubscription),
-		downstreams:       make(map[string][]*ReceivedSubscription),
+		upstream:          make(map[string]*SendSubscribeStream),
+		downstreams:       make(map[string][]*ReceivedSubscribeStream),
 		dataQueue:         make(dataQueue, 0, 1<<4),
 		ch:                make(chan struct{}, 1),
 		BufferSize:        bufferSize,
@@ -33,7 +33,7 @@ type Relayer struct {
 	 * The upstream
 	 * Track Name -> Sent Subscription
 	 */
-	upstream map[string]*SentSubscription
+	upstream map[string]*SendSubscribeStream
 	usMu     sync.RWMutex
 
 	/*
@@ -41,7 +41,7 @@ type Relayer struct {
 	 * The key is the upstream's subscribe ID
 	 * Track Name -> downstreams
 	 */
-	downstreams map[string][]*ReceivedSubscription
+	downstreams map[string][]*ReceivedSubscribeStream
 	dsMu        sync.RWMutex
 
 	// The track aliases
@@ -55,7 +55,7 @@ type Relayer struct {
 	BufferSize int
 }
 
-func (r *Relayer) addUpstream(trackName string, upstream *SentSubscription) {
+func (r *Relayer) addUpstream(trackName string, upstream *SendSubscribeStream) {
 	r.usMu.Lock()
 	defer r.usMu.Unlock()
 
@@ -71,14 +71,14 @@ func (r *Relayer) removeUpstream(trackName string) {
 	delete(r.upstream, trackName)
 }
 
-func (r *Relayer) addDownstream(trackName string, downstream *ReceivedSubscription) {
+func (r *Relayer) addDownstream(trackName string, downstream *ReceivedSubscribeStream) {
 	r.dsMu.Lock()
 	defer r.dsMu.Unlock()
 
 	// Get the downstreams
 	downstreams, ok := r.downstreams[trackName]
 	if !ok {
-		downstreams = make([]*ReceivedSubscription, 0, 1)
+		downstreams = make([]*ReceivedSubscribeStream, 0, 1)
 	}
 
 	// Append the downstream
@@ -88,7 +88,7 @@ func (r *Relayer) addDownstream(trackName string, downstream *ReceivedSubscripti
 	r.downstreams[trackName] = downstreams
 }
 
-func (r *Relayer) removeDownstream(trackName string, downstream *ReceivedSubscription) {
+func (r *Relayer) removeDownstream(trackName string, downstream *ReceivedSubscribeStream) {
 	r.dsMu.Lock()
 	defer r.dsMu.Unlock()
 
@@ -126,7 +126,7 @@ func (r *Relayer) run() {
 func (r *Relayer) listenStreamData(ctx context.Context) {
 	for {
 		for _, subscription := range r.upstream {
-			go func(subscription *SentSubscription) {
+			go func(subscription *SendSubscribeStream) {
 				// Receive data from the upstream
 				stream, err := subscription.AcceptDataStream(ctx)
 				if err != nil {
@@ -134,7 +134,7 @@ func (r *Relayer) listenStreamData(ctx context.Context) {
 					return
 				}
 
-				go func(stream DataReceiveStream) {
+				go func(stream ReceiveDataStream) {
 					for {
 						buf := make([]byte, r.BufferSize*(1<<10))
 						// Read the data from the stream
@@ -173,7 +173,7 @@ func (r *Relayer) listenStreamData(ctx context.Context) {
 func (r *Relayer) listenDatagram(ctx context.Context) {
 	for {
 		for _, subscription := range r.upstream {
-			go func(subscription *SentSubscription) {
+			go func(subscription *SendSubscribeStream) {
 				// Receive data from the upstream
 				datagram, err := subscription.AcceptDatagram(ctx)
 				if err != nil {

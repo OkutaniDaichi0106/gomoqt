@@ -32,12 +32,12 @@ func (stream dataSendStream) Write(buf []byte) (int, error) {
 	return len(buf), nil
 }
 
-type DataReceiveStream interface {
+type ReceiveDataStream interface {
 	transport.ReceiveStream
 	ReceivedGroup
 }
 
-func newDataReceiveStream(stream transport.ReceiveStream) (DataReceiveStream, error) {
+func newReceiveDataStream(stream transport.ReceiveStream) (ReceiveDataStream, error) {
 	group, err := readGroup(stream)
 	if err != nil {
 		slog.Error("failed to get a group", slog.String("error", err.Error()))
@@ -50,7 +50,7 @@ func newDataReceiveStream(stream transport.ReceiveStream) (DataReceiveStream, er
 	}, nil
 }
 
-var _ DataReceiveStream = (*dataReceiveStream)(nil)
+var _ ReceiveDataStream = (*dataReceiveStream)(nil)
 
 type dataReceiveStream struct {
 	transport.ReceiveStream
@@ -69,31 +69,31 @@ func (stream dataReceiveStream) Read(buf []byte) (int, error) {
 	return n, nil
 }
 
-type dataReceiveStreamQueue struct {
-	queue []DataReceiveStream
+type receiveDataStreamQueue struct {
+	queue []ReceiveDataStream
 	ch    chan struct{}
 	mu    sync.Mutex
 }
 
-func (q *dataReceiveStreamQueue) Len() int {
+func (q *receiveDataStreamQueue) Len() int {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	return len(q.queue)
 }
 
-func (q *dataReceiveStreamQueue) Chan() <-chan struct{} {
+func (q *receiveDataStreamQueue) Chan() <-chan struct{} {
 	return q.ch
 }
 
-func (q *dataReceiveStreamQueue) Enqueue(stream DataReceiveStream) {
+func (q *receiveDataStreamQueue) Enqueue(stream ReceiveDataStream) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	q.queue = append(q.queue, stream)
 }
 
-func (q *dataReceiveStreamQueue) Dequeue() DataReceiveStream {
+func (q *receiveDataStreamQueue) Dequeue() ReceiveDataStream {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 

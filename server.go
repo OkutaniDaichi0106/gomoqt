@@ -257,7 +257,7 @@ func (s *Server) ListenAndServe() error {
 
 }
 
-func acceptSessionStream(conn transport.Connection) (SessionStream, error) {
+func acceptSessionStream(conn transport.Connection) (transport.Stream, error) {
 	// Accept a Bidirectional Stream, which must be a Sesson Stream
 	stream, err := conn.AcceptStream(context.Background())
 	if err != nil {

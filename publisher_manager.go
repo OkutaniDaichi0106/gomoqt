@@ -1,30 +1,30 @@
 package moqt
 
-func newPublisherManager() *publisherManager {
-	return &publisherManager{
-		receivedSubscriptionQueue: newReceivedSubscriptionQueue(),
+// func newPublisherManager() *publisherManager {
+// 	return &publisherManager{
+// 		receivedSubscriptionQueue: newReceivedSubscriptionQueue(),
 
-		receivedInterestQueue: newReceivedInterestQueue(),
+// 		receivedInterestQueue: newReceivedInterestQueue(),
 
-		receivedFetchQueue: newReceivedFetchQueue(),
+// 		receivedFetchQueue: newReceivedFetchQueue(),
 
-		receivedInfoRequestQueue: newReceivedInfoRequestQueue(),
+// 		receivedInfoRequestQueue: newReceivedInfoRequestQueue(),
 
-		// acceptedSubscriptions: make(map[SubscribeID]*ReceivedSubscription),
-	}
-}
+// 		// acceptedSubscriptions: make(map[SubscribeID]*ReceivedSubscription),
+// 	}
+// }
 
-type publisherManager struct {
-	//
-	receivedSubscriptionQueue *receivedSubscriptionQueue
+// type publisherManager struct {
+// 	//
+// 	receivedSubscriptionQueue *receivedSubscriptionQueue
 
-	//
-	receivedInterestQueue *receivedInterestQueue
+// 	//
+// 	receivedInterestQueue *receivedInterestQueue
 
-	receivedFetchQueue *receivedFetchQueue
+// 	receivedFetchQueue *receivedFetchQueue
 
-	receivedInfoRequestQueue *receivedInfoRequestQueue
+// 	receivedInfoRequestQueue *receivedInfoRequestQueue
 
-	//
-	// acceptedSubscriptions map[SubscribeID]*ReceivedSubscription
-}
+// 	//
+// 	// acceptedSubscriptions map[SubscribeID]*ReceivedSubscription
+// }

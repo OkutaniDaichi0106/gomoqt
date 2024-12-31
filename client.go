@@ -163,10 +163,8 @@ func setupConnection(req SetupRequest, conn transport.Connection) (ClientSession
 
 	sess := ClientSession{
 		session: session{
-			conn:              conn,
-			stream:            stream,
-			publisherManager:  newPublisherManager(),
-			subscriberManager: newSubscriberManager(),
+			conn:   conn,
+			stream: stream,
 		},
 	}
 
@@ -186,7 +184,7 @@ func listenSession(sess *session, ctx context.Context) {
 	go listenDatagrams(sess, ctx)
 }
 
-func openSessionStream(conn transport.Connection) (SessionStream, error) {
+func openSessionStream(conn transport.Connection) (transport.Stream, error) {
 	slog.Debug("opening a session stream")
 
 	/***/
@@ -268,7 +266,7 @@ func listenBiStreams(sess *session, ctx context.Context) {
 				}
 
 				// Enqueue the interest
-				sess.publisherManager.receivedInterestQueue.Enqueue(ri)
+				sess.receivedInterestQueue.Enqueue(ri)
 			case stream_type_subscribe:
 				slog.Debug("subscribe stream was opened")
 
@@ -281,7 +279,7 @@ func listenBiStreams(sess *session, ctx context.Context) {
 				}
 
 				// Enqueue the subscription
-				sess.publisherManager.receivedSubscriptionQueue.Enqueue(subscription)
+				sess.receivedSubscriptionQueue.Enqueue(subscription)
 			case stream_type_fetch:
 				slog.Debug("fetch stream was opened")
 
@@ -294,7 +292,7 @@ func listenBiStreams(sess *session, ctx context.Context) {
 				}
 
 				// Enqueue the fetch
-				sess.publisherManager.receivedFetchQueue.Enqueue(fetch)
+				sess.receivedFetchQueue.Enqueue(fetch)
 			case stream_type_info:
 				slog.Debug("info stream was opened")
 
@@ -307,7 +305,7 @@ func listenBiStreams(sess *session, ctx context.Context) {
 				}
 
 				// Enqueue the info-request
-				sess.publisherManager.receivedInfoRequestQueue.Enqueue(req)
+				sess.receivedInfoRequestQueue.Enqueue(req)
 			default:
 				slog.Debug("An unknown type of stream was opend")
 
@@ -348,24 +346,24 @@ func listenUniStreams(sess *session, ctx context.Context) {
 			// Handle the stream by the Stream Type ID
 			switch stm.StreamType {
 			case stream_type_group:
-				slog.Debug("data stream was opened")
+				slog.Debug("group stream was opened")
 
-				data, err := newDataReceiveStream(stream)
+				data, err := newReceiveDataStream(stream)
 				if err != nil {
 					slog.Error("failed to get a data receive stream", slog.String("error", err.Error()))
 					closeReceiveStreamWithInternalError(stream, err) // TODO:
 					return
 				}
 
-				subscription, ok := sess.subscriberManager.getSentSubscription(data.SubscribeID())
+				queue, ok := sess.dataReceiveStreamQueues[data.SubscribeID()]
 				if !ok {
-					slog.Error("failed to get a subscription", slog.String("error", "subscription not found"))
+					slog.Error("failed to get a data receive stream queue", slog.String("error", "queue not found"))
 					closeReceiveStreamWithInternalError(stream, ErrProtocolViolation) // TODO:
 					return
 				}
 
 				// Enqueue the receiver
-				subscription.dataReceiveStreamQueue.Enqueue(data)
+				queue.Enqueue(data)
 			default:
 				slog.Debug("An unknown type of stream was opend")
 
@@ -397,14 +395,15 @@ func listenDatagrams(sess *session, ctx context.Context) {
 				return
 			}
 
-			subscription, ok := sess.subscriberManager.getSentSubscription(data.SubscribeID())
+			//
+			queue, ok := sess.receivedDatagramQueues[data.SubscribeID()]
 			if !ok {
-				slog.Error("failed to get a subscription", slog.String("error", "subscription not found"))
+				slog.Error("failed to get a data receive stream queue", slog.String("error", "queue not found"))
 				return
 			}
 
 			// Enqueue the datagram
-			subscription.receivedDatagramQueue.Enqueue(data)
+			queue.Enqueue(data)
 		}(buf)
 	}
 }

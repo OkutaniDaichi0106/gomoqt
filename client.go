@@ -24,16 +24,15 @@ type Client struct {
 
 	//supportedVersions []Version
 
-	CacheManager  CacheManager
 	JitterManager JitterManager
 }
 
-func (c Client) Dial(req SetupRequest, ctx context.Context) (ClientSession, SetupResponce, error) {
+func (c Client) Dial(req SetupRequest, ctx context.Context) (clientSession, SetupResponce, error) {
 	// Initialize the request
 	err := req.init()
 	if err != nil {
 		slog.Error("failed to initialize the request", slog.String("error", err.Error()))
-		return ClientSession{}, SetupResponce{}, err
+		return clientSession{}, SetupResponce{}, err
 	}
 
 	/*
@@ -47,22 +46,22 @@ func (c Client) Dial(req SetupRequest, ctx context.Context) (ClientSession, Setu
 	default:
 		err = errors.New("invalid scheme")
 		slog.Error("unsupported url scheme", slog.String("scheme", req.parsedURL.Scheme))
-		return ClientSession{}, SetupResponce{}, err
+		return clientSession{}, SetupResponce{}, err
 	}
 }
 
-func (c Client) DialWebTransport(req SetupRequest, ctx context.Context) (ClientSession, SetupResponce, error) {
+func (c Client) DialWebTransport(req SetupRequest, ctx context.Context) (clientSession, SetupResponce, error) {
 	// Initialize the request
 	err := req.init()
 	if err != nil {
 		slog.Error("failed to initialize the request", slog.String("error", err.Error()))
-		return ClientSession{}, SetupResponce{}, err
+		return clientSession{}, SetupResponce{}, err
 	}
 
 	// Check the scheme
 	if req.parsedURL.Scheme != "https" {
 		slog.Error("unsupported url scheme", slog.String("scheme", req.parsedURL.Scheme))
-		return ClientSession{}, SetupResponce{}, errors.New("invalid scheme")
+		return clientSession{}, SetupResponce{}, errors.New("invalid scheme")
 	}
 
 	// Dial on webtransport
@@ -71,7 +70,7 @@ func (c Client) DialWebTransport(req SetupRequest, ctx context.Context) (ClientS
 	_, wtsess, err = d.Dial(ctx, req.URL, http.Header{}) // TODO: configure the header
 	if err != nil {
 		slog.Error("failed to dial with webtransport", slog.String("error", err.Error()))
-		return ClientSession{}, SetupResponce{}, err
+		return clientSession{}, SetupResponce{}, err
 	}
 
 	// Get a moq.Connection
@@ -80,19 +79,19 @@ func (c Client) DialWebTransport(req SetupRequest, ctx context.Context) (ClientS
 	return setupConnection(req, conn)
 }
 
-func (c Client) DialQUIC(req SetupRequest, ctx context.Context) (ClientSession, SetupResponce, error) {
+func (c Client) DialQUIC(req SetupRequest, ctx context.Context) (clientSession, SetupResponce, error) {
 	// Initialize the request
 	err := req.init()
 	if err != nil {
 		slog.Error("failed to initialize the request", slog.String("error", err.Error()))
-		return ClientSession{}, SetupResponce{}, err
+		return clientSession{}, SetupResponce{}, err
 	}
 
 	// Check the scheme
 	if req.parsedURL.Scheme != "moqt" {
 		err = errors.New("invalid scheme")
 		slog.Error("unsupported url scheme", slog.String("scheme", req.parsedURL.Scheme))
-		return ClientSession{}, SetupResponce{}, err
+		return clientSession{}, SetupResponce{}, err
 	}
 
 	// Look up the IP address
@@ -100,7 +99,7 @@ func (c Client) DialQUIC(req SetupRequest, ctx context.Context) (ClientSession, 
 	ips, err = net.LookupIP(req.parsedURL.Hostname())
 	if err != nil {
 		slog.Error("failed to look up IP address", slog.String("error", err.Error()))
-		return ClientSession{}, SetupResponce{}, err
+		return clientSession{}, SetupResponce{}, err
 	}
 
 	var conn transport.Connection
@@ -125,7 +124,7 @@ func (c Client) DialQUIC(req SetupRequest, ctx context.Context) (ClientSession, 
 					slog.String("error", err.Error()),
 					slog.String("host", req.parsedURL.Hostname()),
 				)
-				return ClientSession{}, SetupResponce{}, err
+				return clientSession{}, SetupResponce{}, err
 			}
 			continue
 		}
@@ -139,36 +138,33 @@ func (c Client) DialQUIC(req SetupRequest, ctx context.Context) (ClientSession, 
 	return setupConnection(req, conn)
 }
 
-func setupConnection(req SetupRequest, conn transport.Connection) (ClientSession, SetupResponce, error) {
+func setupConnection(req SetupRequest, conn transport.Connection) (clientSession, SetupResponce, error) {
 	// Open a Session Stream
 	stream, err := openSessionStream(conn)
 	if err != nil {
 		slog.Error("failed to open a Session Stream")
-		return ClientSession{}, SetupResponce{}, err
+		return clientSession{}, SetupResponce{}, err
 	}
 
 	// Send a set-up request
 	err = sendSetupRequest(stream, req)
 	if err != nil {
 		slog.Error("failed to request to set up", slog.String("error", err.Error()))
-		return ClientSession{}, SetupResponce{}, err
+		return clientSession{}, SetupResponce{}, err
 	}
 
 	// Receive a set-up responce
 	rsp, err := readSetupResponce(stream)
 	if err != nil {
 		slog.Error("failed to receive a SESSION_SERVER message", slog.String("error", err.Error()))
-		return ClientSession{}, SetupResponce{}, err
+		return clientSession{}, SetupResponce{}, err
 	}
 
-	sess := ClientSession{
-		session: session{
-			conn:   conn,
-			stream: stream,
-		},
+	sess := clientSession{
+		session: newSession(conn, stream),
 	}
 
-	go listenSession(&sess.session, context.Background()) // TODO:
+	go listenSession(sess.session, context.Background()) // TODO:
 
 	return sess, rsp, nil
 }
@@ -258,7 +254,7 @@ func listenBiStreams(sess *session, ctx context.Context) {
 				slog.Debug("announce stream was opened")
 
 				// Get a received interest
-				ri, err := newReceivedInterest(stream)
+				ri, err := newSendAnnounceStream(stream)
 				if err != nil {
 					slog.Error("failed to get a received interest", slog.String("error", err.Error()))
 					closeStreamWithInternalError(stream, err)

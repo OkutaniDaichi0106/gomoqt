@@ -8,12 +8,12 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/internal/transport"
 )
 
-type DataSendStream interface {
+type SendDataStream interface {
 	transport.SendStream
 	SentGroup
 }
 
-var _ DataSendStream = (*dataSendStream)(nil)
+var _ SendDataStream = (*dataSendStream)(nil)
 
 type dataSendStream struct {
 	transport.SendStream
@@ -67,6 +67,13 @@ func (stream dataReceiveStream) Read(buf []byte) (int, error) {
 	n := copy(buf, fm.Payload)
 
 	return n, nil
+}
+
+func newReceiveDataStreamQueue() *receiveDataStreamQueue {
+	return &receiveDataStreamQueue{
+		queue: make([]ReceiveDataStream, 0), // TODO: Tune the initial capacity
+		ch:    make(chan struct{}, 1),
+	}
 }
 
 type receiveDataStreamQueue struct {

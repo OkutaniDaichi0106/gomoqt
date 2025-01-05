@@ -133,7 +133,7 @@ func (s *Server) init() (err error) {
 			}
 
 			// Initialize a Session
-			sess := ServerSession{
+			sess := &serverSession{
 				session: session{
 					conn:   conn,
 					stream: stream,
@@ -237,7 +237,7 @@ func (s *Server) ListenAndServe() error {
 					}
 
 					// Initialize a Session
-					sess := ServerSession{
+					sess := &serverSession{
 						session: session{
 							conn:   conn,
 							stream: stream,

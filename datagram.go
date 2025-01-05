@@ -2,32 +2,35 @@ package moqt
 
 import (
 	"bytes"
-	"io"
-	"log/slog"
 	"sync"
 )
 
-type ReceivedDatagram interface {
-	// io.Reader
-	Payload() []byte
-	ReceivedGroup
-}
-
+/*
+ *
+ *
+ */
 func newReceivedDatagram(datagram []byte) (ReceivedDatagram, error) {
-	// Get a payload reader
+	//
 	reader := bytes.NewReader(datagram)
 
-	// Read a group
+	//
 	group, err := readGroup(reader)
 	if err != nil {
-		slog.Error("failed to get a group", slog.String("error", err.Error()))
 		return nil, err
 	}
 
+	//
+	frame := datagram[len(datagram)-reader.Len():]
+
 	return &receivedDatagram{
 		receivedGroup: group,
-		payload:       datagram[len(datagram)-reader.Len():],
+		payload:       frame,
 	}, nil
+}
+
+type ReceivedDatagram interface {
+	Payload() []byte
+	ReceivedGroup
 }
 
 var _ ReceivedDatagram = (*receivedDatagram)(nil)
@@ -41,9 +44,16 @@ func (d receivedDatagram) Payload() []byte {
 	return d.payload
 }
 
-// func (d receivedDatagram) Read(buf []byte) (int, error) {
-// 	return copy(buf, d.payload), nil
-// }
+/*
+ *
+ *
+ */
+func newReceivedDatagramQueue() *receivedDatagramQueue {
+	return &receivedDatagramQueue{
+		queue: make([]ReceivedDatagram, 0), // Tune the initial capacity
+		ch:    make(chan struct{}, 1),
+	}
+}
 
 type receivedDatagramQueue struct {
 	mu    sync.Mutex
@@ -89,17 +99,9 @@ func (q *receivedDatagramQueue) Dequeue() ReceivedDatagram {
 }
 
 type SentDatagram interface {
-	io.Writer
 	Payload() []byte
 	Group
 }
-
-// func newSentDatagram(group SentGroup, payload []byte) SentDatagram {
-// 	return &sentDatagram{
-// 		SentGroup: group,
-// 		payload:   payload,
-// 	}
-// }
 
 var _ SentDatagram = (*sentDatagram)(nil)
 

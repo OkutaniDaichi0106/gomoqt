@@ -1,21 +1,14 @@
 package moqt
 
-import (
-	"log/slog"
-
-	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/internal/transport"
-)
-
 type Subscriber interface {
-	Interest(Interest) (*ReceiveAnnounceStream, error)
+	OpenAnnounceStream(Interest) (*receiveAnnounceStream, error)
 
-	Subscribe(Subscription) (*SendSubscribeStream, error)
+	OpenSubscribeStream(Subscription) (*sendSubscribeStream, error)
 	// Unsubscribe(*SentSubscription)
 
-	Fetch(Fetch) (ReceiveDataStream, error)
+	OpenFetchStream(Fetch) (ReceiveDataStream, error)
 
-	RequestInfo(InfoRequest) (Info, error)
+	OpenInfoStream(InfoRequest) (Info, error)
 }
 
 // func (s *Subscriber) Unsubscribe(subscription *SentSubscription) {
@@ -62,91 +55,3 @@ type Subscriber interface {
 
 // 	slog.Info("Unsubscribed with an error")
 // }
-
-func openAnnounceStream(conn transport.Connection) (transport.Stream, error) {
-	slog.Debug("opening an Announce Stream")
-
-	stream, err := conn.OpenStream()
-	if err != nil {
-		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
-		return nil, err
-	}
-
-	stm := message.StreamTypeMessage{
-		StreamType: stream_type_announce,
-	}
-
-	err = stm.Encode(stream)
-	if err != nil {
-		slog.Error("failed to send a Stream Type message", slog.String("error", err.Error()))
-		return nil, err
-	}
-
-	return stream, nil
-}
-
-func openSubscribeStream(conn transport.Connection) (transport.Stream, error) {
-	slog.Debug("opening an Subscribe Stream")
-
-	stream, err := conn.OpenStream()
-	if err != nil {
-		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
-		return nil, err
-	}
-
-	stm := message.StreamTypeMessage{
-		StreamType: stream_type_subscribe,
-	}
-
-	err = stm.Encode(stream)
-	if err != nil {
-		slog.Error("failed to send a Stream Type message", slog.String("error", err.Error()))
-		return nil, err
-	}
-
-	return stream, nil
-}
-
-func openInfoStream(conn transport.Connection) (transport.Stream, error) {
-	slog.Debug("opening an Info Stream")
-
-	stream, err := conn.OpenStream()
-	if err != nil {
-		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
-		return nil, err
-	}
-
-	stm := message.StreamTypeMessage{
-		StreamType: stream_type_info,
-	}
-
-	err = stm.Encode(stream)
-	if err != nil {
-		slog.Error("failed to send a Stream Type message", slog.String("error", err.Error()))
-		return nil, err
-	}
-
-	return stream, nil
-}
-
-func openFetchStream(conn transport.Connection) (transport.Stream, error) {
-	slog.Debug("opening an Fetch Stream")
-
-	stream, err := conn.OpenStream()
-	if err != nil {
-		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
-		return nil, err
-	}
-
-	stm := message.StreamTypeMessage{
-		StreamType: stream_type_fetch,
-	}
-
-	err = stm.Encode(stream)
-	if err != nil {
-		slog.Error("failed to send a Stream Type message", slog.String("error", err.Error()))
-		return nil, err
-	}
-
-	return stream, nil
-}

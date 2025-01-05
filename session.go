@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/internal/transport"
@@ -14,10 +15,10 @@ type Session interface {
 	Terminate(error)
 
 	// Open an Announce Stream
-	OpenAnnounceStream(Interest) (*ReceiveAnnounceStream, error)
+	OpenAnnounceStream(Interest) (ReceiveAnnounceStream, error)
 
 	// Open a Subscribe Stream
-	OpenSubscribeStream(Subscription) (*SendSubscribeStream, error)
+	OpenSubscribeStream(Subscription) (SendSubscribeStream, error)
 
 	// Open a Fetch Stream
 	OpenFetchStream(Fetch) (ReceiveDataStream, error)
@@ -25,20 +26,45 @@ type Session interface {
 	// Open an Info Stream
 	OpenInfoStream(InfoRequest) (Info, error)
 
+	// Open a Data Stream
+	OpenDataStream(ReceiveSubscribeStream, GroupSequence, GroupPriority) (SendDataStream, error)
+
+	// Send a Datagram
+	SendDatagram(ReceiveSubscribeStream, GroupSequence, GroupPriority, []byte) error
+
 	// Accept an Announce Stream
-	AcceptAnnounceStream(context.Context) (*SendAnnounceStream, error)
+	AcceptAnnounceStream(context.Context) (SendAnnounceStream, error)
 
 	// Accept a Subscribe Stream
-	AcceptSubscribeStream(context.Context) (*ReceivedSubscribeStream, error)
+	AcceptSubscribeStream(context.Context) (ReceiveSubscribeStream, error)
 
 	// Accept a Fetch Stream
-	AcceptFetchStream(context.Context) (*ReceivedFetch, error)
+	AcceptFetchStream(context.Context) (ReceiveFetchStream, error)
 
 	// Accept an Info Stream
-	AcceptInfoStream(context.Context) (*SendInfoStream, error)
+	AcceptInfoStream(context.Context) (SendInfoStream, error)
+
+	// Accept a Data Stream
+	AcceptDataStream(SendSubscribeStream, context.Context) (ReceiveDataStream, error)
+
+	// Accept a Datagram
+	AcceptDatagram(SendSubscribeStream, context.Context) (ReceivedDatagram, error)
 }
 
-var _ Session = &session{}
+var _ Session = (*session)(nil)
+
+func newSession(conn transport.Connection, stream transport.Stream) *session {
+	return &session{
+		conn:                      conn,
+		receivedSubscriptionQueue: newReceivedSubscriptionQueue(),
+		receivedInterestQueue:     newReceivedInterestQueue(),
+		receivedFetchQueue:        newReceivedFetchQueue(),
+		receivedInfoRequestQueue:  newReceivedInfoRequestQueue(),
+		dataReceiveStreamQueues:   make(map[SubscribeID]*receiveDataStreamQueue),
+		receivedDatagramQueues:    make(map[SubscribeID]*receivedDatagramQueue),
+		subscribeIDCounter:        0,
+	}
+}
 
 type session struct {
 	conn   transport.Connection
@@ -87,7 +113,7 @@ func (sess *session) Terminate(err error) {
 	slog.Info("Terminated a session")
 }
 
-func (s *session) OpenAnnounceStream(interest Interest) (*ReceiveAnnounceStream, error) {
+func (s *session) OpenAnnounceStream(interest Interest) (ReceiveAnnounceStream, error) {
 	slog.Debug("indicating interest", slog.Any("interest", interest))
 	/*
 	 * Open an Announce Stream
@@ -111,14 +137,14 @@ func (s *session) OpenAnnounceStream(interest Interest) (*ReceiveAnnounceStream,
 
 	slog.Info("Successfully indicated interest", slog.Any("interest", interest))
 
-	return &ReceiveAnnounceStream{
-		Interest: interest,
-		active:   makeTracks(1),
+	return &receiveAnnounceStream{
+		interest: interest,
+		active:   make(map[string]Announcement),
 		stream:   stream,
 	}, nil
 }
 
-func (s *session) OpenSubscribeStream(subscription Subscription) (*SendSubscribeStream, error) {
+func (s *session) OpenSubscribeStream(subscription Subscription) (SendSubscribeStream, error) {
 	slog.Debug("making a subscription", slog.Any("subscription", subscription))
 
 	// Open a Subscribe Stream
@@ -190,13 +216,17 @@ func (s *session) OpenSubscribeStream(subscription Subscription) (*SendSubscribe
 		subscription.Track.GroupExpires = info.GroupExpires
 	}
 
-	sentSubscription := &SendSubscribeStream{
-		subscribeID:  nextID,
-		Subscription: subscription,
-		stream:       stream,
-	}
+	// Create a data stream queue
+	s.dataReceiveStreamQueues[nextID] = newReceiveDataStreamQueue()
 
-	return sentSubscription, err
+	// Create a datagram queue
+	s.receivedDatagramQueues[nextID] = newReceivedDatagramQueue()
+
+	return &sendSubscribeStream{
+		subscribeID:  nextID,
+		subscription: subscription,
+		stream:       stream,
+	}, err
 }
 
 func (sess *session) OpenFetchStream(req Fetch) (ReceiveDataStream, error) {
@@ -294,7 +324,68 @@ func (sess *session) OpenInfoStream(req InfoRequest) (Info, error) {
 	return info, nil
 }
 
-func (p *session) AcceptAnnounceStream(ctx context.Context) (*SendAnnounceStream, error) {
+func (sess *session) OpenDataStream(substr ReceiveSubscribeStream, sequence GroupSequence, priority GroupPriority) (SendDataStream, error) {
+	// Verify
+	if sequence == 0 {
+		return nil, errors.New("0 sequence number")
+	}
+
+	// Open
+	stream, err := openGroupStream(sess.conn)
+	if err != nil {
+		slog.Error("failed to open a group stream", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	// Send the GROUP message
+	gm := message.GroupMessage{
+		SubscribeID:   message.SubscribeID(substr.SubscribeID()),
+		GroupSequence: message.GroupSequence(sequence),
+		GroupPriority: message.GroupPriority(priority),
+	}
+	err = gm.Encode(stream)
+	if err != nil {
+		slog.Error("failed to send a GROUP message", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	return dataSendStream{
+			SendStream: stream,
+			sentGroup: sentGroup{
+				subscribeID:   substr.SubscribeID(),
+				groupSequence: sequence,
+				groupPriority: priority,
+				sentAt:        time.Now(),
+			},
+		},
+		nil
+}
+
+func (sess *session) SendDatagram(substr ReceiveSubscribeStream, sequence GroupSequence, priority GroupPriority, payload []byte) error {
+	// Verify
+	if sequence == 0 {
+		return errors.New("0 sequence number")
+
+	}
+
+	group := sentGroup{
+		subscribeID:   substr.SubscribeID(),
+		groupSequence: sequence,
+		groupPriority: priority,
+		sentAt:        time.Now(),
+	}
+
+	// Send
+	err := sendDatagram(sess.conn, group, payload)
+	if err != nil {
+		slog.Error("failed to send a datagram", slog.String("error", err.Error()))
+		return err
+	}
+
+	return nil
+}
+
+func (p *session) AcceptAnnounceStream(ctx context.Context) (SendAnnounceStream, error) {
 	for {
 		if p.receivedSubscriptionQueue.Len() != 0 {
 			return p.receivedInterestQueue.Dequeue(), nil
@@ -307,7 +398,7 @@ func (p *session) AcceptAnnounceStream(ctx context.Context) (*SendAnnounceStream
 	}
 }
 
-func (sess *session) AcceptSubscribeStream(ctx context.Context) (*ReceivedSubscribeStream, error) {
+func (sess *session) AcceptSubscribeStream(ctx context.Context) (ReceiveSubscribeStream, error) {
 	for {
 		if sess.receivedSubscriptionQueue.Len() != 0 {
 			return sess.receivedSubscriptionQueue.Dequeue(), nil
@@ -320,7 +411,7 @@ func (sess *session) AcceptSubscribeStream(ctx context.Context) (*ReceivedSubscr
 	}
 }
 
-func (sess *session) AcceptFetchStream(ctx context.Context) (*ReceivedFetch, error) {
+func (sess *session) AcceptFetchStream(ctx context.Context) (ReceiveFetchStream, error) {
 	for {
 		if sess.receivedFetchQueue.Len() != 0 {
 			return sess.receivedFetchQueue.Dequeue(), nil
@@ -333,7 +424,7 @@ func (sess *session) AcceptFetchStream(ctx context.Context) (*ReceivedFetch, err
 	}
 }
 
-func (sess *session) AcceptInfoStream(ctx context.Context) (*SendInfoStream, error) {
+func (sess *session) AcceptInfoStream(ctx context.Context) (SendInfoStream, error) {
 	for {
 		if sess.receivedInfoRequestQueue.Len() != 0 {
 			return sess.receivedInfoRequestQueue.Dequeue(), nil
@@ -346,7 +437,7 @@ func (sess *session) AcceptInfoStream(ctx context.Context) (*SendInfoStream, err
 	}
 }
 
-func (sess *session) AcceptDataStream(subscription *SendSubscribeStream, ctx context.Context) (ReceiveDataStream, error) {
+func (sess *session) AcceptDataStream(subscription SendSubscribeStream, ctx context.Context) (ReceiveDataStream, error) {
 	slog.Debug("accepting a data stream")
 
 	queue, ok := sess.dataReceiveStreamQueues[subscription.SubscribeID()]
@@ -368,12 +459,11 @@ func (sess *session) AcceptDataStream(subscription *SendSubscribeStream, ctx con
 	}
 }
 
-func (sess *session) AcceptDatagram(subscription *SendSubscribeStream, ctx context.Context) (ReceivedDatagram, error) {
+func (sess *session) AcceptDatagram(substr SendSubscribeStream, ctx context.Context) (ReceivedDatagram, error) {
 	slog.Debug("accepting a datagram")
 
-	queue, ok := sess.receivedDatagramQueues[subscription.SubscribeID()]
+	queue, ok := sess.receivedDatagramQueues[substr.SubscribeID()]
 	if !ok {
-		slog.Error("failed to get a datagram queue")
 		return nil, errors.New("failed to get a datagram queue")
 	}
 
@@ -388,4 +478,97 @@ func (sess *session) AcceptDatagram(subscription *SendSubscribeStream, ctx conte
 		default:
 		}
 	}
+}
+
+/*
+ *
+ *
+ */
+
+func openAnnounceStream(conn transport.Connection) (transport.Stream, error) {
+	slog.Debug("opening an Announce Stream")
+
+	stream, err := conn.OpenStream()
+	if err != nil {
+		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	stm := message.StreamTypeMessage{
+		StreamType: stream_type_announce,
+	}
+
+	err = stm.Encode(stream)
+	if err != nil {
+		slog.Error("failed to send a Stream Type message", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	return stream, nil
+}
+
+func openSubscribeStream(conn transport.Connection) (transport.Stream, error) {
+	slog.Debug("opening an Subscribe Stream")
+
+	stream, err := conn.OpenStream()
+	if err != nil {
+		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	stm := message.StreamTypeMessage{
+		StreamType: stream_type_subscribe,
+	}
+
+	err = stm.Encode(stream)
+	if err != nil {
+		slog.Error("failed to send a Stream Type message", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	return stream, nil
+}
+
+func openInfoStream(conn transport.Connection) (transport.Stream, error) {
+	slog.Debug("opening an Info Stream")
+
+	stream, err := conn.OpenStream()
+	if err != nil {
+		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	stm := message.StreamTypeMessage{
+		StreamType: stream_type_info,
+	}
+
+	err = stm.Encode(stream)
+	if err != nil {
+		slog.Error("failed to send a Stream Type message", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	return stream, nil
+}
+
+func openFetchStream(conn transport.Connection) (transport.Stream, error) {
+	slog.Debug("opening an Fetch Stream")
+
+	stream, err := conn.OpenStream()
+	if err != nil {
+		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	stm := message.StreamTypeMessage{
+		StreamType: stream_type_fetch,
+	}
+
+	err = stm.Encode(stream)
+	if err != nil {
+		slog.Error("failed to send a Stream Type message", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	return stream, nil
 }

@@ -16,7 +16,7 @@ import (
 // }
 
 type InfoRequestHandler interface {
-	HandleInfoRequest(InfoRequest, *Info, SendInfoStream)
+	HandleInfoRequest(InfoRequest, *Info, sendInfoStream)
 }
 
 type InfoRequest struct {
@@ -30,26 +30,34 @@ type Info struct {
 	GroupExpires        time.Duration
 }
 
-func newReceivedInfoRequest(stream transport.Stream) (*SendInfoStream, error) {
+func newReceivedInfoRequest(stream transport.Stream) (*sendInfoStream, error) {
 	req, err := readInfoRequest(stream)
 	if err != nil {
 		slog.Error("failed to get a info-request", slog.String("error", err.Error()))
 		return nil, err
 	}
 
-	return &SendInfoStream{
+	return &sendInfoStream{
 		InfoRequest: req,
 		stream:      stream,
 	}, nil
 }
 
-type SendInfoStream struct {
+type SendInfoStream interface {
+	UpdateInfo(Info)
+	CloseWithError(error) error
+	Close() error
+}
+
+var _ SendInfoStream = (*sendInfoStream)(nil)
+
+type sendInfoStream struct {
 	InfoRequest
 	stream transport.Stream
 	mu     sync.Mutex
 }
 
-func (req *SendInfoStream) Inform(i Info) {
+func (req *sendInfoStream) UpdateInfo(i Info) {
 	req.mu.Lock()
 	defer req.mu.Unlock()
 
@@ -72,7 +80,7 @@ func (req *SendInfoStream) Inform(i Info) {
 	req.Close()
 }
 
-func (req *SendInfoStream) CloseWithError(err error) error {
+func (req *sendInfoStream) CloseWithError(err error) error {
 	req.mu.Lock()
 	defer req.mu.Unlock()
 
@@ -105,7 +113,7 @@ func (req *SendInfoStream) CloseWithError(err error) error {
 	return nil
 }
 
-func (req *SendInfoStream) Close() error {
+func (req *sendInfoStream) Close() error {
 	req.mu.Lock()
 	defer req.mu.Unlock()
 
@@ -114,13 +122,13 @@ func (req *SendInfoStream) Close() error {
 
 func newReceivedInfoRequestQueue() *receivedInfoRequestQueue {
 	return &receivedInfoRequestQueue{
-		queue: make([]*SendInfoStream, 0),
+		queue: make([]*sendInfoStream, 0),
 		ch:    make(chan struct{}),
 	}
 }
 
 type receivedInfoRequestQueue struct {
-	queue []*SendInfoStream
+	queue []*sendInfoStream
 	mu    sync.Mutex
 	ch    chan struct{}
 }
@@ -132,14 +140,14 @@ func (q *receivedInfoRequestQueue) Len() int {
 	return len(q.queue)
 }
 
-func (q *receivedInfoRequestQueue) Enqueue(req *SendInfoStream) {
+func (q *receivedInfoRequestQueue) Enqueue(req *sendInfoStream) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	q.queue = append(q.queue, req)
 }
 
-func (q *receivedInfoRequestQueue) Dequeue() *SendInfoStream {
+func (q *receivedInfoRequestQueue) Dequeue() *sendInfoStream {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 

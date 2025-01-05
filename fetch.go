@@ -11,36 +11,6 @@ import (
 )
 
 /*
- * Fetch Stream
- */
-
-// type FetchStream struct {
-// 	stream transport.Stream
-// }
-
-// func (f FetchStream) Read(buf []byte) (int, error) {
-// 	return f.stream.Read(buf)
-// }
-
-// // func (f FetchStream) Group() Group {
-// // 	return f.group
-// // }
-
-// func (f FetchStream) CancelRead(code transport.StreamErrorCode) {
-// 	f.stream.CancelRead(code)
-// }
-
-// func (f FetchStream) Close() error {
-// 	err := f.stream.Close()
-// 	if err != nil {
-// 		slog.Error("failed to close a Fetch Stream", slog.String("error", err.Error()))
-// 		return err
-// 	}
-
-// 	return nil
-// }
-
-/*
  * Sequence number of a group in a track
  * When this is integer more than 1, the number means the sequence number.
  * When this is 0, it indicates the sequence number is currently unknown .
@@ -49,7 +19,6 @@ import (
 type GroupSequence message.GroupSequence
 
 /***/
-
 type Fetch struct {
 	TrackPath     string
 	GroupPriority GroupPriority
@@ -57,7 +26,7 @@ type Fetch struct {
 	FrameSequence FrameSequence
 }
 
-func newReceivedFetch(stream transport.Stream) (*ReceivedFetch, error) {
+func newReceivedFetch(stream transport.Stream) (*receiveFetchStream, error) {
 	// Get a fetch-request
 	fetch, err := readFetch(stream)
 	if err != nil {
@@ -65,19 +34,27 @@ func newReceivedFetch(stream transport.Stream) (*ReceivedFetch, error) {
 		return nil, err
 	}
 
-	return &ReceivedFetch{
+	return &receiveFetchStream{
 		fetch:  fetch,
 		stream: stream,
 	}, nil
 }
 
-type ReceivedFetch struct {
+type ReceiveFetchStream interface {
+	OpenDataStream(SubscribeID, GroupSequence, GroupPriority) (SendDataStream, error)
+	CloseWithError(error) error
+	Close() error
+}
+
+var _ ReceiveFetchStream = (*receiveFetchStream)(nil)
+
+type receiveFetchStream struct {
 	fetch     Fetch
 	groupSent bool
 	stream    transport.Stream
 }
 
-func (fetch *ReceivedFetch) OpenDataStream(id SubscribeID, sequence GroupSequence, priority GroupPriority) (DataSendStream, error) {
+func (fetch *receiveFetchStream) OpenDataStream(id SubscribeID, sequence GroupSequence, priority GroupPriority) (SendDataStream, error) {
 	if fetch.groupSent {
 		return nil, errors.New("a group has already been sent")
 	}
@@ -107,9 +84,9 @@ func (fetch *ReceivedFetch) OpenDataStream(id SubscribeID, sequence GroupSequenc
 	}, nil
 }
 
-func (fetch ReceivedFetch) Reject(err error) {
+func (fetch receiveFetchStream) CloseWithError(err error) error {
 	if err == nil {
-		fetch.Close()
+		return fetch.Close()
 	}
 
 	var code transport.StreamErrorCode
@@ -131,21 +108,23 @@ func (fetch ReceivedFetch) Reject(err error) {
 	fetch.stream.CancelWrite(code)
 
 	slog.Info("rejcted the fetch request")
+
+	return nil
 }
 
-func (frw ReceivedFetch) Close() error {
+func (frw receiveFetchStream) Close() error {
 	return frw.stream.Close()
 }
 
 func newReceivedFetchQueue() *receivedFetchQueue {
 	return &receivedFetchQueue{
-		queue: make([]*ReceivedFetch, 0),
+		queue: make([]*receiveFetchStream, 0),
 		ch:    make(chan struct{}, 1),
 	}
 }
 
 type receivedFetchQueue struct {
-	queue []*ReceivedFetch
+	queue []*receiveFetchStream
 	mu    sync.Mutex
 	ch    chan struct{}
 }
@@ -161,7 +140,7 @@ func (q *receivedFetchQueue) Chan() <-chan struct{} {
 	return q.ch
 }
 
-func (q *receivedFetchQueue) Enqueue(fetch *ReceivedFetch) {
+func (q *receivedFetchQueue) Enqueue(fetch *receiveFetchStream) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -173,7 +152,7 @@ func (q *receivedFetchQueue) Enqueue(fetch *ReceivedFetch) {
 	}
 }
 
-func (q *receivedFetchQueue) Dequeue() *ReceivedFetch {
+func (q *receivedFetchQueue) Dequeue() *receiveFetchStream {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 

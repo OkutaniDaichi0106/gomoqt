@@ -6,8 +6,8 @@ import (
 	"sync"
 )
 
-func NewRelayManager() *TrackManager {
-	return &TrackManager{
+func NewRelayManager() *RelayManager {
+	return &RelayManager{
 		trackPathTree: trackPathTree{
 			rootNode: &trackPrefixNode{
 				trackPrefixPart: "",
@@ -17,100 +17,11 @@ func NewRelayManager() *TrackManager {
 	}
 }
 
-type TrackManager struct {
+type RelayManager struct {
 	trackPathTree trackPathTree
 }
 
-func (rm *TrackManager) AddRelayer(trackPath string, relayer *Relayer) error {
-	trackParts := splitTrackPath(trackPath)
-
-	// Insert the track path to the tree
-	nameNode, err := rm.trackPathTree.insertTrackName(trackParts[:len(trackParts)-1], trackParts[len(trackParts)-1])
-	if nameNode == nil {
-		return err
-	}
-
-	nameNode.mu.Lock()
-	defer nameNode.mu.Unlock()
-
-	if nameNode.relayer != nil {
-		return ErrDuplicatedTrack
-	}
-
-	nameNode.relayer = relayer
-
-	return nil
-}
-
-func (rm *TrackManager) RemoveRelayer(trackPath string, relayer *Relayer) {
-	trackParts := splitTrackPath(trackPath)
-
-	// Trace the track path
-	prefixNode, ok := rm.trackPathTree.traceTrackPrefix(trackParts)
-	if !ok {
-		return
-	}
-
-	// Find the track name node
-	nameNode, ok := prefixNode.findTrackName(trackParts[len(trackParts)-1])
-	if !ok {
-		return
-	}
-
-	// Remove the track name node
-	nameNode.mu.Lock()
-	defer nameNode.mu.Unlock()
-
-	nameNode.relayer = nil
-
-	// Remove the track path if there is no track name node
-	if len(prefixNode.trackNames) == 0 {
-		rm.trackPathTree.removeTrackPrefix(trackParts)
-	}
-}
-
-func (rm *TrackManager) GetRelayer(trackPath string) *Relayer {
-	trackParts := splitTrackPath(trackPath)
-
-	// Trace the track path
-	prefixNode, ok := rm.trackPathTree.traceTrackPrefix(trackParts)
-	if !ok {
-		return nil
-	}
-
-	// Find the track name node
-	nameNode, ok := prefixNode.findTrackName(trackParts[len(trackParts)-1])
-	if !ok {
-		return nil
-	}
-
-	nameNode.mu.RLock()
-	defer nameNode.mu.RUnlock()
-
-	return nameNode.relayer
-}
-
-// func (rm *TrackManager) AddDownstream(trackPath string, downstream *ReceivedSubscription) error {
-// 	relayer := rm.GetRelayer(trackPath)
-// 	if relayer == nil {
-// 		return ErrTrackDoesNotExist
-// 	}
-
-// 	relayer.addDownstream(downstream)
-
-// 	return nil
-// }
-
-// func (rm *TrackManager) RemoveDownstream(trackPath string, downstream *ReceivedSubscription) {
-// 	relayer := rm.GetRelayer(trackPath)
-// 	if relayer == nil {
-// 		return
-// 	}
-
-// 	relayer.removeDownstream(downstream)
-// }
-
-func (rm *TrackManager) AddInterest(trackPrefix string, interest *SendAnnounceStream) error {
+func (rm *RelayManager) AddAnnounceStream(trackPrefix string, interest *SendAnnounceStream) error {
 	trackPrefixParts := splitTrackPath(trackPrefix)
 
 	// Trace the track path
@@ -127,7 +38,7 @@ func (rm *TrackManager) AddInterest(trackPrefix string, interest *SendAnnounceSt
 	return nil
 }
 
-func (rm *TrackManager) RemoveInterest(trackPrefix string, interest *SendAnnounceStream) {
+func (rm *RelayManager) RemoveAnnounceStream(trackPrefix string, interest *SendAnnounceStream) {
 	trackPrefixParts := splitTrackPath(trackPrefix)
 
 	// Trace the track path

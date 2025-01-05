@@ -39,42 +39,41 @@ func main() {
 
 	// Run a publisher
 	go func() {
-		pub := sess.Publisher()
 
-		interest, err := pub.AcceptInterest(context.Background())
+		annstr, err := sess.AcceptAnnounceStream(context.Background())
 		if err != nil {
 			slog.Error("failed to accept an interest", slog.String("error", err.Error()))
 			return
 		}
 
-		tracks := moqt.NewTracks([]moqt.Track{{
-			TrackPath:     echoTrackPath,
-			TrackPriority: 0,
-			GroupOrder:    0,
-			GroupExpires:  1 * time.Second,
-		}, {
-			TrackPath:     "japan/kyoto/kiu/image",
-			TrackPriority: 0,
-			GroupOrder:    0,
-			GroupExpires:  1 * time.Second,
-		}})
+		// Announce
+		announcements := []moqt.Announcement{
+			{
+				TrackPath: echoTrackPath,
+			},
+			{
+				TrackPath: "japan/kyoto/kiu/audio", //
+			},
+		}
+		err = annstr.SendAnnouncement(announcements)
+		if err != nil {
+			slog.Error("failed to announce", slog.String("error", err.Error()))
+			return
+		}
 
-		// Announce the tracks
-		interest.Announce(tracks)
-
-		subscription, err := pub.AcceptSubscription(context.Background())
+		substr, err := sess.AcceptSubscribeStream(context.Background())
 		if err != nil {
 			slog.Error("failed to accept a subscription", slog.String("error", err.Error()))
 			return
 		}
 
-		if subscription.TrackPath != echoTrackPath {
+		if substr.Subscription().TrackPath != echoTrackPath {
 			slog.Error("failed to get a track path", slog.String("error", "track path is invalid"))
 			return
 		}
 
 		for sequence := moqt.GroupSequence(0); sequence < 30; sequence++ {
-			stream, err := subscription.OpenDataStream(sequence, 0)
+			stream, err := sess.OpenDataStream(substr, sequence, 0)
 			if err != nil {
 				slog.Error("failed to open a data stream", slog.String("error", err.Error()))
 				return
@@ -91,41 +90,37 @@ func main() {
 	}()
 
 	// Run a subscriber
-	func() {
-		sub := sess.Subscriber()
-
-		interest, err := sub.Interest(moqt.Interest{TrackPrefix: echoTrackPrefix})
+	go func() {
+		annstr, err := sess.OpenAnnounceStream(moqt.Interest{TrackPrefix: echoTrackPrefix})
 		if err != nil {
 			slog.Error("failed to get an interest", slog.String("error", err.Error()))
 			return
 		}
 
-		tracks, err := interest.NextActiveTracks()
+		announcements, err := annstr.ReceiveAnnouncements()
 		if err != nil {
 			slog.Error("failed to get active tracks", slog.String("error", err.Error()))
 			return
 		}
 
-		if _, ok := tracks.Get(echoTrackPath); !ok {
-			slog.Error("failed to get a track", slog.String("error", "track is not found"))
-			return
-		}
+		slog.Info("Active Tracks", slog.Any("announcements", announcements))
 
-		subscription, err := sub.Subscribe(moqt.Subscription{
+		subscription := moqt.Subscription{
 			Track: moqt.Track{
 				TrackPath:     echoTrackPath,
 				TrackPriority: 0,
 				GroupOrder:    0,
 				GroupExpires:  1 * time.Second,
 			},
-		})
+		}
+		substr, err := sess.OpenSubscribeStream(subscription)
 		if err != nil {
 			slog.Error("failed to subscribe", slog.String("error", err.Error()))
 			return
 		}
 
 		for {
-			stream, err := subscription.AcceptDataStream(context.Background())
+			stream, err := sess.AcceptDataStream(substr, context.Background())
 			if err != nil {
 				slog.Error("failed to accept a data stream", slog.String("error", err.Error()))
 				return

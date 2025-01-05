@@ -11,13 +11,13 @@ import (
 )
 
 type Publisher interface {
-	AcceptInterest(context.Context) (*SendAnnounceStream, error)
+	AcceptInterest(context.Context) (*sendAnnounceStream, error)
 
-	AcceptSubscription(context.Context) (*ReceivedSubscribeStream, error)
+	AcceptSubscription(context.Context) (*receiveSubscribeStream, error)
 
-	AcceptFetch(context.Context) (*ReceivedFetch, error)
+	AcceptFetch(context.Context) (*receiveFetchStream, error)
 
-	AcceptInfoRequest(context.Context) (*SendInfoStream, error)
+	AcceptInfoRequest(context.Context) (*sendInfoStream, error)
 }
 
 func openGroupStream(conn transport.Connection) (transport.SendStream, error) {
@@ -79,7 +79,7 @@ func sendDatagram(conn transport.Connection, g sentGroup, payload []byte) error 
 	return nil
 }
 
-func newReceivedInterest(stream transport.Stream) (*SendAnnounceStream, error) {
+func newSendAnnounceStream(stream transport.Stream) (*sendAnnounceStream, error) {
 	// Get an Interest
 	interest, err := readInterest(stream)
 	if err != nil {
@@ -87,9 +87,9 @@ func newReceivedInterest(stream transport.Stream) (*SendAnnounceStream, error) {
 		return nil, err
 	}
 
-	return &SendAnnounceStream{
-		Interest:     interest,
-		activeTracks: make(map[string]Track),
+	return &sendAnnounceStream{
+		interest:     interest,
 		stream:       stream,
+		activeTracks: make(map[string]Announcement),
 	}, nil
 }

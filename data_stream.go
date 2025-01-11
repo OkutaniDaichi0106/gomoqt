@@ -1,7 +1,6 @@
 package moqt
 
 import (
-	"log/slog"
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
@@ -13,14 +12,14 @@ type SendDataStream interface {
 	SentGroup
 }
 
-var _ SendDataStream = (*dataSendStream)(nil)
+var _ SendDataStream = (*sendDataStream)(nil)
 
-type dataSendStream struct {
+type sendDataStream struct {
 	transport.SendStream
 	sentGroup
 }
 
-func (stream dataSendStream) Write(buf []byte) (int, error) {
+func (stream sendDataStream) Write(buf []byte) (int, error) {
 	fm := message.FrameMessage{
 		Payload: buf,
 	}
@@ -32,32 +31,28 @@ func (stream dataSendStream) Write(buf []byte) (int, error) {
 	return len(buf), nil
 }
 
+var _ GroupReader = (ReceiveDataStream)(nil)
+
 type ReceiveDataStream interface {
+	SubscribeID() SubscribeID
+	transport.ReceiveStream
+	NextFrame() ([]byte, error)
+	ReceivedGroup
+}
+
+var _ ReceiveDataStream = (*receiveDataStream)(nil)
+
+type receiveDataStream struct {
+	subscribeID SubscribeID
 	transport.ReceiveStream
 	ReceivedGroup
 }
 
-func newReceiveDataStream(stream transport.ReceiveStream) (ReceiveDataStream, error) {
-	group, err := readGroup(stream)
-	if err != nil {
-		slog.Error("failed to get a group", slog.String("error", err.Error()))
-		return nil, err
-	}
-
-	return &dataReceiveStream{
-		ReceiveStream: stream,
-		receivedGroup: group,
-	}, nil
+func (stream receiveDataStream) SubscribeID() SubscribeID {
+	return stream.subscribeID
 }
 
-var _ ReceiveDataStream = (*dataReceiveStream)(nil)
-
-type dataReceiveStream struct {
-	transport.ReceiveStream
-	receivedGroup
-}
-
-func (stream dataReceiveStream) Read(buf []byte) (int, error) {
+func (stream receiveDataStream) Read(buf []byte) (int, error) {
 	var fm message.FrameMessage
 	err := fm.Decode(stream.ReceiveStream)
 	if err != nil {
@@ -67,6 +62,16 @@ func (stream dataReceiveStream) Read(buf []byte) (int, error) {
 	n := copy(buf, fm.Payload)
 
 	return n, nil
+}
+
+func (stream receiveDataStream) NextFrame() ([]byte, error) {
+	var fm message.FrameMessage
+	err := fm.Decode(stream.ReceiveStream)
+	if err != nil {
+		return nil, err
+	}
+
+	return fm.Payload, nil
 }
 
 func newReceiveDataStreamQueue() *receiveDataStreamQueue {

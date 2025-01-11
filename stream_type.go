@@ -11,6 +11,7 @@ const (
 	stream_type_subscribe message.StreamType = 0x2
 	stream_type_fetch     message.StreamType = 0x3
 	stream_type_info      message.StreamType = 0x4
+
 	/*
 	 * Unidirectional Stream Type
 	 */

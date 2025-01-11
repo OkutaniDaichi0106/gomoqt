@@ -9,7 +9,7 @@ import (
 )
 
 type SubscribeUpdateMessage struct {
-	SubscribeID SubscribeID
+	// SubscribeID SubscribeID
 
 	TrackPriority    TrackPriority
 	GroupOrder       GroupOrder
@@ -38,9 +38,6 @@ func (su SubscribeUpdateMessage) Encode(w io.Writer) error {
 	 * Serialize the payload
 	 */
 	p := make([]byte, 0, 1<<6)
-
-	// Append the Subscriber ID
-	p = quicvarint.Append(p, uint64(su.SubscribeID))
 
 	// Append the Subscriber Priority
 	p = quicvarint.Append(p, uint64(su.TrackPriority))
@@ -82,15 +79,9 @@ func (sum *SubscribeUpdateMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	// Get a Subscribe ID
-	num, err := quicvarint.Read(mr)
-	if err != nil {
-		return err
-	}
-	sum.SubscribeID = SubscribeID(num)
 
 	// Get a Min Group Number
-	num, err = quicvarint.Read(mr)
+	num, err := quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}

@@ -1,13 +1,11 @@
 package moqt
 
 import (
-	"errors"
+	"io"
 	"log/slog"
 	"sync"
-	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/internal/transport"
 )
 
 /*
@@ -20,111 +18,58 @@ type GroupSequence message.GroupSequence
 
 /***/
 type Fetch struct {
+	SubscribeID   SubscribeID
 	TrackPath     string
 	GroupPriority GroupPriority
 	GroupSequence GroupSequence
 	FrameSequence FrameSequence
 }
 
-func newReceivedFetch(stream transport.Stream) (*receiveFetchStream, error) {
-	// Get a fetch-request
-	fetch, err := readFetch(stream)
+func readFetch(r io.Reader) (Fetch, error) {
+	var fm message.FetchMessage
+	err := fm.Decode(r)
 	if err != nil {
-		slog.Error("failed to get a fetch-request", slog.String("error", err.Error()))
-		return nil, err
+		slog.Error("failed to read a FETCH message", slog.String("error", err.Error()))
+		return Fetch{}, err
 	}
 
-	return &receiveFetchStream{
-		fetch:  fetch,
-		stream: stream,
-	}, nil
-}
-
-type ReceiveFetchStream interface {
-	OpenDataStream(SubscribeID, GroupSequence, GroupPriority) (SendDataStream, error)
-	CloseWithError(error) error
-	Close() error
-}
-
-var _ ReceiveFetchStream = (*receiveFetchStream)(nil)
-
-type receiveFetchStream struct {
-	fetch     Fetch
-	groupSent bool
-	stream    transport.Stream
-}
-
-func (fetch *receiveFetchStream) OpenDataStream(id SubscribeID, sequence GroupSequence, priority GroupPriority) (SendDataStream, error) {
-	if fetch.groupSent {
-		return nil, errors.New("a group has already been sent")
+	req := Fetch{
+		SubscribeID:   SubscribeID(fm.SubscribeID),
+		TrackPath:     fm.TrackPath,
+		GroupPriority: GroupPriority(fm.GroupPriority),
+		GroupSequence: GroupSequence(fm.GroupSequence),
+		FrameSequence: FrameSequence(fm.FrameSequence),
 	}
 
-	// Send a GROUP message
-	gm := message.GroupMessage{
-		SubscribeID:   message.SubscribeID(id),
-		GroupSequence: message.GroupSequence(sequence),
-		GroupPriority: message.GroupPriority(priority),
+	return req, nil
+}
+
+func writeFetch(w io.Writer, fetch Fetch) error {
+	fm := message.FetchMessage{
+		SubscribeID:   message.SubscribeID(fetch.SubscribeID),
+		TrackPath:     fetch.TrackPath,
+		GroupPriority: message.GroupPriority(fetch.GroupPriority),
+		GroupSequence: message.GroupSequence(fetch.GroupSequence),
+		FrameSequence: message.FrameSequence(fetch.FrameSequence),
 	}
-	err := gm.Encode(fetch.stream)
+	err := fm.Encode(w)
 	if err != nil {
-		slog.Error("failed to send a GROUP message", slog.String("error", err.Error()))
-		return nil, err
+		slog.Error("failed to send a FETCH message", slog.String("error", err.Error()))
+		return err
 	}
-
-	fetch.groupSent = true
-
-	return dataSendStream{
-		SendStream: fetch.stream,
-		sentGroup: sentGroup{
-			subscribeID:   id,
-			groupSequence: sequence,
-			groupPriority: priority,
-			sentAt:        time.Now(),
-		},
-	}, nil
-}
-
-func (fetch receiveFetchStream) CloseWithError(err error) error {
-	if err == nil {
-		return fetch.Close()
-	}
-
-	var code transport.StreamErrorCode
-
-	var strerr transport.StreamError
-	if errors.As(err, &strerr) {
-		code = strerr.StreamErrorCode()
-	} else {
-		var ok bool
-		feterr, ok := err.(FetchError)
-		if ok {
-			code = transport.StreamErrorCode(feterr.FetchErrorCode())
-		} else {
-			code = ErrInternalError.StreamErrorCode()
-		}
-	}
-
-	fetch.stream.CancelRead(code)
-	fetch.stream.CancelWrite(code)
-
-	slog.Info("rejcted the fetch request")
 
 	return nil
 }
 
-func (frw receiveFetchStream) Close() error {
-	return frw.stream.Close()
-}
-
 func newReceivedFetchQueue() *receivedFetchQueue {
 	return &receivedFetchQueue{
-		queue: make([]*receiveFetchStream, 0),
+		queue: make([]ReceiveFetchStream, 0),
 		ch:    make(chan struct{}, 1),
 	}
 }
 
 type receivedFetchQueue struct {
-	queue []*receiveFetchStream
+	queue []ReceiveFetchStream
 	mu    sync.Mutex
 	ch    chan struct{}
 }
@@ -140,7 +85,7 @@ func (q *receivedFetchQueue) Chan() <-chan struct{} {
 	return q.ch
 }
 
-func (q *receivedFetchQueue) Enqueue(fetch *receiveFetchStream) {
+func (q *receivedFetchQueue) Enqueue(fetch ReceiveFetchStream) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -152,7 +97,7 @@ func (q *receivedFetchQueue) Enqueue(fetch *receiveFetchStream) {
 	}
 }
 
-func (q *receivedFetchQueue) Dequeue() *receiveFetchStream {
+func (q *receivedFetchQueue) Dequeue() ReceiveFetchStream {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 

@@ -1,6 +1,6 @@
 package moqt
 
 type downstream struct {
-	sess                    ServerSession
-	receiveSubscribeStreams []receiveSubscribeStream
+	sess ServerSession
+	rss  ReceiveSubscribeStream
 }

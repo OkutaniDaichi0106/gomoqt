@@ -14,7 +14,7 @@ func newReceivedDatagram(datagram []byte) (ReceivedDatagram, error) {
 	reader := bytes.NewReader(datagram)
 
 	//
-	group, err := readGroup(reader)
+	id, group, err := readGroup(reader)
 	if err != nil {
 		return nil, err
 	}
@@ -23,12 +23,14 @@ func newReceivedDatagram(datagram []byte) (ReceivedDatagram, error) {
 	frame := datagram[len(datagram)-reader.Len():]
 
 	return &receivedDatagram{
-		receivedGroup: group,
+		subscribeID:   id,
+		ReceivedGroup: group,
 		payload:       frame,
 	}, nil
 }
 
 type ReceivedDatagram interface {
+	SubscribeID() SubscribeID
 	Payload() []byte
 	ReceivedGroup
 }
@@ -36,8 +38,13 @@ type ReceivedDatagram interface {
 var _ ReceivedDatagram = (*receivedDatagram)(nil)
 
 type receivedDatagram struct {
-	receivedGroup
+	subscribeID SubscribeID
+	ReceivedGroup
 	payload []byte
+}
+
+func (d receivedDatagram) SubscribeID() SubscribeID {
+	return d.subscribeID
 }
 
 func (d receivedDatagram) Payload() []byte {

@@ -24,7 +24,7 @@ type Client struct {
 
 	//supportedVersions []Version
 
-	JitterManager JitterManager
+	// JitterManager JitterManager
 }
 
 func (c Client) Dial(req SetupRequest, ctx context.Context) (clientSession, SetupResponce, error) {
@@ -252,43 +252,97 @@ func listenBiStreams(sess *session, ctx context.Context) {
 			case stream_type_announce:
 				// Handle the announce stream
 				slog.Debug("announce stream was opened")
-
-				// Get a received interest
-				ri, err := newSendAnnounceStream(stream)
+				// Get an Interest
+				interest, err := readInterest(stream)
 				if err != nil {
-					slog.Error("failed to get a received interest", slog.String("error", err.Error()))
+					slog.Error("failed to get an Interest", slog.String("error", err.Error()))
 					closeStreamWithInternalError(stream, err)
 					return
 				}
 
+				sas := &sendAnnounceStream{
+					interest:     interest,
+					stream:       stream,
+					activeTracks: make(map[string]Announcement),
+				}
+
 				// Enqueue the interest
-				sess.receivedInterestQueue.Enqueue(ri)
+				sess.sendAnnounceStreamQueue.Enqueue(sas)
 			case stream_type_subscribe:
 				slog.Debug("subscribe stream was opened")
 
-				// Get a received subscription
-				subscription, err := newReceivedSubscription(stream)
+				id, subscription, err := readSubscription(stream)
 				if err != nil {
 					slog.Error("failed to get a received subscription", slog.String("error", err.Error()))
 					closeStreamWithInternalError(stream, err)
 					return
 				}
 
+				rss := &receiveSubscribeStream{
+					subscribeID:  id,
+					subscription: subscription,
+					stream:       stream,
+				}
+
 				// Enqueue the subscription
-				sess.receivedSubscriptionQueue.Enqueue(subscription)
+				sess.receiveSubscribeStreamQueue.Enqueue(rss)
+
+				// Listen updates
+				for {
+					update, err := readSubscribeUpdate(stream)
+					if err != nil {
+						slog.Error("failed to read a SUBSCRIBE_UPDATE message", slog.String("error", err.Error()))
+						closeStreamWithInternalError(stream, err)
+						break
+					}
+
+					subscription, err := updateSubscription(rss.subscription, update)
+					if err != nil {
+						slog.Error("failed to update a subscription", slog.String("error", err.Error()))
+						closeStreamWithInternalError(stream, err)
+						return
+					}
+
+					rss.subscription = subscription
+				}
 			case stream_type_fetch:
 				slog.Debug("fetch stream was opened")
-
-				// Get a received fetch
-				fetch, err := newReceivedFetch(stream)
+				// Get a fetch-request
+				fetch, err := readFetch(stream)
 				if err != nil {
-					slog.Error("failed to get a received fetch", slog.String("error", err.Error()))
+					slog.Error("failed to get a fetch-request", slog.String("error", err.Error()))
 					closeStreamWithInternalError(stream, err)
 					return
 				}
 
+				rfs := &receiveFetchStream{
+					fetch:  fetch,
+					stream: stream,
+				}
+
 				// Enqueue the fetch
-				sess.receivedFetchQueue.Enqueue(fetch)
+				sess.receiveFetchStreamQueue.Enqueue(rfs)
+
+				// Listen updates
+				for {
+					update, err := readFetchUpdate(stream)
+					if err != nil {
+						slog.Error("failed to read a FETCH_UPDATE message", slog.String("error", err.Error()))
+						closeStreamWithInternalError(stream, err)
+						break
+					}
+
+					fetch, err := updateFetch(rfs.fetch, update)
+					if err != nil {
+						slog.Error("failed to update a fetch", slog.String("error", err.Error()))
+						closeStreamWithInternalError(stream, err)
+						return
+					}
+
+					rfs.fetch = fetch
+
+					slog.Info("updated a fetch", slog.Any("fetch", rfs.fetch))
+				}
 			case stream_type_info:
 				slog.Debug("info stream was opened")
 
@@ -344,7 +398,18 @@ func listenUniStreams(sess *session, ctx context.Context) {
 			case stream_type_group:
 				slog.Debug("group stream was opened")
 
-				data, err := newReceiveDataStream(stream)
+				id, group, err := readGroup(stream)
+				if err != nil {
+					slog.Error("failed to get a group", slog.String("error", err.Error()))
+					return
+				}
+
+				data := &receiveDataStream{
+					subscribeID:   id,
+					ReceiveStream: stream,
+					ReceivedGroup: group,
+				}
+
 				if err != nil {
 					slog.Error("failed to get a data receive stream", slog.String("error", err.Error()))
 					closeReceiveStreamWithInternalError(stream, err) // TODO:

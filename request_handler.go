@@ -29,22 +29,18 @@ func readInterest(r io.Reader) (Interest, error) {
 	}, nil
 }
 
-func readFetch(r io.Reader) (Fetch, error) {
-	var frm message.FetchMessage
-	err := frm.Decode(r)
+func writeInterest(w io.Writer, interest Interest) error {
+	aim := message.AnnounceInterestMessage{
+		TrackPathPrefix: interest.TrackPrefix,
+		Parameters:      message.Parameters(interest.Parameters),
+	}
+
+	err := aim.Encode(w)
 	if err != nil {
-		slog.Error("failed to read a FETCH message", slog.String("error", err.Error()))
-		return Fetch{}, err
+		slog.Error("failed to send an ANNOUNCE_INTEREST message", slog.String("error", err.Error()))
+		return err
 	}
-
-	req := Fetch{
-		TrackPath:     frm.TrackPath,
-		GroupPriority: GroupPriority(frm.GroupPriority),
-		GroupSequence: GroupSequence(frm.GroupSequence),
-		FrameSequence: FrameSequence(frm.FrameSequence),
-	}
-
-	return req, nil
+	return nil
 }
 
 func readInfoRequest(r io.Reader) (InfoRequest, error) {

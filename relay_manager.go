@@ -1,125 +1,160 @@
 package moqt
 
 import (
+	"context"
 	"errors"
-	"strings"
+	"log/slog"
 	"sync"
+	"sync/atomic"
 )
 
-func NewRelayManager() *RelayManager {
-	return &RelayManager{
-		trackPathTree: trackPathTree{
-			rootNode: &trackPrefixNode{
-				trackPrefixPart: "",
-				children:        make(map[string]*trackPrefixNode),
-			},
-		},
+type RelayManager interface {
+	RelayAnnouncements(ServerSession, Interest) error
+
+	/*
+	 * Serve subscription to the relay manager
+	 */
+	RelayTrack(ServerSession, Subscription) error
+
+	TrackManager
+}
+
+func NewRelayManager() RelayManager {
+	return &relayManager{
+		trackTree: newTrackTree(),
 	}
 }
 
-type RelayManager struct {
-	trackPathTree trackPathTree
+var _ RelayManager = (*relayManager)(nil)
+
+type relayManager struct {
+	//
+	trackTree *trackTree
+
+	trackManager
 }
 
-func (rm *RelayManager) AddAnnounceStream(trackPrefix string, interest *SendAnnounceStream) error {
-	trackPrefixParts := splitTrackPath(trackPrefix)
-
-	// Trace the track path
-	prefixNode, ok := rm.trackPathTree.traceTrackPrefix(trackPrefixParts)
-	if !ok || prefixNode == nil {
-		return ErrTrackDoesNotExist
+func (manager *relayManager) RelayAnnouncements(sess ServerSession, interest Interest) error {
+	annstr, err := sess.OpenAnnounceStream(interest)
+	if err != nil {
+		return err
 	}
 
-	prefixNode.riMu.Lock()
-	defer prefixNode.riMu.Unlock()
+	go func() {
+		for {
+			// Receive announcements
+			ann, err := annstr.ReceiveAnnouncements()
+			if err != nil {
+				slog.Error("failed to receive announcements", slog.String("error", err.Error()))
+				return
+			}
 
-	prefixNode.interests = append(prefixNode.interests, interest)
+			// Serve announcements
+			err = manager.ServeAnnouncements(ann)
+			if err != nil {
+				slog.Error("failed to serve announcements", slog.String("error", err.Error()))
+				return
+			}
+		}
+	}()
 
 	return nil
 }
 
-func (rm *RelayManager) RemoveAnnounceStream(trackPrefix string, interest *SendAnnounceStream) {
-	trackPrefixParts := splitTrackPath(trackPrefix)
-
-	// Trace the track path
-	prefixNode, ok := rm.trackPathTree.traceTrackPrefix(trackPrefixParts)
-	if !ok || prefixNode == nil {
-		return
+func (manager *relayManager) RelayTrack(sess ServerSession, sub Subscription) error {
+	substr, err := sess.OpenSubscribeStream(sub)
+	if err != nil {
+		slog.Error("failed to open a subscribe stream", slog.String("error", err.Error()))
+		return err
 	}
 
-	prefixNode.riMu.Lock()
-	defer prefixNode.riMu.Unlock()
+	// Create a track buffer
+	trackBuf := NewTrackBuffer()
 
-	for i, ri := range prefixNode.interests {
-		if ri == interest {
-			prefixNode.interests = append(prefixNode.interests[:i], prefixNode.interests[i+1:]...)
-			break
+	// Serve the subscription
+	err = manager.ServeTrack(sub, trackBuf)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		for {
+			// Receive data
+			stream, err := sess.AcceptDataStream(substr, context.Background())
+			if err != nil {
+				slog.Error("failed to receive data", slog.String("error", err.Error()))
+				return
+			}
+
+			go func(stream ReceiveDataStream) {
+				for {
+					// Receive data
+					groupBuf := NewGroupBuffer(stream.GroupSequence(), stream.GroupPriority())
+
+					frame, err := stream.NextFrame()
+					if len(frame) > 0 {
+						groupBuf.Write(frame)
+					}
+
+					if err != nil {
+						slog.Error("failed to receive a frame", slog.String("error", err.Error()))
+						return
+					}
+				}
+			}(stream)
 		}
+	}()
+
+	return nil
+}
+
+func newTrackTree() *trackTree {
+	return &trackTree{
+		rootNode: &trackPrefixNode{
+			trackPrefix: "",
+			children:    make(map[string]*trackPrefixNode),
+		},
 	}
 }
 
-type trackPathTree struct {
+type trackTree struct {
 	rootNode *trackPrefixNode
 }
 
-func (tree trackPathTree) insertTrackName(trackPrefixParts []string, trackName string) (*trackNameNode, error) {
-	// Trace the track prefix
-	prefixNode := tree.insertTrackPrefix(trackPrefixParts)
-
-	// Find the track name node
-	_, ok := prefixNode.findTrackName(trackName)
-	if ok {
-		return nil, ErrDuplicatedTrack
-	}
-
-	// Insert the track name node
-	return prefixNode.insertTrackName(trackName)
+func (tree trackTree) insertTrackPrefix(trackPrefixParts []string) *trackPrefixNode {
+	return tree.rootNode.addDescendants(trackPrefixParts)
 }
 
-func (tree trackPathTree) insertTrackPrefix(trackPrefixParts []string) *trackPrefixNode {
-	// Set the current node to the root node
-	currentNode := tree.rootNode
-	//
-	var exists bool
-
-	// track the tree
-	for _, trackPart := range trackPrefixParts {
-		// Verify the node has a child with the node value
-		var child *trackPrefixNode
-		child, exists = currentNode.children[trackPart]
-		if exists && child != nil {
-			// Move to the next child node
-			currentNode = child
-		} else {
-			// Create new node and move to the new node
-			newNode := &trackPrefixNode{
-				trackPrefixPart: trackPart,
-				children:        make(map[string]*trackPrefixNode),
-			}
-			currentNode.children[trackPart] = newNode
-
-			currentNode = newNode
-		}
-	}
-
-	return currentNode
-}
-
-func (tree trackPathTree) removeTrackPrefix(trackPrefixParts []string) error {
-	_, err := tree.rootNode.removeDescendants(trackPrefixParts, 0)
+func (tree trackTree) removeTrackPrefix(trackPrefixParts []string) error {
+	_, err := tree.rootNode.removeDescendants(trackPrefixParts)
 	return err
 }
 
-func (tree trackPathTree) traceTrackPrefix(trackPrefixParts []string) (*trackPrefixNode, bool) {
+func (tree trackTree) traceTrackPrefix(trackPrefixParts []string) (*trackPrefixNode, bool) {
 	return tree.rootNode.traceDescendant(trackPrefixParts)
 }
 
-type trackPrefixNode struct {
+func (tree trackTree) handleDescendants(trackPrefixParts []string, op func(*trackPrefixNode) error) error {
+	return tree.rootNode.handleDescendants(trackPrefixParts, op)
+}
 
-	/*
-	 * A Part of the Track Prefix
-	 */
-	trackPrefixPart string
+func (trackPrefixNode *trackPrefixNode) handleDescendants(trackPrefixParts []string, op func(*trackPrefixNode) error) error {
+	err := op(trackPrefixNode)
+	if err != nil {
+		return err
+	}
+
+	if len(trackPrefixParts) == 0 {
+		return nil
+	}
+
+	node := trackPrefixNode.addDescendants(trackPrefixParts[0:1])
+
+	return node.handleDescendants(trackPrefixParts[1:], op)
+}
+
+type trackPrefixNode struct {
+	trackPrefix string
 
 	/*
 	 * Children of the node
@@ -128,34 +163,49 @@ type trackPrefixNode struct {
 	cdMu     sync.RWMutex
 
 	/*
-	 * Track Name Nodes
+	 * Announcer
 	 */
-	trackNames map[string]*trackNameNode
-	tnMu       sync.RWMutex
+	announcementBuffer announcementBuffer
 
-	//
-	interests []*SendAnnounceStream
-	riMu      sync.RWMutex
+	/*
+	 * Track node
+	 */
+	track *trackNameNode
 }
 
-type trackNameNode struct {
-	trackNamePart string
-
-	relayer *Relayer
-
-	mu sync.RWMutex
-}
-
-func (node *trackPrefixNode) removeDescendants(tns []string, depth int) (bool, error) {
+func (node *trackPrefixNode) addDescendants(trackPrefixParts []string) *trackPrefixNode {
 	if node == nil {
-		return false, errors.New("track namespace not found at " + tns[depth])
+		return nil
 	}
 
-	if depth > len(tns) {
-		return false, errors.New("invalid depth")
+	if len(trackPrefixParts) == 0 {
+		return node
 	}
 
-	if depth == len(tns) {
+	trackPrefixPart := trackPrefixParts[0]
+
+	node.cdMu.RLock()
+	defer node.cdMu.RUnlock()
+
+	child, exists := node.children[trackPrefixPart]
+	if !exists {
+		child = &trackPrefixNode{
+			trackPrefix:        node.trackPrefix + "/" + trackPrefixPart,
+			children:           make(map[string]*trackPrefixNode),
+			announcementBuffer: newAnnouncementBuffer(),
+		}
+		node.children[trackPrefixPart] = child
+	}
+
+	return child.addDescendants(trackPrefixParts[1:])
+}
+
+func (node *trackPrefixNode) removeDescendants(trackPrefixParts []string) (bool, error) {
+	if node == nil {
+		return false, errors.New("track namespace not found at " + trackPrefixParts[0])
+	}
+
+	if len(trackPrefixParts) == 0 {
 		if len(node.children) == 0 {
 			return true, nil
 		}
@@ -163,7 +213,7 @@ func (node *trackPrefixNode) removeDescendants(tns []string, depth int) (bool, e
 		return false, nil
 	}
 
-	value := tns[depth]
+	value := trackPrefixParts[0]
 
 	node.cdMu.RLock()
 	defer node.cdMu.RUnlock()
@@ -173,7 +223,7 @@ func (node *trackPrefixNode) removeDescendants(tns []string, depth int) (bool, e
 		return false, errors.New("track namespace not found at " + value)
 	}
 
-	ok, err := child.removeDescendants(tns, depth+1)
+	ok, err := child.removeDescendants(trackPrefixParts[1:])
 	if err != nil {
 		return false, err
 	}
@@ -187,54 +237,136 @@ func (node *trackPrefixNode) removeDescendants(tns []string, depth int) (bool, e
 	return false, nil
 }
 
-func (node *trackPrefixNode) traceDescendant(values []string) (*trackPrefixNode, bool) {
+func (node *trackPrefixNode) traceDescendant(trackPrefixParts []string) (*trackPrefixNode, bool) {
+	if len(trackPrefixParts) == 0 {
+		return node, true
+	}
+
 	node.cdMu.RLock()
 	defer node.cdMu.RUnlock()
 
-	currentNode := node
-	for _, nodeValue := range values {
-		// Verify the node has a child with the node value
-		child, exists := currentNode.children[nodeValue]
-		if exists && child != nil {
-			// Move to the next child node
-			currentNode = child
-		} else {
-			return nil, false
-		}
-	}
-
-	return currentNode, true
-}
-
-func (node *trackPrefixNode) findTrackName(trackName string) (*trackNameNode, bool) {
-	node.tnMu.RLock()
-	defer node.tnMu.RUnlock()
-
-	tnNode, ok := node.trackNames[trackName]
-	if !ok {
+	child, exists := node.children[trackPrefixParts[0]]
+	if !exists || child == nil {
 		return nil, false
 	}
 
-	return tnNode, true
+	return child.traceDescendant(trackPrefixParts[1:])
 }
 
-func (node *trackPrefixNode) insertTrackName(trackName string) (*trackNameNode, error) {
-	node.tnMu.Lock()
-	defer node.tnMu.Unlock()
+func (node *trackPrefixNode) initTrack() {
+	node.cdMu.Lock()
+	defer node.cdMu.Unlock()
 
-	if _, ok := node.trackNames[trackName]; ok {
-		return nil, ErrDuplicatedTrack
+	if node.track == nil {
+		node.track = &trackNameNode{
+			trackPath: node.trackPrefix,
+		}
 	}
-
-	trackNameNode := &trackNameNode{
-		trackNamePart: trackName,
-	}
-
-	node.trackNames[trackName] = trackNameNode
-
-	return trackNameNode, nil
 }
 
-func splitTrackPath(trackPath string) []string {
-	return strings.Split(trackPath, "/")
+/*
+ * Announcer
+ */
+func newAnnouncementBuffer() announcementBuffer {
+	return announcementBuffer{
+		annCond:       sync.NewCond(&sync.Mutex{}),
+		announcements: make([]Announcement, 0),
+	}
+}
+
+type announcementBuffer struct {
+	annCond *sync.Cond
+
+	activeMap map[string]struct{}
+
+	announcements []Announcement
+
+	waiting   uint64
+	completed uint64
+}
+
+func (announcer announcementBuffer) Wait() {
+	announcer.annCond.L.Lock()
+	defer announcer.annCond.L.Unlock()
+
+	atomic.AddUint64(&announcer.waiting, 1)
+
+	for len(announcer.announcements) == 0 {
+		announcer.annCond.Wait()
+	}
+}
+
+func (announcer announcementBuffer) Broadcast() {
+	announcer.annCond.Broadcast()
+}
+
+func (announcer announcementBuffer) Get() []Announcement {
+	announcer.annCond.L.Lock()
+	defer announcer.annCond.L.Unlock()
+
+	if atomic.AddUint64(&announcer.completed, 1) == announcer.waiting {
+		announcer.Clean()
+		atomic.StoreUint64(&announcer.waiting, 0)
+		atomic.StoreUint64(&announcer.completed, 0)
+	}
+
+	return announcer.announcements
+}
+
+func (announcer *announcementBuffer) Add(ann Announcement) {
+	announcer.annCond.L.Lock()
+	defer announcer.annCond.L.Unlock()
+
+	announcer.announcements = append(announcer.announcements, ann)
+}
+
+func (announcer *announcementBuffer) Clean() {
+	announcer.annCond.L.Lock()
+	defer announcer.annCond.L.Unlock()
+
+	announcer.announcements = make([]Announcement, 0)
+}
+
+func (announcer announcementBuffer) WaitAndGet() []Announcement {
+	announcer.Wait()
+	return announcer.Get()
+}
+
+type trackNameNode struct {
+	trackPath string
+
+	/*
+	 * Session serving the track
+	 */
+	sess   ServerSession
+	sessMu sync.Mutex
+
+	/*
+	 * Announcement received from the session
+	 */
+	announcement Announcement
+
+	/*
+	 * Subscription sent to the session
+	 */
+	subscription Subscription
+
+	/*
+	 * Frame queue
+	 */
+	trackBuf *TrackBuffer
+	mu       sync.Mutex
+}
+
+func (node *trackNameNode) SetSession(sess ServerSession) error {
+	node.sessMu.Lock()
+	defer node.sessMu.Unlock()
+
+	if node.sess != nil && node.sess != sess {
+		slog.Debug("the session serving the track has been changed to another session", slog.String("track path", node.trackPath))
+	}
+
+	node.sess = sess
+
+	return nil
 }

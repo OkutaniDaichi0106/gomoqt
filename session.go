@@ -1,6 +1,7 @@
 package moqt
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"log/slog"
@@ -21,7 +22,7 @@ type Session interface {
 	OpenSubscribeStream(Subscription) (SendSubscribeStream, error)
 
 	// Open a Fetch Stream
-	OpenFetchStream(Fetch) (ReceiveDataStream, error)
+	OpenFetchStream(Fetch) (SendFetchStream, error)
 
 	// Open an Info Stream
 	OpenInfoStream(InfoRequest) (Info, error)
@@ -55,14 +56,15 @@ var _ Session = (*session)(nil)
 
 func newSession(conn transport.Connection, stream transport.Stream) *session {
 	return &session{
-		conn:                      conn,
-		receivedSubscriptionQueue: newReceivedSubscriptionQueue(),
-		receivedInterestQueue:     newReceivedInterestQueue(),
-		receivedFetchQueue:        newReceivedFetchQueue(),
-		receivedInfoRequestQueue:  newReceivedInfoRequestQueue(),
-		dataReceiveStreamQueues:   make(map[SubscribeID]*receiveDataStreamQueue),
-		receivedDatagramQueues:    make(map[SubscribeID]*receivedDatagramQueue),
-		subscribeIDCounter:        0,
+		conn:                        conn,
+		stream:                      stream,
+		receiveSubscribeStreamQueue: newReceiveSubscribeStreamQueue(),
+		sendAnnounceStreamQueue:     newReceivedInterestQueue(),
+		receiveFetchStreamQueue:     newReceivedFetchQueue(),
+		receivedInfoRequestQueue:    newReceivedInfoRequestQueue(),
+		dataReceiveStreamQueues:     make(map[SubscribeID]*receiveDataStreamQueue),
+		receivedDatagramQueues:      make(map[SubscribeID]*receivedDatagramQueue),
+		subscribeIDCounter:          0,
 	}
 }
 
@@ -71,11 +73,11 @@ type session struct {
 	stream transport.Stream
 
 	//
-	receivedSubscriptionQueue *receivedSubscriptionQueue
+	receiveSubscribeStreamQueue *receiveSubscribeStreamQueue
 
-	receivedInterestQueue *receivedInterestQueue
+	sendAnnounceStreamQueue *receivedInterestQueue
 
-	receivedFetchQueue *receivedFetchQueue
+	receiveFetchStreamQueue *receivedFetchQueue
 
 	receivedInfoRequestQueue *receivedInfoRequestQueue
 
@@ -124,24 +126,70 @@ func (s *session) OpenAnnounceStream(interest Interest) (ReceiveAnnounceStream, 
 		return nil, err
 	}
 
-	aim := message.AnnounceInterestMessage{
-		TrackPathPrefix: interest.TrackPrefix,
-		Parameters:      message.Parameters(interest.Parameters),
-	}
-
-	err = aim.Encode(stream)
+	err = writeInterest(stream, interest)
 	if err != nil {
-		slog.Error("failed to send an ANNOUNCE_INTEREST message", slog.String("error", err.Error()))
+		slog.Error("failed to write an Interest message", slog.String("error", err.Error()))
 		return nil, err
 	}
 
 	slog.Info("Successfully indicated interest", slog.Any("interest", interest))
 
-	return &receiveAnnounceStream{
+	ras := &receiveAnnounceStream{
 		interest: interest,
-		active:   make(map[string]Announcement),
 		stream:   stream,
-	}, nil
+		ch:       make(chan struct{}, 1),
+	}
+
+	go func() {
+		var terr error
+		// Read announcements
+		for {
+			slog.Debug("reading an announcement")
+			// Read an ANNOUNCE message
+
+			status, ann, err := readAnnouncement(stream, ras.interest.TrackPrefix)
+			if err != nil {
+				slog.Error("failed to read an ANNOUNCE message", slog.String("error", err.Error()))
+				return
+			}
+
+			// Update the active tracks
+			if status == ACTIVE {
+				_, ok := ras.activeMap[ann.TrackPath]
+				if ok {
+					slog.Error("duplicate active track")
+					terr = ErrProtocolViolation
+					break
+				}
+
+				ras.activeMap[ann.TrackPath] = ann
+			}
+
+			// Delete the active tracks if the it is ended
+			if status == ENDED {
+				_, ok := ras.activeMap[ann.TrackPath]
+				if !ok {
+					slog.Error("duplicate ended track")
+					terr = ErrProtocolViolation
+					break
+				}
+
+				delete(ras.activeMap, ann.TrackPath)
+			}
+
+			//
+			if status == LIVE {
+				ras.ch <- struct{}{}
+			}
+		}
+
+		if _, ok := terr.(TerminateError); ok {
+			s.Terminate(terr)
+			return
+		}
+	}()
+
+	return ras, nil
 }
 
 func (s *session) OpenSubscribeStream(subscription Subscription) (SendSubscribeStream, error) {
@@ -155,31 +203,13 @@ func (s *session) OpenSubscribeStream(subscription Subscription) (SendSubscribeS
 	}
 
 	nextID := s.nextSubscribeID()
+
 	/*
 	 * Send a SUBSCRIBE message
 	 */
-	// Set parameters
-	if subscription.SubscribeParameters == nil {
-		subscription.SubscribeParameters = make(Parameters)
-	}
-	if subscription.Track.DeliveryTimeout > 0 {
-		subscription.SubscribeParameters.Add(DELIVERY_TIMEOUT, subscription.Track.DeliveryTimeout)
-	}
-
-	// Initialize a SUBSCRIBE message
-	sm := message.SubscribeMessage{
-		SubscribeID:      message.SubscribeID(nextID),
-		TrackPath:        subscription.Track.TrackPath,
-		TrackPriority:    message.TrackPriority(subscription.Track.TrackPriority),
-		GroupOrder:       message.GroupOrder(subscription.Track.GroupOrder),
-		GroupExpires:     subscription.Track.GroupExpires,
-		MinGroupSequence: message.GroupSequence(subscription.MinGroupSequence),
-		MaxGroupSequence: message.GroupSequence(subscription.MaxGroupSequence),
-		Parameters:       message.Parameters(subscription.SubscribeParameters),
-	}
-	err = sm.Encode(stream)
+	err = writeSubscription(stream, nextID, subscription)
 	if err != nil {
-		slog.Error("failed to encode a SUBSCRIBE message", slog.String("error", err.Error()), slog.Any("message", sm))
+		slog.Error("failed to send a SUBSCRIBE message", slog.String("error", err.Error()))
 		return nil, err
 	}
 
@@ -196,24 +226,24 @@ func (s *session) OpenSubscribeStream(subscription Subscription) (SendSubscribeS
 	 * 	Update the subscription
 	 */
 	// Update the TrackPriority
-	if info.TrackPriority != subscription.Track.TrackPriority {
+	if info.TrackPriority != subscription.TrackPriority {
 		slog.Debug("TrackPriority is not updated")
 		return nil, ErrPriorityMismatch
 	}
 
 	// Update the GroupOrder
-	if subscription.Track.GroupOrder == 0 {
-		subscription.Track.GroupOrder = info.GroupOrder
+	if subscription.GroupOrder == 0 {
+		subscription.GroupOrder = info.GroupOrder
 	} else {
-		if info.GroupOrder != subscription.Track.GroupOrder {
+		if info.GroupOrder != subscription.GroupOrder {
 			slog.Debug("GroupOrder is not updated")
 			return nil, ErrGroupOrderMismatch
 		}
 	}
 
 	// Update the GroupExpires
-	if info.GroupExpires < subscription.Track.GroupExpires {
-		subscription.Track.GroupExpires = info.GroupExpires
+	if info.GroupExpires < subscription.GroupExpires {
+		subscription.GroupExpires = info.GroupExpires
 	}
 
 	// Create a data stream queue
@@ -229,7 +259,7 @@ func (s *session) OpenSubscribeStream(subscription Subscription) (SendSubscribeS
 	}, err
 }
 
-func (sess *session) OpenFetchStream(req Fetch) (ReceiveDataStream, error) {
+func (sess *session) OpenFetchStream(fetch Fetch) (SendFetchStream, error) {
 	/*
 	 * Open a Fetch Stream
 	 */
@@ -242,31 +272,15 @@ func (sess *session) OpenFetchStream(req Fetch) (ReceiveDataStream, error) {
 	/*
 	 * Send a FETCH message
 	 */
-	fm := message.FetchMessage{
-		TrackPath:     req.TrackPath,
-		GroupPriority: message.GroupPriority(req.GroupPriority),
-		GroupSequence: message.GroupSequence(req.GroupSequence),
-		FrameSequence: message.FrameSequence(req.FrameSequence),
-	}
-
-	err = fm.Encode(stream)
+	err = writeFetch(stream, fetch)
 	if err != nil {
 		slog.Error("failed to send a FETCH message", slog.String("error", err.Error()))
 		return nil, err
 	}
 
-	/*
-	 * Receive a GROUP message
-	 */
-	group, err := readGroup(stream)
-	if err != nil {
-		slog.Error("failed to get a Group", slog.String("error", err.Error()))
-		return nil, err
-	}
-
-	return dataReceiveStream{
-		ReceiveStream: stream,
-		receivedGroup: group,
+	return &sendFetchStream{
+		stream: stream,
+		fetch:  fetch,
 	}, nil
 }
 
@@ -285,10 +299,7 @@ func (sess *session) OpenInfoStream(req InfoRequest) (Info, error) {
 	/*
 	 * Send an INFO_REQUEST message
 	 */
-	irm := message.InfoRequestMessage{
-		TrackPath: req.TrackPath,
-	}
-	err = irm.Encode(stream)
+	err = writeInfoRequest(stream, req)
 	if err != nil {
 		slog.Error("failed to send an INFO_REQUEST message", slog.String("error", err.Error()))
 		return Info{}, err
@@ -297,26 +308,17 @@ func (sess *session) OpenInfoStream(req InfoRequest) (Info, error) {
 	/*
 	 * Receive a INFO message
 	 */
-	var im message.InfoMessage
-	err = im.Decode(stream)
+	info, err := readInfo(stream)
 	if err != nil {
 		slog.Error("failed to get a INFO message", slog.String("error", err.Error()))
 		return Info{}, err
 	}
 
-	/*
-	 * Close the Info Stream
-	 */
+	// Close the stream
 	err = stream.Close()
 	if err != nil {
-		slog.Error("failed to close an Info Stream", slog.String("error", err.Error()))
-	}
-
-	info := Info{
-		TrackPriority:       TrackPriority(im.GroupPriority),
-		LatestGroupSequence: GroupSequence(im.LatestGroupSequence),
-		GroupOrder:          GroupOrder(im.GroupOrder),
-		GroupExpires:        im.GroupExpires,
+		slog.Error("failed to close the stream", slog.String("error", err.Error()))
+		return Info{}, err
 	}
 
 	slog.Info("Successfully get track information", slog.Any("info", info))
@@ -337,26 +339,22 @@ func (sess *session) OpenDataStream(substr ReceiveSubscribeStream, sequence Grou
 		return nil, err
 	}
 
-	// Send the GROUP message
-	gm := message.GroupMessage{
-		SubscribeID:   message.SubscribeID(substr.SubscribeID()),
-		GroupSequence: message.GroupSequence(sequence),
-		GroupPriority: message.GroupPriority(priority),
+	group := sentGroup{
+		groupSequence: sequence,
+		groupPriority: priority,
+		sentAt:        time.Now(),
 	}
-	err = gm.Encode(stream)
+
+	// Send the GROUP message
+	err = writeGroup(stream, substr.SubscribeID(), group)
 	if err != nil {
 		slog.Error("failed to send a GROUP message", slog.String("error", err.Error()))
 		return nil, err
 	}
 
-	return dataSendStream{
+	return sendDataStream{
 			SendStream: stream,
-			sentGroup: sentGroup{
-				subscribeID:   substr.SubscribeID(),
-				groupSequence: sequence,
-				groupPriority: priority,
-				sentAt:        time.Now(),
-			},
+			sentGroup:  group,
 		},
 		nil
 }
@@ -365,18 +363,16 @@ func (sess *session) SendDatagram(substr ReceiveSubscribeStream, sequence GroupS
 	// Verify
 	if sequence == 0 {
 		return errors.New("0 sequence number")
-
 	}
 
 	group := sentGroup{
-		subscribeID:   substr.SubscribeID(),
 		groupSequence: sequence,
 		groupPriority: priority,
 		sentAt:        time.Now(),
 	}
 
 	// Send
-	err := sendDatagram(sess.conn, group, payload)
+	err := sendDatagram(sess.conn, substr.SubscribeID(), group, payload)
 	if err != nil {
 		slog.Error("failed to send a datagram", slog.String("error", err.Error()))
 		return err
@@ -387,39 +383,39 @@ func (sess *session) SendDatagram(substr ReceiveSubscribeStream, sequence GroupS
 
 func (p *session) AcceptAnnounceStream(ctx context.Context) (SendAnnounceStream, error) {
 	for {
-		if p.receivedSubscriptionQueue.Len() != 0 {
-			return p.receivedInterestQueue.Dequeue(), nil
+		if p.receiveSubscribeStreamQueue.Len() != 0 {
+			return p.sendAnnounceStreamQueue.Dequeue(), nil
 		}
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-p.receivedInterestQueue.Chan():
+		case <-p.sendAnnounceStreamQueue.Chan():
 		}
 	}
 }
 
 func (sess *session) AcceptSubscribeStream(ctx context.Context) (ReceiveSubscribeStream, error) {
 	for {
-		if sess.receivedSubscriptionQueue.Len() != 0 {
-			return sess.receivedSubscriptionQueue.Dequeue(), nil
+		if sess.receiveSubscribeStreamQueue.Len() != 0 {
+			return sess.receiveSubscribeStreamQueue.Dequeue(), nil
 		}
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-sess.receivedInterestQueue.Chan():
+		case <-sess.sendAnnounceStreamQueue.Chan():
 		}
 	}
 }
 
 func (sess *session) AcceptFetchStream(ctx context.Context) (ReceiveFetchStream, error) {
 	for {
-		if sess.receivedFetchQueue.Len() != 0 {
-			return sess.receivedFetchQueue.Dequeue(), nil
+		if sess.receiveFetchStreamQueue.Len() != 0 {
+			return sess.receiveFetchStreamQueue.Dequeue(), nil
 		}
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-sess.receivedFetchQueue.Chan():
+		case <-sess.receiveFetchStreamQueue.Chan():
 		}
 	}
 }
@@ -571,4 +567,56 @@ func openFetchStream(conn transport.Connection) (transport.Stream, error) {
 	}
 
 	return stream, nil
+}
+
+func openGroupStream(conn transport.Connection) (transport.SendStream, error) {
+	slog.Debug("opening an Group Stream")
+
+	stream, err := conn.OpenUniStream()
+	if err != nil {
+		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	stm := message.StreamTypeMessage{
+		StreamType: stream_type_group,
+	}
+
+	err = stm.Encode(stream)
+	if err != nil {
+		slog.Error("failed to send a Stream Type message", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	return stream, nil
+}
+
+func sendDatagram(conn transport.Connection, id SubscribeID, g sentGroup, payload []byte) error {
+	if g.groupSequence == 0 {
+		return errors.New("0 sequence number")
+	}
+
+	var buf bytes.Buffer
+
+	// Encode the group
+	err := writeGroup(&buf, id, g)
+	if err != nil {
+		return err
+	}
+
+	// Encode the payload
+	_, err = buf.Write(payload)
+	if err != nil {
+		slog.Error("failed to encode a payload", slog.String("error", err.Error()))
+		return err
+	}
+
+	// Send the data with the GROUP message
+	err = conn.SendDatagram(buf.Bytes())
+	if err != nil {
+		slog.Error("failed to send a datagram", slog.String("error", err.Error()))
+		return err
+	}
+
+	return nil
 }

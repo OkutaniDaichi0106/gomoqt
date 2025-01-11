@@ -1,7 +1,6 @@
 package moqt
 
 import (
-	"io"
 	"log/slog"
 	"sync"
 	"time"
@@ -13,47 +12,60 @@ import (
 type SubscribeID uint64
 
 type Subscription struct {
-	Track
+	/*
+	 * Required
+	 */
+	TrackPath string
+
+	/*
+	 * Optional
+	 */
+	TrackPriority TrackPriority
+	GroupOrder    GroupOrder
+	GroupExpires  time.Duration
+
+	// Parameters
+	AuthorizationInfo string
+
+	DeliveryTimeout time.Duration //TODO
+
+	// AnnounceParameters Parameters
 
 	MinGroupSequence GroupSequence
 	MaxGroupSequence GroupSequence
 
 	SubscribeParameters Parameters
-
-	/*
-	 * Not in wire
-	 */
 }
 
-func newReceivedSubscriptionQueue() *receivedSubscriptionQueue {
-	return &receivedSubscriptionQueue{
-		queue: make([]*receiveSubscribeStream, 0),
+func newReceiveSubscribeStreamQueue() *receiveSubscribeStreamQueue {
+	return &receiveSubscribeStreamQueue{
+		queue: make([]ReceiveSubscribeStream, 0),
 		ch:    make(chan struct{}, 1),
 	}
 }
 
-type receivedSubscriptionQueue struct {
-	queue []*receiveSubscribeStream
+type receiveSubscribeStreamQueue struct {
+	queue []ReceiveSubscribeStream
 	mu    sync.Mutex
 	ch    chan struct{}
 }
 
-func (q *receivedSubscriptionQueue) Len() int {
+func (q *receiveSubscribeStreamQueue) Len() int {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	return len(q.queue)
 }
 
-func (q *receivedSubscriptionQueue) Chan() <-chan struct{} {
+func (q *receiveSubscribeStreamQueue) Chan() <-chan struct{} {
 	return q.ch
 }
 
-func (q *receivedSubscriptionQueue) Enqueue(subscription *receiveSubscribeStream) {
+func (q *receiveSubscribeStreamQueue) Enqueue(rss ReceiveSubscribeStream) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	q.queue = append(q.queue, subscription)
+	q.queue = append(q.queue, rss)
 
 	select {
 	case q.ch <- struct{}{}:
@@ -61,7 +73,7 @@ func (q *receivedSubscriptionQueue) Enqueue(subscription *receiveSubscribeStream
 	}
 }
 
-func (q *receivedSubscriptionQueue) Dequeue() *receiveSubscribeStream {
+func (q *receiveSubscribeStreamQueue) Dequeue() ReceiveSubscribeStream {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -84,65 +96,51 @@ func readSubscription(r transport.Stream) (SubscribeID, Subscription, error) {
 	}
 
 	subscription := Subscription{
-		Track: Track{
-			TrackPath:     sm.TrackPath,
-			TrackPriority: TrackPriority(sm.TrackPriority),
-			GroupOrder:    GroupOrder(sm.GroupOrder),
-			GroupExpires:  sm.GroupExpires,
-		},
-		// TODO: Delivery Timeout
+		TrackPath:           sm.TrackPath,
+		TrackPriority:       TrackPriority(sm.TrackPriority),
+		GroupOrder:          GroupOrder(sm.GroupOrder),
+		GroupExpires:        sm.GroupExpires,
 		MinGroupSequence:    GroupSequence(sm.MinGroupSequence),
 		MaxGroupSequence:    GroupSequence(sm.MaxGroupSequence),
 		SubscribeParameters: Parameters(sm.Parameters),
 	}
 
-	// Get
+	// Get a DELIVERY_TIMEOUT parameter
 	deliveryTimeout, ok := getDeliveryTimeout(Parameters(sm.Parameters))
 	if ok {
-		subscription.Track.DeliveryTimeout = deliveryTimeout
+		subscription.DeliveryTimeout = deliveryTimeout
 	}
 
 	return SubscribeID(sm.SubscribeID), subscription, nil
 }
 
-type SubscribeUpdate struct {
-	TrackPriority    TrackPriority
-	GroupOrder       GroupOrder
-	GroupExpires     time.Duration
-	MinGroupSequence GroupSequence
-	MaxGroupSequence GroupSequence
+func writeSubscription(w transport.Stream, id SubscribeID, subscription Subscription) error {
+	// Set parameters
+	if subscription.SubscribeParameters == nil {
+		subscription.SubscribeParameters = make(Parameters)
+	}
 
-	/*
-	 * SubscribeParameters
-	 */
-	SubscribeParameters Parameters
+	// Set a DELIVERY_TIMEOUT parameter
+	if subscription.DeliveryTimeout > 0 {
+		subscription.SubscribeParameters.Add(DELIVERY_TIMEOUT, subscription.DeliveryTimeout)
+	}
 
-	DeliveryTimeout time.Duration
-}
-
-func readSubscribeUpdate(r io.Reader) (SubscribeUpdate, error) {
-
-	// Read a SUBSCRIBE_UPDATE message
-	var sum message.SubscribeUpdateMessage
-	err := sum.Decode(r)
+	// Send a SUBSCRIBE message
+	sm := message.SubscribeMessage{
+		SubscribeID:      message.SubscribeID(id),
+		TrackPath:        subscription.TrackPath,
+		TrackPriority:    message.TrackPriority(subscription.TrackPriority),
+		GroupOrder:       message.GroupOrder(subscription.GroupOrder),
+		GroupExpires:     subscription.GroupExpires,
+		MinGroupSequence: message.GroupSequence(subscription.MinGroupSequence),
+		MaxGroupSequence: message.GroupSequence(subscription.MaxGroupSequence),
+		Parameters:       message.Parameters(subscription.SubscribeParameters),
+	}
+	err := sm.Encode(w)
 	if err != nil {
-		slog.Debug("failed to read a SUBSCRIBE_UPDATE message", slog.String("error", err.Error()))
-		return SubscribeUpdate{}, err
+		slog.Error("failed to send a SUBSCRIBE message", slog.String("error", err.Error()))
+		return err
 	}
 
-	// Get a DELIVERY_TIMEOUT parameter
-	timeout, ok := getDeliveryTimeout(Parameters(sum.Parameters))
-	if !ok {
-		timeout = 0
-	}
-
-	return SubscribeUpdate{
-		TrackPriority:       TrackPriority(sum.TrackPriority),
-		GroupOrder:          GroupOrder(sum.GroupOrder),
-		GroupExpires:        sum.GroupExpires,
-		MinGroupSequence:    GroupSequence(sum.MinGroupSequence),
-		MaxGroupSequence:    GroupSequence(sum.MaxGroupSequence),
-		SubscribeParameters: Parameters(sum.Parameters),
-		DeliveryTimeout:     timeout,
-	}, nil
+	return nil
 }

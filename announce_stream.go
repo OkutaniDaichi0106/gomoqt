@@ -24,78 +24,47 @@ type receiveAnnounceStream struct {
 	interest Interest
 	stream   transport.Stream
 	mu       sync.RWMutex
-	/*
-	 * Sent announcements
-	 * Track Path -> Announcement
-	 */
-	active map[string]Announcement
+
+	activeMap map[string]Announcement
+	ch        chan struct{}
+	// activeCh chan []Announcement
+
+	// endedCh chan []Announcement
 }
 
 func (ras *receiveAnnounceStream) ReceiveAnnouncements() ([]Announcement, error) {
+	ras.ch <- struct{}{}
+
 	ras.mu.Lock()
 	defer ras.mu.Unlock()
 
-	if len(ras.active) == 0 {
-		ras.active = make(map[string]Announcement)
-	}
+	announcements := make([]Announcement, 0, len(ras.activeMap))
 
-	// Read announcements
-	for {
-		slog.Debug("reading an announcement")
-		// Read an ANNOUNCE message
-		var am message.AnnounceMessage
-		err := am.Decode(ras.stream)
-		if err != nil {
-			slog.Error("failed to read an ANNOUNCE message", slog.String("error", err.Error()))
-			return nil, err
-		}
-
-		// Get the full track path
-		trackPath := ras.interest.TrackPrefix + "/" + am.TrackPathSuffix
-
-		// Update the active tracks
-		if AnnounceStatus(am.AnnounceStatus) == ACTIVE {
-			_, ok := ras.active[trackPath]
-			if ok {
-				return nil, ErrInternalError
-			}
-
-			authInfo, _ := getAuthorizationInfo(Parameters(am.Parameters))
-
-			ras.active[trackPath] = Announcement{
-				TrackPath:          trackPath,
-				AuthorizationInfo:  authInfo,
-				AnnounceParameters: Parameters(am.Parameters),
-			}
-		}
-
-		// Delete the active tracks if the it is ended
-		if AnnounceStatus(am.AnnounceStatus) == ENDED {
-			_, ok := ras.active[trackPath]
-			if !ok {
-				return nil, ErrInternalError
-			}
-
-			delete(ras.active, trackPath)
-		}
-
-		//
-		if AnnounceStatus(am.AnnounceStatus) == LIVE {
-			break
-		}
-	}
-
-	// Create a slice of announcements tracks
-	announcements := make([]Announcement, 0, len(ras.active))
-	for _, ann := range ras.active {
+	for _, ann := range ras.activeMap {
 		announcements = append(announcements, ann)
 	}
 
 	return announcements, nil
 }
 
+// func (ras *receiveAnnounceStream) NextActive() ([]Announcement, error) {
+
+// 	ras.mu.Lock()
+// 	defer ras.mu.Unlock()
+
+// 	return <-ras.activeCh, nil
+// }
+
+// func (ras *receiveAnnounceStream) NextEnded() ([]Announcement, error) {
+// 	ras.mu.Lock()
+// 	defer ras.mu.Unlock()
+
+// 	return <-ras.endedCh, nil
+// }
+
 type SendAnnounceStream interface {
 	SendAnnouncement(announcements []Announcement) error
+	Interest() Interest
 	Close() error
 	CloseWithError(error) error
 }
@@ -111,6 +80,10 @@ type sendAnnounceStream struct {
 	activeTracks map[string]Announcement
 	stream       transport.Stream
 	mu           sync.RWMutex
+}
+
+func (sas *sendAnnounceStream) Interest() Interest {
+	return sas.interest
 }
 
 func (sas *sendAnnounceStream) SendAnnouncement(announcements []Announcement) error {

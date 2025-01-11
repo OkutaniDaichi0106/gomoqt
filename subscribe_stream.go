@@ -11,11 +11,19 @@ import (
 )
 
 type SendSubscribeStream interface {
+	// Get the SubscribeID
 	SubscribeID() SubscribeID
+
+	// Get the subscription
 	Subscription() Subscription
+
+	// Update the subscription
 	UpdateSubscribe(SubscribeUpdate) error
-	Unsubscribe() error
+
+	// Close the stream
 	Close() error
+
+	// Close the stream with an error
 	CloseWithError(error) error
 }
 
@@ -37,104 +45,26 @@ func (ss *sendSubscribeStream) Subscription() Subscription {
 }
 
 func (sss *sendSubscribeStream) UpdateSubscribe(update SubscribeUpdate) error {
-	/*
-	 * Verify the update
-	 */
-	// Verify if the new group range is valid
-	if update.MinGroupSequence > update.MaxGroupSequence {
-		slog.Debug("MinGroupSequence is larger than MaxGroupSequence")
-		return ErrInvalidRange
-	}
-	// Verify if the minimum group sequence become larger
-	if sss.subscription.MinGroupSequence > update.MinGroupSequence {
-		slog.Debug("the new MinGroupSequence is smaller than the old MinGroupSequence")
-		return ErrInvalidRange
-	}
-	// Verify if the maximum group sequence become smaller
-	if sss.subscription.MaxGroupSequence < update.MaxGroupSequence {
-		slog.Debug("the new MaxGroupSequence is larger than the old MaxGroupSequence")
-		return ErrInvalidRange
-	}
+	sss.mu.Lock()
+	defer sss.mu.Unlock()
 
-	/*
-	 * Send a SUBSCRIBE_UPDATE message
-	 */
-	// Set parameters
-	if update.SubscribeParameters == nil {
-		update.SubscribeParameters = make(Parameters)
-	}
-	if update.DeliveryTimeout > 0 {
-		update.SubscribeParameters.Add(DELIVERY_TIMEOUT, update.DeliveryTimeout)
-	}
-	// Send a SUBSCRIBE_UPDATE message
-	sum := message.SubscribeUpdateMessage{
-		SubscribeID:      message.SubscribeID(sss.SubscribeID()),
-		TrackPriority:    message.TrackPriority(update.TrackPriority),
-		GroupOrder:       message.GroupOrder(update.GroupOrder),
-		GroupExpires:     update.GroupExpires,
-		MinGroupSequence: message.GroupSequence(update.MinGroupSequence),
-		MaxGroupSequence: message.GroupSequence(update.MaxGroupSequence),
-		Parameters:       message.Parameters(update.SubscribeParameters),
-	}
-	err := sum.Encode(sss.stream)
+	subscription, err := updateSubscription(sss.subscription, update)
 	if err != nil {
-		slog.Error("failed to send a SUBSCRIBE_UPDATE message", slog.String("error", err.Error()))
+		slog.Error("failed to update a subscription", slog.String("error", err.Error()))
 		return err
 	}
 
-	// Receive an INFO message
-	info, err := readInfo(sss.stream)
+	err = writeSubscribeUpdate(sss.stream, update)
 	if err != nil {
-		slog.Debug("failed to get an Info")
+		slog.Error("failed to write a subscribe update message", slog.String("error", err.Error()))
 		return err
 	}
 
-	// Update the TrackPriority
-	if info.TrackPriority == update.TrackPriority {
-		sss.subscription.TrackPriority = info.TrackPriority
-	} else {
-		slog.Debug("TrackPriority is not updated")
-		return ErrPriorityMismatch
-	}
+	sss.subscription = subscription
 
-	// Update the GroupOrder
-	if update.GroupOrder == 0 {
-		sss.subscription.GroupOrder = info.GroupOrder
-	} else {
-		if info.GroupOrder != update.GroupOrder {
-			slog.Debug("GroupOrder is not updated")
-			return ErrGroupOrderMismatch
-		}
-
-		sss.subscription.GroupOrder = update.GroupOrder
-	}
-
-	// Update the GroupExpires
-	if info.GroupExpires < update.GroupExpires {
-		sss.subscription.GroupExpires = info.GroupExpires
-	} else {
-		sss.subscription.GroupExpires = update.GroupExpires
-	}
-
-	// Update the MinGroupSequence and MaxGroupSequence
-	sss.subscription.MinGroupSequence = update.MinGroupSequence
-	sss.subscription.MaxGroupSequence = update.MaxGroupSequence
-
-	// Update the SubscribeParameters
-	sss.subscription.SubscribeParameters = update.SubscribeParameters
-
-	// Update the DeliveryTimeout
-	if update.DeliveryTimeout != 0 {
-		sss.subscription.DeliveryTimeout = update.DeliveryTimeout
-	}
+	slog.Debug("updated a subscription", slog.Any("subscription", sss.subscription))
 
 	return nil
-}
-
-func (sss *sendSubscribeStream) Unsubscribe() error {
-	// TODO: Implement
-
-	return sss.Close()
 }
 
 func (ss *sendSubscribeStream) Close() error {
@@ -185,36 +115,20 @@ func (sss *sendSubscribeStream) CloseWithError(err error) error {
 type ReceiveSubscribeStream interface {
 	SubscribeID() SubscribeID
 	Subscription() Subscription
-	CountDataGap(uint64) error
+	CountDataGap(GroupSequence, uint64, uint64) error
 	CloseWithError(error) error
 	Close() error
 }
 
 var _ ReceiveSubscribeStream = (*receiveSubscribeStream)(nil)
 
-func newReceivedSubscription(stream transport.Stream) (*receiveSubscribeStream, error) {
-	id, subscription, err := readSubscription(stream)
-	if err != nil {
-		slog.Error("failed to get a subscription", slog.String("error", err.Error()))
-		return nil, err
-	}
-
-	rs := &receiveSubscribeStream{
-		subscribeID:  id,
-		subscription: subscription,
-		stream:       stream,
-	}
-
-	// go rs.listenUpdate()
-
-	return rs, nil
-}
-
 type receiveSubscribeStream struct {
 	subscribeID  SubscribeID
 	subscription Subscription
 	stream       transport.Stream
 	mu           sync.Mutex
+
+	latestGroupSequence GroupSequence
 }
 
 func (rss *receiveSubscribeStream) SubscribeID() SubscribeID {
@@ -226,15 +140,18 @@ func (rss *receiveSubscribeStream) Subscription() Subscription {
 }
 
 func (rss *receiveSubscribeStream) updateLastestGroupSequence(sequence GroupSequence) {
-	atomic.StoreUint64((*uint64)(&rss.subscription.latestGroupSequence), uint64(sequence))
+	atomic.StoreUint64((*uint64)(&rss.latestGroupSequence), uint64(sequence))
 }
 
-func (rs *receiveSubscribeStream) CountDataGap(code uint64) error {
+func (rs *receiveSubscribeStream) CountDataGap(start GroupSequence, count uint64, code uint64) error {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+
 	// TODO: Implement
 	sgm := message.SubscribeGapMessage{
-		// GroupStartSequence: ,
-		// Count: ,
-		// GroupErrorCode: ,
+		GroupStartSequence: message.GroupSequence(start),
+		Count:              count,
+		GroupErrorCode:     message.GroupErrorCode(code),
 	}
 	err := sgm.Encode(rs.stream)
 	if err != nil {

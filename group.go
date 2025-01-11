@@ -9,10 +9,10 @@ import (
 )
 
 type Group interface {
-	SubscribeID() SubscribeID
 	GroupSequence() GroupSequence
 	GroupPriority() GroupPriority
 }
+
 type ReceivedGroup interface {
 	Group
 	ReceivedAt() time.Time
@@ -21,7 +21,7 @@ type ReceivedGroup interface {
 var _ ReceivedGroup = (*receivedGroup)(nil)
 
 type receivedGroup struct {
-	subscribeID SubscribeID
+	// subscribeID SubscribeID
 
 	groupSequence GroupSequence
 
@@ -32,10 +32,6 @@ type receivedGroup struct {
 	 */
 	// Time when the Group was received
 	receivedAt time.Time // TODO:
-}
-
-func (g receivedGroup) SubscribeID() SubscribeID {
-	return g.subscribeID
 }
 
 func (g receivedGroup) GroupSequence() GroupSequence {
@@ -58,7 +54,7 @@ type SentGroup interface {
 var _ SentGroup = (*sentGroup)(nil)
 
 type sentGroup struct {
-	subscribeID SubscribeID
+	// subscribeID SubscribeID
 
 	groupSequence GroupSequence
 
@@ -69,10 +65,6 @@ type sentGroup struct {
 	 */
 	// Time when the Group was sent
 	sentAt time.Time // TODO:
-}
-
-func (g sentGroup) SubscribeID() SubscribeID {
-	return g.subscribeID
 }
 
 func (g sentGroup) GroupSequence() GroupSequence {
@@ -87,20 +79,34 @@ func (g sentGroup) SentAt() time.Time {
 	return g.sentAt
 }
 
-func readGroup(r io.Reader) (receivedGroup, error) {
+func readGroup(r io.Reader) (SubscribeID, ReceivedGroup, error) {
 	// Read a GROUP message
 	var gm message.GroupMessage
 	err := gm.Decode(r)
 	if err != nil {
 		slog.Error("failed to read a GROUP message", slog.String("error", err.Error()))
-		return receivedGroup{}, err
+		return 0, receivedGroup{}, err
 	}
 
 	//
-	return receivedGroup{
-		subscribeID:   SubscribeID(gm.SubscribeID),
+	return SubscribeID(gm.SubscribeID), receivedGroup{
 		groupSequence: GroupSequence(gm.GroupSequence),
 		groupPriority: GroupPriority(gm.GroupPriority),
 		receivedAt:    time.Now(),
 	}, nil
+}
+
+func writeGroup(w io.Writer, id SubscribeID, g Group) error {
+	gm := message.GroupMessage{
+		SubscribeID:   message.SubscribeID(id),
+		GroupSequence: message.GroupSequence(g.GroupSequence()),
+		GroupPriority: message.GroupPriority(g.GroupPriority()),
+	}
+	err := gm.Encode(w)
+	if err != nil {
+		slog.Error("failed to send a GROUP message", slog.String("error", err.Error()))
+		return err
+	}
+
+	return nil
 }

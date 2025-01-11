@@ -2,7 +2,6 @@ package moqt
 
 import (
 	"errors"
-	"io"
 	"log/slog"
 	"sync"
 	"time"
@@ -62,7 +61,7 @@ func (req *sendInfoStream) UpdateInfo(i Info) {
 	defer req.mu.Unlock()
 
 	im := message.InfoMessage{
-		GroupPriority:       message.GroupPriority(i.TrackPriority),
+		TrackPriority:       message.TrackPriority(i.TrackPriority),
 		LatestGroupSequence: message.GroupSequence(i.LatestGroupSequence),
 		GroupOrder:          message.GroupOrder(i.GroupOrder),
 		GroupExpires:        i.GroupExpires,
@@ -163,23 +162,4 @@ func (q *receivedInfoRequestQueue) Dequeue() *sendInfoStream {
 
 func (q *receivedInfoRequestQueue) Chan() <-chan struct{} {
 	return q.ch
-}
-
-func readInfo(r io.Reader) (Info, error) {
-	// Read an INFO message
-	var im message.InfoMessage
-	err := im.Decode(r)
-	if err != nil {
-		slog.Error("failed to read a INFO message", slog.String("error", err.Error()))
-		return Info{}, err
-	}
-
-	info := Info{
-		TrackPriority:       TrackPriority(im.GroupPriority),
-		LatestGroupSequence: GroupSequence(im.LatestGroupSequence),
-		GroupOrder:          GroupOrder(im.GroupOrder),
-		GroupExpires:        im.GroupExpires,
-	}
-
-	return info, nil
 }

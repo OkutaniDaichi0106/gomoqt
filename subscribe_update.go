@@ -19,8 +19,6 @@ type SubscribeUpdate struct {
 	 * SubscribeParameters
 	 */
 	SubscribeParameters Parameters
-
-	DeliveryTimeout time.Duration
 }
 
 func readSubscribeUpdate(r io.Reader) (SubscribeUpdate, error) {
@@ -32,12 +30,6 @@ func readSubscribeUpdate(r io.Reader) (SubscribeUpdate, error) {
 		return SubscribeUpdate{}, err
 	}
 
-	// Get a DELIVERY_TIMEOUT parameter
-	timeout, ok := getDeliveryTimeout(Parameters(sum.Parameters))
-	if !ok {
-		timeout = 0
-	}
-
 	return SubscribeUpdate{
 		TrackPriority:       TrackPriority(sum.TrackPriority),
 		GroupOrder:          GroupOrder(sum.GroupOrder),
@@ -45,7 +37,6 @@ func readSubscribeUpdate(r io.Reader) (SubscribeUpdate, error) {
 		MinGroupSequence:    GroupSequence(sum.MinGroupSequence),
 		MaxGroupSequence:    GroupSequence(sum.MaxGroupSequence),
 		SubscribeParameters: Parameters(sum.Parameters),
-		DeliveryTimeout:     timeout,
 	}, nil
 }
 
@@ -56,9 +47,6 @@ func writeSubscribeUpdate(w io.Writer, update SubscribeUpdate) error {
 	// Set parameters
 	if update.SubscribeParameters == nil {
 		update.SubscribeParameters = make(Parameters)
-	}
-	if update.DeliveryTimeout > 0 {
-		update.SubscribeParameters.Add(DELIVERY_TIMEOUT, update.DeliveryTimeout)
 	}
 
 	// Send a SUBSCRIBE_UPDATE message
@@ -103,11 +91,6 @@ func updateSubscription(subscription Subscription, update SubscribeUpdate) (Subs
 	// Update the Subscribe Parameters
 	for k, v := range update.SubscribeParameters {
 		subscription.SubscribeParameters.Add(k, v)
-	}
-
-	// Update the Delivery Timeout
-	if update.DeliveryTimeout > 0 {
-		subscription.DeliveryTimeout = update.DeliveryTimeout
 	}
 
 	return subscription, nil

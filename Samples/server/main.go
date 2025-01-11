@@ -81,12 +81,10 @@ func main() {
 			 * Subscribe
 			 */
 			subscription := moqt.Subscription{
-				Track: moqt.Track{
-					TrackPath:     echoTrackPath,
-					TrackPriority: 0,
-					GroupOrder:    0,
-					GroupExpires:  1 * time.Second,
-				},
+				TrackPath:     echoTrackPath,
+				TrackPriority: 0,
+				GroupOrder:    0,
+				GroupExpires:  1 * time.Second,
 			}
 			substr, err := sess.OpenSubscribeStream(subscription)
 			if err != nil {

@@ -22,7 +22,7 @@ type Session interface {
 	OpenSubscribeStream(Subscription) (SendSubscribeStream, error)
 
 	// Open a Fetch Stream
-	OpenFetchStream(Fetch) (SendFetchStream, error)
+	OpenFetchStream(FetchRequest) (SendFetchStream, error)
 
 	// Open an Info Stream
 	OpenInfoStream(InfoRequest) (Info, error)
@@ -145,48 +145,37 @@ func (s *session) OpenAnnounceStream(interest Interest) (ReceiveAnnounceStream, 
 		// Read announcements
 		for {
 			slog.Debug("reading an announcement")
-			// Read an ANNOUNCE message
 
-			status, ann, err := readAnnouncement(stream, ras.interest.TrackPrefix)
+			// Read an ANNOUNCE message
+			ann, err := readAnnouncement(stream, ras.interest.TrackPrefix)
 			if err != nil {
 				slog.Error("failed to read an ANNOUNCE message", slog.String("error", err.Error()))
 				return
 			}
 
-			// Update the active tracks
-			if status == ACTIVE {
-				_, ok := ras.activeMap[ann.TrackPath]
-				if ok {
-					slog.Error("duplicate active track")
-					terr = ErrProtocolViolation
-					break
-				}
+			old, ok := ras.annMap[ann.TrackPath]
 
-				ras.activeMap[ann.TrackPath] = ann
+			if ok && old.AnnounceStatus == ann.AnnounceStatus {
+				slog.Debug("duplicate announcement status")
+				terr = ErrProtocolViolation
+				break
 			}
 
-			// Delete the active tracks if the it is ended
-			if status == ENDED {
-				_, ok := ras.activeMap[ann.TrackPath]
-				if !ok {
-					slog.Error("duplicate ended track")
-					terr = ErrProtocolViolation
-					break
-				}
-
-				delete(ras.activeMap, ann.TrackPath)
+			if !ok && ann.AnnounceStatus == ENDED {
+				slog.Debug("ended track is not announced")
+				terr = ErrProtocolViolation
+				break
 			}
 
-			//
-			if status == LIVE {
+			switch ann.AnnounceStatus {
+			case ACTIVE, ENDED:
+				ras.annMap[ann.TrackPath] = ann
+			case LIVE:
 				ras.ch <- struct{}{}
 			}
 		}
 
-		if _, ok := terr.(TerminateError); ok {
-			s.Terminate(terr)
-			return
-		}
+		s.Terminate(terr)
 	}()
 
 	return ras, nil
@@ -259,7 +248,7 @@ func (s *session) OpenSubscribeStream(subscription Subscription) (SendSubscribeS
 	}, err
 }
 
-func (sess *session) OpenFetchStream(fetch Fetch) (SendFetchStream, error) {
+func (sess *session) OpenFetchStream(fetch FetchRequest) (SendFetchStream, error) {
 	/*
 	 * Open a Fetch Stream
 	 */

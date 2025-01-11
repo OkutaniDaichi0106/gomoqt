@@ -20,26 +20,36 @@ type trackManager struct {
 }
 
 func (manager *trackManager) ServeAnnouncements(ann []Announcement) error {
-	annBufs := make([]announcementBuffer, 0)
-
 	// Serve announcements
 	for _, a := range ann {
+		annBufs := make([]announcementBuffer, 0)
+
+		// Serve announcements to track prefix nodes
 		err := manager.trackTree.handleDescendants(strings.Split(a.TrackPath, "/"), func(node *trackPrefixNode) error {
 			// Add announcement to the buffer
 			node.announcementBuffer.Add(a)
 
+			/*
+			 * Handle the track node
+			 */
 			// Initialize track node if the track prefix matches the announcement track path
 			if node.trackPrefix == a.TrackPath {
-				if node.track == nil {
-					node.initTrack()
+				switch a.AnnounceStatus {
+				case ACTIVE:
+					if node.track == nil {
+						node.initTrack()
+					}
+
+					// Set announcement
+					node.track.mu.Lock()
+
+					node.track.announcement = a
+
+					node.track.mu.Unlock()
+				case ENDED:
+					// Remove the track node
+					node.track = nil
 				}
-
-				// Set announcement
-				node.track.mu.Lock()
-
-				node.track.announcement = a
-
-				node.track.mu.Unlock()
 			}
 
 			// Register the announcement buffer to broadcast
@@ -48,13 +58,33 @@ func (manager *trackManager) ServeAnnouncements(ann []Announcement) error {
 			return nil
 		})
 
-		slog.Error("failed to serve announcements", slog.String("error", err.Error()))
+		if err != nil {
+			slog.Error("failed to serve announcements", slog.String("error", err.Error()))
+		}
+
+		// Broadcast
+		for _, annBuf := range annBufs {
+			annBuf.Broadcast()
+		}
+
+		// Remove the track prefix if the announcement status is ENDED
+		if a.AnnounceStatus == ENDED {
+			defer func() {
+				slog.Debug("removing track prefix", slog.String("track path", a.TrackPath))
+
+				err := manager.trackTree.removeTrackPrefix(strings.Split(a.TrackPath, "/"))
+				if err != nil {
+					slog.Error("failed to remove track prefix", slog.String("error", err.Error()))
+				}
+
+				slog.Debug("removed track prefix", slog.String("track path", a.TrackPath))
+			}()
+		}
+
+		slog.Debug("served an announcement", slog.String("track path", a.TrackPath))
 	}
 
-	// Broadcast
-	for _, annBuf := range annBufs {
-		annBuf.Broadcast()
-	}
+	slog.Debug("Successfully served announcements")
 
 	return nil
 }

@@ -109,7 +109,7 @@ func (p Parameters) ReadAsBool(key uint64) (bool, error) {
 var ErrParameterNotFound = errors.New("parameter not found")
 
 const (
-	ROLE               uint64 = 0x00
+	// ROLE               uint64 = 0x00
 	PATH               uint64 = 0x01
 	MAX_SUBSCRIBE_ID   uint64 = 0x02
 	AUTHORIZATION_INFO uint64 = 0x03

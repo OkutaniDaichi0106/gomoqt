@@ -106,12 +106,10 @@ func main() {
 		slog.Info("Active Tracks", slog.Any("announcements", announcements))
 
 		subscription := moqt.Subscription{
-			Track: moqt.Track{
-				TrackPath:     echoTrackPath,
-				TrackPriority: 0,
-				GroupOrder:    0,
-				GroupExpires:  1 * time.Second,
-			},
+			TrackPath:     echoTrackPath,
+			TrackPriority: 0,
+			GroupOrder:    0,
+			GroupExpires:  1 * time.Second,
 		}
 		substr, err := sess.OpenSubscribeStream(subscription)
 		if err != nil {
@@ -128,12 +126,14 @@ func main() {
 
 			buf := make([]byte, 1024)
 			n, err := stream.Read(buf)
+			if n > 0 {
+				slog.Info("received data", slog.String("data", string(buf[:n])))
+			}
+
 			if err != nil {
 				slog.Error("failed to read data", slog.String("error", err.Error()))
 				return
 			}
-
-			slog.Debug("received data", slog.String("data", string(buf[:n])))
 		}
 	}()
 

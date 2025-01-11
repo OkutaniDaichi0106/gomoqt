@@ -35,7 +35,7 @@ func writeFetchUpdate(w io.Writer, update FetchUpdate) error {
 	return nil
 }
 
-func updateFetch(fetch Fetch, update FetchUpdate) (Fetch, error) {
+func updateFetch(fetch FetchRequest, update FetchUpdate) (FetchRequest, error) {
 	fetch.GroupPriority = update.GroupPriority
 
 	return fetch, nil

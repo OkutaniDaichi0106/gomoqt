@@ -17,7 +17,7 @@ import (
 type GroupSequence message.GroupSequence
 
 /***/
-type Fetch struct {
+type FetchRequest struct {
 	SubscribeID   SubscribeID
 	TrackPath     string
 	GroupPriority GroupPriority
@@ -25,15 +25,15 @@ type Fetch struct {
 	FrameSequence FrameSequence
 }
 
-func readFetch(r io.Reader) (Fetch, error) {
+func readFetch(r io.Reader) (FetchRequest, error) {
 	var fm message.FetchMessage
 	err := fm.Decode(r)
 	if err != nil {
 		slog.Error("failed to read a FETCH message", slog.String("error", err.Error()))
-		return Fetch{}, err
+		return FetchRequest{}, err
 	}
 
-	req := Fetch{
+	req := FetchRequest{
 		SubscribeID:   SubscribeID(fm.SubscribeID),
 		TrackPath:     fm.TrackPath,
 		GroupPriority: GroupPriority(fm.GroupPriority),
@@ -44,7 +44,7 @@ func readFetch(r io.Reader) (Fetch, error) {
 	return req, nil
 }
 
-func writeFetch(w io.Writer, fetch Fetch) error {
+func writeFetch(w io.Writer, fetch FetchRequest) error {
 	fm := message.FetchMessage{
 		SubscribeID:   message.SubscribeID(fetch.SubscribeID),
 		TrackPath:     fetch.TrackPath,

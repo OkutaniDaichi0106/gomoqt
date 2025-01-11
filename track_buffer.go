@@ -1,25 +1,34 @@
 package moqt
 
 import (
-	"sort"
+	"log/slog"
 	"sync"
 )
 
-func NewTrackBuffer() *TrackBuffer {
+func NewTrackBuffer(subscription Subscription) *TrackBuffer {
 	return &TrackBuffer{
-		groupSeqs: make(map[GroupSequence]struct{}),
-		groupBufs: make([]GroupBuffer, 0),
+		groupBufs:    make(map[GroupSequence]GroupBuffer),
+		subscription: subscription,
 	}
 }
 
 type TrackBuffer struct {
-	groupSeqs map[GroupSequence]struct{}
-	groupBufs []GroupBuffer
-	mu        sync.Mutex
+	groupBufs    map[GroupSequence]GroupBuffer
+	mu           sync.Mutex
+	subscription Subscription
 }
 
 func (t *TrackBuffer) AddGroup(g GroupBuffer) error {
-	if _, ok := t.groupSeqs[g.GroupSequence()]; ok {
+	// Check if the group sequence is in the range
+	if t.subscription.MinGroupSequence != 0 && t.subscription.MinGroupSequence > g.GroupSequence() {
+		return ErrInvalidRange
+	}
+	if t.subscription.MaxGroupSequence != 0 && t.subscription.MaxGroupSequence < g.GroupSequence() {
+		return ErrInvalidRange
+	}
+
+	// Check if the group sequence is duplicated
+	if _, ok := t.groupBufs[g.GroupSequence()]; ok {
 		return ErrDuplicatedGroup
 	}
 
@@ -27,15 +36,27 @@ func (t *TrackBuffer) AddGroup(g GroupBuffer) error {
 	defer t.mu.Unlock()
 
 	// Add the sequence
-	t.groupSeqs[g.GroupSequence()] = struct{}{}
-
-	// Add the group
-	t.groupBufs = append(t.groupBufs, g)
-
-	// Sort the groups by sequence
-	sort.Slice(t.groupBufs, func(i, j int) bool {
-		return t.groupBufs[i].GroupSequence() < t.groupBufs[j].GroupSequence()
-	})
+	t.groupBufs[g.GroupSequence()] = g
 
 	return nil
+}
+
+func (t *TrackBuffer) RemoveGroup(seq GroupSequence) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	// Check if the group sequence exists
+	g, ok := t.groupBufs[seq]
+	if !ok {
+		return
+	}
+
+	err := g.Close()
+	if err != nil {
+		slog.Error("failed to close the group buffer", slog.String("error", err.Error()))
+		return
+	}
+
+	// Remove the sequence
+	delete(t.groupBufs, seq)
 }

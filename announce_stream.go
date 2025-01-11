@@ -25,8 +25,8 @@ type receiveAnnounceStream struct {
 	stream   transport.Stream
 	mu       sync.RWMutex
 
-	activeMap map[string]Announcement
-	ch        chan struct{}
+	annMap map[string]Announcement
+	ch     chan struct{}
 	// activeCh chan []Announcement
 
 	// endedCh chan []Announcement
@@ -38,9 +38,9 @@ func (ras *receiveAnnounceStream) ReceiveAnnouncements() ([]Announcement, error)
 	ras.mu.Lock()
 	defer ras.mu.Unlock()
 
-	announcements := make([]Announcement, 0, len(ras.activeMap))
+	announcements := make([]Announcement, 0, len(ras.annMap))
 
-	for _, ann := range ras.activeMap {
+	for _, ann := range ras.annMap {
 		announcements = append(announcements, ann)
 	}
 
@@ -134,11 +134,15 @@ func (sas *sendAnnounceStream) SendAnnouncement(announcements []Announcement) er
 	return nil
 }
 
-func (sas *sendAnnounceStream) Close() error { // TODO
-	return nil
+func (sas *sendAnnounceStream) Close() error {
+	return sas.stream.Close()
 }
 
 func (sas *sendAnnounceStream) CloseWithError(err error) error { // TODO
+	if err == nil {
+		return sas.stream.Close()
+	}
+
 	return nil
 }
 
@@ -150,11 +154,6 @@ func announceActiveTrack(sas *sendAnnounceStream, ann Announcement) error {
 
 	// Get a suffix part of the Track Path
 	suffix := strings.TrimPrefix(ann.TrackPath, sas.interest.TrackPrefix+"/")
-
-	// Add the Authorization Info
-	if ann.AuthorizationInfo != "" {
-		ann.AnnounceParameters.Add(AUTHORIZATION_INFO, ann.AuthorizationInfo)
-	}
 
 	// Initialize an ANNOUNCE message
 	am := message.AnnounceMessage{
@@ -183,11 +182,6 @@ func announceEndedTrack(sas *sendAnnounceStream, ann Announcement) error {
 
 	// Get a suffix part of the Track Path
 	suffix := strings.TrimPrefix(ann.TrackPath, sas.interest.TrackPrefix+"/")
-
-	//
-	if ann.AuthorizationInfo != "" {
-		ann.AnnounceParameters.Add(AUTHORIZATION_INFO, ann.AuthorizationInfo)
-	}
 
 	// Initialize an ANNOUNCE message
 	am := message.AnnounceMessage{

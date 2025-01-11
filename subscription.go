@@ -25,12 +25,6 @@ type Subscription struct {
 	GroupExpires  time.Duration
 
 	// Parameters
-	AuthorizationInfo string
-
-	DeliveryTimeout time.Duration //TODO
-
-	// AnnounceParameters Parameters
-
 	MinGroupSequence GroupSequence
 	MaxGroupSequence GroupSequence
 
@@ -105,12 +99,6 @@ func readSubscription(r transport.Stream) (SubscribeID, Subscription, error) {
 		SubscribeParameters: Parameters(sm.Parameters),
 	}
 
-	// Get a DELIVERY_TIMEOUT parameter
-	deliveryTimeout, ok := getDeliveryTimeout(Parameters(sm.Parameters))
-	if ok {
-		subscription.DeliveryTimeout = deliveryTimeout
-	}
-
 	return SubscribeID(sm.SubscribeID), subscription, nil
 }
 
@@ -118,11 +106,6 @@ func writeSubscription(w transport.Stream, id SubscribeID, subscription Subscrip
 	// Set parameters
 	if subscription.SubscribeParameters == nil {
 		subscription.SubscribeParameters = make(Parameters)
-	}
-
-	// Set a DELIVERY_TIMEOUT parameter
-	if subscription.DeliveryTimeout > 0 {
-		subscription.SubscribeParameters.Add(DELIVERY_TIMEOUT, subscription.DeliveryTimeout)
 	}
 
 	// Send a SUBSCRIBE message

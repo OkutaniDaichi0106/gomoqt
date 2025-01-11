@@ -410,12 +410,6 @@ func listenUniStreams(sess *session, ctx context.Context) {
 					ReceivedGroup: group,
 				}
 
-				if err != nil {
-					slog.Error("failed to get a data receive stream", slog.String("error", err.Error()))
-					closeReceiveStreamWithInternalError(stream, err) // TODO:
-					return
-				}
-
 				queue, ok := sess.dataReceiveStreamQueues[data.SubscribeID()]
 				if !ok {
 					slog.Error("failed to get a data receive stream queue", slog.String("error", "queue not found"))

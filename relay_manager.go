@@ -3,6 +3,7 @@ package moqt
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -69,11 +70,12 @@ func (manager *relayManager) RelayTrack(sess ServerSession, sub Subscription) er
 	}
 
 	// Create a track buffer
-	trackBuf := NewTrackBuffer()
+	trackBuf := NewTrackBuffer(sub)
 
 	// Serve the subscription
 	err = manager.ServeTrack(sub, trackBuf)
 	if err != nil {
+		slog.Error("failed to serve the subscription", slog.String("error", err.Error()))
 		return err
 	}
 
@@ -86,18 +88,31 @@ func (manager *relayManager) RelayTrack(sess ServerSession, sub Subscription) er
 				return
 			}
 
-			go func(stream ReceiveDataStream) {
-				for {
-					// Receive data
-					groupBuf := NewGroupBuffer(stream.GroupSequence(), stream.GroupPriority())
+			// Initialize a group buffer
+			groupBuf := NewGroupBuffer(stream.GroupSequence(), stream.GroupPriority())
 
+			// Add the group buffer to the track buffer
+			trackBuf.AddGroup(groupBuf)
+
+			// Receive data from the stream
+			go func(stream ReceiveDataStream) {
+				/*
+				 * Receive data from the stream
+				 */
+				for {
+					// Receive the next frame
 					frame, err := stream.NextFrame()
+					// Store the frame to the group buffer
 					if len(frame) > 0 {
 						groupBuf.Write(frame)
 					}
 
 					if err != nil {
-						slog.Error("failed to receive a frame", slog.String("error", err.Error()))
+						if err == io.EOF {
+							groupBuf.Close()
+						} else {
+							slog.Error("failed to receive a frame", slog.String("error", err.Error()))
+						}
 						return
 					}
 				}
@@ -277,15 +292,14 @@ func newAnnouncementBuffer() announcementBuffer {
 type announcementBuffer struct {
 	annCond *sync.Cond
 
-	activeMap map[string]struct{}
-
 	announcements []Announcement
 
-	waiting   uint64
+	waiting uint64
+
 	completed uint64
 }
 
-func (announcer announcementBuffer) Wait() {
+func (announcer announcementBuffer) WaitAnnouncements() []Announcement {
 	announcer.annCond.L.Lock()
 	defer announcer.annCond.L.Unlock()
 
@@ -294,23 +308,20 @@ func (announcer announcementBuffer) Wait() {
 	for len(announcer.announcements) == 0 {
 		announcer.annCond.Wait()
 	}
-}
 
-func (announcer announcementBuffer) Broadcast() {
-	announcer.annCond.Broadcast()
-}
-
-func (announcer announcementBuffer) Get() []Announcement {
-	announcer.annCond.L.Lock()
-	defer announcer.annCond.L.Unlock()
-
-	if atomic.AddUint64(&announcer.completed, 1) == announcer.waiting {
+	// Clean the buffer if all the waiting clients have received the announcements
+	if atomic.AddUint64(&announcer.completed, 1) == atomic.LoadUint64(&announcer.waiting) {
 		announcer.Clean()
 		atomic.StoreUint64(&announcer.waiting, 0)
 		atomic.StoreUint64(&announcer.completed, 0)
 	}
 
 	return announcer.announcements
+}
+
+func (announcer announcementBuffer) Broadcast() {
+	announcer.annCond.Broadcast()
+
 }
 
 func (announcer *announcementBuffer) Add(ann Announcement) {
@@ -327,10 +338,10 @@ func (announcer *announcementBuffer) Clean() {
 	announcer.announcements = make([]Announcement, 0)
 }
 
-func (announcer announcementBuffer) WaitAndGet() []Announcement {
-	announcer.Wait()
-	return announcer.Get()
-}
+// func (announcer announcementBuffer) WaitAndGet() []Announcement {
+// 	announcer.Wait()
+// 	return announcer.Get()
+// }
 
 type trackNameNode struct {
 	trackPath string

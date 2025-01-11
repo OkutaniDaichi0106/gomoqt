@@ -14,7 +14,7 @@ type SendFetchStream interface {
 	ReceiveDataStream() ReceiveDataStream
 
 	// Get a fetch
-	Fetch() Fetch
+	Fetch() FetchRequest
 
 	// Update the fetch
 	UpdateFetch(FetchUpdate) error
@@ -30,7 +30,7 @@ var _ SendFetchStream = (*sendFetchStream)(nil)
 
 type sendFetchStream struct {
 	stream transport.Stream
-	fetch  Fetch
+	fetch  FetchRequest
 	mu     sync.Mutex
 }
 
@@ -46,7 +46,7 @@ func (sfs *sendFetchStream) ReceiveDataStream() ReceiveDataStream {
 	}
 }
 
-func (sfs *sendFetchStream) Fetch() Fetch {
+func (sfs *sendFetchStream) Fetch() FetchRequest {
 	return sfs.fetch
 }
 
@@ -108,8 +108,8 @@ type ReceiveFetchStream interface {
 	// Get a SendDataStream
 	SendDataStream() SendDataStream
 
-	// Get a fetch
-	Fetch() Fetch
+	// Get a fetch request
+	FetchRequest() FetchRequest
 
 	// Close the stream
 	Close() error
@@ -121,7 +121,7 @@ type ReceiveFetchStream interface {
 var _ ReceiveFetchStream = (*receiveFetchStream)(nil)
 
 type receiveFetchStream struct {
-	fetch  Fetch
+	fetch  FetchRequest
 	stream transport.Stream
 	mu     sync.Mutex
 }
@@ -137,11 +137,14 @@ func (rfs *receiveFetchStream) SendDataStream() SendDataStream {
 	}
 }
 
-func (rfs *receiveFetchStream) Fetch() Fetch {
+func (rfs *receiveFetchStream) FetchRequest() FetchRequest {
 	return rfs.fetch
 }
 
 func (rfs *receiveFetchStream) CloseWithError(err error) error {
+	rfs.mu.Lock()
+	defer rfs.mu.Unlock()
+
 	if err == nil {
 		return rfs.Close()
 	}

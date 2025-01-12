@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
@@ -55,17 +56,21 @@ type Session interface {
 var _ Session = (*session)(nil)
 
 func newSession(conn transport.Connection, stream transport.Stream) *session {
-	return &session{
+	sess := &session{
 		conn:                        conn,
 		stream:                      stream,
 		receiveSubscribeStreamQueue: newReceiveSubscribeStreamQueue(),
 		sendAnnounceStreamQueue:     newReceivedInterestQueue(),
 		receiveFetchStreamQueue:     newReceivedFetchQueue(),
-		receivedInfoRequestQueue:    newReceivedInfoRequestQueue(),
+		receivedInfoRequestQueue:    newReceiveInfoStreamQueue(),
 		dataReceiveStreamQueues:     make(map[SubscribeID]*receiveDataStreamQueue),
 		receivedDatagramQueues:      make(map[SubscribeID]*receivedDatagramQueue),
 		subscribeIDCounter:          0,
 	}
+
+	go listenSession(sess, context.Background())
+
+	return sess
 }
 
 type session struct {
@@ -79,7 +84,7 @@ type session struct {
 
 	receiveFetchStreamQueue *receivedFetchQueue
 
-	receivedInfoRequestQueue *receivedInfoRequestQueue
+	receivedInfoRequestQueue *receiveInfoStreamQueue
 
 	dataReceiveStreamQueues map[SubscribeID]*receiveDataStreamQueue
 
@@ -466,11 +471,281 @@ func (sess *session) AcceptDatagram(substr SendSubscribeStream, ctx context.Cont
 	}
 }
 
+func listenSession(sess *session, ctx context.Context) {
+	wg := new(sync.WaitGroup)
+	// Listen the bidirectional streams
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		listenBiStreams(sess, ctx)
+	}()
+
+	// Listen the unidirectional streams
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		listenUniStreams(sess, ctx)
+	}()
+
+	// Listen the datagrams
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		listenDatagrams(sess, ctx)
+	}()
+
+	wg.Wait()
+}
+
+func listenBiStreams(sess *session, ctx context.Context) {
+	for {
+		/*
+		 * Accept a bidirectional stream
+		 */
+		stream, err := sess.conn.AcceptStream(ctx)
+		if err != nil {
+			slog.Error("failed to accept a bidirectional stream", slog.String("error", err.Error()))
+			return
+		}
+
+		slog.Debug("some control stream was opened")
+
+		// Handle the stream
+		go func(stream transport.Stream) {
+			/*
+			 * Get a Stream Type ID
+			 */
+			var stm message.StreamTypeMessage
+			err := stm.Decode(stream)
+			if err != nil {
+				slog.Error("failed to get a Stream Type ID", slog.String("error", err.Error()))
+				return
+			}
+
+			// Handle the stream by the Stream Type ID
+			switch stm.StreamType {
+			case stream_type_announce:
+				// Handle the announce stream
+				slog.Debug("announce stream was opened")
+				// Get an Interest
+				interest, err := readInterest(stream)
+				if err != nil {
+					slog.Error("failed to get an Interest", slog.String("error", err.Error()))
+					closeStreamWithInternalError(stream, err)
+					return
+				}
+
+				sas := &sendAnnounceStream{
+					interest: interest,
+					stream:   stream,
+					annMap:   make(map[string]Announcement),
+				}
+
+				// Enqueue the interest
+				sess.sendAnnounceStreamQueue.Enqueue(sas)
+			case stream_type_subscribe:
+				slog.Debug("subscribe stream was opened")
+
+				id, subscription, err := readSubscription(stream)
+				if err != nil {
+					slog.Error("failed to get a received subscription", slog.String("error", err.Error()))
+					closeStreamWithInternalError(stream, err)
+					return
+				}
+
+				rss := &receiveSubscribeStream{
+					subscribeID:  id,
+					subscription: subscription,
+					stream:       stream,
+				}
+
+				// Enqueue the subscription
+				sess.receiveSubscribeStreamQueue.Enqueue(rss)
+
+				// Listen updates
+				for {
+					update, err := readSubscribeUpdate(stream)
+					if err != nil {
+						slog.Error("failed to read a SUBSCRIBE_UPDATE message", slog.String("error", err.Error()))
+						closeStreamWithInternalError(stream, err)
+						break
+					}
+
+					subscription, err := updateSubscription(rss.subscription, update)
+					if err != nil {
+						slog.Error("failed to update a subscription", slog.String("error", err.Error()))
+						closeStreamWithInternalError(stream, err)
+						return
+					}
+
+					rss.subscription = subscription
+				}
+			case stream_type_fetch:
+				slog.Debug("fetch stream was opened")
+				// Get a fetch-request
+				fetch, err := readFetch(stream)
+				if err != nil {
+					slog.Error("failed to get a fetch-request", slog.String("error", err.Error()))
+					closeStreamWithInternalError(stream, err)
+					return
+				}
+
+				rfs := &receiveFetchStream{
+					fetch:  fetch,
+					stream: stream,
+				}
+
+				// Enqueue the fetch
+				sess.receiveFetchStreamQueue.Enqueue(rfs)
+
+				// Listen updates
+				for {
+					update, err := readFetchUpdate(stream)
+					if err != nil {
+						slog.Error("failed to read a FETCH_UPDATE message", slog.String("error", err.Error()))
+						closeStreamWithInternalError(stream, err)
+						break
+					}
+
+					fetch, err := updateFetch(rfs.fetch, update)
+					if err != nil {
+						slog.Error("failed to update a fetch", slog.String("error", err.Error()))
+						closeStreamWithInternalError(stream, err)
+						return
+					}
+
+					rfs.fetch = fetch
+
+					slog.Info("updated a fetch", slog.Any("fetch", rfs.fetch))
+				}
+			case stream_type_info:
+				slog.Debug("info stream was opened")
+
+				// Get a received info-request
+				req, err := readInfoRequest(stream)
+				if err != nil {
+					slog.Error("failed to get a info-request", slog.String("error", err.Error()))
+					return
+				}
+
+				sis := &sendInfoStream{
+					InfoRequest: req,
+					stream:      stream,
+				}
+
+				// Enqueue the info-request
+				sess.receivedInfoRequestQueue.Enqueue(sis)
+			default:
+				slog.Debug("An unknown type of stream was opend")
+
+				// Terminate the session
+				sess.Terminate(ErrProtocolViolation)
+
+				return
+			}
+		}(stream)
+	}
+}
+
+func listenUniStreams(sess *session, ctx context.Context) {
+	for {
+		/*
+		 * Accept a unidirectional stream
+		 */
+		stream, err := sess.conn.AcceptUniStream(ctx)
+		if err != nil {
+			slog.Error("failed to accept a unidirectional stream", slog.String("error", err.Error()))
+			return
+		}
+
+		slog.Debug("some data stream was opened")
+
+		// Handle the stream
+		go func(stream transport.ReceiveStream) {
+			/*
+			 * Get a Stream Type ID
+			 */
+			var stm message.StreamTypeMessage
+			err := stm.Decode(stream)
+			if err != nil {
+				slog.Error("failed to get a Stream Type ID", slog.String("error", err.Error()))
+				return
+			}
+
+			// Handle the stream by the Stream Type ID
+			switch stm.StreamType {
+			case stream_type_group:
+				slog.Debug("group stream was opened")
+
+				id, group, err := readGroup(stream)
+				if err != nil {
+					slog.Error("failed to get a group", slog.String("error", err.Error()))
+					return
+				}
+
+				data := &receiveDataStream{
+					subscribeID:   id,
+					ReceiveStream: stream,
+					ReceivedGroup: group,
+				}
+
+				queue, ok := sess.dataReceiveStreamQueues[data.SubscribeID()]
+				if !ok {
+					slog.Error("failed to get a data receive stream queue", slog.String("error", "queue not found"))
+					closeReceiveStreamWithInternalError(stream, ErrProtocolViolation) // TODO:
+					return
+				}
+
+				// Enqueue the receiver
+				queue.Enqueue(data)
+			default:
+				slog.Debug("An unknown type of stream was opend")
+
+				// Terminate the session
+				sess.Terminate(ErrProtocolViolation)
+
+				return
+			}
+		}(stream)
+	}
+}
+
+func listenDatagrams(sess *session, ctx context.Context) {
+	for {
+		/*
+		 * Receive a datagram
+		 */
+		buf, err := sess.conn.ReceiveDatagram(ctx)
+		if err != nil {
+			slog.Error("failed to receive a datagram", slog.String("error", err.Error()))
+			return
+		}
+
+		// Handle the datagram
+		go func(buf []byte) {
+			data, err := newReceivedDatagram(buf)
+			if err != nil {
+				slog.Error("failed to get a received datagram", slog.String("error", err.Error()))
+				return
+			}
+
+			//
+			queue, ok := sess.receivedDatagramQueues[data.SubscribeID()]
+			if !ok {
+				slog.Error("failed to get a data receive stream queue", slog.String("error", "queue not found"))
+				return
+			}
+
+			// Enqueue the datagram
+			queue.Enqueue(data)
+		}(buf)
+	}
+}
+
 /*
  *
  *
  */
-
 func openAnnounceStream(conn transport.Connection) (transport.Stream, error) {
 	slog.Debug("opening an Announce Stream")
 

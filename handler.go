@@ -9,16 +9,20 @@ type HandlerFunc func(ServerSession)
 
 var NotFoundFunc HandlerFunc = func(ServerSession) {}
 
-var DefaultHandler ServeMux = NewServeMux()
+var DefaultHandler *ServeMux = NewServeMux()
 
-func NewServeMux() ServeMux {
-	return ServeMux{
+func NewServeMux() *ServeMux {
+	return &ServeMux{
 		handlerFuncs: make(map[string]HandlerFunc),
 	}
 }
 
 type ServeMux struct {
-	mu           sync.Mutex
+	mu sync.Mutex
+
+	/*
+	 * Path pattern -> HandlerFunc
+	 */
 	handlerFuncs map[string]HandlerFunc
 }
 
@@ -26,7 +30,7 @@ func (h *ServeMux) HandlerFunc(pattern string, op HandlerFunc) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	if strings.HasPrefix(pattern, "/") {
+	if !strings.HasPrefix(pattern, "/") {
 		panic("invalid path: path should start with \"/\"")
 	}
 

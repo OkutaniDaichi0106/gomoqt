@@ -75,6 +75,7 @@ type SetupResponce struct {
 }
 
 func readSetupResponce(r io.Reader) (SetupResponce, error) {
+	slog.Debug("reading a set-up responce")
 	/***/
 	var ssm message.SessionServerMessage
 	err := ssm.Decode(r)
@@ -82,6 +83,8 @@ func readSetupResponce(r io.Reader) (SetupResponce, error) {
 		slog.Error("failed to read a SESSION_SERVER message", slog.String("error", err.Error()))
 		return SetupResponce{}, err
 	}
+
+	slog.Debug("read a set-up responce")
 
 	return SetupResponce{
 		SelectedVersion: Version(ssm.SelectedVersion),

@@ -71,9 +71,13 @@ func (s *Server) init() (err error) {
 		},
 	}
 
+	if s.ServeMux == nil {
+		s.ServeMux = DefaultHandler
+	}
+
 	s.ServeMux.mu.Lock()
 	defer s.ServeMux.mu.Unlock()
-	for path, op := range s.ServeMux.handlerFuncs {
+	for path, handler := range s.ServeMux.handlerFuncs {
 		http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 			/*
 			 *
@@ -104,12 +108,6 @@ func (s *Server) init() (err error) {
 				return
 			}
 
-			// Verify if the request contains a valid path
-			if req.parsedURL.Path == "" {
-				slog.Error("path not found")
-				return
-			}
-
 			// Select the default version
 			if !ContainVersion(Default, req.supportedVersions) {
 				slog.Error("no available version", slog.Any("versions", req.supportedVersions))
@@ -126,7 +124,7 @@ func (s *Server) init() (err error) {
 					Parameters:      make(Parameters),
 				}
 			}
-			err = sendSetupResponce(stream, rsp)
+			err = writeSetupResponce(stream, rsp)
 			if err != nil {
 				slog.Error("failed to send a set-up responce")
 				return
@@ -134,13 +132,10 @@ func (s *Server) init() (err error) {
 
 			// Initialize a Session
 			sess := &serverSession{
-				session: session{
-					conn:   conn,
-					stream: stream,
-				},
+				session: newSession(conn, stream),
 			}
 
-			op(sess)
+			handler(sess)
 		})
 	}
 
@@ -230,7 +225,7 @@ func (s *Server) ListenAndServe() error {
 							Parameters:      make(Parameters),
 						}
 					}
-					err = sendSetupResponce(stream, rsp)
+					err = writeSetupResponce(stream, rsp)
 					if err != nil {
 						slog.Error("failed to send a set-up responce")
 						return
@@ -238,13 +233,10 @@ func (s *Server) ListenAndServe() error {
 
 					// Initialize a Session
 					sess := &serverSession{
-						session: session{
-							conn:   conn,
-							stream: stream,
-						},
+						session: newSession(conn, stream),
 					}
 
-					handler := s.ServeMux.findHandlerFunc(req.parsedURL.Path)
+					handler := s.ServeMux.findHandlerFunc("/" + req.parsedURL.Path)
 
 					handler(sess)
 				}(qconn)
@@ -258,6 +250,8 @@ func (s *Server) ListenAndServe() error {
 }
 
 func acceptSessionStream(conn transport.Connection) (transport.Stream, error) {
+	slog.Debug("accepting a session stream")
+
 	// Accept a Bidirectional Stream, which must be a Sesson Stream
 	stream, err := conn.AcceptStream(context.Background())
 	if err != nil {
@@ -279,14 +273,16 @@ func acceptSessionStream(conn transport.Connection) (transport.Stream, error) {
 		return nil, err
 	}
 
+	slog.Debug("accepted a session stream")
+
 	return stream, nil
 }
 
 func readSetupRequest(r io.Reader) (req SetupRequest, err error) {
+	slog.Debug("reading a set-up request")
 	/*
 	 * Receive a SESSION_CLIENT message
 	 */
-
 	// Decode
 	var scm message.SessionClientMessage
 	err = scm.Decode(r)
@@ -302,10 +298,14 @@ func readSetupRequest(r io.Reader) (req SetupRequest, err error) {
 	// Set parameters
 	req.SetupParameters = Parameters(scm.Parameters)
 
+	slog.Debug("read a set-up request", slog.Any("request", req))
+
 	return req, nil
 }
 
-func sendSetupResponce(w io.Writer, rsp SetupResponce) error {
+func writeSetupResponce(w io.Writer, rsp SetupResponce) error {
+	slog.Debug("writing a set-up responce", slog.Any("responce", rsp))
+
 	ssm := message.SessionServerMessage{
 		SelectedVersion: protocol.Version(rsp.SelectedVersion),
 		Parameters:      message.Parameters(rsp.Parameters),
@@ -316,6 +316,8 @@ func sendSetupResponce(w io.Writer, rsp SetupResponce) error {
 		slog.Error("failed to encode a SESSION_SERVER message", slog.String("error", err.Error()))
 		return err
 	}
+
+	slog.Debug("wrote a set-up responce")
 
 	return nil
 }

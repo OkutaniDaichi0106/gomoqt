@@ -7,23 +7,22 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 )
 
-func readInfo(r io.Reader) (Info, error) {
-	// Read an INFO message
-	var im message.InfoMessage
-	err := im.Decode(r)
+type InfoRequest struct {
+	TrackPath string
+}
+
+func readInfoRequest(r io.Reader) (InfoRequest, error) {
+
+	var irm message.InfoRequestMessage
+	err := irm.Decode(r)
 	if err != nil {
-		slog.Error("failed to read a INFO message", slog.String("error", err.Error()))
-		return Info{}, err
+		slog.Error("failed to read an INFO_REQUEST message", slog.String("error", err.Error()))
+		return InfoRequest{}, err
 	}
 
-	info := Info{
-		TrackPriority:       TrackPriority(im.TrackPriority),
-		LatestGroupSequence: GroupSequence(im.LatestGroupSequence),
-		GroupOrder:          GroupOrder(im.GroupOrder),
-		GroupExpires:        im.GroupExpires,
-	}
-
-	return info, nil
+	return InfoRequest{
+		TrackPath: irm.TrackPath,
+	}, nil
 }
 
 func writeInfoRequest(w io.Writer, req InfoRequest) error {

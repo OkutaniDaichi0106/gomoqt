@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"log/slog"
+	"os"
 	"time"
 
 	moqt "github.com/OkutaniDaichi0106/gomoqt"
@@ -14,8 +15,8 @@ func main() {
 	/*
 	 * Set Log Level to "DEBUG"
 	 */
-	// logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	// slog.SetDefault(logger)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	slog.SetDefault(logger)
 
 	/*
 	 * Set certification config
@@ -44,6 +45,7 @@ func main() {
 	/*
 	 * Set a handler function
 	 */
+	slog.Info("Server runs on path: \"/path\"")
 	moqt.HandleFunc("/path", func(sess moqt.ServerSession) {
 		echoTrackPrefix := "japan/kyoto"
 		echoTrackPath := "japan/kyoto/kiu/text"
@@ -55,8 +57,9 @@ func main() {
 		 */
 		go func() {
 			/*
-			 * Interest
+			 * Request Announcements
 			 */
+			slog.Info("Request Announcements")
 			interest := moqt.Interest{
 				TrackPrefix: echoTrackPrefix,
 			}
@@ -69,17 +72,19 @@ func main() {
 			/*
 			 * Receive Announcements
 			 */
+			slog.Info("Receive Announcements")
 			announcements, err := annstr.ReceiveAnnouncements()
 			if err != nil {
 				slog.Error("failed to get active tracks", slog.String("error", err.Error()))
 				return
 			}
 
-			slog.Info("Active Tracks", slog.Any("announcements", announcements))
+			slog.Info("Announcements", slog.Any("announcements", announcements))
 
 			/*
 			 * Subscribe
 			 */
+			slog.Info("Subscribe")
 			subscription := moqt.Subscription{
 				TrackPath:     echoTrackPath,
 				TrackPriority: 0,
@@ -95,6 +100,7 @@ func main() {
 			/*
 			 * Receive data
 			 */
+			slog.Info("Receive data")
 			for {
 				stream, err := sess.AcceptDataStream(substr, context.Background())
 				if err != nil {
@@ -125,12 +131,15 @@ func main() {
 			/*
 			 * Announce
 			 */
+			slog.Info("Waiting an Announce Stream")
 			annstr, err := sess.AcceptAnnounceStream(context.Background())
 			if err != nil {
 				slog.Error("failed to accept an announce stream", slog.String("error", err.Error()))
 				return
 			}
+			slog.Info("Accepted an Announce Stream")
 
+			slog.Info("Announce")
 			announcements := []moqt.Announcement{
 				{
 					TrackPath: echoTrackPath,
@@ -146,8 +155,9 @@ func main() {
 			}
 
 			/*
-			 * Subscribe
+			 * Accept subscription
 			 */
+			slog.Info("Accept subscription")
 			substr, err := sess.AcceptSubscribeStream(context.Background())
 			if err != nil {
 				slog.Error("failed to accept a subscription", slog.String("error", err.Error()))
@@ -180,6 +190,7 @@ func main() {
 		}()
 	})
 
+	slog.Info("Start a server")
 	moqServer.ListenAndServe()
 }
 

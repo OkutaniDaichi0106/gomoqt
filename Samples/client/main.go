@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/tls"
 	"log/slog"
+	"os"
+	"sync"
 	"time"
 
 	moqt "github.com/OkutaniDaichi0106/gomoqt"
@@ -17,8 +19,8 @@ func main() {
 	/*
 	 * Set Log Level to "DEBUG"
 	 */
-	// logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	// slog.SetDefault(logger)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	slog.SetDefault(logger)
 
 	c := moqt.Client{
 		TLSConfig:  &tls.Config{},
@@ -27,26 +29,33 @@ func main() {
 
 	// Get a setup request
 	req := moqt.SetupRequest{
-		URL: "https://localhost:8080/path",
+		URL: "https://localhost:8443/path",
 	}
 
 	// Dial to the server with the setup request
+	slog.Info("Dial to the server")
 	sess, _, err := c.Dial(req, context.Background())
 	if err != nil {
 		slog.Error(err.Error())
 		return
 	}
 
+	wg := new(sync.WaitGroup)
 	// Run a publisher
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
+		slog.Info("Run a publisher")
 
+		slog.Info("Send Announcements")
+		// Accept an Announce Stream
 		annstr, err := sess.AcceptAnnounceStream(context.Background())
 		if err != nil {
 			slog.Error("failed to accept an interest", slog.String("error", err.Error()))
 			return
 		}
 
-		// Announce
+		// Send Announcements
 		announcements := []moqt.Announcement{
 			{
 				TrackPath: echoTrackPath,
@@ -90,7 +99,13 @@ func main() {
 	}()
 
 	// Run a subscriber
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
+
+		slog.Info("Run a subscriber")
+
+		slog.Info("Receive Announcements")
 		annstr, err := sess.OpenAnnounceStream(moqt.Interest{TrackPrefix: echoTrackPrefix})
 		if err != nil {
 			slog.Error("failed to get an interest", slog.String("error", err.Error()))
@@ -137,4 +152,5 @@ func main() {
 		}
 	}()
 
+	wg.Wait()
 }

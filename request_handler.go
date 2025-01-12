@@ -42,17 +42,3 @@ func writeInterest(w io.Writer, interest Interest) error {
 	}
 	return nil
 }
-
-func readInfoRequest(r io.Reader) (InfoRequest, error) {
-
-	var irm message.InfoRequestMessage
-	err := irm.Decode(r)
-	if err != nil {
-		slog.Error("failed to read an INFO_REQUEST message", slog.String("error", err.Error()))
-		return InfoRequest{}, err
-	}
-
-	return InfoRequest{
-		TrackPath: irm.TrackPath,
-	}, nil
-}

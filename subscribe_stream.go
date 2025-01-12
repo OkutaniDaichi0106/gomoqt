@@ -4,7 +4,6 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
-	"sync/atomic"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/internal/transport"
@@ -127,8 +126,6 @@ type receiveSubscribeStream struct {
 	subscription Subscription
 	stream       transport.Stream
 	mu           sync.Mutex
-
-	latestGroupSequence GroupSequence
 }
 
 func (rss *receiveSubscribeStream) SubscribeID() SubscribeID {
@@ -137,10 +134,6 @@ func (rss *receiveSubscribeStream) SubscribeID() SubscribeID {
 
 func (rss *receiveSubscribeStream) Subscription() Subscription {
 	return rss.subscription
-}
-
-func (rss *receiveSubscribeStream) updateLastestGroupSequence(sequence GroupSequence) {
-	atomic.StoreUint64((*uint64)(&rss.latestGroupSequence), uint64(sequence))
 }
 
 func (rs *receiveSubscribeStream) CountDataGap(start GroupSequence, count uint64, code uint64) error {

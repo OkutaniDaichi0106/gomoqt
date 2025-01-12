@@ -140,6 +140,7 @@ func (s *session) OpenAnnounceStream(interest Interest) (ReceiveAnnounceStream, 
 		ch:       make(chan struct{}, 1),
 	}
 
+	// Receive Announcements
 	go func() {
 		var terr error
 		// Read announcements
@@ -153,9 +154,9 @@ func (s *session) OpenAnnounceStream(interest Interest) (ReceiveAnnounceStream, 
 				return
 			}
 
-			old, ok := ras.annMap[ann.TrackPath]
+			oldAnn, ok := ras.annMap[ann.TrackPath]
 
-			if ok && old.AnnounceStatus == ann.AnnounceStatus {
+			if ok && oldAnn.AnnounceStatus == ann.AnnounceStatus {
 				slog.Debug("duplicate announcement status")
 				terr = ErrProtocolViolation
 				break

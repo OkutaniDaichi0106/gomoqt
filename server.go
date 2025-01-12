@@ -302,18 +302,6 @@ func readSetupRequest(r io.Reader) (req SetupRequest, err error) {
 	// Set parameters
 	req.SetupParameters = Parameters(scm.Parameters)
 
-	// Get any PATH parameter
-	path, ok := getPath(req.SetupParameters)
-	if ok {
-		req.parsedURL.Path = path
-	}
-
-	// Get any MAX_SUBSCRIBE_ID parameter
-	maxID, ok := getMaxSubscribeID(req.SetupParameters)
-	if ok {
-		req.MaxSubscribeID = uint64(maxID)
-	}
-
 	return req, nil
 }
 

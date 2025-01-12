@@ -9,27 +9,6 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 )
 
-// func NewSetupRequest(urlstr string, params Parameters) (req SetupRequest, err error) {
-// 	// Parse the URI
-// 	parsedURL, err := url.ParseRequestURI(urlstr)
-// 	if err != nil {
-// 		slog.Error("failed to parse the url", slog.String("error", err.Error()))
-// 		return req, err
-// 	}
-
-// 	if parsedURL.Scheme != "https" && parsedURL.Scheme != "moqt" {
-// 		return req, errors.New("invalid url scheme. moqt or https scheme is required")
-// 	}
-
-// 	return SetupRequest{
-// 		supportedVersions: DefaultClientVersions,
-// 		URL:               urlstr,
-// 		parsedURL:         parsedURL,
-// 		MaxSubscribeID:    0, // TODO:
-// 		SetupParameters:   params,
-// 	}, nil
-// }
-
 /*
  *
  */
@@ -38,7 +17,6 @@ type SetupRequest struct {
 	URL string
 
 	// Options
-	MaxSubscribeID  uint64 // TODO:
 	SetupParameters Parameters
 
 	// Internal
@@ -79,7 +57,7 @@ func (r *SetupRequest) init() error {
 	}
 	if parsedURL.Scheme == "moqt" {
 		// Set up the path parameter if the scheme is "moqt"
-		r.SetupParameters.Add(PATH, r.parsedURL.Path)
+		r.SetupParameters.SetPath(r.parsedURL.Path)
 	}
 
 	// Set the flag

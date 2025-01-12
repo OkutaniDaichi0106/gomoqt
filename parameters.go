@@ -3,9 +3,7 @@ package moqt
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"log/slog"
-	"reflect"
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
@@ -14,38 +12,39 @@ import (
 
 type Parameters message.Parameters
 
-func (p Parameters) Add(key uint64, value any) error {
-	encode := func(v uint64) []byte {
-		value := make([]byte, quicvarint.Len(uint64(v)))
-		return quicvarint.Append(value, uint64(v))
-	}
-	switch v := value.(type) {
-	case int64, int32, int16, int8:
-		p[key] = encode(uint64(reflect.ValueOf(v).Int()))
-	case uint64, uint32, uint16, uint8:
-		p[key] = encode(reflect.ValueOf(v).Uint())
-	case bool:
-		if v {
-			p[key] = encode(1)
-		} else if !v {
-			p[key] = encode(0)
-		}
-	case string:
-		p[key] = []byte(v)
-	case []byte:
-		p[key] = v
-	default:
-		return fmt.Errorf("invalid type: %T", value)
-	}
+func NewParameters() Parameters {
+	return make(Parameters)
+}
 
-	return nil
+func (p Parameters) SetByteArray(key uint64, value []byte) {
+	p[key] = value
+}
+
+func (p Parameters) SetString(key uint64, value string) {
+	p[key] = []byte(value)
+}
+
+func (p Parameters) SetInt(key uint64, value int64) {
+	p[key] = quicvarint.Append(make([]byte, 0), uint64(value))
+}
+
+func (p Parameters) SetUint(key uint64, value uint64) {
+	p[key] = quicvarint.Append(make([]byte, 0), value)
+}
+
+func (p Parameters) SetBool(key uint64, value bool) {
+	if value {
+		p[key] = quicvarint.Append(make([]byte, 0), 1)
+	} else {
+		p[key] = quicvarint.Append(make([]byte, 0), 0)
+	}
 }
 
 func (p Parameters) Remove(key uint64) {
 	delete(p, key)
 }
 
-func (p Parameters) ReadAsByteArray(key uint64) ([]byte, error) {
+func (p Parameters) GetByteArray(key uint64) ([]byte, error) {
 	value, ok := p[key]
 	if !ok {
 		return nil, ErrParameterNotFound
@@ -54,8 +53,8 @@ func (p Parameters) ReadAsByteArray(key uint64) ([]byte, error) {
 	return value, nil
 }
 
-func (p Parameters) ReadAsString(key uint64) (string, error) {
-	value, err := p.ReadAsByteArray(key)
+func (p Parameters) GetString(key uint64) (string, error) {
+	value, err := p.GetByteArray(key)
 	if err != nil {
 		slog.Error("failed to read a parameter as byte array")
 		return "", err
@@ -64,8 +63,8 @@ func (p Parameters) ReadAsString(key uint64) (string, error) {
 	return string(value), nil
 }
 
-func (p Parameters) ReadAsInt(key uint64) (int64, error) {
-	num, err := p.ReadAsUint(key)
+func (p Parameters) GetInt(key uint64) (int64, error) {
+	num, err := p.GetUint(key)
 	if err != nil {
 		slog.Error("failed to read a parameter as uint", slog.String("error", err.Error()))
 		return 0, err
@@ -74,7 +73,7 @@ func (p Parameters) ReadAsInt(key uint64) (int64, error) {
 	return int64(num), nil
 }
 
-func (p Parameters) ReadAsUint(key uint64) (uint64, error) {
+func (p Parameters) GetUint(key uint64) (uint64, error) {
 	value, ok := p[key]
 	if !ok {
 		return 0, ErrParameterNotFound
@@ -89,8 +88,8 @@ func (p Parameters) ReadAsUint(key uint64) (uint64, error) {
 	return num, nil
 }
 
-func (p Parameters) ReadAsBool(key uint64) (bool, error) {
-	num, err := p.ReadAsUint(key)
+func (p Parameters) GetBool(key uint64) (bool, error) {
+	num, err := p.GetUint(key)
 	if err != nil {
 		slog.Error("failed to read a parameter as uint", slog.String("error", err.Error()))
 		return false, err
@@ -108,25 +107,35 @@ func (p Parameters) ReadAsBool(key uint64) (bool, error) {
 
 var ErrParameterNotFound = errors.New("parameter not found")
 
+/***/
 const (
-	// ROLE               uint64 = 0x00
-	PATH               uint64 = 0x01
-	MAX_SUBSCRIBE_ID   uint64 = 0x02
-	AUTHORIZATION_INFO uint64 = 0x03
-	DELIVERY_TIMEOUT   uint64 = 0x04
-	MAX_CACHE_DURATION uint64 = 0x05
+	path               uint64 = 0x01
+	max_subscribe_id   uint64 = 0x02
+	authorization_info uint64 = 0x03
+	delivery_timeout   uint64 = 0x04
+	max_cache_duration uint64 = 0x05
 )
 
-func getPath(params Parameters) (string, bool) {
-	num, err := params.ReadAsString(PATH)
+// Path parameter
+func (p Parameters) SetPath(value string) {
+	p.SetString(path, value)
+}
+
+func (p Parameters) GetPath() (string, bool) {
+	num, err := p.GetString(path)
 	if err != nil {
 		return "", false
 	}
 	return num, true
 }
 
-func getMaxSubscribeID(params Parameters) (SubscribeID, bool) {
-	num, err := params.ReadAsUint(MAX_SUBSCRIBE_ID)
+// MaxSubscribeID parameter
+func (p Parameters) SetMaxSubscribeID(value SubscribeID) {
+	p.SetUint(max_subscribe_id, uint64(value))
+}
+
+func (p Parameters) GetMaxSubscribeID() (SubscribeID, bool) {
+	num, err := p.GetUint(max_subscribe_id)
 	if err != nil {
 		return 0, false
 	}
@@ -134,8 +143,13 @@ func getMaxSubscribeID(params Parameters) (SubscribeID, bool) {
 	return SubscribeID(num), true
 }
 
-func getMaxCacheDuration(params Parameters) (time.Duration, bool) {
-	num, err := params.ReadAsUint(MAX_CACHE_DURATION)
+// MaxCacheDuration parameter
+func (p Parameters) SetMaxCacheDuration(value time.Duration) {
+	p.SetInt(max_cache_duration, int64(value))
+}
+
+func (p Parameters) GetMaxCacheDuration() (time.Duration, bool) {
+	num, err := p.GetUint(max_cache_duration)
 	if err != nil {
 		return 0, false
 	}
@@ -143,8 +157,13 @@ func getMaxCacheDuration(params Parameters) (time.Duration, bool) {
 	return time.Duration(num), true
 }
 
-func getAuthorizationInfo(params Parameters) (string, bool) {
-	str, err := params.ReadAsString(AUTHORIZATION_INFO)
+// AuthorizationInfo parameter
+func (p Parameters) SetAuthorizationInfo(value string) {
+	p.SetString(authorization_info, value)
+}
+
+func (p Parameters) GetAuthorizationInfo() (string, bool) {
+	str, err := p.GetString(authorization_info)
 	if err != nil {
 		return "", false
 	}
@@ -152,8 +171,13 @@ func getAuthorizationInfo(params Parameters) (string, bool) {
 	return str, true
 }
 
-func getDeliveryTimeout(params Parameters) (time.Duration, bool) {
-	num, err := params.ReadAsUint(DELIVERY_TIMEOUT)
+// DeliveryTimeout parameter
+func (p Parameters) SetDeliveryTimeout(value time.Duration) {
+	p.SetInt(delivery_timeout, int64(value))
+}
+
+func (p Parameters) GetDeliveryTimeout() (time.Duration, bool) {
+	num, err := p.GetUint(delivery_timeout)
 	if err != nil {
 		return 0, false
 	}

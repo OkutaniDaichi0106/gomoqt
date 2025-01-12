@@ -90,7 +90,7 @@ func updateSubscription(subscription Subscription, update SubscribeUpdate) (Subs
 
 	// Update the Subscribe Parameters
 	for k, v := range update.SubscribeParameters {
-		subscription.SubscribeParameters.Add(k, v)
+		subscription.SubscribeParameters.SetByteArray(k, v)
 	}
 
 	return subscription, nil

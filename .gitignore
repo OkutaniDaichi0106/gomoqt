@@ -1,3 +1,5 @@
 foalk
 Samples/echo/server/localhost.pem
 Samples/echo/server/localhost-key.pem
+Samples/relay/server/localhost.pem
+Samples/relay/server/localhost-key.pem

@@ -7,11 +7,6 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/internal/transport"
 )
 
-type Interest struct {
-	TrackPrefix string
-	Parameters  Parameters
-}
-
 type ReceiveAnnounceStream interface {
 	ReceiveAnnouncements() ([]Announcement, error)
 }

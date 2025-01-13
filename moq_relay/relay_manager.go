@@ -1,4 +1,4 @@
-package moqtransfork
+package moqrelay
 
 import (
 	"context"
@@ -7,15 +7,17 @@ import (
 	"log/slog"
 	"sync"
 	"sync/atomic"
+
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransfork"
 )
 
 type RelayManager interface {
-	RelayAnnouncements(ServerSession, Interest) error
+	RelayAnnouncements(moqtransfork.ServerSession, moqtransfork.Interest) error
 
 	/*
 	 * Serve subscription to the relay manager
 	 */
-	RelayTrack(ServerSession, Subscription) error
+	RelayTrack(moqtransfork.ServerSession, moqtransfork.Subscription) error
 
 	TrackManager
 }
@@ -32,10 +34,10 @@ type relayManager struct {
 	//
 	trackTree *trackTree
 
-	trackManager
+	TrackManager
 }
 
-func (manager *relayManager) RelayAnnouncements(sess ServerSession, interest Interest) error {
+func (manager *relayManager) RelayAnnouncements(sess moqtransfork.ServerSession, interest moqtransfork.Interest) error {
 	annstr, err := sess.OpenAnnounceStream(interest)
 	if err != nil {
 		return err
@@ -62,7 +64,7 @@ func (manager *relayManager) RelayAnnouncements(sess ServerSession, interest Int
 	return nil
 }
 
-func (manager *relayManager) RelayTrack(sess ServerSession, sub Subscription) error {
+func (manager *relayManager) RelayTrack(sess moqtransfork.ServerSession, sub moqtransfork.Subscription) error {
 	substr, err := sess.OpenSubscribeStream(sub)
 	if err != nil {
 		slog.Error("failed to open a subscribe stream", slog.String("error", err.Error()))
@@ -95,7 +97,7 @@ func (manager *relayManager) RelayTrack(sess ServerSession, sub Subscription) er
 			trackBuf.AddGroup(groupBuf)
 
 			// Receive data from the stream
-			go func(stream ReceiveDataStream) {
+			go func(stream moqtransfork.ReceiveDataStream) {
 				/*
 				 * Receive data from the stream
 				 */
@@ -285,21 +287,21 @@ func (node *trackPrefixNode) initTrack() {
 func newAnnouncementBuffer() announcementBuffer {
 	return announcementBuffer{
 		annCond:       sync.NewCond(&sync.Mutex{}),
-		announcements: make([]Announcement, 0),
+		announcements: make([]moqtransfork.Announcement, 0),
 	}
 }
 
 type announcementBuffer struct {
 	annCond *sync.Cond
 
-	announcements []Announcement
+	announcements []moqtransfork.Announcement
 
 	waiting uint64
 
 	completed uint64
 }
 
-func (announcer announcementBuffer) WaitAnnouncements() []Announcement {
+func (announcer announcementBuffer) WaitAnnouncements() []moqtransfork.Announcement {
 	announcer.annCond.L.Lock()
 	defer announcer.annCond.L.Unlock()
 
@@ -324,7 +326,7 @@ func (announcer announcementBuffer) Broadcast() {
 
 }
 
-func (announcer *announcementBuffer) Add(ann Announcement) {
+func (announcer *announcementBuffer) Add(ann moqtransfork.Announcement) {
 	announcer.annCond.L.Lock()
 	defer announcer.annCond.L.Unlock()
 
@@ -335,7 +337,7 @@ func (announcer *announcementBuffer) Clean() {
 	announcer.annCond.L.Lock()
 	defer announcer.annCond.L.Unlock()
 
-	announcer.announcements = make([]Announcement, 0)
+	announcer.announcements = make([]moqtransfork.Announcement, 0)
 }
 
 // func (announcer announcementBuffer) WaitAndGet() []Announcement {
@@ -349,18 +351,18 @@ type trackNameNode struct {
 	/*
 	 * Session serving the track
 	 */
-	sess   ServerSession
+	sess   moqtransfork.ServerSession
 	sessMu sync.Mutex
 
 	/*
 	 * Announcement received from the session
 	 */
-	announcement Announcement
+	announcement moqtransfork.Announcement
 
 	/*
-	 * Subscription sent to the session
+	 * moqtransfork.Subscription sent to the session
 	 */
-	subscription Subscription
+	subscription moqtransfork.Subscription
 
 	/*
 	 * Frame queue
@@ -369,7 +371,7 @@ type trackNameNode struct {
 	mu       sync.Mutex
 }
 
-func (node *trackNameNode) SetSession(sess ServerSession) error {
+func (node *trackNameNode) SetSession(sess moqtransfork.ServerSession) error {
 	node.sessMu.Lock()
 	defer node.sessMu.Unlock()
 

@@ -1,12 +1,14 @@
-package moqtransfork
+package moqrelay
 
 import (
 	"errors"
 	"io"
 	"sync"
+
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransfork"
 )
 
-func NewGroupBuffer(seq GroupSequence, priority GroupPriority) GroupBuffer {
+func NewGroupBuffer(seq moqtransfork.GroupSequence, priority moqtransfork.GroupPriority) GroupBuffer {
 	return GroupBuffer{
 		groupSequence: seq,
 		groupPriority: priority,
@@ -15,17 +17,17 @@ func NewGroupBuffer(seq GroupSequence, priority GroupPriority) GroupBuffer {
 	}
 }
 
-func (g *GroupBuffer) GroupSequence() GroupSequence {
+func (g *GroupBuffer) GroupSequence() moqtransfork.GroupSequence {
 	return g.groupSequence
 }
 
-func (g *GroupBuffer) GroupPriority() GroupPriority {
+func (g *GroupBuffer) GroupPriority() moqtransfork.GroupPriority {
 	return g.groupPriority
 }
 
 type GroupBuffer struct {
-	groupSequence GroupSequence
-	groupPriority GroupPriority
+	groupSequence moqtransfork.GroupSequence
+	groupPriority moqtransfork.GroupPriority
 	frames        [][]byte
 	cond          *sync.Cond
 	locked        bool
@@ -81,7 +83,7 @@ func (w *GroupBuffer) Close() error {
 }
 
 type GroupReader interface {
-	Group
+	moqtransfork.Group
 	Read([]byte) (int, error)
 	NextFrame() ([]byte, error)
 }
@@ -89,7 +91,7 @@ type GroupReader interface {
 var _ GroupReader = (*GroupBuffer)(nil)
 
 type GroupWriter interface {
-	Group
+	moqtransfork.Group
 	Write([]byte) (int, error)
 	Close() error
 }

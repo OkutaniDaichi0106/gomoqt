@@ -1,15 +1,17 @@
-package moqtransfork
+package moqrelay
 
 import (
 	"log/slog"
 	"strings"
+
+	"github.com/OkutaniDaichi0106/gomoqt/moqtransfork"
 )
 
 type TrackManager interface {
 	//
-	ServeAnnouncements([]Announcement) error
+	ServeAnnouncements([]moqtransfork.Announcement) error
 
-	ServeTrack(Subscription, *TrackBuffer) error
+	ServeTrack(moqtransfork.Subscription, *TrackBuffer) error
 }
 
 var _ TrackManager = (*trackManager)(nil)
@@ -19,7 +21,7 @@ type trackManager struct {
 	trackTree *trackTree
 }
 
-func (manager *trackManager) ServeAnnouncements(ann []Announcement) error {
+func (manager *trackManager) ServeAnnouncements(ann []moqtransfork.Announcement) error {
 	// Serve announcements
 	for _, a := range ann {
 		annBufs := make([]announcementBuffer, 0)
@@ -35,7 +37,7 @@ func (manager *trackManager) ServeAnnouncements(ann []Announcement) error {
 			// Initialize track node if the track prefix matches the announcement track path
 			if node.trackPrefix == a.TrackPath {
 				switch a.AnnounceStatus {
-				case ACTIVE:
+				case moqtransfork.ACTIVE:
 					if node.track == nil {
 						node.initTrack()
 					}
@@ -46,7 +48,7 @@ func (manager *trackManager) ServeAnnouncements(ann []Announcement) error {
 					node.track.announcement = a
 
 					node.track.mu.Unlock()
-				case ENDED:
+				case moqtransfork.ENDED:
 					// Remove the track node
 					node.track = nil
 				}
@@ -68,7 +70,7 @@ func (manager *trackManager) ServeAnnouncements(ann []Announcement) error {
 		}
 
 		// Remove the track prefix if the announcement status is ENDED
-		if a.AnnounceStatus == ENDED {
+		if a.AnnounceStatus == moqtransfork.ENDED {
 			defer func() {
 				slog.Debug("removing track prefix", slog.String("track path", a.TrackPath))
 
@@ -89,7 +91,7 @@ func (manager *trackManager) ServeAnnouncements(ann []Announcement) error {
 	return nil
 }
 
-func (manager *trackManager) ServeTrack(sub Subscription, trackBuf *TrackBuffer) error {
+func (manager *trackManager) ServeTrack(sub moqtransfork.Subscription, trackBuf *TrackBuffer) error {
 	node, ok := manager.trackTree.traceTrackPrefix(strings.Split(sub.TrackPath, "/"))
 	if !ok {
 		// Insert the track prefix to the track tree

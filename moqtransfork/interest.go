@@ -7,12 +7,10 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 )
 
-// type RequestHandler interface {
-// 	InterestHandler
-// 	SubscribeHandler
-// 	FetchHandler
-// 	InfoRequestHandler
-// }
+type Interest struct {
+	TrackPrefix string
+	Parameters  Parameters
+}
 
 func readInterest(r io.Reader) (Interest, error) {
 	//

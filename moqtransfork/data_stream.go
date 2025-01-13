@@ -31,7 +31,7 @@ func (stream sendDataStream) Write(buf []byte) (int, error) {
 	return len(buf), nil
 }
 
-var _ GroupReader = (ReceiveDataStream)(nil)
+// var _ GroupReader = (ReceiveDataStream)(nil)
 
 type ReceiveDataStream interface {
 	SubscribeID() SubscribeID

@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/internal/transport"
 )
 
@@ -18,6 +17,9 @@ type SendSubscribeStream interface {
 
 	// Update the subscription
 	UpdateSubscribe(SubscribeUpdate) error
+
+	//
+	ReceiveSubscribeGap() (SubscribeGap, error)
 
 	// Close the stream
 	Close() error
@@ -65,6 +67,19 @@ func (sss *sendSubscribeStream) UpdateSubscribe(update SubscribeUpdate) error {
 
 	return nil
 }
+func (ss *sendSubscribeStream) ReceiveSubscribeGap() (SubscribeGap, error) {
+	slog.Debug("receiving a data gap")
+
+	gap, err := readSubscribeGap(ss.stream)
+	if err != nil {
+		slog.Error("failed to read a subscribe gap message", slog.String("error", err.Error()))
+		return SubscribeGap{}, err
+	}
+
+	slog.Debug("received a data gap", slog.Any("gap", gap))
+
+	return gap, nil
+}
 
 func (ss *sendSubscribeStream) Close() error {
 	slog.Debug("closing a subscrbe send stream", slog.Any("subscription", ss.subscription))
@@ -86,7 +101,6 @@ func (sss *sendSubscribeStream) CloseWithError(err error) error {
 	if err == nil {
 		return sss.Close()
 	}
-	// TODO:
 
 	var code transport.StreamErrorCode
 
@@ -114,7 +128,8 @@ func (sss *sendSubscribeStream) CloseWithError(err error) error {
 type ReceiveSubscribeStream interface {
 	SubscribeID() SubscribeID
 	Subscription() Subscription
-	CountDataGap(GroupSequence, uint64, uint64) error
+	// CountDataGap(GroupSequence, uint64, uint64) error
+	SendGroupGap(SubscribeGap) error
 	CloseWithError(error) error
 	Close() error
 }
@@ -136,21 +151,19 @@ func (rss *receiveSubscribeStream) Subscription() Subscription {
 	return rss.subscription
 }
 
-func (rs *receiveSubscribeStream) CountDataGap(start GroupSequence, count uint64, code uint64) error {
-	rs.mu.Lock()
-	defer rs.mu.Unlock()
+func (rss *receiveSubscribeStream) SendGroupGap(gap SubscribeGap) error {
+	slog.Debug("sending a data gap", slog.Any("gap", gap))
 
-	// TODO: Implement
-	sgm := message.SubscribeGapMessage{
-		GroupStartSequence: message.GroupSequence(start),
-		Count:              count,
-		GroupErrorCode:     message.GroupErrorCode(code),
-	}
-	err := sgm.Encode(rs.stream)
+	rss.mu.Lock()
+	defer rss.mu.Unlock()
+
+	err := writeSubscribeGap(rss.stream, gap)
 	if err != nil {
-		slog.Error("failed to encode SUBSCRIBE_GAP message")
+		slog.Error("failed to write a subscribe gap message", slog.String("error", err.Error()))
 		return err
 	}
+
+	slog.Debug("sent a data gap", slog.Any("gap", gap))
 
 	return nil
 }
@@ -199,4 +212,54 @@ func (srs *receiveSubscribeStream) Close() error {
 	slog.Debug("closed a subscrbe receive stream", slog.Any("subscription", srs.subscription))
 
 	return nil
+}
+
+func newReceiveSubscribeStreamQueue() *receiveSubscribeStreamQueue {
+	return &receiveSubscribeStreamQueue{
+		queue: make([]ReceiveSubscribeStream, 0),
+		ch:    make(chan struct{}, 1),
+	}
+}
+
+type receiveSubscribeStreamQueue struct {
+	queue []ReceiveSubscribeStream
+	mu    sync.Mutex
+	ch    chan struct{}
+}
+
+func (q *receiveSubscribeStreamQueue) Len() int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	return len(q.queue)
+}
+
+func (q *receiveSubscribeStreamQueue) Chan() <-chan struct{} {
+	return q.ch
+}
+
+func (q *receiveSubscribeStreamQueue) Enqueue(rss ReceiveSubscribeStream) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	q.queue = append(q.queue, rss)
+
+	select {
+	case q.ch <- struct{}{}:
+	default:
+	}
+}
+
+func (q *receiveSubscribeStreamQueue) Dequeue() ReceiveSubscribeStream {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if len(q.queue) == 0 {
+		return nil
+	}
+
+	next := q.queue[0]
+	q.queue = q.queue[1:]
+
+	return next
 }

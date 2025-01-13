@@ -4,34 +4,34 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqtransfork"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt"
 )
 
-func NewTrackBuffer(subscription moqtransfork.Subscription) *TrackBuffer {
+func NewTrackBuffer(subscription moqt.Subscription) *TrackBuffer {
 	return &TrackBuffer{
-		groupBufs:    make(map[moqtransfork.GroupSequence]GroupBuffer),
+		groupBufs:    make(map[moqt.GroupSequence]GroupBuffer),
 		subscription: subscription,
 	}
 }
 
 type TrackBuffer struct {
-	groupBufs    map[moqtransfork.GroupSequence]GroupBuffer
+	groupBufs    map[moqt.GroupSequence]GroupBuffer
 	mu           sync.Mutex
-	subscription moqtransfork.Subscription
+	subscription moqt.Subscription
 }
 
 func (t *TrackBuffer) AddGroup(g GroupBuffer) error {
 	// Check if the group sequence is in the range
 	if t.subscription.MinGroupSequence != 0 && t.subscription.MinGroupSequence > g.GroupSequence() {
-		return moqtransfork.ErrInvalidRange
+		return moqt.ErrInvalidRange
 	}
 	if t.subscription.MaxGroupSequence != 0 && t.subscription.MaxGroupSequence < g.GroupSequence() {
-		return moqtransfork.ErrInvalidRange
+		return moqt.ErrInvalidRange
 	}
 
 	// Check if the group sequence is duplicated
 	if _, ok := t.groupBufs[g.GroupSequence()]; ok {
-		return moqtransfork.ErrDuplicatedGroup
+		return moqt.ErrDuplicatedGroup
 	}
 
 	t.mu.Lock()
@@ -43,7 +43,7 @@ func (t *TrackBuffer) AddGroup(g GroupBuffer) error {
 	return nil
 }
 
-func (t *TrackBuffer) RemoveGroup(seq moqtransfork.GroupSequence) {
+func (t *TrackBuffer) RemoveGroup(seq moqt.GroupSequence) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 

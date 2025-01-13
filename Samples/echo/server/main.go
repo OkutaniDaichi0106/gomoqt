@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqtransfork"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt"
 	"github.com/quic-go/quic-go"
 )
 
@@ -29,7 +29,7 @@ func main() {
 	/*
 	 * Initialize a Server
 	 */
-	moqServer := moqtransfork.Server{
+	moqServer := moqt.Server{
 		Addr: "localhost:8443",
 		TLSConfig: &tls.Config{
 			NextProtos:         []string{"h3", "moq-00"},
@@ -46,7 +46,7 @@ func main() {
 	 * Set a handler function
 	 */
 	slog.Info("Server runs on path: \"/path\"")
-	moqtransfork.HandleFunc("/path", func(sess moqtransfork.ServerSession) {
+	moqt.HandleFunc("/path", func(sess moqt.ServerSession) {
 		echoTrackPrefix := "japan/kyoto"
 		echoTrackPath := "japan/kyoto/kiu/text"
 
@@ -60,7 +60,7 @@ func main() {
 			 * Request Announcements
 			 */
 			slog.Info("Request Announcements")
-			interest := moqtransfork.Interest{
+			interest := moqt.Interest{
 				TrackPrefix: echoTrackPrefix,
 			}
 			annstr, err := sess.OpenAnnounceStream(interest)
@@ -85,7 +85,7 @@ func main() {
 			 * Subscribe
 			 */
 			slog.Info("Subscribe")
-			subscription := moqtransfork.Subscription{
+			subscription := moqt.Subscription{
 				TrackPath:     echoTrackPath,
 				TrackPriority: 0,
 				GroupOrder:    0,
@@ -108,7 +108,7 @@ func main() {
 					return
 				}
 
-				go func(stream moqtransfork.ReceiveDataStream) {
+				go func(stream moqt.ReceiveDataStream) {
 					for {
 						buf := make([]byte, 1024)
 						n, err := stream.Read(buf)
@@ -140,7 +140,7 @@ func main() {
 			slog.Info("Accepted an Announce Stream")
 
 			slog.Info("Announce")
-			announcements := []moqtransfork.Announcement{
+			announcements := []moqt.Announcement{
 				{
 					TrackPath: echoTrackPath,
 				},
@@ -172,7 +172,7 @@ func main() {
 			/*
 			 * Send data
 			 */
-			for sequence := moqtransfork.GroupSequence(1); sequence < 30; sequence++ {
+			for sequence := moqt.GroupSequence(1); sequence < 30; sequence++ {
 				stream, err := sess.OpenDataStream(substr, sequence, 0)
 				if err != nil {
 					slog.Error("failed to open a data stream", slog.String("error", err.Error()))

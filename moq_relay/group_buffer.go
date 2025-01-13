@@ -5,10 +5,10 @@ import (
 	"io"
 	"sync"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqtransfork"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt"
 )
 
-func NewGroupBuffer(seq moqtransfork.GroupSequence, priority moqtransfork.GroupPriority) GroupBuffer {
+func NewGroupBuffer(seq moqt.GroupSequence, priority moqt.GroupPriority) GroupBuffer {
 	return GroupBuffer{
 		groupSequence: seq,
 		groupPriority: priority,
@@ -17,17 +17,17 @@ func NewGroupBuffer(seq moqtransfork.GroupSequence, priority moqtransfork.GroupP
 	}
 }
 
-func (g *GroupBuffer) GroupSequence() moqtransfork.GroupSequence {
+func (g *GroupBuffer) GroupSequence() moqt.GroupSequence {
 	return g.groupSequence
 }
 
-func (g *GroupBuffer) GroupPriority() moqtransfork.GroupPriority {
+func (g *GroupBuffer) GroupPriority() moqt.GroupPriority {
 	return g.groupPriority
 }
 
 type GroupBuffer struct {
-	groupSequence moqtransfork.GroupSequence
-	groupPriority moqtransfork.GroupPriority
+	groupSequence moqt.GroupSequence
+	groupPriority moqt.GroupPriority
 	frames        [][]byte
 	cond          *sync.Cond
 	locked        bool
@@ -83,7 +83,7 @@ func (w *GroupBuffer) Close() error {
 }
 
 type GroupReader interface {
-	moqtransfork.Group
+	moqt.Group
 	Read([]byte) (int, error)
 	NextFrame() ([]byte, error)
 }
@@ -91,7 +91,7 @@ type GroupReader interface {
 var _ GroupReader = (*GroupBuffer)(nil)
 
 type GroupWriter interface {
-	moqtransfork.Group
+	moqt.Group
 	Write([]byte) (int, error)
 	Close() error
 }

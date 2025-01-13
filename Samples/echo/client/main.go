@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqtransfork"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt"
 	"github.com/quic-go/quic-go"
 )
 
@@ -22,13 +22,13 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	slog.SetDefault(logger)
 
-	c := moqtransfork.Client{
+	c := moqt.Client{
 		TLSConfig:  &tls.Config{},
 		QUICConfig: &quic.Config{},
 	}
 
 	// Get a setup request
-	req := moqtransfork.SetupRequest{
+	req := moqt.SetupRequest{
 		URL: "https://localhost:8443/path",
 	}
 
@@ -56,7 +56,7 @@ func main() {
 		}
 
 		// Send Announcements
-		announcements := []moqtransfork.Announcement{
+		announcements := []moqt.Announcement{
 			{
 				TrackPath: echoTrackPath,
 			},
@@ -81,7 +81,7 @@ func main() {
 			return
 		}
 
-		for sequence := moqtransfork.GroupSequence(0); sequence < 30; sequence++ {
+		for sequence := moqt.GroupSequence(0); sequence < 30; sequence++ {
 			stream, err := sess.OpenDataStream(substr, sequence, 0)
 			if err != nil {
 				slog.Error("failed to open a data stream", slog.String("error", err.Error()))
@@ -106,7 +106,7 @@ func main() {
 		slog.Info("Run a subscriber")
 
 		slog.Info("Receive Announcements")
-		annstr, err := sess.OpenAnnounceStream(moqtransfork.Interest{TrackPrefix: echoTrackPrefix})
+		annstr, err := sess.OpenAnnounceStream(moqt.Interest{TrackPrefix: echoTrackPrefix})
 		if err != nil {
 			slog.Error("failed to get an interest", slog.String("error", err.Error()))
 			return
@@ -120,7 +120,7 @@ func main() {
 
 		slog.Info("Active Tracks", slog.Any("announcements", announcements))
 
-		subscription := moqtransfork.Subscription{
+		subscription := moqt.Subscription{
 			TrackPath:     echoTrackPath,
 			TrackPriority: 0,
 			GroupOrder:    0,

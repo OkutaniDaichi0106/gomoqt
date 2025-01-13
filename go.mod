@@ -11,6 +11,7 @@ require (
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
+	github.com/golang/mock v1.6.0 // indirect
 	github.com/google/pprof v0.0.0-20241122213907-cbe949e5a41b // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/onsi/ginkgo/v2 v2.22.0 // indirect

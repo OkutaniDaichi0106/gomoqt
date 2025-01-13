@@ -5,7 +5,7 @@ go 1.22.0
 require (
 	github.com/quic-go/quic-go v0.48.2
 	github.com/quic-go/webtransport-go v0.8.1-0.20241018022259-0f459d387a19
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.10.0
 )
 
 require (

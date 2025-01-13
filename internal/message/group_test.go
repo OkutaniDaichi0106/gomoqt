@@ -16,14 +16,14 @@ func TestGroupMessage(t *testing.T) {
 	}{
 		"valid parameter": {
 			testcase: message.GroupMessage{
-				SubscribeID:       1,
-				GroupSequence:     1,
-				PublisherPriority: 1,
+				SubscribeID:   1,
+				GroupSequence: 1,
+				GroupPriority: 1,
 			},
 			want: message.GroupMessage{
-				SubscribeID:       1,
-				GroupSequence:     1,
-				PublisherPriority: 1,
+				SubscribeID:   1,
+				GroupSequence: 1,
+				GroupPriority: 1,
 			},
 			wantErr: false,
 		},

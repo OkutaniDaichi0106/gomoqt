@@ -1,6 +1,21 @@
 # gomoqt  
 gomoqt is an original implementation of Media over QUIC in Golang, based on MOQTransport and MOQTransfork.  
 
+## Features and Differences
+### 1. Streams  
+Streams completely based on MOQTranfork draft04.  
+
+### 2. Messages  
+Messages primarily based on MOQTransfork, some messages and fields are derived from MOQTransport  
+#### Differences from MOQTransfork draft04  
+- GOAWAY messages are transmitted on the Session Stream.  
+- GROUP messages have a Publisher Priority field.  
+- Two types of priorities: Subscriber Priority and Publisher Priority are implemented  
+- No Track Path Parts field  
+
+
+
+
 ## Implemented sections
 | Section                                      | Implemented        | Tested             |
 | -------------------------------------------- | ------------------ | ------------------ |

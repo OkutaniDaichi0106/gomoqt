@@ -12,7 +12,7 @@ type SubscribeID uint64
 
 type TrackAlias uint64
 
-type SubscriberPriority byte
+type TrackPriority byte
 
 type GroupOrder byte
 
@@ -21,7 +21,7 @@ type SubscribeMessage struct {
 
 	TrackPath string
 
-	SubscriberPriority SubscriberPriority
+	TrackPriority TrackPriority
 
 	/*
 	 * The order of the group
@@ -29,7 +29,7 @@ type SubscribeMessage struct {
 	 */
 	GroupOrder GroupOrder
 
-	Expires time.Duration
+	GroupExpires time.Duration
 
 	/***/
 	MinGroupSequence GroupSequence
@@ -74,7 +74,7 @@ func (s SubscribeMessage) Encode(w io.Writer) error {
 	p = append(p, []byte(s.TrackPath)...)
 
 	// Append the Subscriber Priority
-	p = append(p, []byte{byte(s.SubscriberPriority)}...)
+	p = append(p, []byte{byte(s.TrackPriority)}...)
 
 	// Append the Group Order
 	p = append(p, []byte{byte(s.GroupOrder)}...)
@@ -145,7 +145,7 @@ func (s *SubscribeMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	s.SubscriberPriority = SubscriberPriority(bnum)
+	s.TrackPriority = TrackPriority(bnum)
 
 	// Get Group Order
 	bnum, err = mr.ReadByte()
@@ -159,7 +159,7 @@ func (s *SubscribeMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	s.Expires = time.Duration(num)
+	s.GroupExpires = time.Duration(num)
 
 	// Get Min Group Sequence
 	num, err = quicvarint.Read(mr)

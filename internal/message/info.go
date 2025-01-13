@@ -9,7 +9,7 @@ import (
 )
 
 type InfoMessage struct {
-	PublisherPriority   PublisherPriority
+	TrackPriority       TrackPriority
 	LatestGroupSequence GroupSequence
 	GroupOrder          GroupOrder
 	GroupExpires        time.Duration
@@ -33,7 +33,7 @@ func (im InfoMessage) Encode(w io.Writer) error {
 	p := make([]byte, 0, 1<<10)
 
 	// Append the Publisher Priority
-	p = quicvarint.Append(p, uint64(im.PublisherPriority))
+	p = quicvarint.Append(p, uint64(im.TrackPriority))
 
 	// Appen the Latest Group Sequence
 	p = quicvarint.Append(p, uint64(im.LatestGroupSequence))
@@ -79,7 +79,7 @@ func (im *InfoMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	im.PublisherPriority = PublisherPriority(num)
+	im.TrackPriority = TrackPriority(num)
 
 	// Get a Latest Group ID
 	num, err = quicvarint.Read(mr)

@@ -7,11 +7,24 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
+const (
+	ENDED  AnnounceStatus = 0x0
+	ACTIVE AnnounceStatus = 0x1
+	LIVE   AnnounceStatus = 0x2
+)
+
+type AnnounceStatus byte
+
 type AnnounceMessage struct {
+	/*
+	 * Announce Status
+	 */
+	AnnounceStatus AnnounceStatus
+
 	/*
 	 * Track Namespace
 	 */
-	TrackPath string
+	TrackPathSuffix string
 
 	/*
 	 * Announce Parameters
@@ -27,7 +40,7 @@ func (a AnnounceMessage) Encode(w io.Writer) error {
 	 * Serialize the payload in the following format
 	 *
 	 * ANNOUNCE Message Payload {
-	 *   Track Path (tuple),
+	 *   Track Path (string),
 	 *   Number of Parameters (),
 	 *   Announce Parameters(..)
 	 * }
@@ -36,8 +49,8 @@ func (a AnnounceMessage) Encode(w io.Writer) error {
 	p := make([]byte, 0, 1<<6) // TODO: Tune the size
 
 	// Append the Track Namespace
-	p = quicvarint.Append(p, uint64(len(a.TrackPath)))
-	p = append(p, []byte(a.TrackPath)...)
+	p = quicvarint.Append(p, uint64(len(a.TrackPathSuffix)))
+	p = append(p, []byte(a.TrackPathSuffix)...)
 
 	// Append the Parameters
 	p = appendParameters(p, a.Parameters)
@@ -70,7 +83,7 @@ func (am *AnnounceMessage) Decode(r io.Reader) error {
 		return err
 	}
 
-	// Get a Track Namespace
+	// Get a Track Path
 	num, err := quicvarint.Read(mr)
 	if err != nil {
 		return err
@@ -80,7 +93,7 @@ func (am *AnnounceMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	am.TrackPath = string(buf)
+	am.TrackPathSuffix = string(buf)
 
 	// Get Parameters
 	am.Parameters, err = readParameters(mr)
@@ -88,7 +101,7 @@ func (am *AnnounceMessage) Decode(r io.Reader) error {
 		return err
 	}
 
-	slog.Debug("decoding a ANNOUNCE message")
+	slog.Debug("decoded a ANNOUNCE message")
 
 	return nil
 }

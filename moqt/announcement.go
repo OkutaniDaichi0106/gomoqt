@@ -43,7 +43,7 @@ func readAnnouncement(r io.Reader, prefix string) (Announcement, error) {
 	return Announcement{
 		AnnounceStatus:     AnnounceStatus(am.AnnounceStatus),
 		TrackPath:          trackPath,
-		AnnounceParameters: Parameters(am.Parameters),
+		AnnounceParameters: Parameters{am.Parameters},
 	}, nil
 }
 
@@ -63,7 +63,7 @@ func writeAnnouncement(w io.Writer, prefix string, ann Announcement) error {
 		am = message.AnnounceMessage{
 			AnnounceStatus:  message.AnnounceStatus(ann.AnnounceStatus),
 			TrackPathSuffix: suffix,
-			Parameters:      message.Parameters(ann.AnnounceParameters),
+			Parameters:      message.Parameters(ann.AnnounceParameters.paramMap),
 		}
 	case LIVE:
 		// Initialize an ANNOUNCE message

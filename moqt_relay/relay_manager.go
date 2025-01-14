@@ -1,4 +1,4 @@
-package moqrelay
+package moqtrelay
 
 import (
 	"context"

@@ -45,7 +45,7 @@ func readSubscription(r transport.Stream) (SubscribeID, Subscription, error) {
 		GroupExpires:        sm.GroupExpires,
 		MinGroupSequence:    GroupSequence(sm.MinGroupSequence),
 		MaxGroupSequence:    GroupSequence(sm.MaxGroupSequence),
-		SubscribeParameters: Parameters(sm.Parameters),
+		SubscribeParameters: Parameters{sm.Parameters},
 	}
 
 	return SubscribeID(sm.SubscribeID), subscription, nil
@@ -53,8 +53,8 @@ func readSubscription(r transport.Stream) (SubscribeID, Subscription, error) {
 
 func writeSubscription(w transport.Stream, id SubscribeID, subscription Subscription) error {
 	// Set parameters
-	if subscription.SubscribeParameters == nil {
-		subscription.SubscribeParameters = make(Parameters)
+	if subscription.SubscribeParameters.paramMap == nil {
+		subscription.SubscribeParameters = NewParameters()
 	}
 
 	// Send a SUBSCRIBE message
@@ -66,7 +66,7 @@ func writeSubscription(w transport.Stream, id SubscribeID, subscription Subscrip
 		GroupExpires:     subscription.GroupExpires,
 		MinGroupSequence: message.GroupSequence(subscription.MinGroupSequence),
 		MaxGroupSequence: message.GroupSequence(subscription.MaxGroupSequence),
-		Parameters:       message.Parameters(subscription.SubscribeParameters),
+		Parameters:       message.Parameters(subscription.SubscribeParameters.paramMap),
 	}
 	err := sm.Encode(w)
 	if err != nil {

@@ -23,14 +23,14 @@ func readInterest(r io.Reader) (Interest, error) {
 
 	return Interest{
 		TrackPrefix: aim.TrackPathPrefix,
-		Parameters:  Parameters(aim.Parameters),
+		Parameters:  Parameters{aim.Parameters},
 	}, nil
 }
 
 func writeInterest(w io.Writer, interest Interest) error {
 	aim := message.AnnounceInterestMessage{
 		TrackPathPrefix: interest.TrackPrefix,
-		Parameters:      message.Parameters(interest.Parameters),
+		Parameters:      message.Parameters(interest.Parameters.paramMap),
 	}
 
 	err := aim.Encode(w)

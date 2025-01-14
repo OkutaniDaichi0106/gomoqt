@@ -15,6 +15,8 @@ type SendSubscribeStream interface {
 	// Get the subscription
 	Subscription() Subscription
 
+	Info() Info
+
 	// Update the subscription
 	UpdateSubscribe(SubscribeUpdate) error
 
@@ -34,6 +36,7 @@ type sendSubscribeStream struct {
 	subscribeID  SubscribeID
 	subscription Subscription
 	stream       transport.Stream
+	info         Info
 	mu           sync.Mutex
 }
 
@@ -43,6 +46,9 @@ func (ss *sendSubscribeStream) SubscribeID() SubscribeID {
 
 func (ss *sendSubscribeStream) Subscription() Subscription {
 	return ss.subscription
+}
+func (ss *sendSubscribeStream) Info() Info {
+	return ss.info
 }
 
 func (sss *sendSubscribeStream) UpdateSubscribe(update SubscribeUpdate) error {
@@ -129,7 +135,7 @@ type ReceiveSubscribeStream interface {
 	SubscribeID() SubscribeID
 	Subscription() Subscription
 	// CountDataGap(GroupSequence, uint64, uint64) error
-	SendGroupGap(SubscribeGap) error
+	SendSubscribeGap(SubscribeGap) error
 	CloseWithError(error) error
 	Close() error
 }
@@ -151,7 +157,7 @@ func (rss *receiveSubscribeStream) Subscription() Subscription {
 	return rss.subscription
 }
 
-func (rss *receiveSubscribeStream) SendGroupGap(gap SubscribeGap) error {
+func (rss *receiveSubscribeStream) SendSubscribeGap(gap SubscribeGap) error {
 	slog.Debug("sending a data gap", slog.Any("gap", gap))
 
 	rss.mu.Lock()

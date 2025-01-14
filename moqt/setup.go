@@ -52,12 +52,8 @@ func (r *SetupRequest) init() error {
 	r.supportedVersions = DefaultClientVersions
 
 	// Initialize the SetupParameters
-	if r.SetupParameters == nil {
-		r.SetupParameters = make(Parameters)
-	}
-	if parsedURL.Scheme == "moqt" {
-		// Set up the path parameter if the scheme is "moqt"
-		r.SetupParameters.SetPath(r.parsedURL.Path)
+	if r.SetupParameters.paramMap == nil {
+		r.SetupParameters = NewParameters()
 	}
 
 	// Set the flag
@@ -88,6 +84,6 @@ func readSetupResponce(r io.Reader) (SetupResponce, error) {
 
 	return SetupResponce{
 		SelectedVersion: Version(ssm.SelectedVersion),
-		Parameters:      Parameters(ssm.Parameters),
+		Parameters:      Parameters{ssm.Parameters},
 	}, nil
 }

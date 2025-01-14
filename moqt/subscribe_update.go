@@ -36,7 +36,7 @@ func readSubscribeUpdate(r io.Reader) (SubscribeUpdate, error) {
 		GroupExpires:        sum.GroupExpires,
 		MinGroupSequence:    GroupSequence(sum.MinGroupSequence),
 		MaxGroupSequence:    GroupSequence(sum.MaxGroupSequence),
-		SubscribeParameters: Parameters(sum.Parameters),
+		SubscribeParameters: Parameters{sum.Parameters},
 	}, nil
 }
 
@@ -45,8 +45,8 @@ func writeSubscribeUpdate(w io.Writer, update SubscribeUpdate) error {
 	 * Send a SUBSCRIBE_UPDATE message
 	 */
 	// Set parameters
-	if update.SubscribeParameters == nil {
-		update.SubscribeParameters = make(Parameters)
+	if update.SubscribeParameters.paramMap == nil {
+		update.SubscribeParameters = NewParameters()
 	}
 
 	// Send a SUBSCRIBE_UPDATE message
@@ -56,7 +56,7 @@ func writeSubscribeUpdate(w io.Writer, update SubscribeUpdate) error {
 		GroupExpires:     update.GroupExpires,
 		MinGroupSequence: message.GroupSequence(update.MinGroupSequence),
 		MaxGroupSequence: message.GroupSequence(update.MaxGroupSequence),
-		Parameters:       message.Parameters(update.SubscribeParameters),
+		Parameters:       message.Parameters(update.SubscribeParameters.paramMap),
 	}
 	err := sum.Encode(w)
 	if err != nil {
@@ -89,8 +89,8 @@ func updateSubscription(subscription Subscription, update SubscribeUpdate) (Subs
 	subscription.MaxGroupSequence = update.MaxGroupSequence
 
 	// Update the Subscribe Parameters
-	for k, v := range update.SubscribeParameters {
-		subscription.SubscribeParameters.SetByteArray(k, v)
+	for k, v := range update.SubscribeParameters.paramMap {
+		subscription.SubscribeParameters.paramMap[k] = v
 	}
 
 	return subscription, nil

@@ -217,30 +217,6 @@ func (s *session) OpenSubscribeStream(subscription Subscription) (SendSubscribeS
 		return nil, err
 	}
 
-	/*
-	 * 	Update the subscription
-	 */
-	// Update the TrackPriority
-	if info.TrackPriority != subscription.TrackPriority {
-		slog.Debug("TrackPriority is not updated")
-		return nil, ErrPriorityMismatch
-	}
-
-	// Update the GroupOrder
-	if subscription.GroupOrder == 0 {
-		subscription.GroupOrder = info.GroupOrder
-	} else {
-		if info.GroupOrder != subscription.GroupOrder {
-			slog.Debug("GroupOrder is not updated")
-			return nil, ErrGroupOrderMismatch
-		}
-	}
-
-	// Update the GroupExpires
-	if info.GroupExpires < subscription.GroupExpires {
-		subscription.GroupExpires = info.GroupExpires
-	}
-
 	// Create a data stream queue
 	s.dataReceiveStreamQueues[nextID] = newReceiveDataStreamQueue()
 
@@ -251,6 +227,7 @@ func (s *session) OpenSubscribeStream(subscription Subscription) (SendSubscribeS
 		subscribeID:  nextID,
 		subscription: subscription,
 		stream:       stream,
+		info:         info,
 	}, err
 }
 

@@ -101,7 +101,7 @@ func (c Client) DialQUIC(req SetupRequest, ctx context.Context) (ClientSession, 
 	}
 
 	// Add path parameter
-	req.SetupParameters.SetPath(req.parsedURL.Path)
+	req.SetupParameters.SetString(path, req.parsedURL.Path)
 
 	// Look up the IP address
 	var ips []net.IP
@@ -206,7 +206,7 @@ func sendSetupRequest(w io.Writer, req SetupRequest) error {
 
 	scm := message.SessionClientMessage{
 		SupportedVersions: make([]protocol.Version, 0),
-		Parameters:        message.Parameters(req.SetupParameters),
+		Parameters:        message.Parameters(req.SetupParameters.paramMap),
 	}
 
 	for _, v := range req.supportedVersions {

@@ -20,10 +20,10 @@ type SendFetchStream interface {
 	UpdateFetch(FetchUpdate) error
 
 	// Close the stream
-	Close() error
+	Close() error // TODO: delete if not used
 
 	// Close the stream with an error
-	CloseWithError(err error) error
+	CloseWithError(err error) error // TODO: delete if not used or rename to CancelFetch
 }
 
 var _ SendFetchStream = (*sendFetchStream)(nil)

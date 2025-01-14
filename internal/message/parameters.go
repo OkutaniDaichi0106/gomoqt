@@ -8,7 +8,7 @@ import (
 
 /*
  * Parameters
- * Keys of the maps should not be duplicated
+ * - A map of the parameters
  */
 type Parameters map[uint64][]byte
 
@@ -19,7 +19,7 @@ func appendParameters(b []byte, params Parameters) []byte {
 	// Append the parameters
 	for key, value := range params {
 		// Append the Paramter Type
-		b = quicvarint.Append(b, uint64(key))
+		b = quicvarint.Append(b, key)
 		// Append the Paramter Length
 		b = quicvarint.Append(b, uint64(len(value)))
 		// Append the Paramter Value
@@ -47,7 +47,7 @@ func readParameters(r reader) (Parameters, error) {
 		if err != nil {
 			return Parameters{}, err
 		}
-		key := uint64(num)
+		key := num
 
 		// Get a Parameter Length
 		num, err = quicvarint.Read(r)

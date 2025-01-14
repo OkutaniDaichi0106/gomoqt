@@ -121,7 +121,7 @@ func (s *Server) init() (err error) {
 			} else {
 				rsp = SetupResponce{
 					SelectedVersion: Default,
-					Parameters:      make(Parameters),
+					Parameters:      NewParameters(),
 				}
 			}
 			err = writeSetupResponce(stream, rsp)
@@ -222,7 +222,7 @@ func (s *Server) ListenAndServe() error {
 					} else {
 						rsp = SetupResponce{
 							SelectedVersion: Default,
-							Parameters:      make(Parameters),
+							Parameters:      NewParameters(),
 						}
 					}
 					err = writeSetupResponce(stream, rsp)
@@ -296,7 +296,7 @@ func readSetupRequest(r io.Reader) (req SetupRequest, err error) {
 		req.supportedVersions = append(req.supportedVersions, Version(v))
 	}
 	// Set parameters
-	req.SetupParameters = Parameters(scm.Parameters)
+	req.SetupParameters = Parameters{scm.Parameters}
 
 	slog.Debug("read a set-up request", slog.Any("request", req))
 
@@ -308,7 +308,7 @@ func writeSetupResponce(w io.Writer, rsp SetupResponce) error {
 
 	ssm := message.SessionServerMessage{
 		SelectedVersion: protocol.Version(rsp.SelectedVersion),
-		Parameters:      message.Parameters(rsp.Parameters),
+		Parameters:      message.Parameters(rsp.Parameters.paramMap),
 	}
 
 	err := ssm.Encode(w)

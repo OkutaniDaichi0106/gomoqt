@@ -11,7 +11,7 @@ type TrackManager interface {
 	//
 	ServeAnnouncements([]moqt.Announcement) error
 
-	ServeTrack(moqt.Subscription, *TrackBuffer) error
+	ServeTrack(moqt.SubscribeConfig, *TrackBuffer) error
 }
 
 var _ TrackManager = (*trackManager)(nil)
@@ -91,7 +91,7 @@ func (manager *trackManager) ServeAnnouncements(ann []moqt.Announcement) error {
 	return nil
 }
 
-func (manager *trackManager) ServeTrack(sub moqt.Subscription, trackBuf *TrackBuffer) error {
+func (manager *trackManager) ServeTrack(sub moqt.SubscribeConfig, trackBuf *TrackBuffer) error {
 	node, ok := manager.trackTree.traceTrackPrefix(strings.Split(sub.TrackPath, "/"))
 	if !ok {
 		// Insert the track prefix to the track tree

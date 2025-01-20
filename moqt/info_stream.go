@@ -10,7 +10,8 @@ import (
 )
 
 type SendInfoStream interface {
-	UpdateInfo(Info)
+	InfoRequest() InfoRequest
+	SendInfo(Info) error
 	CloseWithError(error) error
 	Close() error
 }
@@ -18,12 +19,19 @@ type SendInfoStream interface {
 var _ SendInfoStream = (*sendInfoStream)(nil)
 
 type sendInfoStream struct {
-	InfoRequest
+	req    InfoRequest
 	stream transport.Stream
 	mu     sync.Mutex
+
+	// Used to signal that a subscribe stream is
+	ch chan struct{}
 }
 
-func (req *sendInfoStream) UpdateInfo(i Info) {
+func (req *sendInfoStream) InfoRequest() InfoRequest {
+	return req.req
+}
+
+func (req *sendInfoStream) SendInfo(i Info) error {
 	req.mu.Lock()
 	defer req.mu.Unlock()
 
@@ -31,19 +39,22 @@ func (req *sendInfoStream) UpdateInfo(i Info) {
 		TrackPriority:       message.TrackPriority(i.TrackPriority),
 		LatestGroupSequence: message.GroupSequence(i.LatestGroupSequence),
 		GroupOrder:          message.GroupOrder(i.GroupOrder),
-		GroupExpires:        i.GroupExpires,
 	}
 
 	err := im.Encode(req.stream)
 	if err != nil {
 		slog.Error("failed to send an INFO message", slog.String("error", err.Error()))
-		req.CloseWithError(err)
-		return
+		return err
 	}
 
 	slog.Info("answered an info")
 
-	req.Close()
+	if req.ch != nil {
+		close(req.ch)
+		req.ch = nil
+	}
+
+	return nil
 }
 
 func (req *sendInfoStream) CloseWithError(err error) error {

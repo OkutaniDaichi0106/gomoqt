@@ -5,9 +5,9 @@ import (
 	"sync"
 )
 
-type HandlerFunc func(ServerSession)
+type HandlerFunc func(Session)
 
-var NotFoundFunc HandlerFunc = func(ServerSession) {}
+var NotFoundFunc HandlerFunc = func(Session) {}
 
 var DefaultHandler *ServeMux = NewServeMux()
 
@@ -50,6 +50,6 @@ func (mux *ServeMux) findHandlerFunc(pattern string) HandlerFunc {
 	return handlerFunc
 }
 
-func HandleFunc(pattern string, op func(ServerSession)) {
+func HandleFunc(pattern string, op func(Session)) {
 	DefaultHandler.HandlerFunc(pattern, op)
 }

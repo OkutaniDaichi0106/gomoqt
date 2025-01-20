@@ -10,11 +10,8 @@ import (
 )
 
 type SendFetchStream interface {
-	// Get a ReceiveDataStream
-	ReceiveDataStream() ReceiveDataStream
-
-	// Get a fetch
-	Fetch() FetchRequest
+	// Get a fetch request
+	FetchRequest() FetchRequest
 
 	// Update the fetch
 	UpdateFetch(FetchUpdate) error
@@ -34,19 +31,7 @@ type sendFetchStream struct {
 	mu     sync.Mutex
 }
 
-func (sfs *sendFetchStream) ReceiveDataStream() ReceiveDataStream {
-	return receiveDataStream{
-		subscribeID:   sfs.fetch.SubscribeID,
-		ReceiveStream: sfs.stream,
-		ReceivedGroup: receivedGroup{
-			groupSequence: sfs.fetch.GroupSequence,
-			groupPriority: sfs.fetch.GroupPriority,
-			receivedAt:    time.Now(),
-		},
-	}
-}
-
-func (sfs *sendFetchStream) Fetch() FetchRequest {
+func (sfs *sendFetchStream) FetchRequest() FetchRequest {
 	return sfs.fetch
 }
 
@@ -106,7 +91,7 @@ func (sfs *sendFetchStream) Close() error {
 
 type ReceiveFetchStream interface {
 	// Get a SendDataStream
-	SendDataStream() SendDataStream
+	SendDataStream() SendGroupStream
 
 	// Get a fetch request
 	FetchRequest() FetchRequest
@@ -126,14 +111,14 @@ type receiveFetchStream struct {
 	mu     sync.Mutex
 }
 
-func (rfs *receiveFetchStream) SendDataStream() SendDataStream {
-	return sendDataStream{
-		SendStream: rfs.stream,
-		sentGroup: sentGroup{
+func (rfs *receiveFetchStream) SendDataStream() SendGroupStream {
+	return sendGroupStream{
+		stream: rfs.stream,
+		Group: group{
 			groupSequence: rfs.fetch.GroupSequence,
 			groupPriority: rfs.fetch.GroupPriority,
-			sentAt:        time.Now(),
 		},
+		startTime: time.Now(),
 	}
 }
 

@@ -60,7 +60,7 @@ func main() {
 			 * Request Announcements
 			 */
 			slog.Info("Request Announcements")
-			interest := moqt.Interest{
+			interest := moqt.AnnounceConfig{
 				TrackPrefix: echoTrackPrefix,
 			}
 			annstr, err := sess.OpenAnnounceStream(interest)
@@ -85,11 +85,10 @@ func main() {
 			 * Subscribe
 			 */
 			slog.Info("Subscribe")
-			subscription := moqt.Subscription{
+			subscription := moqt.SubscribeConfig{
 				TrackPath:     echoTrackPath,
 				TrackPriority: 0,
 				GroupOrder:    0,
-				GroupExpires:  1 * time.Second,
 			}
 			substr, err := sess.OpenSubscribeStream(subscription)
 			if err != nil {
@@ -108,7 +107,7 @@ func main() {
 					return
 				}
 
-				go func(stream moqt.ReceiveDataStream) {
+				go func(stream moqt.ReceiveGroupStream) {
 					for {
 						buf := make([]byte, 1024)
 						n, err := stream.Read(buf)

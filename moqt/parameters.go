@@ -115,77 +115,9 @@ var ErrParameterNotFound = errors.New("parameter not found")
 /***/
 const (
 	path               ParameterType = 0x01
-	max_subscribe_id   ParameterType = 0x02
-	authorization_info ParameterType = 0x03
-	delivery_timeout   ParameterType = 0x04
-	max_cache_duration ParameterType = 0x05
+	authorization_info ParameterType = 0x02
+	delivery_timeout   ParameterType = 0x03
+	new_session_uri    ParameterType = 0x04
+
+	// max_subscribe_id   ParameterType = 0x02
 )
-
-// // Path parameter
-// func (p Parameters) SetPath(value string) {
-// 	p.SetString(path, value)
-// }
-
-// func (p Parameters) GetPath() (string, bool) {
-// 	num, err := p.GetString(path)
-// 	if err != nil {
-// 		return "", false
-// 	}
-// 	return num, true
-// }
-
-// // MaxSubscribeID parameter
-// func (p Parameters) SetMaxSubscribeID(value SubscribeID) {
-// 	p.SetUint(max_subscribe_id, uint64(value))
-// }
-
-// func (p Parameters) GetMaxSubscribeID() (SubscribeID, bool) {
-// 	num, err := p.GetUint(max_subscribe_id)
-// 	if err != nil {
-// 		return 0, false
-// 	}
-
-// 	return SubscribeID(num), true
-// }
-
-// // MaxCacheDuration parameter
-// func (p Parameters) SetMaxCacheDuration(value time.Duration) {
-// 	p.SetInt(max_cache_duration, int64(value))
-// }
-
-// func (p Parameters) GetMaxCacheDuration() (time.Duration, bool) {
-// 	num, err := p.GetUint(max_cache_duration)
-// 	if err != nil {
-// 		return 0, false
-// 	}
-
-// 	return time.Duration(num), true
-// }
-
-// // AuthorizationInfo parameter
-// func (p Parameters) SetAuthorizationInfo(value string) {
-// 	p.SetString(authorization_info, value)
-// }
-
-// func (p Parameters) GetAuthorizationInfo() (string, bool) {
-// 	str, err := p.GetString(authorization_info)
-// 	if err != nil {
-// 		return "", false
-// 	}
-
-// 	return str, true
-// }
-
-// // DeliveryTimeout parameter
-// func (p Parameters) SetDeliveryTimeout(value time.Duration) {
-// 	p.SetInt(delivery_timeout, int64(value))
-// }
-
-// func (p Parameters) GetDeliveryTimeout() (time.Duration, bool) {
-// 	num, err := p.GetUint(delivery_timeout)
-// 	if err != nil {
-// 		return 0, false
-// 	}
-
-// 	return time.Duration(num), true
-// }

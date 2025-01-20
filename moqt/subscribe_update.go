@@ -3,7 +3,6 @@ package moqt
 import (
 	"io"
 	"log/slog"
-	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 )
@@ -11,7 +10,6 @@ import (
 type SubscribeUpdate struct {
 	TrackPriority    TrackPriority
 	GroupOrder       GroupOrder
-	GroupExpires     time.Duration
 	MinGroupSequence GroupSequence
 	MaxGroupSequence GroupSequence
 
@@ -33,7 +31,6 @@ func readSubscribeUpdate(r io.Reader) (SubscribeUpdate, error) {
 	return SubscribeUpdate{
 		TrackPriority:       TrackPriority(sum.TrackPriority),
 		GroupOrder:          GroupOrder(sum.GroupOrder),
-		GroupExpires:        sum.GroupExpires,
 		MinGroupSequence:    GroupSequence(sum.MinGroupSequence),
 		MaxGroupSequence:    GroupSequence(sum.MaxGroupSequence),
 		SubscribeParameters: Parameters{sum.Parameters},
@@ -53,7 +50,6 @@ func writeSubscribeUpdate(w io.Writer, update SubscribeUpdate) error {
 	sum := message.SubscribeUpdateMessage{
 		TrackPriority:    message.TrackPriority(update.TrackPriority),
 		GroupOrder:       message.GroupOrder(update.GroupOrder),
-		GroupExpires:     update.GroupExpires,
 		MinGroupSequence: message.GroupSequence(update.MinGroupSequence),
 		MaxGroupSequence: message.GroupSequence(update.MaxGroupSequence),
 		Parameters:       message.Parameters(update.SubscribeParameters.paramMap),
@@ -66,7 +62,7 @@ func writeSubscribeUpdate(w io.Writer, update SubscribeUpdate) error {
 	return nil
 }
 
-func updateSubscription(subscription Subscription, update SubscribeUpdate) (Subscription, error) {
+func updateSubscription(subscription SubscribeConfig, update SubscribeUpdate) (SubscribeConfig, error) {
 	// Update the Track Priority
 	subscription.TrackPriority = update.TrackPriority
 
@@ -74,7 +70,6 @@ func updateSubscription(subscription Subscription, update SubscribeUpdate) (Subs
 	subscription.GroupOrder = update.GroupOrder
 
 	// Update the Group Expires
-	subscription.GroupExpires = update.GroupExpires
 
 	// Update the Min Group Sequence
 	if subscription.MinGroupSequence > update.MinGroupSequence {

@@ -2,7 +2,6 @@ package moqt
 
 import (
 	"log/slog"
-	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/internal/transport"
@@ -10,7 +9,16 @@ import (
 
 type SubscribeID uint64
 
-type Subscription struct {
+// type Subscription struct {
+// 	subscribeID SubscribeID
+// 	SubscribeConfig
+// }
+
+// func (s Subscription) SubscribeID() SubscribeID {
+// 	return s.subscribeID
+// }
+
+type SubscribeConfig struct {
 	/*
 	 * Required
 	 */
@@ -21,7 +29,6 @@ type Subscription struct {
 	 */
 	TrackPriority TrackPriority
 	GroupOrder    GroupOrder
-	GroupExpires  time.Duration
 
 	// Parameters
 	MinGroupSequence GroupSequence
@@ -30,19 +37,18 @@ type Subscription struct {
 	SubscribeParameters Parameters
 }
 
-func readSubscription(r transport.Stream) (SubscribeID, Subscription, error) {
+func readSubscription(r transport.Stream) (SubscribeID, SubscribeConfig, error) {
 	var sm message.SubscribeMessage
 	err := sm.Decode(r)
 	if err != nil {
 		slog.Debug("failed to read a SUBSCRIBE message", slog.String("error", err.Error()))
-		return 0, Subscription{}, err
+		return 0, SubscribeConfig{}, err
 	}
 
-	subscription := Subscription{
+	subscription := SubscribeConfig{
 		TrackPath:           sm.TrackPath,
 		TrackPriority:       TrackPriority(sm.TrackPriority),
 		GroupOrder:          GroupOrder(sm.GroupOrder),
-		GroupExpires:        sm.GroupExpires,
 		MinGroupSequence:    GroupSequence(sm.MinGroupSequence),
 		MaxGroupSequence:    GroupSequence(sm.MaxGroupSequence),
 		SubscribeParameters: Parameters{sm.Parameters},
@@ -51,7 +57,7 @@ func readSubscription(r transport.Stream) (SubscribeID, Subscription, error) {
 	return SubscribeID(sm.SubscribeID), subscription, nil
 }
 
-func writeSubscription(w transport.Stream, id SubscribeID, subscription Subscription) error {
+func writeSubscription(w transport.Stream, id SubscribeID, subscription SubscribeConfig) error {
 	// Set parameters
 	if subscription.SubscribeParameters.paramMap == nil {
 		subscription.SubscribeParameters = NewParameters()
@@ -63,7 +69,6 @@ func writeSubscription(w transport.Stream, id SubscribeID, subscription Subscrip
 		TrackPath:        subscription.TrackPath,
 		TrackPriority:    message.TrackPriority(subscription.TrackPriority),
 		GroupOrder:       message.GroupOrder(subscription.GroupOrder),
-		GroupExpires:     subscription.GroupExpires,
 		MinGroupSequence: message.GroupSequence(subscription.MinGroupSequence),
 		MaxGroupSequence: message.GroupSequence(subscription.MaxGroupSequence),
 		Parameters:       message.Parameters(subscription.SubscribeParameters.paramMap),

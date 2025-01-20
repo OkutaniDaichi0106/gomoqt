@@ -106,7 +106,7 @@ func main() {
 		slog.Info("Run a subscriber")
 
 		slog.Info("Receive Announcements")
-		annstr, err := sess.OpenAnnounceStream(moqt.Interest{TrackPrefix: echoTrackPrefix})
+		annstr, err := sess.OpenAnnounceStream(moqt.AnnounceConfig{TrackPrefix: echoTrackPrefix})
 		if err != nil {
 			slog.Error("failed to get an interest", slog.String("error", err.Error()))
 			return
@@ -120,11 +120,10 @@ func main() {
 
 		slog.Info("Active Tracks", slog.Any("announcements", announcements))
 
-		subscription := moqt.Subscription{
+		subscription := moqt.SubscribeConfig{
 			TrackPath:     echoTrackPath,
 			TrackPriority: 0,
 			GroupOrder:    0,
-			GroupExpires:  1 * time.Second,
 		}
 		substr, err := sess.OpenSubscribeStream(subscription)
 		if err != nil {

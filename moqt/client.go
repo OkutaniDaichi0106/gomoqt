@@ -27,14 +27,14 @@ type Client struct {
 	// JitterManager JitterManager
 }
 
-func (c Client) Dial(req SetupRequest, ctx context.Context) (ClientSession, SetupResponce, error) {
+func (c Client) Dial(req SetupRequest, ctx context.Context) (Session, SetupResponce, error) {
 	slog.Debug("dialing to the server")
 
 	// Initialize the request
 	err := req.init()
 	if err != nil {
 		slog.Error("failed to initialize the request", slog.String("error", err.Error()))
-		return clientSession{}, SetupResponce{}, err
+		return nil, SetupResponce{}, err
 	}
 
 	/*
@@ -48,11 +48,11 @@ func (c Client) Dial(req SetupRequest, ctx context.Context) (ClientSession, Setu
 	default:
 		err = errors.New("invalid scheme")
 		slog.Error("unsupported url scheme", slog.String("scheme", req.parsedURL.Scheme))
-		return clientSession{}, SetupResponce{}, err
+		return nil, SetupResponce{}, err
 	}
 }
 
-func (c Client) DialWebTransport(req SetupRequest, ctx context.Context) (ClientSession, SetupResponce, error) {
+func (c Client) DialWebTransport(req SetupRequest, ctx context.Context) (Session, SetupResponce, error) {
 	slog.Debug("dialing to the server with webtransport")
 	// Initialize the request
 	err := req.init()
@@ -83,7 +83,7 @@ func (c Client) DialWebTransport(req SetupRequest, ctx context.Context) (ClientS
 }
 
 // TODO: test
-func (c Client) DialQUIC(req SetupRequest, ctx context.Context) (ClientSession, SetupResponce, error) {
+func (c Client) DialQUIC(req SetupRequest, ctx context.Context) (Session, SetupResponce, error) {
 	slog.Debug("dialing to the server with webtransport")
 
 	// Initialize the request
@@ -147,33 +147,29 @@ func (c Client) DialQUIC(req SetupRequest, ctx context.Context) (ClientSession, 
 	return setupConnection(req, conn)
 }
 
-func setupConnection(req SetupRequest, conn transport.Connection) (clientSession, SetupResponce, error) {
+func setupConnection(req SetupRequest, conn transport.Connection) (Session, SetupResponce, error) {
 	// Open a Session Stream
 	stream, err := openSessionStream(conn)
 	if err != nil {
 		slog.Error("failed to open a Session Stream")
-		return clientSession{}, SetupResponce{}, err
+		return nil, SetupResponce{}, err
 	}
 
 	// Send a set-up request
 	err = sendSetupRequest(stream, req)
 	if err != nil {
 		slog.Error("failed to request to set up", slog.String("error", err.Error()))
-		return clientSession{}, SetupResponce{}, err
+		return nil, SetupResponce{}, err
 	}
 
 	// Receive a set-up responce
 	rsp, err := readSetupResponce(stream)
 	if err != nil {
 		slog.Error("failed to receive a SESSION_SERVER message", slog.String("error", err.Error()))
-		return clientSession{}, SetupResponce{}, err
+		return nil, SetupResponce{}, err
 	}
 
-	sess := clientSession{
-		session: newSession(conn, stream),
-	}
-
-	return sess, rsp, nil
+	return newSession(conn, stream), rsp, nil
 }
 
 func openSessionStream(conn transport.Connection) (transport.Stream, error) {

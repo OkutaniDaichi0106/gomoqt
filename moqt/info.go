@@ -3,7 +3,6 @@ package moqt
 import (
 	"io"
 	"log/slog"
-	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 )
@@ -12,7 +11,6 @@ type Info struct {
 	TrackPriority       TrackPriority
 	LatestGroupSequence GroupSequence
 	GroupOrder          GroupOrder
-	GroupExpires        time.Duration
 }
 
 func readInfo(r io.Reader) (Info, error) {
@@ -30,7 +28,6 @@ func readInfo(r io.Reader) (Info, error) {
 		TrackPriority:       TrackPriority(im.TrackPriority),
 		LatestGroupSequence: GroupSequence(im.LatestGroupSequence),
 		GroupOrder:          GroupOrder(im.GroupOrder),
-		GroupExpires:        im.GroupExpires,
 	}
 
 	slog.Debug("read an info")

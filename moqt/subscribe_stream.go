@@ -13,9 +13,7 @@ type SendSubscribeStream interface {
 	SubscribeID() SubscribeID
 
 	// Get the subscription
-	Subscription() Subscription
-
-	Info() Info
+	SubscribeConfig() SubscribeConfig
 
 	// Update the subscription
 	UpdateSubscribe(SubscribeUpdate) error
@@ -34,9 +32,8 @@ var _ SendSubscribeStream = (*sendSubscribeStream)(nil)
 
 type sendSubscribeStream struct {
 	subscribeID  SubscribeID
-	subscription Subscription
+	subscription SubscribeConfig
 	stream       transport.Stream
-	info         Info
 	mu           sync.Mutex
 }
 
@@ -44,11 +41,8 @@ func (ss *sendSubscribeStream) SubscribeID() SubscribeID {
 	return ss.subscribeID
 }
 
-func (ss *sendSubscribeStream) Subscription() Subscription {
+func (ss *sendSubscribeStream) SubscribeConfig() SubscribeConfig {
 	return ss.subscription
-}
-func (ss *sendSubscribeStream) Info() Info {
-	return ss.info
 }
 
 func (sss *sendSubscribeStream) UpdateSubscribe(update SubscribeUpdate) error {
@@ -126,15 +120,14 @@ func (sss *sendSubscribeStream) CloseWithError(err error) error {
 	sss.stream.CancelRead(code)
 	sss.stream.CancelWrite(code)
 
-	slog.Debug("closed a subscrbe receive stream", slog.Any("subscription", sss.Subscription()))
+	slog.Debug("closed a subscrbe receive stream", slog.Any("config", sss.SubscribeConfig()))
 
 	return nil
 }
 
 type ReceiveSubscribeStream interface {
 	SubscribeID() SubscribeID
-	Subscription() Subscription
-	// CountDataGap(GroupSequence, uint64, uint64) error
+	SubscribeConfig() SubscribeConfig
 	SendSubscribeGap(SubscribeGap) error
 	CloseWithError(error) error
 	Close() error
@@ -144,7 +137,7 @@ var _ ReceiveSubscribeStream = (*receiveSubscribeStream)(nil)
 
 type receiveSubscribeStream struct {
 	subscribeID  SubscribeID
-	subscription Subscription
+	subscription SubscribeConfig
 	stream       transport.Stream
 	mu           sync.Mutex
 }
@@ -153,7 +146,7 @@ func (rss *receiveSubscribeStream) SubscribeID() SubscribeID {
 	return rss.subscribeID
 }
 
-func (rss *receiveSubscribeStream) Subscription() Subscription {
+func (rss *receiveSubscribeStream) SubscribeConfig() SubscribeConfig {
 	return rss.subscription
 }
 

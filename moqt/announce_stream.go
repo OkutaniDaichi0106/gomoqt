@@ -14,7 +14,7 @@ type ReceiveAnnounceStream interface {
 var _ ReceiveAnnounceStream = (*receiveAnnounceStream)(nil)
 
 type receiveAnnounceStream struct {
-	interest Interest
+	interest AnnounceConfig
 	stream   transport.Stream
 	mu       sync.RWMutex
 
@@ -42,7 +42,7 @@ func (ras *receiveAnnounceStream) ReceiveAnnouncements() ([]Announcement, error)
 
 type SendAnnounceStream interface {
 	SendAnnouncement(announcements []Announcement) error
-	Interest() Interest
+	Interest() AnnounceConfig
 	Close() error
 	CloseWithError(error) error
 }
@@ -50,7 +50,7 @@ type SendAnnounceStream interface {
 var _ SendAnnounceStream = (*sendAnnounceStream)(nil)
 
 type sendAnnounceStream struct {
-	interest Interest
+	interest AnnounceConfig
 	/*
 	 * Sent announcements
 	 * Track Path -> Announcement
@@ -60,7 +60,7 @@ type sendAnnounceStream struct {
 	mu     sync.RWMutex
 }
 
-func (sas *sendAnnounceStream) Interest() Interest {
+func (sas *sendAnnounceStream) Interest() AnnounceConfig {
 	return sas.interest
 }
 

@@ -23,7 +23,7 @@ var (
 	}
 
 	ErrInvalidRange = defaultSubscribeError{
-		code:   subscribe_invlid_range,
+		code:   subscribe_invalid_range,
 		reason: "invalid range",
 	}
 
@@ -90,6 +90,25 @@ var (
 		reason: "invalid offset",
 	}
 
+	ErrGroupSendInterrupted = defaultGroupError{
+		code:   group_send_interrupted,
+		reason: "send interrupted",
+	}
+	ErrGroupOutOfRange = defaultGroupError{
+		code:   group_out_of_range,
+		reason: "out of range",
+	}
+
+	ErrGroupExpires = defaultGroupError{
+		code:   group_expires,
+		reason: "expires",
+	}
+
+	ErrGroupDeliveryTimeout = defaultGroupError{
+		code:   group_delivery_timeout,
+		reason: "delivery timeout",
+	}
+
 	ErrDuplicatedGroup = defaultGroupError{
 		code:   group_duplicated_group,
 		reason: "duplicated group",
@@ -106,9 +125,12 @@ var (
 /*
  * Stream Error
  */
+
+type StreamErrorCode transport.StreamErrorCode
+
 const (
-	stream_internal_error transport.StreamErrorCode = 0x00
-	invalid_stream_type   transport.StreamErrorCode = 0x10 // TODO: See spec
+	stream_internal_error StreamErrorCode = 0x00
+	invalid_stream_type   StreamErrorCode = 0x10 // TODO: See spec
 )
 
 // type defaultStreamError struct {
@@ -160,7 +182,7 @@ type SubscribeErrorCode uint32
 
 const (
 	subscribe_internal_error          SubscribeErrorCode = 0x00
-	subscribe_invlid_range            SubscribeErrorCode = 0x01
+	subscribe_invalid_range           SubscribeErrorCode = 0x01
 	subscriber_duplicated_id          SubscribeErrorCode = 0x02
 	subscribe_track_does_not_exist    SubscribeErrorCode = 0x03
 	subscribe_unauthorized            SubscribeErrorCode = 0x04
@@ -380,9 +402,14 @@ type GroupError interface {
 type GroupErrorCode message.GroupErrorCode
 
 const (
-	group_drop_track_does_not_exist GroupErrorCode = 0x00
-	group_drop_internal_error       GroupErrorCode = 0x01
-	group_duplicated_group          GroupErrorCode = 0x02
+	group_internal_error       GroupErrorCode = 0x00
+	group_send_interrupted     GroupErrorCode = 0x01
+	group_out_of_range         GroupErrorCode = 0x02
+	group_expires              GroupErrorCode = 0x03
+	group_delivery_timeout     GroupErrorCode = 0x04
+	group_track_does_not_exist GroupErrorCode = 0x05
+
+	group_duplicated_group GroupErrorCode = 0x10
 )
 
 type defaultGroupError struct {
@@ -432,7 +459,7 @@ func (internalError) TerminateErrorCode() TerminateErrorCode {
 }
 
 func (internalError) StreamErrorCode() transport.StreamErrorCode {
-	return stream_internal_error
+	return transport.StreamErrorCode(stream_internal_error)
 }
 
 func (internalError) FetchErrorCode() FetchErrorCode {
@@ -444,7 +471,7 @@ func (internalError) InfoErrorCode() InfoErrorCode {
 }
 
 func (internalError) GroupErrorCode() GroupErrorCode {
-	return group_drop_internal_error
+	return group_internal_error
 }
 
 /*
@@ -492,5 +519,5 @@ func (trackDoesNotExistError) InfoErrorCode() InfoErrorCode {
 }
 
 func (trackDoesNotExistError) GroupErrorCode() GroupErrorCode {
-	return group_drop_track_does_not_exist
+	return group_track_does_not_exist
 }

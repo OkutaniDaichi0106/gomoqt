@@ -3,7 +3,6 @@ package message
 import (
 	"io"
 	"log/slog"
-	"time"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -12,7 +11,6 @@ type InfoMessage struct {
 	TrackPriority       TrackPriority
 	LatestGroupSequence GroupSequence
 	GroupOrder          GroupOrder
-	GroupExpires        time.Duration
 }
 
 func (im InfoMessage) Encode(w io.Writer) error {
@@ -40,9 +38,6 @@ func (im InfoMessage) Encode(w io.Writer) error {
 
 	// Appen the Group Order
 	p = quicvarint.Append(p, uint64(im.GroupOrder))
-
-	// Appen the Group Expires
-	p = quicvarint.Append(p, uint64(im.GroupExpires))
 
 	// Serialize the whole message
 	b := make([]byte, 0, len(p)+8)
@@ -94,13 +89,6 @@ func (im *InfoMessage) Decode(r io.Reader) error {
 		return err
 	}
 	im.GroupOrder = GroupOrder(num)
-
-	// Get a Group Expires
-	num, err = quicvarint.Read(mr)
-	if err != nil {
-		return err
-	}
-	im.GroupExpires = time.Duration(num)
 
 	slog.Debug("decoded a INFO message")
 

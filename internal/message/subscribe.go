@@ -3,7 +3,6 @@ package message
 import (
 	"io"
 	"log/slog"
-	"time"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -28,8 +27,6 @@ type SubscribeMessage struct {
 	 * This defines how the media is played
 	 */
 	GroupOrder GroupOrder
-
-	GroupExpires time.Duration
 
 	/***/
 	MinGroupSequence GroupSequence
@@ -153,13 +150,6 @@ func (s *SubscribeMessage) Decode(r io.Reader) error {
 		return err
 	}
 	s.GroupOrder = GroupOrder(bnum)
-
-	// Get Group Expires
-	num, err = quicvarint.Read(mr)
-	if err != nil {
-		return err
-	}
-	s.GroupExpires = time.Duration(num)
 
 	// Get Min Group Sequence
 	num, err = quicvarint.Read(mr)

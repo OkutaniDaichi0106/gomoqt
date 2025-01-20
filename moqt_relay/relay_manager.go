@@ -12,12 +12,12 @@ import (
 )
 
 type RelayManager interface {
-	RelayAnnouncements(moqt.ServerSession, moqt.Interest) error
+	RelayAnnouncements(moqt.Session, moqt.AnnounceConfig) error
 
 	/*
 	 * Serve subscription to the relay manager
 	 */
-	RelayTrack(moqt.ServerSession, moqt.Subscription) error
+	RelayTrack(moqt.Session, moqt.SubscribeConfig) error
 
 	TrackManager
 }
@@ -37,7 +37,7 @@ type relayManager struct {
 	TrackManager
 }
 
-func (manager *relayManager) RelayAnnouncements(sess moqt.ServerSession, interest moqt.Interest) error {
+func (manager *relayManager) RelayAnnouncements(sess moqt.ServerSession, interest moqt.AnnounceConfig) error {
 	annstr, err := sess.OpenAnnounceStream(interest)
 	if err != nil {
 		return err
@@ -64,7 +64,7 @@ func (manager *relayManager) RelayAnnouncements(sess moqt.ServerSession, interes
 	return nil
 }
 
-func (manager *relayManager) RelayTrack(sess moqt.ServerSession, sub moqt.Subscription) error {
+func (manager *relayManager) RelayTrack(sess moqt.ServerSession, sub moqt.SubscribeConfig) error {
 	substr, err := sess.OpenSubscribeStream(sub)
 	if err != nil {
 		slog.Error("failed to open a subscribe stream", slog.String("error", err.Error()))
@@ -97,7 +97,7 @@ func (manager *relayManager) RelayTrack(sess moqt.ServerSession, sub moqt.Subscr
 			trackBuf.AddGroup(groupBuf)
 
 			// Receive data from the stream
-			go func(stream moqt.ReceiveDataStream) {
+			go func(stream moqt.ReceiveGroupStream) {
 				/*
 				 * Receive data from the stream
 				 */
@@ -362,7 +362,7 @@ type trackNameNode struct {
 	/*
 	 * moqtransfork.Subscription sent to the session
 	 */
-	subscription moqt.Subscription
+	subscription moqt.SubscribeConfig
 
 	/*
 	 * Frame queue

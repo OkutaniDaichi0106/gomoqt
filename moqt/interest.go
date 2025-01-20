@@ -7,27 +7,27 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 )
 
-type Interest struct {
+type AnnounceConfig struct {
 	TrackPrefix string
 	Parameters  Parameters
 }
 
-func readInterest(r io.Reader) (Interest, error) {
+func readInterest(r io.Reader) (AnnounceConfig, error) {
 	//
 	var aim message.AnnounceInterestMessage
 	err := aim.Decode(r)
 	if err != nil {
 		slog.Error("failed to read an ANNOUNCE_INTEREST message", slog.String("error", err.Error()))
-		return Interest{}, err
+		return AnnounceConfig{}, err
 	}
 
-	return Interest{
+	return AnnounceConfig{
 		TrackPrefix: aim.TrackPathPrefix,
 		Parameters:  Parameters{aim.Parameters},
 	}, nil
 }
 
-func writeInterest(w io.Writer, interest Interest) error {
+func writeInterest(w io.Writer, interest AnnounceConfig) error {
 	aim := message.AnnounceInterestMessage{
 		TrackPathPrefix: interest.TrackPrefix,
 		Parameters:      message.Parameters(interest.Parameters.paramMap),

@@ -131,9 +131,7 @@ func (s *Server) init() (err error) {
 			}
 
 			// Initialize a Session
-			sess := &serverSession{
-				session: newSession(conn, stream),
-			}
+			sess := newSession(conn, stream)
 
 			handler(sess)
 		})
@@ -231,14 +229,9 @@ func (s *Server) ListenAndServe() error {
 						return
 					}
 
-					// Initialize a Session
-					sess := &serverSession{
-						session: newSession(conn, stream),
-					}
-
 					handler := s.ServeMux.findHandlerFunc("/" + req.parsedURL.Path)
 
-					handler(sess)
+					handler(newSession(conn, stream))
 				}(qconn)
 			default:
 				return

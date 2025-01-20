@@ -7,7 +7,7 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt"
 )
 
-func NewTrackBuffer(subscription moqt.Subscription) *TrackBuffer {
+func NewTrackBuffer(subscription moqt.SubscribeConfig) *TrackBuffer {
 	return &TrackBuffer{
 		groupBufs:    make(map[moqt.GroupSequence]GroupBuffer),
 		subscription: subscription,
@@ -17,7 +17,7 @@ func NewTrackBuffer(subscription moqt.Subscription) *TrackBuffer {
 type TrackBuffer struct {
 	groupBufs    map[moqt.GroupSequence]GroupBuffer
 	mu           sync.Mutex
-	subscription moqt.Subscription
+	subscription moqt.SubscribeConfig
 }
 
 func (t *TrackBuffer) AddGroup(g GroupBuffer) error {

@@ -3,7 +3,6 @@ package message
 import (
 	"io"
 	"log/slog"
-	"time"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -13,7 +12,6 @@ type SubscribeUpdateMessage struct {
 
 	TrackPriority    TrackPriority
 	GroupOrder       GroupOrder
-	GroupExpires     time.Duration
 	MinGroupSequence GroupSequence
 	MaxGroupSequence GroupSequence
 

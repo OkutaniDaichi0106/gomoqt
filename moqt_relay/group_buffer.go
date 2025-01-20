@@ -1,18 +1,19 @@
 package moqtrelay
 
 import (
+	"bytes"
 	"errors"
-	"io"
 	"sync"
 
+	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt"
 )
 
-func NewGroupBuffer(seq moqt.GroupSequence, priority moqt.GroupPriority) GroupBuffer {
+func NewGroupBuffer(seq moqt.GroupSequence, priority moqt.GroupPriority, buf []byte) GroupBuffer {
 	return GroupBuffer{
 		groupSequence: seq,
 		groupPriority: priority,
-		frames:        make([][]byte, 0),
+		data:          bytes.NewBuffer(buf),
 		cond:          sync.NewCond(&sync.Mutex{}),
 	}
 }
@@ -28,109 +29,132 @@ func (g *GroupBuffer) GroupPriority() moqt.GroupPriority {
 type GroupBuffer struct {
 	groupSequence moqt.GroupSequence
 	groupPriority moqt.GroupPriority
-	frames        [][]byte
+	data          *bytes.Buffer
 	cond          *sync.Cond
-	locked        bool
-	pos           int
+	closed        bool
 }
 
 func (r *GroupBuffer) Read(buf []byte) (int, error) {
-	frame, err := r.NextFrame()
-	if err != nil {
-		return 0, err
-	}
-
-	n := copy(buf, frame)
-	return n, nil
-}
-
-func (r *GroupBuffer) NextFrame() ([]byte, error) {
 	r.cond.L.Lock()
 	defer r.cond.L.Unlock()
 
-	for r.pos >= len(r.frames) {
-		if r.locked {
-			return nil, io.EOF
-		}
-		r.cond.Wait()
-	}
-
-	frame := r.frames[r.pos]
-	r.pos++
-	return frame, nil
-}
-
-func (w *GroupBuffer) Write(frame []byte) (int, error) {
-	w.cond.L.Lock()
-	defer w.cond.L.Unlock()
-
-	if w.locked {
+	if r.closed {
 		return 0, errors.New("group is closed")
 	}
 
-	w.frames = append(w.frames, frame)
+	return r.data.Read(buf)
+}
+
+func (r *GroupBuffer) ReadFrame() ([]byte, error) {
+	r.cond.L.Lock()
+	defer r.cond.L.Unlock()
+
+	if r.closed {
+		return nil, errors.New("group is closed")
+	}
+
+	var fm message.FrameMessage
+	err := fm.Decode(r.data)
+	if err != nil {
+		return nil, err
+	}
+
+	return fm.Payload, nil
+}
+
+func (w *GroupBuffer) Write(buf []byte) (int, error) {
+	w.cond.L.Lock()
+	defer w.cond.L.Unlock()
+
+	if w.closed {
+		return 0, errors.New("group is closed")
+	}
+
+	n, err := w.data.Write(buf)
+	if err != nil {
+		return n, err
+	}
+
 	w.cond.Signal()
-	return len(frame), nil
+
+	return n, err
+}
+
+func (w *GroupBuffer) WriteFrame(frame []byte) error {
+	w.cond.L.Lock()
+	defer w.cond.L.Unlock()
+
+	if w.closed {
+		return errors.New("group is closed")
+	}
+
+	fm := message.FrameMessage{
+		Payload: frame,
+	}
+	err := fm.Encode(w.data)
+	if err != nil {
+		return err
+	}
+
+	w.cond.Signal()
+
+	return nil
 }
 
 func (w *GroupBuffer) Close() error {
 	w.cond.L.Lock()
 	defer w.cond.L.Unlock()
 
-	w.locked = true
+	w.closed = true
 	w.cond.Broadcast()
 	return nil
 }
 
-type GroupReader interface {
-	moqt.Group
-	Read([]byte) (int, error)
-	NextFrame() ([]byte, error)
-}
+var _ moqt.GroupReader = (*GroupBuffer)(nil)
 
-var _ GroupReader = (*GroupBuffer)(nil)
+var _ moqt.GroupWriter = (*GroupBuffer)(nil)
 
-type GroupWriter interface {
-	moqt.Group
-	Write([]byte) (int, error)
-	Close() error
-}
-
-var _ GroupWriter = (*GroupBuffer)(nil)
-
-func NewGroupReader(buf GroupBuffer) GroupReader {
-	return &groupOnlyReader{
+func NewGroupReader(buf GroupBuffer) moqt.GroupReader {
+	return &groupReader{
 		GroupBuffer: buf,
 	}
 }
 
-type groupOnlyReader struct {
+var _ moqt.GroupReader = (*groupReader)(nil)
+
+type groupReader struct {
 	GroupBuffer
-	pos int
+
+	off int
 }
 
-func (r *groupOnlyReader) Read(buf []byte) (int, error) {
-	frame, err := r.NextFrame()
-	if err != nil {
-		return 0, err
-	}
-
-	n := copy(buf, frame)
-	return n, nil
-}
-
-func (r *groupOnlyReader) NextFrame() ([]byte, error) {
+func (r *groupReader) Read(buf []byte) (int, error) {
 	r.cond.L.Lock()
 	defer r.cond.L.Unlock()
 
-	for r.pos >= len(r.frames) {
-		if r.locked {
-			return nil, io.EOF
-		}
-		r.cond.Wait()
+	if r.closed {
+		return 0, errors.New("group is closed")
 	}
 
-	frame := r.frames[r.pos]
-	r.pos++
-	return frame, nil
+	n, err := r.data.Read(buf)
+	r.off += n
+
+	return n, err
+}
+
+func (r *groupReader) ReadFrame() ([]byte, error) {
+	r.cond.L.Lock()
+	defer r.cond.L.Unlock()
+
+	if r.closed {
+		return nil, errors.New("group is closed")
+	}
+
+	var fm message.FrameMessage
+	err := fm.Decode(r.data)
+	if err != nil {
+		return nil, err
+	}
+
+	return fm.Payload, nil
 }

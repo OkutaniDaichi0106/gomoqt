@@ -51,10 +51,10 @@ func (mr *MockSessionMockRecorder) AcceptAnnounceStream(arg0 interface{}) *gomoc
 }
 
 // AcceptDataStream mocks base method.
-func (m *MockSession) AcceptDataStream(arg0 moqt.SendSubscribeStream, arg1 context.Context) (moqt.ReceiveDataStream, error) {
+func (m *MockSession) AcceptDataStream(arg0 moqt.SendSubscribeStream, arg1 context.Context) (moqt.ReceiveGroupStream, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AcceptDataStream", arg0, arg1)
-	ret0, _ := ret[0].(moqt.ReceiveDataStream)
+	ret0, _ := ret[0].(moqt.ReceiveGroupStream)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -126,7 +126,7 @@ func (mr *MockSessionMockRecorder) AcceptSubscribeStream(arg0 interface{}) *gomo
 }
 
 // OpenAnnounceStream mocks base method.
-func (m *MockSession) OpenAnnounceStream(arg0 moqt.Interest) (moqt.ReceiveAnnounceStream, error) {
+func (m *MockSession) OpenAnnounceStream(arg0 moqt.AnnounceConfig) (moqt.ReceiveAnnounceStream, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "OpenAnnounceStream", arg0)
 	ret0, _ := ret[0].(moqt.ReceiveAnnounceStream)
@@ -141,10 +141,10 @@ func (mr *MockSessionMockRecorder) OpenAnnounceStream(arg0 interface{}) *gomock.
 }
 
 // OpenDataStream mocks base method.
-func (m *MockSession) OpenDataStream(arg0 moqt.ReceiveSubscribeStream, arg1 moqt.GroupSequence, arg2 moqt.GroupPriority) (moqt.SendDataStream, error) {
+func (m *MockSession) OpenDataStream(arg0 moqt.ReceiveSubscribeStream, arg1 moqt.GroupSequence, arg2 moqt.GroupPriority) (moqt.SendGroupStream, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "OpenDataStream", arg0, arg1, arg2)
-	ret0, _ := ret[0].(moqt.SendDataStream)
+	ret0, _ := ret[0].(moqt.SendGroupStream)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -186,7 +186,7 @@ func (mr *MockSessionMockRecorder) OpenInfoStream(arg0 interface{}) *gomock.Call
 }
 
 // OpenSubscribeStream mocks base method.
-func (m *MockSession) OpenSubscribeStream(arg0 moqt.Subscription) (moqt.SendSubscribeStream, error) {
+func (m *MockSession) OpenSubscribeStream(arg0 moqt.SubscribeConfig) (moqt.SendSubscribeStream, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "OpenSubscribeStream", arg0)
 	ret0, _ := ret[0].(moqt.SendSubscribeStream)

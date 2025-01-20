@@ -1,65 +1,14 @@
+# gomoqt
+
 ## Overview
-### Key Features
 
-### Core Differences from MOQTransfork  
-- **Raw QUIC**  
-	Implements raw QUIC protocol handling, based on the MOQTransport.
-- **Datagram**  
-	Implements QUIC datagram handling, based on the MOQTransport.
-- **Go Away**  
-	Implements Go Away handling, based on the MOQTransport.  
-	Servers inform to clients first that they are terminating the session by opening GOAWAY Stream and sending GOAWAY message on the stream. Clients respond to it by terminating the session.  
-	The GOAWAY Stream is a bidirectional control stream starting with the STREAM_TYPE: GOAWAY(ID: 0x05).  
-- **Plain string Track Path, Prefix and Suffix**  
-	All the Track Path fileld, the Track Path Prefix field and the Track Path Suffix field are plain string.  
-	Track Path Parts is separated by "/" in the string field.  
-- **Multiple Priorities**  
-	Implements two distinct priorities: Group Priority and Track Priority.  
-	- Track Priority is a priority associated with an individual track. This is specified by both the subscriber in the SUBSCRIBE message and the publisher in the INFO message. The highest Track Priority of them is used during the subscription.  
-	- Group Priority is a priority associated with an individual group. This is specified by the publisher in a GROUP message.  
+This is an implementation of Media over QUIC primarily based on moqtransfork with some different features.
 
+## Specification
 
-### Core Differences from MOQTransport  
-- **Multiple Control Stream**  
-	Implements multipe control streams: SESSION, ANNOUNCE, SUBSCRIBE, FETCH, INFO and GOAWAY.  
-	Control Messages are transmitted on dedicated streams. So Message Type filed was eliminated.  
-- **Eliminated Messages**  
-	- SUBSCRIBE_OK  
-		-> Implied by INFO message  
-	- SUBSCRIBE_ERROR  
-		-> Implied by cancellation of the SUBSCRIBE Stream  
-	- UNSUBSCRIBE  
-		-> Implied by subscriber closing or cancelling the SUBSCRIBE Stream  
-	- FETCH_OK  
-		-> Implied by publisher transmitting data on the FETCH Stream  
-	- FETCH_ERROR  
-		-> Implied by publisher cancelling the FETCH Stream  
-	- FETCH_CANCEL  
-		-> Implied by subscriber closing or cancelling the FETCH Stream  
-	- ANNOUNCE_OK  
-		-> Implied by subscriber transmitting no responce on the ANNOUNCE Stream  
-	- ANNOUNCE_ERROR  
-		-> Implied by subscriber cancelling the ANNOUNCE Stream  
-	- TRACK_STATUS_REQUEST  
-		-> Changed to INFO_REQUEST message  
-	- TRACK_STATUS  
-		-> Changed to INFO message  
-	- SUBSCRIBE_ANNOUNCES  
-		-> Changed to INTEREST message  
-	- SUBSCRIBE_ANNOUNCES_OK  
-		-> Implied by ANNOUNCE message  
-	- SUBSCRIBE_ANNOUNCES_ERROR  
-		-> Implied by publisher cancelling the ANNOUNCE Stream  
-	- UNSUBSCRIBE_ANNOUNCES  
-		-> Implied by subscriber closing or cancelling the ANNOUNCE Stream  
-	- SUBSCRIBE_DONE  
-		-> Implied by publisher closing or cancelling the SUBSCRIBE Stream  
-	- UNANNOUNCE  
-		-> Implied by subscriber closing the ANNOUNCE Stream  
-- **Pending Implementation of Messages**  
-	- MAX_SUBSCRIBE_ID  
-	- SUBSCRIBE_BLOCKED  
+https://okutanidaichi0106.github.io/moq-transfork/draft-lcurley-moq-transfork.html
 
+A fork of the moq-transfork.
 
 ## Implementation Status
 | Section                                      | Implemented        | Tested             |

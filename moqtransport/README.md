@@ -1,3 +1,0 @@
-# moqtransport
-
-Not Implemented yet

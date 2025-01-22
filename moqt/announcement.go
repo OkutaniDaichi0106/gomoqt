@@ -3,7 +3,6 @@ package moqt
 import (
 	"io"
 	"log/slog"
-	"strings"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 )
@@ -24,12 +23,12 @@ type Announcement struct {
 	AnnounceStatus AnnounceStatus
 
 	/***/
-	TrackPath string
+	TrackPath []string
 
 	AnnounceParameters Parameters
 }
 
-func readAnnouncement(r io.Reader, prefix string) (Announcement, error) {
+func readAnnouncement(r io.Reader, prefix []string) (Announcement, error) {
 	var am message.AnnounceMessage
 	err := am.Decode(r)
 	if err != nil {
@@ -38,7 +37,7 @@ func readAnnouncement(r io.Reader, prefix string) (Announcement, error) {
 	}
 
 	// Get the full track path
-	trackPath := prefix + "/" + am.TrackPathSuffix
+	trackPath := append(prefix, am.TrackPathSuffix...)
 
 	return Announcement{
 		AnnounceStatus:     AnnounceStatus(am.AnnounceStatus),
@@ -47,17 +46,17 @@ func readAnnouncement(r io.Reader, prefix string) (Announcement, error) {
 	}, nil
 }
 
-func writeAnnouncement(w io.Writer, prefix string, ann Announcement) error {
+func writeAnnouncement(w io.Writer, prefix []string, ann Announcement) error {
 	var am message.AnnounceMessage
 	switch ann.AnnounceStatus {
 	case ACTIVE, ENDED:
 		// Verify if the track path has the track prefix
-		if !strings.HasPrefix(ann.TrackPath, prefix) {
+		if !hasPrefix(ann.TrackPath, prefix) {
 			return ErrInternalError
 		}
 
 		// Get a suffix part of the Track Path
-		suffix := strings.TrimPrefix(ann.TrackPath, prefix+"/")
+		suffix := trimPrefix(ann.TrackPath, prefix)
 
 		// Initialize an ANNOUNCE message
 		am = message.AnnounceMessage{
@@ -84,4 +83,26 @@ func writeAnnouncement(w io.Writer, prefix string, ann Announcement) error {
 	slog.Info("Successfully announced", slog.Any("announcement", ann))
 
 	return nil
+}
+
+func hasPrefix(path, prefix []string) bool {
+	if len(path) < len(prefix) {
+		return false
+	}
+
+	for i, p := range prefix {
+		if path[i] != p {
+			return false
+		}
+	}
+
+	return true
+}
+
+func trimPrefix(path, prefix []string) []string {
+	if len(path) < len(prefix) {
+		return path
+	}
+
+	return path[len(prefix):]
 }

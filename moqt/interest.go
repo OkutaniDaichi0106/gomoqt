@@ -8,7 +8,7 @@ import (
 )
 
 type AnnounceConfig struct {
-	TrackPrefix string
+	TrackPrefix []string
 	Parameters  Parameters
 }
 

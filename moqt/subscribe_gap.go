@@ -8,9 +8,9 @@ import (
 )
 
 type SubscribeGap struct {
-	StartGroupSequence GroupSequence
-	Count              uint64
-	GroupErrorCode     GroupErrorCode
+	MinGapSequence GroupSequence
+	MaxGapSequence GroupSequence
+	GroupErrorCode GroupErrorCode
 }
 
 func readSubscribeGap(r io.Reader) (SubscribeGap, error) {
@@ -22,17 +22,17 @@ func readSubscribeGap(r io.Reader) (SubscribeGap, error) {
 	}
 
 	return SubscribeGap{
-		StartGroupSequence: GroupSequence(sgm.GroupStartSequence),
-		Count:              sgm.Count,
-		GroupErrorCode:     GroupErrorCode(sgm.GroupErrorCode),
+		MinGapSequence: GroupSequence(sgm.MinGapSequence),
+		MaxGapSequence: GroupSequence(sgm.MaxGapSequence),
+		GroupErrorCode: GroupErrorCode(sgm.GroupErrorCode),
 	}, nil
 }
 
 func writeSubscribeGap(w io.Writer, gap SubscribeGap) error {
 	sgm := message.SubscribeGapMessage{
-		GroupStartSequence: message.GroupSequence(gap.StartGroupSequence),
-		Count:              gap.Count,
-		GroupErrorCode:     message.GroupErrorCode(gap.GroupErrorCode),
+		MinGapSequence: message.GroupSequence(gap.MinGapSequence),
+		MaxGapSequence: message.GroupSequence(gap.MaxGapSequence),
+		GroupErrorCode: message.GroupErrorCode(gap.GroupErrorCode),
 	}
 
 	err := sgm.Encode(w)

@@ -1,7 +1,6 @@
 package moqt
 
 import (
-	"io"
 	"sync"
 	"time"
 
@@ -14,12 +13,13 @@ import (
  */
 type GroupReader interface {
 	Group
-	io.Reader
 	ReadFrame() ([]byte, error)
 }
 
 type ReceiveGroupStream interface {
 	GroupReader
+
+	SubscribeID() SubscribeID
 
 	CancelRead(StreamErrorCode)
 
@@ -34,14 +34,12 @@ type receiveGroupStream struct {
 
 	Group
 	startTime time.Time
+
+	errCodeCh chan StreamErrorCode
 }
 
 func (r receiveGroupStream) SubscribeID() SubscribeID {
 	return r.subscribeID
-}
-
-func (r receiveGroupStream) Read(buf []byte) (int, error) {
-	return r.stream.Read(buf)
 }
 
 func (r receiveGroupStream) ReadFrame() ([]byte, error) {
@@ -59,6 +57,15 @@ func (r receiveGroupStream) StartAt() time.Time {
 }
 
 func (r receiveGroupStream) CancelRead(code StreamErrorCode) {
+	if r.errCodeCh == nil {
+		r.errCodeCh = make(chan StreamErrorCode, 1)
+	}
+
+	select {
+	case r.errCodeCh <- code:
+	default:
+	}
+
 	r.stream.CancelRead(transport.StreamErrorCode(code))
 }
 

@@ -8,7 +8,7 @@ import (
 )
 
 type AnnounceInterestMessage struct {
-	TrackPathPrefix string
+	TrackPathPrefix []string
 	Parameters      Parameters
 }
 
@@ -29,9 +29,14 @@ func (aim AnnounceInterestMessage) Encode(w io.Writer) error {
 	 */
 	p := make([]byte, 0, 1<<6) // TODO: Tune the size
 
-	// Append the Track Namespace Prefix
+	// Append the Track Namespace Prefix's length
 	p = quicvarint.Append(p, uint64(len(aim.TrackPathPrefix)))
-	p = append(p, []byte(aim.TrackPathPrefix)...)
+
+	for _, part := range aim.TrackPathPrefix {
+		// Append the Track Namespace Prefix Part
+		p = quicvarint.Append(p, uint64(len(part)))
+		p = append(p, []byte(part)...)
+	}
 
 	// Append the Parameters
 	p = appendParameters(p, aim.Parameters)
@@ -71,12 +76,25 @@ func (aim *AnnounceInterestMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	buf := make([]byte, num)
-	_, err = r.Read(buf)
-	if err != nil {
-		return err
+
+	// Get a Track Namespace Prefix Parts
+	aim.TrackPathPrefix = make([]string, 0, num)
+
+	// Get a Track Namespace Prefix Parts
+	for i := 0; i < int(num); i++ {
+		// Get a Track Namespace Prefix Part
+		num, err = quicvarint.Read(mr)
+		if err != nil {
+			return err
+		}
+
+		buf := make([]byte, num)
+		_, err = r.Read(buf)
+		if err != nil {
+			return err
+		}
+		aim.TrackPathPrefix = append(aim.TrackPathPrefix, string(buf))
 	}
-	aim.TrackPathPrefix = string(buf)
 
 	// Get Parameters
 	aim.Parameters, err = readParameters(mr)

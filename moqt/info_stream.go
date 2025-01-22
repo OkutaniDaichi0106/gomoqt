@@ -97,34 +97,34 @@ func (req *sendInfoStream) Close() error {
 	return req.stream.Close()
 }
 
-func newReceiveInfoStreamQueue() *receiveInfoStreamQueue {
-	return &receiveInfoStreamQueue{
+func newReceiveInfoStreamQueue() *sendInfoStreamQueue {
+	return &sendInfoStreamQueue{
 		queue: make([]*sendInfoStream, 0),
 		ch:    make(chan struct{}),
 	}
 }
 
-type receiveInfoStreamQueue struct {
+type sendInfoStreamQueue struct {
 	queue []*sendInfoStream
 	mu    sync.Mutex
 	ch    chan struct{}
 }
 
-func (q *receiveInfoStreamQueue) Len() int {
+func (q *sendInfoStreamQueue) Len() int {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	return len(q.queue)
 }
 
-func (q *receiveInfoStreamQueue) Enqueue(req *sendInfoStream) {
+func (q *sendInfoStreamQueue) Enqueue(req *sendInfoStream) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	q.queue = append(q.queue, req)
 }
 
-func (q *receiveInfoStreamQueue) Dequeue() *sendInfoStream {
+func (q *sendInfoStreamQueue) Dequeue() *sendInfoStream {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -138,6 +138,6 @@ func (q *receiveInfoStreamQueue) Dequeue() *sendInfoStream {
 	return req
 }
 
-func (q *receiveInfoStreamQueue) Chan() <-chan struct{} {
+func (q *sendInfoStreamQueue) Chan() <-chan struct{} {
 	return q.ch
 }

@@ -128,7 +128,9 @@ func (sss *sendSubscribeStream) CloseWithError(err error) error {
 type ReceiveSubscribeStream interface {
 	SubscribeID() SubscribeID
 	SubscribeConfig() SubscribeConfig
+
 	SendSubscribeGap(SubscribeGap) error
+
 	CloseWithError(error) error
 	Close() error
 }

@@ -64,7 +64,7 @@ func (manager *relayManager) RelayAnnouncements(sess moqt.ServerSession, interes
 	return nil
 }
 
-func (manager *relayManager) RelayTrack(sess moqt.ServerSession, sub moqt.SubscribeConfig) error {
+func (manager *relayManager) RelayTrack(sess moqt.Session, sub moqt.SubscribeConfig) error {
 	substr, err := sess.OpenSubscribeStream(sub)
 	if err != nil {
 		slog.Error("failed to open a subscribe stream", slog.String("error", err.Error()))

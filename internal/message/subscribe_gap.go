@@ -10,9 +10,9 @@ import (
 type GroupErrorCode uint64
 
 type SubscribeGapMessage struct {
-	GroupStartSequence GroupSequence
-	Count              uint64
-	GroupErrorCode     GroupErrorCode
+	MinGapSequence GroupSequence
+	MaxGapSequence GroupSequence
+	GroupErrorCode GroupErrorCode
 }
 
 func (sgm SubscribeGapMessage) Encode(w io.Writer) error {
@@ -30,10 +30,10 @@ func (sgm SubscribeGapMessage) Encode(w io.Writer) error {
 	p := make([]byte, 0, 1<<5)
 
 	// Append the Group Start Sequence
-	p = quicvarint.Append(p, uint64(sgm.GroupStartSequence))
+	p = quicvarint.Append(p, uint64(sgm.MinGapSequence))
 
 	// Append the Count
-	p = quicvarint.Append(p, sgm.Count)
+	p = quicvarint.Append(p, uint64(sgm.MaxGapSequence))
 
 	// Append the Group Error Code
 	p = quicvarint.Append(p, uint64(sgm.GroupErrorCode))
@@ -73,14 +73,14 @@ func (sgm *SubscribeGapMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	sgm.GroupStartSequence = GroupSequence(num)
+	sgm.MinGapSequence = GroupSequence(num)
 
 	// Get a Count
 	num, err = quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
-	sgm.Count = num
+	sgm.MaxGapSequence = GroupSequence(num)
 
 	// Get a Group Error Code
 	num, err = quicvarint.Read(mr)

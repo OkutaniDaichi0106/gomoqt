@@ -1,7 +1,6 @@
 package moqt
 
 import (
-	"io"
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
@@ -13,7 +12,6 @@ import (
  */
 type GroupWriter interface {
 	Group
-	io.Writer
 	WriteFrame([]byte) error
 	Close() error
 }
@@ -24,7 +22,9 @@ type GroupWriter interface {
 type SendGroupStream interface {
 	GroupWriter
 
-	CancelWrite(StreamErrorCode)
+	SubscribeID() SubscribeID
+
+	CancelWrite(GroupErrorCode)
 	SetWriteDeadline(time.Time) error
 }
 
@@ -32,13 +32,15 @@ var _ SendGroupStream = (*sendGroupStream)(nil)
 
 type sendGroupStream struct {
 	Group
-	stream transport.SendStream
+	stream      transport.SendStream
+	subscribeID SubscribeID
+	startTime   time.Time
 
-	startTime time.Time
+	errCodeCh chan GroupErrorCode
 }
 
-func (stream sendGroupStream) Write(buf []byte) (int, error) {
-	return stream.stream.Write(buf)
+func (stream sendGroupStream) SubscribeID() SubscribeID {
+	return stream.subscribeID
 }
 
 func (stream sendGroupStream) WriteFrame(buf []byte) error {
@@ -61,7 +63,16 @@ func (stream sendGroupStream) Close() error {
 	return stream.stream.Close()
 }
 
-func (stream sendGroupStream) CancelWrite(code StreamErrorCode) {
+func (stream sendGroupStream) CancelWrite(code GroupErrorCode) {
+	if stream.errCodeCh == nil {
+		stream.errCodeCh = make(chan GroupErrorCode, 1)
+	}
+
+	select {
+	case stream.errCodeCh <- code:
+	default:
+	}
+
 	stream.stream.CancelWrite(transport.StreamErrorCode(code))
 }
 

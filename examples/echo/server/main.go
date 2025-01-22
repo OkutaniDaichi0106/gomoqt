@@ -46,7 +46,7 @@ func main() {
 	 * Set a handler function
 	 */
 	slog.Info("Server runs on path: \"/path\"")
-	moqt.HandleFunc("/path", func(sess moqt.ServerSession) {
+	moqt.HandleFunc("/path", func(sess moqt.Session) {
 		echoTrackPrefix := "japan/kyoto"
 		echoTrackPath := "japan/kyoto/kiu/text"
 

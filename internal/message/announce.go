@@ -24,7 +24,7 @@ type AnnounceMessage struct {
 	/*
 	 * Track Namespace
 	 */
-	TrackPathSuffix string
+	TrackPathSuffix []string
 
 	/*
 	 * Announce Parameters
@@ -48,9 +48,18 @@ func (a AnnounceMessage) Encode(w io.Writer) error {
 
 	p := make([]byte, 0, 1<<6) // TODO: Tune the size
 
-	// Append the Track Namespace
+	// Append the Announce Status
+	p = quicvarint.Append(p, uint64(a.AnnounceStatus))
+
+	// Append the Track Path Suffix's length
 	p = quicvarint.Append(p, uint64(len(a.TrackPathSuffix)))
-	p = append(p, []byte(a.TrackPathSuffix)...)
+
+	// Append the Track Path Suffix Parts
+	for _, part := range a.TrackPathSuffix {
+		// Append the Track Namespace Prefix Part
+		p = quicvarint.Append(p, uint64(len(part)))
+		p = append(p, []byte(part)...)
+	}
 
 	// Append the Parameters
 	p = appendParameters(p, a.Parameters)
@@ -83,17 +92,35 @@ func (am *AnnounceMessage) Decode(r io.Reader) error {
 		return err
 	}
 
-	// Get a Track Path
+	// Get an Announce Status
 	num, err := quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
-	buf := make([]byte, num)
-	_, err = r.Read(buf)
+	am.AnnounceStatus = AnnounceStatus(num)
+
+	// Get a Track Path Suffix
+	num, err = quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
-	am.TrackPathSuffix = string(buf)
+	am.TrackPathSuffix = make([]string, 0, num)
+
+	// Get a Track Path Suffix Parts
+	for i := 0; i < int(num); i++ {
+		// Get a Track Namespace Prefix Part
+		num, err = quicvarint.Read(mr)
+		if err != nil {
+			return err
+		}
+
+		buf := make([]byte, num)
+		_, err = r.Read(buf)
+		if err != nil {
+			return err
+		}
+		am.TrackPathSuffix = append(am.TrackPathSuffix, string(buf))
+	}
 
 	// Get Parameters
 	am.Parameters, err = readParameters(mr)

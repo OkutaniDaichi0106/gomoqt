@@ -18,7 +18,6 @@ import (
 // }
 
 type TrackSender interface {
-	ReceiveSubscribeStream
 	OpenGroupSender(GroupSequence, GroupPriority) (SendGroupStream, error)
 }
 
@@ -63,7 +62,6 @@ func (tw streamTrackSender) OpenGroupSender(sequence GroupSequence, priority Gro
 }
 
 type TrackReceiver interface {
-	SendSubscribeStream
 	AcceptGroupReceiver(context.Context) (ReceiveGroupStream, error)
 }
 

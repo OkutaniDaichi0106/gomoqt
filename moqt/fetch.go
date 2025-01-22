@@ -61,31 +61,31 @@ func writeFetch(w io.Writer, fetch FetchRequest) error {
 	return nil
 }
 
-func newReceivedFetchQueue() *receivedFetchQueue {
-	return &receivedFetchQueue{
+func newReceivedFetchQueue() *receiveFetchStreamQueue {
+	return &receiveFetchStreamQueue{
 		queue: make([]ReceiveFetchStream, 0),
 		ch:    make(chan struct{}, 1),
 	}
 }
 
-type receivedFetchQueue struct {
+type receiveFetchStreamQueue struct {
 	queue []ReceiveFetchStream
 	mu    sync.Mutex
 	ch    chan struct{}
 }
 
-func (q *receivedFetchQueue) Len() int {
+func (q *receiveFetchStreamQueue) Len() int {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	return len(q.queue)
 }
 
-func (q *receivedFetchQueue) Chan() <-chan struct{} {
+func (q *receiveFetchStreamQueue) Chan() <-chan struct{} {
 	return q.ch
 }
 
-func (q *receivedFetchQueue) Enqueue(fetch ReceiveFetchStream) {
+func (q *receiveFetchStreamQueue) Enqueue(fetch ReceiveFetchStream) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -97,7 +97,7 @@ func (q *receivedFetchQueue) Enqueue(fetch ReceiveFetchStream) {
 	}
 }
 
-func (q *receivedFetchQueue) Dequeue() ReceiveFetchStream {
+func (q *receiveFetchStreamQueue) Dequeue() ReceiveFetchStream {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 

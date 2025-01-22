@@ -2,6 +2,7 @@ package moqt
 
 import (
 	"log/slog"
+	"strings"
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/internal/transport"
@@ -42,7 +43,7 @@ func (ras *receiveAnnounceStream) ReceiveAnnouncements() ([]Announcement, error)
 
 type SendAnnounceStream interface {
 	SendAnnouncement(announcements []Announcement) error
-	Interest() AnnounceConfig
+	AnnounceConfig() AnnounceConfig
 	Close() error
 	CloseWithError(error) error
 }
@@ -50,7 +51,7 @@ type SendAnnounceStream interface {
 var _ SendAnnounceStream = (*sendAnnounceStream)(nil)
 
 type sendAnnounceStream struct {
-	interest AnnounceConfig
+	annConfig AnnounceConfig
 	/*
 	 * Sent announcements
 	 * Track Path -> Announcement
@@ -60,8 +61,8 @@ type sendAnnounceStream struct {
 	mu     sync.RWMutex
 }
 
-func (sas *sendAnnounceStream) Interest() AnnounceConfig {
-	return sas.interest
+func (sas *sendAnnounceStream) AnnounceConfig() AnnounceConfig {
+	return sas.annConfig
 }
 
 func (sas *sendAnnounceStream) SendAnnouncement(announcements []Announcement) error {
@@ -70,7 +71,7 @@ func (sas *sendAnnounceStream) SendAnnouncement(announcements []Announcement) er
 
 	// Announce active tracks
 	for _, ann := range announcements {
-		oldAnn, ok := sas.annMap[ann.TrackPath]
+		oldAnn, ok := sas.annMap[strings.Join(ann.TrackPath, "")]
 		if ok && oldAnn.AnnounceStatus == ann.AnnounceStatus {
 			slog.Debug("duplicate announcement status")
 			return ErrProtocolViolation
@@ -81,22 +82,22 @@ func (sas *sendAnnounceStream) SendAnnouncement(announcements []Announcement) er
 			return ErrProtocolViolation
 		}
 
-		err := writeAnnouncement(sas.stream, sas.interest.TrackPrefix, ann)
+		err := writeAnnouncement(sas.stream, sas.annConfig.TrackPrefix, ann)
 		if err != nil {
 			slog.Error("failed to announce",
-				slog.String("path", ann.TrackPath),
+				slog.Any("path", ann.TrackPath),
 				slog.String("error", err.Error()))
 			return err
 		}
 
-		sas.annMap[ann.TrackPath] = ann
+		sas.annMap[strings.Join(ann.TrackPath, "")] = ann
 	}
 
 	// Announce live
 	liveAnn := Announcement{
 		AnnounceStatus: LIVE,
 	}
-	err := writeAnnouncement(sas.stream, sas.interest.TrackPrefix, liveAnn)
+	err := writeAnnouncement(sas.stream, sas.annConfig.TrackPrefix, liveAnn)
 	if err != nil {
 		slog.Error("failed to announce live")
 		return err
@@ -117,28 +118,28 @@ func (sas *sendAnnounceStream) CloseWithError(err error) error { // TODO
 	return nil
 }
 
-func newReceivedInterestQueue() *receivedInterestQueue {
-	return &receivedInterestQueue{
+func newReceivedInterestQueue() *sendAnnounceStreamQueue {
+	return &sendAnnounceStreamQueue{
 		queue: make([]*sendAnnounceStream, 0),
 		ch:    make(chan struct{}, 1),
 	}
 }
 
-type receivedInterestQueue struct {
+type sendAnnounceStreamQueue struct {
 	queue []*sendAnnounceStream
 	mu    sync.Mutex
 	ch    chan struct{}
 }
 
-func (q *receivedInterestQueue) Len() int {
+func (q *sendAnnounceStreamQueue) Len() int {
 	return len(q.queue)
 }
 
-func (q *receivedInterestQueue) Chan() <-chan struct{} {
+func (q *sendAnnounceStreamQueue) Chan() <-chan struct{} {
 	return q.ch
 }
 
-func (q *receivedInterestQueue) Enqueue(interest *sendAnnounceStream) {
+func (q *sendAnnounceStreamQueue) Enqueue(interest *sendAnnounceStream) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -150,7 +151,7 @@ func (q *receivedInterestQueue) Enqueue(interest *sendAnnounceStream) {
 	}
 }
 
-func (q *receivedInterestQueue) Dequeue() *sendAnnounceStream {
+func (q *sendAnnounceStreamQueue) Dequeue() *sendAnnounceStream {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 

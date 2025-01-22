@@ -125,7 +125,7 @@ func main() {
 			TrackPriority: 0,
 			GroupOrder:    0,
 		}
-		substr, err := sess.OpenSubscribeStream(subscription)
+		substr, info, err := sess.OpenSubscribeStream(subscription)
 		if err != nil {
 			slog.Error("failed to subscribe", slog.String("error", err.Error()))
 			return

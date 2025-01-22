@@ -41,6 +41,7 @@ func main() {
 	}
 
 	wg := new(sync.WaitGroup)
+
 	// Run a publisher
 	wg.Add(1)
 	go func() {
@@ -50,10 +51,10 @@ func main() {
 		slog.Info("Waiting an Announce Stream")
 		// Accept an Announce Stream
 		annstr, err := sess.AcceptAnnounceStream(context.Background(), func(ac moqt.AnnounceConfig) error {
-			if ac.TrackPrefix[0] == echoTrackPrefix[0] {
-				return nil
+			if !moqt.HasPrefix(echoTrackPath, ac.TrackPrefix) {
+				return moqt.ErrTrackDoesNotExist
 			}
-			return moqt.ErrTrackDoesNotExist
+			return nil
 		})
 
 		if err != nil {
@@ -98,12 +99,13 @@ func main() {
 			}, nil
 		})
 		if err != nil {
-			slog.Error("failed to accept a subscription", slog.String("error", err.Error()))
+			slog.Error("failed to accept a subscribe stream", slog.String("error", err.Error()))
 			return
 		}
 
 		if moqt.IsSamePath(substr.SubscribeConfig().TrackPath, echoTrackPath) {
 			slog.Error("failed to get a track path", slog.String("error", "track path is invalid"))
+			substr.CloseWithError(moqt.ErrTrackDoesNotExist)
 			return
 		}
 

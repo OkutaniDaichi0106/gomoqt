@@ -8,14 +8,12 @@ import (
 )
 
 type SubscribeUpdateMessage struct {
-	// SubscribeID SubscribeID
-
 	TrackPriority    TrackPriority
 	GroupOrder       GroupOrder
 	MinGroupSequence GroupSequence
 	MaxGroupSequence GroupSequence
 
-	Parameters Parameters
+	SubscribeUpdateParameters Parameters
 }
 
 func (su SubscribeUpdateMessage) Encode(w io.Writer) error {
@@ -24,8 +22,7 @@ func (su SubscribeUpdateMessage) Encode(w io.Writer) error {
 	 * Serialize the message in the following format
 	 *
 	 * SUBSCRIBE_UPDATE Message {
-	 *   Subscribe ID (varint),
-	 *   Subscriber Priority (byte),
+	 *   Track Priority (byte),
 	 *   Min Group Number (varint),
 	 *   Max Group Number (varint),
 	 *   Subscribe Update Parameters (Parameters),
@@ -40,6 +37,9 @@ func (su SubscribeUpdateMessage) Encode(w io.Writer) error {
 	// Append the Subscriber Priority
 	p = quicvarint.Append(p, uint64(su.TrackPriority))
 
+	// Append the Group Order
+	p = quicvarint.Append(p, uint64(su.GroupOrder))
+
 	// Append the Min Group Number
 	p = quicvarint.Append(p, uint64(su.MinGroupSequence))
 
@@ -47,7 +47,7 @@ func (su SubscribeUpdateMessage) Encode(w io.Writer) error {
 	p = quicvarint.Append(p, uint64(su.MaxGroupSequence))
 
 	// Append the Subscribe Update Parameters
-	p = appendParameters(p, su.Parameters)
+	p = appendParameters(p, su.SubscribeUpdateParameters)
 
 	// Get a serialized message
 	b := make([]byte, 0, len(p)+8)
@@ -78,8 +78,22 @@ func (sum *SubscribeUpdateMessage) Decode(r io.Reader) error {
 		return err
 	}
 
-	// Get a Min Group Number
+	// Get a Track Priority
 	num, err := quicvarint.Read(mr)
+	if err != nil {
+		return err
+	}
+	sum.TrackPriority = TrackPriority(num)
+
+	// Get a Group Order
+	num, err = quicvarint.Read(mr)
+	if err != nil {
+		return err
+	}
+	sum.GroupOrder = GroupOrder(num)
+
+	// Get a Min Group Number
+	num, err = quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
@@ -92,16 +106,8 @@ func (sum *SubscribeUpdateMessage) Decode(r io.Reader) error {
 	}
 	sum.MaxGroupSequence = GroupSequence(num)
 
-	// Get a Subscriber Priority
-	priorityBuf := make([]byte, 1)
-	_, err = r.Read(priorityBuf)
-	if err != nil {
-		return err
-	}
-	sum.TrackPriority = TrackPriority(priorityBuf[0])
-
 	// Get Subscribe Update Parameters
-	sum.Parameters, err = readParameters(mr)
+	sum.SubscribeUpdateParameters, err = readParameters(mr)
 	if err != nil {
 		return err
 	}

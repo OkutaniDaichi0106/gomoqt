@@ -138,10 +138,10 @@ type ReceiveSubscribeStream interface {
 var _ ReceiveSubscribeStream = (*receiveSubscribeStream)(nil)
 
 type receiveSubscribeStream struct {
-	subscribeID  SubscribeID
-	subscription SubscribeConfig
-	stream       transport.Stream
-	mu           sync.Mutex
+	subscribeID SubscribeID
+	config      SubscribeConfig
+	stream      transport.Stream
+	mu          sync.Mutex
 }
 
 func (rss *receiveSubscribeStream) SubscribeID() SubscribeID {
@@ -149,7 +149,7 @@ func (rss *receiveSubscribeStream) SubscribeID() SubscribeID {
 }
 
 func (rss *receiveSubscribeStream) SubscribeConfig() SubscribeConfig {
-	return rss.subscription
+	return rss.config
 }
 
 func (rss *receiveSubscribeStream) SendSubscribeGap(gap SubscribeGap) error {
@@ -170,7 +170,7 @@ func (rss *receiveSubscribeStream) SendSubscribeGap(gap SubscribeGap) error {
 }
 
 func (srs *receiveSubscribeStream) CloseWithError(err error) error {
-	slog.Debug("closing a subscrbe receive stream", slog.Any("subscription", srs.subscription))
+	slog.Debug("closing a subscrbe receive stream", slog.Any("subscription", srs.config))
 
 	if err == nil {
 		return srs.Close()
@@ -196,13 +196,13 @@ func (srs *receiveSubscribeStream) CloseWithError(err error) error {
 	srs.stream.CancelRead(code)
 	srs.stream.CancelWrite(code)
 
-	slog.Debug("closed a subscrbe receive stream", slog.Any("subscription", srs.subscription))
+	slog.Debug("closed a subscrbe receive stream", slog.Any("subscription", srs.config))
 
 	return nil
 }
 
 func (srs *receiveSubscribeStream) Close() error {
-	slog.Debug("closing a subscrbe receive stream", slog.Any("subscription", srs.subscription))
+	slog.Debug("closing a subscrbe receive stream", slog.Any("subscription", srs.config))
 
 	err := srs.stream.Close()
 	if err != nil {
@@ -210,7 +210,7 @@ func (srs *receiveSubscribeStream) Close() error {
 		return err
 	}
 
-	slog.Debug("closed a subscrbe receive stream", slog.Any("subscription", srs.subscription))
+	slog.Debug("closed a subscrbe receive stream", slog.Any("subscription", srs.config))
 
 	return nil
 }

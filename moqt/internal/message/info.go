@@ -28,7 +28,7 @@ func (im InfoMessage) Encode(w io.Writer) error {
 	 * }
 	 */
 	// Serialize the payload
-	p := make([]byte, 0, 1<<10)
+	p := make([]byte, 0, 1<<4)
 
 	// Append the Publisher Priority
 	p = quicvarint.Append(p, uint64(im.TrackPriority))

@@ -9,7 +9,7 @@ import (
 	net "net"
 	reflect "reflect"
 
-	transport "github.com/OkutaniDaichi0106/gomoqt/internal/transport"
+	transport "github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
 	gomock "github.com/golang/mock/gomock"
 	quic "github.com/quic-go/quic-go"
 )

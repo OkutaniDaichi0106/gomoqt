@@ -9,8 +9,6 @@ import (
 
 type SubscribeID uint64
 
-type TrackAlias uint64
-
 type TrackPriority byte
 
 type GroupOrder byte
@@ -35,10 +33,9 @@ type SubscribeMessage struct {
 	MaxGroupSequence GroupSequence
 
 	/*
-	 * Subscribe Parameters
-	 * Parameters should contain Authorization Information
+	 * Subscribe SubscribeParameters
 	 */
-	Parameters Parameters
+	SubscribeParameters Parameters
 }
 
 func (s SubscribeMessage) Encode(w io.Writer) error {
@@ -48,9 +45,10 @@ func (s SubscribeMessage) Encode(w io.Writer) error {
 	 * Serialize the message in the following formatt
 	 *
 	 * SUBSCRIBE Message payload {
-	 *   Track Path (string),
-	 *   Subscriber Priority (8),
-	 *   Group Order (8),
+	 *   Subscribe ID (varint),
+	 *   Track Path ([]string),
+	 *   Track Priority (varint),
+	 *   Group Order (varint),
 	 *   Min Group Sequence (varint),
 	 *   Max Group Sequence (varint),
 	 *   Subscribe Parameters (Parameters),
@@ -76,22 +74,19 @@ func (s SubscribeMessage) Encode(w io.Writer) error {
 	}
 
 	// Append the Subscriber Priority
-	p = append(p, []byte{byte(s.TrackPriority)}...)
+	p = quicvarint.Append(p, uint64(s.TrackPriority))
 
 	// Append the Group Order
-	p = append(p, []byte{byte(s.GroupOrder)}...)
-
-	// Append the Group Expires
-	p = append(p, []byte{byte(s.GroupOrder)}...)
+	p = quicvarint.Append(p, uint64(s.GroupOrder))
 
 	// Append the Min Group Sequence
 	p = quicvarint.Append(p, uint64(s.MinGroupSequence))
 
 	// Append the Max Group Sequence
-	p = quicvarint.Append(p, uint64(s.MinGroupSequence))
+	p = quicvarint.Append(p, uint64(s.MaxGroupSequence))
 
-	// Append the Subscribe Update Priority
-	p = appendParameters(p, s.Parameters)
+	// Append the Subscribe Parameters
+	p = appendParameters(p, s.SubscribeParameters)
 
 	// Get a serialized message
 	b := make([]byte, 0, len(p)+8)
@@ -136,10 +131,11 @@ func (s *SubscribeMessage) Decode(r io.Reader) error {
 		return err
 	}
 
-	s.TrackPath = make([]string, num)
+	count := num
+	s.TrackPath = make([]string, count)
 
 	// Get Track Path Parts
-	for i := 0; i < int(num); i++ {
+	for i := uint64(0); i < count; i++ {
 		num, err = quicvarint.Read(mr)
 		if err != nil {
 			return err
@@ -152,19 +148,19 @@ func (s *SubscribeMessage) Decode(r io.Reader) error {
 		s.TrackPath[i] = string(buf)
 	}
 
-	// Get Subscriber Priority
-	bnum, err := mr.ReadByte()
+	// Get Track Priority
+	num, err = quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
-	s.TrackPriority = TrackPriority(bnum)
+	s.TrackPriority = TrackPriority(num)
 
 	// Get Group Order
-	bnum, err = mr.ReadByte()
+	num, err = quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
-	s.GroupOrder = GroupOrder(bnum)
+	s.GroupOrder = GroupOrder(num)
 
 	// Get Min Group Sequence
 	num, err = quicvarint.Read(mr)
@@ -180,8 +176,8 @@ func (s *SubscribeMessage) Decode(r io.Reader) error {
 	}
 	s.MaxGroupSequence = GroupSequence(num)
 
-	// Get Subscribe Update Parameters
-	s.Parameters, err = readParameters(mr)
+	// Get Subscribe Parameters
+	s.SubscribeParameters, err = readParameters(mr)
 	if err != nil {
 		return err
 	}

@@ -221,6 +221,9 @@ func sendSetupRequest(w io.Writer, req SetupRequest) error {
 }
 
 func closeStreamWithInternalError(stream transport.Stream, err error) {
+
+	slog.Debug("closing the stream with an internal error", slog.String("error", err.Error()))
+
 	if err == nil {
 		stream.Close()
 	}
@@ -244,9 +247,14 @@ func closeStreamWithInternalError(stream transport.Stream, err error) {
 
 	stream.CancelRead(code)
 	stream.CancelWrite(code)
+
+	slog.Debug("closed the stream with an internal error")
 }
 
 func closeReceiveStreamWithInternalError(stream transport.ReceiveStream, err error) {
+
+	slog.Debug("closing the receive stream with an internal error", slog.String("error", err.Error()))
+
 	var code transport.StreamErrorCode
 
 	var strerr transport.StreamError
@@ -263,4 +271,6 @@ func closeReceiveStreamWithInternalError(stream transport.ReceiveStream, err err
 	}
 
 	stream.CancelRead(code)
+
+	slog.Debug("closed the receive stream with an internal error")
 }

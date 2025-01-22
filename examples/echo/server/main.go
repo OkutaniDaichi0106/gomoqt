@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"log/slog"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt"
@@ -52,10 +53,13 @@ func main() {
 
 		dataCh := make(chan []byte, 1<<3)
 
+		wg := new(sync.WaitGroup)
 		/*
 		 * Subscriber
 		 */
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			/*
 			 * Request Announcements
 			 */
@@ -127,13 +131,17 @@ func main() {
 		/*
 		 * Publisher
 		 */
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			/*
 			 * Announce
 			 */
 			slog.Info("Waiting an Announce Stream")
 
 			annstr, err := sess.AcceptAnnounceStream(context.Background(), func(ac moqt.AnnounceConfig) error {
+				slog.Info("Received an announce request", slog.Any("config", ac))
+
 				if !moqt.HasPrefix(echoTrackPath, ac.TrackPrefix) {
 					return moqt.ErrTrackDoesNotExist
 				}
@@ -170,6 +178,10 @@ func main() {
 
 			substr, err := sess.AcceptSubscribeStream(context.Background(), func(sc moqt.SubscribeConfig) (moqt.Info, error) {
 				slog.Info("Received a subscribe request", slog.Any("config", sc))
+
+				if !moqt.IsSamePath(sc.TrackPath, echoTrackPath) {
+					return moqt.Info{}, moqt.ErrTrackDoesNotExist
+				}
 
 				return moqt.Info{}, nil
 			})

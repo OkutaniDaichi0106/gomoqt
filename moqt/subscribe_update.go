@@ -24,7 +24,7 @@ func readSubscribeUpdate(r io.Reader) (SubscribeUpdate, error) {
 	var sum message.SubscribeUpdateMessage
 	err := sum.Decode(r)
 	if err != nil {
-		slog.Debug("failed to read a SUBSCRIBE_UPDATE message", slog.String("error", err.Error()))
+		slog.Debug("failed to decode a SUBSCRIBE_UPDATE message", slog.String("error", err.Error()))
 		return SubscribeUpdate{}, err
 	}
 
@@ -33,7 +33,7 @@ func readSubscribeUpdate(r io.Reader) (SubscribeUpdate, error) {
 		GroupOrder:          GroupOrder(sum.GroupOrder),
 		MinGroupSequence:    GroupSequence(sum.MinGroupSequence),
 		MaxGroupSequence:    GroupSequence(sum.MaxGroupSequence),
-		SubscribeParameters: Parameters{sum.Parameters},
+		SubscribeParameters: Parameters{sum.SubscribeUpdateParameters},
 	}, nil
 }
 
@@ -48,11 +48,11 @@ func writeSubscribeUpdate(w io.Writer, update SubscribeUpdate) error {
 
 	// Send a SUBSCRIBE_UPDATE message
 	sum := message.SubscribeUpdateMessage{
-		TrackPriority:    message.TrackPriority(update.TrackPriority),
-		GroupOrder:       message.GroupOrder(update.GroupOrder),
-		MinGroupSequence: message.GroupSequence(update.MinGroupSequence),
-		MaxGroupSequence: message.GroupSequence(update.MaxGroupSequence),
-		Parameters:       message.Parameters(update.SubscribeParameters.paramMap),
+		TrackPriority:             message.TrackPriority(update.TrackPriority),
+		GroupOrder:                message.GroupOrder(update.GroupOrder),
+		MinGroupSequence:          message.GroupSequence(update.MinGroupSequence),
+		MaxGroupSequence:          message.GroupSequence(update.MaxGroupSequence),
+		SubscribeUpdateParameters: message.Parameters(update.SubscribeParameters.paramMap),
 	}
 	err := sum.Encode(w)
 	if err != nil {

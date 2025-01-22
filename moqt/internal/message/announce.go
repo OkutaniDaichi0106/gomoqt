@@ -104,10 +104,12 @@ func (am *AnnounceMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	am.TrackPathSuffix = make([]string, num)
+
+	count := num
+	am.TrackPathSuffix = make([]string, count)
 
 	// Get a Track Path Suffix Parts
-	for i := 0; i < int(num); i++ {
+	for i := uint64(0); i < count; i++ {
 		// Get a Track Namespace Prefix Part
 		num, err = quicvarint.Read(mr)
 		if err != nil {

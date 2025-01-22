@@ -8,7 +8,7 @@ import (
 	reflect "reflect"
 	time "time"
 
-	transport "github.com/OkutaniDaichi0106/gomoqt/internal/transport"
+	transport "github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
 	gomock "github.com/golang/mock/gomock"
 )
 

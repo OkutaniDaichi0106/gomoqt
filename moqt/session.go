@@ -62,14 +62,14 @@ var _ Session = (*session)(nil)
 
 func newSession(conn transport.Connection, stream transport.Stream) Session {
 	sess := &session{
-		conn:                        conn,
-		sessionStream:               sessionStream{stream: stream},
-		receiveSubscribeStreamQueue: newReceiveSubscribeStreamQueue(),
-		sendAnnounceStreamQueue:     newReceivedInterestQueue(),
-		receiveFetchStreamQueue:     newReceivedFetchQueue(),
-		sendInfoStreamQueue:         newReceiveInfoStreamQueue(),
-		dataReceiveStreamQueues:     make(map[SubscribeID]*groupReceiverQueue),
-		subscribeIDCounter:          0,
+		conn:                         conn,
+		sessionStream:                sessionStream{stream: stream},
+		receiveSubscribeStreamQueue:  newReceiveSubscribeStreamQueue(),
+		sendAnnounceStreamQueue:      newReceivedInterestQueue(),
+		receiveFetchStreamQueue:      newReceivedFetchQueue(),
+		sendInfoStreamQueue:          newReceiveInfoStreamQueue(),
+		dataReceiveGroupStreamQueues: make(map[SubscribeID]*groupReceiverQueue),
+		subscribeIDCounter:           0,
 	}
 
 	go listenSession(sess, context.Background())
@@ -90,7 +90,7 @@ type session struct {
 
 	sendInfoStreamQueue *sendInfoStreamQueue
 
-	dataReceiveStreamQueues map[SubscribeID]*groupReceiverQueue
+	dataReceiveGroupStreamQueues map[SubscribeID]*groupReceiverQueue
 
 	subscribeIDCounter uint64
 }
@@ -119,8 +119,9 @@ func (sess *session) Terminate(err error) {
 	slog.Info("Terminated a session")
 }
 
-func (s *session) OpenAnnounceStream(interest AnnounceConfig) (ReceiveAnnounceStream, error) {
-	slog.Debug("indicating interest", slog.Any("interest", interest))
+func (s *session) OpenAnnounceStream(config AnnounceConfig) (ReceiveAnnounceStream, error) {
+	slog.Debug(("opening an Announce Stream"), slog.Any("config", config))
+
 	/*
 	 * Open an Announce Stream
 	 */
@@ -130,16 +131,16 @@ func (s *session) OpenAnnounceStream(interest AnnounceConfig) (ReceiveAnnounceSt
 		return nil, err
 	}
 
-	err = writeInterest(stream, interest)
+	err = writeInterest(stream, config)
 	if err != nil {
 		slog.Error("failed to write an Interest message", slog.String("error", err.Error()))
 		return nil, err
 	}
 
-	slog.Info("Successfully indicated interest", slog.Any("interest", interest))
+	slog.Info("Opened an announce stream", slog.Any("config", config))
 
 	ras := &receiveAnnounceStream{
-		interest: interest,
+		interest: config,
 		stream:   stream,
 		ch:       make(chan struct{}, 1),
 	}
@@ -186,8 +187,8 @@ func (s *session) OpenAnnounceStream(interest AnnounceConfig) (ReceiveAnnounceSt
 	return ras, nil
 }
 
-func (s *session) OpenSubscribeStream(subscription SubscribeConfig) (SendSubscribeStream, Info, error) {
-	slog.Debug("making a subscription", slog.Any("subscription", subscription))
+func (s *session) OpenSubscribeStream(config SubscribeConfig) (SendSubscribeStream, Info, error) {
+	slog.Debug("making a subscription", slog.Any("subscription", config))
 
 	// Open a Subscribe Stream
 	stream, err := openSubscribeStream(s.conn)
@@ -201,7 +202,7 @@ func (s *session) OpenSubscribeStream(subscription SubscribeConfig) (SendSubscri
 	/*
 	 * Send a SUBSCRIBE message
 	 */
-	err = writeSubscription(stream, nextID, subscription)
+	err = writeSubscription(stream, nextID, config)
 	if err != nil {
 		slog.Error("failed to send a SUBSCRIBE message", slog.String("error", err.Error()))
 		return nil, Info{}, err
@@ -217,11 +218,11 @@ func (s *session) OpenSubscribeStream(subscription SubscribeConfig) (SendSubscri
 	}
 
 	// Create a data stream queue
-	s.dataReceiveStreamQueues[nextID] = newGroupReceiverQueue()
+	s.dataReceiveGroupStreamQueues[nextID] = newGroupReceiverQueue()
 
 	return &sendSubscribeStream{
 		subscribeID:  nextID,
-		subscription: subscription,
+		subscription: config,
 		stream:       stream,
 	}, info, err
 }
@@ -295,13 +296,13 @@ func (sess *session) OpenInfoStream(req InfoRequest) (Info, error) {
 
 func (sess *session) AcceptGroupStream(ctx context.Context, substr SendSubscribeStream) (ReceiveGroupStream, error) {
 	for {
-		if sess.dataReceiveStreamQueues[substr.SubscribeID()].Len() != 0 {
-			return sess.dataReceiveStreamQueues[substr.SubscribeID()].Dequeue(), nil
+		if sess.dataReceiveGroupStreamQueues[substr.SubscribeID()].Len() != 0 {
+			return sess.dataReceiveGroupStreamQueues[substr.SubscribeID()].Dequeue(), nil
 		}
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-sess.dataReceiveStreamQueues[substr.SubscribeID()].Chan():
+		case <-sess.dataReceiveGroupStreamQueues[substr.SubscribeID()].Chan():
 		}
 	}
 }
@@ -327,11 +328,11 @@ func (p *session) AcceptAnnounceStream(ctx context.Context, handler func(Announc
 	}
 }
 
-func (sess *session) AcceptSubscribeStream(ctx context.Context, op func(SubscribeConfig) (Info, error)) (ReceiveSubscribeStream, error) {
+func (sess *session) AcceptSubscribeStream(ctx context.Context, handler func(SubscribeConfig) (Info, error)) (ReceiveSubscribeStream, error) {
 	for {
 		if sess.receiveSubscribeStreamQueue.Len() != 0 {
 			substr := sess.receiveSubscribeStreamQueue.Dequeue()
-			info, err := op(substr.SubscribeConfig())
+			info, err := handler(substr.SubscribeConfig())
 			if err != nil {
 				slog.Error("failed to get an Info", slog.String("error", err.Error()))
 				substr.CloseWithError(err)
@@ -518,7 +519,7 @@ func listenBiStreams(sess *session, ctx context.Context) {
 			case stream_type_subscribe:
 				slog.Debug("subscribe stream was opened")
 
-				id, subscription, err := readSubscription(stream)
+				id, config, err := readSubscription(stream)
 				if err != nil {
 					slog.Error("failed to get a received subscription", slog.String("error", err.Error()))
 					closeStreamWithInternalError(stream, err)
@@ -527,9 +528,9 @@ func listenBiStreams(sess *session, ctx context.Context) {
 
 				// Create a receiveSubscribeStream
 				rss := &receiveSubscribeStream{
-					subscribeID:  id,
-					subscription: subscription,
-					stream:       stream,
+					subscribeID: id,
+					config:      config,
+					stream:      stream,
 				}
 
 				// Enqueue the subscription
@@ -544,14 +545,14 @@ func listenBiStreams(sess *session, ctx context.Context) {
 						break
 					}
 
-					subscription, err := updateSubscription(rss.subscription, update)
+					subscription, err := updateSubscription(rss.config, update)
 					if err != nil {
 						slog.Error("failed to update a subscription", slog.String("error", err.Error()))
 						closeStreamWithInternalError(stream, err)
 						return
 					}
 
-					rss.subscription = subscription
+					rss.config = subscription
 				}
 			case stream_type_fetch:
 				slog.Debug("fetch stream was opened")
@@ -663,7 +664,7 @@ func listenUniStreams(sess *session, ctx context.Context) {
 					startTime:   time.Now(),
 				}
 
-				queue, ok := sess.dataReceiveStreamQueues[data.SubscribeID()]
+				queue, ok := sess.dataReceiveGroupStreamQueues[data.SubscribeID()]
 				if !ok {
 					slog.Error("failed to get a data receive stream queue", slog.String("error", "queue not found"))
 					closeReceiveStreamWithInternalError(stream, ErrInternalError) // TODO:

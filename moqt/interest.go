@@ -14,7 +14,7 @@ type AnnounceConfig struct {
 
 func readInterest(r io.Reader) (AnnounceConfig, error) {
 	//
-	var aim message.AnnounceInterestMessage
+	var aim message.AnnouncePleaseMessage
 	err := aim.Decode(r)
 	if err != nil {
 		slog.Error("failed to read an ANNOUNCE_INTEREST message", slog.String("error", err.Error()))
@@ -28,7 +28,7 @@ func readInterest(r io.Reader) (AnnounceConfig, error) {
 }
 
 func writeInterest(w io.Writer, interest AnnounceConfig) error {
-	aim := message.AnnounceInterestMessage{
+	aim := message.AnnouncePleaseMessage{
 		TrackPathPrefix: interest.TrackPrefix,
 		Parameters:      message.Parameters(interest.Parameters.paramMap),
 	}

@@ -7,12 +7,12 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-type AnnounceInterestMessage struct {
+type AnnouncePleaseMessage struct {
 	TrackPathPrefix []string
 	Parameters      Parameters
 }
 
-func (aim AnnounceInterestMessage) Encode(w io.Writer) error {
+func (aim AnnouncePleaseMessage) Encode(w io.Writer) error {
 	slog.Debug("encoding a ANNOUNCE_INTEREST message")
 
 	/*
@@ -62,7 +62,7 @@ func (aim AnnounceInterestMessage) Encode(w io.Writer) error {
 	return nil
 }
 
-func (aim *AnnounceInterestMessage) Decode(r io.Reader) error {
+func (aim *AnnouncePleaseMessage) Decode(r io.Reader) error {
 	slog.Debug("decoding a ANNOUNCE_INTEREST message")
 
 	// Get a messaga reader
@@ -76,12 +76,12 @@ func (aim *AnnounceInterestMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
+	count := num
+	// Get a Track Namespace Prefix Parts
+	aim.TrackPathPrefix = make([]string, count)
 
 	// Get a Track Namespace Prefix Parts
-	aim.TrackPathPrefix = make([]string, 0, num)
-
-	// Get a Track Namespace Prefix Parts
-	for i := 0; i < int(num); i++ {
+	for i := uint64(0); i < count; i++ {
 		// Get a Track Namespace Prefix Part
 		num, err = quicvarint.Read(mr)
 		if err != nil {

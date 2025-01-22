@@ -7,8 +7,7 @@ import (
 )
 
 /*
- * Parameters
- * - A map of the parameters
+* Parameters
  */
 type Parameters map[uint64][]byte
 

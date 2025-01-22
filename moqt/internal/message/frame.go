@@ -20,7 +20,7 @@ func (fm FrameMessage) Encode(w io.Writer) error {
 	 * Serialize the message in following format
 	 *
 	 * Frame Message {
-	 *   Payload Length (varint),
+	 *   Message Length (varint),
 	 *   Payload ([]byte),
 	 * }
 	 */
@@ -47,21 +47,15 @@ func (fm FrameMessage) Encode(w io.Writer) error {
 func (fm *FrameMessage) Decode(r io.Reader) error {
 	slog.Debug("decoding a FRAME message")
 
-	// Get a payload length
-	num, err := quicvarint.Read(quicvarint.NewReader(r))
+	mr, err := newReader(r)
 	if err != nil {
-		slog.Error("failed to get a new message reader", slog.String("error", err.Error()))
 		return err
 	}
 
-	// Get a payload
-	buf := make([]byte, num)
-	_, err = r.Read(buf)
+	fm.Payload, err = io.ReadAll(mr)
 	if err != nil {
-		slog.Error("failed to read payload")
 		return err
 	}
-	fm.Payload = buf
 
 	slog.Debug("decoded a FRAME message")
 

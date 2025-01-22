@@ -1,6 +1,7 @@
 package moqt
 
 import (
+	"errors"
 	"log/slog"
 	"strings"
 	"sync"
@@ -111,9 +112,31 @@ func (sas *sendAnnounceStream) Close() error {
 }
 
 func (sas *sendAnnounceStream) CloseWithError(err error) error { // TODO
+	slog.Debug("closing a send announce stream with an error", slog.String("error", err.Error()))
+
 	if err == nil {
 		return sas.stream.Close()
 	}
+
+	var code transport.StreamErrorCode
+
+	var strerr transport.StreamError
+	if errors.As(err, &strerr) {
+		code = strerr.StreamErrorCode()
+	} else {
+		var ok bool
+		annerr, ok := err.(AnnounceError)
+		if ok {
+			code = transport.StreamErrorCode(annerr.AnnounceErrorCode())
+		} else {
+			code = ErrInternalError.StreamErrorCode()
+		}
+	}
+
+	sas.stream.CancelRead(code)
+	sas.stream.CancelWrite(code)
+
+	slog.Debug("closed a send announce stream with an error", slog.String("error", err.Error()))
 
 	return nil
 }

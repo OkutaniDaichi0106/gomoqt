@@ -59,6 +59,11 @@ func (sfs *sendFetchStream) UpdateFetch(update FetchUpdate) error {
 }
 
 func (sfs *sendFetchStream) CloseWithError(err error) error {
+	sfs.mu.Lock()
+	defer sfs.mu.Unlock()
+
+	slog.Debug("closing a send fetch stream with an error", slog.String("error", err.Error()))
+
 	if err == nil {
 		return sfs.Close()
 	}
@@ -81,7 +86,7 @@ func (sfs *sendFetchStream) CloseWithError(err error) error {
 	sfs.stream.CancelRead(code)
 	sfs.stream.CancelWrite(code)
 
-	slog.Info("closed a fetch stream with an error", slog.String("error", err.Error()))
+	slog.Info("closed a send fetch stream with an error", slog.String("error", err.Error()))
 
 	return nil
 }
@@ -156,6 +161,8 @@ func (rfs *receiveFetchStream) CloseWithError(err error) error {
 	rfs.mu.Lock()
 	defer rfs.mu.Unlock()
 
+	slog.Debug("closing a receive fetch stream with an error", slog.String("error", err.Error()))
+
 	if err == nil {
 		return rfs.Close()
 	}
@@ -178,7 +185,7 @@ func (rfs *receiveFetchStream) CloseWithError(err error) error {
 	rfs.stream.CancelRead(code)
 	rfs.stream.CancelWrite(code)
 
-	slog.Info("rejcted the fetch request")
+	slog.Debug("closed a receive fetch stream with an error", slog.String("error", err.Error()))
 
 	return nil
 }

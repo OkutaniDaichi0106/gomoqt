@@ -51,7 +51,7 @@ func readSubscription(r transport.Stream) (SubscribeID, SubscribeConfig, error) 
 		GroupOrder:          GroupOrder(sm.GroupOrder),
 		MinGroupSequence:    GroupSequence(sm.MinGroupSequence),
 		MaxGroupSequence:    GroupSequence(sm.MaxGroupSequence),
-		SubscribeParameters: Parameters{sm.Parameters},
+		SubscribeParameters: Parameters{sm.SubscribeParameters},
 	}
 
 	return SubscribeID(sm.SubscribeID), subscription, nil
@@ -65,13 +65,13 @@ func writeSubscription(w transport.Stream, id SubscribeID, subscription Subscrib
 
 	// Send a SUBSCRIBE message
 	sm := message.SubscribeMessage{
-		SubscribeID:      message.SubscribeID(id),
-		TrackPath:        subscription.TrackPath,
-		TrackPriority:    message.TrackPriority(subscription.TrackPriority),
-		GroupOrder:       message.GroupOrder(subscription.GroupOrder),
-		MinGroupSequence: message.GroupSequence(subscription.MinGroupSequence),
-		MaxGroupSequence: message.GroupSequence(subscription.MaxGroupSequence),
-		Parameters:       message.Parameters(subscription.SubscribeParameters.paramMap),
+		SubscribeID:         message.SubscribeID(id),
+		TrackPath:           subscription.TrackPath,
+		TrackPriority:       message.TrackPriority(subscription.TrackPriority),
+		GroupOrder:          message.GroupOrder(subscription.GroupOrder),
+		MinGroupSequence:    message.GroupSequence(subscription.MinGroupSequence),
+		MaxGroupSequence:    message.GroupSequence(subscription.MaxGroupSequence),
+		SubscribeParameters: message.Parameters(subscription.SubscribeParameters.paramMap),
 	}
 	err := sm.Encode(w)
 	if err != nil {

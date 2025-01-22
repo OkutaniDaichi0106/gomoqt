@@ -12,7 +12,7 @@ import (
  * Group Reader
  */
 type GroupReader interface {
-	Group
+	GroupSequence() GroupSequence
 	ReadFrame() ([]byte, error)
 }
 
@@ -32,7 +32,7 @@ type receiveGroupStream struct {
 	subscribeID SubscribeID
 	stream      transport.ReceiveStream
 
-	Group
+	sequence  GroupSequence
 	startTime time.Time
 
 	errCodeCh chan StreamErrorCode
@@ -40,6 +40,10 @@ type receiveGroupStream struct {
 
 func (r receiveGroupStream) SubscribeID() SubscribeID {
 	return r.subscribeID
+}
+
+func (r receiveGroupStream) GroupSequence() GroupSequence {
+	return r.sequence
 }
 
 func (r receiveGroupStream) ReadFrame() ([]byte, error) {

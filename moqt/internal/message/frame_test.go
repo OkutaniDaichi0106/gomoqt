@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/stretchr/testify/assert"
 )
 

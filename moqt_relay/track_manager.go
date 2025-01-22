@@ -27,7 +27,7 @@ func (manager *trackManager) ServeAnnouncements(ann []moqt.Announcement) error {
 		annBufs := make([]announcementBuffer, 0)
 
 		// Serve announcements to track prefix nodes
-		err := manager.trackTree.handleDescendants(strings.Split(a.TrackPath, "/"), func(node *trackPrefixNode) error {
+		err := manager.trackTree.handleDescendants(a.TrackPath, func(node *trackPrefixNode) error {
 			// Add announcement to the buffer
 			node.announcementBuffer.Add(a)
 
@@ -35,7 +35,7 @@ func (manager *trackManager) ServeAnnouncements(ann []moqt.Announcement) error {
 			 * Handle the track node
 			 */
 			// Initialize track node if the track prefix matches the announcement track path
-			if node.trackPrefix == a.TrackPath {
+			if moqt.IsSamePath(node.trackPrefix, a.TrackPath) {
 				switch a.AnnounceStatus {
 				case moqt.ACTIVE:
 					if node.track == nil {

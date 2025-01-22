@@ -7,8 +7,6 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-type GroupPriority byte
-
 type GroupSequence uint64
 
 type GroupMessage struct {
@@ -16,7 +14,7 @@ type GroupMessage struct {
 
 	GroupSequence GroupSequence
 
-	GroupPriority GroupPriority
+	TrackPriority TrackPriority
 }
 
 func (g GroupMessage) Encode(w io.Writer) error {
@@ -40,7 +38,7 @@ func (g GroupMessage) Encode(w io.Writer) error {
 	p = quicvarint.Append(p, uint64(g.GroupSequence))
 
 	// Append the Publisher Priority
-	p = quicvarint.Append(p, uint64(g.GroupPriority))
+	p = quicvarint.Append(p, uint64(g.TrackPriority))
 
 	// Get a serialized message
 	b := make([]byte, 0, len(p)+8)
@@ -91,7 +89,7 @@ func (g *GroupMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	g.GroupPriority = GroupPriority(num)
+	g.TrackPriority = TrackPriority(num)
 
 	slog.Debug("decoded a GROUP message")
 

@@ -85,23 +85,25 @@ func main() {
 			 * Subscribe
 			 */
 			slog.Info("Subscribe")
-			subscription := moqt.SubscribeConfig{
+			subcfg := moqt.SubscribeConfig{
 				TrackPath:     echoTrackPath,
 				TrackPriority: 0,
 				GroupOrder:    0,
 			}
-			substr, err := sess.OpenSubscribeStream(subscription)
+			substr, info, err := sess.OpenSubscribeStream(subcfg)
 			if err != nil {
 				slog.Error("failed to subscribe", slog.String("error", err.Error()))
 				return
 			}
+
+			slog.Info("Subscribed", slog.Any("info", info))
 
 			/*
 			 * Receive data
 			 */
 			slog.Info("Receive data")
 			for {
-				stream, err := sess.AcceptDataStream(substr, context.Background())
+				stream, err := sess.AcceptGroupStream(context.Background(), substr)
 				if err != nil {
 					slog.Error("failed to accept a data stream", slog.String("error", err.Error()))
 					return
@@ -109,15 +111,14 @@ func main() {
 
 				go func(stream moqt.ReceiveGroupStream) {
 					for {
-						buf := make([]byte, 1024)
-						n, err := stream.Read(buf)
+						buf, err := stream.ReadFrame()
 						if err != nil {
 							slog.Error("failed to read data", slog.String("error", err.Error()))
 							return
 						}
-						slog.Info("Received a frame", slog.String("frame", string(buf[:n])))
+						slog.Info("Received a frame", slog.String("frame", string(buf)))
 
-						dataCh <- buf[:n]
+						dataCh <- buf
 					}
 				}(stream)
 			}
@@ -131,20 +132,27 @@ func main() {
 			 * Announce
 			 */
 			slog.Info("Waiting an Announce Stream")
-			annstr, err := sess.AcceptAnnounceStream(context.Background())
+
+			annstr, err := sess.AcceptAnnounceStream(context.Background(), func(ac moqt.AnnounceConfig) error {
+				if !moqt.HasPrefix(echoTrackPath, ac.TrackPrefix) {
+					return moqt.ErrTrackDoesNotExist
+				}
+
+				return nil
+			})
+
 			if err != nil {
 				slog.Error("failed to accept an announce stream", slog.String("error", err.Error()))
 				return
 			}
+
 			slog.Info("Accepted an Announce Stream")
 
-			slog.Info("Announce")
+			slog.Info("Announcing")
+
 			announcements := []moqt.Announcement{
 				{
 					TrackPath: echoTrackPath,
-				},
-				{
-					TrackPath: "japan/kyoto/kiu/audio", //
 				},
 			}
 			err = annstr.SendAnnouncement(announcements)
@@ -153,32 +161,36 @@ func main() {
 				return
 			}
 
+			slog.Info("Announced")
+
 			/*
-			 * Accept subscription
+			 * Accept a subscription
 			 */
-			slog.Info("Accept subscription")
-			substr, err := sess.AcceptSubscribeStream(context.Background())
+			slog.Info("Waiting a subscribe stream")
+
+			substr, err := sess.AcceptSubscribeStream(context.Background(), func(sc moqt.SubscribeConfig) (moqt.Info, error) {
+				slog.Info("Received a subscribe request", slog.Any("config", sc))
+
+				return moqt.Info{}, nil
+			})
 			if err != nil {
 				slog.Error("failed to accept a subscription", slog.String("error", err.Error()))
 				return
 			}
 
-			if substr.Subscription().TrackPath != echoTrackPath {
-				slog.Error("failed to get a track path", slog.String("error", "track path is invalid"))
-				return
-			}
+			slog.Info("Accepted a subscribe stream")
 
 			/*
 			 * Send data
 			 */
 			for sequence := moqt.GroupSequence(1); sequence < 30; sequence++ {
-				stream, err := sess.OpenDataStream(substr, sequence, 0)
+				stream, err := sess.OpenGroupStream(substr, sequence)
 				if err != nil {
 					slog.Error("failed to open a data stream", slog.String("error", err.Error()))
 					return
 				}
 
-				_, err = stream.Write([]byte("HELLO!!"))
+				err = stream.WriteFrame([]byte("HELLO!!"))
 				if err != nil {
 					slog.Error("failed to write data", slog.String("error", err.Error()))
 					return

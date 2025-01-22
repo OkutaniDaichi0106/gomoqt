@@ -12,7 +12,7 @@ import (
  * Group Writer
  */
 type GroupWriter interface {
-	Group
+	GroupSequence() GroupSequence
 	WriteFrame([]byte) error
 	Close() error
 }
@@ -32,7 +32,7 @@ type SendGroupStream interface {
 var _ SendGroupStream = (*sendGroupStream)(nil)
 
 type sendGroupStream struct {
-	Group
+	sequence    GroupSequence
 	stream      transport.SendStream
 	subscribeID SubscribeID
 	startTime   time.Time
@@ -42,6 +42,10 @@ type sendGroupStream struct {
 
 func (stream sendGroupStream) SubscribeID() SubscribeID {
 	return stream.subscribeID
+}
+
+func (stream sendGroupStream) GroupSequence() GroupSequence {
+	return stream.sequence
 }
 
 func (stream sendGroupStream) WriteFrame(buf []byte) error {

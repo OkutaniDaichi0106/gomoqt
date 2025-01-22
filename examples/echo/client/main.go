@@ -12,8 +12,8 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
-var echoTrackPrefix = "japan/kyoto"
-var echoTrackPath = "japan/kyoto/kiu/text"
+var echoTrackPrefix = []string{"japan", "kyoto"}
+var echoTrackPath = []string{"japan", "kyoto", "kiu", "text"}
 
 func main() {
 	/*
@@ -45,50 +45,76 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		slog.Info("Run a publisher")
+		slog.Info("Runing a publisher")
 
-		slog.Info("Send Announcements")
+		slog.Info("Waiting an Announce Stream")
 		// Accept an Announce Stream
-		annstr, err := sess.AcceptAnnounceStream(context.Background())
+		annstr, err := sess.AcceptAnnounceStream(context.Background(), func(ac moqt.AnnounceConfig) error {
+			if ac.TrackPrefix[0] == echoTrackPrefix[0] {
+				return nil
+			}
+			return moqt.ErrTrackDoesNotExist
+		})
+
 		if err != nil {
 			slog.Error("failed to accept an interest", slog.String("error", err.Error()))
 			return
 		}
+
+		slog.Info("Accepted an Announce Stream")
 
 		// Send Announcements
 		announcements := []moqt.Announcement{
 			{
 				TrackPath: echoTrackPath,
 			},
-			{
-				TrackPath: "japan/kyoto/kiu/audio", //
-			},
 		}
+
+		slog.Info("Send Announcements")
+
+		// Send Announcements
 		err = annstr.SendAnnouncement(announcements)
 		if err != nil {
 			slog.Error("failed to announce", slog.String("error", err.Error()))
 			return
 		}
 
-		substr, err := sess.AcceptSubscribeStream(context.Background())
+		slog.Info("Announced")
+
+		// Accept a subscription
+		slog.Info("Waiting a subscribe stream")
+
+		substr, err := sess.AcceptSubscribeStream(context.Background(), func(sc moqt.SubscribeConfig) (moqt.Info, error) {
+			slog.Info("Received a subscribe request", slog.Any("config", sc))
+
+			if !moqt.IsSamePath(sc.TrackPath, echoTrackPath) {
+				return moqt.Info{}, moqt.ErrTrackDoesNotExist
+			}
+
+			return moqt.Info{
+				TrackPriority:       0,
+				LatestGroupSequence: 0,
+				GroupOrder:          0,
+			}, nil
+		})
 		if err != nil {
 			slog.Error("failed to accept a subscription", slog.String("error", err.Error()))
 			return
 		}
 
-		if substr.Subscription().TrackPath != echoTrackPath {
+		if moqt.IsSamePath(substr.SubscribeConfig().TrackPath, echoTrackPath) {
 			slog.Error("failed to get a track path", slog.String("error", "track path is invalid"))
 			return
 		}
 
 		for sequence := moqt.GroupSequence(0); sequence < 30; sequence++ {
-			stream, err := sess.OpenDataStream(substr, sequence, 0)
+			stream, err := sess.OpenGroupStream(substr, sequence)
 			if err != nil {
 				slog.Error("failed to open a data stream", slog.String("error", err.Error()))
 				return
 			}
 
-			_, err = stream.Write([]byte("HELLO!!"))
+			err = stream.WriteFrame([]byte("HELLO!!"))
 			if err != nil {
 				slog.Error("failed to write data", slog.String("error", err.Error()))
 				return
@@ -118,30 +144,34 @@ func main() {
 			return
 		}
 
-		slog.Info("Active Tracks", slog.Any("announcements", announcements))
+		slog.Info("Announced", slog.Any("announcements", announcements))
 
-		subscription := moqt.SubscribeConfig{
+		config := moqt.SubscribeConfig{
 			TrackPath:     echoTrackPath,
 			TrackPriority: 0,
 			GroupOrder:    0,
 		}
-		substr, info, err := sess.OpenSubscribeStream(subscription)
+
+		slog.Info("Subscribing", slog.Any("config", config))
+
+		substr, info, err := sess.OpenSubscribeStream(config)
 		if err != nil {
 			slog.Error("failed to subscribe", slog.String("error", err.Error()))
 			return
 		}
 
+		slog.Info("Subscribed", slog.Any("info", info))
+
 		for {
-			stream, err := sess.AcceptDataStream(substr, context.Background())
+			stream, err := sess.AcceptGroupStream(context.Background(), substr)
 			if err != nil {
 				slog.Error("failed to accept a data stream", slog.String("error", err.Error()))
 				return
 			}
 
-			buf := make([]byte, 1024)
-			n, err := stream.Read(buf)
-			if n > 0 {
-				slog.Info("received data", slog.String("data", string(buf[:n])))
+			buf, err := stream.ReadFrame()
+			if len(buf) > 0 {
+				slog.Info("received data", slog.String("data", string(buf)))
 			}
 
 			if err != nil {

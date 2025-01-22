@@ -55,7 +55,7 @@ type Session interface {
 	AcceptInfoStream(context.Context, func(InfoRequest) (Info, error)) error
 
 	// Open a Group Stream
-	OpenGroupStream(ReceiveSubscribeStream, Group) (SendGroupStream, error)
+	OpenGroupStream(ReceiveSubscribeStream, GroupSequence) (SendGroupStream, error)
 }
 
 var _ Session = (*session)(nil)
@@ -367,11 +367,8 @@ func (sess *session) AcceptFetchStream(ctx context.Context, handler func(FetchRe
 			}
 
 			// Send a GROUP message
-			group := group{
-				groupSequence: fetstr.FetchRequest().GroupSequence,
-				groupPriority: fetstr.FetchRequest().GroupPriority,
-			}
-			err = writeGroup(fetstr.stream, fetstr.FetchRequest().SubscribeID, group)
+
+			err = writeGroup(fetstr.stream, fetstr.FetchRequest().SubscribeID, fetstr.GroupSequence())
 			if err != nil {
 				slog.Error("failed to write a Group message", slog.String("error", err.Error()))
 				fetstr.CloseWithError(err)
@@ -416,7 +413,7 @@ func (sess *session) AcceptInfoStream(ctx context.Context, op func(InfoRequest) 
 	}
 }
 
-func (sess *session) OpenGroupStream(substr ReceiveSubscribeStream, group Group) (SendGroupStream, error) {
+func (sess *session) OpenGroupStream(substr ReceiveSubscribeStream, seq GroupSequence) (SendGroupStream, error) {
 	slog.Debug("opening a Group Stream")
 
 	stream, err := openGroupStream(sess.conn)
@@ -425,7 +422,7 @@ func (sess *session) OpenGroupStream(substr ReceiveSubscribeStream, group Group)
 		return nil, err
 	}
 
-	err = writeGroup(stream, substr.SubscribeID(), group)
+	err = writeGroup(stream, substr.SubscribeID(), seq)
 	if err != nil {
 		slog.Error("failed to write a Group message", slog.String("error", err.Error()))
 		return nil, err
@@ -437,15 +434,15 @@ func (sess *session) OpenGroupStream(substr ReceiveSubscribeStream, group Group)
 		select {
 		case code := <-ch:
 			substr.SendSubscribeGap(SubscribeGap{
-				MinGapSequence: group.GroupSequence(),
-				MaxGapSequence: group.GroupSequence(),
+				MinGapSequence: seq,
+				MaxGapSequence: seq,
 				GroupErrorCode: code,
 			})
 		}
 	}()
 
 	return sendGroupStream{
-		Group:       group,
+		sequence:    seq,
 		stream:      stream,
 		subscribeID: substr.SubscribeID(),
 		startTime:   time.Now(),
@@ -653,7 +650,7 @@ func listenUniStreams(sess *session, ctx context.Context) {
 			case stream_type_group:
 				slog.Debug("group stream was opened")
 
-				id, group, err := readGroup(stream)
+				id, sequence, err := readGroup(stream)
 				if err != nil {
 					slog.Error("failed to get a group", slog.String("error", err.Error()))
 					return
@@ -662,7 +659,7 @@ func listenUniStreams(sess *session, ctx context.Context) {
 				data := &receiveGroupStream{
 					subscribeID: id,
 					stream:      stream,
-					Group:       group,
+					sequence:    sequence,
 					startTime:   time.Now(),
 				}
 

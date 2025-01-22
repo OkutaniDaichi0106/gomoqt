@@ -120,10 +120,6 @@ func (rfs *receiveFetchStream) GroupSequence() GroupSequence {
 	return rfs.fetch.GroupSequence
 }
 
-func (rfs *receiveFetchStream) GroupPriority() GroupPriority {
-	return rfs.fetch.GroupPriority
-}
-
 func (rfs *receiveFetchStream) CancelWrite(code GroupErrorCode) {
 	rfs.stream.CancelWrite(transport.StreamErrorCode(code))
 }
@@ -146,11 +142,8 @@ func (rfs *receiveFetchStream) WriteFrame(buf []byte) error {
 
 func (rfs *receiveFetchStream) SendDataStream() SendGroupStream {
 	return sendGroupStream{
-		stream: rfs.stream,
-		Group: group{
-			groupSequence: rfs.fetch.GroupSequence,
-			groupPriority: rfs.fetch.GroupPriority,
-		},
+		stream:    rfs.stream,
+		sequence:  rfs.fetch.GroupSequence,
 		startTime: time.Now(),
 	}
 }

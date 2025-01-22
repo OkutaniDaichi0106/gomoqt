@@ -20,7 +20,7 @@ type GroupSequence message.GroupSequence
 type FetchRequest struct {
 	SubscribeID   SubscribeID
 	TrackPath     []string
-	GroupPriority GroupPriority
+	TrackPriority TrackPriority
 	GroupSequence GroupSequence
 	FrameSequence FrameSequence
 }
@@ -36,7 +36,7 @@ func readFetch(r io.Reader) (FetchRequest, error) {
 	req := FetchRequest{
 		SubscribeID:   SubscribeID(fm.SubscribeID),
 		TrackPath:     fm.TrackPath,
-		GroupPriority: GroupPriority(fm.GroupPriority),
+		TrackPriority: TrackPriority(fm.TrackPriority),
 		GroupSequence: GroupSequence(fm.GroupSequence),
 		FrameSequence: FrameSequence(fm.FrameSequence),
 	}
@@ -48,7 +48,7 @@ func writeFetch(w io.Writer, fetch FetchRequest) error {
 	fm := message.FetchMessage{
 		SubscribeID:   message.SubscribeID(fetch.SubscribeID),
 		TrackPath:     fetch.TrackPath,
-		GroupPriority: message.GroupPriority(fetch.GroupPriority),
+		TrackPriority: message.TrackPriority(fetch.TrackPriority),
 		GroupSequence: message.GroupSequence(fetch.GroupSequence),
 		FrameSequence: message.FrameSequence(fetch.FrameSequence),
 	}

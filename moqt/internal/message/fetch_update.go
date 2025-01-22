@@ -9,7 +9,7 @@ import (
 )
 
 type FetchUpdateMessage struct {
-	GroupPriority GroupPriority
+	TrackPriority TrackPriority
 }
 
 func (fum FetchUpdateMessage) Encode(w io.Writer) error {
@@ -28,7 +28,7 @@ func (fum FetchUpdateMessage) Encode(w io.Writer) error {
 	 */
 	p := make([]byte, 0, 1<<4)
 
-	p = quicvarint.Append(p, uint64(fum.GroupPriority))
+	p = quicvarint.Append(p, uint64(fum.TrackPriority))
 
 	log.Print("FETCH_UPDATE payload", p) // TODO: delete
 
@@ -68,7 +68,7 @@ func (fum *FetchUpdateMessage) Decode(r io.Reader) error {
 		return err
 	}
 
-	fum.GroupPriority = GroupPriority(num)
+	fum.TrackPriority = TrackPriority(num)
 
 	slog.Debug("decoded a FETCH_UPDATE message")
 

@@ -5,14 +5,13 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 )
 
-func NewGroupBuffer(seq moqt.GroupSequence, priority moqt.GroupPriority, buf []byte) GroupBuffer {
+func NewGroupBuffer(seq moqt.GroupSequence, buf []byte) GroupBuffer {
 	return GroupBuffer{
 		groupSequence: seq,
-		groupPriority: priority,
 		data:          bytes.NewBuffer(buf),
 		cond:          sync.NewCond(&sync.Mutex{}),
 	}
@@ -22,13 +21,8 @@ func (g *GroupBuffer) GroupSequence() moqt.GroupSequence {
 	return g.groupSequence
 }
 
-func (g *GroupBuffer) GroupPriority() moqt.GroupPriority {
-	return g.groupPriority
-}
-
 type GroupBuffer struct {
 	groupSequence moqt.GroupSequence
-	groupPriority moqt.GroupPriority
 	data          *bytes.Buffer
 	cond          *sync.Cond
 	closed        bool

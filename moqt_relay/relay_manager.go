@@ -37,7 +37,7 @@ type relayManager struct {
 	TrackManager
 }
 
-func (manager *relayManager) RelayAnnouncements(sess moqt.ServerSession, interest moqt.AnnounceConfig) error {
+func (manager *relayManager) RelayAnnouncements(sess moqt.Session, interest moqt.AnnounceConfig) error {
 	annstr, err := sess.OpenAnnounceStream(interest)
 	if err != nil {
 		return err
@@ -65,7 +65,7 @@ func (manager *relayManager) RelayAnnouncements(sess moqt.ServerSession, interes
 }
 
 func (manager *relayManager) RelayTrack(sess moqt.Session, sub moqt.SubscribeConfig) error {
-	substr, err := sess.OpenSubscribeStream(sub)
+	substr, info, err := sess.OpenSubscribeStream(sub)
 	if err != nil {
 		slog.Error("failed to open a subscribe stream", slog.String("error", err.Error()))
 		return err
@@ -84,14 +84,14 @@ func (manager *relayManager) RelayTrack(sess moqt.Session, sub moqt.SubscribeCon
 	go func() {
 		for {
 			// Receive data
-			stream, err := sess.AcceptDataStream(substr, context.Background())
+			stream, err := sess.AcceptGroupStream(context.Background(), substr)
 			if err != nil {
 				slog.Error("failed to receive data", slog.String("error", err.Error()))
 				return
 			}
 
 			// Initialize a group buffer
-			groupBuf := NewGroupBuffer(stream.GroupSequence(), stream.GroupPriority())
+			groupBuf := NewGroupBuffer(stream.GroupSequence())
 
 			// Add the group buffer to the track buffer
 			trackBuf.AddGroup(groupBuf)
@@ -103,7 +103,7 @@ func (manager *relayManager) RelayTrack(sess moqt.Session, sub moqt.SubscribeCon
 				 */
 				for {
 					// Receive the next frame
-					frame, err := stream.NextFrame()
+					frame, err := stream.ReadFrame()
 					// Store the frame to the group buffer
 					if len(frame) > 0 {
 						groupBuf.Write(frame)
@@ -128,7 +128,7 @@ func (manager *relayManager) RelayTrack(sess moqt.Session, sub moqt.SubscribeCon
 func newTrackTree() *trackTree {
 	return &trackTree{
 		rootNode: &trackPrefixNode{
-			trackPrefix: "",
+			trackPrefix: []string{},
 			children:    make(map[string]*trackPrefixNode),
 		},
 	}
@@ -171,7 +171,7 @@ func (trackPrefixNode *trackPrefixNode) handleDescendants(trackPrefixParts []str
 }
 
 type trackPrefixNode struct {
-	trackPrefix string
+	trackPrefix []string
 
 	/*
 	 * Children of the node

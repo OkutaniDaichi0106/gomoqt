@@ -81,6 +81,24 @@ func writeAnnouncement(w io.Writer, prefix []string, ann Announcement) error {
 	return nil
 }
 
+func IsSamePath(path, target []string) bool {
+	if len(path) != len(target) {
+		return false
+	}
+
+	for i, p := range target {
+		if path[i] != p {
+			return false
+		}
+	}
+
+	return true
+}
+
+func HasPrefix(path, prefix []string) bool {
+	return hasPrefix(path, prefix)
+}
+
 func hasPrefix(path, prefix []string) bool {
 	if len(path) < len(prefix) {
 		return false

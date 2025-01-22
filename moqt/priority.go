@@ -5,7 +5,6 @@ import (
 )
 
 type TrackPriority message.TrackPriority
-type GroupPriority message.GroupPriority
 
 type GroupOrder message.GroupOrder
 

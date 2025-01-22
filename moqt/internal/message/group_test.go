@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -18,12 +18,10 @@ func TestGroupMessage(t *testing.T) {
 			testcase: message.GroupMessage{
 				SubscribeID:   1,
 				GroupSequence: 1,
-				GroupPriority: 1,
 			},
 			want: message.GroupMessage{
 				SubscribeID:   1,
 				GroupSequence: 1,
-				GroupPriority: 1,
 			},
 			wantErr: false,
 		},

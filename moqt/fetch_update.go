@@ -7,7 +7,7 @@ import (
 )
 
 type FetchUpdate struct {
-	GroupPriority GroupPriority
+	TrackPriority TrackPriority
 }
 
 func readFetchUpdate(r io.Reader) (FetchUpdate, error) {
@@ -17,15 +17,13 @@ func readFetchUpdate(r io.Reader) (FetchUpdate, error) {
 		return FetchUpdate{}, err
 	}
 
-	return FetchUpdate{
-		GroupPriority: GroupPriority(fum.GroupPriority),
-	}, nil
+	return FetchUpdate{}, nil
 }
 
 func writeFetchUpdate(w io.Writer, update FetchUpdate) error {
 	// Send a fetch update message
 	fum := message.FetchUpdateMessage{
-		GroupPriority: message.GroupPriority(update.GroupPriority),
+		TrackPriority: message.TrackPriority(update.TrackPriority),
 	}
 	err := fum.Encode(w)
 	if err != nil {
@@ -36,7 +34,7 @@ func writeFetchUpdate(w io.Writer, update FetchUpdate) error {
 }
 
 func updateFetch(fetch FetchRequest, update FetchUpdate) (FetchRequest, error) {
-	fetch.GroupPriority = update.GroupPriority
+	fetch.TrackPriority = update.TrackPriority
 
 	return fetch, nil
 }

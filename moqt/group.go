@@ -7,47 +7,23 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 )
 
-type Group interface {
-	GroupSequence() GroupSequence
-	GroupPriority() GroupPriority
-}
-
-var _ Group = (*group)(nil)
-
-type group struct {
-	groupSequence GroupSequence
-	groupPriority GroupPriority
-}
-
-func (g group) GroupSequence() GroupSequence {
-	return g.groupSequence
-}
-
-func (g group) GroupPriority() GroupPriority {
-	return g.groupPriority
-}
-
-func readGroup(r io.Reader) (SubscribeID, Group, error) {
+func readGroup(r io.Reader) (SubscribeID, GroupSequence, error) {
 	// Read a GROUP message
 	var gm message.GroupMessage
 	err := gm.Decode(r)
 	if err != nil {
 		slog.Error("failed to read a GROUP message", slog.String("error", err.Error()))
-		return 0, nil, err
+		return 0, 0, err
 	}
 
 	//
-	return SubscribeID(gm.SubscribeID), group{
-		groupSequence: GroupSequence(gm.GroupSequence),
-		groupPriority: GroupPriority(gm.GroupPriority),
-	}, nil
+	return SubscribeID(gm.SubscribeID), GroupSequence(gm.GroupSequence), nil
 }
 
-func writeGroup(w io.Writer, id SubscribeID, g Group) error {
+func writeGroup(w io.Writer, id SubscribeID, seq GroupSequence) error {
 	gm := message.GroupMessage{
 		SubscribeID:   message.SubscribeID(id),
-		GroupSequence: message.GroupSequence(g.GroupSequence()),
-		GroupPriority: message.GroupPriority(g.GroupPriority()),
+		GroupSequence: message.GroupSequence(seq),
 	}
 	err := gm.Encode(w)
 	if err != nil {

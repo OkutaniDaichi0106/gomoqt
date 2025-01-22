@@ -36,93 +36,77 @@ func (m *MockSession) EXPECT() *MockSessionMockRecorder {
 }
 
 // AcceptAnnounceStream mocks base method.
-func (m *MockSession) AcceptAnnounceStream(arg0 context.Context) (moqt.SendAnnounceStream, error) {
+func (m *MockSession) AcceptAnnounceStream(arg0 context.Context, arg1 func(moqt.AnnounceConfig) error) (moqt.SendAnnounceStream, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AcceptAnnounceStream", arg0)
+	ret := m.ctrl.Call(m, "AcceptAnnounceStream", arg0, arg1)
 	ret0, _ := ret[0].(moqt.SendAnnounceStream)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AcceptAnnounceStream indicates an expected call of AcceptAnnounceStream.
-func (mr *MockSessionMockRecorder) AcceptAnnounceStream(arg0 interface{}) *gomock.Call {
+func (mr *MockSessionMockRecorder) AcceptAnnounceStream(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AcceptAnnounceStream", reflect.TypeOf((*MockSession)(nil).AcceptAnnounceStream), arg0)
-}
-
-// AcceptDataStream mocks base method.
-func (m *MockSession) AcceptDataStream(arg0 moqt.SendSubscribeStream, arg1 context.Context) (moqt.ReceiveGroupStream, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AcceptDataStream", arg0, arg1)
-	ret0, _ := ret[0].(moqt.ReceiveGroupStream)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// AcceptDataStream indicates an expected call of AcceptDataStream.
-func (mr *MockSessionMockRecorder) AcceptDataStream(arg0, arg1 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AcceptDataStream", reflect.TypeOf((*MockSession)(nil).AcceptDataStream), arg0, arg1)
-}
-
-// AcceptDatagram mocks base method.
-func (m *MockSession) AcceptDatagram(arg0 moqt.SendSubscribeStream, arg1 context.Context) (moqt.ReceivedDatagram, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AcceptDatagram", arg0, arg1)
-	ret0, _ := ret[0].(moqt.ReceivedDatagram)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// AcceptDatagram indicates an expected call of AcceptDatagram.
-func (mr *MockSessionMockRecorder) AcceptDatagram(arg0, arg1 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AcceptDatagram", reflect.TypeOf((*MockSession)(nil).AcceptDatagram), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AcceptAnnounceStream", reflect.TypeOf((*MockSession)(nil).AcceptAnnounceStream), arg0, arg1)
 }
 
 // AcceptFetchStream mocks base method.
-func (m *MockSession) AcceptFetchStream(arg0 context.Context) (moqt.ReceiveFetchStream, error) {
+func (m *MockSession) AcceptFetchStream(arg0 context.Context, arg1 func(moqt.FetchRequest) error) (moqt.ReceiveFetchStream, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AcceptFetchStream", arg0)
+	ret := m.ctrl.Call(m, "AcceptFetchStream", arg0, arg1)
 	ret0, _ := ret[0].(moqt.ReceiveFetchStream)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AcceptFetchStream indicates an expected call of AcceptFetchStream.
-func (mr *MockSessionMockRecorder) AcceptFetchStream(arg0 interface{}) *gomock.Call {
+func (mr *MockSessionMockRecorder) AcceptFetchStream(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AcceptFetchStream", reflect.TypeOf((*MockSession)(nil).AcceptFetchStream), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AcceptFetchStream", reflect.TypeOf((*MockSession)(nil).AcceptFetchStream), arg0, arg1)
 }
 
-// AcceptInfoStream mocks base method.
-func (m *MockSession) AcceptInfoStream(arg0 context.Context) (moqt.SendInfoStream, error) {
+// AcceptGroupStream mocks base method.
+func (m *MockSession) AcceptGroupStream(arg0 context.Context, arg1 moqt.SendSubscribeStream) (moqt.ReceiveGroupStream, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AcceptInfoStream", arg0)
-	ret0, _ := ret[0].(moqt.SendInfoStream)
+	ret := m.ctrl.Call(m, "AcceptGroupStream", arg0, arg1)
+	ret0, _ := ret[0].(moqt.ReceiveGroupStream)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// AcceptInfoStream indicates an expected call of AcceptInfoStream.
-func (mr *MockSessionMockRecorder) AcceptInfoStream(arg0 interface{}) *gomock.Call {
+// AcceptGroupStream indicates an expected call of AcceptGroupStream.
+func (mr *MockSessionMockRecorder) AcceptGroupStream(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AcceptInfoStream", reflect.TypeOf((*MockSession)(nil).AcceptInfoStream), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AcceptGroupStream", reflect.TypeOf((*MockSession)(nil).AcceptGroupStream), arg0, arg1)
+}
+
+// AcceptInfoStream mocks base method.
+func (m *MockSession) AcceptInfoStream(arg0 context.Context, arg1 func(moqt.InfoRequest) (moqt.Info, error)) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AcceptInfoStream", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AcceptInfoStream indicates an expected call of AcceptInfoStream.
+func (mr *MockSessionMockRecorder) AcceptInfoStream(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AcceptInfoStream", reflect.TypeOf((*MockSession)(nil).AcceptInfoStream), arg0, arg1)
 }
 
 // AcceptSubscribeStream mocks base method.
-func (m *MockSession) AcceptSubscribeStream(arg0 context.Context) (moqt.ReceiveSubscribeStream, error) {
+func (m *MockSession) AcceptSubscribeStream(arg0 context.Context, arg1 func(moqt.SubscribeConfig) (moqt.Info, error)) (moqt.ReceiveSubscribeStream, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AcceptSubscribeStream", arg0)
+	ret := m.ctrl.Call(m, "AcceptSubscribeStream", arg0, arg1)
 	ret0, _ := ret[0].(moqt.ReceiveSubscribeStream)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AcceptSubscribeStream indicates an expected call of AcceptSubscribeStream.
-func (mr *MockSessionMockRecorder) AcceptSubscribeStream(arg0 interface{}) *gomock.Call {
+func (mr *MockSessionMockRecorder) AcceptSubscribeStream(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AcceptSubscribeStream", reflect.TypeOf((*MockSession)(nil).AcceptSubscribeStream), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AcceptSubscribeStream", reflect.TypeOf((*MockSession)(nil).AcceptSubscribeStream), arg0, arg1)
 }
 
 // OpenAnnounceStream mocks base method.
@@ -140,21 +124,6 @@ func (mr *MockSessionMockRecorder) OpenAnnounceStream(arg0 interface{}) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OpenAnnounceStream", reflect.TypeOf((*MockSession)(nil).OpenAnnounceStream), arg0)
 }
 
-// OpenDataStream mocks base method.
-func (m *MockSession) OpenDataStream(arg0 moqt.ReceiveSubscribeStream, arg1 moqt.GroupSequence, arg2 moqt.GroupPriority) (moqt.SendGroupStream, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "OpenDataStream", arg0, arg1, arg2)
-	ret0, _ := ret[0].(moqt.SendGroupStream)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// OpenDataStream indicates an expected call of OpenDataStream.
-func (mr *MockSessionMockRecorder) OpenDataStream(arg0, arg1, arg2 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OpenDataStream", reflect.TypeOf((*MockSession)(nil).OpenDataStream), arg0, arg1, arg2)
-}
-
 // OpenFetchStream mocks base method.
 func (m *MockSession) OpenFetchStream(arg0 moqt.FetchRequest) (moqt.SendFetchStream, error) {
 	m.ctrl.T.Helper()
@@ -168,6 +137,21 @@ func (m *MockSession) OpenFetchStream(arg0 moqt.FetchRequest) (moqt.SendFetchStr
 func (mr *MockSessionMockRecorder) OpenFetchStream(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OpenFetchStream", reflect.TypeOf((*MockSession)(nil).OpenFetchStream), arg0)
+}
+
+// OpenGroupStream mocks base method.
+func (m *MockSession) OpenGroupStream(arg0 moqt.ReceiveSubscribeStream, arg1 moqt.GroupSequence) (moqt.SendGroupStream, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "OpenGroupStream", arg0, arg1)
+	ret0, _ := ret[0].(moqt.SendGroupStream)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// OpenGroupStream indicates an expected call of OpenGroupStream.
+func (mr *MockSessionMockRecorder) OpenGroupStream(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OpenGroupStream", reflect.TypeOf((*MockSession)(nil).OpenGroupStream), arg0, arg1)
 }
 
 // OpenInfoStream mocks base method.
@@ -186,32 +170,19 @@ func (mr *MockSessionMockRecorder) OpenInfoStream(arg0 interface{}) *gomock.Call
 }
 
 // OpenSubscribeStream mocks base method.
-func (m *MockSession) OpenSubscribeStream(arg0 moqt.SubscribeConfig) (moqt.SendSubscribeStream, error) {
+func (m *MockSession) OpenSubscribeStream(arg0 moqt.SubscribeConfig) (moqt.SendSubscribeStream, moqt.Info, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "OpenSubscribeStream", arg0)
 	ret0, _ := ret[0].(moqt.SendSubscribeStream)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].(moqt.Info)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // OpenSubscribeStream indicates an expected call of OpenSubscribeStream.
 func (mr *MockSessionMockRecorder) OpenSubscribeStream(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OpenSubscribeStream", reflect.TypeOf((*MockSession)(nil).OpenSubscribeStream), arg0)
-}
-
-// SendDatagram mocks base method.
-func (m *MockSession) SendDatagram(arg0 moqt.ReceiveSubscribeStream, arg1 moqt.GroupSequence, arg2 moqt.GroupPriority, arg3 []byte) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SendDatagram", arg0, arg1, arg2, arg3)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SendDatagram indicates an expected call of SendDatagram.
-func (mr *MockSessionMockRecorder) SendDatagram(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendDatagram", reflect.TypeOf((*MockSession)(nil).SendDatagram), arg0, arg1, arg2, arg3)
 }
 
 // Terminate mocks base method.
@@ -224,4 +195,18 @@ func (m *MockSession) Terminate(arg0 error) {
 func (mr *MockSessionMockRecorder) Terminate(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Terminate", reflect.TypeOf((*MockSession)(nil).Terminate), arg0)
+}
+
+// UpdateSession mocks base method.
+func (m *MockSession) UpdateSession(bitrate uint64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateSession", bitrate)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateSession indicates an expected call of UpdateSession.
+func (mr *MockSessionMockRecorder) UpdateSession(bitrate interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateSession", reflect.TypeOf((*MockSession)(nil).UpdateSession), bitrate)
 }

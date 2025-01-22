@@ -20,26 +20,73 @@ type receiveAnnounceStream struct {
 	stream   transport.Stream
 	mu       sync.RWMutex
 
-	annMap map[string]Announcement
-	ch     chan struct{}
-	// activeCh chan []Announcement
+	annMap    map[string]Announcement
+	liveAnnCh chan Announcement
+	liveAnn   Announcement
+	closed    bool
+	closeErr  error
+}
 
-	// endedCh chan []Announcement
+func (ras *receiveAnnounceStream) LiveAnnouncement() Announcement {
+	return ras.liveAnn
 }
 
 func (ras *receiveAnnounceStream) ReceiveAnnouncements() ([]Announcement, error) {
-	ras.ch <- struct{}{}
+	ras.mu.RLock()
+	if ras.closed {
+		ras.mu.RUnlock()
+		return nil, ras.closeErr
+	}
+	ras.mu.RUnlock()
 
+	// チャネルからアナウンスを受信
+	select {
+	case ann := <-ras.liveAnnCh:
+		ras.mu.Lock()
+		defer ras.mu.Unlock()
+
+		ras.liveAnn = ann
+
+		// Verify if the Announce Status is LIVE
+		if ann.AnnounceStatus == LIVE {
+			//
+			announcements := make([]Announcement, 0, len(ras.annMap))
+			for _, a := range ras.annMap {
+				announcements = append(announcements, a)
+			}
+			return announcements, nil
+		}
+
+		announcements := make([]Announcement, 0, len(ras.annMap))
+		for _, a := range ras.annMap {
+			announcements = append(announcements, a)
+		}
+		return announcements, nil
+
+	default:
+		//
+		ras.mu.RLock()
+		defer ras.mu.RUnlock()
+
+		announcements := make([]Announcement, 0, len(ras.annMap))
+		for _, ann := range ras.annMap {
+			announcements = append(announcements, ann)
+		}
+		return announcements, nil
+	}
+}
+
+func (ras *receiveAnnounceStream) Close() error {
 	ras.mu.Lock()
 	defer ras.mu.Unlock()
 
-	announcements := make([]Announcement, 0, len(ras.annMap))
-
-	for _, ann := range ras.annMap {
-		announcements = append(announcements, ann)
+	if ras.closed {
+		return nil
 	}
 
-	return announcements, nil
+	ras.closed = true
+	close(ras.liveAnnCh)
+	return ras.stream.Close()
 }
 
 type SendAnnounceStream interface {
@@ -70,40 +117,58 @@ func (sas *sendAnnounceStream) SendAnnouncement(announcements []Announcement) er
 	sas.mu.Lock()
 	defer sas.mu.Unlock()
 
-	// Announce active tracks
+	if len(announcements) == 0 {
+		return errors.New("empty announcements")
+	}
+
 	for _, ann := range announcements {
-		oldAnn, ok := sas.annMap[strings.Join(ann.TrackPath, "")]
-		if ok && oldAnn.AnnounceStatus == ann.AnnounceStatus {
-			slog.Debug("duplicate announcement status")
+		if !sas.isValidateAnnouncement(ann) {
 			return ErrProtocolViolation
 		}
 
-		if !ok && ann.AnnounceStatus == ENDED {
-			slog.Debug("ended track is not announced")
-			return ErrProtocolViolation
-		}
-
-		err := writeAnnouncement(sas.stream, sas.annConfig.TrackPrefix, ann)
-		if err != nil {
-			slog.Error("failed to announce",
-				slog.Any("path", ann.TrackPath),
-				slog.String("error", err.Error()))
+		if err := sas.writeAndStoreAnnouncement(ann); err != nil {
 			return err
 		}
-
-		sas.annMap[strings.Join(ann.TrackPath, "")] = ann
 	}
 
-	// Announce live
-	liveAnn := Announcement{
-		AnnounceStatus: LIVE,
+	return sas.announceLive()
+}
+
+func (sas *sendAnnounceStream) isValidateAnnouncement(ann Announcement) bool {
+	oldAnn, exists := sas.annMap[strings.Join(ann.TrackPath, "")]
+	if exists && oldAnn.AnnounceStatus == ann.AnnounceStatus {
+		slog.Debug("duplicate announcement status")
+		return false
 	}
+
+	if !exists && ann.AnnounceStatus == ENDED {
+		slog.Debug("ended track is not announced")
+		return false
+	}
+
+	return true
+}
+
+func (sas *sendAnnounceStream) writeAndStoreAnnouncement(ann Announcement) error {
+	err := writeAnnouncement(sas.stream, sas.annConfig.TrackPrefix, ann)
+	if err != nil {
+		slog.Error("failed to announce",
+			slog.Any("path", ann.TrackPath),
+			slog.String("error", err.Error()))
+		return err
+	}
+
+	sas.annMap[strings.Join(ann.TrackPath, "")] = ann
+	return nil
+}
+
+func (sas *sendAnnounceStream) announceLive() error {
+	liveAnn := Announcement{AnnounceStatus: LIVE}
 	err := writeAnnouncement(sas.stream, sas.annConfig.TrackPrefix, liveAnn)
 	if err != nil {
 		slog.Error("failed to announce live")
 		return err
 	}
-
 	return nil
 }
 

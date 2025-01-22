@@ -140,9 +140,9 @@ func (s *session) OpenAnnounceStream(config AnnounceConfig) (ReceiveAnnounceStre
 	slog.Info("Opened an announce stream", slog.Any("config", config))
 
 	ras := &receiveAnnounceStream{
-		interest: config,
-		stream:   stream,
-		ch:       make(chan struct{}, 1),
+		interest:  config,
+		stream:    stream,
+		liveAnnCh: make(chan Announcement),
 	}
 
 	// Receive Announcements
@@ -177,7 +177,7 @@ func (s *session) OpenAnnounceStream(config AnnounceConfig) (ReceiveAnnounceStre
 			case ACTIVE, ENDED:
 				ras.annMap[strings.Join(ann.TrackPath, "")] = ann
 			case LIVE:
-				ras.ch <- struct{}{}
+				ras.liveAnnCh <- ann
 			}
 		}
 

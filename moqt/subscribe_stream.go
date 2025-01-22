@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/OkutaniDaichi0106/gomoqt/internal/transport"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
 )
 
 type SendSubscribeStream interface {
@@ -217,13 +217,13 @@ func (srs *receiveSubscribeStream) Close() error {
 
 func newReceiveSubscribeStreamQueue() *receiveSubscribeStreamQueue {
 	return &receiveSubscribeStreamQueue{
-		queue: make([]ReceiveSubscribeStream, 0),
+		queue: make([]*receiveSubscribeStream, 0),
 		ch:    make(chan struct{}, 1),
 	}
 }
 
 type receiveSubscribeStreamQueue struct {
-	queue []ReceiveSubscribeStream
+	queue []*receiveSubscribeStream
 	mu    sync.Mutex
 	ch    chan struct{}
 }
@@ -239,7 +239,7 @@ func (q *receiveSubscribeStreamQueue) Chan() <-chan struct{} {
 	return q.ch
 }
 
-func (q *receiveSubscribeStreamQueue) Enqueue(rss ReceiveSubscribeStream) {
+func (q *receiveSubscribeStreamQueue) Enqueue(rss *receiveSubscribeStream) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -251,7 +251,7 @@ func (q *receiveSubscribeStreamQueue) Enqueue(rss ReceiveSubscribeStream) {
 	}
 }
 
-func (q *receiveSubscribeStreamQueue) Dequeue() ReceiveSubscribeStream {
+func (q *receiveSubscribeStreamQueue) Dequeue() *receiveSubscribeStream {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 

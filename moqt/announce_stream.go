@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/OkutaniDaichi0106/gomoqt/internal/transport"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
 )
 
 type ReceiveAnnounceStream interface {

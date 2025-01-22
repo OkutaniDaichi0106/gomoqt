@@ -4,7 +4,7 @@ import (
 	"io"
 	"log/slog"
 
-	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 )
 
 type Info struct {
@@ -33,4 +33,24 @@ func readInfo(r io.Reader) (Info, error) {
 	slog.Debug("read an info")
 
 	return info, nil
+}
+
+func writeInfo(w io.Writer, info Info) error {
+	slog.Debug("writing an info")
+
+	im := message.InfoMessage{
+		TrackPriority:       message.TrackPriority(info.TrackPriority),
+		LatestGroupSequence: message.GroupSequence(info.LatestGroupSequence),
+		GroupOrder:          message.GroupOrder(info.GroupOrder),
+	}
+
+	err := im.Encode(w)
+	if err != nil {
+		slog.Error("failed to send a INFO message", slog.String("error", err.Error()))
+		return err
+	}
+
+	slog.Debug("wrote an info")
+
+	return nil
 }

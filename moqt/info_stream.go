@@ -5,33 +5,21 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/internal/transport"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
 )
-
-type SendInfoStream interface {
-	InfoRequest() InfoRequest
-	SendInfo(Info) error
-	CloseWithError(error) error
-	Close() error
-}
-
-var _ SendInfoStream = (*sendInfoStream)(nil)
 
 type sendInfoStream struct {
 	req    InfoRequest
 	stream transport.Stream
 	mu     sync.Mutex
-
-	// Used to signal that a subscribe stream is
-	ch chan struct{}
 }
 
 func (req *sendInfoStream) InfoRequest() InfoRequest {
 	return req.req
 }
 
-func (req *sendInfoStream) SendInfo(i Info) error {
+func (req *sendInfoStream) SendInfoAndClose(i Info) error {
 	req.mu.Lock()
 	defer req.mu.Unlock()
 
@@ -47,12 +35,9 @@ func (req *sendInfoStream) SendInfo(i Info) error {
 		return err
 	}
 
-	slog.Info("answered an info")
+	slog.Info("sended an info")
 
-	if req.ch != nil {
-		close(req.ch)
-		req.ch = nil
-	}
+	req.Close()
 
 	return nil
 }

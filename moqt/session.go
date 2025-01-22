@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/internal/transport"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
 )
 
 type Session interface {
@@ -37,22 +37,22 @@ type Session interface {
 	OpenFetchStream(FetchRequest) (SendFetchStream, error)
 
 	// Accept a Group Stream
-	AcceptGroupStream(SendSubscribeStream, context.Context) (ReceiveGroupStream, error)
+	AcceptGroupStream(context.Context, SendSubscribeStream) (ReceiveGroupStream, error)
 
 	/*
 	 * Methods for the Publisher
 	 */
 	// Accept an Announce Stream
-	AcceptAnnounceStream(context.Context) (SendAnnounceStream, error)
+	AcceptAnnounceStream(context.Context, func(AnnounceConfig) error) (SendAnnounceStream, error)
 
 	// Accept a Subscribe Stream
-	AcceptSubscribeStream(context.Context) (ReceiveSubscribeStream, error)
+	AcceptSubscribeStream(context.Context, func(SubscribeConfig) (Info, error)) (ReceiveSubscribeStream, error)
 
 	// Accept a Fetch Stream
-	AcceptFetchStream(context.Context) (ReceiveFetchStream, error)
+	AcceptFetchStream(context.Context, func(FetchRequest) error) (ReceiveFetchStream, error)
 
 	// Accept an Info Stream
-	AcceptInfoStream(context.Context) (SendInfoStream, error)
+	AcceptInfoStream(context.Context, func(InfoRequest) (Info, error)) error
 
 	// Open a Group Stream
 	OpenGroupStream(ReceiveSubscribeStream, Group) (SendGroupStream, error)
@@ -293,7 +293,7 @@ func (sess *session) OpenInfoStream(req InfoRequest) (Info, error) {
 	return info, nil
 }
 
-func (sess *session) AcceptGroupStream(substr SendSubscribeStream, ctx context.Context) (ReceiveGroupStream, error) {
+func (sess *session) AcceptGroupStream(ctx context.Context, substr SendSubscribeStream) (ReceiveGroupStream, error) {
 	for {
 		if sess.dataReceiveStreamQueues[substr.SubscribeID()].Len() != 0 {
 			return sess.dataReceiveStreamQueues[substr.SubscribeID()].Dequeue(), nil
@@ -306,10 +306,18 @@ func (sess *session) AcceptGroupStream(substr SendSubscribeStream, ctx context.C
 	}
 }
 
-func (p *session) AcceptAnnounceStream(ctx context.Context) (SendAnnounceStream, error) {
+func (p *session) AcceptAnnounceStream(ctx context.Context, handler func(AnnounceConfig) error) (SendAnnounceStream, error) {
 	for {
 		if p.receiveSubscribeStreamQueue.Len() != 0 {
-			return p.sendAnnounceStreamQueue.Dequeue(), nil
+			annstr := p.sendAnnounceStreamQueue.Dequeue()
+			err := handler(annstr.AnnounceConfig())
+			if err != nil {
+				slog.Error("failed to get an Interest", slog.String("error", err.Error()))
+				annstr.CloseWithError(err)
+				return nil, err
+			}
+
+			return annstr, nil
 		}
 		select {
 		case <-ctx.Done():
@@ -319,10 +327,25 @@ func (p *session) AcceptAnnounceStream(ctx context.Context) (SendAnnounceStream,
 	}
 }
 
-func (sess *session) AcceptSubscribeStream(ctx context.Context) (ReceiveSubscribeStream, error) {
+func (sess *session) AcceptSubscribeStream(ctx context.Context, op func(SubscribeConfig) (Info, error)) (ReceiveSubscribeStream, error) {
 	for {
 		if sess.receiveSubscribeStreamQueue.Len() != 0 {
-			return sess.receiveSubscribeStreamQueue.Dequeue(), nil
+			substr := sess.receiveSubscribeStreamQueue.Dequeue()
+			info, err := op(substr.SubscribeConfig())
+			if err != nil {
+				slog.Error("failed to get an Info", slog.String("error", err.Error()))
+				substr.CloseWithError(err)
+				return nil, err
+			}
+
+			err = writeInfo(substr.stream, info)
+			if err != nil {
+				slog.Error("failed to write an INFO message", slog.String("error", err.Error()))
+				substr.CloseWithError(err)
+				return nil, err
+			}
+
+			return substr, nil
 		}
 		select {
 		case <-ctx.Done():
@@ -332,10 +355,30 @@ func (sess *session) AcceptSubscribeStream(ctx context.Context) (ReceiveSubscrib
 	}
 }
 
-func (sess *session) AcceptFetchStream(ctx context.Context) (ReceiveFetchStream, error) {
+func (sess *session) AcceptFetchStream(ctx context.Context, handler func(FetchRequest) error) (ReceiveFetchStream, error) {
 	for {
 		if sess.receiveFetchStreamQueue.Len() != 0 {
-			return sess.receiveFetchStreamQueue.Dequeue(), nil
+			fetstr := sess.receiveFetchStreamQueue.Dequeue()
+			err := handler(fetstr.FetchRequest())
+			if err != nil {
+				slog.Error("failed to get a Fetch", slog.String("error", err.Error()))
+				fetstr.CloseWithError(err)
+				return nil, err
+			}
+
+			// Send a GROUP message
+			group := group{
+				groupSequence: fetstr.FetchRequest().GroupSequence,
+				groupPriority: fetstr.FetchRequest().GroupPriority,
+			}
+			err = writeGroup(fetstr.stream, fetstr.FetchRequest().SubscribeID, group)
+			if err != nil {
+				slog.Error("failed to write a Group message", slog.String("error", err.Error()))
+				fetstr.CloseWithError(err)
+				return nil, err
+			}
+
+			return fetstr, nil
 		}
 		select {
 		case <-ctx.Done():
@@ -345,14 +388,29 @@ func (sess *session) AcceptFetchStream(ctx context.Context) (ReceiveFetchStream,
 	}
 }
 
-func (sess *session) AcceptInfoStream(ctx context.Context) (SendInfoStream, error) {
+func (sess *session) AcceptInfoStream(ctx context.Context, op func(InfoRequest) (Info, error)) error {
 	for {
 		if sess.sendInfoStreamQueue.Len() != 0 {
-			return sess.sendInfoStreamQueue.Dequeue(), nil
+			infostr := sess.sendInfoStreamQueue.Dequeue()
+			info, err := op(infostr.InfoRequest())
+			if err != nil {
+				slog.Error("failed to get an Info", slog.String("error", err.Error()))
+				infostr.CloseWithError(err)
+				return err
+			}
+
+			err = infostr.SendInfoAndClose(info)
+			if err != nil {
+				slog.Error("failed to write an INFO message", slog.String("error", err.Error()))
+				infostr.CloseWithError(err)
+				return err
+			}
+
+			return nil
 		}
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return ctx.Err()
 		case <-sess.sendInfoStreamQueue.Chan():
 		}
 	}
@@ -470,22 +528,7 @@ func listenBiStreams(sess *session, ctx context.Context) {
 					return
 				}
 
-				// Create a send info stream
-				sis := &sendInfoStream{
-					req: InfoRequest{
-						TrackPath: subscription.TrackPath,
-					},
-					stream: stream,
-
-					ch: make(chan struct{}, 1),
-				}
-
-				// Enqueue the info-request
-				sess.sendInfoStreamQueue.Enqueue(sis)
-
-				<-sis.ch
-
-				//
+				// Create a receiveSubscribeStream
 				rss := &receiveSubscribeStream{
 					subscribeID:  id,
 					subscription: subscription,

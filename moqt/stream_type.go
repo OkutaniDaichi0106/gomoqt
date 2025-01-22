@@ -1,6 +1,6 @@
 package moqt
 
-import "github.com/OkutaniDaichi0106/gomoqt/internal/message"
+import "github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 
 const (
 	/*

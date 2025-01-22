@@ -6,7 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/internal/transport"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
 )
 
 type SendFetchStream interface {
@@ -91,7 +92,7 @@ func (sfs *sendFetchStream) Close() error {
 
 type ReceiveFetchStream interface {
 	// Get a SendDataStream
-	SendDataStream() SendGroupStream
+	SendGroupStream
 
 	// Get a fetch request
 	FetchRequest() FetchRequest
@@ -109,6 +110,38 @@ type receiveFetchStream struct {
 	fetch  FetchRequest
 	stream transport.Stream
 	mu     sync.Mutex
+}
+
+func (rfs *receiveFetchStream) SubscribeID() SubscribeID {
+	return rfs.fetch.SubscribeID
+}
+
+func (rfs *receiveFetchStream) GroupSequence() GroupSequence {
+	return rfs.fetch.GroupSequence
+}
+
+func (rfs *receiveFetchStream) GroupPriority() GroupPriority {
+	return rfs.fetch.GroupPriority
+}
+
+func (rfs *receiveFetchStream) CancelWrite(code GroupErrorCode) {
+	rfs.stream.CancelWrite(transport.StreamErrorCode(code))
+}
+
+func (rfs *receiveFetchStream) SetWriteDeadline(t time.Time) error {
+	return rfs.stream.SetWriteDeadline(t)
+}
+
+func (rfs *receiveFetchStream) WriteFrame(buf []byte) error {
+	fm := message.FrameMessage{
+		Payload: buf,
+	}
+	err := fm.Encode(rfs.stream)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (rfs *receiveFetchStream) SendDataStream() SendGroupStream {

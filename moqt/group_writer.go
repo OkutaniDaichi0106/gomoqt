@@ -1,10 +1,11 @@
 package moqt
 
 import (
+	"errors"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/internal/transport"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
 )
 
 /*
@@ -48,7 +49,19 @@ func (stream sendGroupStream) WriteFrame(buf []byte) error {
 		Payload: buf,
 	}
 	err := fm.Encode(stream.stream)
+
 	if err != nil {
+		// Signal the group error code
+		var strerr transport.StreamError
+		var code GroupErrorCode
+		if errors.As(err, &strerr) {
+			code = GroupErrorCode(strerr.StreamErrorCode())
+		} else {
+			code = ErrInternalError.GroupErrorCode()
+		}
+
+		stream.CancelWrite(code)
+
 		return err
 	}
 
@@ -77,5 +90,23 @@ func (stream sendGroupStream) CancelWrite(code GroupErrorCode) {
 }
 
 func (stream sendGroupStream) SetWriteDeadline(t time.Time) error {
-	return stream.stream.SetWriteDeadline(t)
+	err := stream.stream.SetWriteDeadline(t)
+
+	// Signal the group error code
+	if err != nil {
+		// Signal the group error code
+		var strerr transport.StreamError
+		var code GroupErrorCode
+		if errors.As(err, &strerr) {
+			code = GroupErrorCode(strerr.StreamErrorCode())
+		} else {
+			code = ErrInternalError.GroupErrorCode()
+		}
+
+		stream.CancelWrite(code)
+
+		return err
+	}
+
+	return nil
 }

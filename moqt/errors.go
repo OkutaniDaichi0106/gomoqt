@@ -1,8 +1,8 @@
 package moqt
 
 import (
-	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/internal/transport"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
 )
 
 var (

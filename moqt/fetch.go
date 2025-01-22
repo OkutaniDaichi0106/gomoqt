@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 )
 
 /*
@@ -63,13 +63,13 @@ func writeFetch(w io.Writer, fetch FetchRequest) error {
 
 func newReceivedFetchQueue() *receiveFetchStreamQueue {
 	return &receiveFetchStreamQueue{
-		queue: make([]ReceiveFetchStream, 0),
+		queue: make([]*receiveFetchStream, 0),
 		ch:    make(chan struct{}, 1),
 	}
 }
 
 type receiveFetchStreamQueue struct {
-	queue []ReceiveFetchStream
+	queue []*receiveFetchStream
 	mu    sync.Mutex
 	ch    chan struct{}
 }
@@ -85,7 +85,7 @@ func (q *receiveFetchStreamQueue) Chan() <-chan struct{} {
 	return q.ch
 }
 
-func (q *receiveFetchStreamQueue) Enqueue(fetch ReceiveFetchStream) {
+func (q *receiveFetchStreamQueue) Enqueue(fetch *receiveFetchStream) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -97,7 +97,7 @@ func (q *receiveFetchStreamQueue) Enqueue(fetch ReceiveFetchStream) {
 	}
 }
 
-func (q *receiveFetchStreamQueue) Dequeue() ReceiveFetchStream {
+func (q *receiveFetchStreamQueue) Dequeue() *receiveFetchStream {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 

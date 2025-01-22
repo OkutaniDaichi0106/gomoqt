@@ -93,7 +93,7 @@ func (aim *AnnounceInterestMessage) Decode(r io.Reader) error {
 		if err != nil {
 			return err
 		}
-		aim.TrackPathPrefix = append(aim.TrackPathPrefix, string(buf))
+		aim.TrackPathPrefix[i] = string(buf)
 	}
 
 	// Get Parameters

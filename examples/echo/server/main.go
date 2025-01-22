@@ -47,8 +47,8 @@ func main() {
 	 */
 	slog.Info("Server runs on path: \"/path\"")
 	moqt.HandleFunc("/path", func(sess moqt.Session) {
-		echoTrackPrefix := "japan/kyoto"
-		echoTrackPath := "japan/kyoto/kiu/text"
+		echoTrackPrefix := []string{"japan", "kyoto"}
+		echoTrackPath := []string{"japan", "kyoto", "kiu", "text"}
 
 		dataCh := make(chan []byte, 1<<3)
 

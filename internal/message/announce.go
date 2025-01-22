@@ -104,7 +104,7 @@ func (am *AnnounceMessage) Decode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	am.TrackPathSuffix = make([]string, 0, num)
+	am.TrackPathSuffix = make([]string, num)
 
 	// Get a Track Path Suffix Parts
 	for i := 0; i < int(num); i++ {
@@ -119,7 +119,7 @@ func (am *AnnounceMessage) Decode(r io.Reader) error {
 		if err != nil {
 			return err
 		}
-		am.TrackPathSuffix = append(am.TrackPathSuffix, string(buf))
+		am.TrackPathSuffix[i] = string(buf)
 	}
 
 	// Get Parameters

@@ -8,7 +8,7 @@ import (
 )
 
 type InfoRequest struct {
-	TrackPath string
+	TrackPath []string
 }
 
 func readInfoRequest(r io.Reader) (InfoRequest, error) {

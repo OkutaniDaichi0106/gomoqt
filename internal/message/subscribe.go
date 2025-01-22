@@ -18,7 +18,7 @@ type GroupOrder byte
 type SubscribeMessage struct {
 	SubscribeID SubscribeID
 
-	TrackPath string
+	TrackPath []string
 
 	TrackPriority TrackPriority
 
@@ -51,7 +51,6 @@ func (s SubscribeMessage) Encode(w io.Writer) error {
 	 *   Track Path (string),
 	 *   Subscriber Priority (8),
 	 *   Group Order (8),
-	 *   Group Expires (varint),
 	 *   Min Group Sequence (varint),
 	 *   Max Group Sequence (varint),
 	 *   Subscribe Parameters (Parameters),
@@ -66,9 +65,15 @@ func (s SubscribeMessage) Encode(w io.Writer) error {
 	// Append the Subscriber ID
 	p = quicvarint.Append(p, uint64(s.SubscribeID))
 
-	// Append the Track Name
+	// Append the Track Path's length
 	p = quicvarint.Append(p, uint64(len(s.TrackPath)))
-	p = append(p, []byte(s.TrackPath)...)
+
+	// Append the Track Path
+	for _, part := range s.TrackPath {
+		// Append the Track Namespace Prefix Part
+		p = quicvarint.Append(p, uint64(len(part)))
+		p = append(p, []byte(part)...)
+	}
 
 	// Append the Subscriber Priority
 	p = append(p, []byte{byte(s.TrackPriority)}...)
@@ -125,17 +130,27 @@ func (s *SubscribeMessage) Decode(r io.Reader) error {
 	}
 	s.SubscribeID = SubscribeID(num)
 
-	// Get Track Name
+	// Get Track Path
 	num, err = quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
-	buf := make([]byte, num)
-	_, err = r.Read(buf)
-	if err != nil {
-		return err
+
+	s.TrackPath = make([]string, num)
+
+	// Get Track Path Parts
+	for i := 0; i < int(num); i++ {
+		num, err = quicvarint.Read(mr)
+		if err != nil {
+			return err
+		}
+		buf := make([]byte, num)
+		_, err = r.Read(buf)
+		if err != nil {
+			return err
+		}
+		s.TrackPath[i] = string(buf)
 	}
-	s.TrackPath = string(buf)
 
 	// Get Subscriber Priority
 	bnum, err := mr.ReadByte()

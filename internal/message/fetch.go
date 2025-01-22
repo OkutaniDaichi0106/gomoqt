@@ -9,7 +9,7 @@ import (
 
 type FetchMessage struct {
 	SubscribeID   SubscribeID
-	TrackPath     string
+	TrackPath     []string
 	GroupPriority GroupPriority
 	GroupSequence GroupSequence
 	FrameSequence FrameSequence // TODO: consider the necessity type FrameSequence
@@ -33,9 +33,14 @@ func (fm FetchMessage) Encode(w io.Writer) error {
 	// Append the Subscribe ID
 	p = quicvarint.Append(p, uint64(fm.SubscribeID))
 
-	// Append the Track Path
+	// Append the Track Path Length
 	p = quicvarint.Append(p, uint64(len(fm.TrackPath)))
-	p = append(p, []byte(fm.TrackPath)...)
+
+	for _, part := range fm.TrackPath {
+		// Append the Track Namespace Prefix Part
+		p = quicvarint.Append(p, uint64(len(part)))
+		p = append(p, []byte(part)...)
+	}
 
 	// Append the Group Priority
 	p = quicvarint.Append(p, uint64(fm.GroupPriority))
@@ -82,17 +87,30 @@ func (fm *FetchMessage) Decode(r io.Reader) error {
 	}
 	fm.SubscribeID = SubscribeID(num)
 
-	// Get a Track Name
+	// Get a Track Path Length
 	num, err = quicvarint.Read(mr)
 	if err != nil {
 		return err
 	}
-	buf := make([]byte, num)
-	_, err = r.Read(buf)
-	if err != nil {
-		return err
+
+	// Get a Track Path
+	fm.TrackPath = make([]string, num)
+
+	for i := 0; i < int(num); i++ {
+		// Get a Track Path Part
+		num, err = quicvarint.Read(mr)
+		if err != nil {
+			return err
+		}
+
+		buf := make([]byte, num)
+		_, err = r.Read(buf)
+		if err != nil {
+			return err
+		}
+
+		fm.TrackPath[i] = string(buf)
 	}
-	fm.TrackPath = string(buf)
 
 	// Get a Subscriber Priority
 	num, err = quicvarint.Read(mr)

@@ -22,7 +22,7 @@ type SubscribeConfig struct {
 	/*
 	 * Required
 	 */
-	TrackPath string
+	TrackPath []string
 
 	/*
 	 * Optional

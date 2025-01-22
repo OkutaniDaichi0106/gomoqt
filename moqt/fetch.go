@@ -19,7 +19,7 @@ type GroupSequence message.GroupSequence
 /***/
 type FetchRequest struct {
 	SubscribeID   SubscribeID
-	TrackPath     string
+	TrackPath     []string
 	GroupPriority GroupPriority
 	GroupSequence GroupSequence
 	FrameSequence FrameSequence

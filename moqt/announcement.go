@@ -7,10 +7,6 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/internal/message"
 )
 
-// type InterestHandler interface {
-// 	HandleInterest(Interest, AnnounceSender)
-// }
-
 const (
 	ENDED  AnnounceStatus = AnnounceStatus(message.ENDED)
 	ACTIVE AnnounceStatus = AnnounceStatus(message.ACTIVE)

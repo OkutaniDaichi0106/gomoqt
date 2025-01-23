@@ -1,6 +1,7 @@
 package moqt
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
@@ -8,6 +9,10 @@ import (
 
 type FetchUpdate struct {
 	TrackPriority TrackPriority
+}
+
+func (fu FetchUpdate) String() string {
+	return fmt.Sprintf("FetchUpdate: { TrackPriority: %d }", fu.TrackPriority)
 }
 
 func readFetchUpdate(r io.Reader) (FetchUpdate, error) {

@@ -38,10 +38,19 @@ func (h *colorTextHandler) Handle(ctx context.Context, r slog.Record) error {
 	level := r.Level.String()
 	timeStr := r.Time.Format(time.RFC3339)
 
-	// Color the entire line
-	fmt.Fprintf(h.out, "%s time=%s level=%s  msg=%q %s\n", h.color, timeStr, level, r.Message, reset)
+	// Format attributes
+	attrs := ""
+	r.Attrs(func(a slog.Attr) bool {
+		if stringer, ok := a.Value.Any().(fmt.Stringer); ok {
+			attrs += fmt.Sprintf("%s=%s ", a.Key, stringer.String())
+		} else {
+			attrs += fmt.Sprintf("%s=%v ", a.Key, a.Value)
+		}
+		return true
+	})
 
-	// Reset color at the end of the line
+	// Color the entire line
+	fmt.Fprintf(h.out, "%stime=%s level=%s\n    msg=%q\n    %s %s\n", h.color, timeStr, level, r.Message, attrs, reset)
 
 	return nil
 }
@@ -98,17 +107,20 @@ func main() {
 			&slog.HandlerOptions{Level: slog.LevelDebug},
 			lightPink))
 
-		pubLogger.Info("Runing a publisher")
+		pubLogger.Info("Running a publisher")
 
 		pubLogger.Info("Waiting an Announce Stream")
 		// Accept an Announce Stream
 		annstr, err := sess.AcceptAnnounceStream(context.Background(), func(ac moqt.AnnounceConfig) error {
+
+			pubLogger.Info("Received an announce request", slog.Any("config", ac))
+
 			if !moqt.HasPrefix(echoTrackPath, ac.TrackPrefix) {
 				return moqt.ErrTrackDoesNotExist
 			}
+
 			return nil
 		})
-
 		if err != nil {
 			pubLogger.Error("failed to accept an interest", slog.String("error", err.Error()))
 			return
@@ -117,16 +129,15 @@ func main() {
 		pubLogger.Info("Accepted an Announce Stream")
 
 		// Send Announcements
-		announcements := []moqt.Announcement{
-			{
-				TrackPath: echoTrackPath,
-			},
-		}
 
 		pubLogger.Info("Send Announcements")
 
 		// Send Announcements
-		err = annstr.SendAnnouncement(announcements)
+		err = annstr.SendAnnouncement([]moqt.Announcement{
+			{
+				TrackPath: echoTrackPath,
+			},
+		})
 		if err != nil {
 			pubLogger.Error("failed to announce", slog.String("error", err.Error()))
 			return
@@ -188,32 +199,35 @@ func main() {
 			&slog.HandlerOptions{Level: slog.LevelDebug},
 			lightOrange))
 
-		subLogger.Info("Run a subscriber")
+		subLogger.Info("Running a subscriber")
 
 		subLogger.Info("Opening an Announce Stream")
+
 		annstr, err := sess.OpenAnnounceStream(moqt.AnnounceConfig{TrackPrefix: echoTrackPrefix})
 		if err != nil {
-			subLogger.Error("failed to get an interest", slog.String("error", err.Error()))
+			subLogger.Error("failed to open an announce stream", slog.String("error", err.Error()))
 			return
 		}
+
+		subLogger.Info("Opened an Announce Stream")
+
+		subLogger.Info("Receiving announcements")
 
 		announcements, err := annstr.ReceiveAnnouncements()
 		if err != nil {
-			subLogger.Error("failed to get active tracks", slog.String("error", err.Error()))
+			subLogger.Error("failed to get announcements", slog.String("error", err.Error()))
 			return
 		}
 
-		subLogger.Info("Announced", slog.Any("announcements", announcements))
+		subLogger.Info("Received announcements", slog.Any("announcements", announcements))
 
-		config := moqt.SubscribeConfig{
+		subLogger.Info("Subscribing")
+
+		substr, info, err := sess.OpenSubscribeStream(moqt.SubscribeConfig{
 			TrackPath:     echoTrackPath,
 			TrackPriority: 0,
 			GroupOrder:    0,
-		}
-
-		subLogger.Info("Subscribing", slog.Any("config", config))
-
-		substr, info, err := sess.OpenSubscribeStream(config)
+		})
 		if err != nil {
 			subLogger.Error("failed to subscribe", slog.String("error", err.Error()))
 			return

@@ -12,7 +12,11 @@ type AnnounceConfig struct {
 	Parameters  Parameters
 }
 
-func readInterest(r io.Reader) (AnnounceConfig, error) {
+func (ac AnnounceConfig) String() string {
+	return "TrackPrefix: " + TrackPartsString(ac.TrackPrefix) + ", Parameters: " + ac.Parameters.String()
+}
+
+func readAnnouncePlease(r io.Reader) (AnnounceConfig, error) {
 	//
 	var aim message.AnnouncePleaseMessage
 	err := aim.Decode(r)
@@ -27,7 +31,7 @@ func readInterest(r io.Reader) (AnnounceConfig, error) {
 	}, nil
 }
 
-func writeInterest(w io.Writer, interest AnnounceConfig) error {
+func writeAnnouncePlease(w io.Writer, interest AnnounceConfig) error {
 	aim := message.AnnouncePleaseMessage{
 		TrackPathPrefix: interest.TrackPrefix,
 		Parameters:      message.Parameters(interest.Parameters.paramMap),

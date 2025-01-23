@@ -15,10 +15,19 @@ type ReceiveAnnounceStream interface {
 
 var _ ReceiveAnnounceStream = (*receiveAnnounceStream)(nil)
 
+func newReceiveAnnounceStream(stream transport.Stream, config AnnounceConfig) *receiveAnnounceStream {
+	return &receiveAnnounceStream{
+		config:    config,
+		stream:    stream,
+		annMap:    make(map[string]Announcement),
+		liveAnnCh: make(chan Announcement, 1),
+	}
+}
+
 type receiveAnnounceStream struct {
-	interest AnnounceConfig
-	stream   transport.Stream
-	mu       sync.RWMutex
+	config AnnounceConfig
+	stream transport.Stream
+	mu     sync.RWMutex
 
 	annMap    map[string]Announcement
 	liveAnnCh chan Announcement
@@ -39,7 +48,7 @@ func (ras *receiveAnnounceStream) ReceiveAnnouncements() ([]Announcement, error)
 	}
 	ras.mu.RUnlock()
 
-	// チャネルからアナウンスを受信
+	//
 	select {
 	case ann := <-ras.liveAnnCh:
 		ras.mu.Lock()
@@ -48,29 +57,13 @@ func (ras *receiveAnnounceStream) ReceiveAnnouncements() ([]Announcement, error)
 		ras.liveAnn = ann
 
 		// Verify if the Announce Status is LIVE
-		if ann.AnnounceStatus == LIVE {
-			//
-			announcements := make([]Announcement, 0, len(ras.annMap))
-			for _, a := range ras.annMap {
-				announcements = append(announcements, a)
-			}
-			return announcements, nil
+		if ann.AnnounceStatus != LIVE {
+			return nil, ErrProtocolViolation
 		}
 
 		announcements := make([]Announcement, 0, len(ras.annMap))
 		for _, a := range ras.annMap {
 			announcements = append(announcements, a)
-		}
-		return announcements, nil
-
-	default:
-		//
-		ras.mu.RLock()
-		defer ras.mu.RUnlock()
-
-		announcements := make([]Announcement, 0, len(ras.annMap))
-		for _, ann := range ras.annMap {
-			announcements = append(announcements, ann)
 		}
 		return announcements, nil
 	}
@@ -87,6 +80,24 @@ func (ras *receiveAnnounceStream) Close() error {
 	ras.closed = true
 	close(ras.liveAnnCh)
 	return ras.stream.Close()
+}
+
+func (ras *receiveAnnounceStream) isValidateAnnouncement(ann Announcement) bool {
+	if ras.annMap == nil {
+		ras.annMap = make(map[string]Announcement)
+	}
+
+	oldAnn, ok := ras.annMap[strings.Join(ann.TrackPath, "")]
+
+	if ok && oldAnn.AnnounceStatus == ann.AnnounceStatus {
+		slog.Debug("duplicate announcement status")
+	}
+
+	if !ok && ann.AnnounceStatus == ENDED {
+		slog.Debug("ended track is not announced")
+	}
+
+	return true
 }
 
 type SendAnnounceStream interface {
@@ -135,7 +146,7 @@ func (sas *sendAnnounceStream) SendAnnouncement(announcements []Announcement) er
 }
 
 func (sas *sendAnnounceStream) isValidateAnnouncement(ann Announcement) bool {
-	oldAnn, exists := sas.annMap[strings.Join(ann.TrackPath, "")]
+	oldAnn, exists := sas.findAnnouncement(ann.TrackPath)
 	if exists && oldAnn.AnnounceStatus == ann.AnnounceStatus {
 		slog.Debug("duplicate announcement status")
 		return false
@@ -158,18 +169,34 @@ func (sas *sendAnnounceStream) writeAndStoreAnnouncement(ann Announcement) error
 		return err
 	}
 
-	sas.annMap[strings.Join(ann.TrackPath, "")] = ann
+	sas.storeAnnouncement(ann)
 	return nil
 }
 
 func (sas *sendAnnounceStream) announceLive() error {
-	liveAnn := Announcement{AnnounceStatus: LIVE}
+	liveAnn := Announcement{
+		AnnounceStatus: LIVE,
+		TrackPath:      sas.annConfig.TrackPrefix,
+	}
 	err := writeAnnouncement(sas.stream, sas.annConfig.TrackPrefix, liveAnn)
 	if err != nil {
 		slog.Error("failed to announce live")
 		return err
 	}
 	return nil
+}
+
+func (sas *sendAnnounceStream) findAnnouncement(trackPath []string) (Announcement, bool) {
+	ann, exists := sas.annMap[strings.Join(trackPath, " ")]
+	return ann, exists
+}
+
+func (sas *sendAnnounceStream) storeAnnouncement(ann Announcement) {
+	sas.annMap[strings.Join(ann.TrackPath, " ")] = ann
+}
+
+func (sas *sendAnnounceStream) deleteAnnouncement(trackPath []string) {
+	delete(sas.annMap, strings.Join(trackPath, " "))
 }
 
 func (sas *sendAnnounceStream) Close() error {
@@ -206,7 +233,7 @@ func (sas *sendAnnounceStream) CloseWithError(err error) error { // TODO
 	return nil
 }
 
-func newReceivedInterestQueue() *sendAnnounceStreamQueue {
+func newSendAnnounceStreamQueue() *sendAnnounceStreamQueue {
 	return &sendAnnounceStreamQueue{
 		queue: make([]*sendAnnounceStream, 0),
 		ch:    make(chan struct{}, 1),
@@ -243,12 +270,12 @@ func (q *sendAnnounceStreamQueue) Dequeue() *sendAnnounceStream {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	if len(q.queue) == 0 {
+	if q.Len() <= 0 {
 		return nil
 	}
 
-	interest := q.queue[0]
+	sas := q.queue[0]
 	q.queue = q.queue[1:]
 
-	return interest
+	return sas
 }

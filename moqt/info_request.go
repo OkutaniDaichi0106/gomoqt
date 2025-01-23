@@ -1,6 +1,7 @@
 package moqt
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 
@@ -11,8 +12,11 @@ type InfoRequest struct {
 	TrackPath []string
 }
 
-func readInfoRequest(r io.Reader) (InfoRequest, error) {
+func (ir InfoRequest) String() string {
+	return fmt.Sprintf("InfoRequest: { TrackPath: %s }", TrackPartsString(ir.TrackPath))
+}
 
+func readInfoRequest(r io.Reader) (InfoRequest, error) {
 	var irm message.InfoRequestMessage
 	err := irm.Decode(r)
 	if err != nil {
@@ -20,9 +24,11 @@ func readInfoRequest(r io.Reader) (InfoRequest, error) {
 		return InfoRequest{}, err
 	}
 
-	return InfoRequest{
+	req := InfoRequest{
 		TrackPath: irm.TrackPath,
-	}, nil
+	}
+
+	return req, nil
 }
 
 func writeInfoRequest(w io.Writer, req InfoRequest) error {
@@ -32,7 +38,7 @@ func writeInfoRequest(w io.Writer, req InfoRequest) error {
 	}
 	err := im.Encode(w)
 	if err != nil {
-		slog.Error("failed to send an INFO_REQUEST message", slog.String("error", err.Error()))
+		slog.Error("failed to encode an INFO_REQUEST message", slog.String("error", err.Error()))
 		return err
 	}
 

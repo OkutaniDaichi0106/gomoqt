@@ -1,6 +1,7 @@
 package moqt
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 
@@ -17,6 +18,11 @@ type SubscribeUpdate struct {
 	 * SubscribeParameters
 	 */
 	SubscribeParameters Parameters
+}
+
+func (su SubscribeUpdate) String() string {
+	return fmt.Sprintf("SubscribeUpdate: { TrackPriority: %d, GroupOrder: %d, MinGroupSequence: %d, MaxGroupSequence: %d, SubscribeParameters: %s }",
+		su.TrackPriority, su.GroupOrder, su.MinGroupSequence, su.MaxGroupSequence, su.SubscribeParameters.String())
 }
 
 func readSubscribeUpdate(r io.Reader) (SubscribeUpdate, error) {

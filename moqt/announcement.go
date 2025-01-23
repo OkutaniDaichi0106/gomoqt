@@ -3,6 +3,7 @@ package moqt
 import (
 	"io"
 	"log/slog"
+	"strings"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 )
@@ -15,16 +16,53 @@ const (
 
 type AnnounceStatus message.AnnounceStatus
 
+func (as AnnounceStatus) String() string {
+	switch as {
+	case ENDED:
+		return "ENDED"
+	case ACTIVE:
+		return "ACTIVE"
+	case LIVE:
+		return "LIVE"
+	default:
+		return "UNKNOWN"
+	}
+}
+
 type Announcement struct {
 	AnnounceStatus AnnounceStatus
 
-	/***/
+	/*
+	 *
+	 */
 	TrackPath []string
 
+	/*
+	 *
+	 */
 	AnnounceParameters Parameters
 }
 
+func (a Announcement) String() string {
+	var sb strings.Builder
+	sb.WriteString("Announcement: {")
+	sb.WriteString(" ")
+	sb.WriteString("AnnounceStatus: ")
+	sb.WriteString(a.AnnounceStatus.String())
+	sb.WriteString(", ")
+	sb.WriteString("TrackPath: ")
+	sb.WriteString(TrackPartsString(a.TrackPath))
+	sb.WriteString(", ")
+	sb.WriteString("AnnounceParameters: ")
+	sb.WriteString(a.AnnounceParameters.String())
+	sb.WriteString(" }")
+	return sb.String()
+}
+
 func readAnnouncement(r io.Reader, prefix []string) (Announcement, error) {
+
+	slog.Debug("reading an announcement")
+
 	var am message.AnnounceMessage
 	err := am.Decode(r)
 	if err != nil {

@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"sync"
@@ -11,6 +13,59 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt"
 	"github.com/quic-go/quic-go"
 )
+
+const (
+	lightPink   = "\033[38;5;218m"
+	lightOrange = "\033[38;5;208m"
+	reset       = "\033[0m"
+)
+
+type colorTextHandler struct {
+	out   io.Writer
+	opts  *slog.HandlerOptions
+	color string
+}
+
+func newColorTextHandler(out io.Writer, opts *slog.HandlerOptions, color string) *colorTextHandler {
+	return &colorTextHandler{
+		out:   out,
+		opts:  opts,
+		color: color,
+	}
+}
+
+func (h *colorTextHandler) Handle(ctx context.Context, r slog.Record) error {
+	level := r.Level.String()
+	timeStr := r.Time.Format(time.RFC3339)
+
+	// Format attributes
+	attrs := ""
+	r.Attrs(func(a slog.Attr) bool {
+		if stringer, ok := a.Value.Any().(fmt.Stringer); ok {
+			attrs += fmt.Sprintf("%s=%s ", a.Key, stringer.String())
+		} else {
+			attrs += fmt.Sprintf("%s=%v ", a.Key, a.Value)
+		}
+		return true
+	})
+
+	// Color the entire line
+	fmt.Fprintf(h.out, "%stime=%s level=%s\n    msg=%q\n    %s %s\n", h.color, timeStr, level, r.Message, attrs, reset)
+
+	return nil
+}
+
+func (h *colorTextHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return h
+}
+
+func (h *colorTextHandler) WithGroup(name string) slog.Handler {
+	return h
+}
+
+func (h *colorTextHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return level >= h.opts.Level.Level()
+}
 
 func main() {
 	/*
@@ -63,53 +118,59 @@ func main() {
 			/*
 			 * Request Announcements
 			 */
-			slog.Info("Request Announcements")
-			interest := moqt.AnnounceConfig{
+			subLogger := slog.New(newColorTextHandler(os.Stdout,
+				&slog.HandlerOptions{Level: slog.LevelDebug},
+				lightOrange))
+
+			subLogger.Info("Running a subscriber")
+
+			subLogger.Info("Opening an Announce Stream")
+
+			annstr, err := sess.OpenAnnounceStream(moqt.AnnounceConfig{
 				TrackPrefix: echoTrackPrefix,
-			}
-			annstr, err := sess.OpenAnnounceStream(interest)
+			})
 			if err != nil {
-				slog.Error("failed to interest", slog.String("error", err.Error()))
+				subLogger.Error("failed to interest", slog.String("error", err.Error()))
 				return
 			}
 
-			/*
-			 * Receive Announcements
-			 */
-			slog.Info("Receive Announcements")
+			slog.Info("Opened an Announce Stream")
+
+			subLogger.Info("Receiving announcements")
+
 			announcements, err := annstr.ReceiveAnnouncements()
 			if err != nil {
-				slog.Error("failed to get active tracks", slog.String("error", err.Error()))
+				subLogger.Error("failed to get active tracks", slog.String("error", err.Error()))
 				return
 			}
 
-			slog.Info("Announcements", slog.Any("announcements", announcements))
+			subLogger.Info("Received announcements", slog.Any("announcements", announcements))
 
 			/*
 			 * Subscribe
 			 */
-			slog.Info("Subscribe")
-			subcfg := moqt.SubscribeConfig{
+			subLogger.Info("Subscribing")
+
+			substr, info, err := sess.OpenSubscribeStream(moqt.SubscribeConfig{
 				TrackPath:     echoTrackPath,
 				TrackPriority: 0,
 				GroupOrder:    0,
-			}
-			substr, info, err := sess.OpenSubscribeStream(subcfg)
+			})
 			if err != nil {
-				slog.Error("failed to subscribe", slog.String("error", err.Error()))
+				subLogger.Error("failed to subscribe", slog.String("error", err.Error()))
 				return
 			}
 
-			slog.Info("Subscribed", slog.Any("info", info))
+			subLogger.Info("Subscribed", slog.Any("info", info))
 
 			/*
 			 * Receive data
 			 */
-			slog.Info("Receive data")
+			subLogger.Info("Receive data")
 			for {
 				stream, err := sess.AcceptGroupStream(context.Background(), substr)
 				if err != nil {
-					slog.Error("failed to accept a data stream", slog.String("error", err.Error()))
+					subLogger.Error("failed to accept a data stream", slog.String("error", err.Error()))
 					return
 				}
 
@@ -117,10 +178,10 @@ func main() {
 					for {
 						buf, err := stream.ReadFrame()
 						if err != nil {
-							slog.Error("failed to read data", slog.String("error", err.Error()))
+							subLogger.Error("failed to read data", slog.String("error", err.Error()))
 							return
 						}
-						slog.Info("Received a frame", slog.String("frame", string(buf)))
+						subLogger.Info("Received a frame", slog.String("frame", string(buf)))
 
 						dataCh <- buf
 					}
@@ -137,10 +198,14 @@ func main() {
 			/*
 			 * Announce
 			 */
-			slog.Info("Waiting an Announce Stream")
+			pubLogger := slog.New(newColorTextHandler(os.Stdout,
+				&slog.HandlerOptions{Level: slog.LevelDebug},
+				lightPink))
+
+			pubLogger.Info("Waiting an Announce Stream")
 
 			annstr, err := sess.AcceptAnnounceStream(context.Background(), func(ac moqt.AnnounceConfig) error {
-				slog.Info("Received an announce request", slog.Any("config", ac))
+				pubLogger.Info("Received an announce request", slog.Any("config", ac))
 
 				if !moqt.HasPrefix(echoTrackPath, ac.TrackPrefix) {
 					return moqt.ErrTrackDoesNotExist
@@ -150,34 +215,34 @@ func main() {
 			})
 
 			if err != nil {
-				slog.Error("failed to accept an announce stream", slog.String("error", err.Error()))
+				pubLogger.Error("failed to accept an announce stream", slog.String("error", err.Error()))
 				return
 			}
 
-			slog.Info("Accepted an Announce Stream")
+			pubLogger.Info("Accepted an Announce Stream")
 
-			slog.Info("Announcing")
+			pubLogger.Info("Announcing")
 
-			announcements := []moqt.Announcement{
+			err = annstr.SendAnnouncement([]moqt.Announcement{
 				{
-					TrackPath: echoTrackPath,
+					AnnounceStatus: moqt.ACTIVE,
+					TrackPath:      echoTrackPath,
 				},
-			}
-			err = annstr.SendAnnouncement(announcements)
+			})
 			if err != nil {
-				slog.Error("failed to send an announcement", slog.String("error", err.Error()))
+				pubLogger.Error("failed to send an announcement", slog.String("error", err.Error()))
 				return
 			}
 
-			slog.Info("Announced")
+			pubLogger.Info("Announced")
 
 			/*
 			 * Accept a subscription
 			 */
-			slog.Info("Waiting a subscribe stream")
+			pubLogger.Info("Waiting a subscribe stream")
 
 			substr, err := sess.AcceptSubscribeStream(context.Background(), func(sc moqt.SubscribeConfig) (moqt.Info, error) {
-				slog.Info("Received a subscribe request", slog.Any("config", sc))
+				pubLogger.Info("Received a subscribe request", slog.Any("config", sc))
 
 				if !moqt.IsSamePath(sc.TrackPath, echoTrackPath) {
 					return moqt.Info{}, moqt.ErrTrackDoesNotExist
@@ -186,11 +251,11 @@ func main() {
 				return moqt.Info{}, nil
 			})
 			if err != nil {
-				slog.Error("failed to accept a subscription", slog.String("error", err.Error()))
+				pubLogger.Error("failed to accept a subscription", slog.String("error", err.Error()))
 				return
 			}
 
-			slog.Info("Accepted a subscribe stream")
+			pubLogger.Info("Accepted a subscribe stream")
 
 			/*
 			 * Send data
@@ -198,13 +263,13 @@ func main() {
 			for sequence := moqt.GroupSequence(1); sequence < 30; sequence++ {
 				stream, err := sess.OpenGroupStream(substr, sequence)
 				if err != nil {
-					slog.Error("failed to open a data stream", slog.String("error", err.Error()))
+					pubLogger.Error("failed to open a data stream", slog.String("error", err.Error()))
 					return
 				}
 
 				err = stream.WriteFrame([]byte("HELLO!!"))
 				if err != nil {
-					slog.Error("failed to write data", slog.String("error", err.Error()))
+					pubLogger.Error("failed to write data", slog.String("error", err.Error()))
 					return
 				}
 
@@ -226,5 +291,4 @@ func getCertificates(certFile, keyFile string) ([]tls.Certificate, error) {
 	}
 
 	return certs, nil
-
 }

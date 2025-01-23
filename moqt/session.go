@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
@@ -65,7 +66,7 @@ func newSession(conn transport.Connection, stream transport.Stream) Session {
 		conn:                         conn,
 		sessionStream:                sessionStream{stream: stream},
 		receiveSubscribeStreamQueue:  newReceiveSubscribeStreamQueue(),
-		sendAnnounceStreamQueue:      newReceivedInterestQueue(),
+		sendAnnounceStreamQueue:      newSendAnnounceStreamQueue(),
 		receiveFetchStreamQueue:      newReceivedFetchQueue(),
 		sendInfoStreamQueue:          newReceiveInfoStreamQueue(),
 		dataReceiveGroupStreamQueues: make(map[SubscribeID]*groupReceiverQueue),
@@ -131,7 +132,7 @@ func (s *session) OpenAnnounceStream(config AnnounceConfig) (ReceiveAnnounceStre
 		return nil, err
 	}
 
-	err = writeInterest(stream, config)
+	err = writeAnnouncePlease(stream, config)
 	if err != nil {
 		slog.Error("failed to write an Interest message", slog.String("error", err.Error()))
 		return nil, err
@@ -140,9 +141,10 @@ func (s *session) OpenAnnounceStream(config AnnounceConfig) (ReceiveAnnounceStre
 	slog.Info("Opened an announce stream", slog.Any("config", config))
 
 	ras := &receiveAnnounceStream{
-		interest:  config,
+		config:    config,
 		stream:    stream,
-		liveAnnCh: make(chan Announcement),
+		annMap:    make(map[string]Announcement),
+		liveAnnCh: make(chan Announcement, 1),
 	}
 
 	// Receive Announcements
@@ -153,22 +155,16 @@ func (s *session) OpenAnnounceStream(config AnnounceConfig) (ReceiveAnnounceStre
 			slog.Debug("reading an announcement")
 
 			// Read an ANNOUNCE message
-			ann, err := readAnnouncement(stream, ras.interest.TrackPrefix)
+			ann, err := readAnnouncement(stream, ras.config.TrackPrefix)
 			if err != nil {
 				slog.Error("failed to read an ANNOUNCE message", slog.String("error", err.Error()))
 				return
 			}
 
-			oldAnn, ok := ras.annMap[strings.Join(ann.TrackPath, "")]
+			slog.Debug("read an announcement", slog.Any("announcement", ann))
 
-			if ok && oldAnn.AnnounceStatus == ann.AnnounceStatus {
-				slog.Debug("duplicate announcement status")
-				terr = ErrProtocolViolation
-				break
-			}
-
-			if !ok && ann.AnnounceStatus == ENDED {
-				slog.Debug("ended track is not announced")
+			if !ras.isValidateAnnouncement(ann) {
+				slog.Error("invalid announcement", slog.Any("announcement", ann))
 				terr = ErrProtocolViolation
 				break
 			}
@@ -188,7 +184,7 @@ func (s *session) OpenAnnounceStream(config AnnounceConfig) (ReceiveAnnounceStre
 }
 
 func (s *session) OpenSubscribeStream(config SubscribeConfig) (SendSubscribeStream, Info, error) {
-	slog.Debug("making a subscription", slog.Any("subscription", config))
+	slog.Debug("opening a subscribe stream", slog.Any("config", config))
 
 	// Open a Subscribe Stream
 	stream, err := openSubscribeStream(s.conn)
@@ -219,6 +215,8 @@ func (s *session) OpenSubscribeStream(config SubscribeConfig) (SendSubscribeStre
 
 	// Create a data stream queue
 	s.dataReceiveGroupStreamQueues[nextID] = newGroupReceiverQueue()
+
+	slog.Debug("Successfully opened a subscribe stream", slog.Any("config", config), slog.Any("info", info))
 
 	return &sendSubscribeStream{
 		subscribeID:  nextID,
@@ -309,7 +307,8 @@ func (sess *session) AcceptGroupStream(ctx context.Context, substr SendSubscribe
 
 func (p *session) AcceptAnnounceStream(ctx context.Context, handler func(AnnounceConfig) error) (SendAnnounceStream, error) {
 	for {
-		if p.receiveSubscribeStreamQueue.Len() != 0 {
+		slog.Debug("waiting an Announce Stream", slog.Any("queue length", p.receiveSubscribeStreamQueue.Len()))
+		if p.sendAnnounceStreamQueue.Len() != 0 {
 			annstr := p.sendAnnounceStreamQueue.Dequeue()
 			err := handler(annstr.AnnounceConfig())
 			if err != nil {
@@ -451,6 +450,14 @@ func (sess *session) OpenGroupStream(substr ReceiveSubscribeStream, seq GroupSeq
 	}, nil
 }
 
+func (sess *session) nextSubscribeID() SubscribeID {
+	new := SubscribeID(atomic.LoadUint64(&sess.subscribeIDCounter))
+
+	atomic.AddUint64(&sess.subscribeIDCounter, 1)
+
+	return SubscribeID(new)
+}
+
 func listenSession(sess *session, ctx context.Context) {
 	wg := new(sync.WaitGroup)
 	// Listen bidirectional streams
@@ -501,7 +508,7 @@ func listenBiStreams(sess *session, ctx context.Context) {
 				// Handle the announce stream
 				slog.Debug("announce stream was opened")
 				// Get an Interest
-				interest, err := readInterest(stream)
+				interest, err := readAnnouncePlease(stream)
 				if err != nil {
 					slog.Error("failed to get an Interest", slog.String("error", err.Error()))
 					closeStreamWithInternalError(stream, err)
@@ -690,8 +697,6 @@ func listenUniStreams(sess *session, ctx context.Context) {
  *
  */
 func openAnnounceStream(conn transport.Connection) (transport.Stream, error) {
-	slog.Debug("opening an Announce Stream")
-
 	stream, err := conn.OpenStream()
 	if err != nil {
 		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
@@ -712,8 +717,6 @@ func openAnnounceStream(conn transport.Connection) (transport.Stream, error) {
 }
 
 func openSubscribeStream(conn transport.Connection) (transport.Stream, error) {
-	slog.Debug("opening an Subscribe Stream")
-
 	stream, err := conn.OpenStream()
 	if err != nil {
 		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
@@ -734,8 +737,6 @@ func openSubscribeStream(conn transport.Connection) (transport.Stream, error) {
 }
 
 func openInfoStream(conn transport.Connection) (transport.Stream, error) {
-	slog.Debug("opening an Info Stream")
-
 	stream, err := conn.OpenStream()
 	if err != nil {
 		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
@@ -756,8 +757,6 @@ func openInfoStream(conn transport.Connection) (transport.Stream, error) {
 }
 
 func openFetchStream(conn transport.Connection) (transport.Stream, error) {
-	slog.Debug("opening an Fetch Stream")
-
 	stream, err := conn.OpenStream()
 	if err != nil {
 		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
@@ -778,8 +777,6 @@ func openFetchStream(conn transport.Connection) (transport.Stream, error) {
 }
 
 func openGroupStream(conn transport.Connection) (transport.SendStream, error) {
-	slog.Debug("opening an Group Stream")
-
 	stream, err := conn.OpenUniStream()
 	if err != nil {
 		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))

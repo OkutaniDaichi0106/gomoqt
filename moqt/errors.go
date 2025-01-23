@@ -17,10 +17,10 @@ var (
 		code:   announce_duplicated_track_path,
 	}
 
-	ErrDuplicatedInterest = defaultAnnounceError{
-		reason: "duplicated interest",
-		code:   announce_duplicated_interest,
-	}
+	// ErrDuplicatedInterest = defaultAnnounceError{
+	// 	reason: "duplicated interest",
+	// 	code:   announce_duplicated_interest,
+	// }
 
 	ErrInvalidRange = defaultSubscribeError{
 		code:   subscribe_invalid_range,
@@ -32,10 +32,10 @@ var (
 		reason: "duplicated subscribe id",
 	}
 
-	ErrSubscribeTimeout = defaultSubscribeError{
-		code:   subscribe_timeout,
-		reason: "time out",
-	}
+	// ErrSubscribeTimeout = defaultSubscribeError{
+	// 	code:   subscribe_timeout,
+	// 	reason: "time out",
+	// }
 
 	ErrPriorityMismatch = defaultSubscribeError{
 		code:   subscribe_priority_mismatch_error,
@@ -75,25 +75,21 @@ var (
 		reason: "too many subscribes",
 	}
 
-	ErrGoAwayTimeout = defaultTerminateError{
-		code:   terminate_goaway_timeout,
-		reason: "goaway timeout",
-	}
-
 	ErrNoGroup = defaultFetchError{
 		code:   fetch_no_group,
 		reason: "no group",
 	}
 
-	ErrInvalidOffset = defaultFetchError{
-		code:   fetch_invalid_offset,
-		reason: "invalid offset",
+	ErrUnavailabelFrame = defaultFetchError{
+		code:   fetch_unavailable_frame,
+		reason: "unavailable frame",
 	}
 
 	ErrGroupSendInterrupted = defaultGroupError{
 		code:   group_send_interrupted,
 		reason: "send interrupted",
 	}
+
 	ErrGroupOutOfRange = defaultGroupError{
 		code:   group_out_of_range,
 		reason: "out of range",
@@ -352,9 +348,9 @@ func (err defaultFetchError) FetchErrorCode() FetchErrorCode {
 }
 
 const (
-	fetch_internal_error FetchErrorCode = 0x0
-	fetch_no_group       FetchErrorCode = 0x1
-	fetch_invalid_offset FetchErrorCode = 0x2
+	fetch_internal_error    FetchErrorCode = 0x0
+	fetch_no_group          FetchErrorCode = 0x1
+	fetch_unavailable_frame FetchErrorCode = 0x2
 )
 
 /*

@@ -1,6 +1,7 @@
 package moqt
 
 import (
+	"fmt"
 	"log/slog"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
@@ -9,14 +10,9 @@ import (
 
 type SubscribeID uint64
 
-// type Subscription struct {
-// 	subscribeID SubscribeID
-// 	SubscribeConfig
-// }
-
-// func (s Subscription) SubscribeID() SubscribeID {
-// 	return s.subscribeID
-// }
+func (id SubscribeID) String() string {
+	return fmt.Sprintf("SubscribeID: %d", id)
+}
 
 type SubscribeConfig struct {
 	/*
@@ -35,6 +31,11 @@ type SubscribeConfig struct {
 	MaxGroupSequence GroupSequence
 
 	SubscribeParameters Parameters
+}
+
+func (sc SubscribeConfig) String() string {
+	return fmt.Sprintf("SubscribeConfig: { TrackPath: %s, TrackPriority: %d, GroupOrder: %d, MinGroupSequence: %d, MaxGroupSequence: %d, SubscribeParameters: %s }",
+		TrackPartsString(sc.TrackPath), sc.TrackPriority, sc.GroupOrder, sc.MinGroupSequence, sc.MaxGroupSequence, sc.SubscribeParameters.String())
 }
 
 func readSubscription(r transport.Stream) (SubscribeID, SubscribeConfig, error) {

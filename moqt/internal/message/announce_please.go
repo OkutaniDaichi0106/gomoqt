@@ -13,13 +13,14 @@ type AnnouncePleaseMessage struct {
 }
 
 func (aim AnnouncePleaseMessage) Encode(w io.Writer) error {
-	slog.Debug("encoding a ANNOUNCE_INTEREST message")
+	slog.Debug("encoding a ANNOUNCE_PLEASE message")
 
 	/*
 	 * Serialize the message in the following formatt
 	 *
-	 * ANNOUNCE_INTEREST Message Payload {
-	 *   Track Namespace prefix (tuple),
+	 * ANNOUNCE_PLEASE Message Payload {
+	 *   Announce Status (varint),
+	 *   Track Prefix (tuple),
 	 *   Subscribe Parameters (Parameters),
 	 * }
 	 */

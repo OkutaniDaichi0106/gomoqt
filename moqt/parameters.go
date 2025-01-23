@@ -3,7 +3,9 @@ package moqt
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/quic-go/quic-go/quicvarint"
@@ -11,14 +13,28 @@ import (
 
 type ParameterType uint64
 
-type Parameters struct {
-	paramMap message.Parameters
-}
-
 func NewParameters() Parameters {
 	return Parameters{
 		paramMap: make(message.Parameters),
 	}
+}
+
+type Parameters struct {
+	paramMap message.Parameters
+}
+
+func (p Parameters) String() string {
+	var sb strings.Builder
+	sb.WriteString("Parameters: {")
+	for key, value := range p.paramMap {
+		sb.WriteString(" ")
+		sb.WriteString(fmt.Sprintf("%d", key))
+		sb.WriteString(": ")
+		sb.WriteString(fmt.Sprintf("%v", value))
+		sb.WriteString(",")
+	}
+	sb.WriteString(" }")
+	return sb.String()
 }
 
 func (p Parameters) SetByteArray(key ParameterType, value []byte) {
@@ -112,7 +128,6 @@ func (p Parameters) GetBool(key ParameterType) (bool, error) {
 
 var ErrParameterNotFound = errors.New("parameter not found")
 
-/***/
 const (
 	path               ParameterType = 0x01
 	authorization_info ParameterType = 0x02

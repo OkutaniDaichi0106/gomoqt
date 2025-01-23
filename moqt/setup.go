@@ -2,6 +2,7 @@ package moqt
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/url"
@@ -23,6 +24,11 @@ type SetupRequest struct {
 	supportedVersions []Version
 	parsedURL         *url.URL
 	once              bool
+}
+
+func (r SetupRequest) String() string {
+	return fmt.Sprintf("SetupRequest: { URL: %s, SetupParameters: %s, supportedVersions: %v }",
+		r.URL, r.SetupParameters.String(), r.supportedVersions)
 }
 
 func (r *SetupRequest) init() error {
@@ -68,6 +74,10 @@ func (r *SetupRequest) init() error {
 type SetupResponce struct {
 	SelectedVersion Version
 	Parameters      Parameters
+}
+
+func (sr SetupResponce) String() string {
+	return fmt.Sprintf("SetupResponce: { SelectedVersion: %d, Parameters: %s }", sr.SelectedVersion, sr.Parameters.String())
 }
 
 func readSetupResponce(r io.Reader) (SetupResponce, error) {

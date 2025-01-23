@@ -171,10 +171,8 @@ func (s *session) OpenAnnounceStream(config AnnounceConfig) (ReceiveAnnounceStre
 
 			switch ann.AnnounceStatus {
 			case ACTIVE, ENDED:
-				slog.Info("received an announcement", slog.Any("announcement", ann))
 				ras.annMap[strings.Join(ann.TrackPath, "")] = ann
 			case LIVE:
-				slog.Info("received a live announcement", slog.Any("announcement", ann))
 				ras.liveAnnCh <- ann
 			}
 		}
@@ -337,7 +335,6 @@ func (p *session) AcceptAnnounceStream(ctx context.Context, handler func(Announc
 func (sess *session) AcceptSubscribeStream(ctx context.Context, handler func(SubscribeConfig) (Info, error)) (ReceiveSubscribeStream, error) {
 	for {
 		if sess.receiveSubscribeStreamQueue.Len() != 0 {
-			slog.Info("waiting a subscribe stream", slog.Any("queue length", sess.receiveSubscribeStreamQueue.Len()))
 
 			substr := sess.receiveSubscribeStreamQueue.Dequeue()
 			info, err := handler(substr.SubscribeConfig())
@@ -361,7 +358,6 @@ func (sess *session) AcceptSubscribeStream(ctx context.Context, handler func(Sub
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-sess.receiveSubscribeStreamQueue.Chan():
-			slog.Info("received a subscribe stream", slog.Any("queue length", sess.receiveSubscribeStreamQueue.Len()))
 		}
 	}
 }

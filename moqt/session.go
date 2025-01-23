@@ -293,6 +293,12 @@ func (sess *session) OpenInfoStream(req InfoRequest) (Info, error) {
 }
 
 func (sess *session) AcceptGroupStream(ctx context.Context, substr SendSubscribeStream) (ReceiveGroupStream, error) {
+	_, ok := sess.dataReceiveGroupStreamQueues[substr.SubscribeID()]
+	if !ok {
+		slog.Error("failed to get a data receive stream queue", slog.String("error", "queue not found"))
+		sess.dataReceiveGroupStreamQueues[substr.SubscribeID()] = newGroupReceiverQueue()
+	}
+
 	for {
 		if sess.dataReceiveGroupStreamQueues[substr.SubscribeID()].Len() != 0 {
 			return sess.dataReceiveGroupStreamQueues[substr.SubscribeID()].Dequeue(), nil
@@ -330,6 +336,8 @@ func (p *session) AcceptAnnounceStream(ctx context.Context, handler func(Announc
 func (sess *session) AcceptSubscribeStream(ctx context.Context, handler func(SubscribeConfig) (Info, error)) (ReceiveSubscribeStream, error) {
 	for {
 		if sess.receiveSubscribeStreamQueue.Len() != 0 {
+			slog.Info("waiting a subscribe stream", slog.Any("queue length", sess.receiveSubscribeStreamQueue.Len()))
+
 			substr := sess.receiveSubscribeStreamQueue.Dequeue()
 			info, err := handler(substr.SubscribeConfig())
 			if err != nil {
@@ -347,10 +355,12 @@ func (sess *session) AcceptSubscribeStream(ctx context.Context, handler func(Sub
 
 			return substr, nil
 		}
+
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-sess.sendAnnounceStreamQueue.Chan():
+		case <-sess.receiveSubscribeStreamQueue.Chan():
+			slog.Info("received a subscribe stream", slog.Any("queue length", sess.receiveSubscribeStreamQueue.Len()))
 		}
 	}
 }
@@ -534,11 +544,7 @@ func listenBiStreams(sess *session, ctx context.Context) {
 				}
 
 				// Create a receiveSubscribeStream
-				rss := &receiveSubscribeStream{
-					subscribeID: id,
-					config:      config,
-					stream:      stream,
-				}
+				rss := newReceiveSubscribeStream(id, config, stream)
 
 				// Enqueue the subscription
 				sess.receiveSubscribeStreamQueue.Enqueue(rss)

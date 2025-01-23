@@ -137,6 +137,14 @@ type ReceiveSubscribeStream interface {
 
 var _ ReceiveSubscribeStream = (*receiveSubscribeStream)(nil)
 
+func newReceiveSubscribeStream(subscribeID SubscribeID, config SubscribeConfig, stream transport.Stream) *receiveSubscribeStream {
+	return &receiveSubscribeStream{
+		subscribeID: subscribeID,
+		config:      config,
+		stream:      stream,
+	}
+}
+
 type receiveSubscribeStream struct {
 	subscribeID SubscribeID
 	config      SubscribeConfig
@@ -255,7 +263,7 @@ func (q *receiveSubscribeStreamQueue) Dequeue() *receiveSubscribeStream {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	if len(q.queue) == 0 {
+	if len(q.queue) <= 0 {
 		return nil
 	}
 

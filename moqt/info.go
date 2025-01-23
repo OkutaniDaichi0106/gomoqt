@@ -1,6 +1,7 @@
 package moqt
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 
@@ -11,6 +12,10 @@ type Info struct {
 	TrackPriority       TrackPriority
 	LatestGroupSequence GroupSequence
 	GroupOrder          GroupOrder
+}
+
+func (i Info) String() string {
+	return fmt.Sprintf("Info: { TrackPriority: %d, LatestGroupSequence: %d, GroupOrder: %d }", i.TrackPriority, i.LatestGroupSequence, i.GroupOrder)
 }
 
 func readInfo(r io.Reader) (Info, error) {

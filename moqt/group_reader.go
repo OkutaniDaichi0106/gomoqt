@@ -106,6 +106,11 @@ func (q *groupReceiverQueue) Enqueue(stream ReceiveGroupStream) {
 	defer q.mu.Unlock()
 
 	q.queue = append(q.queue, stream)
+
+	select {
+	case q.ch <- struct{}{}:
+	default:
+	}
 }
 
 func (q *groupReceiverQueue) Dequeue() ReceiveGroupStream {

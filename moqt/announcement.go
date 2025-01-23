@@ -114,8 +114,6 @@ func writeAnnouncement(w io.Writer, prefix []string, ann Announcement) error {
 		return err
 	}
 
-	slog.Info("Successfully announced", slog.Any("announcement", ann))
-
 	return nil
 }
 

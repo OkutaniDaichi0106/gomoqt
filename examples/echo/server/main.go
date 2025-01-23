@@ -167,6 +167,8 @@ func main() {
 			 * Receive data
 			 */
 			subLogger.Info("Receive data")
+
+			wg := new(sync.WaitGroup)
 			for {
 				stream, err := sess.AcceptGroupStream(context.Background(), substr)
 				if err != nil {
@@ -174,7 +176,9 @@ func main() {
 					return
 				}
 
+				wg.Add(1)
 				go func(stream moqt.ReceiveGroupStream) {
+					defer wg.Done()
 					for {
 						buf, err := stream.ReadFrame()
 						if err != nil {
@@ -234,7 +238,7 @@ func main() {
 				return
 			}
 
-			pubLogger.Info("Announced")
+			pubLogger.Info("Successfully Announced")
 
 			/*
 			 * Accept a subscription

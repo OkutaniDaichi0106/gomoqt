@@ -1,8 +1,10 @@
 package moqt
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
@@ -23,6 +25,28 @@ type FetchRequest struct {
 	TrackPriority TrackPriority
 	GroupSequence GroupSequence
 	FrameSequence FrameSequence
+}
+
+func (fr FetchRequest) String() string {
+	var sb strings.Builder
+	sb.WriteString("FetchRequest: {")
+	sb.WriteString(" SubscribeID: ")
+	sb.WriteString(fmt.Sprintf("%d", fr.SubscribeID))
+	sb.WriteString(", TrackPath: [")
+	for i, path := range fr.TrackPath {
+		if i > 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteString(path)
+	}
+	sb.WriteString("], TrackPriority: ")
+	sb.WriteString(fmt.Sprintf("%d", fr.TrackPriority))
+	sb.WriteString(", GroupSequence: ")
+	sb.WriteString(fmt.Sprintf("%d", fr.GroupSequence))
+	sb.WriteString(", FrameSequence: ")
+	sb.WriteString(fmt.Sprintf("%d", fr.FrameSequence))
+	sb.WriteString(" }")
+	return sb.String()
 }
 
 func readFetch(r io.Reader) (FetchRequest, error) {

@@ -128,6 +128,8 @@ func (sas *sendAnnounceStream) SendAnnouncement(announcements []Announcement) er
 	sas.mu.Lock()
 	defer sas.mu.Unlock()
 
+	slog.Debug("sending announcements", slog.Any("announcements", announcements))
+
 	if len(announcements) == 0 {
 		return errors.New("empty announcements")
 	}
@@ -141,6 +143,8 @@ func (sas *sendAnnounceStream) SendAnnouncement(announcements []Announcement) er
 			return err
 		}
 	}
+
+	slog.Debug("sent announcements", slog.Any("announcements", announcements))
 
 	return sas.announceLive()
 }
@@ -178,11 +182,13 @@ func (sas *sendAnnounceStream) announceLive() error {
 		AnnounceStatus: LIVE,
 		TrackPath:      sas.annConfig.TrackPrefix,
 	}
+
 	err := writeAnnouncement(sas.stream, sas.annConfig.TrackPrefix, liveAnn)
 	if err != nil {
 		slog.Error("failed to announce live")
 		return err
 	}
+
 	return nil
 }
 

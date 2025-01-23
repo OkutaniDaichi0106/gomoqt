@@ -1,6 +1,7 @@
 package moqt
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 
@@ -11,6 +12,10 @@ type SubscribeGap struct {
 	MinGapSequence GroupSequence
 	MaxGapSequence GroupSequence
 	GroupErrorCode GroupErrorCode
+}
+
+func (sg SubscribeGap) String() string {
+	return fmt.Sprintf("SubscribeGap: { MinGapSequence: %d, MaxGapSequence: %d, GroupErrorCode: %d }", sg.MinGapSequence, sg.MaxGapSequence, sg.GroupErrorCode)
 }
 
 func readSubscribeGap(r io.Reader) (SubscribeGap, error) {

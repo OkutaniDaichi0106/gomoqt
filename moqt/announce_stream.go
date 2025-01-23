@@ -3,7 +3,6 @@ package moqt
 import (
 	"errors"
 	"log/slog"
-	"strings"
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
@@ -78,7 +77,9 @@ func (ras *receiveAnnounceStream) Close() error {
 	}
 
 	ras.closed = true
+
 	close(ras.liveAnnCh)
+
 	return ras.stream.Close()
 }
 
@@ -87,7 +88,7 @@ func (ras *receiveAnnounceStream) isValidateAnnouncement(ann Announcement) bool 
 		ras.annMap = make(map[string]Announcement)
 	}
 
-	oldAnn, ok := ras.annMap[strings.Join(ann.TrackPath, "")]
+	oldAnn, ok := ras.findAnnouncement(ann.TrackPath)
 
 	if ok && oldAnn.AnnounceStatus == ann.AnnounceStatus {
 		slog.Debug("duplicate announcement status")
@@ -98,6 +99,19 @@ func (ras *receiveAnnounceStream) isValidateAnnouncement(ann Announcement) bool 
 	}
 
 	return true
+}
+
+func (ras *receiveAnnounceStream) findAnnouncement(trackPath []string) (Announcement, bool) {
+	ann, exists := ras.annMap[TrackPartsString(trackPath)]
+	return ann, exists
+}
+
+func (ras *receiveAnnounceStream) storeAnnouncement(ann Announcement) {
+	ras.annMap[TrackPartsString(ann.TrackPath)] = ann
+}
+
+func (ras *receiveAnnounceStream) deleteAnnouncement(trackPath []string) {
+	delete(ras.annMap, TrackPartsString(trackPath))
 }
 
 type SendAnnounceStream interface {
@@ -150,6 +164,11 @@ func (sas *sendAnnounceStream) SendAnnouncement(announcements []Announcement) er
 }
 
 func (sas *sendAnnounceStream) isValidateAnnouncement(ann Announcement) bool {
+	if ann.AnnounceStatus != LIVE && ann.AnnounceStatus != ACTIVE && ann.AnnounceStatus != ENDED {
+		slog.Debug("invalid announcement status")
+		return false
+	}
+
 	oldAnn, exists := sas.findAnnouncement(ann.TrackPath)
 	if exists && oldAnn.AnnounceStatus == ann.AnnounceStatus {
 		slog.Debug("duplicate announcement status")
@@ -193,16 +212,16 @@ func (sas *sendAnnounceStream) announceLive() error {
 }
 
 func (sas *sendAnnounceStream) findAnnouncement(trackPath []string) (Announcement, bool) {
-	ann, exists := sas.annMap[strings.Join(trackPath, " ")]
+	ann, exists := sas.annMap[TrackPartsString(trackPath)]
 	return ann, exists
 }
 
 func (sas *sendAnnounceStream) storeAnnouncement(ann Announcement) {
-	sas.annMap[strings.Join(ann.TrackPath, " ")] = ann
+	sas.annMap[TrackPartsString(ann.TrackPath)] = ann
 }
 
 func (sas *sendAnnounceStream) deleteAnnouncement(trackPath []string) {
-	delete(sas.annMap, strings.Join(trackPath, " "))
+	delete(sas.annMap, TrackPartsString(trackPath))
 }
 
 func (sas *sendAnnounceStream) Close() error {

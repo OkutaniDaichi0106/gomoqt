@@ -70,8 +70,17 @@ func readAnnouncement(r io.Reader, prefix []string) (Announcement, error) {
 		return Announcement{}, err
 	}
 
+	slog.Debug("read an ANNOUNCE message", slog.Any("message", am))
+
 	// Get the full track path
 	trackPath := append(prefix, am.TrackPathSuffix...)
+
+	if am.AnnounceStatus == message.LIVE {
+		return Announcement{
+			AnnounceStatus:     AnnounceStatus(am.AnnounceStatus),
+			AnnounceParameters: Parameters{am.Parameters},
+		}, nil
+	}
 
 	return Announcement{
 		AnnounceStatus:     AnnounceStatus(am.AnnounceStatus),

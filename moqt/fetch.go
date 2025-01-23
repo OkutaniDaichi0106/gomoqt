@@ -18,6 +18,33 @@ import (
  */
 type GroupSequence message.GroupSequence
 
+const (
+	FirstSequence  GroupSequence = 1
+	LatestSequence GroupSequence = 0
+	FinalSequence  GroupSequence = 0
+	MaxSequence    GroupSequence = 0xFFFFFFFF
+)
+
+func (gs GroupSequence) String() string {
+	return fmt.Sprintf("GroupSequence: %d", gs)
+}
+
+func (gs GroupSequence) Next() GroupSequence {
+	if gs == FinalSequence {
+		return FinalSequence
+	}
+
+	if gs == LatestSequence {
+		return LatestSequence
+	}
+
+	if gs == MaxSequence {
+		return 1
+	}
+
+	return gs + 1
+}
+
 /***/
 type FetchRequest struct {
 	SubscribeID   SubscribeID

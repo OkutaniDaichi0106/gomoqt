@@ -2,11 +2,11 @@
 
 ## Overview
 
-This is an implementation of Media over QUIC primarily based on moqtransfork with some different features.
+This is an implementation of Media over QUIC Transfork.
 
 ## Specification
 
-https://okutanidaichi0106.github.io/moq-transfork/draft-lcurley-moq-transfork.html
+https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html
 
 A fork of the moq-transfork.
 
@@ -14,30 +14,29 @@ A fork of the moq-transfork.
 | Section                                      | Implemented        | Tested             |
 | -------------------------------------------- | ------------------ | ------------------ |
 | **2. Data Model**                            |                    |                    |
-| 2.1. Frame                                   | :white_check_mark: | :x:                |
-| 2.3. Group                                   | :white_check_mark: | :x:                |
-| 2.4. Track                                   | :white_check_mark: | :x:                |
+| 2.1. Frame                                   | :white_check_mark: | :white_check_mark: |
+| 2.3. Group                                   | :white_check_mark: | :white_check_mark: |
+| 2.4. Track                                   | :white_check_mark: | :white_check_mark: |
 | 2.4.1. Track Naming and Scopes               | :construction:     | :x:                |
 | 2.4.2. Scope                                 | :construction:     | :x:                |
 | 2.4.3. Connection URL                        | :construction:     | :x:                |
 | **3. Sessions**                              |                    |                    |
-| 3.1. Session establishment                   | :white_check_mark: | :x:                |
-| 3.1.1. WebTransport                          | :white_check_mark: | :x:                |
+| 3.1. Session establishment                   | :white_check_mark: | :white_check_mark: |
+| 3.1.1. WebTransport                          | :white_check_mark: | :white_check_mark: |
 | 3.1.2. QUIC                                  | :white_check_mark: | :x:                |
 | 3.2. Version and Extension Negotiation       | :white_check_mark: | :x:                |
-| 3.3. Session initialization                  | :white_check_mark: | :x:                |
+| 3.3. Session initialization                  | :white_check_mark: | :white_check_mark: |
 | 3.4. Stream Cancellation                     | :construction:     | :x:                |
-| 3.5. Termination                             | :white_check_mark: | :x:                |
+| 3.5. Termination                             | :white_check_mark: | :white_check_mark: |
 | 3.6. Migration                               | :construction:     | :x:                |
 | **4. Data Transmittions**                    |                    |                    |
-| 4.1 Publisher Priority Control               | :construction:     | :x:                |
-| 4.2 Subscriber Priority Control              | :construction:     | :x:                |
-| 4.3 Group Order Control                      | :construction:     | :x:                |
-| 4.4 Cache                                    | :construction:     | :x:                |
+| 4.1 Track Priority Control                   | :construction:     | :x:                |
+| 4.2 Group Order Control                      | :construction:     | :x:                |
+| 4.3 Cache                                    | :construction:     | :x:                |
 | **5. Relays**                                |                    |                    |
-| 5.1. Subscriber Interactions                 | :white_check_mark: | :x:                |
+| 5.1. Subscriber Interactions                 | :white_check_mark: | :white_check_mark: |
 | 5.1.1. Graceful Publisher Relay Switchover   | :x:                | :x:                |
-| 5.2. Publisher Interactions                  | :white_check_mark: | :x:                |
+| 5.2. Publisher Interactions                  | :white_check_mark: | :white_check_mark: |
 | 5.2.1. Graceful Publisher Network Switchover | :x:                | :x:                |
 | 5.2.2. Graceful Publisher Relay Switchover   | :x:                | :x:                |
 | 5.3. Relay Object Handling                   | :construction:     | :x:                |
@@ -48,30 +47,27 @@ A fork of the moq-transfork.
 | 6.4. Fetch Stream                            | :white_check_mark: | :white_check_mark: |
 | 6.5. Info Stream                             | :white_check_mark: | :white_check_mark: |
 | **Control Messages**                         |                    |                    |
-| 6.1. Parameters                              | :construction:     | :x:                |
-| 6.1.1. Version Specific Parameters           | :white_check_mark: | :x:                |
-| 6.2. SESSION_CLIENT                          | :white_check_mark: | :x:                |
-| 6.2. SESSION_SERVER                          | :white_check_mark: | :x:                |
-| 6.2. SESSION_UPDATE                          | :construction:     | :x:                |
+| 6.1. Parameters                              | :construction:     | :white_check_mark: |
+| 6.1.1. Version Specific Parameters           | :white_check_mark: | :white_check_mark: |
+| 6.2. SESSION_CLIENT                          | :white_check_mark: | :white_check_mark: |
+| 6.2. SESSION_SERVER                          | :white_check_mark: | :white_check_mark: |
+| 6.2. SESSION_UPDATE                          | :construction:     | :white_check_mark: |
 | 6.2.1. Versions                              | :white_check_mark: | :x:                |
-| 6.2.2. Setup Parameters                      | :white_check_mark: | :x:                |
-| 6.3. GOAWAY                                  | :white_check_mark: | :x:                |
-| 6.4. ANNOUNCE_INTEREST                       | :white_check_mark: | :x:                |
-| 6.5. ANNOUNCE                                | :white_check_mark: | :x:                |
-| 6.6. SUBSCRIBE                               | :white_check_mark: | :x:                |
-| 6.7. SUBSCRIBE_UPDATE                        | :white_check_mark: | :x:                |
-| 6.12. SUBSCRIBE_GAP                          | :construction:     | :x:                |
-| 6.8. INFO                                    | :white_check_mark: | :x:                |
-| 6.9. INFO_REQUEST                            | :white_check_mark: | :x:                |
-| 6.10. FETCH                                  | :white_check_mark: | :x:                |
-| 6.11. FETCH_UPDATE                           | :white_check_mark: | :x:                |
+| 6.2.2. Setup Parameters                      | :white_check_mark: | :white_check_mark: |
+| 6.3. ANNOUNCE_PLEASE                         | :white_check_mark: | :white_check_mark: |
+| 6.4. ANNOUNCE                                | :white_check_mark: | :white_check_mark: |
+| 6.5. SUBSCRIBE                               | :white_check_mark: | :white_check_mark: |
+| 6.6. SUBSCRIBE_UPDATE                        | :white_check_mark: | :white_check_mark: |
+| 6.7. SUBSCRIBE_GAP                          | :construction:     | :white_check_mark: |
+| 6.8. INFO                                    | :white_check_mark: | :white_check_mark: |
+| 6.9. INFO_PLEASE                             | :white_check_mark: | :white_check_mark: |
+| 6.10. FETCH                                  | :white_check_mark: | :white_check_mark: |
+| 6.11. FETCH_UPDATE                           | :white_check_mark: | :white_check_mark: |
 | **Data Stream**                              |                    |                    |
 | 7.3. Group Streams                           | :white_check_mark: | :white_check_mark: |
 | **Data Message**                             |                    |                    |
-| 7.2. GROUP                                   | :white_check_mark: | :x:                |
-| 7.2. FRAME                                   | :white_check_mark: | :x:                |
-| **Datagram**                                 |                    |                    |
-| 7.2. Datagram                                | :white_check_mark: | :x:                |
+| 7.2. GROUP                                   | :white_check_mark: | :white_check_mark: |
+| 7.2. FRAME                                   | :white_check_mark: | :white_check_mark: |
 | **Security Considerations**                  |                    |                    |
 | 8.1. Resource Exhaustion                     | :x:                | :x:                |
 
@@ -79,8 +75,8 @@ A fork of the moq-transfork.
 We haven't conducted interoperability testing with other implementations yet
 
 ## TODO
-- ANNOUNCE message's Status field
-- Priority Control
-- Handling the Group Expires
+- Interoperability
+- Scheduling
 - LOC (Low Overhead Container)
 - Common Catalog Format for moq
+

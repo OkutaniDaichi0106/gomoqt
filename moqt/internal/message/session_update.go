@@ -3,8 +3,6 @@ package message
 import (
 	"io"
 	"log/slog"
-
-	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type SessionUpdateMessage struct {
@@ -28,16 +26,13 @@ func (sum SessionUpdateMessage) Encode(w io.Writer) error {
 	p := make([]byte, 0, 1<<3)
 
 	// Append the Bitrate
-	p = quicvarint.Append(p, sum.Bitrate)
+	p = appendNumber(p, sum.Bitrate)
 
-	// Get a serialzed message
+	// Get a serialized message
 	b := make([]byte, 0, len(p)+8)
 
-	// Append the length of the payload
-	b = quicvarint.Append(b, uint64(len(p)))
-
-	// Append the payload
-	b = append(b, p...)
+	// Append the length of the payload and the payload
+	b = appendBytes(b, p)
 
 	// Write
 	_, err := w.Write(b)
@@ -54,14 +49,14 @@ func (sum SessionUpdateMessage) Encode(w io.Writer) error {
 func (sum *SessionUpdateMessage) Decode(r io.Reader) error {
 	slog.Debug("decoding a SESSION_UPDATE message")
 
-	// Get a messaga reader
+	// Get a message reader
 	mr, err := newReader(r)
 	if err != nil {
 		return err
 	}
 
-	// Get a bitrate
-	num, err := quicvarint.Read(mr)
+	// Get the bitrate
+	num, err := readNumber(mr)
 	if err != nil {
 		return err
 	}

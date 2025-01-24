@@ -3,8 +3,6 @@ package message
 import (
 	"io"
 	"log/slog"
-
-	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type InfoMessage struct {
@@ -31,22 +29,19 @@ func (im InfoMessage) Encode(w io.Writer) error {
 	p := make([]byte, 0, 1<<4)
 
 	// Append the Publisher Priority
-	p = quicvarint.Append(p, uint64(im.TrackPriority))
+	p = appendNumber(p, uint64(im.TrackPriority))
 
-	// Appen the Latest Group Sequence
-	p = quicvarint.Append(p, uint64(im.LatestGroupSequence))
+	// Append the Latest Group Sequence
+	p = appendNumber(p, uint64(im.LatestGroupSequence))
 
-	// Appen the Group Order
-	p = quicvarint.Append(p, uint64(im.GroupOrder))
+	// Append the Group Order
+	p = appendNumber(p, uint64(im.GroupOrder))
 
 	// Serialize the whole message
 	b := make([]byte, 0, len(p)+8)
 
-	// Append the length of the payload
-	b = quicvarint.Append(b, uint64(len(p)))
-
 	// Append the payload
-	b = append(b, p...)
+	b = appendBytes(b, p)
 
 	// Write
 	_, err := w.Write(b)
@@ -63,28 +58,28 @@ func (im InfoMessage) Encode(w io.Writer) error {
 func (im *InfoMessage) Decode(r io.Reader) error {
 	slog.Debug("decoding a INFO message")
 
-	// Get a messaga reader
+	// Get a message reader
 	mr, err := newReader(r)
 	if err != nil {
 		return err
 	}
 
-	// Get a Publisher Priority
-	num, err := quicvarint.Read(mr)
+	// Get the Publisher Priority
+	num, err := readNumber(mr)
 	if err != nil {
 		return err
 	}
 	im.TrackPriority = TrackPriority(num)
 
-	// Get a Latest Group ID
-	num, err = quicvarint.Read(mr)
+	// Get the Latest Group Sequence
+	num, err = readNumber(mr)
 	if err != nil {
 		return err
 	}
 	im.LatestGroupSequence = GroupSequence(num)
 
-	// Get a Group Order
-	num, err = quicvarint.Read(mr)
+	// Get the Group Order
+	num, err = readNumber(mr)
 	if err != nil {
 		return err
 	}

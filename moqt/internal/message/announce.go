@@ -16,63 +16,39 @@ const (
 type AnnounceStatus byte
 
 type AnnounceMessage struct {
-	/*
-	 * Announce Status
-	 */
-	AnnounceStatus AnnounceStatus
-
-	/*
-	 * Track Namespace
-	 */
+	AnnounceStatus  AnnounceStatus
 	TrackPathSuffix []string
-
-	/*
-	 * Announce Parameters
-	 * Parameters should include track authorization information
-	 */
-	Parameters Parameters
+	Parameters      Parameters
 }
 
 func (a AnnounceMessage) Encode(w io.Writer) error {
 	slog.Debug("encoding a ANNOUNCE message")
 
-	/*
-	 * Serialize the payload in the following format
-	 *
-	 * ANNOUNCE Message Payload {
-	 *   Track Path (string),
-	 *   Number of Parameters (),
-	 *   Announce Parameters(..)
-	 * }
-	 */
+	// Serialize the payload in the following format
+	// ANNOUNCE Message Payload {
+	//   Track Path (string),
+	//   Number of Parameters (),
+	//   Announce Parameters(..)
+	// }
 
 	p := make([]byte, 0, 1<<6) // TODO: Tune the size
 
 	// Append the Announce Status
-	p = quicvarint.Append(p, uint64(a.AnnounceStatus))
+	p = appendNumber(p, uint64(a.AnnounceStatus))
 
-	// Append the Track Path Suffix's length
-	p = quicvarint.Append(p, uint64(len(a.TrackPathSuffix)))
-
-	// Append the Track Path Suffix Parts
-	for _, part := range a.TrackPathSuffix {
-		// Append the Track Namespace Prefix Part
-		p = quicvarint.Append(p, uint64(len(part)))
-		p = append(p, []byte(part)...)
-	}
+	// Append the Track Path Suffix's length and parts
+	p = appendStringArray(p, a.TrackPathSuffix)
 
 	// Append the Parameters
 	p = appendParameters(p, a.Parameters)
 
 	// Get serialized message
-	b := make([]byte, 0, len(p)+8)
+	b := make([]byte, 0, len(p)+quicvarint.Len(uint64(len(p))))
 
-	// Append the length of the payload
-	b = quicvarint.Append(b, uint64(len(p)))
+	// Append the length of the payload and the payload itself
+	b = appendBytes(b, p)
 
-	// Append the payload
-	b = append(b, p...)
-
+	// Write
 	_, err := w.Write(b)
 	if err != nil {
 		return err
@@ -86,42 +62,22 @@ func (a AnnounceMessage) Encode(w io.Writer) error {
 func (am *AnnounceMessage) Decode(r io.Reader) error {
 	slog.Debug("decoding a ANNOUNCE message")
 
-	// Get a messaga reader
 	mr, err := newReader(r)
 	if err != nil {
 		return err
 	}
 
 	// Get an Announce Status
-	num, err := quicvarint.Read(mr)
+	status, err := readNumber(mr)
 	if err != nil {
 		return err
 	}
-	am.AnnounceStatus = AnnounceStatus(num)
+	am.AnnounceStatus = AnnounceStatus(status)
 
-	// Get a Track Path Suffix
-	num, err = quicvarint.Read(mr)
+	// Get Track Path Suffix parts
+	am.TrackPathSuffix, err = readStringArray(mr)
 	if err != nil {
 		return err
-	}
-
-	count := num
-	am.TrackPathSuffix = make([]string, count)
-
-	// Get a Track Path Suffix Parts
-	for i := uint64(0); i < count; i++ {
-		// Get a Track Namespace Prefix Part
-		num, err = quicvarint.Read(mr)
-		if err != nil {
-			return err
-		}
-
-		buf := make([]byte, num)
-		_, err = r.Read(buf)
-		if err != nil {
-			return err
-		}
-		am.TrackPathSuffix[i] = string(buf)
 	}
 
 	// Get Parameters

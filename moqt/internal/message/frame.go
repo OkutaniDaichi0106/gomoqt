@@ -3,8 +3,6 @@ package message
 import (
 	"io"
 	"log/slog"
-
-	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type FrameSequence uint64
@@ -28,10 +26,7 @@ func (fm FrameMessage) Encode(w io.Writer) error {
 	b := make([]byte, 0, len(fm.Payload)+8)
 
 	// Append the payload length
-	b = quicvarint.Append(b, uint64(len(fm.Payload)))
-
-	// Append the payload
-	b = append(b, fm.Payload...)
+	b = appendBytes(b, fm.Payload)
 
 	_, err := w.Write(b)
 	if err != nil {

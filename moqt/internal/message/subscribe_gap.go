@@ -3,12 +3,17 @@ package message
 import (
 	"io"
 	"log/slog"
-
-	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type GroupErrorCode uint64
 
+/*
+ * SUBSCRIBE_GAP Message {
+ *   Min Gap Sequence (varint),
+ *   Max Gap Sequence (varint),
+ *   Group Error Code (varint),
+ * }
+ */
 type SubscribeGapMessage struct {
 	MinGapSequence GroupSequence
 	MaxGapSequence GroupSequence
@@ -18,78 +23,55 @@ type SubscribeGapMessage struct {
 func (sgm SubscribeGapMessage) Encode(w io.Writer) error {
 	slog.Debug("encoding a SUBSCRIBE_GAP message")
 
-	/*
-	 * Serialize the payload in the following format
-	 *
-	 * SUBSCRIBE_GAP Message Payload {
-	 *   Group Start Sequence (varint),
-	 *   Count (varint),
-	 *   Group Error Code (varint),
-	 * }
-	 */
+	// Serialize the payload
 	p := make([]byte, 0, 1<<5)
+	p = appendNumber(p, uint64(sgm.MinGapSequence))
+	p = appendNumber(p, uint64(sgm.MaxGapSequence))
+	p = appendNumber(p, uint64(sgm.GroupErrorCode))
 
-	// Append the Group Start Sequence
-	p = quicvarint.Append(p, uint64(sgm.MinGapSequence))
-
-	// Append the Count
-	p = quicvarint.Append(p, uint64(sgm.MaxGapSequence))
-
-	// Append the Group Error Code
-	p = quicvarint.Append(p, uint64(sgm.GroupErrorCode))
-
-	// Get a serialized message
+	// Prepare the final message with length prefix
 	b := make([]byte, 0, len(p)+8)
-
-	// Append the length of the payload
-	b = quicvarint.Append(b, uint64(len(p)))
-
-	// Append the payload
+	b = appendNumber(b, uint64(len(p)))
 	b = append(b, p...)
 
-	// Write
-	_, err := w.Write(b)
-	if err != nil {
+	// Write the message
+	if _, err := w.Write(b); err != nil {
 		slog.Error("failed to write a SUBSCRIBE_GAP message", slog.String("error", err.Error()))
 		return err
 	}
 
 	slog.Debug("encoded a SUBSCRIBE_GAP message")
-
 	return nil
 }
 
 func (sgm *SubscribeGapMessage) Decode(r io.Reader) error {
-	slog.Debug("decoding a GROUP_DROP message")
+	slog.Debug("decoding a SUBSCRIBE_GAP message")
 
-	// Get a messaga reader
+	// Create a message reader
 	mr, err := newReader(r)
 	if err != nil {
 		return err
 	}
 
-	// Get a Group Start Sequence
-	num, err := quicvarint.Read(mr)
+	// Deserialize the payload
+	num, err := readNumber(mr)
 	if err != nil {
 		return err
 	}
 	sgm.MinGapSequence = GroupSequence(num)
 
-	// Get a Count
-	num, err = quicvarint.Read(mr)
+	num, err = readNumber(mr)
 	if err != nil {
 		return err
 	}
 	sgm.MaxGapSequence = GroupSequence(num)
 
-	// Get a Group Error Code
-	num, err = quicvarint.Read(mr)
+	num, err = readNumber(mr)
 	if err != nil {
 		return err
 	}
 	sgm.GroupErrorCode = GroupErrorCode(num)
 
 	slog.Debug("decoded a SUBSCRIBE_GAP message")
-
 	return nil
 }

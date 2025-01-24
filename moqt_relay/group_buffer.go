@@ -28,17 +28,6 @@ type GroupBuffer struct {
 	closed        bool
 }
 
-func (r *GroupBuffer) Read(buf []byte) (int, error) {
-	r.cond.L.Lock()
-	defer r.cond.L.Unlock()
-
-	if r.closed {
-		return 0, errors.New("group is closed")
-	}
-
-	return r.data.Read(buf)
-}
-
 func (r *GroupBuffer) ReadFrame() ([]byte, error) {
 	r.cond.L.Lock()
 	defer r.cond.L.Unlock()
@@ -54,24 +43,6 @@ func (r *GroupBuffer) ReadFrame() ([]byte, error) {
 	}
 
 	return fm.Payload, nil
-}
-
-func (w *GroupBuffer) Write(buf []byte) (int, error) {
-	w.cond.L.Lock()
-	defer w.cond.L.Unlock()
-
-	if w.closed {
-		return 0, errors.New("group is closed")
-	}
-
-	n, err := w.data.Write(buf)
-	if err != nil {
-		return n, err
-	}
-
-	w.cond.Signal()
-
-	return n, err
 }
 
 func (w *GroupBuffer) WriteFrame(frame []byte) error {

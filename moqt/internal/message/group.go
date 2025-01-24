@@ -3,17 +3,13 @@ package message
 import (
 	"io"
 	"log/slog"
-
-	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type GroupSequence uint64
 
 type GroupMessage struct {
-	SubscribeID SubscribeID
-
+	SubscribeID   SubscribeID
 	GroupSequence GroupSequence
-
 	TrackPriority TrackPriority
 }
 
@@ -32,24 +28,21 @@ func (g GroupMessage) Encode(w io.Writer) error {
 	p := make([]byte, 0, 1<<4)
 
 	// Append the Subscribe ID
-	p = quicvarint.Append(p, uint64(g.SubscribeID))
+	p = appendNumber(p, uint64(g.SubscribeID))
 
-	// Append the Subscribe ID
-	p = quicvarint.Append(p, uint64(g.GroupSequence))
+	// Append the Group Sequence
+	p = appendNumber(p, uint64(g.GroupSequence))
 
 	// Append the Publisher Priority
-	p = quicvarint.Append(p, uint64(g.TrackPriority))
+	p = appendNumber(p, uint64(g.TrackPriority))
 
 	// Get a serialized message
 	b := make([]byte, 0, len(p)+8)
 
-	// Append the length of the payload
-	b = quicvarint.Append(b, uint64(len(p)))
+	// Append the length of the payload and the payload
+	b = appendBytes(b, p)
 
-	// Append the payload
-	b = append(b, p...)
-
-	// Write
+	// Write the serialized message to the writer
 	_, err := w.Write(b)
 	if err != nil {
 		slog.Error("failed to write a GROUP message", slog.String("error", err.Error()))
@@ -64,28 +57,28 @@ func (g GroupMessage) Encode(w io.Writer) error {
 func (g *GroupMessage) Decode(r io.Reader) error {
 	slog.Debug("decoding a GROUP message")
 
-	// Get a messaga reader
+	// Get a message reader
 	mr, err := newReader(r)
 	if err != nil {
 		return err
 	}
 
-	// Get a Subscribe ID
-	num, err := quicvarint.Read(mr)
+	// Get the Subscribe ID
+	num, err := readNumber(mr)
 	if err != nil {
 		return err
 	}
 	g.SubscribeID = SubscribeID(num)
 
-	// Get a Subscribe ID
-	num, err = quicvarint.Read(mr)
+	// Get the Group Sequence
+	num, err = readNumber(mr)
 	if err != nil {
 		return err
 	}
 	g.GroupSequence = GroupSequence(num)
 
-	// Get a Publisher Priority
-	num, err = quicvarint.Read(mr)
+	// Get the Publisher Priority
+	num, err = readNumber(mr)
 	if err != nil {
 		return err
 	}

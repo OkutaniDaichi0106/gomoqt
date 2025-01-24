@@ -5,42 +5,31 @@ import (
 	"log/slog"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
-	"github.com/quic-go/quic-go/quicvarint"
 )
 
+/*
+ * SESSION_CLIENT Message {
+ *   Supported Versions {
+ *     Count (varint),
+ *     Versions (varint...),
+ *   },
+ *   Session Client Parameters (Parameters),
+ * }
+ */
 type SessionClientMessage struct {
-	/*
-	 * SupportedVersions supported by the client
-	 */
 	SupportedVersions []protocol.Version
-
-	/*
-	 * Setup Parameters
-	 */
-	Parameters Parameters
+	Parameters        Parameters
 }
 
 func (scm SessionClientMessage) Encode(w io.Writer) error {
 	slog.Debug("encoding a SESSION_CLIENT message")
 
-	/*
-	 * Serialize the payload in the following format
-	 *
-	 * CLIENT_SETUP Message {
-	 *   Message Length (varint),
-	 *   Supported Versions {
-	 *     Count (varint),
-	 *     Versions (varint...),
-	 *   },
-	 *   Session Client Parameters (Parameters),
-	 * }
-	 */
 	p := make([]byte, 0, 1<<6)
 
 	// Append the supported versions
-	p = quicvarint.Append(p, uint64(len(scm.SupportedVersions)))
+	p = appendNumber(p, uint64(len(scm.SupportedVersions)))
 	for _, version := range scm.SupportedVersions {
-		p = quicvarint.Append(p, uint64(version))
+		p = appendNumber(p, uint64(version))
 	}
 
 	// Append the parameters
@@ -49,11 +38,8 @@ func (scm SessionClientMessage) Encode(w io.Writer) error {
 	// Get a serialized message
 	b := make([]byte, 0, len(p)+8)
 
-	// Append the length of the payload
-	b = quicvarint.Append(b, uint64(len(p)))
-
-	// Append the payload
-	b = append(b, p...)
+	// Append the length of the payload and the payload
+	b = appendBytes(b, p)
 
 	// Write
 	_, err := w.Write(b)
@@ -70,14 +56,14 @@ func (scm SessionClientMessage) Encode(w io.Writer) error {
 func (scm *SessionClientMessage) Decode(r io.Reader) error {
 	slog.Debug("decoding a SESSION_CLIENT message")
 
-	// Get a messaga reader
+	// Get a message reader
 	mr, err := newReader(r)
 	if err != nil {
 		return err
 	}
 
 	// Get number of supported versions
-	num, err := quicvarint.Read(mr)
+	num, err := readNumber(mr)
 	if err != nil {
 		return err
 	}
@@ -85,7 +71,7 @@ func (scm *SessionClientMessage) Decode(r io.Reader) error {
 	// Get supported versions
 	count := num
 	for i := uint64(0); i < count; i++ {
-		num, err = quicvarint.Read(mr)
+		num, err = readNumber(mr)
 		if err != nil {
 			return err
 		}

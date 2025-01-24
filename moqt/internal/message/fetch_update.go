@@ -2,7 +2,6 @@ package message
 
 import (
 	"io"
-	"log"
 	"log/slog"
 
 	"github.com/quic-go/quic-go/quicvarint"
@@ -13,38 +12,17 @@ type FetchUpdateMessage struct {
 }
 
 func (fum FetchUpdateMessage) Encode(w io.Writer) error {
-	slog.Debug("decoding a FETCH_UPDATE message")
+	slog.Debug("encoding a FETCH_UPDATE message")
 
-	/*
-	 * Serialize the message in the following format
-	 *
-	 * FETCH_UPDATE Message Payload {
-	 *   Subscriber Priority (varint),
-	 * }
-	 */
+	// Serialize the payload
+	payload := quicvarint.Append(nil, uint64(fum.TrackPriority))
 
-	/*
-	 * Serialize the payload
-	 */
-	p := make([]byte, 0, 1<<4)
+	// Serialize the message with the length of the payload
+	message := quicvarint.Append(nil, uint64(len(payload)))
+	message = append(message, payload...)
 
-	p = quicvarint.Append(p, uint64(fum.TrackPriority))
-
-	log.Print("FETCH_UPDATE payload", p) // TODO: delete
-
-	/*
-	 * Get serialized message
-	 */
-	b := make([]byte, 0, len(p)+8)
-
-	// Append the length of the payload
-	b = quicvarint.Append(b, uint64(len(p)))
-
-	// Append the payload
-	b = append(b, p...)
-
-	// Write
-	_, err := w.Write(b)
+	// Write the serialized message
+	_, err := w.Write(message)
 	if err != nil {
 		return err
 	}

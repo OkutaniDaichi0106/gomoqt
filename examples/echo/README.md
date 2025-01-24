@@ -1,4 +1,4 @@
-# Echo Sample
+# Echo Example
 
 ## Run the example
 - **Make cert files**

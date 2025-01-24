@@ -41,16 +41,12 @@ func (h *colorTextHandler) Handle(ctx context.Context, r slog.Record) error {
 	// Format attributes
 	attrs := ""
 	r.Attrs(func(a slog.Attr) bool {
-		if stringer, ok := a.Value.Any().(fmt.Stringer); ok {
-			attrs += fmt.Sprintf("%s=%s ", a.Key, stringer.String())
-		} else {
-			attrs += fmt.Sprintf("%s=%v ", a.Key, a.Value)
-		}
+		attrs += fmt.Sprintf("%s=%v ", a.Key, a.Value)
 		return true
 	})
 
 	// Color the entire line
-	fmt.Fprintf(h.out, "%stime=%s level=%s\n    msg=%q\n    %s %s\n", h.color, timeStr, level, r.Message, attrs, reset)
+	fmt.Fprintf(h.out, "%s time=%s level=%s  msg=%q %s %s\n", h.color, timeStr, level, r.Message, attrs, reset)
 
 	return nil
 }
@@ -72,9 +68,9 @@ var echoTrackPath = []string{"japan", "kyoto", "kiu", "text"}
 
 func main() {
 	/*
-	 * Set Log Level to "INFO"
+	 * Set Log Level to "DEBUG"
 	 */
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	slog.SetDefault(logger)
 
 	c := moqt.Client{
@@ -97,50 +93,6 @@ func main() {
 
 	wg := new(sync.WaitGroup)
 
-	// Define frames for animation
-	frames := []string{
-		fmt.Sprintf(`
-    %s    ☆         o
-         ☆    ☆
-          ☆       ☆    
-    %s    ☆       o   ☆
-         ☆       ☆
-      o         %s☆   %s
-`, "\033[31m", "\033[32m", "\033[33m", "\033[0m"),
-		fmt.Sprintf(`
-    %s    ☆            ☆
-         ☆   o
-       o     ☆
-    %s ☆       ☆   ☆
-       ☆   o        ☆
-    %s       ☆     ☆   %s
-`, "\033[36m", "\033[34m", "\033[33m", "\033[0m"),
-		fmt.Sprintf(`
-    %s  o          ☆   
-       ☆       ☆    
-         ☆     ☆
-    %s☆         ☆      o
-       ☆  o         ☆ 
-    %s     ☆         %s
-`, "\033[33m", "\033[31m", "\033[32m", "\033[0m"),
-		fmt.Sprintf(`
-    %s    ☆         ☆
-         ☆   ☆
-      o       ☆     
-    %s   ☆       ☆    ☆
-         ☆      o
-     ☆           ☆  %s
-`, "\033[34m", "\033[32m", "\033[0m"),
-		fmt.Sprintf(`
-    %s    o        ☆
-      ☆       ☆   
-    ☆     ☆       ☆
-    %s  ☆      o       ☆
-        o     ☆    ☆
-      ☆         %s☆   %s
-`, "\033[33m", "\033[36m", "\033[32m", "\033[0m"),
-	}
-
 	// Run a publisher
 	wg.Add(1)
 	go func() {
@@ -148,7 +100,7 @@ func main() {
 
 		// Create light pink pubLogger with custom handler
 		pubLogger := slog.New(newColorTextHandler(os.Stdout,
-			&slog.HandlerOptions{Level: slog.LevelInfo},
+			&slog.HandlerOptions{Level: slog.LevelDebug},
 			lightPink))
 
 		pubLogger.Info("Running a publisher")
@@ -156,15 +108,12 @@ func main() {
 		pubLogger.Info("Waiting an Announce Stream")
 		// Accept an Announce Stream
 		annstr, err := sess.AcceptAnnounceStream(context.Background(), func(ac moqt.AnnounceConfig) error {
-
-			pubLogger.Info("Received an announce request", slog.Any("config", ac))
-
 			if !moqt.HasPrefix(echoTrackPath, ac.TrackPrefix) {
 				return moqt.ErrTrackDoesNotExist
 			}
-
 			return nil
 		})
+
 		if err != nil {
 			pubLogger.Error("failed to accept an interest", slog.String("error", err.Error()))
 			return
@@ -173,16 +122,16 @@ func main() {
 		pubLogger.Info("Accepted an Announce Stream")
 
 		// Send Announcements
+		announcements := []moqt.Announcement{
+			{
+				TrackPath: echoTrackPath,
+			},
+		}
 
 		pubLogger.Info("Send Announcements")
 
 		// Send Announcements
-		err = annstr.SendAnnouncement([]moqt.Announcement{
-			{
-				AnnounceStatus: moqt.ACTIVE,
-				TrackPath:      echoTrackPath,
-			},
-		})
+		err = annstr.SendAnnouncement(announcements)
 		if err != nil {
 			pubLogger.Error("failed to announce", slog.String("error", err.Error()))
 			return
@@ -211,32 +160,26 @@ func main() {
 			return
 		}
 
-		if !moqt.IsSamePath(substr.SubscribeConfig().TrackPath, echoTrackPath) {
+		if moqt.IsSamePath(substr.SubscribeConfig().TrackPath, echoTrackPath) {
 			pubLogger.Error("failed to get a track path", slog.String("error", "track path is invalid"))
 			substr.CloseWithError(moqt.ErrTrackDoesNotExist)
 			return
 		}
 
-		for seq := moqt.FirstSequence; seq < 300; seq++ {
-			for _, frame := range frames {
-				stream, err := sess.OpenGroupStream(substr, seq)
-				if err != nil {
-					pubLogger.Error("failed to open a data stream", slog.String("error", err.Error()))
-					return
-				}
-
-				err = stream.WriteFrame([]byte(frame))
-				if err != nil {
-					pubLogger.Error("failed to write data", slog.String("error", err.Error()))
-					return
-				}
-
-				stream.Close()
-
-				time.Sleep(250 * time.Millisecond)
-
-				seq = seq.Next()
+		for sequence := moqt.GroupSequence(0); sequence < 30; sequence++ {
+			stream, err := sess.OpenGroupStream(substr, sequence)
+			if err != nil {
+				pubLogger.Error("failed to open a data stream", slog.String("error", err.Error()))
+				return
 			}
+
+			err = stream.WriteFrame([]byte("HELLO!!"))
+			if err != nil {
+				pubLogger.Error("failed to write data", slog.String("error", err.Error()))
+				return
+			}
+
+			time.Sleep(3 * time.Second)
 		}
 	}()
 
@@ -247,7 +190,7 @@ func main() {
 
 		// Create light orange subLogger with custom handler
 		subLogger := slog.New(newColorTextHandler(os.Stdout,
-			&slog.HandlerOptions{Level: slog.LevelInfo},
+			&slog.HandlerOptions{Level: slog.LevelDebug},
 			lightOrange))
 
 		subLogger.Info("Running a subscriber")
@@ -295,7 +238,7 @@ func main() {
 
 			buf, err := stream.ReadFrame()
 			if len(buf) > 0 {
-				subLogger.Info("Received data", slog.String("data", string(buf)))
+				subLogger.Info("received data", slog.String("data", string(buf)))
 			}
 
 			if err != nil {

@@ -5,7 +5,6 @@ import (
 	"log/slog"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
-	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type SessionServerMessage struct {
@@ -25,7 +24,7 @@ func (ssm SessionServerMessage) Encode(w io.Writer) error {
 	slog.Debug("encoding a SESSION_SERVER message")
 
 	/*
-	 * Serialize the message in the following formatt
+	 * Serialize the message in the following format
 	 *
 	 * SERVER_SETUP Message {
 	 *   Message Length (varint),
@@ -38,7 +37,7 @@ func (ssm SessionServerMessage) Encode(w io.Writer) error {
 	p := make([]byte, 0, 1<<4)
 
 	// Append the selected version
-	p = quicvarint.Append(p, uint64(ssm.SelectedVersion))
+	p = appendNumber(p, uint64(ssm.SelectedVersion))
 
 	// Append the parameters
 	p = appendParameters(p, ssm.Parameters)
@@ -46,11 +45,8 @@ func (ssm SessionServerMessage) Encode(w io.Writer) error {
 	// Get a whole serialized message
 	b := make([]byte, 0, len(p)+8)
 
-	// Append the length of the payload
-	b = quicvarint.Append(b, uint64(len(p)))
-
-	// Append the payload
-	b = append(b, p...)
+	// Append the length of the payload and the payload
+	b = appendBytes(b, p)
 
 	// Write
 	_, err := w.Write(b)
@@ -67,14 +63,14 @@ func (ssm SessionServerMessage) Encode(w io.Writer) error {
 func (ssm *SessionServerMessage) Decode(r io.Reader) error {
 	slog.Debug("decoding a SESSION_SERVER message")
 
-	// Get a messaga reader
+	// Get a message reader
 	mr, err := newReader(r)
 	if err != nil {
 		return err
 	}
 
-	// Get a Version
-	num, err := quicvarint.Read(mr)
+	// Get the selected version
+	num, err := readNumber(mr)
 	if err != nil {
 		return err
 	}

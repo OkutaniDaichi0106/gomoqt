@@ -4,8 +4,6 @@ import (
 	"io"
 	"log"
 	"log/slog"
-
-	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type InfoRequestMessage struct {
@@ -29,26 +27,16 @@ func (irm InfoRequestMessage) Encode(w io.Writer) error {
 
 	p := make([]byte, 0, 1<<8)
 
-	// Append the Track Path Length
-	p = quicvarint.Append(p, uint64(len(irm.TrackPath)))
-
 	// Append the Track Path
-	for _, part := range irm.TrackPath {
-		// Append the Track Namespace Prefix Part
-		p = quicvarint.Append(p, uint64(len(part)))
-		p = append(p, []byte(part)...)
-	}
+	p = appendStringArray(p, irm.TrackPath)
 
 	log.Print("INFO_REQUEST payload", p)
 
 	// Serialize the whole message
 	b := make([]byte, 0, len(p)+8)
 
-	// Append the length of the payload
-	b = quicvarint.Append(b, uint64(len(p)))
-
 	// Append the payload
-	b = append(b, p...)
+	b = appendBytes(b, p)
 
 	// Write
 	_, err := w.Write(b)
@@ -65,36 +53,16 @@ func (irm InfoRequestMessage) Encode(w io.Writer) error {
 func (irm *InfoRequestMessage) Decode(r io.Reader) error {
 	slog.Debug("decoding a INFO_REQUEST message")
 
-	// Get a messaga reader
+	// Get a message reader
 	mr, err := newReader(r)
 	if err != nil {
 		return err
 	}
 
-	// Get a Track Path Part Count
-	num, err := quicvarint.Read(mr)
+	// Get the Track Path
+	irm.TrackPath, err = readStringArray(mr)
 	if err != nil {
 		return err
-	}
-
-	// Get a Track Path
-	irm.TrackPath = make([]string, num)
-
-	// Get Track Path Parts
-	for i := 0; i < int(num); i++ {
-		num, err = quicvarint.Read(mr)
-		if err != nil {
-			return err
-		}
-
-		// Get a Track Path Part
-		buf := make([]byte, num)
-		_, err = r.Read(buf)
-		if err != nil {
-			return err
-		}
-
-		irm.TrackPath[i] = string(buf)
 	}
 
 	slog.Debug("decoded a INFO_REQUEST message")

@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestGroupMessage(t *testing.T) {
+func TestGroupMessage_EncodeDecode(t *testing.T) {
 	tests := map[string]struct {
 		testcase message.GroupMessage
 		want     message.GroupMessage

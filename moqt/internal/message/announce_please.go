@@ -15,86 +15,49 @@ type AnnouncePleaseMessage struct {
 func (aim AnnouncePleaseMessage) Encode(w io.Writer) error {
 	slog.Debug("encoding a ANNOUNCE_PLEASE message")
 
-	/*
-	 * Serialize the message in the following formatt
-	 *
-	 * ANNOUNCE_PLEASE Message Payload {
-	 *   Announce Status (varint),
-	 *   Track Prefix (tuple),
-	 *   Subscribe Parameters (Parameters),
-	 * }
-	 */
+	// Serialize the message in the following format
+	// ANNOUNCE_PLEASE Message Payload {
+	//   Track Prefix ([]string),
+	//   Announce Parameters (Parameters),
+	// }
 
-	/*
-	 * Serialize the payload
-	 */
+	// Serialize the payload
 	p := make([]byte, 0, 1<<6) // TODO: Tune the size
 
-	// Append the Track Namespace Prefix's length
-	p = quicvarint.Append(p, uint64(len(aim.TrackPathPrefix)))
-
-	for _, part := range aim.TrackPathPrefix {
-		// Append the Track Namespace Prefix Part
-		p = quicvarint.Append(p, uint64(len(part)))
-		p = append(p, []byte(part)...)
-	}
+	// Append the Track Namespace Prefix's length and parts
+	p = appendStringArray(p, aim.TrackPathPrefix)
 
 	// Append the Parameters
 	p = appendParameters(p, aim.Parameters)
 
-	/*
-	 * Get serialized message
-	 */
-	b := make([]byte, 0, len(p)+8)
+	// Get serialized message
+	b := make([]byte, 0, len(p)+quicvarint.Len(uint64(len(p))))
 
-	// Append the length of the payload
-	b = quicvarint.Append(b, uint64(len(p)))
-
-	// Append the payload
-	b = append(b, p...)
+	// Append the length of the payload and the payload itself
+	b = appendBytes(b, p)
 
 	// Write
-	_, err := w.Write(b)
-	if err != nil {
+	if _, err := w.Write(b); err != nil {
 		return err
 	}
-	slog.Debug("encoded a ANNOUNCE_INTEREST message")
+	slog.Debug("encoded a ANNOUNCE_PLEASE message")
 
 	return nil
 }
 
 func (aim *AnnouncePleaseMessage) Decode(r io.Reader) error {
-	slog.Debug("decoding a ANNOUNCE_INTEREST message")
+	slog.Debug("decoding a ANNOUNCE_PLEASE message")
 
-	// Get a messaga reader
+	// Get a message reader
 	mr, err := newReader(r)
 	if err != nil {
 		return err
 	}
 
-	// Get a Track Namespace Prefix
-	num, err := quicvarint.Read(mr)
+	// Get Track Namespace Prefix parts
+	aim.TrackPathPrefix, err = readStringArray(mr)
 	if err != nil {
 		return err
-	}
-	count := num
-	// Get a Track Namespace Prefix Parts
-	aim.TrackPathPrefix = make([]string, count)
-
-	// Get a Track Namespace Prefix Parts
-	for i := uint64(0); i < count; i++ {
-		// Get a Track Namespace Prefix Part
-		num, err = quicvarint.Read(mr)
-		if err != nil {
-			return err
-		}
-
-		buf := make([]byte, num)
-		_, err = r.Read(buf)
-		if err != nil {
-			return err
-		}
-		aim.TrackPathPrefix[i] = string(buf)
 	}
 
 	// Get Parameters
@@ -103,7 +66,7 @@ func (aim *AnnouncePleaseMessage) Decode(r io.Reader) error {
 		return err
 	}
 
-	slog.Debug("decoded a ANNOUNCE_INTEREST message")
+	slog.Debug("decoded a ANNOUNCE_PLEASE message")
 
 	return nil
 }

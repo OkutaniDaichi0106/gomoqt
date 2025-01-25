@@ -26,12 +26,11 @@ func (su SubscribeUpdate) String() string {
 }
 
 func readSubscribeUpdate(r io.Reader) (SubscribeUpdate, error) {
-	// Read a SUBSCRIBE_UPDATE message
 	var sum message.SubscribeUpdateMessage
-	err := sum.Decode(r)
-	if err != nil {
-		slog.Debug("failed to decode a SUBSCRIBE_UPDATE message", slog.String("error", err.Error()))
-		return SubscribeUpdate{}, err
+	if _, err := sum.Decode(r); err != nil {
+		slog.Error("failed to decode SUBSCRIBE_UPDATE message",
+			"error", err)
+		return SubscribeUpdate{}, fmt.Errorf("decode SUBSCRIBE_UPDATE: %w", err)
 	}
 
 	return SubscribeUpdate{
@@ -39,57 +38,47 @@ func readSubscribeUpdate(r io.Reader) (SubscribeUpdate, error) {
 		GroupOrder:          GroupOrder(sum.GroupOrder),
 		MinGroupSequence:    GroupSequence(sum.MinGroupSequence),
 		MaxGroupSequence:    GroupSequence(sum.MaxGroupSequence),
-		SubscribeParameters: Parameters{sum.SubscribeUpdateParameters},
+		SubscribeParameters: Parameters{paramMap: sum.SubscribeUpdateParameters},
 	}, nil
 }
 
 func writeSubscribeUpdate(w io.Writer, update SubscribeUpdate) error {
-	/*
-	 * Send a SUBSCRIBE_UPDATE message
-	 */
-	// Set parameters
+	// Initialize parameters if nil
 	if update.SubscribeParameters.paramMap == nil {
 		update.SubscribeParameters = NewParameters()
 	}
 
-	// Send a SUBSCRIBE_UPDATE message
 	sum := message.SubscribeUpdateMessage{
 		TrackPriority:             message.TrackPriority(update.TrackPriority),
 		GroupOrder:                message.GroupOrder(update.GroupOrder),
 		MinGroupSequence:          message.GroupSequence(update.MinGroupSequence),
 		MaxGroupSequence:          message.GroupSequence(update.MaxGroupSequence),
-		SubscribeUpdateParameters: message.Parameters(update.SubscribeParameters.paramMap),
+		SubscribeUpdateParameters: update.SubscribeParameters.paramMap,
 	}
-	err := sum.Encode(w)
-	if err != nil {
-		slog.Error("failed to send a SUBSCRIBE_UPDATE message", slog.String("error", err.Error()))
-		return err
+
+	if _, err := sum.Encode(w); err != nil {
+		return fmt.Errorf("encode SUBSCRIBE_UPDATE: %w", err)
 	}
 	return nil
 }
 
 func updateSubscription(subscription SubscribeConfig, update SubscribeUpdate) (SubscribeConfig, error) {
-	// Update the Track Priority
+	// Validate sequence ranges
+	if subscription.MinGroupSequence > update.MinGroupSequence ||
+		subscription.MaxGroupSequence < update.MaxGroupSequence {
+		return subscription, ErrInvalidRange
+	}
+
+	// Update all fields
 	subscription.TrackPriority = update.TrackPriority
-
-	// Update the Group Order
 	subscription.GroupOrder = update.GroupOrder
-
-	// Update the Group Expires
-
-	// Update the Min Group Sequence
-	if subscription.MinGroupSequence > update.MinGroupSequence {
-		return subscription, ErrInvalidRange
-	}
 	subscription.MinGroupSequence = update.MinGroupSequence
-
-	// Update the Max Group Sequence
-	if subscription.MaxGroupSequence < update.MaxGroupSequence {
-		return subscription, ErrInvalidRange
-	}
 	subscription.MaxGroupSequence = update.MaxGroupSequence
 
-	// Update the Subscribe Parameters
+	// Update parameters
+	if subscription.SubscribeParameters.paramMap == nil {
+		subscription.SubscribeParameters = NewParameters()
+	}
 	for k, v := range update.SubscribeParameters.paramMap {
 		subscription.SubscribeParameters.paramMap[k] = v
 	}

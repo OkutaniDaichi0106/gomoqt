@@ -6,65 +6,70 @@ import (
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSubscribeUpdateMessage_EncodeDecode(t *testing.T) {
 	tests := map[string]struct {
-		trackPriority    message.TrackPriority
-		minGroupSequence message.GroupSequence
-		maxGroupSequence message.GroupSequence
-		parameters       message.Parameters
-		wantErr          bool
+		input   message.SubscribeUpdateMessage
+		wantErr bool
 	}{
 		"valid message": {
-			trackPriority:    5,
-			minGroupSequence: 10,
-			maxGroupSequence: 20,
-			parameters: map[uint64][]byte{
-				1: []byte("value1"),
-				2: []byte("value2"),
+			input: message.SubscribeUpdateMessage{
+				TrackPriority:             5,
+				MinGroupSequence:          10,
+				MaxGroupSequence:          20,
+				GroupOrder:                1,
+				SubscribeUpdateParameters: message.Parameters{1: []byte("value1")},
 			},
-			wantErr: false,
 		},
 		"empty parameters": {
-			trackPriority:    5,
-			minGroupSequence: 10,
-			maxGroupSequence: 20,
-			parameters:       map[uint64][]byte{},
-			wantErr:          false,
+			input: message.SubscribeUpdateMessage{
+				TrackPriority:    5,
+				MinGroupSequence: 10,
+				MaxGroupSequence: 20,
+				GroupOrder:       1,
+			},
+		},
+		"max values": {
+			input: message.SubscribeUpdateMessage{
+				TrackPriority:             message.TrackPriority(^byte(0)),
+				MinGroupSequence:          message.GroupSequence(^uint64(0)),
+				MaxGroupSequence:          message.GroupSequence(^uint64(0)),
+				GroupOrder:                message.GroupOrder(^byte(0)),
+				SubscribeUpdateParameters: message.Parameters{^uint64(0): bytes.Repeat([]byte("a"), 1024)},
+			},
+		},
+		"zero values": {
+			input: message.SubscribeUpdateMessage{
+				TrackPriority:    0,
+				MinGroupSequence: 0,
+				MaxGroupSequence: 0,
+				GroupOrder:       0,
+			},
 		},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			subscribeUpdate := &message.SubscribeUpdateMessage{
-				TrackPriority:             message.TrackPriority(tc.trackPriority),
-				MinGroupSequence:          tc.minGroupSequence,
-				MaxGroupSequence:          tc.maxGroupSequence,
-				SubscribeUpdateParameters: tc.parameters,
-			}
 			var buf bytes.Buffer
 
-			err := subscribeUpdate.Encode(&buf)
-			if err != nil && !tc.wantErr {
-				t.Fatalf("unexpected error: %v", err)
-			} else if err == nil && tc.wantErr {
-				t.Fatalf("expected error: %v", err)
+			// Encode
+			en, err := tc.input.Encode(&buf)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
 			}
+			require.NoError(t, err)
 
-			decodedSubscribeUpdate := &message.SubscribeUpdateMessage{}
-			err = decodedSubscribeUpdate.Decode(&buf)
-			if err != nil && !tc.wantErr {
-				t.Fatalf("unexpected error: %v", err)
-			} else if err == nil && tc.wantErr {
-				t.Fatalf("expected error: %v", err)
-			}
+			// Decode
+			var decoded message.SubscribeUpdateMessage
+			dn, err := decoded.Decode(&buf)
+			require.NoError(t, err)
 
-			assert.Equal(t, subscribeUpdate.TrackPriority, decodedSubscribeUpdate.TrackPriority)
-			assert.Equal(t, subscribeUpdate.MinGroupSequence, decodedSubscribeUpdate.MinGroupSequence)
-			assert.Equal(t, subscribeUpdate.MaxGroupSequence, decodedSubscribeUpdate.MaxGroupSequence)
-			assert.Equal(t, subscribeUpdate.GroupOrder, decodedSubscribeUpdate.GroupOrder)
-			assert.Equal(t, subscribeUpdate.SubscribeUpdateParameters, decodedSubscribeUpdate.SubscribeUpdateParameters)
+			// Compare all fields
+			assert.Equal(t, tc.input, decoded, "decoded message should match input")
+			assert.Equal(t, en, dn, "encoded and decoded message should have the same length")
 		})
 	}
 }

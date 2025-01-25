@@ -1,9 +1,7 @@
 package message
 
 import (
-	"bytes"
 	"io"
-	"log/slog"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -14,99 +12,84 @@ type reader interface {
 	ReadByte() (byte, error)
 }
 
-// Create a new reader from an io.Reader
-func newReader(r io.Reader) (reader, error) {
-	// Get the length of the message
-	num, err := readNumber(quicvarint.NewReader(r))
-	if err != nil {
-		slog.Error("failed to read message length", slog.String("error", err.Error()))
-		return nil, err
-	}
-
-	// Read the message into a byte slice
-	buf := make([]byte, num)
-	_, err = io.ReadFull(r, buf)
-	if err != nil {
-		slog.Error("failed to read message", slog.String("error", err.Error()))
-		return nil, err
-	}
-
-	return bytes.NewReader(buf), nil
-}
-
 // Read a number from the reader
-func readNumber(r reader) (uint64, error) {
-	return quicvarint.Read(r)
+func readNumber(r reader) (uint64, int, error) {
+	num, err := quicvarint.Read(r)
+	return num, quicvarint.Len(num), err
 }
 
 // Read a string from the reader
-func readString(r reader) (string, error) {
-	b, err := readBytes(r)
+func readString(r reader) (string, int, error) {
+	b, n, err := readBytes(r)
 	if err != nil {
-		return "", err
+		return "", n, err
 	}
-	return string(b), nil
+	return string(b), n, nil
 }
 
 // Read a byte slice from the reader
-func readBytes(r reader) ([]byte, error) {
-	num, err := readNumber(r)
+func readBytes(r reader) ([]byte, int, error) {
+	num, n, err := readNumber(r)
 	if err != nil {
-		return nil, err
+		return nil, n, err
 	}
 
 	b := make([]byte, num)
-	_, err = io.ReadFull(r, b)
+	n2, err := io.ReadFull(r, b)
 	if err != nil {
-		return nil, err
+		return nil, n + n2, err
 	}
 
-	return b, nil
+	return b, n + n2, nil
 }
 
 // Read a string array from the reader
-func readStringArray(r reader) ([]string, error) {
-	count, err := readNumber(r)
+func readStringArray(r reader) ([]string, int, error) {
+	count, n, err := readNumber(r)
 	if err != nil {
-		return nil, err
+		return nil, n, err
 	}
 
 	strs := make([]string, count)
+	totalBytes := n
 	for i := uint64(0); i < count; i++ {
-		str, err := readString(r)
+		str, n, err := readString(r)
 		if err != nil {
-			return nil, err
+			return nil, totalBytes + n, err
 		}
 		strs[i] = str
+		totalBytes += n
 	}
 
-	return strs, nil
+	return strs, totalBytes, nil
 }
 
 // Read parameters from the reader
-func readParameters(r reader) (Parameters, error) {
-	count, err := readNumber(r)
+func readParameters(r reader) (Parameters, int, error) {
+	count, n, err := readNumber(r)
 	if err != nil {
 		if err == io.EOF {
-			return nil, nil
+			return nil, n, nil
 		}
-		return nil, err
+		return nil, n, err
 	}
 
 	params := make(Parameters, count)
+	totalBytes := n
 	for i := uint64(0); i < count; i++ {
-		key, err := readNumber(r)
+		key, n, err := readNumber(r)
 		if err != nil {
-			return nil, err
+			return nil, totalBytes + n, err
 		}
 
-		value, err := readBytes(r)
+		value, n, err := readBytes(r)
 		if err != nil {
-			return nil, err
+			return nil, totalBytes + n, err
 		}
 
 		params[key] = value
+		totalBytes += n
 	}
 
-	return params, nil
+	return params, totalBytes, nil
 }

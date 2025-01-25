@@ -1,8 +1,10 @@
 package message
 
 import (
+	"bytes"
 	"io"
-	"log/slog"
+
+	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type SessionUpdateMessage struct {
@@ -12,57 +14,28 @@ type SessionUpdateMessage struct {
 	Bitrate uint64
 }
 
-func (sum SessionUpdateMessage) Encode(w io.Writer) error {
-	slog.Debug("encoding a SESSION_UPDATE message")
-
-	/*
-	 * Serialize the message in the following format
-	 *
-	 * SESSION_UPDATE Message {
-	 *   Message Length (varint),
-	 *   Bitrate (varint),
-	 * }
-	 */
+func (sum SessionUpdateMessage) Encode(w io.Writer) (int, error) {
 	p := make([]byte, 0, 1<<3)
-
-	// Append the Bitrate
 	p = appendNumber(p, sum.Bitrate)
 
-	// Get a serialized message
-	b := make([]byte, 0, len(p)+8)
-
-	// Append the length of the payload and the payload
+	b := make([]byte, 0, len(p)+quicvarint.Len(uint64(len(p))))
 	b = appendBytes(b, p)
 
-	// Write
-	_, err := w.Write(b)
-	if err != nil {
-		slog.Error("failed to write a SESSION_UPDATE message", slog.String("error", err.Error()))
-		return err
-	}
-
-	slog.Debug("encoded a SESSION_UPDATE message")
-
-	return nil
+	return w.Write(b)
 }
 
-func (sum *SessionUpdateMessage) Decode(r io.Reader) error {
-	slog.Debug("decoding a SESSION_UPDATE message")
-
-	// Get a message reader
-	mr, err := newReader(r)
+func (sum *SessionUpdateMessage) Decode(r io.Reader) (int, error) {
+	buf, n, err := readBytes(quicvarint.NewReader(r))
 	if err != nil {
-		return err
+		return n, err
 	}
 
-	// Get the bitrate
-	num, err := readNumber(mr)
+	mr := bytes.NewReader(buf)
+	num, _, err := readNumber(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 	sum.Bitrate = num
 
-	slog.Debug("decoded a SESSION_UPDATE message")
-
-	return nil
+	return n, nil
 }

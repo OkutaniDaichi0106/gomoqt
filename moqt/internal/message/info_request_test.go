@@ -6,46 +6,54 @@ import (
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestInfoRequestMessage_EncodeDecode(t *testing.T) {
 	tests := map[string]struct {
-		trackPath []string
-		wantErr   bool
+		input   message.InfoRequestMessage
+		wantErr bool
 	}{
 		"valid message": {
-			trackPath: []string{"path", "to", "track"},
-			wantErr:   false,
+			input: message.InfoRequestMessage{
+				TrackPath: []string{"path", "to", "track"},
+			},
 		},
 		"empty track path": {
-			trackPath: []string{},
-			wantErr:   false,
+			input: message.InfoRequestMessage{
+				TrackPath: []string{},
+			},
+		},
+		"long track path": {
+			input: message.InfoRequestMessage{
+				TrackPath: []string{"very", "long", "path", "with", "many", "segments"},
+			},
+		},
+		"nil track path": {
+			input: message.InfoRequestMessage{},
 		},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			infoRequestMessage := &message.InfoRequestMessage{
-				TrackPath: tc.trackPath,
-			}
 			var buf bytes.Buffer
 
-			err := infoRequestMessage.Encode(&buf)
-			if err != nil && !tc.wantErr {
-				t.Fatalf("unexpected error: %v", err)
-			} else if err == nil && tc.wantErr {
-				t.Fatalf("expected error: %v", err)
+			// Encode
+			en, err := tc.input.Encode(&buf)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
 			}
+			require.NoError(t, err)
 
-			decodedInfoRequestMessage := &message.InfoRequestMessage{}
-			err = decodedInfoRequestMessage.Decode(&buf)
-			if err != nil && !tc.wantErr {
-				t.Fatalf("unexpected error: %v", err)
-			} else if err == nil && tc.wantErr {
-				t.Fatalf("expected error: %v", err)
-			}
+			// Decode
+			var decoded message.InfoRequestMessage
+			dn, err := decoded.Decode(&buf)
+			require.NoError(t, err)
 
-			assert.Equal(t, infoRequestMessage.TrackPath, decodedInfoRequestMessage.TrackPath)
+			// Compare fields
+			assert.Equal(t, tc.input, decoded, "decoded message should match input")
+			assert.Equal(t, en, dn, "encoded and decoded message should have the same length")
 		})
 	}
 }

@@ -1,8 +1,10 @@
 package message
 
 import (
+	"bytes"
 	"io"
-	"log/slog"
+
+	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type GroupErrorCode uint64
@@ -20,58 +22,47 @@ type SubscribeGapMessage struct {
 	GroupErrorCode GroupErrorCode
 }
 
-func (sgm SubscribeGapMessage) Encode(w io.Writer) error {
-	slog.Debug("encoding a SUBSCRIBE_GAP message")
-
+func (sgm SubscribeGapMessage) Encode(w io.Writer) (int, error) {
 	// Serialize the payload
 	p := make([]byte, 0, 1<<5)
 	p = appendNumber(p, uint64(sgm.MinGapSequence))
 	p = appendNumber(p, uint64(sgm.MaxGapSequence))
 	p = appendNumber(p, uint64(sgm.GroupErrorCode))
 
-	// Prepare the final message with length prefix
-	b := make([]byte, 0, len(p)+8)
-	b = appendNumber(b, uint64(len(p)))
-	b = append(b, p...)
+	// Serialize the message
+	b := make([]byte, 0, len(p)+quicvarint.Len(uint64(len(p))))
+	b = appendBytes(b, p)
 
-	// Write the message
-	if _, err := w.Write(b); err != nil {
-		slog.Error("failed to write a SUBSCRIBE_GAP message", slog.String("error", err.Error()))
-		return err
-	}
-
-	slog.Debug("encoded a SUBSCRIBE_GAP message")
-	return nil
+	return w.Write(b)
 }
 
-func (sgm *SubscribeGapMessage) Decode(r io.Reader) error {
-	slog.Debug("decoding a SUBSCRIBE_GAP message")
-
-	// Create a message reader
-	mr, err := newReader(r)
+func (sgm *SubscribeGapMessage) Decode(r io.Reader) (int, error) {
+	// Read the payload
+	buf, n, err := readBytes(quicvarint.NewReader(r))
 	if err != nil {
-		return err
+		return n, err
 	}
 
-	// Deserialize the payload
-	num, err := readNumber(mr)
+	// Decode the payload
+	mr := bytes.NewReader(buf)
+
+	num, _, err := readNumber(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 	sgm.MinGapSequence = GroupSequence(num)
 
-	num, err = readNumber(mr)
+	num, _, err = readNumber(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 	sgm.MaxGapSequence = GroupSequence(num)
 
-	num, err = readNumber(mr)
+	num, _, err = readNumber(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 	sgm.GroupErrorCode = GroupErrorCode(num)
 
-	slog.Debug("decoded a SUBSCRIBE_GAP message")
-	return nil
+	return n, nil
 }

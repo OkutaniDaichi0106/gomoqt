@@ -6,76 +6,76 @@ import (
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSubscribeMessage_EncodeDecode(t *testing.T) {
 	tests := map[string]struct {
-		subscribeID      message.SubscribeID
-		trackPath        []string
-		trackPriority    message.TrackPriority
-		groupOrder       message.GroupOrder
-		minGroupSequence message.GroupSequence
-		maxGroupSequence message.GroupSequence
-		parameter        message.Parameters
-		wantErr          bool
+		input   message.SubscribeMessage
+		wantErr bool
 	}{
 		"valid message": {
-			subscribeID:      1,
-			trackPath:        []string{"path", "to", "track"},
-			trackPriority:    5,
-			groupOrder:       1,
-			minGroupSequence: 10,
-			maxGroupSequence: 20,
-			parameter:        message.Parameters{1: []byte("value")},
-			wantErr:          false,
+			input: message.SubscribeMessage{
+				SubscribeID:         1,
+				TrackPath:           []string{"path", "to", "track"},
+				TrackPriority:       5,
+				GroupOrder:          1,
+				MinGroupSequence:    10,
+				MaxGroupSequence:    20,
+				SubscribeParameters: message.Parameters{1: []byte("value")},
+			},
 		},
 		"empty track path": {
-			subscribeID:      1,
-			trackPath:        []string{},
-			trackPriority:    5,
-			groupOrder:       1,
-			minGroupSequence: 10,
-			maxGroupSequence: 20,
-			parameter:        message.Parameters{1: []byte("value")},
-			wantErr:          false,
+			input: message.SubscribeMessage{
+				SubscribeID:         1,
+				TrackPath:           []string{},
+				TrackPriority:       5,
+				GroupOrder:          1,
+				MinGroupSequence:    10,
+				MaxGroupSequence:    20,
+				SubscribeParameters: message.Parameters{1: []byte("value")},
+			},
+		},
+		"max values": {
+			input: message.SubscribeMessage{
+				SubscribeID:         message.SubscribeID(^uint64(0)),
+				TrackPath:           []string{"very", "long", "path"},
+				TrackPriority:       message.TrackPriority(^byte(0)),
+				GroupOrder:          message.GroupOrder(^byte(0)),
+				MinGroupSequence:    message.GroupSequence(^uint64(0)),
+				MaxGroupSequence:    message.GroupSequence(^uint64(0)),
+				SubscribeParameters: message.Parameters{1: bytes.Repeat([]byte("a"), 1024)},
+			},
+		},
+		"nil parameters": {
+			input: message.SubscribeMessage{
+				SubscribeID:   1,
+				TrackPath:     []string{"path"},
+				TrackPriority: 1,
+			},
 		},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			subscribe := &message.SubscribeMessage{
-				SubscribeID:         tc.subscribeID,
-				TrackPath:           tc.trackPath,
-				TrackPriority:       tc.trackPriority,
-				GroupOrder:          tc.groupOrder,
-				MinGroupSequence:    tc.minGroupSequence,
-				MaxGroupSequence:    tc.maxGroupSequence,
-				SubscribeParameters: tc.parameter,
-			}
 			var buf bytes.Buffer
 
-			err := subscribe.Encode(&buf)
-			if err != nil && !tc.wantErr {
-				t.Fatalf("unexpected error: %v", err)
-			} else if err == nil && tc.wantErr {
-				t.Fatalf("expected error: %v", err)
+			// Encode
+			en, err := tc.input.Encode(&buf)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
 			}
+			require.NoError(t, err)
 
-			decodedSubscribe := &message.SubscribeMessage{}
-			err = decodedSubscribe.Decode(&buf)
-			if err != nil && !tc.wantErr {
-				t.Fatalf("unexpected error: %v", err)
-			} else if err == nil && tc.wantErr {
-				t.Fatalf("expected error: %v", err)
-			}
+			// Decode
+			var decoded message.SubscribeMessage
+			dn, err := decoded.Decode(&buf)
+			require.NoError(t, err)
 
-			assert.Equal(t, subscribe.SubscribeID, decodedSubscribe.SubscribeID)
-			assert.Equal(t, subscribe.TrackPath, decodedSubscribe.TrackPath)
-			assert.Equal(t, subscribe.TrackPriority, decodedSubscribe.TrackPriority)
-			assert.Equal(t, subscribe.GroupOrder, decodedSubscribe.GroupOrder)
-			assert.Equal(t, subscribe.MinGroupSequence, decodedSubscribe.MinGroupSequence)
-			assert.Equal(t, subscribe.MaxGroupSequence, decodedSubscribe.MaxGroupSequence)
-			assert.Equal(t, subscribe.SubscribeParameters, decodedSubscribe.SubscribeParameters)
+			// Compare all fields
+			assert.Equal(t, tc.input, decoded, "decoded message should match input")
+			assert.Equal(t, en, dn, "encoded and decoded message should have the same length")
 		})
 	}
 }

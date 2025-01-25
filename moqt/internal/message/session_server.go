@@ -1,10 +1,11 @@
 package message
 
 import (
+	"bytes"
 	"io"
-	"log/slog"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
+	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type SessionServerMessage struct {
@@ -20,69 +21,42 @@ type SessionServerMessage struct {
 	Parameters Parameters
 }
 
-func (ssm SessionServerMessage) Encode(w io.Writer) error {
-	slog.Debug("encoding a SESSION_SERVER message")
-
-	/*
-	 * Serialize the message in the following format
-	 *
-	 * SERVER_SETUP Message {
-	 *   Message Length (varint),
-	 *   Selected Version (varint),
-	 *   Number of Parameters (varint),
-	 *   Setup Parameters (..),
-	 * }
-	 */
-
+func (ssm SessionServerMessage) Encode(w io.Writer) (int, error) {
+	// Serialize the payload
 	p := make([]byte, 0, 1<<4)
 
-	// Append the selected version
 	p = appendNumber(p, uint64(ssm.SelectedVersion))
-
-	// Append the parameters
 	p = appendParameters(p, ssm.Parameters)
 
-	// Get a whole serialized message
-	b := make([]byte, 0, len(p)+8)
-
-	// Append the length of the payload and the payload
+	// Serialize the message
+	b := make([]byte, 0, len(p)+quicvarint.Len(uint64(len(p))))
 	b = appendBytes(b, p)
 
-	// Write
-	_, err := w.Write(b)
-	if err != nil {
-		slog.Error("failed to write a SESSION_SERVER message", slog.String("error", err.Error()))
-		return err
-	}
-
-	slog.Debug("encoded a SESSION_SERVER message")
-
-	return nil
+	return w.Write(b)
 }
 
-func (ssm *SessionServerMessage) Decode(r io.Reader) error {
-	slog.Debug("decoding a SESSION_SERVER message")
-
-	// Get a message reader
-	mr, err := newReader(r)
+func (ssm *SessionServerMessage) Decode(r io.Reader) (int, error) {
+	// Read the payload
+	buf, n, err := readBytes(quicvarint.NewReader(r))
 	if err != nil {
-		return err
+		return n, err
 	}
 
-	// Get the selected version
-	num, err := readNumber(mr)
+	// Decode the payload
+	mr := bytes.NewReader(buf)
+
+	// Read selected version
+	version, _, err := readNumber(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
-	ssm.SelectedVersion = protocol.Version(num)
+	ssm.SelectedVersion = protocol.Version(version)
 
-	// Get Parameters
-	ssm.Parameters, err = readParameters(mr)
+	// Read parameters
+	ssm.Parameters, _, err = readParameters(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 
-	slog.Debug("decoded a SESSION_SERVER message")
-
-	return nil
+	return n, nil
 }

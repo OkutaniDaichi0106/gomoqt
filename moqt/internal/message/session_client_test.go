@@ -7,54 +7,64 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSessionClientMessage_EncodeDecode(t *testing.T) {
 	tests := map[string]struct {
-		versions   []protocol.Version
-		parameters message.Parameters
-		wantErr    bool
+		input   message.SessionClientMessage
+		wantErr bool
 	}{
 		"valid message": {
-			versions: []protocol.Version{0},
-			parameters: message.Parameters{
-				1: []byte("value1"),
-				2: []byte("value2"),
+			input: message.SessionClientMessage{
+				SupportedVersions: []protocol.Version{0, 1},
+				Parameters: message.Parameters{
+					1: []byte("value1"),
+					2: []byte("value2"),
+				},
 			},
-			wantErr: false,
 		},
 		"empty parameters": {
-			versions:   []protocol.Version{0},
-			parameters: message.Parameters{},
-			wantErr:    false,
+			input: message.SessionClientMessage{
+				SupportedVersions: []protocol.Version{0},
+				Parameters:        message.Parameters{},
+			},
+		},
+		"max values": {
+			input: message.SessionClientMessage{
+				SupportedVersions: []protocol.Version{protocol.Version(^byte(0))},
+				Parameters: message.Parameters{
+					^uint64(0): bytes.Repeat([]byte("a"), 1024),
+				},
+			},
+		},
+		"nil values": {
+			input: message.SessionClientMessage{
+				SupportedVersions: []protocol.Version{0},
+			},
 		},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			sessionClientMessage := &message.SessionClientMessage{
-				SupportedVersions: tc.versions,
-				Parameters:        tc.parameters,
-			}
 			var buf bytes.Buffer
 
-			err := sessionClientMessage.Encode(&buf)
-			if err != nil && !tc.wantErr {
-				t.Fatalf("unexpected error: %v", err)
-			} else if err == nil && tc.wantErr {
-				t.Fatalf("expected error: %v", err)
+			// Encode
+			en, err := tc.input.Encode(&buf)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
 			}
+			require.NoError(t, err)
 
-			decodedSessionClientMessage := &message.SessionClientMessage{}
-			err = decodedSessionClientMessage.Decode(&buf)
-			if err != nil && !tc.wantErr {
-				t.Fatalf("unexpected error: %v", err)
-			} else if err == nil && tc.wantErr {
-				t.Fatalf("expected error: %v", err)
-			}
+			// Decode
+			var decoded message.SessionClientMessage
+			dn, err := decoded.Decode(&buf)
+			require.NoError(t, err)
 
-			assert.Equal(t, sessionClientMessage.SupportedVersions, decodedSessionClientMessage.SupportedVersions)
-			assert.Equal(t, sessionClientMessage.Parameters, decodedSessionClientMessage.Parameters)
+			// Compare fields
+			assert.Equal(t, tc.input, decoded, "decoded message should match input")
+			assert.Equal(t, en, dn, "encoded and decoded message should have the same length")
 		})
 	}
 }

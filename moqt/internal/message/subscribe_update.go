@@ -1,8 +1,11 @@
 package message
 
 import (
+	"bytes"
 	"io"
 	"log/slog"
+
+	"github.com/quic-go/quic-go/quicvarint"
 )
 
 /*
@@ -22,7 +25,7 @@ type SubscribeUpdateMessage struct {
 	SubscribeUpdateParameters Parameters
 }
 
-func (su SubscribeUpdateMessage) Encode(w io.Writer) error {
+func (su SubscribeUpdateMessage) Encode(w io.Writer) (int, error) {
 	slog.Debug("encoding a SUBSCRIBE_UPDATE message")
 
 	// Serialize the payload
@@ -33,60 +36,55 @@ func (su SubscribeUpdateMessage) Encode(w io.Writer) error {
 	p = appendNumber(p, uint64(su.MaxGroupSequence))
 	p = appendParameters(p, su.SubscribeUpdateParameters)
 
-	// Prepare the final message with length prefix
-	b := make([]byte, 0, len(p)+8)
+	// Serialize the message
+	b := make([]byte, 0, len(p)+quicvarint.Len(uint64(len(p))))
 	b = appendBytes(b, p)
 
-	// Write the message
-	_, err := w.Write(b)
-	if err != nil {
-		slog.Error("failed to write a SUBSCRIBE_UPDATE message", slog.String("error", err.Error()))
-		return err
-	}
-
-	slog.Debug("encoded a SUBSCRIBE_UPDATE message")
-	return nil
+	// Write
+	return w.Write(b)
 }
 
-func (sum *SubscribeUpdateMessage) Decode(r io.Reader) error {
+func (sum *SubscribeUpdateMessage) Decode(r io.Reader) (int, error) {
 	slog.Debug("decoding a SUBSCRIBE_UPDATE message")
 
-	// Create a message reader
-	mr, err := newReader(r)
+	// Read the payload
+	buf, n, err := readBytes(quicvarint.NewReader(r))
 	if err != nil {
-		return err
+		return n, err
 	}
 
-	// Deserialize the payload
-	num, err := readNumber(mr)
+	// Decode the payload
+	mr := bytes.NewReader(buf)
+
+	num, _, err := readNumber(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 	sum.TrackPriority = TrackPriority(num)
 
-	num, err = readNumber(mr)
+	num, _, err = readNumber(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 	sum.GroupOrder = GroupOrder(num)
 
-	num, err = readNumber(mr)
+	num, _, err = readNumber(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 	sum.MinGroupSequence = GroupSequence(num)
 
-	num, err = readNumber(mr)
+	num, _, err = readNumber(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 	sum.MaxGroupSequence = GroupSequence(num)
 
-	sum.SubscribeUpdateParameters, err = readParameters(mr)
+	sum.SubscribeUpdateParameters, _, err = readParameters(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 
 	slog.Debug("decoded a SUBSCRIBE_UPDATE message")
-	return nil
+	return n, nil
 }

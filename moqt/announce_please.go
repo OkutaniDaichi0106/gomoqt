@@ -19,7 +19,7 @@ func (ac AnnounceConfig) String() string {
 func readAnnouncePlease(r io.Reader) (AnnounceConfig, error) {
 	//
 	var aim message.AnnouncePleaseMessage
-	err := aim.Decode(r)
+	_, err := aim.Decode(r)
 	if err != nil {
 		slog.Error("failed to read an ANNOUNCE_INTEREST message", slog.String("error", err.Error()))
 		return AnnounceConfig{}, err
@@ -37,7 +37,7 @@ func writeAnnouncePlease(w io.Writer, interest AnnounceConfig) error {
 		Parameters:      message.Parameters(interest.Parameters.paramMap),
 	}
 
-	err := aim.Encode(w)
+	_, err := aim.Encode(w)
 	if err != nil {
 		slog.Error("failed to send an ANNOUNCE_INTEREST message", slog.String("error", err.Error()))
 		return err

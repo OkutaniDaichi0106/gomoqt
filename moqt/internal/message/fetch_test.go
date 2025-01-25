@@ -6,66 +6,71 @@ import (
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFetchMessage_EncodeDecode(t *testing.T) {
 	tests := map[string]struct {
-		subscribeID   message.SubscribeID
-		trackPath     []string
-		trackPriority message.TrackPriority
-		groupSequence message.GroupSequence
-		frameSequence message.FrameSequence
-		wantErr       bool
+		input   message.FetchMessage
+		wantErr bool
 	}{
 		"valid message": {
-			subscribeID:   1,
-			trackPath:     []string{"path", "to", "track"},
-			trackPriority: 5,
-			groupSequence: 10,
-			frameSequence: 15,
-			wantErr:       false,
+			input: message.FetchMessage{
+				SubscribeID:   1,
+				TrackPath:     []string{"path", "to", "track"},
+				TrackPriority: 5,
+				GroupSequence: 10,
+				FrameSequence: 15,
+			},
 		},
 		"empty track path": {
-			subscribeID:   1,
-			trackPath:     []string{},
-			trackPriority: 5,
-			groupSequence: 10,
-			frameSequence: 15,
-			wantErr:       false,
+			input: message.FetchMessage{
+				SubscribeID:   1,
+				TrackPath:     []string{},
+				TrackPriority: 5,
+				GroupSequence: 10,
+				FrameSequence: 15,
+			},
+		},
+		"max values": {
+			input: message.FetchMessage{
+				SubscribeID:   message.SubscribeID(^uint64(0)),
+				TrackPath:     []string{"very", "long", "path"},
+				TrackPriority: message.TrackPriority(^byte(0)),
+				GroupSequence: message.GroupSequence(^uint64(0)),
+				FrameSequence: message.FrameSequence(^uint64(0)),
+			},
+		},
+		"nil track path": {
+			input: message.FetchMessage{
+				SubscribeID:   1,
+				TrackPriority: 1,
+				GroupSequence: 1,
+				FrameSequence: 1,
+			},
 		},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			fetchMessage := &message.FetchMessage{
-				SubscribeID:   tc.subscribeID,
-				TrackPath:     tc.trackPath,
-				TrackPriority: tc.trackPriority,
-				GroupSequence: tc.groupSequence,
-				FrameSequence: tc.frameSequence,
-			}
 			var buf bytes.Buffer
 
-			err := fetchMessage.Encode(&buf)
-			if err != nil && !tc.wantErr {
-				t.Fatalf("unexpected error: %v", err)
-			} else if err == nil && tc.wantErr {
-				t.Fatalf("expected error: %v", err)
+			// Encode
+			en, err := tc.input.Encode(&buf)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
 			}
+			require.NoError(t, err)
 
-			decodedFetchMessage := &message.FetchMessage{}
-			err = decodedFetchMessage.Decode(&buf)
-			if err != nil && !tc.wantErr {
-				t.Fatalf("unexpected error: %v", err)
-			} else if err == nil && tc.wantErr {
-				t.Fatalf("expected error: %v", err)
-			}
+			// Decode
+			var decoded message.FetchMessage
+			dn, err := decoded.Decode(&buf)
+			require.NoError(t, err)
 
-			assert.Equal(t, fetchMessage.SubscribeID, decodedFetchMessage.SubscribeID)
-			assert.Equal(t, fetchMessage.TrackPath, decodedFetchMessage.TrackPath)
-			assert.Equal(t, fetchMessage.TrackPriority, decodedFetchMessage.TrackPriority)
-			assert.Equal(t, fetchMessage.GroupSequence, decodedFetchMessage.GroupSequence)
-			assert.Equal(t, fetchMessage.FrameSequence, decodedFetchMessage.FrameSequence)
+			// Compare all fields
+			assert.Equal(t, tc.input, decoded, "decoded message should match input")
+			assert.Equal(t, en, dn, "encoded and decoded message should have the same length")
 		})
 	}
 }

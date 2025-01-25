@@ -6,72 +6,76 @@ import (
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAnnounceMessage_EncodeDecode(t *testing.T) {
-	tests := []struct {
-		name            string
-		announceStatus  uint64
-		trackPathSuffix []string
-		parameters      map[uint64][]byte
-		wantErr         bool
+	tests := map[string]struct {
+		input   message.AnnounceMessage
+		wantErr bool
 	}{
-		{
-			name:            "valid message",
-			announceStatus:  1,
-			trackPathSuffix: []string{"path", "to", "track"},
-			parameters: map[uint64][]byte{
-				1: []byte("value1"),
-				2: []byte("value2"),
+		"valid message": {
+			input: message.AnnounceMessage{
+				AnnounceStatus:  message.AnnounceStatus(1),
+				TrackPathSuffix: []string{"path", "to", "track"},
+				Parameters: map[uint64][]byte{
+					1: []byte("value1"),
+					2: []byte("value2"),
+				},
 			},
-			wantErr: false,
 		},
-		{
-			name:            "empty track path suffix",
-			announceStatus:  1,
-			trackPathSuffix: []string{},
-			parameters: map[uint64][]byte{
-				1: []byte("value1"),
-				2: []byte("value2"),
+		"empty track path suffix": {
+			input: message.AnnounceMessage{
+				AnnounceStatus:  message.AnnounceStatus(1),
+				TrackPathSuffix: []string{},
+				Parameters: map[uint64][]byte{
+					1: []byte("value1"),
+				},
 			},
-			wantErr: false,
 		},
-		{
-			name:            "empty parameters",
-			announceStatus:  1,
-			trackPathSuffix: []string{"path", "to", "track"},
-			parameters:      map[uint64][]byte{},
-			wantErr:         false,
+		"empty parameters": {
+			input: message.AnnounceMessage{
+				AnnounceStatus:  message.AnnounceStatus(1),
+				TrackPathSuffix: []string{"path"},
+				Parameters:      map[uint64][]byte{},
+			},
+		},
+		"max values": {
+			input: message.AnnounceMessage{
+				AnnounceStatus:  message.AnnounceStatus(^byte(0)),
+				TrackPathSuffix: []string{"very", "long", "path"},
+				Parameters: map[uint64][]byte{
+					^uint64(0): bytes.Repeat([]byte("a"), 1024),
+				},
+			},
+		},
+		"nil values": {
+			input: message.AnnounceMessage{
+				AnnounceStatus: message.AnnounceStatus(1),
+			},
 		},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			announce := &message.AnnounceMessage{
-				AnnounceStatus:  message.AnnounceStatus(tc.announceStatus),
-				TrackPathSuffix: tc.trackPathSuffix,
-				Parameters:      tc.parameters,
-			}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
 			var buf bytes.Buffer
 
-			err := announce.Encode(&buf)
-			if err != nil && !tc.wantErr {
-				t.Fatalf("unexpected error: %v", err)
-			} else if err == nil && tc.wantErr {
-				t.Fatalf("expected error: %v", err)
+			// Encode
+			en, err := tc.input.Encode(&buf)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
 			}
+			require.NoError(t, err)
 
-			decodedAnnounce := &message.AnnounceMessage{}
-			err = decodedAnnounce.Decode(&buf)
-			if err != nil && !tc.wantErr {
-				t.Fatalf("unexpected error: %v", err)
-			} else if err == nil && tc.wantErr {
-				t.Fatalf("expected error: %v", err)
-			}
+			// Decode
+			var decoded message.AnnounceMessage
+			dn, err := decoded.Decode(&buf)
+			require.NoError(t, err)
 
-			assert.Equal(t, announce.AnnounceStatus, decodedAnnounce.AnnounceStatus)
-			assert.Equal(t, announce.TrackPathSuffix, decodedAnnounce.TrackPathSuffix)
-			assert.Equal(t, announce.Parameters, decodedAnnounce.Parameters)
+			// Compare all fields
+			assert.Equal(t, tc.input, decoded, "decoded message should match input")
+			assert.Equal(t, en, dn, "encoded and decoded message should have the same length")
 		})
 	}
 }

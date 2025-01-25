@@ -6,56 +6,64 @@ import (
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestSubscribeGapMessageEncodeDecode(t *testing.T) {
+func TestSubscribeGapMessage_EncodeDecode(t *testing.T) {
 	tests := map[string]struct {
-		minGapSequence message.GroupSequence
-		maxGapSequence message.GroupSequence
-		groupErrorCode message.GroupErrorCode
-		wantErr        bool
+		input   message.SubscribeGapMessage
+		wantErr bool
 	}{
 		"valid message": {
-			minGapSequence: 100,
-			maxGapSequence: 200,
-			groupErrorCode: 1,
-			wantErr:        false,
+			input: message.SubscribeGapMessage{
+				MinGapSequence: 100,
+				MaxGapSequence: 200,
+				GroupErrorCode: 1,
+			},
 		},
-		"zero sequences": {
-			minGapSequence: 0,
-			maxGapSequence: 0,
-			groupErrorCode: 0,
-			wantErr:        false,
+		"zero values": {
+			input: message.SubscribeGapMessage{
+				MinGapSequence: 0,
+				MaxGapSequence: 0,
+				GroupErrorCode: 0,
+			},
+		},
+		"max values": {
+			input: message.SubscribeGapMessage{
+				MinGapSequence: message.GroupSequence(^uint64(0)),
+				MaxGapSequence: message.GroupSequence(^uint64(0)),
+				GroupErrorCode: message.GroupErrorCode(^uint32(0)),
+			},
+		},
+		"min greater than max": {
+			input: message.SubscribeGapMessage{
+				MinGapSequence: 200,
+				MaxGapSequence: 100,
+				GroupErrorCode: 1,
+			},
 		},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			subscribeGap := &message.SubscribeGapMessage{
-				MinGapSequence: tc.minGapSequence,
-				MaxGapSequence: tc.maxGapSequence,
-				GroupErrorCode: tc.groupErrorCode,
-			}
 			var buf bytes.Buffer
 
-			err := subscribeGap.Encode(&buf)
-			if err != nil && !tc.wantErr {
-				t.Fatalf("unexpected error: %v", err)
-			} else if err == nil && tc.wantErr {
-				t.Fatalf("expected error: %v", err)
+			// Encode
+			en, err := tc.input.Encode(&buf)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
 			}
+			require.NoError(t, err)
 
-			decodedSubscribeGap := &message.SubscribeGapMessage{}
-			err = decodedSubscribeGap.Decode(&buf)
-			if err != nil && !tc.wantErr {
-				t.Fatalf("unexpected error: %v", err)
-			} else if err == nil && tc.wantErr {
-				t.Fatalf("expected error: %v", err)
-			}
+			// Decode
+			var decoded message.SubscribeGapMessage
+			dn, err := decoded.Decode(&buf)
+			require.NoError(t, err)
 
-			assert.Equal(t, subscribeGap.MinGapSequence, decodedSubscribeGap.MinGapSequence)
-			assert.Equal(t, subscribeGap.MaxGapSequence, decodedSubscribeGap.MaxGapSequence)
-			assert.Equal(t, subscribeGap.GroupErrorCode, decodedSubscribeGap.GroupErrorCode)
+			// Compare all fields
+			assert.Equal(t, tc.input, decoded, "decoded message should match input")
+			assert.Equal(t, en, dn, "encoded and decoded message should have the same length")
 		})
 	}
 }

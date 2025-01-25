@@ -5,42 +5,53 @@ import (
 	"testing"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/quic-go/quic-go/quicvarint"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestSessionUpdateMessage(t *testing.T) {
+func TestSessionUpdateMessage_EncodeDecode(t *testing.T) {
 	tests := map[string]struct {
-		input   uint64
-		want    uint64
+		input   message.SessionUpdateMessage
 		wantErr bool
 	}{
-		"valid bitrate": {input: 12345, want: 12345, wantErr: false},
-		"zero bitrate":  {input: 0, want: 0, wantErr: false},
+		"valid bitrate": {
+			input: message.SessionUpdateMessage{
+				Bitrate: 12345,
+			},
+		},
+		"zero bitrate": {
+			input: message.SessionUpdateMessage{
+				Bitrate: 0,
+			},
+		},
+		"max bitrate": {
+			input: message.SessionUpdateMessage{
+				Bitrate: ^uint64(0),
+			},
+		},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
-			sum := message.SessionUpdateMessage{Bitrate: tc.input}
-
 			var buf bytes.Buffer
-			err := sum.Encode(&buf)
 
-			if (err != nil) != tc.wantErr {
-				t.Fatalf("expected error: %v, got: %v", tc.wantErr, err)
+			// Encode
+			en, err := tc.input.Encode(&buf)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
 			}
+			require.NoError(t, err)
 
-			var deserialized message.SessionUpdateMessage
-			err = deserialized.Decode(quicvarint.NewReader(&buf))
+			// Decode
+			var decoded message.SessionUpdateMessage
+			dn, err := decoded.Decode(&buf)
+			require.NoError(t, err)
 
-			if (err != nil) != tc.wantErr {
-				t.Fatalf("expected error: %v, got: %v", tc.wantErr, err)
-			}
-
-			if deserialized.Bitrate != tc.want {
-				t.Fatalf("expected bitrate: %v, got: %v", tc.want, deserialized.Bitrate)
-			}
+			// Compare fields
+			assert.Equal(t, tc.input, decoded, "decoded message should match input")
+			assert.Equal(t, en, dn, "encoded and decoded message should have the same length")
 		})
 	}
 }

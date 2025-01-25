@@ -3,6 +3,8 @@ package message
 import (
 	"io"
 	"log/slog"
+
+	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type FrameSequence uint64
@@ -11,7 +13,7 @@ type FrameMessage struct {
 	Payload []byte
 }
 
-func (fm FrameMessage) Encode(w io.Writer) error {
+func (fm FrameMessage) Encode(w io.Writer) (int, error) {
 	slog.Debug("encoding a FRAME message")
 
 	/*
@@ -23,36 +25,35 @@ func (fm FrameMessage) Encode(w io.Writer) error {
 	 * }
 	 */
 
-	b := make([]byte, 0, len(fm.Payload)+8)
+	b := make([]byte, 0, len(fm.Payload)+quicvarint.Len(uint64(len(fm.Payload))))
 
 	// Append the payload length
 	b = appendBytes(b, fm.Payload)
 
-	_, err := w.Write(b)
+	// Write
+	n, err := w.Write(b)
 	if err != nil {
 		slog.Error("failed to write a FRAME message", slog.String("error", err.Error()))
-		return err
+		return n, err
 	}
 
 	slog.Debug("encoded a FRAME message")
 
-	return nil
+	return n, nil
 }
 
-func (fm *FrameMessage) Decode(r io.Reader) error {
+func (fm *FrameMessage) Decode(r io.Reader) (int, error) {
 	slog.Debug("decoding a FRAME message")
 
-	mr, err := newReader(r)
-	if err != nil {
-		return err
-	}
+	var err error
+	var n int
 
-	fm.Payload, err = io.ReadAll(mr)
+	fm.Payload, n, err = readBytes(quicvarint.NewReader(r))
 	if err != nil {
-		return err
+		return n, err
 	}
 
 	slog.Debug("decoded a FRAME message")
 
-	return nil
+	return n, nil
 }

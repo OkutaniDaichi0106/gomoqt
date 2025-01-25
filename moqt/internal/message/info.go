@@ -1,8 +1,11 @@
 package message
 
 import (
+	"bytes"
 	"io"
 	"log/slog"
+
+	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type InfoMessage struct {
@@ -11,7 +14,7 @@ type InfoMessage struct {
 	GroupOrder          GroupOrder
 }
 
-func (im InfoMessage) Encode(w io.Writer) error {
+func (im InfoMessage) Encode(w io.Writer) (int, error) {
 	slog.Debug("encoding a INFO message")
 
 	/*
@@ -38,54 +41,45 @@ func (im InfoMessage) Encode(w io.Writer) error {
 	p = appendNumber(p, uint64(im.GroupOrder))
 
 	// Serialize the whole message
-	b := make([]byte, 0, len(p)+8)
+	b := make([]byte, 0, len(p)+quicvarint.Len(uint64(len(p))))
 
 	// Append the payload
 	b = appendBytes(b, p)
 
 	// Write
-	_, err := w.Write(b)
-	if err != nil {
-		slog.Error("failed to write a INFO message", slog.String("error", err.Error()))
-		return err
-	}
-
-	slog.Debug("encoded a INFO message")
-
-	return err
+	return w.Write(b)
 }
 
-func (im *InfoMessage) Decode(r io.Reader) error {
+func (im *InfoMessage) Decode(r io.Reader) (int, error) {
 	slog.Debug("decoding a INFO message")
 
-	// Get a message reader
-	mr, err := newReader(r)
+	// Read the payload
+	buf, n, err := readBytes(quicvarint.NewReader(r))
 	if err != nil {
-		return err
+		return n, err
 	}
 
-	// Get the Publisher Priority
-	num, err := readNumber(mr)
+	// Decode the payload
+	mr := bytes.NewReader(buf)
+
+	num, _, err := readNumber(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 	im.TrackPriority = TrackPriority(num)
 
-	// Get the Latest Group Sequence
-	num, err = readNumber(mr)
+	num, _, err = readNumber(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 	im.LatestGroupSequence = GroupSequence(num)
 
-	// Get the Group Order
-	num, err = readNumber(mr)
+	num, _, err = readNumber(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 	im.GroupOrder = GroupOrder(num)
 
 	slog.Debug("decoded a INFO message")
-
-	return nil
+	return n, nil
 }

@@ -1,8 +1,10 @@
 package message
 
 import (
+	"bytes"
 	"io"
-	"log/slog"
+
+	"github.com/quic-go/quic-go/quicvarint"
 )
 
 /*
@@ -22,89 +24,56 @@ type FetchMessage struct {
 	FrameSequence FrameSequence // TODO: consider the necessity type FrameSequence
 }
 
-func (fm FetchMessage) Encode(w io.Writer) error {
-	slog.Debug("encoding a FETCH message")
-
-	/*
-	 * Serialize the message in the following format
-	 *
-	 * FETCH Message Payload {
-	 *   Track Path (string),
-	 *   Subscriber Priority (varint),
-	 *   Group Sequence (varint),
-	 *   Frame Sequence (varint),
-	 * }
-	 */
+func (fm FetchMessage) Encode(w io.Writer) (int, error) {
 	p := make([]byte, 0, 1<<8)
-
 	p = appendNumber(p, uint64(fm.SubscribeID))
-
 	p = appendStringArray(p, fm.TrackPath)
-
 	p = appendNumber(p, uint64(fm.TrackPriority))
-
 	p = appendNumber(p, uint64(fm.GroupSequence))
-
 	p = appendNumber(p, uint64(fm.FrameSequence))
 
-	b := make([]byte, 0, len(p)+8)
-
+	b := make([]byte, 0, len(p)+quicvarint.Len(uint64(len(p))))
 	b = appendBytes(b, p)
 
-	// Write
-	_, err := w.Write(b)
-	if err != nil {
-		return err
-	}
-
-	slog.Debug("encoded a FETCH message")
-
-	return nil
+	return w.Write(b)
 }
 
-func (fm *FetchMessage) Decode(r io.Reader) error {
-	slog.Debug("decoding a FETCH message")
-
-	// Get a messaga reader
-	mr, err := newReader(r)
+func (fm *FetchMessage) Decode(r io.Reader) (int, error) {
+	buf, n, err := readBytes(quicvarint.NewReader(r))
 	if err != nil {
-		return err
+		return n, err
 	}
 
-	// Get a Subscribe ID
-	num, err := readNumber(mr)
+	mr := bytes.NewReader(buf)
+
+	num, _, err := readNumber(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 	fm.SubscribeID = SubscribeID(num)
 
-	fm.TrackPath, err = readStringArray(mr)
+	fm.TrackPath, _, err = readStringArray(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 
-	// Get a Subscriber Priority
-	num, err = readNumber(mr)
+	num, _, err = readNumber(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 	fm.TrackPriority = TrackPriority(num)
 
-	// Get a Group Sequence
-	num, err = readNumber(mr)
+	num, _, err = readNumber(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 	fm.GroupSequence = GroupSequence(num)
 
-	// Get a Group Offset
-	num, err = readNumber(mr)
+	num, _, err = readNumber(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 	fm.FrameSequence = FrameSequence(num)
 
-	slog.Debug("decoded a FETCH message")
-
-	return nil
+	return n, nil
 }

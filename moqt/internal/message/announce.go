@@ -1,6 +1,7 @@
 package message
 
 import (
+	"bytes"
 	"io"
 	"log/slog"
 
@@ -21,72 +22,49 @@ type AnnounceMessage struct {
 	Parameters      Parameters
 }
 
-func (a AnnounceMessage) Encode(w io.Writer) error {
+func (a AnnounceMessage) Encode(w io.Writer) (int, error) {
 	slog.Debug("encoding a ANNOUNCE message")
 
-	// Serialize the payload in the following format
-	// ANNOUNCE Message Payload {
-	//   Track Path (string),
-	//   Number of Parameters (),
-	//   Announce Parameters(..)
-	// }
+	// Serialize the payload
+	p := make([]byte, 0, 1<<6)
 
-	p := make([]byte, 0, 1<<6) // TODO: Tune the size
-
-	// Append the Announce Status
 	p = appendNumber(p, uint64(a.AnnounceStatus))
-
-	// Append the Track Path Suffix's length and parts
 	p = appendStringArray(p, a.TrackPathSuffix)
-
-	// Append the Parameters
 	p = appendParameters(p, a.Parameters)
 
-	// Get serialized message
+	// Serialize the message
 	b := make([]byte, 0, len(p)+quicvarint.Len(uint64(len(p))))
-
-	// Append the length of the payload and the payload itself
 	b = appendBytes(b, p)
 
 	// Write
-	_, err := w.Write(b)
-	if err != nil {
-		return err
-	}
-
-	slog.Debug("encoded a ANNOUNCE message")
-
-	return nil
+	return w.Write(b)
 }
 
-func (am *AnnounceMessage) Decode(r io.Reader) error {
-	slog.Debug("decoding a ANNOUNCE message")
-
-	mr, err := newReader(r)
+func (am *AnnounceMessage) Decode(r io.Reader) (int, error) {
+	// Read the payload
+	buf, n, err := readBytes(quicvarint.NewReader(r))
 	if err != nil {
-		return err
+		return n, err
 	}
 
-	// Get an Announce Status
-	status, err := readNumber(mr)
+	// Decode the payload
+	mr := bytes.NewReader(buf)
+
+	status, _, err := readNumber(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 	am.AnnounceStatus = AnnounceStatus(status)
 
-	// Get Track Path Suffix parts
-	am.TrackPathSuffix, err = readStringArray(mr)
+	am.TrackPathSuffix, _, err = readStringArray(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 
-	// Get Parameters
-	am.Parameters, err = readParameters(mr)
+	am.Parameters, _, err = readParameters(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 
-	slog.Debug("decoded a ANNOUNCE message")
-
-	return nil
+	return n, nil
 }

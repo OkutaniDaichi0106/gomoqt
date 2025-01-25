@@ -1,8 +1,10 @@
 package message
 
 import (
+	"bytes"
 	"io"
-	"log/slog"
+
+	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type SubscribeID uint64
@@ -30,9 +32,7 @@ type SubscribeMessage struct {
 	SubscribeParameters Parameters
 }
 
-func (s SubscribeMessage) Encode(w io.Writer) error {
-	slog.Debug("encoding a SUBSCRIBE message")
-
+func (s SubscribeMessage) Encode(w io.Writer) (int, error) {
 	// Serialize the payload
 	p := make([]byte, 0, 1<<6)
 	p = appendNumber(p, uint64(s.SubscribeID))
@@ -43,71 +43,62 @@ func (s SubscribeMessage) Encode(w io.Writer) error {
 	p = appendNumber(p, uint64(s.MaxGroupSequence))
 	p = appendParameters(p, s.SubscribeParameters)
 
-	// Prepare the final message with length prefix
-	b := make([]byte, 0, len(p)+8)
-	b = appendNumber(b, uint64(len(p)))
-	b = append(b, p...)
+	// Serialize the message
+	b := make([]byte, 0, len(p)+quicvarint.Len(uint64(len(p))))
+	b = appendBytes(b, p)
 
-	// Write the message
-	if _, err := w.Write(b); err != nil {
-		slog.Error("failed to write a SUBSCRIBE message", slog.String("error", err.Error()))
-		return err
-	}
-
-	slog.Debug("encoded a SUBSCRIBE message")
-	return nil
+	return w.Write(b)
 }
 
-func (s *SubscribeMessage) Decode(r io.Reader) error {
-	slog.Debug("decoding a SUBSCRIBE message")
-
-	// Create a message reader
-	mr, err := newReader(r)
+func (s *SubscribeMessage) Decode(r io.Reader) (int, error) {
+	// Read the payload
+	buf, n, err := readBytes(quicvarint.NewReader(r))
 	if err != nil {
-		return err
+		return n, err
 	}
 
-	// Deserialize the payload
-	num, err := readNumber(mr)
+	// Decode the payload
+	mr := bytes.NewReader(buf)
+
+	num, _, err := readNumber(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 	s.SubscribeID = SubscribeID(num)
 
-	s.TrackPath, err = readStringArray(mr)
+	s.TrackPath, _, err = readStringArray(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 
-	num, err = readNumber(mr)
+	num, _, err = readNumber(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 	s.TrackPriority = TrackPriority(num)
 
-	num, err = readNumber(mr)
+	num, _, err = readNumber(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 	s.GroupOrder = GroupOrder(num)
 
-	num, err = readNumber(mr)
+	num, _, err = readNumber(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 	s.MinGroupSequence = GroupSequence(num)
 
-	num, err = readNumber(mr)
+	num, _, err = readNumber(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 	s.MaxGroupSequence = GroupSequence(num)
 
-	s.SubscribeParameters, err = readParameters(mr)
+	s.SubscribeParameters, _, err = readParameters(mr)
 	if err != nil {
-		return err
+		return n, err
 	}
 
-	slog.Debug("decoded a SUBSCRIBE message")
-	return nil
+	return n, nil
 }

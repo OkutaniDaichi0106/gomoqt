@@ -7,46 +7,33 @@ import (
 
 type StreamType byte
 
+/*
+ * Serialize the message in the following format
+ *
+ * STREAM_TYPE Message {
+ *   Stream Type (byte),
+ * }
+ */
+
 type StreamTypeMessage struct {
 	StreamType StreamType
 }
 
-func (stm StreamTypeMessage) Encode(w io.Writer) error {
-	slog.Debug("encoding a STREAM_TYPE message")
-
-	/*
-	 * Serialize the message in the following format
-	 *
-	 * STREAM_TYPE Message {
-	 *   Stream Type (byte),
-	 * }
-	 */
+func (stm StreamTypeMessage) Encode(w io.Writer) (int, error) {
 
 	// Write the Stream Type
-	_, err := w.Write([]byte{byte(stm.StreamType)})
-	if err != nil {
-		slog.Error("failed to write a STREAM_TYPE message", slog.String("error", err.Error()))
-		return err
-	}
-
-	slog.Debug("encoded a STREAM_TYPE message")
-
-	return nil
+	return w.Write([]byte{byte(stm.StreamType)})
 }
 
-func (stm *StreamTypeMessage) Decode(r io.Reader) error {
-	slog.Debug("decoding a STREAM_TYPE message")
-
+func (stm *StreamTypeMessage) Decode(r io.Reader) (int, error) {
 	// Read the Stream Type
 	buf := make([]byte, 1)
-	_, err := r.Read(buf)
+	n, err := r.Read(buf)
 	if err != nil {
 		slog.Error("failed to read a stream type", slog.String("error", err.Error()))
-		return err
+		return n, err
 	}
 	stm.StreamType = StreamType(buf[0])
 
-	slog.Debug("decoded a STREAM_TYPE message")
-
-	return nil
+	return n, nil
 }

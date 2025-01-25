@@ -6,48 +6,55 @@ import (
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGroupMessage_EncodeDecode(t *testing.T) {
 	tests := map[string]struct {
-		testcase message.GroupMessage
-		want     message.GroupMessage
-		wantErr  bool
+		input   message.GroupMessage
+		wantErr bool
 	}{
-		"valid parameter": {
-			testcase: message.GroupMessage{
+		"valid message": {
+			input: message.GroupMessage{
 				SubscribeID:   1,
 				GroupSequence: 1,
 			},
-			want: message.GroupMessage{
-				SubscribeID:   1,
-				GroupSequence: 1,
+		},
+		"max values": {
+			input: message.GroupMessage{
+				SubscribeID:   message.SubscribeID(^uint64(0)),
+				GroupSequence: message.GroupSequence(^uint64(0)),
 			},
-			wantErr: false,
+		},
+		"zero values": {
+			input: message.GroupMessage{
+				SubscribeID:   0,
+				GroupSequence: 0,
+			},
 		},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			group := tc.testcase
 			var buf bytes.Buffer
-			err := group.Encode(&buf)
-			if err != nil && !tc.wantErr {
-				t.Fatalf("unexpected error: %v", err)
+
+			// Encode
+			en, err := tc.input.Encode(&buf)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
 			}
+			require.NoError(t, err)
 
-			err = group.Decode(&buf)
-			if err != nil && !tc.wantErr {
-				t.Fatalf("unexpected error: %v", err)
-			}
+			// Decode
+			var decoded message.GroupMessage
+			dn, err := decoded.Decode(&buf)
+			require.NoError(t, err)
 
-			if err == nil && tc.wantErr {
-				t.Fatalf("expected error")
-			}
-
-			assert.Equal(t, group, tc.want)
-
+			// Compare fields
+			assert.Equal(t, tc.input, decoded, "decoded message should match input")
+			assert.Equal(t, en, dn, "encoded and decoded message should have the same length")
 		})
 	}
 }

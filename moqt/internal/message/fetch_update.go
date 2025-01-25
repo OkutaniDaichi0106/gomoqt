@@ -1,8 +1,8 @@
 package message
 
 import (
+	"bytes"
 	"io"
-	"log/slog"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -11,44 +11,29 @@ type FetchUpdateMessage struct {
 	TrackPriority TrackPriority
 }
 
-func (fum FetchUpdateMessage) Encode(w io.Writer) error {
-	slog.Debug("encoding a FETCH_UPDATE message")
+func (fum FetchUpdateMessage) Encode(w io.Writer) (int, error) {
+	p := make([]byte, 0, 1<<3)
+	p = appendNumber(p, uint64(fum.TrackPriority))
 
-	// Serialize the payload
-	payload := quicvarint.Append(nil, uint64(fum.TrackPriority))
+	b := make([]byte, 0, len(p)+quicvarint.Len(uint64(len(p))))
+	b = appendBytes(b, p)
 
-	// Serialize the message with the length of the payload
-	message := quicvarint.Append(nil, uint64(len(payload)))
-	message = append(message, payload...)
-
-	// Write the serialized message
-	_, err := w.Write(message)
-	if err != nil {
-		return err
-	}
-
-	slog.Debug("encoded a FETCH_UPDATE message")
-
-	return nil
+	return w.Write(b)
 }
 
-func (fum *FetchUpdateMessage) Decode(r io.Reader) error {
-	slog.Debug("decoding a FETCH_UPDATE message")
-
-	// Get a messaga reader
-	mr, err := newReader(r)
+func (fum *FetchUpdateMessage) Decode(r io.Reader) (int, error) {
+	buf, n, err := readBytes(quicvarint.NewReader(r))
 	if err != nil {
-		return err
+		return n, err
 	}
 
-	num, err := quicvarint.Read(mr)
-	if err != nil {
-		return err
-	}
+	mr := bytes.NewReader(buf)
 
+	num, _, err := readNumber(mr)
+	if err != nil {
+		return n, err
+	}
 	fum.TrackPriority = TrackPriority(num)
 
-	slog.Debug("decoded a FETCH_UPDATE message")
-
-	return nil
+	return n, nil
 }

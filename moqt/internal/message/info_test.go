@@ -6,50 +6,57 @@ import (
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestInfoMessage_EncodeDecode(t *testing.T) {
 	tests := map[string]struct {
-		trackPriority       message.TrackPriority
-		latestGroupSequence message.GroupSequence
-		groupOrder          message.GroupOrder
-		wantErr             bool
+		input   message.InfoMessage
+		wantErr bool
 	}{
 		"valid message": {
-			trackPriority:       1,
-			latestGroupSequence: 2,
-			groupOrder:          3,
-			wantErr:             false,
+			input: message.InfoMessage{
+				TrackPriority:       1,
+				LatestGroupSequence: 2,
+				GroupOrder:          3,
+			},
+		},
+		"zero values": {
+			input: message.InfoMessage{
+				TrackPriority:       0,
+				LatestGroupSequence: 0,
+				GroupOrder:          0,
+			},
+		},
+		"max values": {
+			input: message.InfoMessage{
+				TrackPriority:       message.TrackPriority(^byte(0)),
+				LatestGroupSequence: message.GroupSequence(^uint64(0)),
+				GroupOrder:          message.GroupOrder(^byte(0)),
+			},
 		},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			infoMessage := &message.InfoMessage{
-				TrackPriority:       tc.trackPriority,
-				LatestGroupSequence: tc.latestGroupSequence,
-				GroupOrder:          tc.groupOrder,
-			}
 			var buf bytes.Buffer
 
-			err := infoMessage.Encode(&buf)
-			if err != nil && !tc.wantErr {
-				t.Fatalf("unexpected error: %v", err)
-			} else if err == nil && tc.wantErr {
-				t.Fatalf("expected error: %v", err)
+			// Encode
+			en, err := tc.input.Encode(&buf)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
 			}
+			require.NoError(t, err)
 
-			decodedInfoMessage := &message.InfoMessage{}
-			err = decodedInfoMessage.Decode(&buf)
-			if err != nil && !tc.wantErr {
-				t.Fatalf("unexpected error: %v", err)
-			} else if err == nil && tc.wantErr {
-				t.Fatalf("expected error: %v", err)
-			}
+			// Decode
+			var decoded message.InfoMessage
+			dn, err := decoded.Decode(&buf)
+			require.NoError(t, err)
 
-			assert.Equal(t, infoMessage.TrackPriority, decodedInfoMessage.TrackPriority)
-			assert.Equal(t, infoMessage.LatestGroupSequence, decodedInfoMessage.LatestGroupSequence)
-			assert.Equal(t, infoMessage.GroupOrder, decodedInfoMessage.GroupOrder)
+			// Compare fields
+			assert.Equal(t, tc.input, decoded, "decoded message should match input")
+			assert.Equal(t, en, dn, "encoded and decoded message should have the same length")
 		})
 	}
 }

@@ -6,42 +6,51 @@ import (
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestStreamTypeMessage_EncodeDecode(t *testing.T) {
 	tests := map[string]struct {
-		streamType message.StreamType
-		wantErr    bool
+		input   message.StreamTypeMessage
+		wantErr bool
 	}{
 		"valid message": {
-			streamType: 0,
-			wantErr:    false,
+			input: message.StreamTypeMessage{
+				StreamType: message.StreamType(0),
+			},
+		},
+		"max value": {
+			input: message.StreamTypeMessage{
+				StreamType: message.StreamType(^byte(0)),
+			},
+		},
+		"middle value": {
+			input: message.StreamTypeMessage{
+				StreamType: message.StreamType(uint32(42)),
+			},
 		},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			streamTypeMessage := &message.StreamTypeMessage{
-				StreamType: tc.streamType,
-			}
 			var buf bytes.Buffer
 
-			err := streamTypeMessage.Encode(&buf)
-			if err != nil && !tc.wantErr {
-				t.Fatalf("unexpected error: %v", err)
-			} else if err == nil && tc.wantErr {
-				t.Fatalf("expected error: %v", err)
+			// Encode
+			en, err := tc.input.Encode(&buf)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
 			}
+			require.NoError(t, err)
 
-			decodedStreamTypeMessage := &message.StreamTypeMessage{}
-			err = decodedStreamTypeMessage.Decode(&buf)
-			if err != nil && !tc.wantErr {
-				t.Fatalf("unexpected error: %v", err)
-			} else if err == nil && tc.wantErr {
-				t.Fatalf("expected error: %v", err)
-			}
+			// Decode
+			var decoded message.StreamTypeMessage
+			dn, err := decoded.Decode(&buf)
+			require.NoError(t, err)
 
-			assert.Equal(t, streamTypeMessage.StreamType, decodedStreamTypeMessage.StreamType)
+			// Compare fields
+			assert.Equal(t, tc.input, decoded, "decoded message should match input")
+			assert.Equal(t, en, dn, "encoded and decoded message should have the same length")
 		})
 	}
 }

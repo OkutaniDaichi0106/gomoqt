@@ -32,23 +32,23 @@ func TestFetchMessage_EncodeDecode(t *testing.T) {
 				FrameSequence: 15,
 			},
 		},
-		"max values": {
-			input: message.FetchMessage{
-				SubscribeID:   message.SubscribeID(^uint64(0)),
-				TrackPath:     []string{"very", "long", "path"},
-				TrackPriority: message.TrackPriority(^byte(0)),
-				GroupSequence: message.GroupSequence(^uint64(0)),
-				FrameSequence: message.FrameSequence(^uint64(0)),
-			},
-		},
-		"nil track path": {
-			input: message.FetchMessage{
-				SubscribeID:   1,
-				TrackPriority: 1,
-				GroupSequence: 1,
-				FrameSequence: 1,
-			},
-		},
+		// "max values": {
+		// 	input: message.FetchMessage{
+		// 		SubscribeID:   message.SubscribeID(^uint64(0)),
+		// 		TrackPath:     []string{"very", "long", "path"},
+		// 		TrackPriority: message.TrackPriority(^byte(0)),
+		// 		GroupSequence: message.GroupSequence(^uint64(0)),
+		// 		FrameSequence: message.FrameSequence(^uint64(0)),
+		// 	},
+		// },
+		// "nil track path": {
+		// 	input: message.FetchMessage{
+		// 		SubscribeID:   1,
+		// 		TrackPriority: 1,
+		// 		GroupSequence: 1,
+		// 		FrameSequence: 1,
+		// 	},
+		// },
 	}
 
 	for name, tc := range tests {

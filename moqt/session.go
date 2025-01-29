@@ -123,9 +123,7 @@ func (sess *session) Terminate(err error) {
 func (s *session) OpenAnnounceStream(config AnnounceConfig) (ReceiveAnnounceStream, error) {
 	slog.Debug(("opening an Announce Stream"), slog.Any("config", config))
 
-	/*
-	 * Open an Announce Stream
-	 */
+	// Open an Announce Stream
 	stream, err := openAnnounceStream(s.conn)
 	if err != nil {
 		slog.Error("failed to open an Announce Stream")
@@ -195,18 +193,14 @@ func (s *session) OpenSubscribeStream(config SubscribeConfig) (SendSubscribeStre
 
 	nextID := s.nextSubscribeID()
 
-	/*
-	 * Send a SUBSCRIBE message
-	 */
+	// Send a SUBSCRIBE message
 	err = writeSubscription(stream, nextID, config)
 	if err != nil {
 		slog.Error("failed to send a SUBSCRIBE message", slog.String("error", err.Error()))
 		return nil, Info{}, err
 	}
 
-	/*
-	 * Receive an INFO message
-	 */
+	// Receive an INFO message
 	info, err := readInfo(stream)
 	if err != nil {
 		slog.Error("failed to get a Info", slog.String("error", err.Error()))
@@ -226,18 +220,14 @@ func (s *session) OpenSubscribeStream(config SubscribeConfig) (SendSubscribeStre
 }
 
 func (sess *session) OpenFetchStream(fetch FetchRequest) (SendFetchStream, error) {
-	/*
-	 * Open a Fetch Stream
-	 */
+	// Open a Fetch Stream
 	stream, err := openFetchStream(sess.conn)
 	if err != nil {
 		slog.Error("failed to open a Fetch Stream", slog.String("error", err.Error()))
 		return nil, err
 	}
 
-	/*
-	 * Send a FETCH message
-	 */
+	// Send a FETCH message
 	err = writeFetch(stream, fetch)
 	if err != nil {
 		slog.Error("failed to send a FETCH message", slog.String("error", err.Error()))
@@ -253,27 +243,21 @@ func (sess *session) OpenFetchStream(fetch FetchRequest) (SendFetchStream, error
 func (sess *session) OpenInfoStream(req InfoRequest) (Info, error) {
 	slog.Debug("requesting information of a track", slog.Any("info request", req))
 
-	/*
-	 * Open an Info Stream
-	 */
+	// Open an Info Stream
 	stream, err := openInfoStream(sess.conn)
 	if err != nil {
 		slog.Error("failed to open an Info Stream", slog.String("error", err.Error()))
 		return Info{}, err
 	}
 
-	/*
-	 * Send an INFO_REQUEST message
-	 */
+	// Send an INFO_REQUEST message
 	err = writeInfoRequest(stream, req)
 	if err != nil {
 		slog.Error("failed to send an INFO_REQUEST message", slog.String("error", err.Error()))
 		return Info{}, err
 	}
 
-	/*
-	 * Receive a INFO message
-	 */
+	// Receive a INFO message
 	info, err := readInfo(stream)
 	if err != nil {
 		slog.Error("failed to get a INFO message", slog.String("error", err.Error()))
@@ -503,7 +487,7 @@ func listenBiStreams(sess *session, ctx context.Context) {
 			 * Get a Stream Type ID
 			 */
 			var stm message.StreamTypeMessage
-			err := stm.Decode(stream)
+			_, err := stm.Decode(stream)
 			if err != nil {
 				slog.Error("failed to get a Stream Type ID", slog.String("error", err.Error()))
 				return
@@ -650,7 +634,7 @@ func listenUniStreams(sess *session, ctx context.Context) {
 			 * Get a Stream Type ID
 			 */
 			var stm message.StreamTypeMessage
-			err := stm.Decode(stream)
+			_, err := stm.Decode(stream)
 			if err != nil {
 				slog.Error("failed to get a Stream Type ID", slog.String("error", err.Error()))
 				return
@@ -710,7 +694,7 @@ func openAnnounceStream(conn transport.Connection) (transport.Stream, error) {
 		StreamType: stream_type_announce,
 	}
 
-	err = stm.Encode(stream)
+	_, err = stm.Encode(stream)
 	if err != nil {
 		slog.Error("failed to send a Stream Type message", slog.String("error", err.Error()))
 		return nil, err
@@ -730,7 +714,7 @@ func openSubscribeStream(conn transport.Connection) (transport.Stream, error) {
 		StreamType: stream_type_subscribe,
 	}
 
-	err = stm.Encode(stream)
+	_, err = stm.Encode(stream)
 	if err != nil {
 		slog.Error("failed to send a Stream Type message", slog.String("error", err.Error()))
 		return nil, err
@@ -750,7 +734,7 @@ func openInfoStream(conn transport.Connection) (transport.Stream, error) {
 		StreamType: stream_type_info,
 	}
 
-	err = stm.Encode(stream)
+	_, err = stm.Encode(stream)
 	if err != nil {
 		slog.Error("failed to send a Stream Type message", slog.String("error", err.Error()))
 		return nil, err
@@ -770,7 +754,7 @@ func openFetchStream(conn transport.Connection) (transport.Stream, error) {
 		StreamType: stream_type_fetch,
 	}
 
-	err = stm.Encode(stream)
+	_, err = stm.Encode(stream)
 	if err != nil {
 		slog.Error("failed to send a Stream Type message", slog.String("error", err.Error()))
 		return nil, err
@@ -790,7 +774,7 @@ func openGroupStream(conn transport.Connection) (transport.SendStream, error) {
 		StreamType: stream_type_group,
 	}
 
-	err = stm.Encode(stream)
+	_, err = stm.Encode(stream)
 	if err != nil {
 		slog.Error("failed to send a Stream Type message", slog.String("error", err.Error()))
 		return nil, err

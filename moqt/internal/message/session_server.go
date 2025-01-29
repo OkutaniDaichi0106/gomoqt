@@ -21,39 +21,42 @@ type SessionServerMessage struct {
 	Parameters Parameters
 }
 
+func (ssm SessionServerMessage) Len() int {
+	l := 0
+	l += numberLen(uint64(ssm.SelectedVersion))
+	l += parametersLen(ssm.Parameters)
+	return l
+}
+
 func (ssm SessionServerMessage) Encode(w io.Writer) (int, error) {
-	// Serialize the payload
-	p := make([]byte, 0, 1<<4)
 
-	p = appendNumber(p, uint64(ssm.SelectedVersion))
-	p = appendParameters(p, ssm.Parameters)
+	p := GetBytes()
+	defer PutBytes(p)
 
-	// Serialize the message
-	b := make([]byte, 0, len(p)+quicvarint.Len(uint64(len(p))))
-	b = appendBytes(b, p)
+	*p = AppendNumber(*p, uint64(ssm.Len()))
 
-	return w.Write(b)
+	*p = AppendNumber(*p, uint64(ssm.SelectedVersion))
+	*p = AppendParameters(*p, ssm.Parameters)
+
+	return w.Write(*p)
 }
 
 func (ssm *SessionServerMessage) Decode(r io.Reader) (int, error) {
 	// Read the payload
-	buf, n, err := readBytes(quicvarint.NewReader(r))
+	buf, n, err := ReadBytes(quicvarint.NewReader(r))
 	if err != nil {
 		return n, err
 	}
 
-	// Decode the payload
 	mr := bytes.NewReader(buf)
 
-	// Read selected version
-	version, _, err := readNumber(mr)
+	version, _, err := ReadNumber(mr)
 	if err != nil {
 		return n, err
 	}
 	ssm.SelectedVersion = protocol.Version(version)
 
-	// Read parameters
-	ssm.Parameters, _, err = readParameters(mr)
+	ssm.Parameters, _, err = ReadParameters(mr)
 	if err != nil {
 		return n, err
 	}

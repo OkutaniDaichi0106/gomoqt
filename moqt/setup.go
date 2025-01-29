@@ -84,7 +84,7 @@ func readSetupResponce(r io.Reader) (SetupResponce, error) {
 	slog.Debug("reading a set-up responce")
 	/***/
 	var ssm message.SessionServerMessage
-	err := ssm.Decode(r)
+	_, err := ssm.Decode(r)
 	if err != nil {
 		slog.Error("failed to read a SESSION_SERVER message", slog.String("error", err.Error()))
 		return SetupResponce{}, err

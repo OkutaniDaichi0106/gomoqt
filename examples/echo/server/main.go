@@ -172,7 +172,7 @@ func main() {
 
 				go func(stream moqt.ReceiveGroupStream) {
 					for {
-						buf, err := stream.ReadFrame()
+						buf, _, err := stream.ReadFrame()
 						if err != nil {
 							subLogger.Error("failed to read data", slog.String("error", err.Error()))
 							return
@@ -263,7 +263,7 @@ func main() {
 					return
 				}
 
-				err = stream.WriteFrame([]byte("HELLO!!"))
+				_, err = stream.WriteFrame([]byte("HELLO!!"))
 				if err != nil {
 					pubLogger.Error("failed to write data", slog.String("error", err.Error()))
 					return

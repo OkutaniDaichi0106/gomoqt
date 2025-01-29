@@ -21,7 +21,7 @@ func (ss *sessionStream) UpdateSession(bitrate uint64) error {
 		Bitrate: bitrate,
 	}
 
-	err := sum.Encode(ss.stream)
+	_, err := sum.Encode(ss.stream)
 	if err != nil {
 		return err
 	}

@@ -48,7 +48,7 @@ func (r receiveGroupStream) GroupSequence() GroupSequence {
 
 func (r receiveGroupStream) ReadFrame() ([]byte, error) {
 	var fm message.FrameMessage
-	err := fm.Decode(r.stream)
+	_, err := fm.Decode(r.stream)
 	if err != nil {
 		return nil, err
 	}

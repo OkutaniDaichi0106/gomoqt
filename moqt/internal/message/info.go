@@ -14,67 +14,59 @@ type InfoMessage struct {
 	GroupOrder          GroupOrder
 }
 
+func (im InfoMessage) Len() int {
+	l := 0
+	l += quicvarint.Len(uint64(im.TrackPriority))
+	l += quicvarint.Len(uint64(im.LatestGroupSequence))
+	l += quicvarint.Len(uint64(im.GroupOrder))
+	return l
+}
+
 func (im InfoMessage) Encode(w io.Writer) (int, error) {
 	slog.Debug("encoding a INFO message")
 
-	/*
-	 * Serialize the message in the following format
-	 *
-	 * INFO Message {
-	 *   Message Length (varint),
-	 *   Publisher Priority (varint),
-	 *   Latest Group Sequence (varint),
-	 *   Group Order (varint),
-	 *   Group Expires (varint),
-	 * }
-	 */
-	// Serialize the payload
-	p := make([]byte, 0, 1<<4)
+	p := GetBytes()
+	defer PutBytes(p)
 
-	// Append the Publisher Priority
-	p = appendNumber(p, uint64(im.TrackPriority))
+	*p = AppendNumber(*p, uint64(im.Len()))
+	*p = AppendNumber(*p, uint64(im.TrackPriority))
+	*p = AppendNumber(*p, uint64(im.LatestGroupSequence))
+	*p = AppendNumber(*p, uint64(im.GroupOrder))
 
-	// Append the Latest Group Sequence
-	p = appendNumber(p, uint64(im.LatestGroupSequence))
+	n, err := w.Write(*p)
+	if err != nil {
+		slog.Error("failed to write a INFO message", slog.String("error", err.Error()))
+		return n, err
+	}
 
-	// Append the Group Order
-	p = appendNumber(p, uint64(im.GroupOrder))
+	slog.Debug("encoded a INFO message")
 
-	// Serialize the whole message
-	b := make([]byte, 0, len(p)+quicvarint.Len(uint64(len(p))))
-
-	// Append the payload
-	b = appendBytes(b, p)
-
-	// Write
-	return w.Write(b)
+	return n, err
 }
 
 func (im *InfoMessage) Decode(r io.Reader) (int, error) {
 	slog.Debug("decoding a INFO message")
 
-	// Read the payload
-	buf, n, err := readBytes(quicvarint.NewReader(r))
+	buf, n, err := ReadBytes(quicvarint.NewReader(r))
 	if err != nil {
 		return n, err
 	}
 
-	// Decode the payload
 	mr := bytes.NewReader(buf)
 
-	num, _, err := readNumber(mr)
+	num, _, err := ReadNumber(mr)
 	if err != nil {
 		return n, err
 	}
 	im.TrackPriority = TrackPriority(num)
 
-	num, _, err = readNumber(mr)
+	num, _, err = ReadNumber(mr)
 	if err != nil {
 		return n, err
 	}
 	im.LatestGroupSequence = GroupSequence(num)
 
-	num, _, err = readNumber(mr)
+	num, _, err = ReadNumber(mr)
 	if err != nil {
 		return n, err
 	}

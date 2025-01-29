@@ -71,6 +71,8 @@ func (manager *relayManager) RelayTrack(sess moqt.Session, sub moqt.SubscribeCon
 		return err
 	}
 
+	slog.Info("subscribed to the track", slog.String("track path", moqt.TrackPartsString(sub.TrackPath)), slog.String("session", info.String()))
+
 	// Create a track buffer
 	trackBuf := NewTrackBuffer(sub)
 
@@ -103,10 +105,10 @@ func (manager *relayManager) RelayTrack(sess moqt.Session, sub moqt.SubscribeCon
 				 */
 				for {
 					// Receive the next frame
-					frame, err := stream.ReadFrame()
+					frame, _, err := stream.ReadFrame()
 					// Store the frame to the group buffer
 					if len(frame) > 0 {
-						groupBuf.Write(frame)
+						groupBuf.WriteFrame(frame)
 					}
 
 					if err != nil {
@@ -207,7 +209,7 @@ func (node *trackPrefixNode) addDescendants(trackPrefixParts []string) *trackPre
 	child, exists := node.children[trackPrefixPart]
 	if !exists {
 		child = &trackPrefixNode{
-			trackPrefix:        node.trackPrefix + "/" + trackPrefixPart,
+			trackPrefix:        append(node.trackPrefix, trackPrefixPart),
 			children:           make(map[string]*trackPrefixNode),
 			announcementBuffer: newAnnouncementBuffer(),
 		}
@@ -346,12 +348,12 @@ func (announcer *announcementBuffer) Clean() {
 // }
 
 type trackNameNode struct {
-	trackPath string
+	trackPath []string
 
 	/*
 	 * Session serving the track
 	 */
-	sess   moqt.ServerSession
+	sess   moqt.Session
 	sessMu sync.Mutex
 
 	/*
@@ -371,12 +373,12 @@ type trackNameNode struct {
 	mu       sync.Mutex
 }
 
-func (node *trackNameNode) SetSession(sess moqt.ServerSession) error {
+func (node *trackNameNode) SetSession(sess moqt.Session) error {
 	node.sessMu.Lock()
 	defer node.sessMu.Unlock()
 
 	if node.sess != nil && node.sess != sess {
-		slog.Debug("the session serving the track has been changed to another session", slog.String("track path", node.trackPath))
+		slog.Debug("the session serving the track has been changed to another session", slog.String("track path", moqt.TrackPartsString(node.trackPath)))
 	}
 
 	node.sess = sess

@@ -64,7 +64,7 @@ func readAnnouncement(r io.Reader, prefix []string) (Announcement, error) {
 	slog.Debug("reading an announcement")
 
 	var am message.AnnounceMessage
-	err := am.Decode(r)
+	_, err := am.Decode(r)
 	if err != nil {
 		slog.Error("failed to read an ANNOUNCE message", slog.String("error", err.Error()))
 		return Announcement{}, err
@@ -117,7 +117,7 @@ func writeAnnouncement(w io.Writer, prefix []string, ann Announcement) error {
 	}
 
 	// Encode the ANNOUNCE message
-	err := am.Encode(w)
+	_, err := am.Encode(w)
 	if err != nil {
 		slog.Error("failed to send an ANNOUNCE message", slog.String("error", err.Error()))
 		return err

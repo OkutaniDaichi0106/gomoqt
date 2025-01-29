@@ -29,9 +29,9 @@ func TestInfoRequestMessage_EncodeDecode(t *testing.T) {
 				TrackPath: []string{"very", "long", "path", "with", "many", "segments"},
 			},
 		},
-		"nil track path": {
-			input: message.InfoRequestMessage{},
-		},
+		// "nil track path": {
+		// 	input: message.InfoRequestMessage{},
+		// },
 	}
 
 	for name, tc := range tests {

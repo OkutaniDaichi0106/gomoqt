@@ -254,7 +254,7 @@ func acceptSessionStream(conn transport.Connection) (transport.Stream, error) {
 
 	// Get a Stream Type message
 	var stm message.StreamTypeMessage
-	err = stm.Decode(stream)
+	_, err = stm.Decode(stream)
 	if err != nil {
 		slog.Error("failed to read a Stream Type", slog.String("error", err.Error()))
 		return nil, err
@@ -278,7 +278,7 @@ func readSetupRequest(r io.Reader) (req SetupRequest, err error) {
 	 */
 	// Decode
 	var scm message.SessionClientMessage
-	err = scm.Decode(r)
+	_, err = scm.Decode(r)
 	if err != nil {
 		slog.Error("failed to read a SESSION_CLIENT message", slog.String("error", err.Error())) // TODO
 		return
@@ -304,7 +304,7 @@ func writeSetupResponce(w io.Writer, rsp SetupResponce) error {
 		Parameters:      message.Parameters(rsp.Parameters.paramMap),
 	}
 
-	err := ssm.Encode(w)
+	_, err := ssm.Encode(w)
 	if err != nil {
 		slog.Error("failed to encode a SESSION_SERVER message", slog.String("error", err.Error()))
 		return err

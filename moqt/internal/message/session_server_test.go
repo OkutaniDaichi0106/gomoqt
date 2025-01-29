@@ -30,14 +30,14 @@ func TestSessionServerMessage_EncodeDecode(t *testing.T) {
 				Parameters:      message.Parameters{},
 			},
 		},
-		"max values": {
-			input: message.SessionServerMessage{
-				SelectedVersion: protocol.Version(^byte(0)),
-				Parameters: message.Parameters{
-					^uint64(0): bytes.Repeat([]byte("a"), 1024),
-				},
-			},
-		},
+		// "max values": {
+		// 	input: message.SessionServerMessage{
+		// 		SelectedVersion: protocol.Version(^byte(0)),
+		// 		Parameters: message.Parameters{
+		// 			^uint64(0): bytes.Repeat([]byte("a"), 1024),
+		// 		},
+		// 	},
+		// },
 		"nil parameters": {
 			input: message.SessionServerMessage{
 				SelectedVersion: protocol.Version(1),

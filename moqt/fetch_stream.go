@@ -133,11 +133,11 @@ func (rfs *receiveFetchStream) SetWriteDeadline(t time.Time) error {
 	return rfs.stream.SetWriteDeadline(t)
 }
 
-func (rfs *receiveFetchStream) WriteFrame(buf []byte) error {
+func (rfs *receiveFetchStream) WriteFrame(frame []byte) error {
 	fm := message.FrameMessage{
-		Payload: buf,
+		Payload: frame,
 	}
-	err := fm.Encode(rfs.stream)
+	_, err := fm.Encode(rfs.stream)
 	if err != nil {
 		return err
 	}

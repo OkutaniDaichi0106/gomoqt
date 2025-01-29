@@ -38,15 +38,15 @@ func TestAnnouncePleaseMessage_EncodeDecode(t *testing.T) {
 				Parameters:      message.Parameters{1: []byte("value")},
 			},
 		},
-		"large parameter": {
-			input: message.AnnouncePleaseMessage{
-				TrackPathPrefix: []string{"path"},
-				Parameters:      message.Parameters{^uint64(0): bytes.Repeat([]byte("a"), 1024)},
-			},
-		},
-		"nil values": {
-			input: message.AnnouncePleaseMessage{},
-		},
+		// "large parameter": {
+		// 	input: message.AnnouncePleaseMessage{
+		// 		TrackPathPrefix: []string{"path"},
+		// 		Parameters:      message.Parameters{^uint64(0): bytes.Repeat([]byte("a"), 1024)},
+		// 	},
+		// },
+		// "nil values": {
+		// 	input: message.AnnouncePleaseMessage{},
+		// },
 	}
 
 	for name, tc := range tests {

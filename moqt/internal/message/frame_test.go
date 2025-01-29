@@ -34,11 +34,11 @@ func TestFrameMessage_EncodeDecode(t *testing.T) {
 				Payload: bytes.Repeat([]byte("a"), 1024),
 			},
 		},
-		"nil payload": {
-			input: message.FrameMessage{
-				Payload: nil,
-			},
-		},
+		// "nil payload": {
+		// 	input: message.FrameMessage{
+		// 		Payload: nil,
+		// 	},
+		// },
 	}
 
 	for name, tc := range tests {

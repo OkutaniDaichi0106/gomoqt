@@ -13,14 +13,14 @@ type reader interface {
 }
 
 // Read a number from the reader
-func readNumber(r reader) (uint64, int, error) {
+func ReadNumber(r reader) (uint64, int, error) {
 	num, err := quicvarint.Read(r)
 	return num, quicvarint.Len(num), err
 }
 
 // Read a string from the reader
-func readString(r reader) (string, int, error) {
-	b, n, err := readBytes(r)
+func ReadString(r reader) (string, int, error) {
+	b, n, err := ReadBytes(r)
 	if err != nil {
 		return "", n, err
 	}
@@ -28,8 +28,8 @@ func readString(r reader) (string, int, error) {
 }
 
 // Read a byte slice from the reader
-func readBytes(r reader) ([]byte, int, error) {
-	num, n, err := readNumber(r)
+func ReadBytes(r reader) ([]byte, int, error) {
+	num, n, err := ReadNumber(r)
 	if err != nil {
 		return nil, n, err
 	}
@@ -44,16 +44,19 @@ func readBytes(r reader) ([]byte, int, error) {
 }
 
 // Read a string array from the reader
-func readStringArray(r reader) ([]string, int, error) {
-	count, n, err := readNumber(r)
+func ReadStringArray(r reader) ([]string, int, error) {
+	count, n, err := ReadNumber(r)
 	if err != nil {
+		if err == io.EOF {
+			return nil, n, nil
+		}
 		return nil, n, err
 	}
 
 	strs := make([]string, count)
 	totalBytes := n
 	for i := uint64(0); i < count; i++ {
-		str, n, err := readString(r)
+		str, n, err := ReadString(r)
 		if err != nil {
 			return nil, totalBytes + n, err
 		}
@@ -65,8 +68,8 @@ func readStringArray(r reader) ([]string, int, error) {
 }
 
 // Read parameters from the reader
-func readParameters(r reader) (Parameters, int, error) {
-	count, n, err := readNumber(r)
+func ReadParameters(r reader) (Parameters, int, error) {
+	count, n, err := ReadNumber(r)
 	if err != nil {
 		if err == io.EOF {
 			return nil, n, nil
@@ -77,12 +80,12 @@ func readParameters(r reader) (Parameters, int, error) {
 	params := make(Parameters, count)
 	totalBytes := n
 	for i := uint64(0); i < count; i++ {
-		key, n, err := readNumber(r)
+		key, n, err := ReadNumber(r)
 		if err != nil {
 			return nil, totalBytes + n, err
 		}
 
-		value, n, err := readBytes(r)
+		value, n, err := ReadBytes(r)
 		if err != nil {
 			return nil, totalBytes + n, err
 		}

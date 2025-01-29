@@ -29,7 +29,7 @@ func (req *sendInfoStream) SendInfoAndClose(i Info) error {
 		GroupOrder:          message.GroupOrder(i.GroupOrder),
 	}
 
-	err := im.Encode(req.stream)
+	_, err := im.Encode(req.stream)
 	if err != nil {
 		slog.Error("failed to send an INFO message", slog.String("error", err.Error()))
 		return err

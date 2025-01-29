@@ -20,7 +20,7 @@ func (sg SubscribeGap) String() string {
 
 func readSubscribeGap(r io.Reader) (SubscribeGap, error) {
 	var sgm message.SubscribeGapMessage
-	err := sgm.Decode(r)
+	_, err := sgm.Decode(r)
 	if err != nil {
 		slog.Error("failed to read a SUBSCRIBE_GAP message", slog.String("error", err.Error()))
 		return SubscribeGap{}, err
@@ -40,7 +40,7 @@ func writeSubscribeGap(w io.Writer, gap SubscribeGap) error {
 		GroupErrorCode: message.GroupErrorCode(gap.GroupErrorCode),
 	}
 
-	err := sgm.Encode(w)
+	_, err := sgm.Encode(w)
 	if err != nil {
 		slog.Error("failed to send a SUBSCRIBE_GAP message", slog.String("error", err.Error()))
 		return err

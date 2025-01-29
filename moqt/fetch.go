@@ -78,7 +78,7 @@ func (fr FetchRequest) String() string {
 
 func readFetch(r io.Reader) (FetchRequest, error) {
 	var fm message.FetchMessage
-	err := fm.Decode(r)
+	_, err := fm.Decode(r)
 	if err != nil {
 		slog.Error("failed to read a FETCH message", slog.String("error", err.Error()))
 		return FetchRequest{}, err
@@ -103,7 +103,7 @@ func writeFetch(w io.Writer, fetch FetchRequest) error {
 		GroupSequence: message.GroupSequence(fetch.GroupSequence),
 		FrameSequence: message.FrameSequence(fetch.FrameSequence),
 	}
-	err := fm.Encode(w)
+	_, err := fm.Encode(w)
 	if err != nil {
 		slog.Error("failed to send a FETCH message", slog.String("error", err.Error()))
 		return err

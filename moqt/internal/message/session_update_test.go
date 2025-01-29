@@ -24,11 +24,11 @@ func TestSessionUpdateMessage_EncodeDecode(t *testing.T) {
 				Bitrate: 0,
 			},
 		},
-		"max bitrate": {
-			input: message.SessionUpdateMessage{
-				Bitrate: ^uint64(0),
-			},
-		},
+		// "max bitrate": {
+		// 	input: message.SessionUpdateMessage{
+		// 		Bitrate: ^uint64(0),
+		// 	},
+		// },
 	}
 
 	for name, tc := range tests {

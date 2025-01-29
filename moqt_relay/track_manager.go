@@ -2,7 +2,6 @@ package moqtrelay
 
 import (
 	"log/slog"
-	"strings"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt"
 )
@@ -72,18 +71,18 @@ func (manager *trackManager) ServeAnnouncements(ann []moqt.Announcement) error {
 		// Remove the track prefix if the announcement status is ENDED
 		if a.AnnounceStatus == moqt.ENDED {
 			defer func() {
-				slog.Debug("removing track prefix", slog.String("track path", a.TrackPath))
+				slog.Debug("removing track prefix", slog.String("track path", moqt.TrackPartsString(a.TrackPath)))
 
-				err := manager.trackTree.removeTrackPrefix(strings.Split(a.TrackPath, "/"))
+				err := manager.trackTree.removeTrackPrefix(a.TrackPath)
 				if err != nil {
 					slog.Error("failed to remove track prefix", slog.String("error", err.Error()))
 				}
 
-				slog.Debug("removed track prefix", slog.String("track path", a.TrackPath))
+				slog.Debug("removed track prefix", slog.String("track path", moqt.TrackPartsString(a.TrackPath)))
 			}()
 		}
 
-		slog.Debug("served an announcement", slog.String("track path", a.TrackPath))
+		slog.Debug("served an announcement", slog.String("track path", moqt.TrackPartsString(a.TrackPath)))
 	}
 
 	slog.Debug("Successfully served announcements")
@@ -92,10 +91,10 @@ func (manager *trackManager) ServeAnnouncements(ann []moqt.Announcement) error {
 }
 
 func (manager *trackManager) ServeTrack(sub moqt.SubscribeConfig, trackBuf *TrackBuffer) error {
-	node, ok := manager.trackTree.traceTrackPrefix(strings.Split(sub.TrackPath, "/"))
+	node, ok := manager.trackTree.traceTrackPrefix(sub.TrackPath)
 	if !ok {
 		// Insert the track prefix to the track tree
-		node = manager.trackTree.insertTrackPrefix(strings.Split(sub.TrackPath, "/"))
+		node = manager.trackTree.insertTrackPrefix(sub.TrackPath)
 	}
 
 	// Initialize track node

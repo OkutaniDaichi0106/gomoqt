@@ -14,25 +14,29 @@ type InfoRequestMessage struct {
 	TrackPath []string
 }
 
+func (irm InfoRequestMessage) Len() int {
+	return stringArrayLen(irm.TrackPath)
+}
+
 func (irm InfoRequestMessage) Encode(w io.Writer) (int, error) {
-	p := make([]byte, 0, 1<<8)
-	p = appendStringArray(p, irm.TrackPath)
+	p := GetBytes()
+	defer PutBytes(p)
 
-	b := make([]byte, 0, len(p)+quicvarint.Len(uint64(len(p))))
-	b = appendBytes(b, p)
+	*p = AppendNumber(*p, uint64(irm.Len()))
+	*p = AppendStringArray(*p, irm.TrackPath)
 
-	return w.Write(b)
+	return w.Write(*p)
 }
 
 func (irm *InfoRequestMessage) Decode(r io.Reader) (int, error) {
-	buf, n, err := readBytes(quicvarint.NewReader(r))
+	buf, n, err := ReadBytes(quicvarint.NewReader(r))
 	if err != nil {
 		return n, err
 	}
 
 	mr := bytes.NewReader(buf)
 
-	irm.TrackPath, _, err = readStringArray(mr)
+	irm.TrackPath, _, err = ReadStringArray(mr)
 	if err != nil {
 		return n, err
 	}

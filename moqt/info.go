@@ -23,7 +23,7 @@ func readInfo(r io.Reader) (Info, error) {
 
 	// Read an INFO message
 	var im message.InfoMessage
-	err := im.Decode(r)
+	_, err := im.Decode(r)
 	if err != nil {
 		slog.Error("failed to read a INFO message", slog.String("error", err.Error()))
 		return Info{}, err
@@ -49,7 +49,7 @@ func writeInfo(w io.Writer, info Info) error {
 		GroupOrder:          message.GroupOrder(info.GroupOrder),
 	}
 
-	err := im.Encode(w)
+	_, err := im.Encode(w)
 	if err != nil {
 		slog.Error("failed to send a INFO message", slog.String("error", err.Error()))
 		return err

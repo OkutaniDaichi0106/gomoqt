@@ -18,7 +18,7 @@ func (ir InfoRequest) String() string {
 
 func readInfoRequest(r io.Reader) (InfoRequest, error) {
 	var irm message.InfoRequestMessage
-	err := irm.Decode(r)
+	_, err := irm.Decode(r)
 	if err != nil {
 		slog.Error("failed to read an INFO_REQUEST message", slog.String("error", err.Error()))
 		return InfoRequest{}, err
@@ -36,7 +36,7 @@ func writeInfoRequest(w io.Writer, req InfoRequest) error {
 	im := message.InfoRequestMessage{
 		TrackPath: req.TrackPath,
 	}
-	err := im.Encode(w)
+	_, err := im.Encode(w)
 	if err != nil {
 		slog.Error("failed to encode an INFO_REQUEST message", slog.String("error", err.Error()))
 		return err

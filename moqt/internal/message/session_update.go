@@ -14,24 +14,30 @@ type SessionUpdateMessage struct {
 	Bitrate uint64
 }
 
+func (sum SessionUpdateMessage) Len() int {
+	return numberLen(sum.Bitrate)
+}
+
 func (sum SessionUpdateMessage) Encode(w io.Writer) (int, error) {
-	p := make([]byte, 0, 1<<3)
-	p = appendNumber(p, sum.Bitrate)
+	p := GetBytes()
+	defer PutBytes(p)
 
-	b := make([]byte, 0, len(p)+quicvarint.Len(uint64(len(p))))
-	b = appendBytes(b, p)
+	*p = AppendNumber(*p, uint64(sum.Len()))
 
-	return w.Write(b)
+	*p = AppendNumber(*p, sum.Bitrate)
+
+	return w.Write(*p)
 }
 
 func (sum *SessionUpdateMessage) Decode(r io.Reader) (int, error) {
-	buf, n, err := readBytes(quicvarint.NewReader(r))
+	buf, n, err := ReadBytes(quicvarint.NewReader(r))
 	if err != nil {
 		return n, err
 	}
 
 	mr := bytes.NewReader(buf)
-	num, _, err := readNumber(mr)
+
+	num, _, err := ReadNumber(mr)
 	if err != nil {
 		return n, err
 	}

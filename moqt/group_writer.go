@@ -48,11 +48,11 @@ func (stream sendGroupStream) GroupSequence() GroupSequence {
 	return stream.sequence
 }
 
-func (stream sendGroupStream) WriteFrame(buf []byte) error {
+func (stream sendGroupStream) WriteFrame(frame []byte) error {
 	fm := message.FrameMessage{
-		Payload: buf,
+		Payload: frame,
 	}
-	err := fm.Encode(stream.stream)
+	_, err := fm.Encode(stream.stream)
 
 	if err != nil {
 		// Signal the group error code

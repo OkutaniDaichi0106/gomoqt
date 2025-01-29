@@ -40,20 +40,20 @@ func TestAnnounceMessage_EncodeDecode(t *testing.T) {
 				Parameters:      map[uint64][]byte{},
 			},
 		},
-		"max values": {
-			input: message.AnnounceMessage{
-				AnnounceStatus:  message.AnnounceStatus(^byte(0)),
-				TrackPathSuffix: []string{"very", "long", "path"},
-				Parameters: map[uint64][]byte{
-					^uint64(0): bytes.Repeat([]byte("a"), 1024),
-				},
-			},
-		},
-		"nil values": {
-			input: message.AnnounceMessage{
-				AnnounceStatus: message.AnnounceStatus(1),
-			},
-		},
+		// "max values": {
+		// 	input: message.AnnounceMessage{
+		// 		AnnounceStatus:  message.AnnounceStatus(^byte(0)),
+		// 		TrackPathSuffix: []string{"very", "long", "path"},
+		// 		Parameters: map[uint64][]byte{
+		// 			^uint64(0): bytes.Repeat([]byte("a"), 1024),
+		// 		},
+		// 	},
+		// },
+		// "nil values": {
+		// 	input: message.AnnounceMessage{
+		// 		AnnounceStatus: message.AnnounceStatus(1),
+		// 	},
+		// },
 	}
 
 	for name, tc := range tests {

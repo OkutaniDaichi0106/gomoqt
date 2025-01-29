@@ -17,7 +17,7 @@ func (fu FetchUpdate) String() string {
 
 func readFetchUpdate(r io.Reader) (FetchUpdate, error) {
 	var fum message.FetchUpdateMessage
-	err := fum.Decode(r)
+	_, err := fum.Decode(r)
 	if err != nil {
 		return FetchUpdate{}, err
 	}
@@ -30,7 +30,7 @@ func writeFetchUpdate(w io.Writer, update FetchUpdate) error {
 	fum := message.FetchUpdateMessage{
 		TrackPriority: message.TrackPriority(update.TrackPriority),
 	}
-	err := fum.Encode(w)
+	_, err := fum.Encode(w)
 	if err != nil {
 		return err
 	}

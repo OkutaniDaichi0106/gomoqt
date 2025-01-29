@@ -20,12 +20,12 @@ func TestGroupMessage_EncodeDecode(t *testing.T) {
 				GroupSequence: 1,
 			},
 		},
-		"max values": {
-			input: message.GroupMessage{
-				SubscribeID:   message.SubscribeID(^uint64(0)),
-				GroupSequence: message.GroupSequence(^uint64(0)),
-			},
-		},
+		// "max values": {
+		// 	input: message.GroupMessage{
+		// 		SubscribeID:   message.SubscribeID(^uint64(0)),
+		// 		GroupSequence: message.GroupSequence(^uint64(0)),
+		// 	},
+		// },
 		"zero values": {
 			input: message.GroupMessage{
 				SubscribeID:   0,

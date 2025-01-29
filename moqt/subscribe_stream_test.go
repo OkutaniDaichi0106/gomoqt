@@ -3,7 +3,7 @@ package moqt
 import (
 	"testing"
 
-	mock_transport "github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport/mock"
+	mock_transport "github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 )

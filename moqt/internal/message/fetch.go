@@ -24,52 +24,62 @@ type FetchMessage struct {
 	FrameSequence FrameSequence // TODO: consider the necessity type FrameSequence
 }
 
+func (fm FetchMessage) Len() int {
+	l := 0
+	l += numberLen(uint64(fm.SubscribeID))
+	l += stringArrayLen(fm.TrackPath)
+	l += numberLen(uint64(fm.TrackPriority))
+	l += numberLen(uint64(fm.GroupSequence))
+	l += numberLen(uint64(fm.FrameSequence))
+	return l
+}
+
 func (fm FetchMessage) Encode(w io.Writer) (int, error) {
-	p := make([]byte, 0, 1<<8)
-	p = appendNumber(p, uint64(fm.SubscribeID))
-	p = appendStringArray(p, fm.TrackPath)
-	p = appendNumber(p, uint64(fm.TrackPriority))
-	p = appendNumber(p, uint64(fm.GroupSequence))
-	p = appendNumber(p, uint64(fm.FrameSequence))
+	p := GetBytes()
+	defer PutBytes(p)
 
-	b := make([]byte, 0, len(p)+quicvarint.Len(uint64(len(p))))
-	b = appendBytes(b, p)
+	*p = AppendNumber(*p, uint64(fm.Len()))
+	*p = AppendNumber(*p, uint64(fm.SubscribeID))
+	*p = AppendStringArray(*p, fm.TrackPath)
+	*p = AppendNumber(*p, uint64(fm.TrackPriority))
+	*p = AppendNumber(*p, uint64(fm.GroupSequence))
+	*p = AppendNumber(*p, uint64(fm.FrameSequence))
 
-	return w.Write(b)
+	return w.Write(*p)
 }
 
 func (fm *FetchMessage) Decode(r io.Reader) (int, error) {
-	buf, n, err := readBytes(quicvarint.NewReader(r))
+	buf, n, err := ReadBytes(quicvarint.NewReader(r))
 	if err != nil {
 		return n, err
 	}
 
 	mr := bytes.NewReader(buf)
 
-	num, _, err := readNumber(mr)
+	num, _, err := ReadNumber(mr)
 	if err != nil {
 		return n, err
 	}
 	fm.SubscribeID = SubscribeID(num)
 
-	fm.TrackPath, _, err = readStringArray(mr)
+	fm.TrackPath, _, err = ReadStringArray(mr)
 	if err != nil {
 		return n, err
 	}
 
-	num, _, err = readNumber(mr)
+	num, _, err = ReadNumber(mr)
 	if err != nil {
 		return n, err
 	}
 	fm.TrackPriority = TrackPriority(num)
 
-	num, _, err = readNumber(mr)
+	num, _, err = ReadNumber(mr)
 	if err != nil {
 		return n, err
 	}
 	fm.GroupSequence = GroupSequence(num)
 
-	num, _, err = readNumber(mr)
+	num, _, err = ReadNumber(mr)
 	if err != nil {
 		return n, err
 	}

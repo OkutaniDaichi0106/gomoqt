@@ -156,7 +156,7 @@ func setupConnection(req SetupRequest, conn transport.Connection) (Session, Setu
 	}
 
 	// Send a set-up request
-	err = sendSetupRequest(stream, req)
+	err = writeSetupRequest(stream, req)
 	if err != nil {
 		slog.Error("failed to request to set up", slog.String("error", err.Error()))
 		return nil, SetupResponce{}, err
@@ -186,7 +186,7 @@ func openSessionStream(conn transport.Connection) (transport.Stream, error) {
 		StreamType: stream_type_session,
 	}
 
-	err = stm.Encode(stream)
+	_, err = stm.Encode(stream)
 	if err != nil {
 		slog.Error("failed to send a Stream Type message", slog.String("error", err.Error()))
 		return nil, err
@@ -197,7 +197,7 @@ func openSessionStream(conn transport.Connection) (transport.Stream, error) {
 	return stream, nil
 }
 
-func sendSetupRequest(w io.Writer, req SetupRequest) error {
+func writeSetupRequest(w io.Writer, req SetupRequest) error {
 	slog.Debug("sending a set-up request")
 
 	scm := message.SessionClientMessage{
@@ -209,7 +209,7 @@ func sendSetupRequest(w io.Writer, req SetupRequest) error {
 		scm.SupportedVersions = append(scm.SupportedVersions, protocol.Version(v))
 	}
 
-	err := scm.Encode(w)
+	_, err := scm.Encode(w)
 	if err != nil {
 		slog.Error("failed to send a SESSION_CLIENT message", slog.String("error", err.Error()))
 		return err

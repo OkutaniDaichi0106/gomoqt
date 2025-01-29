@@ -3,7 +3,6 @@ package message
 import (
 	"bytes"
 	"io"
-	"log/slog"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -22,46 +21,46 @@ type AnnounceMessage struct {
 	Parameters      Parameters
 }
 
+func (a AnnounceMessage) Len() int {
+	l := 0
+	l += numberLen(uint64(a.AnnounceStatus))
+	l += stringArrayLen(a.TrackPathSuffix)
+	l += parametersLen(a.Parameters)
+	return l
+}
+
 func (a AnnounceMessage) Encode(w io.Writer) (int, error) {
-	slog.Debug("encoding a ANNOUNCE message")
+	p := GetBytes()
+	defer PutBytes(p)
 
-	// Serialize the payload
-	p := make([]byte, 0, 1<<6)
+	*p = AppendNumber(*p, uint64(a.Len()))
+	*p = AppendNumber(*p, uint64(a.AnnounceStatus))
+	*p = AppendStringArray(*p, a.TrackPathSuffix)
+	*p = AppendParameters(*p, a.Parameters)
 
-	p = appendNumber(p, uint64(a.AnnounceStatus))
-	p = appendStringArray(p, a.TrackPathSuffix)
-	p = appendParameters(p, a.Parameters)
-
-	// Serialize the message
-	b := make([]byte, 0, len(p)+quicvarint.Len(uint64(len(p))))
-	b = appendBytes(b, p)
-
-	// Write
-	return w.Write(b)
+	return w.Write(*p)
 }
 
 func (am *AnnounceMessage) Decode(r io.Reader) (int, error) {
-	// Read the payload
-	buf, n, err := readBytes(quicvarint.NewReader(r))
+	buf, n, err := ReadBytes(quicvarint.NewReader(r))
 	if err != nil {
 		return n, err
 	}
 
-	// Decode the payload
 	mr := bytes.NewReader(buf)
 
-	status, _, err := readNumber(mr)
+	status, _, err := ReadNumber(mr)
 	if err != nil {
 		return n, err
 	}
 	am.AnnounceStatus = AnnounceStatus(status)
 
-	am.TrackPathSuffix, _, err = readStringArray(mr)
+	am.TrackPathSuffix, _, err = ReadStringArray(mr)
 	if err != nil {
 		return n, err
 	}
 
-	am.Parameters, _, err = readParameters(mr)
+	am.Parameters, _, err = ReadParameters(mr)
 	if err != nil {
 		return n, err
 	}

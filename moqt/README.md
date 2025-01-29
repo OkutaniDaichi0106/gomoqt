@@ -58,7 +58,7 @@ A fork of the moq-transfork.
 | 6.4. ANNOUNCE                                | :white_check_mark: | :white_check_mark: |
 | 6.5. SUBSCRIBE                               | :white_check_mark: | :white_check_mark: |
 | 6.6. SUBSCRIBE_UPDATE                        | :white_check_mark: | :white_check_mark: |
-| 6.7. SUBSCRIBE_GAP                          | :construction:     | :white_check_mark: |
+| 6.7. SUBSCRIBE_GAP                           | :construction:     | :white_check_mark: |
 | 6.8. INFO                                    | :white_check_mark: | :white_check_mark: |
 | 6.9. INFO_PLEASE                             | :white_check_mark: | :white_check_mark: |
 | 6.10. FETCH                                  | :white_check_mark: | :white_check_mark: |
@@ -79,4 +79,4 @@ We haven't conducted interoperability testing with other implementations yet
 - Scheduling
 - LOC (Low Overhead Container)
 - Common Catalog Format for moq
-
+- sync.Pool

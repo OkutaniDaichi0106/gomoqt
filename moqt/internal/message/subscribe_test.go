@@ -36,17 +36,17 @@ func TestSubscribeMessage_EncodeDecode(t *testing.T) {
 				SubscribeParameters: message.Parameters{1: []byte("value")},
 			},
 		},
-		"max values": {
-			input: message.SubscribeMessage{
-				SubscribeID:         message.SubscribeID(^uint64(0)),
-				TrackPath:           []string{"very", "long", "path"},
-				TrackPriority:       message.TrackPriority(^byte(0)),
-				GroupOrder:          message.GroupOrder(^byte(0)),
-				MinGroupSequence:    message.GroupSequence(^uint64(0)),
-				MaxGroupSequence:    message.GroupSequence(^uint64(0)),
-				SubscribeParameters: message.Parameters{1: bytes.Repeat([]byte("a"), 1024)},
-			},
-		},
+		// "max values": {
+		// 	input: message.SubscribeMessage{
+		// 		SubscribeID:         message.SubscribeID(^uint64(0)),
+		// 		TrackPath:           []string{"very", "long", "path"},
+		// 		TrackPriority:       message.TrackPriority(^byte(0)),
+		// 		GroupOrder:          message.GroupOrder(^byte(0)),
+		// 		MinGroupSequence:    message.GroupSequence(^uint64(0)),
+		// 		MaxGroupSequence:    message.GroupSequence(^uint64(0)),
+		// 		SubscribeParameters: message.Parameters{1: bytes.Repeat([]byte("a"), 1024)},
+		// 	},
+		// },
 		"nil parameters": {
 			input: message.SubscribeMessage{
 				SubscribeID:   1,

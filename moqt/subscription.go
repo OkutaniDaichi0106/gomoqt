@@ -40,7 +40,7 @@ func (sc SubscribeConfig) String() string {
 
 func readSubscription(r transport.Stream) (SubscribeID, SubscribeConfig, error) {
 	var sm message.SubscribeMessage
-	err := sm.Decode(r)
+	_, err := sm.Decode(r)
 	if err != nil {
 		slog.Debug("failed to read a SUBSCRIBE message", slog.String("error", err.Error()))
 		return 0, SubscribeConfig{}, err
@@ -74,7 +74,7 @@ func writeSubscription(w transport.Stream, id SubscribeID, subscription Subscrib
 		MaxGroupSequence:    message.GroupSequence(subscription.MaxGroupSequence),
 		SubscribeParameters: message.Parameters(subscription.SubscribeParameters.paramMap),
 	}
-	err := sm.Encode(w)
+	_, err := sm.Encode(w)
 	if err != nil {
 		slog.Error("failed to send a SUBSCRIBE message", slog.String("error", err.Error()))
 		return err

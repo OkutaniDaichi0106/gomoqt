@@ -160,20 +160,20 @@ func main() {
 			return
 		}
 
-		if moqt.IsSamePath(substr.SubscribeConfig().TrackPath, echoTrackPath) {
-			pubLogger.Error("failed to get a track path", slog.String("error", "track path is invalid"))
-			substr.CloseWithError(moqt.ErrTrackDoesNotExist)
-			return
-		}
+		// if moqt.IsSamePath(substr.SubscribeConfig().TrackPath, echoTrackPath) {
+		// 	pubLogger.Error("failed to get a track path", slog.String("error", "track path is invalid"))
+		// 	substr.CloseWithError(moqt.ErrTrackDoesNotExist)
+		// 	return
+		// }
 
-		for sequence := moqt.GroupSequence(0); sequence < 30; sequence++ {
+		for sequence := moqt.GroupSequence(0); sequence < 2; sequence++ {
 			stream, err := sess.OpenGroupStream(substr, sequence)
 			if err != nil {
 				pubLogger.Error("failed to open a data stream", slog.String("error", err.Error()))
 				return
 			}
 
-			err = stream.WriteFrame([]byte("HELLO!!"))
+			_, err = stream.WriteFrame([]byte("HELLO!!"))
 			if err != nil {
 				pubLogger.Error("failed to write data", slog.String("error", err.Error()))
 				return
@@ -236,7 +236,7 @@ func main() {
 				return
 			}
 
-			buf, err := stream.ReadFrame()
+			buf, _, err := stream.ReadFrame()
 			if len(buf) > 0 {
 				subLogger.Info("received data", slog.String("data", string(buf)))
 			}

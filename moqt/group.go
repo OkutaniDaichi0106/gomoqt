@@ -10,7 +10,7 @@ import (
 func readGroup(r io.Reader) (SubscribeID, GroupSequence, error) {
 	// Read a GROUP message
 	var gm message.GroupMessage
-	err := gm.Decode(r)
+	_, err := gm.Decode(r)
 	if err != nil {
 		slog.Error("failed to read a GROUP message", slog.String("error", err.Error()))
 		return 0, 0, err
@@ -25,7 +25,7 @@ func writeGroup(w io.Writer, id SubscribeID, seq GroupSequence) error {
 		SubscribeID:   message.SubscribeID(id),
 		GroupSequence: message.GroupSequence(seq),
 	}
-	err := gm.Encode(w)
+	_, err := gm.Encode(w)
 	if err != nil {
 		slog.Error("failed to send a GROUP message", slog.String("error", err.Error()))
 		return err

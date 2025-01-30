@@ -100,47 +100,48 @@ func (g *GroupRelayer) Closed() bool {
 }
 
 func (g *GroupRelayer) Relay(gw GroupWriter) error {
+	if gw == nil {
+		return errors.New("group writer is nil")
+	}
+
 	g.cond.L.Lock()
 	defer g.cond.L.Unlock()
 
-	// Check if the group writer is a group stream
-	gstr, ok := gw.(*sendGroupStream)
-
-	readFrames := 0
+	grstr, ok := gw.(*sendGroupStream)
+	var (
+		readFrames  int
+		writeOffset int
+	)
 
 	for {
-		for len(g.frameRanges) <= readFrames {
+		// Check for new data or closure
+		for readFrames >= len(g.frameRanges) {
 			if g.closed {
-				if g.err != nil {
-					return g.err
-				}
-
-				return ErrGroupClosed
+				return g.err // Returns nil if closed normally
 			}
 			g.cond.Wait()
 		}
 
+		// Handle stream writing
 		if ok {
-			// Write bytes
-			offset := g.frameRanges[readFrames].end + 1
-			_, err := gstr.stream.Write(g.bytes[offset:])
-			if err != nil {
-				return err
+			currentSize := len(g.bytes)
+			if currentSize > writeOffset {
+				n, err := grstr.stream.Write(g.bytes[writeOffset:currentSize])
+				if err != nil {
+					return err
+				}
+				writeOffset += n
 			}
-
 			readFrames = len(g.frameRanges)
-		} else {
-			// Write frame
-
-			// Get start offset
-			frameRange := g.frameRanges[readFrames]
-			err := gw.WriteFrame(g.bytes[frameRange.start:frameRange.end])
-			if err != nil {
-				return err
-			}
-
-			readFrames++
+			continue
 		}
+
+		// Handle frame-by-frame writing
+		frameRange := g.frameRanges[readFrames]
+		if err := gw.WriteFrame(g.bytes[frameRange.start:frameRange.end]); err != nil {
+			return err
+		}
+		readFrames++
 	}
 }
 

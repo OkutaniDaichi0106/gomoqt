@@ -7,7 +7,7 @@ import (
 
 var payload = []byte("example payload")
 
-// append を使う方法
+// Append
 func prependWithAppend(payload []byte) []byte {
 	length := uint16(len(payload))
 	lengthBytes := make([]byte, 2)
@@ -15,7 +15,7 @@ func prependWithAppend(payload []byte) []byte {
 	return append(lengthBytes, payload...)
 }
 
-// copy を使う方法
+// Copy
 func prependWithCopy(payload []byte) []byte {
 	length := uint16(len(payload))
 	lengthBytes := make([]byte, 2)
@@ -27,7 +27,7 @@ func prependWithCopy(payload []byte) []byte {
 	return result
 }
 
-// スライスをずらす方法
+// Shift
 func prependWithShift(payload []byte) []byte {
 	length := uint16(len(payload))
 	lengthBytes := make([]byte, 2)
@@ -39,7 +39,6 @@ func prependWithShift(payload []byte) []byte {
 	return result
 }
 
-// ベンチマーク関数
 func BenchmarkPrependWithAppend(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_ = prependWithAppend(payload)

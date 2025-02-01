@@ -5,4 +5,6 @@ type Config struct {
 	MaxSubscribeID uint64
 
 	NewSessionURI string
+
+	SetupExtension Parameters
 }

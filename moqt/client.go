@@ -4,12 +4,12 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"strings"
 
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
@@ -79,7 +79,7 @@ func (c Client) DialWebTransport(req SetupRequest, ctx context.Context) (Session
 	// Get a moq.Connection
 	conn := transport.NewMOWTConnection(wtsess)
 
-	return setupConnection(req, conn)
+	return openSession(req, conn)
 }
 
 // TODO: test
@@ -144,133 +144,48 @@ func (c Client) DialQUIC(req SetupRequest, ctx context.Context) (Session, SetupR
 		break
 	}
 
-	return setupConnection(req, conn)
+	return openSession(req, conn)
 }
 
-func setupConnection(req SetupRequest, conn transport.Connection) (Session, SetupResponce, error) {
-	// Open a Session Stream
-	stream, err := openSessionStream(conn)
-	if err != nil {
-		slog.Error("failed to open a Session Stream")
-		return nil, SetupResponce{}, err
-	}
-
-	// Send a set-up request
-	err = writeSetupRequest(stream, req)
-	if err != nil {
-		slog.Error("failed to request to set up", slog.String("error", err.Error()))
-		return nil, SetupResponce{}, err
-	}
-
-	// Receive a set-up responce
-	rsp, err := readSetupResponce(stream)
-	if err != nil {
-		slog.Error("failed to receive a SESSION_SERVER message", slog.String("error", err.Error()))
-		return nil, SetupResponce{}, err
-	}
-
-	return newSession(conn, stream), rsp, nil
-}
-
-func openSessionStream(conn transport.Connection) (transport.Stream, error) {
-	slog.Debug("opening a session stream")
-
-	/***/
-	stream, err := conn.OpenStream()
-	if err != nil {
-		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
-		return nil, err
-	}
-
-	stm := message.StreamTypeMessage{
-		StreamType: stream_type_session,
-	}
-
-	_, err = stm.Encode(stream)
-	if err != nil {
-		slog.Error("failed to send a Stream Type message", slog.String("error", err.Error()))
-		return nil, err
-	}
-
-	slog.Debug("opened a session stream")
-
-	return stream, nil
-}
-
-func writeSetupRequest(w io.Writer, req SetupRequest) error {
-	slog.Debug("sending a set-up request")
-
+func openSession(req SetupRequest, conn transport.Connection) (Session, SetupResponce, error) {
 	scm := message.SessionClientMessage{
 		SupportedVersions: make([]protocol.Version, 0),
 		Parameters:        message.Parameters(req.SetupParameters.paramMap),
 	}
 
-	for _, v := range req.supportedVersions {
-		scm.SupportedVersions = append(scm.SupportedVersions, protocol.Version(v))
-	}
-
-	_, err := scm.Encode(w)
+	sess, ssm, err := internal.OpenSessionStream(conn, scm)
 	if err != nil {
-		slog.Error("failed to send a SESSION_CLIENT message", slog.String("error", err.Error()))
-		return err
+		slog.Error("failed to setup a session", slog.String("error", err.Error()))
+		return nil, SetupResponce{}, err
 	}
 
-	slog.Debug("sent a set-up request")
+	rsp := SetupResponce{
+		selectedVersion: ssm.SelectedVersion,
+		Parameters:      Parameters{ssm.Parameters},
+	}
 
-	return nil
+	return &session{internalSession: internal.NewSession(conn, sess)}, rsp, nil
 }
 
-func closeStreamWithInternalError(stream transport.Stream, err error) {
+// func writeSetupRequest(w io.Writer, req SetupRequest) error {
+// 	slog.Debug("sending a set-up request")
 
-	slog.Debug("closing the stream with an internal error", slog.String("error", err.Error()))
+// 	scm := message.SessionClientMessage{
+// 		SupportedVersions: make([]protocol.Version, 0),
+// 		Parameters:        message.Parameters(req.SetupParameters.paramMap),
+// 	}
 
-	if err == nil {
-		stream.Close()
-	}
+// 	for _, v := range req.supportedVersions {
+// 		scm.SupportedVersions = append(scm.SupportedVersions, protocol.Version(v))
+// 	}
 
-	// TODO:
+// 	_, err := scm.Encode(w)
+// 	if err != nil {
+// 		slog.Error("failed to send a SESSION_CLIENT message", slog.String("error", err.Error()))
+// 		return err
+// 	}
 
-	var code transport.StreamErrorCode
+// 	slog.Debug("sent a set-up request")
 
-	var strerr transport.StreamError
-	if errors.As(err, &strerr) {
-		code = strerr.StreamErrorCode()
-	} else {
-		var ok bool
-		feterr, ok := err.(FetchError)
-		if ok {
-			code = transport.StreamErrorCode(feterr.FetchErrorCode())
-		} else {
-			code = ErrInternalError.StreamErrorCode()
-		}
-	}
-
-	stream.CancelRead(code)
-	stream.CancelWrite(code)
-
-	slog.Debug("closed the stream with an internal error")
-}
-
-func closeReceiveStreamWithInternalError(stream transport.ReceiveStream, err error) {
-
-	slog.Debug("closing the receive stream with an internal error", slog.String("error", err.Error()))
-
-	var code transport.StreamErrorCode
-
-	var strerr transport.StreamError
-	if errors.As(err, &strerr) {
-		code = strerr.StreamErrorCode()
-	} else {
-		var ok bool
-		feterr, ok := err.(FetchError)
-		if ok {
-			code = transport.StreamErrorCode(feterr.FetchErrorCode())
-		} else {
-			code = ErrInternalError.StreamErrorCode()
-		}
-	}
-
-	stream.CancelRead(code)
-
-	slog.Debug("closed the receive stream with an internal error")
-}
+// 	return nil
+// }

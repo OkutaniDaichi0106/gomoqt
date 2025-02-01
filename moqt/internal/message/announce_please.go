@@ -16,15 +16,15 @@ import (
  */
 
 type AnnouncePleaseMessage struct {
-	TrackPathPrefix []string
-	Parameters      Parameters
+	TrackPrefix        []string
+	AnnounceParameters Parameters
 }
 
 func (aim AnnouncePleaseMessage) Len() int {
 	// Calculate the length of the payload
 	l := 0
-	l += stringArrayLen(aim.TrackPathPrefix)
-	l += parametersLen(aim.Parameters)
+	l += stringArrayLen(aim.TrackPrefix)
+	l += parametersLen(aim.AnnounceParameters)
 
 	return l
 }
@@ -38,8 +38,8 @@ func (aim AnnouncePleaseMessage) Encode(w io.Writer) (int, error) {
 
 	*p = AppendNumber(*p, uint64(aim.Len()))
 
-	*p = AppendStringArray(*p, aim.TrackPathPrefix)
-	*p = AppendParameters(*p, aim.Parameters)
+	*p = AppendStringArray(*p, aim.TrackPrefix)
+	*p = AppendParameters(*p, aim.AnnounceParameters)
 
 	n, err := w.Write(*p)
 	if err != nil {
@@ -65,13 +65,13 @@ func (aim *AnnouncePleaseMessage) Decode(r io.Reader) (int, error) {
 	// Decode the payload
 	mr := bytes.NewReader(buf)
 
-	aim.TrackPathPrefix, _, err = ReadStringArray(mr)
+	aim.TrackPrefix, _, err = ReadStringArray(mr)
 	if err != nil {
 		slog.Error("failed to read TrackPathPrefix for ANNOUNCE_PLEASE message", slog.String("error", err.Error()))
 		return n, err
 	}
 
-	aim.Parameters, _, err = ReadParameters(mr)
+	aim.AnnounceParameters, _, err = ReadParameters(mr)
 	if err != nil {
 		slog.Error("failed to read Parameters for ANNOUNCE_PLEASE message", slog.String("error", err.Error()))
 		return n, err

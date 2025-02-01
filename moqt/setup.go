@@ -3,11 +3,11 @@ package moqt
 import (
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/url"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 )
 
 /*
@@ -21,7 +21,7 @@ type SetupRequest struct {
 	SetupParameters Parameters
 
 	// Internal
-	supportedVersions []Version
+	supportedVersions []protocol.Version
 	parsedURL         *url.URL
 	once              bool
 }
@@ -55,7 +55,7 @@ func (r *SetupRequest) init() error {
 	r.parsedURL = parsedURL
 
 	// Set the Versions
-	r.supportedVersions = DefaultClientVersions
+	r.supportedVersions = internal.DefaultClientVersions
 
 	// Initialize the SetupParameters
 	if r.SetupParameters.paramMap == nil {
@@ -72,28 +72,11 @@ func (r *SetupRequest) init() error {
  * Server
  */
 type SetupResponce struct {
-	SelectedVersion Version
-	Parameters      Parameters
+	Parameters Parameters
+
+	selectedVersion protocol.Version
 }
 
 func (sr SetupResponce) String() string {
-	return fmt.Sprintf("SetupResponce: { SelectedVersion: %d, Parameters: %s }", sr.SelectedVersion, sr.Parameters.String())
-}
-
-func readSetupResponce(r io.Reader) (SetupResponce, error) {
-	slog.Debug("reading a set-up responce")
-	/***/
-	var ssm message.SessionServerMessage
-	_, err := ssm.Decode(r)
-	if err != nil {
-		slog.Error("failed to read a SESSION_SERVER message", slog.String("error", err.Error()))
-		return SetupResponce{}, err
-	}
-
-	slog.Debug("read a set-up responce")
-
-	return SetupResponce{
-		SelectedVersion: Version(ssm.SelectedVersion),
-		Parameters:      Parameters{ssm.Parameters},
-	}, nil
+	return fmt.Sprintf("SetupResponce: { SelectedVersion: %d, Parameters: %s }", sr.selectedVersion, sr.Parameters.String())
 }

@@ -1,13 +1,12 @@
-package moqt
+package internal
 
 import (
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
 )
 
 var (
-	ErrInternalError = internal.ErrInternalError
+	ErrInternalError = internalError{}
 
 	ErrUnauthorizedError = unauthorizedError{}
 
@@ -316,7 +315,7 @@ func (err defaultInfoError) InfoErrorCode() InfoErrorCode {
 /*
  * Fetch Errors
  */
-type FetchErrorCode int
+type FetchErrorCode uint64
 
 type FetchError interface {
 	error
@@ -347,7 +346,8 @@ const (
 /*
  * Terminate Error
  */
-type TerminateErrorCode int
+
+type TerminateErrorCode uint64
 
 const (
 	terminate_no_error                  TerminateErrorCode = 0x0
@@ -383,24 +383,22 @@ func (err defaultTerminateError) TerminateErrorCode() TerminateErrorCode {
  * Group Error
  */
 type GroupError interface {
-	GroupErrorCode() GroupErrorCode
+	GroupErrorCode() message.GroupErrorCode
 }
 
-type GroupErrorCode message.GroupErrorCode
-
 const (
-	group_internal_error       GroupErrorCode = 0x00
-	group_send_interrupted     GroupErrorCode = 0x01
-	group_out_of_range         GroupErrorCode = 0x02
-	group_expires              GroupErrorCode = 0x03
-	group_delivery_timeout     GroupErrorCode = 0x04
-	group_track_does_not_exist GroupErrorCode = 0x05
+	group_internal_error       message.GroupErrorCode = 0x00
+	group_send_interrupted     message.GroupErrorCode = 0x01
+	group_out_of_range         message.GroupErrorCode = 0x02
+	group_expires              message.GroupErrorCode = 0x03
+	group_delivery_timeout     message.GroupErrorCode = 0x04
+	group_track_does_not_exist message.GroupErrorCode = 0x05
 
-	group_duplicated_group GroupErrorCode = 0x10
+	group_duplicated_group message.GroupErrorCode = 0x10
 )
 
 type defaultGroupError struct {
-	code   GroupErrorCode
+	code   message.GroupErrorCode
 	reason string
 }
 
@@ -408,8 +406,8 @@ func (err defaultGroupError) Error() string {
 	return err.reason
 }
 
-func (err defaultGroupError) GroupErrorCode() GroupErrorCode {
-	return err.code
+func (err defaultGroupError) GroupErrorCode() message.GroupErrorCode {
+	return message.GroupErrorCode(err.code)
 }
 
 /*
@@ -457,8 +455,8 @@ func (internalError) InfoErrorCode() InfoErrorCode {
 	return info_internal_error
 }
 
-func (internalError) GroupErrorCode() GroupErrorCode {
-	return group_internal_error
+func (internalError) GroupErrorCode() message.GroupErrorCode {
+	return message.GroupErrorCode(group_internal_error)
 }
 
 /*
@@ -505,6 +503,6 @@ func (trackDoesNotExistError) InfoErrorCode() InfoErrorCode {
 	return info_track_does_not_exist
 }
 
-func (trackDoesNotExistError) GroupErrorCode() GroupErrorCode {
+func (trackDoesNotExistError) GroupErrorCode() message.GroupErrorCode {
 	return group_track_does_not_exist
 }

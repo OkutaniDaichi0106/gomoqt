@@ -1,0 +1,56 @@
+package internal
+
+import (
+	"time"
+
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
+)
+
+func newReceiveGroupStream(gm *message.GroupMessage, stream transport.ReceiveStream) *ReceiveGroupStream {
+	return &ReceiveGroupStream{
+		GroupMessage: *gm,
+		Stream:       stream,
+		startTime:    time.Now(),
+	}
+}
+
+type ReceiveGroupStream struct {
+	GroupMessage message.GroupMessage
+	Stream       transport.ReceiveStream
+
+	startTime time.Time
+
+	errCodeCh chan StreamErrorCode
+}
+
+func (r ReceiveGroupStream) ReadFrame() ([]byte, error) {
+	var fm message.FrameMessage
+	_, err := fm.Decode(r.Stream)
+	if err != nil {
+		return nil, err
+	}
+
+	return fm.Payload, nil
+}
+
+func (r ReceiveGroupStream) StartAt() time.Time {
+	return r.startTime
+}
+
+func (r ReceiveGroupStream) CancelRead(code StreamErrorCode) {
+	if r.errCodeCh == nil {
+		r.errCodeCh = make(chan StreamErrorCode, 1)
+	}
+
+	select {
+	case r.errCodeCh <- code:
+	default:
+	}
+
+	r.Stream.CancelRead(transport.StreamErrorCode(code))
+}
+
+func (r ReceiveGroupStream) SetReadDeadline(t time.Time) error {
+	return r.Stream.SetReadDeadline(t)
+}

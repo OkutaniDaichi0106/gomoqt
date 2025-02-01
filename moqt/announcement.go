@@ -1,8 +1,6 @@
 package moqt
 
 import (
-	"io"
-	"log/slog"
 	"strings"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
@@ -57,73 +55,6 @@ func (a Announcement) String() string {
 	sb.WriteString(a.AnnounceParameters.String())
 	sb.WriteString(" }")
 	return sb.String()
-}
-
-func readAnnouncement(r io.Reader, prefix []string) (Announcement, error) {
-
-	slog.Debug("reading an announcement")
-
-	var am message.AnnounceMessage
-	_, err := am.Decode(r)
-	if err != nil {
-		slog.Error("failed to read an ANNOUNCE message", slog.String("error", err.Error()))
-		return Announcement{}, err
-	}
-
-	slog.Debug("read an ANNOUNCE message", slog.Any("message", am))
-
-	// Get the full track path
-	trackPath := append(prefix, am.TrackPathSuffix...)
-
-	if am.AnnounceStatus == message.LIVE {
-		return Announcement{
-			AnnounceStatus:     AnnounceStatus(am.AnnounceStatus),
-			AnnounceParameters: Parameters{am.Parameters},
-		}, nil
-	}
-
-	return Announcement{
-		AnnounceStatus:     AnnounceStatus(am.AnnounceStatus),
-		TrackPath:          trackPath,
-		AnnounceParameters: Parameters{am.Parameters},
-	}, nil
-}
-
-func writeAnnouncement(w io.Writer, prefix []string, ann Announcement) error {
-	var am message.AnnounceMessage
-	switch ann.AnnounceStatus {
-	case ACTIVE, ENDED:
-		// Verify if the track path has the track prefix
-		if !hasPrefix(ann.TrackPath, prefix) {
-			return ErrInternalError
-		}
-
-		// Get a suffix part of the Track Path
-		suffix := trimPrefix(ann.TrackPath, prefix)
-
-		// Initialize an ANNOUNCE message
-		am = message.AnnounceMessage{
-			AnnounceStatus:  message.AnnounceStatus(ann.AnnounceStatus),
-			TrackPathSuffix: suffix,
-			Parameters:      message.Parameters(ann.AnnounceParameters.paramMap),
-		}
-	case LIVE:
-		// Initialize an ANNOUNCE message
-		am = message.AnnounceMessage{
-			AnnounceStatus: message.AnnounceStatus(ann.AnnounceStatus),
-		}
-	default:
-		return ErrProtocolViolation
-	}
-
-	// Encode the ANNOUNCE message
-	_, err := am.Encode(w)
-	if err != nil {
-		slog.Error("failed to send an ANNOUNCE message", slog.String("error", err.Error()))
-		return err
-	}
-
-	return nil
 }
 
 func IsSamePath(path, target []string) bool {

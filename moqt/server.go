@@ -3,11 +3,11 @@ package moqt
 import (
 	"context"
 	"crypto/tls"
-	"io"
 	"log"
 	"log/slog"
 	"net/http"
 
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
@@ -32,13 +32,15 @@ type Server struct {
 	 */
 	QUICConfig *quic.Config
 
+	Config *Config
+
 	/*
 	 *
 	 */
 	ServeMux *ServeMux
 
 	//
-	SetupHijackerFunc func(SetupRequest) SetupResponce
+	// SetupHijackerFunc func(SetupRequest) SetupResponce
 	// TODO:
 
 	//elayManager *RelayManager
@@ -95,45 +97,27 @@ func (s *Server) init() (err error) {
 			/*
 			 * Set up
 			 */
-			stream, err := acceptSessionStream(conn)
+			stream, scm, err := internal.AcceptSessionStream(conn, context.Background())
 			if err != nil {
 				slog.Error("failed to accept an session stream", slog.String("error", err.Error()))
 				return
 			}
 
-			// Receive a set-up request
-			req, err := readSetupRequest(stream)
-			if err != nil {
-				slog.Error("failed to get a set-up request", slog.String("error", err.Error()))
-				return
+			ssm := message.SessionServerMessage{
+				SelectedVersion: protocol.Version(internal.DefaultServerVersion),
+				Parameters:      message.Parameters(s.Config.SetupExtension.paramMap),
 			}
 
-			// Select the default version
-			if !ContainVersion(Default, req.supportedVersions) {
-				slog.Error("no available version", slog.Any("versions", req.supportedVersions))
-				return
-			}
-
-			// Send a set-up responce
-			var rsp SetupResponce
-			if s.SetupHijackerFunc != nil {
-				rsp = s.SetupHijackerFunc(req)
-			} else {
-				rsp = SetupResponce{
-					SelectedVersion: Default,
-					Parameters:      NewParameters(),
-				}
-			}
-			err = writeSetupResponce(stream, rsp)
+			_, err = ssm.Encode(stream.Stream)
 			if err != nil {
 				slog.Error("failed to send a set-up responce")
 				return
 			}
 
 			// Initialize a Session
-			sess := newSession(conn, stream)
+			sess := internal.NewSession(conn, stream)
 
-			handler(sess)
+			handler(&session{internalSession: sess, extensions: Parameters{scm.Parameters}})
 		})
 	}
 
@@ -188,50 +172,39 @@ func (s *Server) ListenAndServe() error {
 					/*
 					 * Set up
 					 */
-					stream, err := acceptSessionStream(conn)
+					stream, scm, err := internal.AcceptSessionStream(conn, context.Background())
 					if err != nil {
-						slog.Error("failed to accept an session stream", slog.String("error", err.Error()))
-						return
-					}
-
-					// Receive a set-up request
-					req, err := readSetupRequest(stream)
-					if err != nil {
-						slog.Error("failed to get a set-up request", slog.String("error", err.Error()))
+						slog.Error("failed to accept a session stream", slog.String("error", err.Error()))
 						return
 					}
 
 					// Verify if the request contains a valid path
-					if req.parsedURL.Path == "" {
+					path, err := Parameters{scm.Parameters}.GetString(path)
+					if err != nil {
+						slog.Error("failed to get a path", slog.String("error", err.Error()))
+						return
+					}
+
+					if path == "" {
 						slog.Error("path not found")
 						return
 					}
 
-					// Select the default version
-					if !ContainVersion(Default, req.supportedVersions) {
-						slog.Error("no available version", slog.Any("versions", req.supportedVersions))
-						return
-					}
-
 					// Send a set-up responce
-					var rsp SetupResponce
-					if s.SetupHijackerFunc != nil {
-						rsp = s.SetupHijackerFunc(req)
-					} else {
-						rsp = SetupResponce{
-							SelectedVersion: Default,
-							Parameters:      NewParameters(),
-						}
+					ssm := message.SessionServerMessage{
+						SelectedVersion: protocol.Version(internal.DefaultServerVersion),
+						Parameters:      message.Parameters(s.Config.SetupExtension.paramMap),
 					}
-					err = writeSetupResponce(stream, rsp)
+
+					_, err = ssm.Encode(stream.Stream)
 					if err != nil {
-						slog.Error("failed to send a set-up responce")
+						slog.Error("failed to send a set-up responce", slog.String("error", err.Error()))
 						return
 					}
 
-					handler := s.ServeMux.findHandlerFunc("/" + req.parsedURL.Path)
+					handler := s.ServeMux.findHandlerFunc("/" + path)
 
-					handler(newSession(conn, stream))
+					handler(&session{internalSession: internal.NewSession(conn, stream), extensions: Parameters{scm.Parameters}})
 				}(qconn)
 			default:
 				return
@@ -242,75 +215,46 @@ func (s *Server) ListenAndServe() error {
 
 }
 
-func acceptSessionStream(conn transport.Connection) (transport.Stream, error) {
-	slog.Debug("accepting a session stream")
+// func readSetupRequest(r io.Reader) (req SetupRequest, err error) {
+// 	slog.Debug("reading a set-up request")
+// 	/*
+// 	 * Receive a SESSION_CLIENT message
+// 	 */
+// 	// Decode
+// 	var scm message.SessionClientMessage
+// 	_, err = scm.Decode(r)
+// 	if err != nil {
+// 		slog.Error("failed to read a SESSION_CLIENT message", slog.String("error", err.Error())) // TODO
+// 		return
+// 	}
 
-	// Accept a Bidirectional Stream, which must be a Sesson Stream
-	stream, err := conn.AcceptStream(context.Background())
-	if err != nil {
-		slog.Error("failed to accept a stream", slog.String("error", err.Error()))
-		return nil, err
-	}
+// 	// Set versions
+// 	for _, v := range scm.SupportedVersions {
+// 		req.supportedVersions = append(req.supportedVersions, Version(v))
+// 	}
+// 	// Set parameters
+// 	req.SetupParameters = Parameters{scm.Parameters}
 
-	// Get a Stream Type message
-	var stm message.StreamTypeMessage
-	_, err = stm.Decode(stream)
-	if err != nil {
-		slog.Error("failed to read a Stream Type", slog.String("error", err.Error()))
-		return nil, err
-	}
+// 	slog.Debug("read a set-up request", slog.Any("request", req))
 
-	// Verify if the Stream is the Session Stream
-	if stm.StreamType != stream_type_session {
-		slog.Error("unexpected Stream Type ID", slog.Any("ID", stm.StreamType))
-		return nil, err
-	}
+// 	return req, nil
+// }
 
-	slog.Debug("accepted a session stream")
+// func writeSetupResponce(w io.Writer, rsp SetupResponce) error {
+// 	slog.Debug("writing a set-up responce", slog.Any("responce", rsp))
 
-	return stream, nil
-}
+// 	ssm := message.SessionServerMessage{
+// 		SelectedVersion: protocol.Version(rsp.SelectedVersion),
+// 		Parameters:      message.Parameters(rsp.Parameters.paramMap),
+// 	}
 
-func readSetupRequest(r io.Reader) (req SetupRequest, err error) {
-	slog.Debug("reading a set-up request")
-	/*
-	 * Receive a SESSION_CLIENT message
-	 */
-	// Decode
-	var scm message.SessionClientMessage
-	_, err = scm.Decode(r)
-	if err != nil {
-		slog.Error("failed to read a SESSION_CLIENT message", slog.String("error", err.Error())) // TODO
-		return
-	}
+// 	_, err := ssm.Encode(w)
+// 	if err != nil {
+// 		slog.Error("failed to encode a SESSION_SERVER message", slog.String("error", err.Error()))
+// 		return err
+// 	}
 
-	// Set versions
-	for _, v := range scm.SupportedVersions {
-		req.supportedVersions = append(req.supportedVersions, Version(v))
-	}
-	// Set parameters
-	req.SetupParameters = Parameters{scm.Parameters}
+// 	slog.Debug("wrote a set-up responce")
 
-	slog.Debug("read a set-up request", slog.Any("request", req))
-
-	return req, nil
-}
-
-func writeSetupResponce(w io.Writer, rsp SetupResponce) error {
-	slog.Debug("writing a set-up responce", slog.Any("responce", rsp))
-
-	ssm := message.SessionServerMessage{
-		SelectedVersion: protocol.Version(rsp.SelectedVersion),
-		Parameters:      message.Parameters(rsp.Parameters.paramMap),
-	}
-
-	_, err := ssm.Encode(w)
-	if err != nil {
-		slog.Error("failed to encode a SESSION_SERVER message", slog.String("error", err.Error()))
-		return err
-	}
-
-	slog.Debug("wrote a set-up responce")
-
-	return nil
-}
+// 	return nil
+// }

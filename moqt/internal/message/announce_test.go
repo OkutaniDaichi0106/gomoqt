@@ -16,9 +16,9 @@ func TestAnnounceMessage_EncodeDecode(t *testing.T) {
 	}{
 		"valid message": {
 			input: message.AnnounceMessage{
-				AnnounceStatus:  message.AnnounceStatus(1),
-				TrackPathSuffix: []string{"path", "to", "track"},
-				Parameters: map[uint64][]byte{
+				AnnounceStatus: message.AnnounceStatus(1),
+				TrackSuffix:    []string{"path", "to", "track"},
+				AnnounceParameters: map[uint64][]byte{
 					1: []byte("value1"),
 					2: []byte("value2"),
 				},
@@ -26,18 +26,18 @@ func TestAnnounceMessage_EncodeDecode(t *testing.T) {
 		},
 		"empty track path suffix": {
 			input: message.AnnounceMessage{
-				AnnounceStatus:  message.AnnounceStatus(1),
-				TrackPathSuffix: []string{},
-				Parameters: map[uint64][]byte{
+				AnnounceStatus: message.AnnounceStatus(1),
+				TrackSuffix:    []string{},
+				AnnounceParameters: map[uint64][]byte{
 					1: []byte("value1"),
 				},
 			},
 		},
 		"empty parameters": {
 			input: message.AnnounceMessage{
-				AnnounceStatus:  message.AnnounceStatus(1),
-				TrackPathSuffix: []string{"path"},
-				Parameters:      map[uint64][]byte{},
+				AnnounceStatus:     message.AnnounceStatus(1),
+				TrackSuffix:        []string{"path"},
+				AnnounceParameters: map[uint64][]byte{},
 			},
 		},
 		// "max values": {

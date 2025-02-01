@@ -126,7 +126,7 @@ func (g *GroupRelayer) Relay(gw GroupWriter) error {
 		if ok {
 			currentSize := len(g.bytes)
 			if currentSize > writeOffset {
-				n, err := grstr.stream.Write(g.bytes[writeOffset:currentSize])
+				n, err := grstr.internalStream.Stream.Write(g.bytes[writeOffset:currentSize])
 				if err != nil {
 					return err
 				}

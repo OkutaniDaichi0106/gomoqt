@@ -1,4 +1,4 @@
-package moqt
+package internal
 
 import "github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 

@@ -32,63 +32,64 @@ type GroupRelayer struct {
 
 	frameRanges []struct{ start, end int }
 
-	closed bool
-	cond   *sync.Cond
-	err    error
+	closed   bool
+	cond     *sync.Cond
+	closeErr error
 }
 
-func NewGroupBuffer(gr GroupReader) *GroupRelayer {
-	gb := groupBufferPool.Get().(*GroupRelayer)
+func NewGroupRelayer(gr GroupReader) *GroupRelayer {
+	relayer := groupBufferPool.Get().(*GroupRelayer)
 
 	// Set group sequence
-	gb.groupSequence = gr.GroupSequence()
+	relayer.groupSequence = gr.GroupSequence()
 
 	// Reset bytes
-	gb.bytes = gb.bytes[:0]
+	relayer.bytes = relayer.bytes[:0]
 
 	// Reset offsets
-	gb.frameRanges = gb.frameRanges[:0]
+	relayer.frameRanges = relayer.frameRanges[:0]
 
 	// Reset closed flag
-	gb.closed = false
+	relayer.closed = false
 
-	gb.err = nil
+	relayer.closeErr = nil
 
 	// Reset condition
-	gb.cond = sync.NewCond(&sync.Mutex{})
+	relayer.cond = sync.NewCond(&sync.Mutex{})
 
+	// Read frames from group reader
 	go func() {
 		for {
 			frame, err := gr.ReadFrame()
 			if err != nil {
-				gb.cond.L.Lock()
-				gb.err = err
-				gb.closed = true
-				gb.cond.L.Unlock()
-				gb.cond.Broadcast()
+				relayer.cond.L.Lock()
+				relayer.closeErr = err
+				relayer.closed = true
+				relayer.cond.L.Unlock()
+				relayer.cond.Broadcast()
 				return
 			}
 
-			gb.cond.L.Lock()
+			relayer.cond.L.Lock()
 
 			// Append frame to bytes
-			gb.bytes = message.AppendBytes(gb.bytes, frame)
+			relayer.bytes = message.AppendBytes(relayer.bytes, frame)
 
 			// Append offset to offsets
-			gb.frameRanges = append(gb.frameRanges, struct {
+			relayer.frameRanges = append(relayer.frameRanges, struct {
 				start int
 				end   int
 			}{
-				start: len(gb.bytes) - len(frame),
-				end:   len(gb.bytes)},
+				start: len(relayer.bytes) - len(frame),
+				end:   len(relayer.bytes)},
 			)
 
-			gb.cond.L.Unlock()
-			gb.cond.Broadcast()
+			relayer.cond.L.Unlock()
+			relayer.cond.Broadcast()
 		}
 	}()
 
-	return gb
+	return relayer
 }
 
 func (g *GroupRelayer) GroupSequence() GroupSequence {
@@ -117,7 +118,7 @@ func (g *GroupRelayer) Relay(gw GroupWriter) error {
 		// Check for new data or closure
 		for readFrames >= len(g.frameRanges) {
 			if g.closed {
-				return g.err // Returns nil if closed normally
+				return g.closeErr // Returns nil if closed normally
 			}
 			g.cond.Wait()
 		}
@@ -162,7 +163,7 @@ func (g *GroupRelayer) Release() {
 	g.frameRanges = g.frameRanges[:0]
 
 	// Reset for reuse
-	g.err = nil
+	g.closeErr = nil
 
 	groupBufferPool.Put(g)
 }

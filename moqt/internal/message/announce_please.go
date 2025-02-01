@@ -67,7 +67,7 @@ func (aim *AnnouncePleaseMessage) Decode(r io.Reader) (int, error) {
 
 	aim.TrackPrefix, _, err = ReadStringArray(mr)
 	if err != nil {
-		slog.Error("failed to read TrackPathPrefix for ANNOUNCE_PLEASE message", slog.String("error", err.Error()))
+		slog.Error("failed to read TrackPrefix for ANNOUNCE_PLEASE message", slog.String("error", err.Error()))
 		return n, err
 	}
 

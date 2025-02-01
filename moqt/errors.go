@@ -9,97 +9,46 @@ import (
 var (
 	ErrInternalError = internal.ErrInternalError
 
-	ErrUnauthorizedError = unauthorizedError{}
+	ErrUnauthorizedError = internal.ErrUnauthorizedError
 
-	ErrTrackDoesNotExist = trackDoesNotExistError{}
+	ErrTrackDoesNotExist = internal.ErrTrackDoesNotExist
 
-	ErrDuplicatedTrack = defaultAnnounceError{
-		reason: "duplicated track path",
-		code:   announce_duplicated_track_path,
-	}
+	ErrDuplicatedTrack = internal.ErrDuplicatedTrack
 
-	ErrInvalidRange = defaultSubscribeError{
-		code:   subscribe_invalid_range,
-		reason: "invalid range",
-	}
+	ErrInvalidRange = internal.ErrInvalidRange
 
-	ErrDuplicatedSubscribeID = defaultSubscribeError{
-		code:   subscriber_duplicated_id,
-		reason: "duplicated subscribe id",
-	}
+	ErrDuplicatedSubscribeID = internal.ErrDuplicatedSubscribeID
 
-	ErrPriorityMismatch = defaultSubscribeError{
-		code:   subscribe_priority_mismatch_error,
-		reason: "update failed",
-	}
+	ErrPriorityMismatch = internal.ErrPriorityMismatch
 
-	ErrGroupOrderMismatch = defaultSubscribeError{
-		code:   subscribe_order_mismatch_error,
-		reason: "group order mismatch",
-	}
+	ErrGroupOrderMismatch = internal.ErrGroupOrderMismatch
 
 	// TODO:
 	// ErrSubscriptionLimitExceeded
 
-	ErrSubscribeExpired = defaultSubscribeDoneError{
-		code:   subscribe_done_expired,
-		reason: "expired",
-	}
+	ErrSubscribeExpired = internal.ErrSubscribeExpired
 
-	NoErrTerminate = defaultTerminateError{
-		code:   terminate_no_error,
-		reason: "no error",
-	}
+	NoErrTerminate = internal.NoErrTerminate
 
-	ErrProtocolViolation = defaultTerminateError{
-		code:   terminate_protocol_violation,
-		reason: "protocol violation",
-	}
+	ErrProtocolViolation = internal.ErrProtocolViolation
 
-	ErrParameterLengthMismatch = defaultTerminateError{
-		code:   terminate_parameter_length_mismatch,
-		reason: "parameter length mismatch",
-	}
+	ErrParameterLengthMismatch = internal.ErrParameterLengthMismatch
 
-	ErrTooManySubscribes = defaultTerminateError{
-		code:   terminate_too_many_subscribes,
-		reason: "too many subscribes",
-	}
+	ErrTooManySubscribes = internal.ErrTooManySubscribes
 
-	ErrNoGroup = defaultFetchError{
-		code:   fetch_no_group,
-		reason: "no group",
-	}
+	ErrNoGroup = internal.ErrNoGroup
 
-	ErrUnavailabelFrame = defaultFetchError{
-		code:   fetch_unavailable_frame,
-		reason: "unavailable frame",
-	}
+	ErrUnavailabelFrame = internal.ErrUnavailabelFrame
 
-	ErrGroupSendInterrupted = defaultGroupError{
-		code:   group_send_interrupted,
-		reason: "send interrupted",
-	}
+	ErrGroupSendInterrupted = internal.ErrGroupSendInterrupted
 
-	ErrGroupOutOfRange = defaultGroupError{
-		code:   group_out_of_range,
-		reason: "out of range",
-	}
+	ErrGroupOutOfRange = internal.ErrGroupOutOfRange
 
-	ErrGroupExpires = defaultGroupError{
-		code:   group_expires,
-		reason: "expires",
-	}
+	ErrGroupExpires = internal.ErrGroupExpires
 
-	ErrGroupDeliveryTimeout = defaultGroupError{
-		code:   group_delivery_timeout,
-		reason: "delivery timeout",
-	}
+	ErrGroupDeliveryTimeout = internal.ErrGroupDeliveryTimeout
 
-	ErrDuplicatedGroup = defaultGroupError{
-		code:   group_duplicated_group,
-		reason: "duplicated group",
-	}
+	ErrDuplicatedGroup = internal.ErrDuplicatedGroup
 )
 
 /*
@@ -239,48 +188,6 @@ func (err defaultSubscribeDoneError) Reason() string {
 
 func (err defaultSubscribeDoneError) SubscribeDoneErrorCode() SubscribeDoneStatusCode {
 	return err.code
-}
-
-/*
- * Subscribe Done Status
- */
-type SubscribeDoneStatus interface {
-	Reason() string
-	Code() SubscribeDoneStatusCode
-}
-
-var _ SubscribeDoneStatus = (*DefaultSubscribeDoneStatus)(nil)
-
-var (
-	StatusUnsubscribed = DefaultSubscribeDoneStatus{
-		code:   subscribed_done_unsubscribed,
-		reason: "unsubscribed",
-	}
-	StatusEndedTrack = DefaultSubscribeDoneStatus{
-		code:   subscribe_done_track_ended,
-		reason: "track ended",
-	}
-	StatusEndedSubscription = DefaultSubscribeDoneStatus{
-		code:   subscribe_done_subscription_ended,
-		reason: "subsription ended",
-	}
-	StatusGoingAway = DefaultSubscribeDoneStatus{
-		code:   subscribe_done_going_away,
-		reason: "going away",
-	}
-)
-
-type DefaultSubscribeDoneStatus struct {
-	code   SubscribeDoneStatusCode
-	reason string
-}
-
-func (status DefaultSubscribeDoneStatus) Reason() string {
-	return status.reason
-}
-
-func (status DefaultSubscribeDoneStatus) Code() SubscribeDoneStatusCode {
-	return status.code
 }
 
 /*

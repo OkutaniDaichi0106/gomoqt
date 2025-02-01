@@ -166,26 +166,3 @@ func openSession(req SetupRequest, conn transport.Connection) (Session, SetupRes
 
 	return &session{internalSession: internal.NewSession(conn, sess)}, rsp, nil
 }
-
-// func writeSetupRequest(w io.Writer, req SetupRequest) error {
-// 	slog.Debug("sending a set-up request")
-
-// 	scm := message.SessionClientMessage{
-// 		SupportedVersions: make([]protocol.Version, 0),
-// 		Parameters:        message.Parameters(req.SetupParameters.paramMap),
-// 	}
-
-// 	for _, v := range req.supportedVersions {
-// 		scm.SupportedVersions = append(scm.SupportedVersions, protocol.Version(v))
-// 	}
-
-// 	_, err := scm.Encode(w)
-// 	if err != nil {
-// 		slog.Error("failed to send a SESSION_CLIENT message", slog.String("error", err.Error()))
-// 		return err
-// 	}
-
-// 	slog.Debug("sent a set-up request")
-
-// 	return nil
-// }

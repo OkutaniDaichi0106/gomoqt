@@ -20,6 +20,11 @@ const (
 	reset       = "\033[0m"
 )
 
+const (
+	CertFile = "./examples/cert/localhost.pem"
+	KeyFile  = "./examples/cert/localhost-key.pem"
+)
+
 type colorTextHandler struct {
 	out   io.Writer
 	opts  *slog.HandlerOptions
@@ -77,7 +82,7 @@ func main() {
 	/*
 	 * Set certification config
 	 */
-	certs, err := getCertificates("../../cert/localhost.pem", "../../cert/localhost-key.pem")
+	certs, err := getCertificates(CertFile, KeyFile)
 	if err != nil {
 		slog.Error("failed to get certificates", slog.String("error", err.Error()))
 		return

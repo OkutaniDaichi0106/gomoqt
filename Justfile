@@ -1,76 +1,96 @@
-# List all available recipes
-default:
-    @just --list
+# Justfile - Development tasks for gomoqt
+#
+# Usage:
+#   just [command]
+#
+# Available commands:
+#   dev-setup       Set up the development environment
+#   run-echo-server Start the echo server
+#   run-echo-client Start the echo client
+#   fmt             Format Go source code
+#   lint            Run linter
+#   test            Run tests
+#   check           Overall quality checks (formatting and linting)
+#   build           Build the project
+#   clean           Clean up generated files
+#   help            Show this help message
+#
+# By default, help is executed.
+default: help
 
-# Install required dependencies
-setup:
-    # Install certificate tools
-    if ! command -v mkcert >/dev/null 2>&1; then \
-        echo "Installing mkcert..."; \
-        if command -v brew >/dev/null 2>&1; then \
-            brew install mkcert; \
-        elif command -v apt-get >/dev/null 2>&1; then \
-            sudo apt-get install -y mkcert; \
-        elif command -v choco >/dev/null 2>&1; then \
-            choco install mkcert; \
-        else \
-            echo "Please install mkcert manually: https://github.com/FiloSottile/mkcert#installation"; \
-        fi; \
-    fi
+help:
+	@echo "Available commands:"
+	@echo "  just dev-setup       Set up the development environment"
+	@echo "  just run-echo-server Start the echo server"
+	@echo "  just run-echo-client Start the echo client"
+	@echo "  just fmt             Format Go source code"
+	@echo "  just lint            Run linter"
+	@echo "  just test            Run tests"
+	@echo "  just check           Overall quality checks (formatting and linting)"
+	@echo "  just build           Build the project"
+	@echo "  just clean           Clean up generated files"
+	@echo "  just help            Show this help message"
 
-    # Install development tools
-    go install golang.org/x/tools/cmd/goimports@latest
-    go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-
-    # Install project dependencies
-    go mod tidy
-    go install github.com/quic-go/quic-go@v0.48.2
-    go install github.com/quic-go/webtransport-go@v0.8.1
-
-# Generate development certificates (using either mkcert or OpenSSL)
-generate-cert:
-    mkdir -p examples/cert
-    if command -v mkcert >/dev/null 2>&1; then
-        echo "Using mkcert to generate certificates..."
-        mkcert -install
-        mkcert -key-file cert/key.pem -cert-file cert/cert.pem localhost 127.0.0.1 ::1
-    else
-        echo "mkcert not found, falling back to OpenSSL..."
-        openssl req -x509 -newkey rsa:2048 -keyout cert/key.pem -out cert/cert.pem -days 365 -nodes -subj "/CN=localhost"
-    fi
-
-# Build and run the echo server
-run-echo-server: generate-cert
-    go run examples/echo/server/main.go
-
-# Build and run the echo client
-run-echo-client: generate-cert
-    go run examples/echo/client/main.go
-
-# Run tests
-test:
-    go test -v ./...
-
-# Build the code
+# Build target example:
 build:
-    go build -v ./...
+	@echo "Building project..."
+	go build ./...
 
-# Clean up generated files
-clean:
-    rm -rf cert
-    go clean
+# Test target example:
+test:
+	@echo "Running tests..."
+	go test ./...
 
-# Run complete development setup
-dev-setup: setup generate-cert
+# Run target example:
+run:
+	@echo "Running project..."
+	# Define generic run command if needed
+	go run .
 
-# Format code
+# New command: dev-setup
+dev-setup:
+	@echo "Setting up development environment..."
+	@echo "Installing certificate tools (mkcert)..."
+	mkcert -install
+	@echo "Installing development tools (goimports, golangci-lint)..."
+	go install golang.org/x/tools/cmd/goimports@latest
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	@echo "Downloading project dependencies..."
+	go mod tidy
+	@echo "Generating development certificates..."
+	# (Add commands for generating certificates if necessary)
+
+# New command: run-echo-server
+run-echo-server:
+	@echo "Starting echo server..."
+	# Replace with the actual echo server command if available
+	go run ./examples/echo/server/main.go
+
+
+# New command: run-echo-client
+run-echo-client:
+	@echo "Starting echo client..."
+	# Replace with the actual echo client command if available
+	go run ./examples/echo/client/main.go
+
+# New command: fmt
 fmt:
-    goimports -w .
-    go fmt ./...
+	@echo "Formatting code..."
+	go fmt ./...
 
-# Run linter
+# New command: lint
 lint:
-    golangci-lint run
+	@echo "Running linter..."
+	golangci-lint run
 
-# Check code quality (format and lint)
+# New command: check (depends on fmt and lint)
 check: fmt lint
+	@echo "Quality checks complete."
+
+# New command: clean
+clean:
+	@echo "Cleaning up generated files..."
+	# Remove binaries or other generated files as necessary (e.g., the ./bin directory)
+	rm -rf ./bin
+
+set windows-shell := ["C:\\Program Files\\Git\\bin\\sh.exe","-c"]

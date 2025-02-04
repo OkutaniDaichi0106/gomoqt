@@ -3,9 +3,10 @@ module github.com/OkutaniDaichi0106/gomoqt
 go 1.23.4
 
 require (
-	github.com/quic-go/quic-go v0.48.2
+	github.com/quic-go/quic-go v0.49.0
 	github.com/quic-go/webtransport-go v0.8.1-0.20241018022259-0f459d387a19
 	github.com/stretchr/testify v1.10.0
+	go.uber.org/mock v0.5.0
 )
 
 require (
@@ -16,7 +17,6 @@ require (
 	github.com/onsi/ginkgo/v2 v2.22.2 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/quic-go/qpack v0.5.1 // indirect
-	go.uber.org/mock v0.5.0 // indirect
 	golang.org/x/crypto v0.32.0 // indirect
 	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8 // indirect
 	golang.org/x/mod v0.22.0 // indirect

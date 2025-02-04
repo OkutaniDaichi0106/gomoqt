@@ -138,7 +138,7 @@ type GroupBuffer struct {
 // NewGroupBuffer creates a new GroupBuffer with the specified group sequence and initial capacity.
 func NewGroupBuffer(seq GroupSequence, size int) *GroupBuffer {
 	if size <= 0 {
-		size = defaultBufferSize
+		size = DefaultGroupBufferSize
 	}
 	return &GroupBuffer{
 		groupSequence: seq,
@@ -282,5 +282,7 @@ var (
 	ErrOutOfCache    = errors.New("group buffer is out of cache")
 	ErrBufferFull    = errors.New("buffer is full")
 )
+
+var DefaultGroupBufferSize = defaultBufferSize
 
 const defaultBufferSize = 1024 * 1024 // 1MB

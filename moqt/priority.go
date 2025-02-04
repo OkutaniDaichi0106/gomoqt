@@ -1,12 +1,8 @@
 package moqt
 
-import (
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-)
+type TrackPriority byte
 
-type TrackPriority message.TrackPriority
-
-type GroupOrder message.GroupOrder
+type GroupOrder byte
 
 const (
 	DEFAULT    GroupOrder = 0x0

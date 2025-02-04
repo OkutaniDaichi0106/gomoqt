@@ -4,15 +4,9 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 )
 
-var DefaultClientVersions = []protocol.Version{Default}
+var DefaultClientVersions = []protocol.Version{protocol.Develop}
 
-var DefaultServerVersion = Default
-
-const (
-	Default = protocol.Develop
-	//Draft01 Version = Version(protocol.Draft01)
-	Develop protocol.Version = protocol.Develop
-)
+var DefaultServerVersion = protocol.Develop
 
 func ContainVersion(version protocol.Version, versions []protocol.Version) bool {
 	versionMap := make(map[protocol.Version]bool, len(versions))

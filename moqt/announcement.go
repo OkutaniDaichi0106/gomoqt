@@ -12,10 +12,11 @@ const (
 	LIVE   AnnounceStatus = AnnounceStatus(message.LIVE)
 )
 
-type AnnounceStatus message.AnnounceStatus
+type AnnounceStatus byte
 
 func (as AnnounceStatus) String() string {
 	switch as {
+
 	case ENDED:
 		return "ENDED"
 	case ACTIVE:

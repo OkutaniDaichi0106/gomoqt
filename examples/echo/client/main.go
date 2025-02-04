@@ -68,7 +68,7 @@ func (h *colorTextHandler) Enabled(ctx context.Context, level slog.Level) bool {
 }
 
 var echoTrackPrefix = []string{"japan", "kyoto"}
-var echoTrackPath = []string{"japan", "kyoto", "kiu", "text"}
+var echoTrackPath = []string{"japan", "kyoto", "text"}
 
 func main() {
 	/*
@@ -85,7 +85,7 @@ func main() {
 	// Dial to the server with the setup request
 	slog.Info("Dial to the server")
 
-	sess, _, err := c.Dial("https://localhost:8443/path", context.Background())
+	sess, _, err := c.Dial("https://localhost:8443/echo", context.Background())
 	if err != nil {
 		slog.Error(err.Error())
 		return

@@ -15,12 +15,13 @@ import (
  * When this is 0, it indicates the sequence number is currently unknown .
  * 0 is used to specify "the latest sequence number" or "the final sequence number of an open-ended track", "the first sequence number of the default order".
  */
-type GroupSequence message.GroupSequence
+type GroupSequence uint64
 
 const (
 	FirstSequence  GroupSequence = 1
-	LatestSequence GroupSequence = 0
-	FinalSequence  GroupSequence = 0
+	LatestSequence GroupSequence = NotSpecified
+	FinalSequence  GroupSequence = NotSpecified
+	NotSpecified   GroupSequence = 0
 	MaxSequence    GroupSequence = 0xFFFFFFFF
 )
 

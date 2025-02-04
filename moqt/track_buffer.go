@@ -1,6 +1,7 @@
 package moqt
 
 type TrackBuffer interface {
+	TrackPath() TrackPath
 	//
 	LatestGroupSequence() GroupSequence
 

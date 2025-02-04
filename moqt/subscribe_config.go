@@ -18,15 +18,13 @@ type SubscribeConfig struct {
 
 	/*
 	 * Optional
-
 	 */
-	TrackPriority TrackPriority
-	GroupOrder    GroupOrder
-
-	// Parameters
+	TrackPriority    TrackPriority
+	GroupOrder       GroupOrder
 	MinGroupSequence GroupSequence
 	MaxGroupSequence GroupSequence
 
+	// Parameters
 	SubscribeParameters Parameters
 }
 

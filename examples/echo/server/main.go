@@ -102,10 +102,10 @@ func main() {
 	/*
 	 * Set a handler function
 	 */
-	slog.Info("Server runs on path: \"/path\"")
-	moqt.HandleFunc("/path", func(sess moqt.Session) {
+	slog.Info("Server runs on path: \"/echo\"")
+	moqt.HandleFunc("/echo", func(sess moqt.Session) {
 		echoTrackPrefix := []string{"japan", "kyoto"}
-		echoTrackPath := []string{"japan", "kyoto", "kiu", "text"}
+		echoTrackPath := []string{"japan", "kyoto", "text"}
 
 		groupBufferCh := make(chan *moqt.GroupBuffer, 1<<2)
 

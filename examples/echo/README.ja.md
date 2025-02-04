@@ -21,14 +21,14 @@ sequenceDiagram
     C->>S: Announce Streamを受け入れ、利用可能なトラックを通知 (パス "japan, kyoto, text")
     S->>C: Subscribe Streamを開き、トラック取得を要求 (パス "japan, kyoto, text")
     C->>S: Subscribe Streamを受け入れ、トラック取得を許可
-    C->>S: Group Streamを開き、メッセージを送信 (Frameメッセージ付き)
+    C->>S: Group Streamを開き、メッセージを送信
 
     Note over C,S: エコー応答
     C->>S: Announce Streamを開き、アナウンスを要求 (プレフィックス "japan, kyoto")
     S->>C: Announce Streamを受け入れ、利用可能なトラックを通知 (パス "japan, kyoto, text")
     C->>S: Subscribe Streamを開き、トラック取得を要求 (パス "japan, kyoto, text")
     S->>C: Subscribe Streamを受け入れ、トラック取得を許可
-    S->>C: Group Streamを開き、メッセージを送信 (Frameメッセージ付き)
+    S->>C: Group Streamを開き、メッセージを送信
 ```
 
 ## 実装の詳細

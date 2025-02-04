@@ -1,6 +1,4 @@
 foalk
-examples/echo/server/localhost.pem
-examples/echo/server/localhost-key.pem
-examples/relay/server/localhost.pem
-examples/relay/server/localhost-key.pem
+examples/cert/localhost.pem
+examples/cert/localhost-key.pem
 hextra-starter-template

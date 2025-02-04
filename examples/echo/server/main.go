@@ -77,7 +77,7 @@ func main() {
 	/*
 	 * Set certification config
 	 */
-	certs, err := getCertificates("localhost.pem", "localhost-key.pem")
+	certs, err := getCertificates("../../cert/localhost.pem", "../../cert/localhost-key.pem")
 	if err != nil {
 		slog.Error("failed to get certificates", slog.String("error", err.Error()))
 		return

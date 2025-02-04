@@ -21,14 +21,14 @@ sequenceDiagram
     C->>S: Accept Announce Stream and Respond with Announcement (with Path "japan, kyoto, text")
     S->>C: Open Subscribe Stream and Make a subscription (with Path "japan, kyoto, text")
     C->>S: Accept Subscribe Stream and Accept the subscription
-    C->>S: Open Group Streams (with Frame message)
+    C->>S: Open Group Streams and send a message
 
     Note over C,S: Track Echo
     C->>S: Open Announce Stream and Request announcements (with Prefix "japan, kyoto")
     S->>C: Accept Announce Stream and Respond with an announcement (with Path "japan, kyoto, text")
     C->>S: Open Subscribe Stream and Make a subscription (with Path "japan, kyoto, text")
     S->>C: Accept Subscribe Stream and Accept the subscription
-    S->>C: Open Group Streams (with Frame message)
+    S->>C: Open Group Streams and send a message
 ```
 
 ## Implementation Details

@@ -51,8 +51,14 @@ func (c Client) Dial(urlStr string, ctx context.Context) (Session, SetupResponce
 }
 
 func (c Client) DialWebTransport(host string, port string, path string, ctx context.Context) (Session, SetupResponce, error) {
+	// Check if Config is initialized
+	if c.Config == nil {
+		c.Config = &Config{
+			SetupExtensions: NewParameters(),
+		}
+	}
+
 	// Dial on webtransport
-	var wtsess *webtransport.Session
 	var d webtransport.Dialer
 	_, wtsess, err := d.Dial(ctx, "https://"+host+":"+port+path, http.Header{}) // TODO: configure the header
 	if err != nil {
@@ -60,19 +66,29 @@ func (c Client) DialWebTransport(host string, port string, path string, ctx cont
 		return nil, SetupResponce{}, err
 	}
 
+	// Ensure wtsess is not nil before proceeding
+	if wtsess == nil {
+		return nil, SetupResponce{}, errors.New("webtransport session is nil after dial")
+	}
+
 	sess, ssm, err := internal.SetupWebTransport(ctx, wtsess, c.Config.SetupExtensions.paramMap)
 	if err != nil {
-		slog.Error("failed to dial with webtransport", slog.String("error", err.Error()))
+		slog.Error("failed to setup webtransport session", slog.String("error", err.Error()))
 		return nil, SetupResponce{}, err
 	}
 
 	rsp := SetupResponce{selectedVersion: ssm.SelectedVersion, Parameters: Parameters{ssm.Parameters}}
 
 	return &session{internalSession: sess}, rsp, nil
-
 }
 
 func (c Client) DialQUIC(host string, port string, path string, ctx context.Context) (Session, SetupResponce, error) {
+	// Check if Config is initialized
+	if c.Config == nil {
+		c.Config = &Config{
+			SetupExtensions: NewParameters(),
+		}
+	}
 
 	// Add path parameter
 	c.Config.SetupExtensions.SetString(param_type_path, path)

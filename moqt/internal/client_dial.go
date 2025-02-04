@@ -25,11 +25,11 @@ func SetupWebTransport(ctx context.Context, sess *webtransport.Session, params m
 	sessstr, ssm, err := OpenSessionStream(conn, csm)
 	if err != nil {
 		slog.Error("failed to open a session stream", slog.String("error", err.Error()))
+		conn.CloseWithError(transport.SessionErrorCode(0x00), "failed to open a session stream")
 		return nil, message.SessionServerMessage{}, err
 	}
 
 	return NewSession(conn, sessstr), ssm, nil
-
 }
 
 func SetupQUIC(ctx context.Context, qconn quic.Connection, params message.Parameters) (*Session, message.SessionServerMessage, error) {
@@ -47,6 +47,7 @@ func SetupQUIC(ctx context.Context, qconn quic.Connection, params message.Parame
 	sessstr, ssm, err := OpenSessionStream(conn, csm)
 	if err != nil {
 		slog.Error("failed to open a session stream", slog.String("error", err.Error()))
+		conn.CloseWithError(transport.SessionErrorCode(0x00), "failed to open a session stream")
 		return nil, message.SessionServerMessage{}, err
 	}
 

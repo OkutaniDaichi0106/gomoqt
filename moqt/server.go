@@ -3,7 +3,6 @@ package moqt
 import (
 	"context"
 	"crypto/tls"
-	"log"
 	"log/slog"
 	"net/http"
 
@@ -80,8 +79,8 @@ func (s *Server) init() (err error) {
 			 */
 			wtsess, err := s.wts.Upgrade(w, r)
 			if err != nil {
-				log.Printf("upgrading failed: %s", err)
-				w.WriteHeader(500)
+				slog.Error("upgrading failed", slog.String("error", err.Error()))
+				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
 
@@ -99,12 +98,18 @@ func (s *Server) init() (err error) {
 
 			ssm := message.SessionServerMessage{
 				SelectedVersion: protocol.Version(internal.DefaultServerVersion),
-				Parameters:      message.Parameters(s.Config.SetupExtensions.paramMap),
+			}
+
+			if s.Config != nil {
+				if s.Config.SetupExtensions.paramMap != nil {
+					ssm.Parameters = message.Parameters(s.Config.SetupExtensions.paramMap)
+				}
 			}
 
 			_, err = ssm.Encode(stream.Stream)
+
 			if err != nil {
-				slog.Error("failed to send a set-up responce")
+				slog.Error("failed to send a set-up response", slog.String("error", err.Error()))
 				return
 			}
 
@@ -187,7 +192,12 @@ func (s *Server) ListenAndServe() error {
 					// Send a set-up responce
 					ssm := message.SessionServerMessage{
 						SelectedVersion: protocol.Version(internal.DefaultServerVersion),
-						Parameters:      message.Parameters(s.Config.SetupExtensions.paramMap),
+					}
+
+					if s.Config != nil {
+						if s.Config.SetupExtensions.paramMap != nil {
+							ssm.Parameters = message.Parameters(s.Config.SetupExtensions.paramMap)
+						}
 					}
 
 					_, err = ssm.Encode(stream.Stream)

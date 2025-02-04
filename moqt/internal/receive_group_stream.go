@@ -9,15 +9,15 @@ import (
 
 func newReceiveGroupStream(gm *message.GroupMessage, stream transport.ReceiveStream) *ReceiveGroupStream {
 	return &ReceiveGroupStream{
-		GroupMessage: *gm,
-		Stream:       stream,
-		startTime:    time.Now(),
+		GroupMessage:  *gm,
+		ReceiveStream: stream,
+		startTime:     time.Now(),
 	}
 }
 
 type ReceiveGroupStream struct {
-	GroupMessage message.GroupMessage
-	Stream       transport.ReceiveStream
+	GroupMessage  message.GroupMessage
+	ReceiveStream transport.ReceiveStream
 
 	startTime time.Time
 
@@ -26,7 +26,7 @@ type ReceiveGroupStream struct {
 
 func (r ReceiveGroupStream) ReadFrame() ([]byte, error) {
 	var fm message.FrameMessage
-	_, err := fm.Decode(r.Stream)
+	_, err := fm.Decode(r.ReceiveStream)
 	if err != nil {
 		return nil, err
 	}
@@ -48,9 +48,9 @@ func (r ReceiveGroupStream) CancelRead(code StreamErrorCode) {
 	default:
 	}
 
-	r.Stream.CancelRead(transport.StreamErrorCode(code))
+	r.ReceiveStream.CancelRead(transport.StreamErrorCode(code))
 }
 
 func (r ReceiveGroupStream) SetReadDeadline(t time.Time) error {
-	return r.Stream.SetReadDeadline(t)
+	return r.ReceiveStream.SetReadDeadline(t)
 }

@@ -1,199 +1,300 @@
 package moqt
 
 import (
-	"errors"
+	"bytes"
 	"io"
 	"sync"
 	"testing"
 	"time"
 )
 
-// Mock implementations for testing
-type mockGroupReader struct {
-	frames    [][]byte
-	current   int
-	readError error
-	mu        sync.Mutex
-}
+func TestGroupBuffer(t *testing.T) {
+	t.Run("basic operations", func(t *testing.T) {
+		gb := NewGroupBuffer(GroupSequence(1), 1024)
 
-func newMockGroupReader(frames [][]byte) *mockGroupReader {
-	return &mockGroupReader{
-		frames:  frames,
-		current: 0,
-	}
-}
+		// Test WriteFrame
+		testData := []byte("test frame")
+		err := gb.WriteFrame(testData)
+		if err != nil {
+			t.Fatalf("WriteFrame failed: %v", err)
+		}
 
-func (m *mockGroupReader) ReadFrame() ([]byte, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+		// Test ReadFrame
+		frame, err := gb.ReadFrame()
+		if err != nil {
+			t.Fatalf("ReadFrame failed: %v", err)
+		}
+		if !bytes.Equal(frame, testData) {
+			t.Errorf("ReadFrame returned wrong data. got: %v, want: %v", frame, testData)
+		}
+	})
 
-	if m.readError != nil {
-		return nil, m.readError
-	}
+	t.Run("multiple frames", func(t *testing.T) {
+		gb := NewGroupBuffer(GroupSequence(1), 1024)
+		frames := [][]byte{
+			[]byte("frame1"),
+			[]byte("frame2"),
+			[]byte("frame3"),
+		}
 
-	if m.current >= len(m.frames) {
-		return nil, io.EOF
-	}
-
-	frame := m.frames[m.current]
-	m.current++
-	return frame, nil
-}
-
-func (m *mockGroupReader) GroupSequence() GroupSequence {
-	return GroupSequence(1)
-}
-
-type mockGroupWriter struct {
-	frames   [][]byte
-	writeErr error
-	mu       sync.Mutex
-}
-
-func (m *mockGroupWriter) Close() error {
-	return nil
-}
-
-func (m *mockGroupWriter) GroupSequence() GroupSequence {
-	return GroupSequence(1)
-}
-
-func newMockGroupWriter() *mockGroupWriter {
-	return &mockGroupWriter{
-		frames: make([][]byte, 0),
-	}
-}
-
-func (m *mockGroupWriter) WriteFrame(frame []byte) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.writeErr != nil {
-		return m.writeErr
-	}
-
-	frameCopy := make([]byte, len(frame))
-	copy(frameCopy, frame)
-	m.frames = append(m.frames, frameCopy)
-	return nil
-}
-
-// Tests
-func TestNewGroupRelayer(t *testing.T) {
-	frames := [][]byte{
-		[]byte("frame1"),
-		[]byte("frame2"),
-	}
-	gr := newMockGroupReader(frames)
-	relayer := NewGroupRelayer(gr)
-	defer relayer.Release()
-
-	if relayer.GroupSequence() != GroupSequence(1) {
-		t.Errorf("Expected group sequence 1, got %d", relayer.GroupSequence())
-	}
-
-	if relayer.Closed() {
-		t.Error("New relayer should not be closed")
-	}
-}
-
-func TestGroupRelayer_RelayFrame(t *testing.T) {
-	tc := map[string]struct {
-		frames      [][]byte
-		readerError error
-		writerError error
-		expectError bool
-	}{
-		"successful relay": {
-			frames:      [][]byte{[]byte("frame1"), []byte("frame2")},
-			expectError: false,
-		},
-		"reader error": {
-			frames:      [][]byte{[]byte("frame1")},
-			readerError: errors.New("read error"),
-			expectError: true,
-		},
-		"writer error": {
-			frames:      [][]byte{[]byte("frame1")},
-			writerError: errors.New("write error"),
-			expectError: true,
-		},
-	}
-
-	for name, tc := range tc {
-		t.Run(name, func(t *testing.T) {
-			gr := newMockGroupReader(tc.frames)
-			gw := newMockGroupWriter()
-
-			if tc.readerError != nil {
-				gr.readError = tc.readerError
+		// Write multiple frames
+		for _, frame := range frames {
+			err := gb.WriteFrame(frame)
+			if err != nil {
+				t.Fatalf("WriteFrame failed: %v", err)
 			}
-			if tc.writerError != nil {
-				gw.writeErr = tc.writerError
+		}
+
+		// Read and verify all frames
+		for _, expected := range frames {
+			frame, err := gb.ReadFrame()
+			if err != nil {
+				t.Fatalf("ReadFrame failed: %v", err)
 			}
-
-			relayer := NewGroupRelayer(gr)
-			defer relayer.Release()
-
-			// Use channel to handle async relay completion
-			done := make(chan error)
-			go func() {
-				done <- relayer.Relay(gw)
-			}()
-
-			// Wait for relay to complete or timeout
-			var err error
-			select {
-			case err = <-done:
-			case <-time.After(time.Second):
-				t.Fatal("Relay timeout")
+			if !bytes.Equal(frame, expected) {
+				t.Errorf("ReadFrame returned wrong data. got: %v, want: %v", frame, expected)
 			}
+		}
+	})
 
-			if tc.expectError && err == nil {
-				t.Error("Expected error but got nil")
-			}
-			if !tc.expectError && err != nil {
-				t.Errorf("Expected no error but got: %v", err)
-			}
+	t.Run("buffer full", func(t *testing.T) {
+		gb := NewGroupBuffer(GroupSequence(1), 10)
 
-			if !tc.expectError {
-				// Verify frames were correctly relayed
-				if len(gw.frames) != len(tc.frames) {
-					t.Errorf("Expected %d frames, got %d", len(tc.frames), len(gw.frames))
-				}
-				for i, frame := range tc.frames {
-					if i < len(gw.frames) && string(gw.frames[i]) != string(frame) {
-						t.Errorf("Frame %d mismatch: expected %s, got %s", i, string(frame), string(gw.frames[i]))
+		// Try to write more than buffer capacity
+		err := gb.WriteFrame(make([]byte, 20))
+		if err != ErrBufferFull {
+			t.Errorf("Expected ErrBufferFull, got: %v", err)
+		}
+	})
+
+	t.Run("close behavior", func(t *testing.T) {
+		gb := NewGroupBuffer(GroupSequence(1), 1024)
+
+		err := gb.Close()
+		if err != nil {
+			t.Fatalf("Close failed: %v", err)
+		}
+
+		// Write after close should fail
+		err = gb.WriteFrame([]byte("test"))
+		if err != ErrGroupClosed {
+			t.Errorf("Expected ErrGroupClosed, got: %v", err)
+		}
+
+		// Read after close should return EOF
+		_, err = gb.ReadFrame()
+		if err != io.EOF {
+			t.Errorf("Expected EOF, got: %v", err)
+		}
+	})
+
+	t.Run("reset behavior", func(t *testing.T) {
+		gb := NewGroupBuffer(GroupSequence(1), 1024)
+
+		// Write initial data
+		err := gb.WriteFrame([]byte("initial"))
+		if err != nil {
+			t.Fatalf("WriteFrame failed: %v", err)
+		}
+
+		// Reset with new sequence
+		newSeq := GroupSequence(2)
+		gb.Reset(newSeq)
+
+		if gb.GroupSequence() != newSeq {
+			t.Errorf("Wrong sequence after reset. got: %v, want: %v", gb.GroupSequence(), newSeq)
+		}
+
+		// Write new data after reset
+		err = gb.WriteFrame([]byte("after reset"))
+		if err != nil {
+			t.Errorf("WriteFrame after reset failed: %v", err)
+		}
+	})
+}
+
+func TestRelay(t *testing.T) {
+	t.Run("buffer to buffer relay", func(t *testing.T) {
+		src := NewGroupBuffer(GroupSequence(1), 1024)
+		dst := NewGroupBuffer(GroupSequence(1), 1024)
+
+		testData := []byte("test data")
+		err := src.WriteFrame(testData)
+		if err != nil {
+			t.Fatalf("WriteFrame to source failed: %v", err)
+		}
+
+		// Start relay in a goroutine
+		done := make(chan error)
+		go func() {
+			done <- Relay(src, dst)
+		}()
+
+		// Close source to signal end of relay
+		src.Close()
+
+		// Wait for relay to complete
+		if err := <-done; err != nil {
+			t.Fatalf("Relay failed: %v", err)
+		}
+
+		// Verify data was relayed correctly
+		frame, err := dst.ReadFrame()
+		if err != nil {
+			t.Fatalf("ReadFrame from destination failed: %v", err)
+		}
+		if !bytes.Equal(frame, testData) {
+			t.Errorf("Relayed data doesn't match. got: %v, want: %v", frame, testData)
+		}
+	})
+
+	t.Run("large data relay", func(t *testing.T) {
+		src := NewGroupBuffer(GroupSequence(1), 1024*1024)
+		dst := NewGroupBuffer(GroupSequence(1), 1024*1024)
+
+		// Create large test data
+		largeData := make([]byte, 1024*512) // 512KB
+		for i := range largeData {
+			largeData[i] = byte(i % 256)
+		}
+
+		err := src.WriteFrame(largeData)
+		if err != nil {
+			t.Fatalf("WriteFrame large data failed: %v", err)
+		}
+
+		done := make(chan error)
+		go func() {
+			done <- Relay(src, dst)
+		}()
+
+		src.Close()
+		if err := <-done; err != nil {
+			t.Fatalf("Large data relay failed: %v", err)
+		}
+
+		frame, err := dst.ReadFrame()
+		if err != nil {
+			t.Fatalf("ReadFrame large data failed: %v", err)
+		}
+		if !bytes.Equal(frame, largeData) {
+			t.Error("Large data relay corrupted")
+		}
+	})
+
+	t.Run("invalid relay", func(t *testing.T) {
+		err := Relay(nil, nil)
+		if err == nil {
+			t.Error("Expected error for nil reader/writer, got nil")
+		}
+
+		src := NewGroupBuffer(GroupSequence(1), 1024)
+		dst := NewGroupBuffer(GroupSequence(2), 1024)
+		err = Relay(src, dst)
+		if err == nil {
+			t.Error("Expected error for different sequences, got nil")
+		}
+	})
+}
+
+func TestGroupBufferConcurrency(t *testing.T) {
+	t.Run("concurrent read/write", func(t *testing.T) {
+		gb := NewGroupBuffer(GroupSequence(1), 1024*1024)
+
+		const numGoroutines = 10
+		const numFrames = 100
+
+		done := make(chan bool)
+		var receivedMu sync.Mutex
+		received := make(map[string]bool)
+
+		// Start writer goroutines
+		for i := 0; i < numGoroutines; i++ {
+			go func(n int) {
+				defer func() { done <- true }()
+
+				for j := 0; j < numFrames; j++ {
+					data := []byte{byte(n), byte(j)}
+					err := gb.WriteFrame(data)
+					if err != nil {
+						t.Errorf("WriteFrame failed: %v", err)
+						return
 					}
 				}
+			}(i)
+		}
+
+		// Start reader goroutines
+		for i := 0; i < numGoroutines; i++ {
+			go func() {
+				defer func() { done <- true }()
+
+				for j := 0; j < numFrames; j++ {
+					frame, err := gb.ReadFrame()
+					if err != nil {
+						t.Errorf("ReadFrame failed: %v", err)
+						return
+					}
+
+					receivedMu.Lock()
+					received[string(frame)] = true
+					receivedMu.Unlock()
+				}
+			}()
+		}
+
+		// Wait for all goroutines to complete
+		for i := 0; i < numGoroutines*2; i++ {
+			<-done
+		}
+
+		if len(received) != numGoroutines*numFrames {
+			t.Errorf("Expected %d unique frames, got %d", numGoroutines*numFrames, len(received))
+		}
+	})
+
+	t.Run("concurrent close", func(t *testing.T) {
+		gb := NewGroupBuffer(GroupSequence(1), 1024)
+		const numGoroutines = 5
+
+		// Start multiple goroutines trying to close
+		var wg sync.WaitGroup
+		for i := 0; i < numGoroutines; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				err := gb.Close()
+				if err != nil && err != ErrGroupClosed {
+					t.Errorf("Unexpected error on close: %v", err)
+				}
+			}()
+		}
+
+		wg.Wait()
+	})
+
+	t.Run("read timeout", func(t *testing.T) {
+		gb := NewGroupBuffer(GroupSequence(1), 1024)
+
+		// Try to read with timeout
+		done := make(chan struct{})
+		go func() {
+			_, err := gb.ReadFrame()
+			if err != io.EOF {
+				t.Errorf("Expected EOF, got: %v", err)
 			}
-		})
-	}
-}
+			close(done)
+		}()
 
-func TestGroupRelayer_Release(t *testing.T) {
-	frames := [][]byte{[]byte("frame1")}
-	gr := newMockGroupReader(frames)
-	relayer := NewGroupRelayer(gr)
+		// Close after short delay
+		time.Sleep(100 * time.Millisecond)
+		gb.Close()
 
-	if relayer.Closed() {
-		t.Error("Relayer should not be closed before Release")
-	}
-
-	relayer.Release()
-
-	if !relayer.Closed() {
-		t.Error("Relayer should be closed after Release")
-	}
-}
-
-func TestGroupRelayer_NilWriter(t *testing.T) {
-	gr := newMockGroupReader([][]byte{})
-	relayer := NewGroupRelayer(gr)
-	defer relayer.Release()
-
-	err := relayer.Relay(nil)
-	if err == nil {
-		t.Error("Expected error for nil writer, got nil")
-	}
+		select {
+		case <-done:
+			// Success
+		case <-time.After(time.Second):
+			t.Error("Read timeout test failed")
+		}
+	})
 }

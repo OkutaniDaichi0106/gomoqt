@@ -11,10 +11,14 @@ import (
 )
 
 func newReceiveFetchStream(fm *message.FetchMessage, stream transport.Stream) *ReceiveFetchStream {
-	return &ReceiveFetchStream{
+	rfs := &ReceiveFetchStream{
 		FetchMessage: *fm,
 		Stream:       stream,
 	}
+
+	go rfs.listenFetchUpdates()
+
+	return rfs
 }
 
 type ReceiveFetchStream struct {
@@ -87,4 +91,21 @@ func (rfs *ReceiveFetchStream) CloseWithError(err error) error {
 	slog.Debug("closed a receive fetch stream with an error", slog.String("error", err.Error()))
 
 	return nil
+}
+
+func (rfs *ReceiveFetchStream) listenFetchUpdates() {
+	var fum message.FetchUpdateMessage
+
+	for {
+		_, err := fum.Decode(rfs.Stream)
+		if err != nil {
+			slog.Error("failed to read a fetch update message", slog.String("error", err.Error()))
+			rfs.CloseWithError(err)
+			return
+		}
+
+		rfs.mu.Lock()
+		updateFetch(&rfs.FetchMessage, &fum)
+		rfs.mu.Unlock()
+	}
 }

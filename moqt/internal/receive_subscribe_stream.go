@@ -10,10 +10,14 @@ import (
 )
 
 func newReceiveSubscribeStream(sm *message.SubscribeMessage, stream transport.Stream) *ReceiveSubscribeStream {
-	return &ReceiveSubscribeStream{
+	rss := &ReceiveSubscribeStream{
 		SubscribeMessage: *sm,
 		Stream:           stream,
 	}
+
+	go rss.listenSubscribeUpdates()
+
+	return rss
 }
 
 type ReceiveSubscribeStream struct {
@@ -47,24 +51,17 @@ func (srs *ReceiveSubscribeStream) CloseWithError(err error) error {
 	}
 
 	// TODO:
+	var code SubscribeErrorCode
 
-	var code transport.StreamErrorCode
-
-	var strerr transport.StreamError
-	if errors.As(err, &strerr) {
-		code = strerr.StreamErrorCode()
+	var suberr SubscribeError
+	if errors.As(err, &suberr) {
+		code = suberr.SubscribeErrorCode()
 	} else {
-		var ok bool
-		feterr, ok := err.(FetchError)
-		if ok {
-			code = transport.StreamErrorCode(feterr.FetchErrorCode())
-		} else {
-			code = ErrInternalError.StreamErrorCode()
-		}
+		code = ErrInternalError.SubscribeErrorCode()
 	}
 
-	srs.Stream.CancelRead(code)
-	srs.Stream.CancelWrite(code)
+	srs.Stream.CancelRead(transport.StreamErrorCode(code))
+	srs.Stream.CancelWrite(transport.StreamErrorCode(code))
 
 	slog.Debug("closed a subscrbe receive stream", slog.Any("subscription", srs.SubscribeMessage))
 
@@ -83,4 +80,20 @@ func (srs *ReceiveSubscribeStream) Close() error {
 	slog.Debug("closed a subscrbe receive stream", slog.Any("subscription", srs.SubscribeMessage))
 
 	return nil
+}
+
+func (rss *ReceiveSubscribeStream) listenSubscribeUpdates() {
+	var sum message.SubscribeUpdateMessage
+	for {
+		_, err := sum.Decode(rss.Stream)
+		if err != nil {
+			slog.Error("failed to read a SUBSCRIBE_UPDATE message", slog.String("error", err.Error()))
+			rss.CloseWithError(err)
+			break
+		}
+
+		rss.mu.Lock()
+		updateSubscription(&rss.SubscribeMessage, &sum)
+		rss.mu.Unlock()
+	}
 }

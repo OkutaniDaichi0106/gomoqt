@@ -5,6 +5,6 @@ package moqt
  */
 type GroupWriter interface {
 	GroupSequence() GroupSequence
-	WriteFrame([]byte) error
+	WriteFrame(data []byte) error
 	Close() error
 }

@@ -408,19 +408,6 @@ func listenBiStreams(sess *Session, ctx context.Context) {
 
 				// Enqueue the subscription
 				sess.receiveSubscribeStreamQueue.Enqueue(rss)
-
-				// Listen updates
-				var sum message.SubscribeUpdateMessage
-				for {
-					_, err := sum.Decode(stream)
-					if err != nil {
-						slog.Error("failed to read a SUBSCRIBE_UPDATE message", slog.String("error", err.Error()))
-						closeStreamWithInternalError(stream, err)
-						break
-					}
-
-					rss.SubscribeMessage = updateSubscription(rss.SubscribeMessage, sum)
-				}
 			case stream_type_fetch:
 				slog.Debug("fetch stream was opened")
 				// Get a fetch-request
@@ -436,21 +423,6 @@ func listenBiStreams(sess *Session, ctx context.Context) {
 
 				// Enqueue the fetch
 				sess.receiveFetchStreamQueue.Enqueue(rfs)
-
-				// Listen updates
-				var fum message.FetchUpdateMessage
-				for {
-					_, err := fum.Decode(stream)
-					if err != nil {
-						slog.Error("failed to read a FETCH_UPDATE message", slog.String("error", err.Error()))
-						closeStreamWithInternalError(stream, err)
-						break
-					}
-
-					updateFetch(&rfs.FetchMessage, &fum)
-
-					slog.Info("updated a fetch", slog.Any("fetch", rfs.FetchMessage))
-				}
 			case stream_type_info:
 				slog.Debug("info stream was opened")
 

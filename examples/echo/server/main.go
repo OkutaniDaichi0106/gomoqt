@@ -71,7 +71,7 @@ func main() {
 	/*
 	 * Set Log Level to "DEBUG"
 	 */
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	slog.SetDefault(logger)
 
 	/*
@@ -107,10 +107,7 @@ func main() {
 		echoTrackPrefix := []string{"japan", "kyoto"}
 		echoTrackPath := []string{"japan", "kyoto", "kiu", "text"}
 
-		dataCh := make(chan struct {
-			seq moqt.GroupSequence
-			p   []byte
-		}, 1<<3)
+		groupBufferCh := make(chan *moqt.GroupBuffer, 1<<2)
 
 		wg := new(sync.WaitGroup)
 		/*
@@ -179,21 +176,11 @@ func main() {
 					return
 				}
 
-				buf, err := stream.ReadFrame()
-				if err != nil {
-					subLogger.Error("Failed to read data", slog.String("error", err.Error()))
-					return
-				}
+				gb := moqt.NewGroupBuffer(stream.GroupSequence(), 1<<2)
 
-				subLogger.Info("Received a frame", slog.String("frame", string(buf)))
+				groupBufferCh <- gb
 
-				dataCh <- struct {
-					seq moqt.GroupSequence
-					p   []byte
-				}{
-					seq: stream.GroupSequence(),
-					p:   buf,
-				}
+				moqt.Relay(stream, gb)
 			}
 		}()
 
@@ -268,23 +255,21 @@ func main() {
 			/*
 			 * Send data
 			 */
-			for data := range dataCh {
-				stream, err := sess.OpenGroupStream(substr, data.seq)
+			for groupBuffer := range groupBufferCh {
+				stream, err := sess.OpenGroupStream(substr, groupBuffer.GroupSequence())
 				if err != nil {
 					pubLogger.Error("Failed to open a data stream", slog.String("error", err.Error()))
+
 					return
 				}
 
-				err = stream.WriteFrame(data.p)
+				err = moqt.Relay(groupBuffer, stream)
 				if err != nil {
 					pubLogger.Error("Failed to write data", slog.String("error", err.Error()))
 					return
 				}
 
-				stream.Close()
-
-				time.Sleep(250 * time.Millisecond)
-
+				groupBuffer.Close()
 			}
 		}()
 	})

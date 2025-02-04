@@ -39,12 +39,6 @@ type Server struct {
 	 */
 	ServeMux *ServeMux
 
-	//
-	// SetupHijackerFunc func(SetupRequest) SetupResponce
-	// TODO:
-
-	//elayManager *RelayManager
-
 	// QUIC Listener
 	quicListener *quic.EarlyListener
 
@@ -105,7 +99,7 @@ func (s *Server) init() (err error) {
 
 			ssm := message.SessionServerMessage{
 				SelectedVersion: protocol.Version(internal.DefaultServerVersion),
-				Parameters:      message.Parameters(s.Config.SetupExtension.paramMap),
+				Parameters:      message.Parameters(s.Config.SetupExtensions.paramMap),
 			}
 
 			_, err = ssm.Encode(stream.Stream)
@@ -179,7 +173,7 @@ func (s *Server) ListenAndServe() error {
 					}
 
 					// Verify if the request contains a valid path
-					path, err := Parameters{scm.Parameters}.GetString(path)
+					path, err := Parameters{scm.Parameters}.GetString(param_type_path)
 					if err != nil {
 						slog.Error("failed to get a path", slog.String("error", err.Error()))
 						return
@@ -193,7 +187,7 @@ func (s *Server) ListenAndServe() error {
 					// Send a set-up responce
 					ssm := message.SessionServerMessage{
 						SelectedVersion: protocol.Version(internal.DefaultServerVersion),
-						Parameters:      message.Parameters(s.Config.SetupExtension.paramMap),
+						Parameters:      message.Parameters(s.Config.SetupExtensions.paramMap),
 					}
 
 					_, err = ssm.Encode(stream.Stream)
@@ -214,47 +208,3 @@ func (s *Server) ListenAndServe() error {
 	}
 
 }
-
-// func readSetupRequest(r io.Reader) (req SetupRequest, err error) {
-// 	slog.Debug("reading a set-up request")
-// 	/*
-// 	 * Receive a SESSION_CLIENT message
-// 	 */
-// 	// Decode
-// 	var scm message.SessionClientMessage
-// 	_, err = scm.Decode(r)
-// 	if err != nil {
-// 		slog.Error("failed to read a SESSION_CLIENT message", slog.String("error", err.Error())) // TODO
-// 		return
-// 	}
-
-// 	// Set versions
-// 	for _, v := range scm.SupportedVersions {
-// 		req.supportedVersions = append(req.supportedVersions, Version(v))
-// 	}
-// 	// Set parameters
-// 	req.SetupParameters = Parameters{scm.Parameters}
-
-// 	slog.Debug("read a set-up request", slog.Any("request", req))
-
-// 	return req, nil
-// }
-
-// func writeSetupResponce(w io.Writer, rsp SetupResponce) error {
-// 	slog.Debug("writing a set-up responce", slog.Any("responce", rsp))
-
-// 	ssm := message.SessionServerMessage{
-// 		SelectedVersion: protocol.Version(rsp.SelectedVersion),
-// 		Parameters:      message.Parameters(rsp.Parameters.paramMap),
-// 	}
-
-// 	_, err := ssm.Encode(w)
-// 	if err != nil {
-// 		slog.Error("failed to encode a SESSION_SERVER message", slog.String("error", err.Error()))
-// 		return err
-// 	}
-
-// 	slog.Debug("wrote a set-up responce")
-
-// 	return nil
-// }

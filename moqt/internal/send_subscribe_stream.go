@@ -37,7 +37,7 @@ func (sss *SendSubscribeStream) UpdateSubscribe(sum message.SubscribeUpdateMessa
 	}
 
 	// Update the SubscribeMessage
-	sss.SubscribeMessage = updateSubscription(sss.SubscribeMessage, sum)
+	updateSubscription(&sss.SubscribeMessage, &sum)
 
 	slog.Debug("updated a subscription", slog.Any("subscription", sss.SubscribeMessage))
 

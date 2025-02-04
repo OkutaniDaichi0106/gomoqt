@@ -5,9 +5,9 @@ import (
 )
 
 type InfoRequest struct {
-	TrackPath []string
+	TrackPath TrackPath
 }
 
 func (ir InfoRequest) String() string {
-	return fmt.Sprintf("InfoRequest: { TrackPath: %s }", TrackPartsString(ir.TrackPath))
+	return fmt.Sprintf("InfoRequest: { TrackPath: %s }", ir.TrackPath.String())
 }

@@ -1,169 +1,286 @@
 package moqt
 
 import (
+	"bytes"
 	"errors"
+	"io"
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/quic-go/quic-go/quicvarint"
 )
 
-var DefaultGroupBytes = defaultGroupBytes
-
-const defaultGroupBytes = 1024
-
-var groupBufferPool = sync.Pool{
-	New: func() interface{} {
-		return &GroupRelayer{
-			bytes:       make([]byte, 0, DefaultGroupBytes),
-			frameRanges: make([]struct{ start, end int }, 0, 16),
-		}
-	},
-}
-
-var (
-	ErrGroupClosed    = errors.New("group is closed")
-	ErrSequenceRange  = errors.New("frame sequence is out of range")
-	ErrOffsetNotFound = errors.New("frame offset not found")
-)
-
-type GroupRelayer struct {
-	groupSequence GroupSequence
-	bytes         []byte
-
-	frameRanges []struct{ start, end int }
-
-	closed   bool
-	cond     *sync.Cond
-	closeErr error
-}
-
-func NewGroupRelayer(gr GroupReader) *GroupRelayer {
-	relayer := groupBufferPool.Get().(*GroupRelayer)
-
-	// Set group sequence
-	relayer.groupSequence = gr.GroupSequence()
-
-	// Reset bytes
-	relayer.bytes = relayer.bytes[:0]
-
-	// Reset offsets
-	relayer.frameRanges = relayer.frameRanges[:0]
-
-	// Reset closed flag
-	relayer.closed = false
-
-	relayer.closeErr = nil
-
-	// Reset condition
-	relayer.cond = sync.NewCond(&sync.Mutex{})
-
-	// Read frames from group reader
-	go func() {
-		for {
-			frame, err := gr.ReadFrame()
-			if err != nil {
-				relayer.cond.L.Lock()
-				relayer.closeErr = err
-				relayer.closed = true
-				relayer.cond.L.Unlock()
-				relayer.cond.Broadcast()
-				return
-			}
-
-			relayer.cond.L.Lock()
-
-			// Append frame to bytes
-			relayer.bytes = message.AppendBytes(relayer.bytes, frame)
-
-			// Append offset to offsets
-			relayer.frameRanges = append(relayer.frameRanges, struct {
-				start int
-				end   int
-			}{
-				start: len(relayer.bytes) - len(frame),
-				end:   len(relayer.bytes)},
-			)
-
-			relayer.cond.L.Unlock()
-			relayer.cond.Broadcast()
-		}
-	}()
-
-	return relayer
-}
-
-func (g *GroupRelayer) GroupSequence() GroupSequence {
-	return g.groupSequence
-}
-
-func (g *GroupRelayer) Closed() bool {
-	return g.closed
-}
-
-func (g *GroupRelayer) Relay(gw GroupWriter) error {
-	if gw == nil {
-		return errors.New("group writer is nil")
+func Relay(gr GroupReader, gw GroupWriter) error {
+	if gr == nil || gw == nil {
+		return errors.New("group reader or writer is nil")
 	}
 
-	g.cond.L.Lock()
-	defer g.cond.L.Unlock()
+	if gr.GroupSequence() != gw.GroupSequence() {
+		return errors.New("group reader and writer have different group sequences")
+	}
 
-	grstr, ok := gw.(*sendGroupStream)
-	var (
-		readFrames  int
-		writeOffset int
-	)
+	defer gw.Close()
 
-	for {
-		// Check for new data or closure
-		for readFrames >= len(g.frameRanges) {
-			if g.closed {
-				return g.closeErr // Returns nil if closed normally
+	if r, ok := gr.(*receiveGroupStream); ok {
+
+		// Relay bytes from receive stream
+		if w, ok := gw.(*sendGroupStream); ok {
+			// Relay bytes to send stream
+			_, err := io.Copy(w.internalStream.SendStream, r.internalStream.ReceiveStream)
+			if err != nil {
+				return err
 			}
-			g.cond.Wait()
+			return nil
+		} else if gb, ok := gw.(*GroupBuffer); ok {
+			// Relay bytes to buffer
+			buf := make([]byte, 1024)
+			for {
+				n, err := r.internalStream.ReceiveStream.Read(buf)
+				if n > 0 {
+					_, err = gb.writeBytes(buf[:n])
+					if err != nil {
+						return err
+					}
+				}
+
+				if err != nil {
+					if err == io.EOF {
+						return nil
+					}
+					return err
+				}
+			}
+		} else {
+			// Relay frames
+			return relayFrames(gr, gw)
 		}
 
-		// Handle stream writing
-		if ok {
-			currentSize := len(g.bytes)
-			if currentSize > writeOffset {
-				n, err := grstr.internalStream.Stream.Write(g.bytes[writeOffset:currentSize])
+	} else if gb, ok := gr.(*GroupBuffer); ok {
+		// Relay bytes to send stream
+		if w, ok := gw.(*sendGroupStream); ok {
+
+			offset := 0
+			for offset < len(gb.bytes) {
+				bytes, err := gb.readBytesAt(offset)
 				if err != nil {
 					return err
 				}
-				writeOffset += n
+				_, err = w.internalStream.SendStream.Write(bytes)
+				if err != nil {
+					return err
+				}
+				offset += len(bytes)
 			}
-			readFrames = len(g.frameRanges)
-			continue
+
+			return nil
+		} else if gb2, ok := gw.(*GroupBuffer); ok {
+			// Relay bytes to buffer
+			offset := 0
+			for offset < len(gb.bytes) {
+				bytes, err := gb.readBytesAt(offset)
+				if err != nil {
+					return err
+				}
+				_, err = gb2.writeBytes(bytes)
+				if err != nil {
+					return err
+				}
+				offset += len(bytes)
+			}
+
+			return nil
+		} else {
+			// Relay frames
+			return relayFrames(gr, gw)
 		}
 
-		// Handle frame-by-frame writing
-		frameRange := g.frameRanges[readFrames]
-		if err := gw.WriteFrame(g.bytes[frameRange.start:frameRange.end]); err != nil {
-			return err
-		}
-		readFrames++
+	} else {
+		// Relay frames
+		return relayFrames(gr, gw)
 	}
 }
 
-func (g *GroupRelayer) Release() {
+func relayFrames(gr GroupReader, gw GroupWriter) error {
+	for {
+		frame, err := gr.ReadFrame()
+		if len(frame) > 0 {
+			err = gw.WriteFrame(frame)
+			if err != nil {
+				return err
+			}
+		}
+
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+type GroupBuffer struct {
+	groupSequence GroupSequence
+
+	bytes []byte
+
+	frameInfo []struct {
+		start, end int
+	}
+
+	readFrames int
+
+	closed bool
+
+	cond *sync.Cond
+}
+
+// NewGroupBuffer creates a new GroupBuffer with the specified group sequence and initial capacity.
+func NewGroupBuffer(seq GroupSequence, size int) *GroupBuffer {
+	if size <= 0 {
+		size = defaultBufferSize
+	}
+	return &GroupBuffer{
+		groupSequence: seq,
+		cond:          sync.NewCond(&sync.Mutex{}),
+		bytes:         make([]byte, 0, size),
+		frameInfo:     make([]struct{ start, end int }, 0),
+	}
+}
+
+func (g *GroupBuffer) GroupSequence() GroupSequence {
+	return g.groupSequence
+}
+
+// GroupReader: ReadFrame returns all available data as one frame.
+func (g *GroupBuffer) ReadFrame() ([]byte, error) {
 	g.cond.L.Lock()
 	defer g.cond.L.Unlock()
 
-	// Close group
-	g.closed = true
+	for g.readFrames >= len(g.frameInfo) {
+		if g.closed {
+			return nil, io.EOF
+		}
 
-	// Broadcast to all
+		g.cond.Wait()
+	}
+
+	frameInfo := g.frameInfo[g.readFrames]
+
+	frame := g.bytes[frameInfo.start:frameInfo.end]
+
+	g.readFrames++
+
+	return frame, nil
+}
+
+// GroupWriter: WriteFrame appends a frame to the internal buffer.
+func (g *GroupBuffer) WriteFrame(frame []byte) error {
+	g.cond.L.Lock()
+	defer g.cond.L.Unlock()
+
+	if g.closed {
+		return ErrGroupClosed
+	}
+
+	if len(g.bytes)+len(frame) > cap(g.bytes) {
+		return ErrBufferFull
+	}
+
+	g.bytes = message.AppendBytes(g.bytes, frame)
+
+	g.frameInfo = append(g.frameInfo, struct{ start, end int }{
+		start: len(g.bytes) - len(frame),
+		end:   len(g.bytes),
+	})
+
+	g.cond.Broadcast()
+	return nil
+}
+
+// io.Writer
+func (g *GroupBuffer) writeBytes(p []byte) (int, error) {
+	g.cond.L.Lock()
+	defer g.cond.L.Unlock()
+
+	if g.closed {
+		return 0, ErrGroupClosed
+	}
+
+	g.bytes = append(g.bytes, p...)
+
+	offset := 0
+	if len(g.frameInfo) > 0 {
+		offset = g.frameInfo[len(g.frameInfo)-1].end
+	}
+
+	for offset < len(g.bytes) {
+		r := bytes.NewReader(g.bytes[offset:])
+
+		frameSize, err := quicvarint.Read(r)
+		if err != nil {
+			return 0, err
+		}
+
+		g.frameInfo = append(g.frameInfo, struct{ start, end int }{
+			start: offset + quicvarint.Len(frameSize),
+			end:   offset + quicvarint.Len(frameSize) + int(frameSize),
+		})
+
+		offset = g.frameInfo[len(g.frameInfo)-1].end
+	}
+
 	g.cond.Broadcast()
 
-	// Reset for reuse
-	g.bytes = g.bytes[:0]
-
-	// Reset for reuse
-	g.frameRanges = g.frameRanges[:0]
-
-	// Reset for reuse
-	g.closeErr = nil
-
-	groupBufferPool.Put(g)
+	return len(p), nil
 }
+
+func (g *GroupBuffer) readBytesAt(offset int) ([]byte, error) {
+	g.cond.L.Lock()
+	defer g.cond.L.Unlock()
+
+	if offset < 0 {
+		return nil, errors.New("negative offset")
+	}
+
+	// Wait until we have data at the requested offset
+	for offset >= len(g.bytes) {
+		if g.closed {
+			return nil, io.EOF
+		}
+		g.cond.Wait()
+	}
+
+	return g.bytes[offset:], nil
+}
+
+// Close marks the buffer as closed and wakes up all waiting goroutines
+func (g *GroupBuffer) Close() error {
+	g.cond.L.Lock()
+	defer g.cond.L.Unlock()
+
+	g.closed = true
+	g.cond.Broadcast() // Wake up all waiting goroutines
+	return nil
+}
+
+// Reset resets the buffer with a new group sequence.
+func (g *GroupBuffer) Reset(seq GroupSequence) {
+	g.cond.L.Lock()
+	defer g.cond.L.Unlock()
+
+	g.groupSequence = seq
+	g.bytes = g.bytes[:0]
+	g.readFrames = 0
+	g.frameInfo = g.frameInfo[:0]
+	g.closed = false
+}
+
+var (
+	ErrGroupClosed   = errors.New("group is closed")
+	ErrSequenceRange = errors.New("frame sequence is out of range")
+	ErrOutOfCache    = errors.New("group buffer is out of cache")
+	ErrBufferFull    = errors.New("buffer is full")
+)
+
+const defaultBufferSize = 1024 * 1024 // 1MB

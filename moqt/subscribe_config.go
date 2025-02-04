@@ -14,10 +14,11 @@ type SubscribeConfig struct {
 	/*
 	 * Required
 	 */
-	TrackPath []string
+	TrackPath TrackPath
 
 	/*
 	 * Optional
+
 	 */
 	TrackPriority TrackPriority
 	GroupOrder    GroupOrder
@@ -31,5 +32,5 @@ type SubscribeConfig struct {
 
 func (sc SubscribeConfig) String() string {
 	return fmt.Sprintf("SubscribeConfig: { TrackPath: %s, TrackPriority: %d, GroupOrder: %d, MinGroupSequence: %d, MaxGroupSequence: %d, SubscribeParameters: %s }",
-		TrackPartsString(sc.TrackPath), sc.TrackPriority, sc.GroupOrder, sc.MinGroupSequence, sc.MaxGroupSequence, sc.SubscribeParameters.String())
+		sc.TrackPath.String(), sc.TrackPriority, sc.GroupOrder, sc.MinGroupSequence, sc.MaxGroupSequence, sc.SubscribeParameters.String())
 }

@@ -11,7 +11,7 @@ import (
 func newSendGroupStream(gm *message.GroupMessage, stream transport.SendStream) *SendGroupStream {
 	return &SendGroupStream{
 		GroupMessage: *gm,
-		Stream:       stream,
+		SendStream:   stream,
 		startTime:    time.Now(),
 		errCodeCh:    make(chan message.GroupErrorCode, 1),
 	}
@@ -19,7 +19,7 @@ func newSendGroupStream(gm *message.GroupMessage, stream transport.SendStream) *
 
 type SendGroupStream struct {
 	GroupMessage message.GroupMessage
-	Stream       transport.SendStream
+	SendStream   transport.SendStream
 	startTime    time.Time
 
 	errCodeCh chan message.GroupErrorCode
@@ -29,7 +29,7 @@ func (sgs *SendGroupStream) WriteFrame(frame []byte) error {
 	fm := message.FrameMessage{
 		Payload: frame,
 	}
-	_, err := fm.Encode(sgs.Stream)
+	_, err := fm.Encode(sgs.SendStream)
 
 	if err != nil {
 		// Signal the group error code
@@ -54,7 +54,7 @@ func (sgs *SendGroupStream) StartAt() time.Time {
 }
 
 func (sgs *SendGroupStream) Close() error {
-	return sgs.Stream.Close()
+	return sgs.SendStream.Close()
 }
 
 func (sgs *SendGroupStream) CancelWrite(code message.GroupErrorCode) {
@@ -67,27 +67,9 @@ func (sgs *SendGroupStream) CancelWrite(code message.GroupErrorCode) {
 	default:
 	}
 
-	sgs.Stream.CancelWrite(transport.StreamErrorCode(code))
+	sgs.SendStream.CancelWrite(transport.StreamErrorCode(code))
 }
 
 func (sgs *SendGroupStream) SetWriteDeadline(t time.Time) error {
-	err := sgs.Stream.SetWriteDeadline(t)
-
-	// Signal the group error code
-	if err != nil {
-		// Signal the group error code
-		var strerr transport.StreamError
-		var code message.GroupErrorCode
-		if errors.As(err, &strerr) {
-			code = message.GroupErrorCode(strerr.StreamErrorCode())
-		} else {
-			code = ErrInternalError.GroupErrorCode()
-		}
-
-		sgs.CancelWrite(code)
-
-		return err
-	}
-
-	return nil
+	return sgs.SendStream.SetWriteDeadline(t)
 }

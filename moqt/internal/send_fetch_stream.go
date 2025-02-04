@@ -95,3 +95,17 @@ func (sfs *SendFetchStream) CloseWithError(err error) error {
 func (sfs *SendFetchStream) Close() error {
 	return sfs.Stream.Close()
 }
+
+func updateFetch(fm *message.FetchMessage, fum *message.FetchUpdateMessage) {
+	if fum == nil {
+		return
+	}
+
+	if fm == nil {
+		fm = &message.FetchMessage{}
+		return
+	}
+
+	// Update all fields
+	fm.TrackPriority = fum.TrackPriority
+}

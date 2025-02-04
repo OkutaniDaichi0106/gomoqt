@@ -33,11 +33,12 @@ type Announcement struct {
 	/*
 	 *
 	 */
-	TrackPath []string
+	TrackPath TrackPath
 
 	/*
 	 *
 	 */
+
 	AnnounceParameters Parameters
 }
 
@@ -49,10 +50,11 @@ func (a Announcement) String() string {
 	sb.WriteString(a.AnnounceStatus.String())
 	sb.WriteString(", ")
 	sb.WriteString("TrackPath: ")
-	sb.WriteString(TrackPartsString(a.TrackPath))
+	sb.WriteString(a.TrackPath.String())
 	sb.WriteString(", ")
 	sb.WriteString("AnnounceParameters: ")
 	sb.WriteString(a.AnnounceParameters.String())
+
 	sb.WriteString(" }")
 	return sb.String()
 }

@@ -38,22 +38,37 @@ func (p Parameters) String() string {
 }
 
 func (p Parameters) SetByteArray(key ParameterType, value []byte) {
+	if p.paramMap == nil {
+		p.paramMap = make(message.Parameters)
+	}
 	p.paramMap[uint64(key)] = value
 }
 
 func (p Parameters) SetString(key ParameterType, value string) {
+	if p.paramMap == nil {
+		p.paramMap = make(message.Parameters)
+	}
 	p.paramMap[uint64(key)] = []byte(value)
 }
 
 func (p Parameters) SetInt(key ParameterType, value int64) {
+	if p.paramMap == nil {
+		p.paramMap = make(message.Parameters)
+	}
 	p.paramMap[uint64(key)] = quicvarint.Append(make([]byte, 0), uint64(value))
 }
 
 func (p Parameters) SetUint(key ParameterType, value uint64) {
+	if p.paramMap == nil {
+		p.paramMap = make(message.Parameters)
+	}
 	p.paramMap[uint64(key)] = quicvarint.Append(make([]byte, 0), value)
 }
 
 func (p Parameters) SetBool(key ParameterType, value bool) {
+	if p.paramMap == nil {
+		p.paramMap = make(message.Parameters)
+	}
 	if value {
 		p.paramMap[uint64(key)] = quicvarint.Append(make([]byte, 0), 1)
 	} else {
@@ -62,10 +77,16 @@ func (p Parameters) SetBool(key ParameterType, value bool) {
 }
 
 func (p Parameters) Remove(key ParameterType) {
+	if p.paramMap == nil {
+		return
+	}
 	delete(p.paramMap, uint64(key))
 }
 
 func (p Parameters) GetByteArray(key ParameterType) ([]byte, error) {
+	if p.paramMap == nil {
+		return nil, ErrParameterNotFound
+	}
 	value, ok := p.paramMap[uint64(key)]
 	if !ok {
 		return nil, ErrParameterNotFound
@@ -75,6 +96,10 @@ func (p Parameters) GetByteArray(key ParameterType) ([]byte, error) {
 }
 
 func (p Parameters) GetString(key ParameterType) (string, error) {
+	if p.paramMap == nil {
+		return "", ErrParameterNotFound
+	}
+
 	value, err := p.GetByteArray(key)
 	if err != nil {
 		slog.Error("failed to read a parameter as byte array")
@@ -85,6 +110,10 @@ func (p Parameters) GetString(key ParameterType) (string, error) {
 }
 
 func (p Parameters) GetInt(key ParameterType) (int64, error) {
+	if p.paramMap == nil {
+		return 0, ErrParameterNotFound
+	}
+
 	num, err := p.GetUint(key)
 	if err != nil {
 		slog.Error("failed to read a parameter as uint", slog.String("error", err.Error()))
@@ -95,6 +124,10 @@ func (p Parameters) GetInt(key ParameterType) (int64, error) {
 }
 
 func (p Parameters) GetUint(key ParameterType) (uint64, error) {
+	if p.paramMap == nil {
+		return 0, ErrParameterNotFound
+	}
+
 	value, ok := p.paramMap[uint64(key)]
 	if !ok {
 		return 0, ErrParameterNotFound
@@ -110,6 +143,10 @@ func (p Parameters) GetUint(key ParameterType) (uint64, error) {
 }
 
 func (p Parameters) GetBool(key ParameterType) (bool, error) {
+	if p.paramMap == nil {
+		return false, ErrParameterNotFound
+	}
+
 	num, err := p.GetUint(key)
 	if err != nil {
 		slog.Error("failed to read a parameter as uint", slog.String("error", err.Error()))
@@ -129,10 +166,10 @@ func (p Parameters) GetBool(key ParameterType) (bool, error) {
 var ErrParameterNotFound = errors.New("parameter not found")
 
 const (
-	path               ParameterType = 0x01
-	authorization_info ParameterType = 0x02
-	delivery_timeout   ParameterType = 0x03
-	new_session_uri    ParameterType = 0x04
+	param_type_path               ParameterType = 0x01
+	param_type_authorization_info ParameterType = 0x02
+	param_type_delivery_timeout   ParameterType = 0x03
+	param_type_new_session_uri    ParameterType = 0x04
 
 	// max_subscribe_id   ParameterType = 0x02
 )

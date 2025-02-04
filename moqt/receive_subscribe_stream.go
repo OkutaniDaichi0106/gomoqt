@@ -7,6 +7,7 @@ import (
 
 type ReceiveSubscribeStream interface {
 	SubscribeID() SubscribeID
+
 	SubscribeConfig() SubscribeConfig
 
 	SendSubscribeGap(SubscribeGap) error

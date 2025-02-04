@@ -6,5 +6,5 @@ type Config struct {
 
 	NewSessionURI string
 
-	SetupExtension Parameters
+	SetupExtensions Parameters
 }

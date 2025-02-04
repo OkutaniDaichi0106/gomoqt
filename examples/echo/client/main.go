@@ -74,7 +74,7 @@ func main() {
 	/*
 	 * Set Log Level to "INFO"
 	 */
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	slog.SetDefault(logger)
 
 	c := moqt.Client{
@@ -82,14 +82,10 @@ func main() {
 		QUICConfig: &quic.Config{},
 	}
 
-	// Get a setup request
-	req := moqt.SetupRequest{
-		URL: "https://localhost:8443/path",
-	}
-
 	// Dial to the server with the setup request
 	slog.Info("Dial to the server")
-	sess, _, err := c.Dial(req, context.Background())
+
+	sess, _, err := c.Dial("https://localhost:8443/path", context.Background())
 	if err != nil {
 		slog.Error(err.Error())
 		return

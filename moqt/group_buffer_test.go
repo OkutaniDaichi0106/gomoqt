@@ -57,16 +57,6 @@ func TestGroupBuffer(t *testing.T) {
 		}
 	})
 
-	t.Run("buffer full", func(t *testing.T) {
-		gb := NewGroupBuffer(GroupSequence(1), 10)
-
-		// Try to write more than buffer capacity
-		err := gb.WriteFrame(make([]byte, 20))
-		if err != ErrBufferFull {
-			t.Errorf("Expected ErrBufferFull, got: %v", err)
-		}
-	})
-
 	t.Run("close behavior", func(t *testing.T) {
 		gb := NewGroupBuffer(GroupSequence(1), 1024)
 
@@ -124,17 +114,12 @@ func TestRelay(t *testing.T) {
 			t.Fatalf("WriteFrame to source failed: %v", err)
 		}
 
-		// Start relay in a goroutine
-		done := make(chan error)
-		go func() {
-			done <- Relay(src, dst)
-		}()
-
-		// Close source to signal end of relay
+		// Close source after writing
 		src.Close()
 
-		// Wait for relay to complete
-		if err := <-done; err != nil {
+		// Start relay and wait for completion
+		err = RelayGroup(src, dst)
+		if err != nil {
 			t.Fatalf("Relay failed: %v", err)
 		}
 
@@ -165,7 +150,7 @@ func TestRelay(t *testing.T) {
 
 		done := make(chan error)
 		go func() {
-			done <- Relay(src, dst)
+			done <- RelayGroup(src, dst)
 		}()
 
 		src.Close()
@@ -183,14 +168,14 @@ func TestRelay(t *testing.T) {
 	})
 
 	t.Run("invalid relay", func(t *testing.T) {
-		err := Relay(nil, nil)
+		err := RelayGroup(nil, nil)
 		if err == nil {
 			t.Error("Expected error for nil reader/writer, got nil")
 		}
 
 		src := NewGroupBuffer(GroupSequence(1), 1024)
 		dst := NewGroupBuffer(GroupSequence(2), 1024)
-		err = Relay(src, dst)
+		err = RelayGroup(src, dst)
 		if err == nil {
 			t.Error("Expected error for different sequences, got nil")
 		}

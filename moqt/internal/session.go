@@ -60,13 +60,12 @@ func AcceptSessionStream(conn transport.Connection, ctx context.Context) (*Sessi
 
 func NewSession(conn transport.Connection, stream *SessionStream) *Session {
 	sess := &Session{
-		conn:                         conn,
-		SessionStream:                *stream,
-		receiveSubscribeStreamQueue:  newReceiveSubscribeStreamQueue(),
-		sendAnnounceStreamQueue:      newSendAnnounceStreamQueue(),
-		receiveFetchStreamQueue:      newReceivedFetchQueue(),
-		sendInfoStreamQueue:          newReceiveInfoStreamQueue(),
-		dataReceiveGroupStreamQueues: make(map[message.SubscribeID]*receiveGroupStreamQueue),
+		conn:                        conn,
+		SessionStream:               *stream,
+		receiveSubscribeStreamQueue: newReceiveSubscribeStreamQueue(),
+		sendAnnounceStreamQueue:     newSendAnnounceStreamQueue(),
+		sendInfoStreamQueue:         newReceiveInfoStreamQueue(),
+		receiveGroupStreamQueues:    make(map[message.SubscribeID]*receiveGroupStreamQueue),
 	}
 
 	go listenSession(sess, context.Background())
@@ -83,11 +82,9 @@ type Session struct {
 
 	sendAnnounceStreamQueue *sendAnnounceStreamQueue
 
-	receiveFetchStreamQueue *receiveFetchStreamQueue
-
 	sendInfoStreamQueue *sendInfoStreamQueue
 
-	dataReceiveGroupStreamQueues map[message.SubscribeID]*receiveGroupStreamQueue
+	receiveGroupStreamQueues map[message.SubscribeID]*receiveGroupStreamQueue
 }
 
 func (sess *Session) Terminate(err error) {
@@ -98,11 +95,11 @@ func (sess *Session) Terminate(err error) {
 	if err == nil {
 		tererr = NoErrTerminate
 	} else {
-		var ok bool
-		tererr, ok = err.(TerminateError)
-		if !ok {
+		if errors.As(err, &tererr) {
+		} else {
 			tererr = ErrInternalError
 		}
+
 	}
 
 	err = sess.conn.CloseWithError(transport.SessionErrorCode(tererr.TerminateErrorCode()), err.Error())
@@ -137,21 +134,21 @@ func (s *Session) OpenAnnounceStream(apm message.AnnouncePleaseMessage) (*Receiv
 	return ras, nil
 }
 
-func (s *Session) OpenSubscribeStream(sm message.SubscribeMessage) (*SendSubscribeStream, message.InfoMessage, error) {
+func (s *Session) OpenSubscribeStream(sm message.SubscribeMessage) (message.InfoMessage, *SendSubscribeStream, error) {
 	slog.Debug("opening a subscribe stream", slog.Any("config", sm))
 
 	// Open a Subscribe Stream
 	stream, err := openSubscribeStream(s.conn)
 	if err != nil {
 		slog.Error("failed to open a Subscribe Stream", slog.String("error", err.Error()))
-		return nil, message.InfoMessage{}, err
+		return message.InfoMessage{}, nil, err
 	}
 
 	// Send a SUBSCRIBE message
 	_, err = sm.Encode(stream)
 	if err != nil {
 		slog.Error("failed to send a SUBSCRIBE message", slog.String("error", err.Error()))
-		return nil, message.InfoMessage{}, err
+		return message.InfoMessage{}, nil, err
 	}
 
 	// Receive an INFO message
@@ -159,33 +156,16 @@ func (s *Session) OpenSubscribeStream(sm message.SubscribeMessage) (*SendSubscri
 	_, err = im.Decode(stream)
 	if err != nil {
 		slog.Error("failed to get a Info", slog.String("error", err.Error()))
-		return nil, message.InfoMessage{}, err
+		return message.InfoMessage{}, nil, err
 	}
 
-	// Create a data stream queue
-	s.dataReceiveGroupStreamQueues[sm.SubscribeID] = newGroupReceiverQueue()
+	// Create a receive group stream queue
+	s.receiveGroupStreamQueues[sm.SubscribeID] = newGroupReceiverQueue(sm)
 
 	slog.Debug("Successfully opened a subscribe stream", slog.Any("config", sm), slog.Any("info", im))
 
-	return newSendSubscribeStream(&sm, stream), im, err
-}
+	return im, newSendSubscribeStream(&sm, stream), err
 
-func (sess *Session) OpenFetchStream(fm message.FetchMessage) (*SendFetchStream, error) {
-	// Open a Fetch Stream
-	stream, err := openFetchStream(sess.conn)
-	if err != nil {
-		slog.Error("failed to open a Fetch Stream", slog.String("error", err.Error()))
-		return nil, err
-	}
-
-	// Send a FETCH message
-	_, err = fm.Encode(stream)
-	if err != nil {
-		slog.Error("failed to send a FETCH message", slog.String("error", err.Error()))
-		return nil, err
-	}
-
-	return newSendFetchStream(&fm, stream), nil
 }
 
 func (sess *Session) OpenInfoStream(irm message.InfoRequestMessage) (message.InfoMessage, error) {
@@ -198,10 +178,14 @@ func (sess *Session) OpenInfoStream(irm message.InfoRequestMessage) (message.Inf
 		return message.InfoMessage{}, err
 	}
 
+	// Close the stream
+	defer stream.Close()
+
 	// Send an INFO_REQUEST message
 	_, err = irm.Encode(stream)
 	if err != nil {
 		slog.Error("failed to send an INFO_REQUEST message", slog.String("error", err.Error()))
+
 		return message.InfoMessage{}, err
 	}
 
@@ -213,33 +197,25 @@ func (sess *Session) OpenInfoStream(irm message.InfoRequestMessage) (message.Inf
 		return message.InfoMessage{}, err
 	}
 
-	// Close the stream
-	err = stream.Close()
-	if err != nil {
-		slog.Error("failed to close the stream", slog.String("error", err.Error()))
-		return message.InfoMessage{}, err
-	}
-
 	slog.Info("Successfully get track information", slog.Any("info", im))
 
 	return im, nil
 }
 
 func (sess *Session) AcceptGroupStream(ctx context.Context, id message.SubscribeID) (*ReceiveGroupStream, error) {
-	_, ok := sess.dataReceiveGroupStreamQueues[id]
+	_, ok := sess.receiveGroupStreamQueues[id]
 	if !ok {
-		slog.Error("failed to get a data receive stream queue", slog.String("error", "queue not found"))
-		sess.dataReceiveGroupStreamQueues[id] = newGroupReceiverQueue()
+		return nil, ErrProtocolViolation // TODO:
 	}
 
 	for {
-		if sess.dataReceiveGroupStreamQueues[id].Len() != 0 {
-			return sess.dataReceiveGroupStreamQueues[id].Dequeue(), nil
+		if sess.receiveGroupStreamQueues[id].Len() != 0 {
+			return sess.receiveGroupStreamQueues[id].Dequeue(), nil
 		}
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-sess.dataReceiveGroupStreamQueues[id].Chan():
+		case <-sess.receiveGroupStreamQueues[id].Chan():
 		}
 	}
 }
@@ -274,20 +250,6 @@ func (sess *Session) AcceptSubscribeStream(ctx context.Context) (*ReceiveSubscri
 	}
 }
 
-func (sess *Session) AcceptFetchStream(ctx context.Context) (*ReceiveFetchStream, error) {
-	for {
-		if sess.receiveFetchStreamQueue.Len() != 0 {
-			fetstr := sess.receiveFetchStreamQueue.Dequeue()
-			return fetstr, nil
-		}
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-sess.receiveFetchStreamQueue.Chan():
-		}
-	}
-}
-
 func (sess *Session) AcceptInfoStream(ctx context.Context) (*SendInfoStream, error) {
 	for {
 		if sess.sendInfoStreamQueue.Len() != 0 {
@@ -317,16 +279,6 @@ func (sess *Session) OpenGroupStream(gm message.GroupMessage) (*SendGroupStream,
 		return nil, err
 	}
 
-	// go func() {
-	// 	select {
-	// 	case code := <-errCodeCh:
-	// 		substr.SendSubscribeGap(message.SubscribeGapMessage{
-	// 			MinGapSequence: seq,
-	// 			MaxGapSequence: seq,
-	// 			GroupErrorCode: code,
-	// 		})
-	// 	}
-	// }()
 	return newSendGroupStream(&gm, stream), nil
 }
 
@@ -384,7 +336,8 @@ func listenBiStreams(sess *Session, ctx context.Context) {
 				_, err := apm.Decode(stream)
 				if err != nil {
 					slog.Error("failed to get an Interest", slog.String("error", err.Error()))
-					closeStreamWithInternalError(stream, err)
+					stream.CancelRead(ErrInternalError.StreamErrorCode())
+					stream.CancelWrite(ErrInternalError.StreamErrorCode())
 					return
 				}
 
@@ -399,7 +352,8 @@ func listenBiStreams(sess *Session, ctx context.Context) {
 				_, err := sm.Decode(stream)
 				if err != nil {
 					slog.Debug("failed to read a SUBSCRIBE message", slog.String("error", err.Error()))
-					closeStreamWithInternalError(stream, err)
+					stream.CancelRead(ErrInternalError.StreamErrorCode())
+					stream.CancelWrite(ErrInternalError.StreamErrorCode())
 					return
 				}
 
@@ -408,21 +362,6 @@ func listenBiStreams(sess *Session, ctx context.Context) {
 
 				// Enqueue the subscription
 				sess.receiveSubscribeStreamQueue.Enqueue(rss)
-			case stream_type_fetch:
-				slog.Debug("fetch stream was opened")
-				// Get a fetch-request
-				var fm message.FetchMessage
-				_, err := fm.Decode(stream)
-				if err != nil {
-					slog.Error("failed to get a fetch-request", slog.String("error", err.Error()))
-					closeStreamWithInternalError(stream, err)
-					return
-				}
-
-				rfs := newReceiveFetchStream(&fm, stream)
-
-				// Enqueue the fetch
-				sess.receiveFetchStreamQueue.Enqueue(rfs)
 			case stream_type_info:
 				slog.Debug("info stream was opened")
 
@@ -487,19 +426,19 @@ func listenUniStreams(sess *Session, ctx context.Context) {
 					return
 				}
 
-				data := newReceiveGroupStream(&gm, stream)
+				rgs := newReceiveGroupStream(&gm, stream)
 
-				queue, ok := sess.dataReceiveGroupStreamQueues[gm.SubscribeID]
+				queue, ok := sess.receiveGroupStreamQueues[gm.SubscribeID]
 				if !ok {
 					slog.Error("failed to get a data receive stream queue", slog.String("error", "queue not found"))
-					closeReceiveStreamWithInternalError(stream, ErrInternalError) // TODO:
+					stream.CancelRead(ErrInternalError.StreamErrorCode())
 					return
 				}
 
 				// Enqueue the receiver
-				queue.Enqueue(data)
+				queue.Enqueue(rgs)
 			default:
-				slog.Debug("An unknown type of stream was opend")
+				slog.Debug("An unknown type of stream was opened")
 
 				// Terminate the session
 				sess.Terminate(ErrProtocolViolation)
@@ -574,26 +513,6 @@ func openInfoStream(conn transport.Connection) (transport.Stream, error) {
 	return stream, nil
 }
 
-func openFetchStream(conn transport.Connection) (transport.Stream, error) {
-	stream, err := conn.OpenStream()
-	if err != nil {
-		slog.Error("failed to open a bidirectional stream", slog.String("error", err.Error()))
-		return nil, err
-	}
-
-	stm := message.StreamTypeMessage{
-		StreamType: stream_type_fetch,
-	}
-
-	_, err = stm.Encode(stream)
-	if err != nil {
-		slog.Error("failed to send a Stream Type message", slog.String("error", err.Error()))
-		return nil, err
-	}
-
-	return stream, nil
-}
-
 func openGroupStream(conn transport.Connection) (transport.SendStream, error) {
 	stream, err := conn.OpenUniStream()
 	if err != nil {
@@ -612,59 +531,4 @@ func openGroupStream(conn transport.Connection) (transport.SendStream, error) {
 	}
 
 	return stream, nil
-}
-
-func closeStreamWithInternalError(stream transport.Stream, err error) {
-
-	slog.Debug("closing the stream with an internal error", slog.String("error", err.Error()))
-
-	if err == nil {
-		stream.Close()
-	}
-
-	// TODO:
-
-	var code transport.StreamErrorCode
-
-	var strerr transport.StreamError
-	if errors.As(err, &strerr) {
-		code = strerr.StreamErrorCode()
-	} else {
-		var ok bool
-		feterr, ok := err.(FetchError)
-		if ok {
-			code = transport.StreamErrorCode(feterr.FetchErrorCode())
-		} else {
-			code = ErrInternalError.StreamErrorCode()
-		}
-	}
-
-	stream.CancelRead(code)
-	stream.CancelWrite(code)
-
-	slog.Debug("closed the stream with an internal error")
-}
-
-func closeReceiveStreamWithInternalError(stream transport.ReceiveStream, err error) {
-
-	slog.Debug("closing the receive stream with an internal error", slog.String("error", err.Error()))
-
-	var code transport.StreamErrorCode
-
-	var strerr transport.StreamError
-	if errors.As(err, &strerr) {
-		code = strerr.StreamErrorCode()
-	} else {
-		var ok bool
-		feterr, ok := err.(FetchError)
-		if ok {
-			code = transport.StreamErrorCode(feterr.FetchErrorCode())
-		} else {
-			code = ErrInternalError.StreamErrorCode()
-		}
-	}
-
-	stream.CancelRead(code)
-
-	slog.Debug("closed the receive stream with an internal error")
 }

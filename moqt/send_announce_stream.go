@@ -5,14 +5,14 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 )
 
-type SendAnnounceStream interface {
+type AnnouncementWriter interface {
 	SendAnnouncement(announcements []Announcement) error
 	AnnounceConfig() AnnounceConfig
 	Close() error
 	CloseWithError(error) error
 }
 
-var _ SendAnnounceStream = (*sendAnnounceStream)(nil)
+var _ AnnouncementWriter = (*sendAnnounceStream)(nil)
 
 type sendAnnounceStream struct {
 	internalStream *internal.SendAnnounceStream

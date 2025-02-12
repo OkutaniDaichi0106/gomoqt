@@ -1,28 +1,41 @@
 package moqt
 
-// func readGroup(r io.Reader) (SubscribeID, GroupSequence, error) {
-// 	// Read a GROUP message
-// 	var gm message.GroupMessage
-// 	_, err := gm.Decode(r)
-// 	if err != nil {
-// 		slog.Error("failed to read a GROUP message", slog.String("error", err.Error()))
-// 		return 0, 0, err
-// 	}
+import (
+	"fmt"
+)
 
-// 	//
-// 	return SubscribeID(gm.SubscribeID), GroupSequence(gm.GroupSequence), nil
-// }
+/*
+ * Sequence number of a group in a track
+ * When this is integer more than 1, the number means the sequence number.
+ * When this is 0, it indicates the sequence number is currently unknown .
+ * 0 is used to specify "the latest sequence number" or "the final sequence number of an open-ended track", "the first sequence number of the default order".
+ */
+type GroupSequence uint64
 
-// func writeGroup(w io.Writer, id SubscribeID, seq GroupSequence) error {
-// 	gm := message.GroupMessage{
-// 		SubscribeID:   message.SubscribeID(id),
-// 		GroupSequence: message.GroupSequence(seq),
-// 	}
-// 	_, err := gm.Encode(w)
-// 	if err != nil {
-// 		slog.Error("failed to send a GROUP message", slog.String("error", err.Error()))
-// 		return err
-// 	}
+const (
+	FirstSequence  GroupSequence = 1
+	LatestSequence GroupSequence = NotSpecified
+	FinalSequence  GroupSequence = NotSpecified
+	NotSpecified   GroupSequence = 0
+	MaxSequence    GroupSequence = 0xFFFFFFFF
+)
 
-// 	return nil
-// }
+func (gs GroupSequence) String() string {
+	return fmt.Sprintf("GroupSequence: %d", gs)
+}
+
+func (gs GroupSequence) Next() GroupSequence {
+	if gs == FinalSequence {
+		return FinalSequence
+	}
+
+	if gs == LatestSequence {
+		return LatestSequence
+	}
+
+	if gs == MaxSequence {
+		return 1
+	}
+
+	return gs + 1
+}

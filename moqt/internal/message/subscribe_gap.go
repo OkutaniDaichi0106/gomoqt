@@ -5,10 +5,9 @@ import (
 	"io"
 	"log/slog"
 
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/quic-go/quic-go/quicvarint"
 )
-
-type GroupErrorCode uint64
 
 /*
  * SUBSCRIBE_GAP Message {
@@ -18,15 +17,15 @@ type GroupErrorCode uint64
  * }
  */
 type SubscribeGapMessage struct {
-	MinGapSequence GroupSequence
-	MaxGapSequence GroupSequence
-	GroupErrorCode GroupErrorCode
+	GapStartSequence GroupSequence
+	GapCount         uint64
+	GroupErrorCode   protocol.GroupErrorCode
 }
 
 func (sgm SubscribeGapMessage) Len() int {
 	l := 0
-	l += numberLen(uint64(sgm.MinGapSequence))
-	l += numberLen(uint64(sgm.MaxGapSequence))
+	l += numberLen(uint64(sgm.GapStartSequence))
+	l += numberLen(uint64(sgm.GapCount))
 	l += numberLen(uint64(sgm.GroupErrorCode))
 	return l
 }
@@ -38,8 +37,8 @@ func (sgm SubscribeGapMessage) Encode(w io.Writer) (int, error) {
 	defer PutBytes(p)
 
 	*p = AppendNumber(*p, uint64(sgm.Len()))
-	*p = AppendNumber(*p, uint64(sgm.MinGapSequence))
-	*p = AppendNumber(*p, uint64(sgm.MaxGapSequence))
+	*p = AppendNumber(*p, uint64(sgm.GapStartSequence))
+	*p = AppendNumber(*p, uint64(sgm.GapCount))
 	*p = AppendNumber(*p, uint64(sgm.GroupErrorCode))
 
 	n, err := w.Write(*p)
@@ -70,21 +69,21 @@ func (sgm *SubscribeGapMessage) Decode(r io.Reader) (int, error) {
 		slog.Error("failed to read MinGapSequence for SUBSCRIBE_GAP message", slog.String("error", err.Error()))
 		return n, err
 	}
-	sgm.MinGapSequence = GroupSequence(num)
+	sgm.GapStartSequence = GroupSequence(num)
 
 	num, _, err = ReadNumber(mr)
 	if err != nil {
 		slog.Error("failed to read MaxGapSequence for SUBSCRIBE_GAP message", slog.String("error", err.Error()))
 		return n, err
 	}
-	sgm.MaxGapSequence = GroupSequence(num)
+	sgm.GapCount = num
 
 	num, _, err = ReadNumber(mr)
 	if err != nil {
 		slog.Error("failed to read GroupErrorCode for SUBSCRIBE_GAP message", slog.String("error", err.Error()))
 		return n, err
 	}
-	sgm.GroupErrorCode = GroupErrorCode(num)
+	sgm.GroupErrorCode = protocol.GroupErrorCode(num)
 
 	slog.Debug("decoded a SUBSCRIBE_GAP message")
 

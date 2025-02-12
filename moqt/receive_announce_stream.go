@@ -6,11 +6,11 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 )
 
-type ReceiveAnnounceStream interface {
+type AnnouncementReader interface {
 	ReceiveAnnouncements() ([]Announcement, error)
 }
 
-var _ ReceiveAnnounceStream = (*receiveAnnounceStream)(nil)
+var _ AnnouncementReader = (*receiveAnnounceStream)(nil)
 
 type receiveAnnounceStream struct {
 	internalStream *internal.ReceiveAnnounceStream

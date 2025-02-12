@@ -1,32 +1,18 @@
 package moqt
 
 import (
+	"errors"
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
 )
 
-/*
- * Group Sender
- */
-type SendGroupStream interface {
-	GroupWriter
-
-	SubscribeID() SubscribeID
-
-	CancelWrite(GroupErrorCode)
-	SetWriteDeadline(time.Time) error
-}
-
-var _ SendGroupStream = (*sendGroupStream)(nil)
+var _ GroupWriter = (*sendGroupStream)(nil)
 
 type sendGroupStream struct {
 	internalStream *internal.SendGroupStream
-}
-
-func (sgs *sendGroupStream) SubscribeID() SubscribeID {
-	return SubscribeID(sgs.internalStream.GroupMessage.SubscribeID)
+	// groupErrCh     chan GroupErrorCode
 }
 
 func (sgs *sendGroupStream) GroupSequence() GroupSequence {
@@ -34,7 +20,7 @@ func (sgs *sendGroupStream) GroupSequence() GroupSequence {
 }
 
 func (sgs *sendGroupStream) CancelWrite(code GroupErrorCode) {
-	sgs.internalStream.CancelWrite(message.GroupErrorCode(code))
+	sgs.internalStream.SendStream.CancelWrite(transport.StreamErrorCode(code))
 }
 
 func (sgs *sendGroupStream) SetWriteDeadline(t time.Time) error {
@@ -46,5 +32,32 @@ func (sgs *sendGroupStream) Close() error {
 }
 
 func (sgs *sendGroupStream) WriteFrame(frame []byte) error {
-	return sgs.internalStream.WriteFrame(frame)
+	err := sgs.internalStream.WriteFrame(frame)
+	if err != nil {
+		var grperr GroupError
+		if errors.As(err, &grperr) {
+			sgs.CancelWrite(GroupErrorCode(grperr.GroupErrorCode()))
+		}
+
+		return err
+	}
+
+	return nil
+}
+
+// methods for relaying bytes
+var _ directBytesWriter = (*sendGroupStream)(nil)
+
+func (sgs *sendGroupStream) newBytesWriter() writer {
+	return &streamBytesWriter{sgs}
+}
+
+var _ writer = (*streamBytesWriter)(nil)
+
+type streamBytesWriter struct {
+	stream *sendGroupStream
+}
+
+func (s *streamBytesWriter) Write(p *[]byte) (int, error) {
+	return s.stream.internalStream.SendStream.Write(*p)
 }

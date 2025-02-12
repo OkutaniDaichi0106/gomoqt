@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
 )
 
@@ -20,8 +21,9 @@ type ReceiveGroupStream struct {
 	ReceiveStream transport.ReceiveStream
 
 	startTime time.Time
+	err       error
 
-	errCodeCh chan StreamErrorCode
+	//errCodeCh chan StreamErrorCode
 }
 
 func (r ReceiveGroupStream) ReadFrame() ([]byte, error) {
@@ -38,19 +40,15 @@ func (r ReceiveGroupStream) StartAt() time.Time {
 	return r.startTime
 }
 
-func (r ReceiveGroupStream) CancelRead(code StreamErrorCode) {
-	if r.errCodeCh == nil {
-		r.errCodeCh = make(chan StreamErrorCode, 1)
-	}
-
-	select {
-	case r.errCodeCh <- code:
-	default:
-	}
-
+func (r ReceiveGroupStream) CancelRead(code protocol.GroupErrorCode) {
 	r.ReceiveStream.CancelRead(transport.StreamErrorCode(code))
 }
 
 func (r ReceiveGroupStream) SetReadDeadline(t time.Time) error {
 	return r.ReceiveStream.SetReadDeadline(t)
+}
+
+// SetError sets an error on the stream
+func (s *ReceiveGroupStream) SetError(err error) {
+	s.err = err
 }

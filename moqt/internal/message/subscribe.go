@@ -12,16 +12,22 @@ type SubscribeID uint64
 type TrackPriority byte
 type GroupOrder byte
 
+const (
+	GroupOrderDefault    GroupOrder = 0x00
+	GroupOrderAscending  GroupOrder = 0x01
+	GroupOrderDescending GroupOrder = 0x02
+)
+
 /*
- * SUBSCRIBE Message {
- *   Subscribe ID (varint),
- *   Track Path ([]string),
- *   Track Priority (varint),
- *   Group Order (varint),
- *   Min Group Sequence (varint),
- *   Max Group Sequence (varint),
- *   Subscribe Parameters (Parameters),
- * }
+* SUBSCRIBE Message {
+*   Subscribe ID (varint),
+*   Track Path ([]string),
+*   Track Priority (varint),
+*   Group Order (varint),
+*   Min Group Sequence (varint),
+*   Max Group Sequence (varint),
+*   Subscribe Parameters (Parameters),
+* }
  */
 type SubscribeMessage struct {
 	SubscribeID         SubscribeID

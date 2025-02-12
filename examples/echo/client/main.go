@@ -68,7 +68,7 @@ func (h *colorTextHandler) Enabled(ctx context.Context, level slog.Level) bool {
 }
 
 var echoTrackPrefix = []string{"japan", "kyoto"}
-var echoTrackPath = []string{"japan", "kyoto", "text"}
+var echoTrackPath = moqt.NewTrackPath("japan", "kyoto", "text")
 
 func main() {
 	/*
@@ -155,7 +155,7 @@ func main() {
 
 			pubLogger.Info("Received an announce request", slog.Any("config", ac))
 
-			if !moqt.HasPrefix(echoTrackPath, ac.TrackPrefix) {
+			if !echoTrackPath.HasPrefix(ac.TrackPrefix) {
 				return moqt.ErrTrackDoesNotExist
 			}
 
@@ -192,7 +192,7 @@ func main() {
 		substr, err := sess.AcceptSubscribeStream(context.Background(), func(sc moqt.SubscribeConfig) (moqt.Info, error) {
 			pubLogger.Info("Received a subscribe request", slog.Any("config", sc))
 
-			if !moqt.IsSamePath(sc.TrackPath, echoTrackPath) {
+			if !sc.TrackPath.Equal(echoTrackPath) {
 				return moqt.Info{}, moqt.ErrTrackDoesNotExist
 			}
 
@@ -207,7 +207,7 @@ func main() {
 			return
 		}
 
-		if !moqt.IsSamePath(substr.SubscribeConfig().TrackPath, echoTrackPath) {
+		if !substr.SubscribeConfig().TrackPath.Equal(echoTrackPath) {
 			pubLogger.Error("failed to get a track path", slog.String("error", "track path is invalid"))
 			substr.CloseWithError(moqt.ErrTrackDoesNotExist)
 			return

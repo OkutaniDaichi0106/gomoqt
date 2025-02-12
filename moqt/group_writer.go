@@ -1,10 +1,14 @@
 package moqt
 
+import "time"
+
 /*
  * Group Writer
  */
 type GroupWriter interface {
 	GroupSequence() GroupSequence
-	WriteFrame(data []byte) error
+	WriteFrame(frame []byte) error
+	CancelWrite(GroupErrorCode)
+	SetWriteDeadline(time.Time) error
 	Close() error
 }

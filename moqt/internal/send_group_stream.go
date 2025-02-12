@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
 )
 
@@ -13,7 +14,6 @@ func newSendGroupStream(gm *message.GroupMessage, stream transport.SendStream) *
 		GroupMessage: *gm,
 		SendStream:   stream,
 		startTime:    time.Now(),
-		errCodeCh:    make(chan message.GroupErrorCode, 1),
 	}
 }
 
@@ -21,11 +21,10 @@ type SendGroupStream struct {
 	GroupMessage message.GroupMessage
 	SendStream   transport.SendStream
 	startTime    time.Time
-
-	errCodeCh chan message.GroupErrorCode
 }
 
 func (sgs *SendGroupStream) WriteFrame(frame []byte) error {
+
 	fm := message.FrameMessage{
 		Payload: frame,
 	}
@@ -33,15 +32,15 @@ func (sgs *SendGroupStream) WriteFrame(frame []byte) error {
 
 	if err != nil {
 		// Signal the group error code
-		var strerr transport.StreamError
-		var code message.GroupErrorCode
-		if errors.As(err, &strerr) {
-			code = message.GroupErrorCode(strerr.StreamErrorCode())
+		var grperr GroupError
+		var code protocol.GroupErrorCode
+		if errors.As(err, &grperr) {
+			code = grperr.GroupErrorCode()
 		} else {
 			code = ErrInternalError.GroupErrorCode()
 		}
 
-		sgs.CancelWrite(code)
+		sgs.SendStream.CancelWrite(transport.StreamErrorCode(code))
 
 		return err
 	}
@@ -55,19 +54,6 @@ func (sgs *SendGroupStream) StartAt() time.Time {
 
 func (sgs *SendGroupStream) Close() error {
 	return sgs.SendStream.Close()
-}
-
-func (sgs *SendGroupStream) CancelWrite(code message.GroupErrorCode) {
-	if sgs.errCodeCh == nil {
-		sgs.errCodeCh = make(chan message.GroupErrorCode, 1)
-	}
-
-	select {
-	case sgs.errCodeCh <- code:
-	default:
-	}
-
-	sgs.SendStream.CancelWrite(transport.StreamErrorCode(code))
 }
 
 func (sgs *SendGroupStream) SetWriteDeadline(t time.Time) error {

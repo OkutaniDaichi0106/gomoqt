@@ -8,8 +8,6 @@ This is an implementation of Media over QUIC Transfork.
 
 https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html
 
-A fork of the moq-transfork.
-
 ## Implementation Status
 | Section                                      | Implemented        | Tested             |
 | -------------------------------------------- | ------------------ | ------------------ |
@@ -61,8 +59,6 @@ A fork of the moq-transfork.
 | 6.7. SUBSCRIBE_GAP                           | :construction:     | :white_check_mark: |
 | 6.8. INFO                                    | :white_check_mark: | :white_check_mark: |
 | 6.9. INFO_PLEASE                             | :white_check_mark: | :white_check_mark: |
-| 6.10. FETCH                                  | :white_check_mark: | :white_check_mark: |
-| 6.11. FETCH_UPDATE                           | :white_check_mark: | :white_check_mark: |
 | **Data Stream**                              |                    |                    |
 | 7.3. Group Streams                           | :white_check_mark: | :white_check_mark: |
 | **Data Message**                             |                    |                    |

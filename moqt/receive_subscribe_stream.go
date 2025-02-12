@@ -3,6 +3,7 @@ package moqt
 import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 )
 
 type ReceiveSubscribeStream interface {
@@ -39,9 +40,9 @@ func (rs *receiveSubscribeStream) SubscribeConfig() SubscribeConfig {
 
 func (rs *receiveSubscribeStream) SendSubscribeGap(gap SubscribeGap) error {
 	return rs.internalStream.SendSubscribeGap(message.SubscribeGapMessage{
-		MinGapSequence: message.GroupSequence(gap.MinGapSequence),
-		MaxGapSequence: message.GroupSequence(gap.MaxGapSequence),
-		GroupErrorCode: message.GroupErrorCode(gap.GroupErrorCode),
+		GapStartSequence: message.GroupSequence(gap.start),
+		GapCount:         gap.count,
+		GroupErrorCode:   protocol.GroupErrorCode(gap.code),
 	})
 }
 

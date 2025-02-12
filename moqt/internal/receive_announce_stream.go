@@ -35,10 +35,6 @@ type ReceiveAnnounceStream struct {
 	closeErr error
 }
 
-// func (ras *ReceiveAnnounceStream) LiveAnnouncement() chan<- *message.AnnounceMessage {
-// 	return ras.liveAnnCh
-// }
-
 func (ras *ReceiveAnnounceStream) ReceiveAnnouncements() ([]message.AnnounceMessage, error) {
 	ras.mu.RLock()
 	defer ras.mu.RUnlock()
@@ -48,6 +44,7 @@ func (ras *ReceiveAnnounceStream) ReceiveAnnouncements() ([]message.AnnounceMess
 	}
 
 	announcements := make([]message.AnnounceMessage, 0, len(ras.anns))
+
 	//
 	for _, ann := range ras.anns {
 		announcements = append(announcements, ann)
@@ -73,7 +70,7 @@ func (ras *ReceiveAnnounceStream) Close() error {
 	return ras.stream.Close()
 }
 
-func (ras *ReceiveAnnounceStream) CloseWithErr(err error) error {
+func (ras *ReceiveAnnounceStream) CloseWithError(err error) error {
 	ras.mu.Lock()
 	defer ras.mu.Unlock()
 
@@ -95,12 +92,13 @@ func (ras *ReceiveAnnounceStream) CloseWithErr(err error) error {
 		code = strerr.StreamErrorCode()
 	} else {
 		var ok bool
-		feterr, ok := err.(FetchError)
+		annerr, ok := err.(AnnounceError)
 		if ok {
-			code = transport.StreamErrorCode(feterr.FetchErrorCode())
+			code = transport.StreamErrorCode(annerr.AnnounceErrorCode())
 		} else {
 			code = ErrInternalError.StreamErrorCode()
 		}
+
 	}
 
 	ras.stream.CancelRead(code)
@@ -110,24 +108,6 @@ func (ras *ReceiveAnnounceStream) CloseWithErr(err error) error {
 
 	return nil
 }
-
-// func (ras *ReceiveAnnounceStream) isValidateAnnouncement(am message.AnnounceMessage) bool {
-// 	if ras.anns == nil {
-// 		ras.anns = make(map[string]message.AnnounceMessage)
-// 	}
-
-// 	oldAnn, ok := ras.findAnnouncement(am.TrackPathSuffix)
-
-// 	if ok && oldAnn.AnnounceStatus == am.AnnounceStatus {
-// 		slog.Debug("duplicate announcement status")
-// 	}
-
-// 	if !ok && am.AnnounceStatus == message.ENDED {
-// 		slog.Debug("ended track is not announced")
-// 	}
-
-// 	return true
-// }
 
 func (ras *ReceiveAnnounceStream) findAnnouncement(trackPath []string) (message.AnnounceMessage, bool) {
 	ann, exists := ras.anns[TrackPartsString(trackPath)]
@@ -157,7 +137,7 @@ func (ras *ReceiveAnnounceStream) listenAnnouncements() {
 		case message.ACTIVE:
 			ann, exists := ras.findAnnouncement(am.TrackSuffix)
 			if exists && ann.AnnounceStatus == message.ACTIVE {
-				ras.CloseWithErr(ErrProtocolViolation)
+				ras.CloseWithError(ErrProtocolViolation)
 				return
 			}
 
@@ -165,12 +145,12 @@ func (ras *ReceiveAnnounceStream) listenAnnouncements() {
 		case message.ENDED:
 			ann, exists := ras.findAnnouncement(am.TrackSuffix)
 			if !exists {
-				ras.CloseWithErr(ErrProtocolViolation)
+				ras.CloseWithError(ErrProtocolViolation)
 				return
 			}
 
 			if ann.AnnounceStatus == message.ENDED {
-				ras.CloseWithErr(ErrProtocolViolation)
+				ras.CloseWithError(ErrProtocolViolation)
 				return
 			}
 

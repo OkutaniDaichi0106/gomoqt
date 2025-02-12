@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
 )
 
@@ -51,7 +52,7 @@ func (srs *ReceiveSubscribeStream) CloseWithError(err error) error {
 	}
 
 	// TODO:
-	var code SubscribeErrorCode
+	var code protocol.SubscribeErrorCode
 
 	var suberr SubscribeError
 	if errors.As(err, &suberr) {

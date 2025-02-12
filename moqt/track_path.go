@@ -4,7 +4,7 @@ import "strings"
 
 type TrackPath []string
 
-func NewTrackPath(path []string) TrackPath {
+func NewTrackPath(path ...string) TrackPath {
 	return TrackPath(path)
 }
 
@@ -54,12 +54,12 @@ func (tp TrackPath) HasSuffix(suffix []string) bool {
 	return true
 }
 
-func (tp TrackPath) Equal(other TrackPath) bool {
-	if len(tp) != len(other) {
+func (tp TrackPath) Equal(target TrackPath) bool {
+	if len(tp) != len(target) {
 		return false
 	}
 	for i, v := range tp {
-		if v != other[i] {
+		if v != target[i] {
 			return false
 		}
 	}

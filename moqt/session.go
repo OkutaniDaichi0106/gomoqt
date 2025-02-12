@@ -13,7 +13,7 @@ type Session interface {
 	 * Methods for the Client
 	 */
 	// Update the session
-	UpdateSession(bitrate uint64) error
+	UpdateSession(bitrate uint64) error // TODO:
 
 	// Terminate the session
 	Terminate(error)
@@ -22,38 +22,28 @@ type Session interface {
 	 * Methods for the Subscriber
 	 */
 	// Open an Announce Stream
-	OpenAnnounceStream(AnnounceConfig) (ReceiveAnnounceStream, error)
+	OpenAnnounceStream(AnnounceConfig) (AnnouncementReader, error)
 
-	// Open a Subscribe Stream
-	OpenSubscribeStream(SubscribeConfig) (SendSubscribeStream, Info, error)
+	// Open a Track Stream
+	OpenTrackStream(SubscribeConfig) (Info, TrackReader, error)
 
-	// Open an Info Stream
-	OpenInfoStream(InfoRequest) (Info, error)
-
-	// Open a Fetch Stream
-	OpenFetchStream(FetchRequest) (SendFetchStream, error)
-
-	// Accept a Group Stream
-	AcceptGroupStream(context.Context, SendSubscribeStream) (ReceiveGroupStream, error)
+	// Request Track Info
+	RequestTrackInfo(InfoRequest) (Info, error)
 
 	/*
 	 * Methods for the Publisher
 	 */
 	// Accept an Announce Stream
-	AcceptAnnounceStream(context.Context, func(AnnounceConfig) error) (SendAnnounceStream, error)
+	AcceptAnnounceStream(context.Context, func(AnnounceConfig) error) (AnnouncementWriter, error)
 
-	// Accept a Subscribe Stream
-	AcceptSubscribeStream(context.Context, func(SubscribeConfig) (Info, error)) (ReceiveSubscribeStream, error)
-
-	// Accept a Fetch Stream
-	AcceptFetchStream(context.Context, func(FetchRequest) error) (ReceiveFetchStream, error)
+	// Accept a Track Stream
+	AcceptTrackStream(context.Context, func(SubscribeConfig) (Info, error)) (TrackWriter, error)
 
 	// Accept an Info Stream
-	AcceptInfoStream(context.Context, func(InfoRequest) (Info, error)) error
-
-	// Open a Group Stream
-	OpenGroupStream(ReceiveSubscribeStream, GroupSequence) (SendGroupStream, error)
+	RespondTrackInfo(context.Context, func(InfoRequest) (Info, error)) error
 }
+
+var _ Session = (*session)(nil)
 
 type session struct {
 	internalSession    *internal.Session
@@ -70,7 +60,7 @@ func (s *session) Terminate(err error) {
 	s.internalSession.Terminate(err)
 }
 
-func (s *session) OpenAnnounceStream(config AnnounceConfig) (ReceiveAnnounceStream, error) {
+func (s *session) OpenAnnounceStream(config AnnounceConfig) (AnnouncementReader, error) {
 	apm := message.AnnouncePleaseMessage{
 		AnnounceParameters: config.Parameters.paramMap,
 		TrackPrefix:        config.TrackPrefix,
@@ -84,26 +74,37 @@ func (s *session) OpenAnnounceStream(config AnnounceConfig) (ReceiveAnnounceStre
 	return &receiveAnnounceStream{internalStream: ras}, nil
 }
 
-func (s *session) OpenSubscribeStream(config SubscribeConfig) (SendSubscribeStream, Info, error) {
+func (s *session) OpenTrackStream(config SubscribeConfig) (Info, TrackReader, error) {
 	sm := message.SubscribeMessage{
-		SubscribeID:         s.nextSubscribeID(),
+		SubscribeID:      s.nextSubscribeID(),
+		TrackPath:        config.TrackPath,
+		GroupOrder:       message.GroupOrder(config.GroupOrder),
+		TrackPriority:    message.TrackPriority(config.TrackPriority),
+		MinGroupSequence: message.GroupSequence(config.MinGroupSequence),
+
+		MaxGroupSequence:    message.GroupSequence(config.MaxGroupSequence),
 		SubscribeParameters: config.SubscribeParameters.paramMap,
-		TrackPath:           config.TrackPath,
 	}
 
-	ss, im, err := s.internalSession.OpenSubscribeStream(sm)
+	im, ss, err := s.internalSession.OpenSubscribeStream(sm)
 	if err != nil {
-		return nil, Info{}, err
+		return Info{}, nil, err
 	}
 
-	return &sendSubscribeStream{internalStream: ss}, Info{
+	info := Info{
 		TrackPriority:       TrackPriority(im.TrackPriority),
 		LatestGroupSequence: GroupSequence(im.LatestGroupSequence),
 		GroupOrder:          GroupOrder(im.GroupOrder),
+	}
+
+	return info, &receiveTrackStream{
+		session:         s.internalSession,
+		subscribeStream: ss,
+		gaps:            make(chan *SubscribeGap),
 	}, nil
 }
 
-func (s *session) OpenInfoStream(irm InfoRequest) (Info, error) {
+func (s *session) RequestTrackInfo(irm InfoRequest) (Info, error) {
 	im, err := s.internalSession.OpenInfoStream(message.InfoRequestMessage{
 		TrackPath: irm.TrackPath,
 	})
@@ -118,25 +119,7 @@ func (s *session) OpenInfoStream(irm InfoRequest) (Info, error) {
 	}, nil
 }
 
-func (s *session) OpenFetchStream(fm FetchRequest) (SendFetchStream, error) {
-	sfs, err := s.internalSession.OpenFetchStream(message.FetchMessage{})
-	if err != nil {
-		return nil, err
-	}
-
-	return &sendFetchStream{internalStream: sfs}, nil
-}
-
-func (s *session) AcceptGroupStream(ctx context.Context, substr SendSubscribeStream) (ReceiveGroupStream, error) {
-	str, err := s.internalSession.AcceptGroupStream(ctx, message.SubscribeID(substr.SubscribeID()))
-	if err != nil {
-		return nil, err
-	}
-
-	return &receiveGroupStream{internalStream: str}, nil
-}
-
-func (s *session) AcceptAnnounceStream(ctx context.Context, handler func(AnnounceConfig) error) (SendAnnounceStream, error) {
+func (s *session) AcceptAnnounceStream(ctx context.Context, handler func(AnnounceConfig) error) (AnnouncementWriter, error) {
 	as, err := s.internalSession.AcceptAnnounceStream(ctx)
 	if err != nil {
 		return nil, err
@@ -146,16 +129,18 @@ func (s *session) AcceptAnnounceStream(ctx context.Context, handler func(Announc
 
 	err = handler(sas.AnnounceConfig())
 	if err != nil {
+		sas.CloseWithError(err)
 		return nil, err
 	}
 
 	return sas, nil
 }
 
-func (s *session) AcceptSubscribeStream(ctx context.Context, handler func(SubscribeConfig) (Info, error)) (ReceiveSubscribeStream, error) {
+func (s *session) AcceptTrackStream(ctx context.Context, handler func(SubscribeConfig) (Info, error)) (TrackWriter, error) {
 	ss, err := s.internalSession.AcceptSubscribeStream(ctx)
 	if err != nil {
 		return nil, err
+
 	}
 
 	if ss == nil {
@@ -166,6 +151,7 @@ func (s *session) AcceptSubscribeStream(ctx context.Context, handler func(Subscr
 
 	info, err := handler(sss.SubscribeConfig())
 	if err != nil {
+		sss.CloseWithError(err)
 		return nil, err
 	}
 
@@ -180,29 +166,19 @@ func (s *session) AcceptSubscribeStream(ctx context.Context, handler func(Subscr
 		return nil, err
 	}
 
-	return sss, nil
+	return &sendTrackStream{
+		session:                s.internalSession,
+		receiveSubscribeStream: sss.internalStream,
+		latestGroupSequence:    GroupSequence(info.LatestGroupSequence),
+		groupErrChs:            make(map[GroupSequence]chan GroupErrorCode),
+	}, nil
 }
 
-func (s *session) AcceptFetchStream(ctx context.Context, handler func(FetchRequest) error) (ReceiveFetchStream, error) {
-	rf, err := s.internalSession.AcceptFetchStream(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	rfs := &receiveFetchStream{internalStream: rf}
-
-	err = handler(rfs.FetchRequest())
-	if err != nil {
-		return nil, err
-	}
-
-	return rfs, nil
-}
-
-func (s *session) AcceptInfoStream(ctx context.Context, handler func(InfoRequest) (Info, error)) error {
+func (s *session) RespondTrackInfo(ctx context.Context, handler func(InfoRequest) (Info, error)) error {
 	irs, err := s.internalSession.AcceptInfoStream(ctx)
 	if err != nil {
 		return err
+
 	}
 
 	if irs == nil {
@@ -230,20 +206,6 @@ func (s *session) AcceptInfoStream(ctx context.Context, handler func(InfoRequest
 	}
 
 	return nil
-}
-
-func (s *session) OpenGroupStream(ssr ReceiveSubscribeStream, gs GroupSequence) (SendGroupStream, error) {
-	gm := message.GroupMessage{
-		SubscribeID:   message.SubscribeID(ssr.SubscribeID()),
-		GroupSequence: message.GroupSequence(gs),
-	}
-
-	sgs, err := s.internalSession.OpenGroupStream(gm)
-	if err != nil {
-		return nil, err
-	}
-
-	return &sendGroupStream{internalStream: sgs}, nil
 }
 
 func (s *session) nextSubscribeID() message.SubscribeID {

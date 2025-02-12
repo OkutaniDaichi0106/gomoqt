@@ -110,7 +110,7 @@ func main() {
 	slog.Info("Server runs on path: \"/echo\"")
 	moqt.HandleFunc("/echo", func(sess moqt.Session) {
 		echoTrackPrefix := []string{"japan", "kyoto"}
-		echoTrackPath := []string{"japan", "kyoto", "text"}
+		echoTrackPath := moqt.NewTrackPath("japan", "kyoto", "text")
 
 		groupBufferCh := make(chan *moqt.GroupBuffer, 1<<2)
 
@@ -185,7 +185,7 @@ func main() {
 
 				groupBufferCh <- gb
 
-				moqt.Relay(stream, gb)
+				moqt.RelayGroup(stream, gb)
 			}
 		}()
 
@@ -207,7 +207,7 @@ func main() {
 			annstr, err := sess.AcceptAnnounceStream(context.Background(), func(ac moqt.AnnounceConfig) error {
 				pubLogger.Info("Received an announce request", slog.Any("config", ac))
 
-				if !moqt.HasPrefix(echoTrackPath, ac.TrackPrefix) {
+				if !echoTrackPath.HasPrefix(ac.TrackPrefix) {
 					return moqt.ErrTrackDoesNotExist
 				}
 
@@ -244,7 +244,7 @@ func main() {
 			substr, err := sess.AcceptSubscribeStream(context.Background(), func(sc moqt.SubscribeConfig) (moqt.Info, error) {
 				pubLogger.Info("Received a subscribe request", slog.Any("config", sc))
 
-				if !moqt.IsSamePath(sc.TrackPath, echoTrackPath) {
+				if !sc.TrackPath.Equal(echoTrackPath) {
 					return moqt.Info{}, moqt.ErrTrackDoesNotExist
 				}
 
@@ -268,7 +268,7 @@ func main() {
 					return
 				}
 
-				err = moqt.Relay(groupBuffer, stream)
+				err = moqt.RelayGroup(groupBuffer, stream)
 				if err != nil {
 					pubLogger.Error("Failed to write data", slog.String("error", err.Error()))
 					return

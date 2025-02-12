@@ -63,9 +63,9 @@ func (ss *sendSubscribeStream) ReceiveSubscribeGap() (SubscribeGap, error) {
 	}
 
 	return SubscribeGap{
-		MinGapSequence: GroupSequence(gap.MinGapSequence),
-		MaxGapSequence: GroupSequence(gap.MaxGapSequence),
-		GroupErrorCode: GroupErrorCode(gap.GroupErrorCode),
+		start: GroupSequence(gap.GapStartSequence),
+		count: gap.GapCount,
+		code:  GroupErrorCode(gap.GroupErrorCode),
 	}, nil
 }
 

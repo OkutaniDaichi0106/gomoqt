@@ -16,16 +16,16 @@ func TestSubscribeGapMessage_EncodeDecode(t *testing.T) {
 	}{
 		"valid message": {
 			input: message.SubscribeGapMessage{
-				MinGapSequence: 100,
-				MaxGapSequence: 200,
-				GroupErrorCode: 1,
+				GapStartSequence: 100,
+				GapCount:         200,
+				GroupErrorCode:   1,
 			},
 		},
 		"zero values": {
 			input: message.SubscribeGapMessage{
-				MinGapSequence: 0,
-				MaxGapSequence: 0,
-				GroupErrorCode: 0,
+				GapStartSequence: 0,
+				GapCount:         0,
+				GroupErrorCode:   0,
 			},
 		},
 		// "max values": {
@@ -37,9 +37,9 @@ func TestSubscribeGapMessage_EncodeDecode(t *testing.T) {
 		// },
 		"min greater than max": {
 			input: message.SubscribeGapMessage{
-				MinGapSequence: 200,
-				MaxGapSequence: 100,
-				GroupErrorCode: 1,
+				GapStartSequence: 200,
+				GapCount:         100,
+				GroupErrorCode:   1,
 			},
 		},
 	}

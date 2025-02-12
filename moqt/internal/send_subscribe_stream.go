@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
 )
 
@@ -80,23 +81,18 @@ func (sss *SendSubscribeStream) CloseWithError(err error) error {
 		return sss.Close()
 	}
 
-	var code transport.StreamErrorCode
+	var code protocol.SubscribeErrorCode
 
-	var strerr transport.StreamError
-	if errors.As(err, &strerr) {
-		code = strerr.StreamErrorCode()
+	var suberr SubscribeError
+
+	if errors.As(err, &suberr) {
+		code = suberr.SubscribeErrorCode()
 	} else {
-		var ok bool
-		feterr, ok := err.(FetchError)
-		if ok {
-			code = transport.StreamErrorCode(feterr.FetchErrorCode())
-		} else {
-			code = ErrInternalError.StreamErrorCode()
-		}
+		code = ErrInternalError.SubscribeErrorCode()
 	}
 
-	sss.Stream.CancelRead(code)
-	sss.Stream.CancelWrite(code)
+	sss.Stream.CancelRead(transport.StreamErrorCode(code))
+	sss.Stream.CancelWrite(transport.StreamErrorCode(code))
 
 	slog.Debug("closed a subscrbe receive stream", slog.Any("config", sss.SubscribeMessage))
 

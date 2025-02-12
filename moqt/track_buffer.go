@@ -1,61 +1,90 @@
 package moqt
 
-type TrackBuffer interface {
-	TrackPath() TrackPath
-	//
-	LatestGroupSequence() GroupSequence
+import (
+	"context"
+)
 
-	// Producer
-	CreateGroup(GroupSequence) GroupWriter
-
-	// Relayer
-	EnqueueGroup(gr GroupReader)
-	DequeueGroup() GroupReader
-
-	// Consumer
-	GetGroup(GroupSequence) GroupReader
-
-	//
-	Close() error
-	CloseWithError(error) error
-	Closed() bool
+func NewTrackBuffer(config SubscribeConfig) TrackBuffer {
+	return &trackBuffer{}
 }
 
-// var _ trackBuffer = (*TrackBuffer)(nil)
+var _ TrackWriter = (*trackBuffer)(nil)
+var _ TrackReader = (*trackBuffer)(nil)
 
-// func NewTrackBuffer(trackPath []string) TrackBuffer {
-// 	return TrackBuffer{
-// 		TrackPath: trackPath,
-// 		groups:    make(map[GroupSequence]*groupBuffer),
-// 		cond:      sync.NewCond(&sync.Mutex{}),
-// 	}
-// }
+type trackBuffer struct {
+	path TrackPath
 
-// type TrackBuffer struct {
-// 	TrackPath []string
-// 	groups    map[GroupSequence]*groupBuffer
-// 	cond      *sync.Cond
-// }
+	queue groupBufferHeap
 
-// func (tb *TrackBuffer) ReadGroup(gr GroupReader) {
-// 	buffer := newGroupBuffer(gr)
-// 	tb.groups[gr.GroupSequence()] = buffer
-// }
+	latestGroupSequence GroupSequence
 
-// func (tb *TrackBuffer) WriteGroup(gr GroupWriter) {
-// 	buffer := tb.groups[gr.GroupSequence()]
-// 	if buffer == nil {
-// 		return
-// 	}
-// 	buffer.Relay(gr)
-// }
+	ch chan struct{}
 
-// type trackBufer interface {
-// 	// 1. Add a new group and serve some data
-// 	// 2. Dequeue a group
-// }
+	// Config
+	closed bool
 
-type TrackRelayer interface {
-	Enqueue(gr GroupReader)
-	Dequeue() GroupReader
+	closedErr error
+}
+
+func (t *trackBuffer) TrackPath() TrackPath {
+	return t.path
+}
+
+func (t *trackBuffer) GroupOrder() GroupOrder {
+	return t.queue.groupOrder
+}
+
+func (t *trackBuffer) LatestGroupSequence() GroupSequence {
+	return t.latestGroupSequence
+}
+
+func (t *trackBuffer) CountGroups() int {
+	return t.queue.Len()
+}
+
+func (t *trackBuffer) OpenGroup(sequence GroupSequence) (GroupWriter, error) {
+	gb := &GroupBuffer{sequence: sequence}
+	t.queue.Push(gb)
+
+	// Update latest group sequence
+	if gb.GroupSequence() > t.latestGroupSequence {
+		t.latestGroupSequence = gb.GroupSequence()
+	}
+
+	// Notify waiting routines (non-blocking)
+	select {
+	case t.ch <- struct{}{}:
+	default:
+	}
+
+	// Notify waiting routines (non-blocking)
+	select {
+	case t.ch <- struct{}{}:
+	default:
+	}
+
+	return nil
+}
+
+func (t *trackBuffer) AcceptGroup(ctx context.Context) (GroupReader, error) {
+	for {
+		if t.queue.Len() > 0 {
+			return t.queue.Pop().(GroupReader), nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-t.ch:
+			// Continue loop when notification received
+			continue
+		}
+	}
+}
+
+func (t *trackBuffer) Close() error {
+	return nil
+}
+
+func (t *trackBuffer) CloseWithError(err error) error {
+	return nil
 }

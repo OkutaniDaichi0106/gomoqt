@@ -13,7 +13,6 @@ type sendTrackStream struct {
 	session                *internal.Session
 	receiveSubscribeStream *internal.ReceiveSubscribeStream
 	latestGroupSequence    GroupSequence
-	gaps                   map[GroupSequence]struct{}
 	mu                     sync.Mutex
 }
 
@@ -21,7 +20,6 @@ func newSendTrackStream(session *internal.Session, receiveSubscribeStream *inter
 	return &sendTrackStream{
 		session:                session,
 		receiveSubscribeStream: receiveSubscribeStream,
-		gaps:                   make(map[GroupSequence]struct{}),
 	}
 }
 
@@ -67,14 +65,7 @@ func (s *sendTrackStream) OpenGroup(sequence GroupSequence) (GroupWriter, error)
 
 	// Update latest group sequence
 	if sequence > s.latestGroupSequence {
-		for i := s.latestGroupSequence + 1; i < sequence; i++ {
-			s.gaps[i] = struct{}{}
-		}
-
 		s.latestGroupSequence = sequence
-	} else {
-		// Remove the gap
-		delete(s.gaps, sequence)
 	}
 
 	stream := &sendGroupStream{sgs}

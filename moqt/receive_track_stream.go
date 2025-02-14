@@ -25,13 +25,6 @@ func newReceiveTrackStream(session *internal.Session, info Info, subscribeStream
 				return
 			}
 
-			gap := &SubscribeGap{
-				start: GroupSequence(sgm.GapStartSequence),
-				count: sgm.GapCount,
-				code:  GroupErrorCode(sgm.GroupErrorCode),
-			}
-
-			rts.gaps <- gap
 		}
 
 	}()
@@ -43,7 +36,6 @@ type receiveTrackStream struct {
 	session             *internal.Session
 	subscribeStream     *internal.SendSubscribeStream
 	latestGroupSequence GroupSequence
-	gaps                chan *SubscribeGap
 }
 
 func (s *receiveTrackStream) SubscribeID() SubscribeID {
@@ -96,8 +88,6 @@ func (s *receiveTrackStream) AcceptGroup(ctx context.Context) (GroupReader, erro
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case gap := <-s.gaps:
-		return nil, gap
 	default:
 
 	}

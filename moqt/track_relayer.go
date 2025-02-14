@@ -36,7 +36,7 @@ func (t *TrackManager) Terminate(err error) error {
 
 // Below are stub methods to satisfy the Session interface
 
-func (t *TrackManager) OpenAnnounceStream(config AnnounceConfig) (AnnouncementReader, error) {
+func (t *TrackManager) OpenAnnounceStream(config AnnounceConfig) (ReceiveAnnounceStream, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 
@@ -56,7 +56,7 @@ func (t *TrackManager) AcceptGroupStream(ctx context.Context, substr SendSubscri
 	return nil, fmt.Errorf("not implemented")
 }
 
-func (t *TrackManager) AcceptAnnounceStream(ctx context.Context, handler func(AnnounceConfig) error) (AnnouncementWriter, error) {
+func (t *TrackManager) AcceptAnnounceStream(ctx context.Context, handler func(AnnounceConfig) error) (SendAnnounceStream, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 

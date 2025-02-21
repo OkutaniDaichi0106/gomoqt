@@ -10,16 +10,17 @@ type TrackWriter interface {
 	// Get the group order
 	GroupOrder() GroupOrder
 
-	// Get the subscription config
+	// Get the latest group sequence
+	LatestGroupSequence() GroupSequence
+
+	// Get the track info
 	Info() Info
 
 	// Create a new group writer
 	OpenGroup(GroupSequence) (GroupWriter, error)
 
-	// Get the subscription config
-	SubscribeConfig() SubscribeConfig
-
 	Close() error
+
 	CloseWithError(error) error
 
 	// TODO: Implement

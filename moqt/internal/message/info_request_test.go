@@ -16,17 +16,17 @@ func TestInfoRequestMessage_EncodeDecode(t *testing.T) {
 	}{
 		"valid message": {
 			input: message.InfoRequestMessage{
-				TrackPath: []string{"path", "to", "track"},
+				TrackPath: "path/to/track",
 			},
 		},
 		"empty track path": {
 			input: message.InfoRequestMessage{
-				TrackPath: []string{},
+				TrackPath: "",
 			},
 		},
 		"long track path": {
 			input: message.InfoRequestMessage{
-				TrackPath: []string{"very", "long", "path", "with", "many", "segments"},
+				TrackPath: "very/long/path/with/many/segments",
 			},
 		},
 		// "nil track path": {

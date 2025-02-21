@@ -2,66 +2,44 @@ package moqt
 
 import "strings"
 
-type TrackPath []string
+type TrackPath string
 
-func NewTrackPath(path ...string) TrackPath {
-	return TrackPath(path)
-}
+// func NewTrackPath(path string) TrackPath {
+// 	return TrackPath(path)
+// }
 
 func (tp TrackPath) String() string {
-	var sb strings.Builder
-
-	sb.WriteString("[")
-	for i, path := range tp {
-		if i > 0 {
-			sb.WriteString(", ")
-		}
-
-		sb.WriteString(path)
-	}
-	sb.WriteString("]")
-	return sb.String()
+	return string(tp)
 }
 
-func (tp TrackPath) HasPrefix(prefix []string) bool {
+func (tp TrackPath) HasPrefix(prefix string) bool {
 	if len(tp) < len(prefix) {
 		return false
 	}
-	for i, v := range prefix {
-		if tp[i] != v {
-			return false
-		}
-	}
-	return true
+
+	return strings.HasPrefix(string(tp), prefix+"/")
 }
 
-func (tp TrackPath) GetSuffix(prefix []string) []string {
+func (tp TrackPath) GetSuffix(prefix string) string {
 	if !tp.HasPrefix(prefix) {
-		return nil
+		return ""
 	}
-	return tp[len(prefix):]
+
+	return strings.TrimPrefix(string(tp), prefix+"/")
 }
 
-func (tp TrackPath) HasSuffix(suffix []string) bool {
+func (tp TrackPath) HasSuffix(suffix string) bool {
 	if len(tp) < len(suffix) {
 		return false
 	}
-	for i, v := range suffix {
-		if tp[len(tp)-len(suffix)+i] != v {
-			return false
-		}
-	}
-	return true
+
+	return strings.HasSuffix(string(tp), "/"+suffix)
 }
 
 func (tp TrackPath) Equal(target TrackPath) bool {
-	if len(tp) != len(target) {
-		return false
-	}
-	for i, v := range tp {
-		if v != target[i] {
-			return false
-		}
-	}
-	return true
+	return tp == target
+}
+
+func (tp TrackPath) Parts() []string {
+	return strings.Split(string(tp), "/")
 }

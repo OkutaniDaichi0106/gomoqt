@@ -2,11 +2,12 @@ package internal
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
-	"strings"
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
 )
 
@@ -14,11 +15,7 @@ func newReceiveAnnounceStream(apm *message.AnnouncePleaseMessage, stream transpo
 	ras := &ReceiveAnnounceStream{
 		AnnouncePleaseMessage: *apm,
 		stream:                stream,
-		anns:                  make(map[string]message.AnnounceMessage),
-		liveCh:                make(chan struct{}, 1),
 	}
-
-	go ras.listenAnnouncements()
 
 	return ras
 }
@@ -26,46 +23,48 @@ func newReceiveAnnounceStream(apm *message.AnnouncePleaseMessage, stream transpo
 type ReceiveAnnounceStream struct {
 	AnnouncePleaseMessage message.AnnouncePleaseMessage
 	stream                transport.Stream
-	mu                    sync.RWMutex
 
-	anns     map[string]message.AnnounceMessage
-	liveAnn  message.AnnounceMessage
-	liveCh   chan struct{}
+	mu       sync.RWMutex
 	closed   bool
 	closeErr error
 }
 
-func (ras *ReceiveAnnounceStream) ReceiveAnnouncements() ([]message.AnnounceMessage, error) {
-	ras.mu.RLock()
-	defer ras.mu.RUnlock()
-
-	if ras.closed {
-		return nil, ras.closeErr
-	}
-
-	announcements := make([]message.AnnounceMessage, 0, len(ras.anns))
-
-	//
-	for _, ann := range ras.anns {
-		announcements = append(announcements, ann)
-	}
-
-	return announcements, nil
+func (ras *ReceiveAnnounceStream) ReadAnnounceMessage(am *message.AnnounceMessage) error {
+	_, err := am.Decode(ras.stream)
+	return err
 }
+
+// func (ras *ReceiveAnnounceStream) ReceiveAnnouncements() ([]message.AnnounceMessage, error) {
+// 	ras.mu.RLock()
+// 	defer ras.mu.RUnlock()
+
+// 	if ras.closed {
+// 		return nil, ras.closeErr
+// 	}
+
+// 	announcements := make([]message.AnnounceMessage, 0, len(ras.announcements))
+
+// 	//
+// 	for _, ann := range ras.announcements {
+// 		announcements = append(announcements, ann)
+// 	}
+
+// 	return announcements, nil
+// }
 
 func (ras *ReceiveAnnounceStream) Close() error {
 	ras.mu.Lock()
 	defer ras.mu.Unlock()
 
 	if ras.closed {
-		return nil
+		if ras.closeErr == nil {
+			return fmt.Errorf("stream has already closed due to: %v", ras.closeErr)
+		}
+
+		return errors.New("stream has already closed")
 	}
 
 	ras.closed = true
-
-	close(ras.liveCh)
-	ras.anns = nil
-	ras.liveCh = nil
 
 	return ras.stream.Close()
 }
@@ -85,76 +84,72 @@ func (ras *ReceiveAnnounceStream) CloseWithError(err error) error {
 	ras.closeErr = err
 	ras.closed = true
 
-	var code transport.StreamErrorCode
+	var annerr AnnounceError
+	var code protocol.AnnounceErrorCode
 
-	var strerr transport.StreamError
-	if errors.As(err, &strerr) {
-		code = strerr.StreamErrorCode()
+	if errors.As(err, &annerr) {
+		code = annerr.AnnounceErrorCode()
 	} else {
-		var ok bool
-		annerr, ok := err.(AnnounceError)
-		if ok {
-			code = transport.StreamErrorCode(annerr.AnnounceErrorCode())
-		} else {
-			code = ErrInternalError.StreamErrorCode()
-		}
-
+		code = ErrInternalError.AnnounceErrorCode()
 	}
 
-	ras.stream.CancelRead(code)
-	ras.stream.CancelWrite(code)
+	ras.stream.CancelRead(transport.StreamErrorCode(code))
+	ras.stream.CancelWrite(transport.StreamErrorCode(code))
 
 	slog.Debug("closed a receive announce stream with an error", slog.String("error", err.Error()))
 
 	return nil
 }
 
-func (ras *ReceiveAnnounceStream) findAnnouncement(trackPath []string) (message.AnnounceMessage, bool) {
-	ann, exists := ras.anns[TrackPartsString(trackPath)]
-	return ann, exists
-}
+// func (ras *ReceiveAnnounceStream) findAnnouncement(trackPath string) (message.AnnounceMessage, bool) {
+// 	ras.mu.RLock()
+// 	defer ras.mu.RUnlock()
 
-func (ras *ReceiveAnnounceStream) storeAnnouncement(am message.AnnounceMessage) {
-	ras.anns[TrackPartsString(am.TrackSuffix)] = am
-}
+// 	ann, exists := ras.announcements[trackPath]
+// 	return ann, exists
+// }
 
-func TrackPartsString(trackPath []string) string {
-	return strings.Join(trackPath, " ")
-}
+// func (ras *ReceiveAnnounceStream) storeAnnouncement(am message.AnnounceMessage) {
+// 	ras.mu.Lock()
+// 	defer ras.mu.Unlock()
+// 	ras.announcements[am.TrackSuffix] = am
+// }
 
-func (ras *ReceiveAnnounceStream) listenAnnouncements() {
-	for {
-		var am message.AnnounceMessage
-		_, err := am.Decode(ras.stream)
-		if err != nil {
-			return
-		}
+// func (ras *ReceiveAnnounceStream) listenAnnouncements() {
+// 	for {
+// 		var am message.AnnounceMessage
+// 		_, err := am.Decode(ras.stream)
+// 		if err != nil {
+// 			return
+// 		}
 
-		switch am.AnnounceStatus {
-		case message.LIVE:
-			ras.liveAnn = am
-			ras.liveCh <- struct{}{}
-		case message.ACTIVE:
-			ann, exists := ras.findAnnouncement(am.TrackSuffix)
-			if exists && ann.AnnounceStatus == message.ACTIVE {
-				ras.CloseWithError(ErrProtocolViolation)
-				return
-			}
+// 		switch am.AnnounceStatus {
+// 		case message.LIVE:
+// 			ras.liveAnn = am
+// 			ras.liveCh <- struct{}{}
+// 		case message.ACTIVE:
+// 			ann, exists := ras.findAnnouncement(am.TrackSuffix)
+// 			if exists && ann.AnnounceStatus == message.ACTIVE {
+// 				ras.CloseWithError(ErrProtocolViolation)
+// 				return
+// 			}
 
-			ras.storeAnnouncement(am)
-		case message.ENDED:
-			ann, exists := ras.findAnnouncement(am.TrackSuffix)
-			if !exists {
-				ras.CloseWithError(ErrProtocolViolation)
-				return
-			}
+// 			ras.storeAnnouncement(am)
+// 		case message.ENDED:
+// 			// Check if the announcement exists
+// 			ann, exists := ras.findAnnouncement(am.TrackSuffix)
+// 			if !exists {
+// 				ras.CloseWithError(ErrProtocolViolation)
+// 				return
+// 			}
 
-			if ann.AnnounceStatus == message.ENDED {
-				ras.CloseWithError(ErrProtocolViolation)
-				return
-			}
+// 			// Check if the announcement is ACTIVE
+// 			if ann.AnnounceStatus == message.ENDED {
+// 				ras.CloseWithError(ErrProtocolViolation)
+// 				return
+// 			}
 
-			ras.storeAnnouncement(am)
-		}
-	}
-}
+// 			ras.storeAnnouncement(am)
+// 		}
+// 	}
+// }

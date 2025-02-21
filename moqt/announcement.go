@@ -2,45 +2,26 @@ package moqt
 
 import (
 	"strings"
-
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 )
 
-const (
-	ENDED  AnnounceStatus = AnnounceStatus(message.ENDED)
-	ACTIVE AnnounceStatus = AnnounceStatus(message.ACTIVE)
-	LIVE   AnnounceStatus = AnnounceStatus(message.LIVE)
-)
-
-type AnnounceStatus byte
-
-func (as AnnounceStatus) String() string {
-	switch as {
-
-	case ENDED:
-		return "ENDED"
-	case ACTIVE:
-		return "ACTIVE"
-	case LIVE:
-		return "LIVE"
-	default:
-		return "UNKNOWN"
+func NewAnnouncement(trackPath TrackPath) *Announcement {
+	ann := Announcement{
+		TrackPath: trackPath,
 	}
+
+	// Set the status to ACTIVE
+	ann.activate()
+
+	return &ann
 }
 
 type Announcement struct {
-	AnnounceStatus AnnounceStatus
+	active bool
 
 	/*
 	 *
 	 */
 	TrackPath TrackPath
-
-	/*
-	 *
-	 */
-
-	AnnounceParameters Parameters
 }
 
 func (a Announcement) String() string {
@@ -48,14 +29,30 @@ func (a Announcement) String() string {
 	sb.WriteString("Announcement: {")
 	sb.WriteString(" ")
 	sb.WriteString("AnnounceStatus: ")
-	sb.WriteString(a.AnnounceStatus.String())
+	if a.active {
+		sb.WriteString("ACTIVE")
+	} else {
+		sb.WriteString("ENDED")
+	}
 	sb.WriteString(", ")
 	sb.WriteString("TrackPath: ")
 	sb.WriteString(a.TrackPath.String())
-	sb.WriteString(", ")
-	sb.WriteString("AnnounceParameters: ")
-	sb.WriteString(a.AnnounceParameters.String())
-
 	sb.WriteString(" }")
 	return sb.String()
+}
+
+func (a *Announcement) activate() {
+	a.active = true
+}
+
+func (a *Announcement) end() {
+	a.active = false
+}
+
+func (a Announcement) IsActive() bool {
+	return a.active
+}
+
+func (a Announcement) IsEnded() bool {
+	return !a.active
 }

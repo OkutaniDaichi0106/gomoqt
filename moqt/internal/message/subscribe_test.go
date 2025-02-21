@@ -16,24 +16,24 @@ func TestSubscribeMessage_EncodeDecode(t *testing.T) {
 	}{
 		"valid message": {
 			input: message.SubscribeMessage{
-				SubscribeID:         1,
-				TrackPath:           []string{"path", "to", "track"},
-				TrackPriority:       5,
-				GroupOrder:          1,
-				MinGroupSequence:    10,
-				MaxGroupSequence:    20,
-				SubscribeParameters: message.Parameters{1: []byte("value")},
+				SubscribeID:      1,
+				TrackPath:        "path/to/track",
+				TrackPriority:    5,
+				GroupOrder:       1,
+				MinGroupSequence: 10,
+				MaxGroupSequence: 20,
+				// SubscribeParameters: message.Parameters{1: []byte("value")},
 			},
 		},
 		"empty track path": {
 			input: message.SubscribeMessage{
-				SubscribeID:         1,
-				TrackPath:           []string{},
-				TrackPriority:       5,
-				GroupOrder:          1,
-				MinGroupSequence:    10,
-				MaxGroupSequence:    20,
-				SubscribeParameters: message.Parameters{1: []byte("value")},
+				SubscribeID:      1,
+				TrackPath:        "",
+				TrackPriority:    5,
+				GroupOrder:       1,
+				MinGroupSequence: 10,
+				MaxGroupSequence: 20,
+				// SubscribeParameters: message.Parameters{1: []byte("value")},
 			},
 		},
 		// "max values": {
@@ -50,7 +50,7 @@ func TestSubscribeMessage_EncodeDecode(t *testing.T) {
 		"nil parameters": {
 			input: message.SubscribeMessage{
 				SubscribeID:   1,
-				TrackPath:     []string{"path"},
+				TrackPath:     "path",
 				TrackPriority: 1,
 			},
 		},

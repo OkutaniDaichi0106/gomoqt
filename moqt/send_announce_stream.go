@@ -2,11 +2,10 @@ package moqt
 
 import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 )
 
 type AnnouncementWriter interface {
-	SendAnnouncement(announcements []Announcement) error
+	SendAnnouncement(announcements []*Announcement) error
 	AnnounceConfig() AnnounceConfig
 	Close() error
 	CloseWithError(error) error
@@ -18,21 +17,32 @@ type sendAnnounceStream struct {
 	internalStream *internal.SendAnnounceStream
 }
 
-func (s *sendAnnounceStream) SendAnnouncement(announcements []Announcement) error {
+func (sas *sendAnnounceStream) SendAnnouncement(announcements []*Announcement) error {
 	var err error
-	for _, a := range announcements {
-		switch a.AnnounceStatus {
-		case ACTIVE:
-			err = s.internalStream.SendActiveAnnouncement(a.TrackPath, message.Parameters(a.AnnounceParameters.paramMap))
-		case LIVE:
-			err = s.internalStream.SendLiveAnnouncement(message.Parameters(a.AnnounceParameters.paramMap))
-		case ENDED:
-			err = s.internalStream.SendEndedAnnouncement(a.TrackPath, message.Parameters(a.AnnounceParameters.paramMap))
+	var suffix string
+	for _, ann := range announcements {
+		if !ann.TrackPath.HasPrefix(sas.TrackPrefix()) {
+			continue
 		}
+		// Get the suffix of the track path from the prefix
+		suffix = ann.TrackPath.GetSuffix(sas.TrackPrefix())
 
-		if err != nil {
-			return err
+		if ann.active {
+			err = sas.internalStream.SetActiveAnnouncement(suffix)
+			if err != nil {
+				return err
+			}
+		} else {
+			err = sas.internalStream.SetEndedAnnouncement(suffix)
+			if err != nil {
+				return err
+			}
 		}
+	}
+
+	err = sas.internalStream.SendAnnouncements()
+	if err != nil {
+		return err
 	}
 
 	return nil
@@ -41,8 +51,11 @@ func (s *sendAnnounceStream) SendAnnouncement(announcements []Announcement) erro
 func (s *sendAnnounceStream) AnnounceConfig() AnnounceConfig {
 	return AnnounceConfig{
 		TrackPrefix: s.internalStream.AnnouncePleaseMessage.TrackPrefix,
-		Parameters:  Parameters{s.internalStream.AnnouncePleaseMessage.AnnounceParameters},
 	}
+}
+
+func (s *sendAnnounceStream) TrackPrefix() string {
+	return s.internalStream.AnnouncePleaseMessage.TrackPrefix
 }
 
 func (s *sendAnnounceStream) Close() error {

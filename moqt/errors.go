@@ -9,7 +9,7 @@ import (
 var (
 	ErrInternalError = &Error{internal.ErrInternalError}
 
-	ErrUnauthorizedError = &Error{internal.ErrUnauthorizedError}
+	ErrUnauthorizedError = &Error{internal.ErrUnauthorizedError} // TODO: Use this error
 
 	ErrTrackDoesNotExist = &Error{internal.ErrTrackDoesNotExist}
 
@@ -17,34 +17,31 @@ var (
 
 	ErrInvalidRange = &Error{internal.ErrInvalidRange}
 
-	ErrDuplicatedSubscribeID = &Error{internal.ErrDuplicatedSubscribeID}
+	ErrDuplicatedSubscribeID = &Error{internal.ErrDuplicatedSubscribeID} // TODO: Use this error
 
-	ErrPriorityMismatch = &Error{internal.ErrPriorityMismatch}
+	ErrEndedTrack = &Error{errors.New("track has ended")}
 
-	ErrGroupOrderMismatch = &Error{internal.ErrGroupOrderMismatch}
-
-	// TODO:
-	// ErrSubscriptionLimitExceeded
-
-	// ErrSubscribeExpired = internal.ErrSubscribeExpired
+	ErrClosedTrack = &Error{errors.New("track is closed")}
 
 	NoErrTerminate = &Error{internal.NoErrTerminate}
 
 	ErrProtocolViolation = &Error{internal.ErrProtocolViolation}
 
-	ErrParameterLengthMismatch = &Error{internal.ErrParameterLengthMismatch}
+	// ErrParameterLengthMismatch = &Error{internal.ErrParameterLengthMismatch} // TODO: Remove if not used
 
-	ErrTooManySubscribes = &Error{internal.ErrTooManySubscribes}
+	// ErrTooManySubscribes = &Error{internal.ErrTooManySubscribes} // TODO: Remove if not used
 
-	ErrGroupSendInterrupted = &Error{internal.ErrGroupSendInterrupted}
+	ErrGroupRejected = &Error{internal.ErrGroupRejected}
 
 	ErrGroupOutOfRange = &Error{internal.ErrGroupOutOfRange}
 
-	ErrGroupExpires = &Error{internal.ErrGroupExpires}
+	ErrGroupExpired = &Error{internal.ErrGroupExpired}
 
-	ErrGroupDeliveryTimeout = &Error{internal.ErrGroupDeliveryTimeout}
+	// ErrGroupDeliveryTimeout = &Error{internal.ErrGroupDeliveryTimeout} // TODO: Remove if not used
 
-	ErrDuplicatedGroup = &Error{internal.ErrDuplicatedGroup}
+	// ErrDuplicatedGroup = &Error{internal.ErrDuplicatedGroup} // TODO: Remove if not used
+
+	ErrClosedGroup = &Error{internal.ErrClosedGroup}
 )
 
 type Error struct {
@@ -164,26 +161,6 @@ func (err defaultInfoError) InfoErrorCode() InfoErrorCode {
 	return err.code
 }
 
-type TerminateError interface {
-	error
-	TerminateErrorCode() TerminateErrorCode
-}
-
-type TerminateErrorCode uint64
-
-type defaultTerminateError struct {
-	reason string
-	code   TerminateErrorCode
-}
-
-func (err defaultTerminateError) Error() string {
-	return err.reason
-}
-
-func (err defaultTerminateError) TerminateErrorCode() TerminateErrorCode {
-	return err.code
-}
-
 func NewGroupError(reason string, code GroupErrorCode) GroupError {
 	return &defaultGroupError{reason: reason, code: code}
 }
@@ -205,5 +182,25 @@ func (err defaultGroupError) Error() string {
 }
 
 func (err defaultGroupError) GroupErrorCode() GroupErrorCode {
+	return err.code
+}
+
+type TerminateError interface {
+	error
+	TerminateErrorCode() TerminateErrorCode
+}
+
+type TerminateErrorCode uint64
+
+type defaultTerminateError struct {
+	reason string
+	code   TerminateErrorCode
+}
+
+func (err defaultTerminateError) Error() string {
+	return err.reason
+}
+
+func (err defaultTerminateError) TerminateErrorCode() TerminateErrorCode {
 	return err.code
 }

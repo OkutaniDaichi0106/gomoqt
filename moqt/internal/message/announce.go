@@ -16,16 +16,16 @@ const (
 type AnnounceStatus byte
 
 type AnnounceMessage struct {
-	AnnounceStatus     AnnounceStatus
-	TrackSuffix        []string
-	AnnounceParameters Parameters
+	AnnounceStatus AnnounceStatus
+	TrackSuffix    string
+	// AnnounceParameters Parameters
 }
 
 func (a AnnounceMessage) Len() int {
 	l := 0
 	l += numberLen(uint64(a.AnnounceStatus))
-	l += stringArrayLen(a.TrackSuffix)
-	l += parametersLen(a.AnnounceParameters)
+	l += stringLen(a.TrackSuffix)
+	// l += parametersLen(a.AnnounceParameters)
 	return l
 }
 
@@ -35,8 +35,8 @@ func (a AnnounceMessage) Encode(w io.Writer) (int, error) {
 
 	*p = AppendNumber(*p, uint64(a.Len()))
 	*p = AppendNumber(*p, uint64(a.AnnounceStatus))
-	*p = AppendStringArray(*p, a.TrackSuffix)
-	*p = AppendParameters(*p, a.AnnounceParameters)
+	*p = AppendString(*p, a.TrackSuffix)
+	// *p = AppendParameters(*p, a.AnnounceParameters)
 
 	return w.Write(*p)
 }
@@ -55,15 +55,15 @@ func (am *AnnounceMessage) Decode(r io.Reader) (int, error) {
 	}
 	am.AnnounceStatus = AnnounceStatus(status)
 
-	am.TrackSuffix, _, err = ReadStringArray(mr)
+	am.TrackSuffix, _, err = ReadString(mr)
 	if err != nil {
 		return n, err
 	}
 
-	am.AnnounceParameters, _, err = ReadParameters(mr)
-	if err != nil {
-		return n, err
-	}
+	// am.AnnounceParameters, _, err = ReadParameters(mr)
+	// if err != nil {
+	// 	return n, err
+	// }
 
 	return n, nil
 }

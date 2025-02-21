@@ -24,7 +24,6 @@ type SendGroupStream struct {
 }
 
 func (sgs *SendGroupStream) WriteFrame(frame []byte) error {
-
 	fm := message.FrameMessage{
 		Payload: frame,
 	}
@@ -58,4 +57,8 @@ func (sgs *SendGroupStream) Close() error {
 
 func (sgs *SendGroupStream) SetWriteDeadline(t time.Time) error {
 	return sgs.SendStream.SetWriteDeadline(t)
+}
+
+func (sgs *SendGroupStream) CancelWrite(code protocol.GroupErrorCode) {
+	sgs.SendStream.CancelWrite(transport.StreamErrorCode(code))
 }

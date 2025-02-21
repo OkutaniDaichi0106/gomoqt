@@ -2,11 +2,11 @@ package internal
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
 )
 
@@ -16,8 +16,6 @@ func newReceiveSubscribeStream(sm *message.SubscribeMessage, stream transport.St
 		Stream:           stream,
 	}
 
-	go rss.listenSubscribeUpdates()
-
 	return rss
 }
 
@@ -25,44 +23,52 @@ type ReceiveSubscribeStream struct {
 	SubscribeMessage message.SubscribeMessage
 	Stream           transport.Stream
 	mu               sync.Mutex
+
+	closed   bool
+	closeErr error
 }
 
-func (rss *ReceiveSubscribeStream) SendSubscribeGap(sgm message.SubscribeGapMessage) error {
-	slog.Debug("sending a data gap", slog.Any("gap", sgm))
+// TODO: Implement this method
+// func (rss *ReceiveSubscribeStream) SendSubscribeGap(sgm message.SubscribeGapMessage) error {
+// 	slog.Debug("sending a data gap", slog.Any("gap", sgm))
 
-	rss.mu.Lock()
-	defer rss.mu.Unlock()
+// 	rss.mu.Lock()
+// 	defer rss.mu.Unlock()
 
-	_, err := sgm.Encode(rss.Stream)
-	if err != nil {
-		slog.Error("failed to write a subscribe gap message", slog.String("error", err.Error()))
-		return err
-	}
+// 	_, err := sgm.Encode(rss.Stream)
+// 	if err != nil {
+// 		slog.Error("failed to write a subscribe gap message", slog.String("error", err.Error()))
+// 		return err
+// 	}
 
-	slog.Debug("sent a data gap", slog.Any("gap", sgm))
+// 	slog.Debug("sent a data gap", slog.Any("gap", sgm))
 
-	return nil
+// 	return nil
+// }
+
+func (rss *ReceiveSubscribeStream) ReadSubscribeUpdateMessage(smm *message.SubscribeUpdateMessage) error {
+	_, err := smm.Decode(rss.Stream)
+	return err
 }
 
 func (srs *ReceiveSubscribeStream) CloseWithError(err error) error {
+	srs.mu.Lock()
+	defer srs.mu.Unlock()
+
 	slog.Debug("closing a subscrbe receive stream", slog.Any("subscription", srs.SubscribeMessage))
 
 	if err == nil {
-		return srs.Close()
+		return srs.close()
 	}
-
-	// TODO:
-	var code protocol.SubscribeErrorCode
 
 	var suberr SubscribeError
-	if errors.As(err, &suberr) {
-		code = suberr.SubscribeErrorCode()
-	} else {
-		code = ErrInternalError.SubscribeErrorCode()
+	if !errors.As(err, &suberr) {
+		suberr = ErrInternalError
 	}
 
-	srs.Stream.CancelRead(transport.StreamErrorCode(code))
-	srs.Stream.CancelWrite(transport.StreamErrorCode(code))
+	code := transport.StreamErrorCode(suberr.SubscribeErrorCode())
+	srs.Stream.CancelRead(code)
+	srs.Stream.CancelWrite(code)
 
 	slog.Debug("closed a subscrbe receive stream", slog.Any("subscription", srs.SubscribeMessage))
 
@@ -70,31 +76,20 @@ func (srs *ReceiveSubscribeStream) CloseWithError(err error) error {
 }
 
 func (srs *ReceiveSubscribeStream) Close() error {
-	slog.Debug("closing a subscrbe receive stream", slog.Any("subscription", srs.SubscribeMessage))
+	srs.mu.Lock()
+	defer srs.mu.Unlock()
 
-	err := srs.Stream.Close()
-	if err != nil {
-		slog.Debug("catch an error when closing a Subscribe Stream", slog.String("error", err.Error()))
-		return err
-	}
-
-	slog.Debug("closed a subscrbe receive stream", slog.Any("subscription", srs.SubscribeMessage))
-
-	return nil
+	return srs.close()
 }
 
-func (rss *ReceiveSubscribeStream) listenSubscribeUpdates() {
-	var sum message.SubscribeUpdateMessage
-	for {
-		_, err := sum.Decode(rss.Stream)
-		if err != nil {
-			slog.Error("failed to read a SUBSCRIBE_UPDATE message", slog.String("error", err.Error()))
-			rss.CloseWithError(err)
-			break
+func (rss *ReceiveSubscribeStream) close() error {
+	if rss.closed {
+		if rss.closeErr != nil {
+			return fmt.Errorf("stream has already closed due to: %w", rss.closeErr)
 		}
-
-		rss.mu.Lock()
-		updateSubscription(&rss.SubscribeMessage, &sum)
-		rss.mu.Unlock()
+		return errors.New("stream has already closed")
 	}
+
+	rss.closed = true
+	return rss.Stream.Close()
 }

@@ -25,7 +25,7 @@ type Session interface {
 	OpenAnnounceStream(AnnounceConfig) (AnnouncementReader, error)
 
 	// Open a Track Stream
-	OpenTrackStream(SubscribeConfig) (Info, TrackReader, error)
+	OpenTrackStream(SubscribeConfig) (Info, ReceiveTrackStream, error)
 
 	// Request Track Info
 	RequestTrackInfo(InfoRequest) (Info, error)
@@ -37,7 +37,7 @@ type Session interface {
 	AcceptAnnounceStream(context.Context, func(AnnounceConfig) error) (AnnouncementWriter, error)
 
 	// Accept a Track Stream
-	AcceptTrackStream(context.Context, func(SubscribeConfig) (Info, error)) (TrackWriter, error)
+	AcceptTrackStream(context.Context, func(SubscribeConfig) (Info, error)) (SendTrackStream, error)
 
 	// Accept an Info Stream
 	RespondTrackInfo(context.Context, func(InfoRequest) (Info, error)) error
@@ -62,8 +62,7 @@ func (s *session) Terminate(err error) {
 
 func (s *session) OpenAnnounceStream(config AnnounceConfig) (AnnouncementReader, error) {
 	apm := message.AnnouncePleaseMessage{
-		AnnounceParameters: config.Parameters.paramMap,
-		TrackPrefix:        config.TrackPrefix,
+		TrackPrefix: config.TrackPrefix,
 	}
 
 	ras, err := s.internalSession.OpenAnnounceStream(apm)
@@ -71,19 +70,17 @@ func (s *session) OpenAnnounceStream(config AnnounceConfig) (AnnouncementReader,
 		return nil, err
 	}
 
-	return &receiveAnnounceStream{internalStream: ras}, nil
+	return newReceiveAnnounceStream(ras), nil
 }
 
-func (s *session) OpenTrackStream(config SubscribeConfig) (Info, TrackReader, error) {
+func (s *session) OpenTrackStream(config SubscribeConfig) (Info, ReceiveTrackStream, error) {
 	sm := message.SubscribeMessage{
 		SubscribeID:      s.nextSubscribeID(),
-		TrackPath:        config.TrackPath,
+		TrackPath:        string(config.TrackPath),
 		GroupOrder:       message.GroupOrder(config.GroupOrder),
 		TrackPriority:    message.TrackPriority(config.TrackPriority),
 		MinGroupSequence: message.GroupSequence(config.MinGroupSequence),
-
-		MaxGroupSequence:    message.GroupSequence(config.MaxGroupSequence),
-		SubscribeParameters: config.SubscribeParameters.paramMap,
+		MaxGroupSequence: message.GroupSequence(config.MaxGroupSequence),
 	}
 
 	im, ss, err := s.internalSession.OpenSubscribeStream(sm)
@@ -97,16 +94,12 @@ func (s *session) OpenTrackStream(config SubscribeConfig) (Info, TrackReader, er
 		GroupOrder:          GroupOrder(im.GroupOrder),
 	}
 
-	return info, &receiveTrackStream{
-		session:         s.internalSession,
-		subscribeStream: ss,
-		gaps:            make(chan *SubscribeGap),
-	}, nil
+	return info, newReceiveTrackStream(s.internalSession, info, ss), nil
 }
 
 func (s *session) RequestTrackInfo(irm InfoRequest) (Info, error) {
 	im, err := s.internalSession.OpenInfoStream(message.InfoRequestMessage{
-		TrackPath: irm.TrackPath,
+		TrackPath: string(irm.TrackPath),
 	})
 	if err != nil {
 		return Info{}, err
@@ -127,16 +120,18 @@ func (s *session) AcceptAnnounceStream(ctx context.Context, handler func(Announc
 
 	sas := &sendAnnounceStream{internalStream: as}
 
-	err = handler(sas.AnnounceConfig())
-	if err != nil {
-		sas.CloseWithError(err)
-		return nil, err
+	if handler != nil {
+		err = handler(sas.AnnounceConfig())
+		if err != nil {
+			sas.CloseWithError(err)
+			return nil, err
+		}
 	}
 
 	return sas, nil
 }
 
-func (s *session) AcceptTrackStream(ctx context.Context, handler func(SubscribeConfig) (Info, error)) (TrackWriter, error) {
+func (s *session) AcceptTrackStream(ctx context.Context, handler func(SubscribeConfig) (Info, error)) (SendTrackStream, error) {
 	ss, err := s.internalSession.AcceptSubscribeStream(ctx)
 	if err != nil {
 		return nil, err
@@ -170,7 +165,6 @@ func (s *session) AcceptTrackStream(ctx context.Context, handler func(SubscribeC
 		session:                s.internalSession,
 		receiveSubscribeStream: sss.internalStream,
 		latestGroupSequence:    GroupSequence(info.LatestGroupSequence),
-		groupErrChs:            make(map[GroupSequence]chan GroupErrorCode),
 	}, nil
 }
 
@@ -186,7 +180,7 @@ func (s *session) RespondTrackInfo(ctx context.Context, handler func(InfoRequest
 	}
 
 	irm := InfoRequest{
-		TrackPath: irs.InfoRequestMessage.TrackPath,
+		TrackPath: TrackPath(irs.InfoRequestMessage.TrackPath),
 	}
 
 	info, err := handler(irm)
@@ -209,9 +203,7 @@ func (s *session) RespondTrackInfo(ctx context.Context, handler func(InfoRequest
 }
 
 func (s *session) nextSubscribeID() message.SubscribeID {
-	new := message.SubscribeID(atomic.LoadUint64(&s.subscribeIDCounter))
-
-	atomic.AddUint64(&s.subscribeIDCounter, 1)
-
-	return new
+	// Increment and return the previous value atomically
+	id := atomic.AddUint64(&s.subscribeIDCounter, 1) - 1
+	return message.SubscribeID(id)
 }

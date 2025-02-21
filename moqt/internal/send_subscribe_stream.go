@@ -23,9 +23,11 @@ type SendSubscribeStream struct {
 	mu               sync.Mutex
 }
 
-func (sss *SendSubscribeStream) UpdateSubscribe(sum message.SubscribeUpdateMessage) error {
+func (sss *SendSubscribeStream) SendSubscribeUpdate(sum message.SubscribeUpdateMessage) error {
 	sss.mu.Lock()
 	defer sss.mu.Unlock()
+
+	slog.Debug("sending a subscribe update message", slog.Any("update", sum))
 
 	if sum.MinGroupSequence > sum.MaxGroupSequence {
 		return ErrInvalidRange
@@ -37,28 +39,25 @@ func (sss *SendSubscribeStream) UpdateSubscribe(sum message.SubscribeUpdateMessa
 		return err
 	}
 
-	// Update the SubscribeMessage
-	updateSubscription(&sss.SubscribeMessage, &sum)
-
-	slog.Debug("updated a subscription", slog.Any("subscription", sss.SubscribeMessage))
+	slog.Debug("sent a subscribe update message", slog.Any("update", sum))
 
 	return nil
 }
 
-func (ss *SendSubscribeStream) ReceiveSubscribeGap() (message.SubscribeGapMessage, error) {
-	slog.Debug("receiving a data gap")
+// func (ss *SendSubscribeStream) ReceiveSubscribeGap() (message.SubscribeGapMessage, error) {
+// 	slog.Debug("receiving a data gap")
 
-	var gap message.SubscribeGapMessage
-	_, err := gap.Decode(ss.Stream)
-	if err != nil {
-		slog.Error("failed to read a subscribe gap message", slog.String("error", err.Error()))
-		return message.SubscribeGapMessage{}, err
-	}
+// 	var gap message.SubscribeGapMessage
+// 	_, err := gap.Decode(ss.Stream)
+// 	if err != nil {
+// 		slog.Error("failed to read a subscribe gap message", slog.String("error", err.Error()))
+// 		return message.SubscribeGapMessage{}, err
+// 	}
 
-	slog.Debug("received a data gap", slog.Any("gap", gap))
+// 	slog.Debug("received a data gap", slog.Any("gap", gap))
 
-	return gap, nil
-}
+// 	return gap, nil
+// }
 
 func (ss *SendSubscribeStream) Close() error {
 	slog.Debug("closing a subscrbe send stream", slog.Any("subscription", ss.SubscribeMessage))

@@ -2,25 +2,53 @@ package moqt
 
 import (
 	"errors"
+	"fmt"
+	"sync"
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 )
 
 var _ GroupWriter = (*sendGroupStream)(nil)
 
 type sendGroupStream struct {
 	internalStream *internal.SendGroupStream
-	// groupErrCh     chan GroupErrorCode
+	closed         bool
+	closedErr      error
+	mu             sync.Mutex
 }
 
 func (sgs *sendGroupStream) GroupSequence() GroupSequence {
 	return GroupSequence(sgs.internalStream.GroupMessage.GroupSequence)
 }
 
-func (sgs *sendGroupStream) CancelWrite(code GroupErrorCode) {
-	sgs.internalStream.SendStream.CancelWrite(transport.StreamErrorCode(code))
+func (sgs *sendGroupStream) CloseWithError(err error) error {
+	sgs.mu.Lock()
+	defer sgs.mu.Unlock()
+
+	if sgs.closed {
+		if sgs.closedErr != nil {
+			return fmt.Errorf("stream has already closed due to: %w", sgs.closedErr)
+		}
+		return errors.New("stream has already closed")
+	}
+
+	if err == nil {
+		return sgs.close()
+	}
+
+	var grperr GroupError
+	if !errors.As(err, &grperr) {
+		errors.As(ErrInternalError, &grperr)
+	}
+
+	sgs.internalStream.CancelWrite(protocol.GroupErrorCode(grperr.GroupErrorCode()))
+
+	sgs.closed = true
+	sgs.closedErr = err
+
+	return nil
 }
 
 func (sgs *sendGroupStream) SetWriteDeadline(t time.Time) error {
@@ -28,36 +56,42 @@ func (sgs *sendGroupStream) SetWriteDeadline(t time.Time) error {
 }
 
 func (sgs *sendGroupStream) Close() error {
-	return sgs.internalStream.Close()
+	sgs.mu.Lock()
+	defer sgs.mu.Unlock()
+
+	return sgs.close()
 }
 
 func (sgs *sendGroupStream) WriteFrame(frame []byte) error {
-	err := sgs.internalStream.WriteFrame(frame)
-	if err != nil {
-		var grperr GroupError
-		if errors.As(err, &grperr) {
-			sgs.CancelWrite(GroupErrorCode(grperr.GroupErrorCode()))
+	sgs.mu.Lock()
+	defer sgs.mu.Unlock()
+
+	if sgs.closed {
+		if sgs.closedErr != nil {
+			return sgs.closedErr
 		}
 
+		return ErrClosedGroup
+	}
+
+	err := sgs.internalStream.WriteFrame(frame)
+	if err != nil {
+		sgs.CloseWithError(err)
 		return err
 	}
 
 	return nil
 }
 
-// methods for relaying bytes
-var _ directBytesWriter = (*sendGroupStream)(nil)
+func (sgs *sendGroupStream) close() error {
+	if sgs.closed {
+		if sgs.closedErr != nil {
+			return fmt.Errorf("stream has already closed due to: %w", sgs.closedErr)
+		}
+		return errors.New("stream has already closed")
+	}
 
-func (sgs *sendGroupStream) newBytesWriter() writer {
-	return &streamBytesWriter{sgs}
-}
+	sgs.closed = true
 
-var _ writer = (*streamBytesWriter)(nil)
-
-type streamBytesWriter struct {
-	stream *sendGroupStream
-}
-
-func (s *streamBytesWriter) Write(p *[]byte) (int, error) {
-	return s.stream.internalStream.SendStream.Write(*p)
+	return sgs.internalStream.Close()
 }

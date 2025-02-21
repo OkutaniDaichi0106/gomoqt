@@ -18,11 +18,10 @@ import (
  * }
  */
 type SubscribeUpdateMessage struct {
-	TrackPriority             TrackPriority
-	GroupOrder                GroupOrder
-	MinGroupSequence          GroupSequence
-	MaxGroupSequence          GroupSequence
-	SubscribeUpdateParameters Parameters
+	TrackPriority    TrackPriority
+	GroupOrder       GroupOrder
+	MinGroupSequence GroupSequence
+	MaxGroupSequence GroupSequence
 }
 
 func (su SubscribeUpdateMessage) Len() int {
@@ -31,7 +30,7 @@ func (su SubscribeUpdateMessage) Len() int {
 	l += numberLen(uint64(su.GroupOrder))
 	l += numberLen(uint64(su.MinGroupSequence))
 	l += numberLen(uint64(su.MaxGroupSequence))
-	l += parametersLen(su.SubscribeUpdateParameters)
+
 	return l
 }
 
@@ -46,7 +45,7 @@ func (su SubscribeUpdateMessage) Encode(w io.Writer) (int, error) {
 	*p = AppendNumber(*p, uint64(su.GroupOrder))
 	*p = AppendNumber(*p, uint64(su.MinGroupSequence))
 	*p = AppendNumber(*p, uint64(su.MaxGroupSequence))
-	*p = AppendParameters(*p, su.SubscribeUpdateParameters)
+	// *p = AppendParameters(*p, su.SubscribeUpdateParameters)
 
 	n, err := w.Write(*p)
 	if err != nil {
@@ -97,12 +96,6 @@ func (sum *SubscribeUpdateMessage) Decode(r io.Reader) (int, error) {
 		return n, err
 	}
 	sum.MaxGroupSequence = GroupSequence(num)
-
-	sum.SubscribeUpdateParameters, _, err = ReadParameters(mr)
-	if err != nil {
-		slog.Error("failed to read SubscribeUpdateParameters for SUBSCRIBE_UPDATE message", slog.String("error", err.Error()))
-		return n, err
-	}
 
 	slog.Debug("decoded a SUBSCRIBE_UPDATE message", slog.Int("bytes_read", n))
 

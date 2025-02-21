@@ -27,15 +27,15 @@ var (
 		reason: "duplicated subscribe id",
 	}
 
-	ErrPriorityMismatch = defaultSubscribeError{
-		code:   subscribe_priority_mismatch_error,
-		reason: "update failed",
-	}
+	// ErrPriorityMismatch = defaultSubscribeError{
+	// 	code:   subscribe_priority_mismatch_error,
+	// 	reason: "update failed",
+	// }
 
-	ErrGroupOrderMismatch = defaultSubscribeError{
-		code:   subscribe_order_mismatch_error,
-		reason: "group order mismatch",
-	}
+	// ErrGroupOrderMismatch = defaultSubscribeError{
+	// 	code:   subscribe_order_mismatch_error,
+	// 	reason: "group order mismatch",
+	// }
 
 	// TODO:
 	// ErrSubscriptionLimitExceeded
@@ -65,7 +65,7 @@ var (
 		reason: "too many subscribes",
 	}
 
-	ErrGroupSendInterrupted = defaultGroupError{
+	ErrGroupRejected = defaultGroupError{
 		code:   group_send_interrupted,
 		reason: "send interrupted",
 	}
@@ -75,20 +75,25 @@ var (
 		reason: "out of range",
 	}
 
-	ErrGroupExpires = defaultGroupError{
+	ErrGroupExpired = defaultGroupError{
 		code:   group_expires,
 		reason: "expires",
 	}
 
-	ErrGroupDeliveryTimeout = defaultGroupError{
-		code:   group_delivery_timeout,
-		reason: "delivery timeout",
+	ErrClosedGroup = defaultGroupError{
+		code:   group_closed,
+		reason: "group is closed",
 	}
 
-	ErrDuplicatedGroup = defaultGroupError{
-		code:   group_duplicated_group,
-		reason: "duplicated group",
-	}
+	// ErrGroupDeliveryTimeout = defaultGroupError{
+	// 	code:   group_delivery_timeout,
+	// 	reason: "delivery timeout",
+	// }
+
+	// ErrDuplicatedGroup = defaultGroupError{
+	// 	code:   group_duplicated_group,
+	// 	reason: "duplicated group",
+	// }
 )
 
 // type Error interface {
@@ -157,15 +162,17 @@ func (err defaultAnnounceError) AnnounceErrorCode() protocol.AnnounceErrorCode {
  * Subscribe Errors
  */
 const (
-	subscribe_internal_error          protocol.SubscribeErrorCode = 0x00
-	subscribe_invalid_range           protocol.SubscribeErrorCode = 0x01
-	subscriber_duplicated_id          protocol.SubscribeErrorCode = 0x02
-	subscribe_track_does_not_exist    protocol.SubscribeErrorCode = 0x03
-	subscribe_unauthorized            protocol.SubscribeErrorCode = 0x04
-	subscribe_timeout                 protocol.SubscribeErrorCode = 0x05
-	subscribe_update_error            protocol.SubscribeErrorCode = 0x06
-	subscribe_priority_mismatch_error protocol.SubscribeErrorCode = 0x07
-	subscribe_order_mismatch_error    protocol.SubscribeErrorCode = 0x08
+	subscribe_internal_error       protocol.SubscribeErrorCode = 0x00
+	subscribe_invalid_range        protocol.SubscribeErrorCode = 0x01
+	subscriber_duplicated_id       protocol.SubscribeErrorCode = 0x02
+	subscribe_track_does_not_exist protocol.SubscribeErrorCode = 0x03
+	subscribe_unauthorized         protocol.SubscribeErrorCode = 0x04
+	subscribe_timeout              protocol.SubscribeErrorCode = 0x05
+	subscribe_update_error         protocol.SubscribeErrorCode = 0x06
+	subscribe_closed_track         protocol.SubscribeErrorCode = 0x07
+	subscribe_ended_track          protocol.SubscribeErrorCode = 0x08
+	// subscribe_priority_mismatch_error protocol.SubscribeErrorCode = 0x07
+	// subscribe_order_mismatch_error    protocol.SubscribeErrorCode = 0x08
 )
 
 type SubscribeError interface {
@@ -265,10 +272,10 @@ const (
 	group_send_interrupted     protocol.GroupErrorCode = 0x01
 	group_out_of_range         protocol.GroupErrorCode = 0x02
 	group_expires              protocol.GroupErrorCode = 0x03
-	group_delivery_timeout     protocol.GroupErrorCode = 0x04
+	group_closed               protocol.GroupErrorCode = 0x04
 	group_track_does_not_exist protocol.GroupErrorCode = 0x05
 
-	group_duplicated_group protocol.GroupErrorCode = 0x10
+	// group_duplicated_group protocol.GroupErrorCode = 0x10
 )
 
 type defaultGroupError struct {

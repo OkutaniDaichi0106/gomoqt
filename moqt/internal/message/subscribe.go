@@ -26,28 +26,28 @@ const (
 *   Group Order (varint),
 *   Min Group Sequence (varint),
 *   Max Group Sequence (varint),
-*   Subscribe Parameters (Parameters),
+*   // Subscribe Parameters (Parameters),
 * }
  */
 type SubscribeMessage struct {
-	SubscribeID         SubscribeID
-	TrackPath           []string
-	TrackPriority       TrackPriority
-	GroupOrder          GroupOrder
-	MinGroupSequence    GroupSequence
-	MaxGroupSequence    GroupSequence
-	SubscribeParameters Parameters
+	SubscribeID      SubscribeID
+	TrackPath        string
+	TrackPriority    TrackPriority
+	GroupOrder       GroupOrder
+	MinGroupSequence GroupSequence
+	MaxGroupSequence GroupSequence
+	// SubscribeParameters Parameters
 }
 
 func (s SubscribeMessage) Len() int {
 	l := 0
 	l += numberLen(uint64(s.SubscribeID))
-	l += stringArrayLen(s.TrackPath)
+	l += stringLen(s.TrackPath)
 	l += numberLen(uint64(s.TrackPriority))
 	l += numberLen(uint64(s.GroupOrder))
 	l += numberLen(uint64(s.MinGroupSequence))
 	l += numberLen(uint64(s.MaxGroupSequence))
-	l += parametersLen(s.SubscribeParameters)
+	// l += parametersLen(s.SubscribeParameters)
 	return l
 }
 
@@ -60,13 +60,13 @@ func (s SubscribeMessage) Encode(w io.Writer) (int, error) {
 	*p = AppendNumber(*p, uint64(s.Len()))
 
 	*p = AppendNumber(*p, uint64(s.SubscribeID))
-	*p = AppendStringArray(*p, s.TrackPath)
+	*p = AppendString(*p, s.TrackPath)
 	*p = AppendNumber(*p, uint64(s.TrackPriority))
 	*p = AppendNumber(*p, uint64(s.GroupOrder))
 	*p = AppendNumber(*p, uint64(s.MinGroupSequence))
 	*p = AppendNumber(*p, uint64(s.MaxGroupSequence))
 
-	*p = AppendParameters(*p, s.SubscribeParameters)
+	// *p = AppendParameters(*p, s.SubscribeParameters)
 
 	n, err := w.Write(*p)
 	if err != nil {
@@ -97,7 +97,7 @@ func (s *SubscribeMessage) Decode(r io.Reader) (int, error) {
 	}
 	s.SubscribeID = SubscribeID(num)
 
-	s.TrackPath, _, err = ReadStringArray(mr)
+	s.TrackPath, _, err = ReadString(mr)
 	if err != nil {
 		slog.Error("failed to read TrackPath for SUBSCRIBE message", slog.String("error", err.Error()))
 		return n, err
@@ -131,11 +131,11 @@ func (s *SubscribeMessage) Decode(r io.Reader) (int, error) {
 	}
 	s.MaxGroupSequence = GroupSequence(num)
 
-	s.SubscribeParameters, _, err = ReadParameters(mr)
-	if err != nil {
-		slog.Error("failed to read SubscribeParameters for SUBSCRIBE message", slog.String("error", err.Error()))
-		return n, err
-	}
+	// s.SubscribeParameters, _, err = ReadParameters(mr)
+	// if err != nil {
+	// 	slog.Error("failed to read SubscribeParameters for SUBSCRIBE message", slog.String("error", err.Error()))
+	// 	return n, err
+	// }
 
 	slog.Debug("decoded a SUBSCRIBE message")
 

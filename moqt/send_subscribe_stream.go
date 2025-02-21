@@ -15,9 +15,6 @@ type SendSubscribeStream interface {
 	// Update the subscription
 	UpdateSubscribe(SubscribeUpdate) error
 
-	//
-	ReceiveSubscribeGap() (SubscribeGap, error)
-
 	// Close the stream
 	Close() error
 
@@ -37,42 +34,28 @@ func (ss *sendSubscribeStream) SubscribeID() SubscribeID {
 
 func (ss *sendSubscribeStream) SubscribeConfig() SubscribeConfig {
 	return SubscribeConfig{
-		TrackPath:           ss.internalStream.SubscribeMessage.TrackPath,
-		TrackPriority:       TrackPriority(ss.internalStream.SubscribeMessage.TrackPriority),
-		GroupOrder:          GroupOrder(ss.internalStream.SubscribeMessage.GroupOrder),
-		MinGroupSequence:    GroupSequence(ss.internalStream.SubscribeMessage.MinGroupSequence),
-		MaxGroupSequence:    GroupSequence(ss.internalStream.SubscribeMessage.MaxGroupSequence),
-		SubscribeParameters: Parameters{ss.internalStream.SubscribeMessage.SubscribeParameters},
+		TrackPath:        TrackPath(ss.internalStream.SubscribeMessage.TrackPath),
+		TrackPriority:    TrackPriority(ss.internalStream.SubscribeMessage.TrackPriority),
+		GroupOrder:       GroupOrder(ss.internalStream.SubscribeMessage.GroupOrder),
+		MinGroupSequence: GroupSequence(ss.internalStream.SubscribeMessage.MinGroupSequence),
+		MaxGroupSequence: GroupSequence(ss.internalStream.SubscribeMessage.MaxGroupSequence),
 	}
 }
 
 func (ss *sendSubscribeStream) UpdateSubscribe(update SubscribeUpdate) error {
-	return ss.internalStream.UpdateSubscribe(message.SubscribeUpdateMessage{
-		TrackPriority:             message.TrackPriority(update.TrackPriority),
-		GroupOrder:                message.GroupOrder(update.GroupOrder),
-		MinGroupSequence:          message.GroupSequence(update.MinGroupSequence),
-		MaxGroupSequence:          message.GroupSequence(update.MaxGroupSequence),
-		SubscribeUpdateParameters: message.Parameters(update.SubscribeParameters.paramMap),
-	})
-}
-
-func (ss *sendSubscribeStream) ReceiveSubscribeGap() (SubscribeGap, error) {
-	gap, err := ss.internalStream.ReceiveSubscribeGap()
-	if err != nil {
-		return SubscribeGap{}, err
+	sum := message.SubscribeUpdateMessage{
+		TrackPriority:    message.TrackPriority(update.TrackPriority),
+		GroupOrder:       message.GroupOrder(update.GroupOrder),
+		MinGroupSequence: message.GroupSequence(update.MinGroupSequence),
+		MaxGroupSequence: message.GroupSequence(update.MaxGroupSequence),
 	}
-
-	return SubscribeGap{
-		start: GroupSequence(gap.GapStartSequence),
-		count: gap.GapCount,
-		code:  GroupErrorCode(gap.GroupErrorCode),
-	}, nil
+	return ss.internalStream.SendSubscribeUpdate(sum)
 }
 
 func (ss *sendSubscribeStream) Close() error {
-	return nil //TODO
+	return ss.internalStream.Close()
 }
 
 func (ss *sendSubscribeStream) CloseWithError(err error) error {
-	return nil //TODO
+	return ss.internalStream.CloseWithError(err)
 }

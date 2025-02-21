@@ -21,7 +21,6 @@ type ReceiveGroupStream struct {
 	ReceiveStream transport.ReceiveStream
 
 	startTime time.Time
-	err       error
 
 	//errCodeCh chan StreamErrorCode
 }
@@ -46,9 +45,4 @@ func (r ReceiveGroupStream) CancelRead(code protocol.GroupErrorCode) {
 
 func (r ReceiveGroupStream) SetReadDeadline(t time.Time) error {
 	return r.ReceiveStream.SetReadDeadline(t)
-}
-
-// SetError sets an error on the stream
-func (s *ReceiveGroupStream) SetError(err error) {
-	s.err = err
 }

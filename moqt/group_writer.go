@@ -8,7 +8,7 @@ import "time"
 type GroupWriter interface {
 	GroupSequence() GroupSequence
 	WriteFrame(frame []byte) error
-	CancelWrite(GroupErrorCode)
+	CloseWithError(error) error
 	SetWriteDeadline(time.Time) error
 	Close() error
 }

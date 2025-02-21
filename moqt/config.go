@@ -2,9 +2,9 @@ package moqt
 
 type Config struct {
 	// Configurations
-	MaxSubscribeID SubscribeID
+	MaxSubscribeID SubscribeID // TODO:
 
-	NewSessionURI string
+	NewSessionURI string // TODO:
 
 	SetupExtensions Parameters
 }

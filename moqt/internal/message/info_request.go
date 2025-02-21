@@ -11,11 +11,11 @@ type InfoRequestMessage struct {
 	/*
 	 * Track name
 	 */
-	TrackPath []string
+	TrackPath string
 }
 
 func (irm InfoRequestMessage) Len() int {
-	return stringArrayLen(irm.TrackPath)
+	return stringLen(irm.TrackPath)
 }
 
 func (irm InfoRequestMessage) Encode(w io.Writer) (int, error) {
@@ -23,7 +23,7 @@ func (irm InfoRequestMessage) Encode(w io.Writer) (int, error) {
 	defer PutBytes(p)
 
 	*p = AppendNumber(*p, uint64(irm.Len()))
-	*p = AppendStringArray(*p, irm.TrackPath)
+	*p = AppendString(*p, irm.TrackPath)
 
 	return w.Write(*p)
 }
@@ -36,7 +36,7 @@ func (irm *InfoRequestMessage) Decode(r io.Reader) (int, error) {
 
 	mr := bytes.NewReader(buf)
 
-	irm.TrackPath, _, err = ReadStringArray(mr)
+	irm.TrackPath, _, err = ReadString(mr)
 	if err != nil {
 		return n, err
 	}

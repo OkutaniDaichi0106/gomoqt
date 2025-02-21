@@ -17,6 +17,7 @@ import (
  *   Session Client Parameters (Parameters),
  * }
  */
+
 type SessionClientMessage struct {
 	SupportedVersions []protocol.Version
 	Parameters        Parameters

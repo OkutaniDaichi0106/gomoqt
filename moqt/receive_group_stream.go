@@ -1,6 +1,7 @@
 package moqt
 
 import (
+	"io"
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
@@ -22,27 +23,22 @@ func (s *receiveGroupStream) ReadFrame() ([]byte, error) {
 	return s.internalStream.ReadFrame()
 }
 
-func (s *receiveGroupStream) CancelRead(code GroupErrorCode) {
-	s.internalStream.CancelRead(protocol.GroupErrorCode(code))
+func (s *receiveGroupStream) CancelRead(err GroupError) {
+	s.internalStream.CancelRead(protocol.GroupErrorCode(err.GroupErrorCode()))
 }
 
 func (s *receiveGroupStream) SetReadDeadline(t time.Time) error {
 	return s.internalStream.SetReadDeadline(t)
 }
 
-// methods for relaying bytes
-var _ directBytesReader = (*receiveGroupStream)(nil)
-
-func (s *receiveGroupStream) newBytesReader() reader {
+func (s *receiveGroupStream) newBytesReader() io.Reader {
 	return &streamBytesReader{s.internalStream.ReceiveStream}
 }
-
-var _ reader = (*streamBytesReader)(nil)
 
 type streamBytesReader struct {
 	stream transport.ReceiveStream
 }
 
-func (s *streamBytesReader) Read(p *[]byte) (int, error) {
-	return s.stream.Read(*p)
+func (s *streamBytesReader) Read(p []byte) (int, error) {
+	return s.stream.Read(p)
 }

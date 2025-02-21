@@ -7,27 +7,24 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 )
 
+var _ ReceiveTrackStream = (*receiveTrackStream)(nil)
 var _ TrackReader = (*receiveTrackStream)(nil)
+
+type ReceiveTrackStream interface {
+	TrackReader
+	SubscribeID() SubscribeID
+	SubscribeConfig() SubscribeConfig
+	UpdateSubscribe(SubscribeUpdate) error
+}
 
 func newReceiveTrackStream(session *internal.Session, info Info, subscribeStream *internal.SendSubscribeStream) *receiveTrackStream {
 	rts := &receiveTrackStream{
 		session:             session,
 		subscribeStream:     subscribeStream,
 		latestGroupSequence: GroupSequence(info.LatestGroupSequence),
-		gaps:                make(chan *SubscribeGap, 1),
-	} // TODO: Handle the info
+	}
 
-	// Receive the subscribe gap
-	go func() {
-		for {
-			sgm, err := subscribeStream.ReceiveSubscribeGap()
-			if err != nil {
-				return
-			}
-
-		}
-
-	}()
+	// TODO: Handle the info properly, maybe validate or process it further
 
 	return rts
 }
@@ -62,16 +59,17 @@ func (s *receiveTrackStream) GroupOrder() GroupOrder {
 	return GroupOrder(s.subscribeStream.SubscribeMessage.GroupOrder)
 }
 
+func (s *receiveTrackStream) LatestGroupSequence() GroupSequence {
+	return s.latestGroupSequence
+}
+
 func (s *receiveTrackStream) SubscribeConfig() SubscribeConfig {
 	return SubscribeConfig{
-		TrackPath:        s.subscribeStream.SubscribeMessage.TrackPath,
+		TrackPath:        TrackPath(s.subscribeStream.SubscribeMessage.TrackPath),
 		TrackPriority:    TrackPriority(s.subscribeStream.SubscribeMessage.TrackPriority),
 		GroupOrder:       GroupOrder(s.subscribeStream.SubscribeMessage.GroupOrder),
 		MinGroupSequence: GroupSequence(s.subscribeStream.SubscribeMessage.MinGroupSequence),
 		MaxGroupSequence: GroupSequence(s.subscribeStream.SubscribeMessage.MaxGroupSequence),
-		SubscribeParameters: Parameters{
-			paramMap: s.subscribeStream.SubscribeMessage.SubscribeParameters,
-		},
 	}
 }
 
@@ -84,7 +82,6 @@ func (s *receiveTrackStream) CloseWithError(err error) error { // TODO: implemen
 }
 
 func (s *receiveTrackStream) AcceptGroup(ctx context.Context) (GroupReader, error) {
-	// Check for any gaps first
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -92,7 +89,6 @@ func (s *receiveTrackStream) AcceptGroup(ctx context.Context) (GroupReader, erro
 
 	}
 
-	// If no gaps were found, proceed with accepting the group stream
 	rgs, err := s.session.AcceptGroupStream(ctx, s.subscribeStream.SubscribeMessage.SubscribeID)
 	if err != nil {
 		return nil, err
@@ -103,12 +99,11 @@ func (s *receiveTrackStream) AcceptGroup(ctx context.Context) (GroupReader, erro
 
 func (s *receiveTrackStream) UpdateSubscribe(update SubscribeUpdate) error {
 	sum := message.SubscribeUpdateMessage{
-		GroupOrder:                message.GroupOrder(update.GroupOrder),
-		TrackPriority:             message.TrackPriority(update.TrackPriority),
-		MinGroupSequence:          message.GroupSequence(update.MinGroupSequence),
-		MaxGroupSequence:          message.GroupSequence(update.MaxGroupSequence),
-		SubscribeUpdateParameters: update.SubscribeParameters.paramMap,
+		GroupOrder:       message.GroupOrder(update.GroupOrder),
+		TrackPriority:    message.TrackPriority(update.TrackPriority),
+		MinGroupSequence: message.GroupSequence(update.MinGroupSequence),
+		MaxGroupSequence: message.GroupSequence(update.MaxGroupSequence),
 	}
 
-	return s.subscribeStream.UpdateSubscribe(sum)
+	return s.subscribeStream.SendSubscribeUpdate(sum)
 }

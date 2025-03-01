@@ -3,26 +3,26 @@ package benchmarks_test
 import "testing"
 
 // CopyPayload for GroupPointer copies the payload data
-func (f *GroupPointer) CopyPayload() []byte {
+func (f *FramePointer) CopyPayload() []byte {
 	copyData := make([]byte, len(*f.payload))
 	copy(copyData, *f.payload)
 	return copyData
 }
 
 // Size for GroupPointer returns the size of the payload
-func (f *GroupPointer) Size() int {
+func (f *FramePointer) Size() int {
 	return len(*f.payload)
 }
 
 // ReleaseBytes releases the payload back to the Bytes pool
-func (f *GroupPointer) ReleaseBytes() {
+func (f *FramePointer) ReleaseBytes() {
 	arr := *f.payload
 	arr = arr[0:0]
 	bytesPool.Put(arr)
 }
 
 // ReleasePtrBytes releases the payload back to the PtrBytes pool
-func (f *GroupPointer) ReleasePtrBytes() {
+func (f *FramePointer) ReleasePtrBytes() {
 	ptr := f.payload
 	arr := *ptr
 	arr = arr[0:0]
@@ -31,7 +31,7 @@ func (f *GroupPointer) ReleasePtrBytes() {
 }
 
 // ReleaseGroupPointer releases the GroupPointer back to the GroupPointer pool
-func (f *GroupPointer) ReleaseGroupPointer() {
+func (f *FramePointer) ReleaseGroupPointer() {
 	ptr := f.payload
 	arr := *ptr
 	arr = arr[0:0]
@@ -40,7 +40,7 @@ func (f *GroupPointer) ReleaseGroupPointer() {
 }
 
 // ReleasePtrGroupPointer releases the GroupPointer back to the PtrGroupPointer pool
-func (f *GroupPointer) ReleasePtrGroupPointer() {
+func (f *FramePointer) ReleasePtrGroupPointer() {
 	ptr := f.payload
 	arr := *ptr
 	arr = arr[0:0]
@@ -49,7 +49,7 @@ func (f *GroupPointer) ReleasePtrGroupPointer() {
 }
 
 // NewGroupPointer_BytesPool_Copy creates a new Group with a *[]byte payload using copy
-func NewGroupPointer_BytesPool_Copy(payload []byte) GroupPointer {
+func NewGroupPointer_BytesPool_Copy(payload []byte) FramePointer {
 	arr := bytesPool.Get().([]byte)
 	if cap(arr) < len(payload) {
 		arr = make([]byte, len(payload))
@@ -57,23 +57,23 @@ func NewGroupPointer_BytesPool_Copy(payload []byte) GroupPointer {
 		arr = arr[:len(payload)]
 	}
 	copy(arr, payload)
-	return GroupPointer{
+	return FramePointer{
 		payload: &arr,
 	}
 }
 
 // NewGroupPointer_BytesPool_Append creates a new Group with a *[]byte payload using append
-func NewGroupPointer_BytesPool_Append(payload []byte) GroupPointer {
+func NewGroupPointer_BytesPool_Append(payload []byte) FramePointer {
 	arr := bytesPool.Get().([]byte)
 	arr = arr[0:0]
 	arr = append(arr, payload...)
-	return GroupPointer{
+	return FramePointer{
 		payload: &arr,
 	}
 }
 
 // NewGroupPointer_PtrBytesPool_Copy creates a new Group with a *[]byte payload using copy
-func NewGroupPointer_PtrBytesPool_Copy(payload []byte) GroupPointer {
+func NewGroupPointer_PtrBytesPool_Copy(payload []byte) FramePointer {
 	ptr := ptrBytesPool.Get().(*[]byte)
 	arr := *ptr
 	if cap(arr) < len(payload) {
@@ -83,26 +83,26 @@ func NewGroupPointer_PtrBytesPool_Copy(payload []byte) GroupPointer {
 	}
 	copy(arr, payload)
 	*ptr = arr
-	return GroupPointer{
+	return FramePointer{
 		payload: ptr,
 	}
 }
 
 // NewGroupPointer_PtrBytesPool_Append creates a new Group with a *[]byte payload using append
-func NewGroupPointer_PtrBytesPool_Append(payload []byte) GroupPointer {
+func NewGroupPointer_PtrBytesPool_Append(payload []byte) FramePointer {
 	ptr := ptrBytesPool.Get().(*[]byte)
 	arr := *ptr
 	arr = arr[0:0]
 	arr = append(arr, payload...)
 	*ptr = arr
-	return GroupPointer{
+	return FramePointer{
 		payload: ptr,
 	}
 }
 
 // NewGroupPointer_GroupPointerPool_Copy creates a new GroupPointer from GroupPointer pool using copy
-func NewGroupPointer_GroupPointerPool_Copy(payload []byte) GroupPointer {
-	group := groupPointerPool.Get().(GroupPointer)
+func NewGroupPointer_GroupPointerPool_Copy(payload []byte) FramePointer {
+	group := groupPointerPool.Get().(FramePointer)
 	arr := *group.payload
 	if cap(arr) < len(payload) {
 		arr = make([]byte, len(payload))
@@ -115,8 +115,8 @@ func NewGroupPointer_GroupPointerPool_Copy(payload []byte) GroupPointer {
 }
 
 // NewGroupPointer_GroupPointerPool_Append creates a new GroupPointer from GroupPointer pool using append
-func NewGroupPointer_GroupPointerPool_Append(payload []byte) GroupPointer {
-	group := groupPointerPool.Get().(GroupPointer)
+func NewGroupPointer_GroupPointerPool_Append(payload []byte) FramePointer {
+	group := groupPointerPool.Get().(FramePointer)
 	arr := *group.payload
 	arr = arr[0:0]
 	arr = append(arr, payload...)
@@ -125,17 +125,17 @@ func NewGroupPointer_GroupPointerPool_Append(payload []byte) GroupPointer {
 }
 
 // NewPtrGroupPointer_BytesPool_Append creates a new PtrGroupPointer from Bytes pool using append
-func NewPtrGroupPointer_BytesPool_Append(payload []byte) *GroupPointer {
+func NewPtrGroupPointer_BytesPool_Append(payload []byte) *FramePointer {
 	arr := bytesPool.Get().([]byte)
 	arr = arr[0:0]
 	arr = append(arr, payload...)
-	return &GroupPointer{
+	return &FramePointer{
 		payload: &arr,
 	}
 }
 
 // NewPtrGroupPointer_BytesPool_Copy creates a new PtrGroupPointer from Bytes pool using copy
-func NewPtrGroupPointer_BytesPool_Copy(payload []byte) *GroupPointer {
+func NewPtrGroupPointer_BytesPool_Copy(payload []byte) *FramePointer {
 	arr := bytesPool.Get().([]byte)
 	if cap(arr) < len(payload) {
 		arr = make([]byte, len(payload))
@@ -143,25 +143,25 @@ func NewPtrGroupPointer_BytesPool_Copy(payload []byte) *GroupPointer {
 		arr = arr[:len(payload)]
 	}
 	copy(arr, payload)
-	return &GroupPointer{
+	return &FramePointer{
 		payload: &arr,
 	}
 }
 
 // NewPtrGroupPointer_PtrBytesPool_Append creates a new PtrGroupPointer from PtrBytes pool using append
-func NewPtrGroupPointer_PtrBytesPool_Append(payload []byte) *GroupPointer {
+func NewPtrGroupPointer_PtrBytesPool_Append(payload []byte) *FramePointer {
 	ptr := ptrBytesPool.Get().(*[]byte)
 	arr := *ptr
 	arr = arr[0:0]
 	arr = append(arr, payload...)
 	*ptr = arr
-	return &GroupPointer{
+	return &FramePointer{
 		payload: ptr,
 	}
 }
 
 // NewPtrGroupPointer_PtrBytesPool_Copy creates a new PtrGroupPointer from PtrBytes pool using copy
-func NewPtrGroupPointer_PtrBytesPool_Copy(payload []byte) *GroupPointer {
+func NewPtrGroupPointer_PtrBytesPool_Copy(payload []byte) *FramePointer {
 	ptr := ptrBytesPool.Get().(*[]byte)
 	arr := *ptr
 	if cap(arr) < len(payload) {
@@ -171,14 +171,14 @@ func NewPtrGroupPointer_PtrBytesPool_Copy(payload []byte) *GroupPointer {
 	}
 	copy(arr, payload)
 	*ptr = arr
-	return &GroupPointer{
+	return &FramePointer{
 		payload: ptr,
 	}
 }
 
 // NewPtrGroupPointer_GroupPointerPool_Append creates a new PtrGroupPointer from GroupPointer pool using append
-func NewPtrGroupPointer_GroupPointerPool_Append(payload []byte) *GroupPointer {
-	group := groupPointerPool.Get().(GroupPointer)
+func NewPtrGroupPointer_GroupPointerPool_Append(payload []byte) *FramePointer {
+	group := groupPointerPool.Get().(FramePointer)
 	arr := *group.payload
 	arr = arr[0:0]
 	arr = append(arr, payload...)
@@ -187,8 +187,8 @@ func NewPtrGroupPointer_GroupPointerPool_Append(payload []byte) *GroupPointer {
 }
 
 // NewPtrGroupPointer_GroupPointerPool_Copy creates a new PtrGroupPointer from GroupPointer pool using copy
-func NewPtrGroupPointer_GroupPointerPool_Copy(payload []byte) *GroupPointer {
-	group := groupPointerPool.Get().(GroupPointer)
+func NewPtrGroupPointer_GroupPointerPool_Copy(payload []byte) *FramePointer {
+	group := groupPointerPool.Get().(FramePointer)
 	arr := *group.payload
 	if cap(arr) < len(payload) {
 		arr = make([]byte, len(payload))
@@ -201,8 +201,8 @@ func NewPtrGroupPointer_GroupPointerPool_Copy(payload []byte) *GroupPointer {
 }
 
 // NewPtrGroupPointer_PtrGroupPointerPool_Append creates a new PtrGroupPointer from PtrGroupPointer pool using append
-func NewPtrGroupPointer_PtrGroupPointerPool_Append(payload []byte) *GroupPointer {
-	group := ptrGroupPointerPool.Get().(*GroupPointer)
+func NewPtrGroupPointer_PtrGroupPointerPool_Append(payload []byte) *FramePointer {
+	group := ptrGroupPointerPool.Get().(*FramePointer)
 	arr := *group.payload
 	arr = arr[0:0]
 	arr = append(arr, payload...)
@@ -211,8 +211,8 @@ func NewPtrGroupPointer_PtrGroupPointerPool_Append(payload []byte) *GroupPointer
 }
 
 // NewPtrGroupPointer_PtrGroupPointerPool_Copy creates a new PtrGroupPointer from PtrGroupPointer pool using copy
-func NewPtrGroupPointer_PtrGroupPointerPool_Copy(payload []byte) *GroupPointer {
-	group := ptrGroupPointerPool.Get().(*GroupPointer)
+func NewPtrGroupPointer_PtrGroupPointerPool_Copy(payload []byte) *FramePointer {
+	group := ptrGroupPointerPool.Get().(*FramePointer)
 	arr := *group.payload
 	if cap(arr) < len(payload) {
 		arr = make([]byte, len(payload))
@@ -224,8 +224,8 @@ func NewPtrGroupPointer_PtrGroupPointerPool_Copy(payload []byte) *GroupPointer {
 	return group
 }
 
-func NewPtrGroupPointer_PtrGroupPointerAndBytesPool_Copy(payload []byte) *GroupPointer {
-	group := ptrGroupPointerPool.Get().(*GroupPointer)
+func NewPtrGroupPointer_PtrGroupPointerAndBytesPool_Copy(payload []byte) *FramePointer {
+	group := ptrGroupPointerPool.Get().(*FramePointer)
 	buf := bytesPool.Get().([]byte)
 	if cap(buf) < len(payload) {
 		buf = make([]byte, len(payload))
@@ -237,8 +237,8 @@ func NewPtrGroupPointer_PtrGroupPointerAndBytesPool_Copy(payload []byte) *GroupP
 	return group
 }
 
-func NewPtrGroupPointer_PtrGroupPointerAndBytesPool_Append(payload []byte) *GroupPointer {
-	group := ptrGroupPointerPool.Get().(*GroupPointer)
+func NewPtrGroupPointer_PtrGroupPointerAndBytesPool_Append(payload []byte) *FramePointer {
+	group := ptrGroupPointerPool.Get().(*FramePointer)
 	buf := bytesPool.Get().([]byte)
 	buf = buf[:0]
 	buf = append(buf, payload...)
@@ -246,8 +246,8 @@ func NewPtrGroupPointer_PtrGroupPointerAndBytesPool_Append(payload []byte) *Grou
 	return group
 }
 
-func NewPtrGroupPointer_PtrGroupPointerAndPtrBytesPool_Copy(payload []byte) *GroupPointer {
-	group := ptrGroupPointerPool.Get().(*GroupPointer)
+func NewPtrGroupPointer_PtrGroupPointerAndPtrBytesPool_Copy(payload []byte) *FramePointer {
+	group := ptrGroupPointerPool.Get().(*FramePointer)
 	ptr := ptrBytesPool.Get().(*[]byte)
 	if cap(*ptr) < len(payload) {
 		*ptr = make([]byte, len(payload))
@@ -259,8 +259,8 @@ func NewPtrGroupPointer_PtrGroupPointerAndPtrBytesPool_Copy(payload []byte) *Gro
 	return group
 }
 
-func NewPtrGroupPointer_PtrGroupPointerAndPtrBytesPool_Append(payload []byte) *GroupPointer {
-	group := ptrGroupPointerPool.Get().(*GroupPointer)
+func NewPtrGroupPointer_PtrGroupPointerAndPtrBytesPool_Append(payload []byte) *FramePointer {
+	group := ptrGroupPointerPool.Get().(*FramePointer)
 	ptr := ptrBytesPool.Get().(*[]byte)
 	*ptr = (*ptr)[:0]
 	*ptr = append(*ptr, payload...)
@@ -269,8 +269,8 @@ func NewPtrGroupPointer_PtrGroupPointerAndPtrBytesPool_Append(payload []byte) *G
 }
 
 // NewGroupPointer_PtrGroupPointerPool_Copy creates a new GroupPointer from PtrGroupPointer pool using copy
-func NewGroupPointer_PtrGroupPointerPool_Copy(payload []byte) GroupPointer {
-	group := ptrGroupPointerPool.Get().(*GroupPointer)
+func NewGroupPointer_PtrGroupPointerPool_Copy(payload []byte) FramePointer {
+	group := ptrGroupPointerPool.Get().(*FramePointer)
 	arr := *group.payload
 	if cap(arr) < len(payload) {
 		arr = make([]byte, len(payload))
@@ -283,8 +283,8 @@ func NewGroupPointer_PtrGroupPointerPool_Copy(payload []byte) GroupPointer {
 }
 
 // NewGroupPointer_PtrGroupPointerPool_Append creates a new GroupPointer from PtrGroupPointer pool using append
-func NewGroupPointer_PtrGroupPointerPool_Append(payload []byte) GroupPointer {
-	group := ptrGroupPointerPool.Get().(*GroupPointer)
+func NewGroupPointer_PtrGroupPointerPool_Append(payload []byte) FramePointer {
+	group := ptrGroupPointerPool.Get().(*FramePointer)
 	arr := *group.payload
 	arr = arr[0:0]
 	arr = append(arr, payload...)
@@ -293,8 +293,8 @@ func NewGroupPointer_PtrGroupPointerPool_Append(payload []byte) GroupPointer {
 }
 
 // New constructor functions
-func NewGroupPointer_GroupPointerAndBytesPool_Copy(payload []byte) GroupPointer {
-	group := groupPointerPool.Get().(GroupPointer)
+func NewGroupPointer_GroupPointerAndBytesPool_Copy(payload []byte) FramePointer {
+	group := groupPointerPool.Get().(FramePointer)
 	buf := bytesPool.Get().([]byte)
 	if cap(buf) < len(payload) {
 		buf = make([]byte, len(payload))
@@ -306,8 +306,8 @@ func NewGroupPointer_GroupPointerAndBytesPool_Copy(payload []byte) GroupPointer 
 	return group
 }
 
-func NewGroupPointer_GroupPointerAndBytesPool_Append(payload []byte) GroupPointer {
-	group := groupPointerPool.Get().(GroupPointer)
+func NewGroupPointer_GroupPointerAndBytesPool_Append(payload []byte) FramePointer {
+	group := groupPointerPool.Get().(FramePointer)
 	buf := bytesPool.Get().([]byte)
 	buf = buf[:0]
 	buf = append(buf, payload...)
@@ -315,8 +315,8 @@ func NewGroupPointer_GroupPointerAndBytesPool_Append(payload []byte) GroupPointe
 	return group
 }
 
-func NewGroupPointer_GroupPointerAndPtrBytesPool_Copy(payload []byte) GroupPointer {
-	group := groupPointerPool.Get().(GroupPointer)
+func NewGroupPointer_GroupPointerAndPtrBytesPool_Copy(payload []byte) FramePointer {
+	group := groupPointerPool.Get().(FramePointer)
 	ptr := ptrBytesPool.Get().(*[]byte)
 	if cap(*ptr) < len(payload) {
 		*ptr = make([]byte, len(payload))
@@ -328,8 +328,8 @@ func NewGroupPointer_GroupPointerAndPtrBytesPool_Copy(payload []byte) GroupPoint
 	return group
 }
 
-func NewGroupPointer_GroupPointerAndPtrBytesPool_Append(payload []byte) GroupPointer {
-	group := groupPointerPool.Get().(GroupPointer)
+func NewGroupPointer_GroupPointerAndPtrBytesPool_Append(payload []byte) FramePointer {
+	group := groupPointerPool.Get().(FramePointer)
 	ptr := ptrBytesPool.Get().(*[]byte)
 	*ptr = (*ptr)[:0]
 	*ptr = append(*ptr, payload...)
@@ -338,8 +338,8 @@ func NewGroupPointer_GroupPointerAndPtrBytesPool_Append(payload []byte) GroupPoi
 }
 
 // New constructor functions for GroupPointer with PtrGroupPointer combined pools
-func NewGroupPointer_PtrGroupPointerAndBytesPool_Copy(payload []byte) GroupPointer {
-	group := ptrGroupPointerPool.Get().(*GroupPointer)
+func NewGroupPointer_PtrGroupPointerAndBytesPool_Copy(payload []byte) FramePointer {
+	group := ptrGroupPointerPool.Get().(*FramePointer)
 	buf := bytesPool.Get().([]byte)
 	if cap(buf) < len(payload) {
 		buf = make([]byte, len(payload))
@@ -351,8 +351,8 @@ func NewGroupPointer_PtrGroupPointerAndBytesPool_Copy(payload []byte) GroupPoint
 	return *group
 }
 
-func NewGroupPointer_PtrGroupPointerAndBytesPool_Append(payload []byte) GroupPointer {
-	group := ptrGroupPointerPool.Get().(*GroupPointer)
+func NewGroupPointer_PtrGroupPointerAndBytesPool_Append(payload []byte) FramePointer {
+	group := ptrGroupPointerPool.Get().(*FramePointer)
 	buf := bytesPool.Get().([]byte)
 	buf = buf[:0]
 	buf = append(buf, payload...)
@@ -360,8 +360,8 @@ func NewGroupPointer_PtrGroupPointerAndBytesPool_Append(payload []byte) GroupPoi
 	return *group
 }
 
-func NewGroupPointer_PtrGroupPointerAndPtrBytesPool_Copy(payload []byte) GroupPointer {
-	group := ptrGroupPointerPool.Get().(*GroupPointer)
+func NewGroupPointer_PtrGroupPointerAndPtrBytesPool_Copy(payload []byte) FramePointer {
+	group := ptrGroupPointerPool.Get().(*FramePointer)
 	ptr := ptrBytesPool.Get().(*[]byte)
 	if cap(*ptr) < len(payload) {
 		*ptr = make([]byte, len(payload))
@@ -373,8 +373,8 @@ func NewGroupPointer_PtrGroupPointerAndPtrBytesPool_Copy(payload []byte) GroupPo
 	return *group
 }
 
-func NewGroupPointer_PtrGroupPointerAndPtrBytesPool_Append(payload []byte) GroupPointer {
-	group := ptrGroupPointerPool.Get().(*GroupPointer)
+func NewGroupPointer_PtrGroupPointerAndPtrBytesPool_Append(payload []byte) FramePointer {
+	group := ptrGroupPointerPool.Get().(*FramePointer)
 	ptr := ptrBytesPool.Get().(*[]byte)
 	*ptr = (*ptr)[:0]
 	*ptr = append(*ptr, payload...)
@@ -383,8 +383,8 @@ func NewGroupPointer_PtrGroupPointerAndPtrBytesPool_Append(payload []byte) Group
 }
 
 // New constructor functions for combined pools
-func NewPtrGroupPointer_GroupPointerAndBytesPool_Copy(payload []byte) *GroupPointer {
-	group := groupPointerPool.Get().(GroupPointer)
+func NewPtrGroupPointer_GroupPointerAndBytesPool_Copy(payload []byte) *FramePointer {
+	group := groupPointerPool.Get().(FramePointer)
 	buf := bytesPool.Get().([]byte)
 	if cap(buf) < len(payload) {
 		buf = make([]byte, len(payload))
@@ -396,8 +396,8 @@ func NewPtrGroupPointer_GroupPointerAndBytesPool_Copy(payload []byte) *GroupPoin
 	return &group
 }
 
-func NewPtrGroupPointer_GroupPointerAndBytesPool_Append(payload []byte) *GroupPointer {
-	group := groupPointerPool.Get().(GroupPointer)
+func NewPtrGroupPointer_GroupPointerAndBytesPool_Append(payload []byte) *FramePointer {
+	group := groupPointerPool.Get().(FramePointer)
 	buf := bytesPool.Get().([]byte)
 	buf = buf[:0]
 	buf = append(buf, payload...)
@@ -405,8 +405,8 @@ func NewPtrGroupPointer_GroupPointerAndBytesPool_Append(payload []byte) *GroupPo
 	return &group
 }
 
-func NewPtrGroupPointer_GroupPointerAndPtrBytesPool_Copy(payload []byte) *GroupPointer {
-	group := groupPointerPool.Get().(GroupPointer)
+func NewPtrGroupPointer_GroupPointerAndPtrBytesPool_Copy(payload []byte) *FramePointer {
+	group := groupPointerPool.Get().(FramePointer)
 	ptr := ptrBytesPool.Get().(*[]byte)
 	if cap(*ptr) < len(payload) {
 		*ptr = make([]byte, len(payload))
@@ -418,8 +418,8 @@ func NewPtrGroupPointer_GroupPointerAndPtrBytesPool_Copy(payload []byte) *GroupP
 	return &group
 }
 
-func NewPtrGroupPointer_GroupPointerAndPtrBytesPool_Append(payload []byte) *GroupPointer {
-	group := groupPointerPool.Get().(GroupPointer)
+func NewPtrGroupPointer_GroupPointerAndPtrBytesPool_Append(payload []byte) *FramePointer {
+	group := groupPointerPool.Get().(FramePointer)
 	ptr := ptrBytesPool.Get().(*[]byte)
 	*ptr = (*ptr)[:0]
 	*ptr = append(*ptr, payload...)

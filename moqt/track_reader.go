@@ -22,5 +22,6 @@ type TrackReader interface {
 	AcceptGroup(context.Context) (GroupReader, error)
 
 	Close() error
+
 	CloseWithError(error) error
 }

@@ -5,11 +5,11 @@ import (
 	"testing"
 )
 
-type GroupDirect struct {
+type FrameDirect struct {
 	payload []byte
 }
 
-type GroupPointer struct {
+type FramePointer struct {
 	payload *[]byte
 }
 
@@ -42,7 +42,7 @@ var (
 
 	groupDirectPool = sync.Pool{
 		New: func() interface{} {
-			return GroupDirect{
+			return FrameDirect{
 				payload: make([]byte, 1024),
 			}
 		},
@@ -50,7 +50,7 @@ var (
 
 	ptrGroupDirectPool = sync.Pool{
 		New: func() interface{} {
-			return &GroupDirect{
+			return &FrameDirect{
 				payload: make([]byte, 1024),
 			}
 		},
@@ -59,7 +59,7 @@ var (
 	groupPointerPool = sync.Pool{
 		New: func() interface{} {
 			b := make([]byte, 1024)
-			return GroupPointer{
+			return FramePointer{
 				payload: &b,
 			}
 		},
@@ -68,7 +68,7 @@ var (
 	ptrGroupPointerPool = sync.Pool{
 		New: func() interface{} {
 			b := make([]byte, 1024)
-			return &GroupPointer{
+			return &FramePointer{
 				payload: &b,
 			}
 		},
@@ -105,7 +105,7 @@ func BenchmarkPoolGetPut_GroupDirect(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < 100; j++ {
-			group := groupDirectPool.Get().(GroupDirect)
+			group := groupDirectPool.Get().(FrameDirect)
 			groupDirectPool.Put(group)
 		}
 	}
@@ -117,7 +117,7 @@ func BenchmarkPoolGetPut_PtrGroupDirect(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < 100; j++ {
-			group := ptrGroupDirectPool.Get().(*GroupDirect)
+			group := ptrGroupDirectPool.Get().(*FrameDirect)
 			ptrGroupDirectPool.Put(group)
 		}
 	}
@@ -129,7 +129,7 @@ func BenchmarkPoolGetPut_GroupPointer(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < 100; j++ {
-			group := groupPointerPool.Get().(GroupPointer)
+			group := groupPointerPool.Get().(FramePointer)
 			groupPointerPool.Put(group)
 		}
 	}
@@ -141,7 +141,7 @@ func BenchmarkPoolGetPut_PtrGroupPointer(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < 100; j++ {
-			group := ptrGroupPointerPool.Get().(*GroupPointer)
+			group := ptrGroupPointerPool.Get().(*FramePointer)
 			ptrGroupPointerPool.Put(group)
 		}
 	}

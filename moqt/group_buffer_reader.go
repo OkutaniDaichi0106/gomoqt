@@ -25,7 +25,7 @@ func (r *groupBufferReader) GroupSequence() GroupSequence {
 	return r.groupBuffer.groupSequence
 }
 
-func (r *groupBufferReader) ReadFrame() ([]byte, error) {
+func (r *groupBufferReader) ReadFrame() (*Frame, error) {
 	r.groupBuffer.cond.L.Lock()
 	defer r.groupBuffer.cond.L.Unlock()
 
@@ -52,13 +52,13 @@ func (r *groupBufferReader) ReadFrame() ([]byte, error) {
 
 	f := r.groupBuffer.frames[r.readFrames]
 	r.readFrames++
-	return f.bytes, nil
+	return f, nil
 }
 
 func (r *groupBufferReader) SetReadDeadline(t time.Time) error {
 	d := time.Until(t)
 
-	//
+	// If the deadline is in the past, cancel the read immediately.
 	if d <= 0 {
 		r.groupBuffer.cond.L.Lock()
 		defer r.groupBuffer.cond.L.Unlock()

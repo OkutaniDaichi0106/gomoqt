@@ -1,6 +1,6 @@
 # gomoqt
 
-A Go implementation of Media over QUIC Transport (MOQT), designed for efficient media streaming over QUIC.
+A Go implementation of Media over QUIC Transfork (MOQT), designed for efficient media streaming over QUIC.
 
 ## Overview
 

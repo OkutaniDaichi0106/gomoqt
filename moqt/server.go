@@ -3,8 +3,10 @@ package moqt
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
@@ -38,11 +40,130 @@ type Server struct {
 	 */
 	ServeMux *ServeMux
 
-	// QUIC Listener
-	quicListener *quic.EarlyListener
+	/*
+	 * Session Handler
+	 * This function is called when a session is established
+	 */
+	SessionHandlerFunc func(path string, sess Session)
 
 	// Webtransport Server
 	wts *webtransport.Server
+
+	// QUIC Listener
+	mutex     sync.RWMutex
+	listeners map[*quic.EarlyListener]int
+}
+
+func (s *Server) ServeQUICListener(lis quic.Listener) error {
+
+	/*
+	 * Listen and serve on raw QUIC
+	 */
+	for {
+		qconn, err := lis.Accept(context.Background())
+		if err != nil {
+			slog.Error("failed to accept", slog.String("error", err.Error()))
+			return err
+		}
+
+		s.ServeQUIC(qconn)
+	}
+}
+
+func (s *Server) ServeQUICConn(qconn quic.Connection) error {
+	/*
+	 * Listen and serve on raw QUIC
+	 */
+	conn := transport.NewMORQConnection(qconn)
+
+	/*
+	 * Set up
+	 */
+	stream, scm, err := internal.AcceptSessionStream(conn, context.Background())
+	if err != nil {
+		slog.Error("failed to accept a session stream", slog.String("error", err.Error()))
+		return err
+	}
+
+	// Verify if the request contains a valid path
+	path, err := Parameters{scm.Parameters}.GetString(param_type_path)
+	if err != nil {
+		slog.Error("failed to get a path", slog.String("error", err.Error()))
+		return err
+	}
+
+	if path == "" {
+		slog.Error("path not found")
+		return err
+	}
+
+	// Send a set-up responce
+	ssm := message.SessionServerMessage{
+		SelectedVersion: protocol.Version(internal.DefaultServerVersion),
+	}
+
+	if s.Config != nil {
+		if s.Config.SetupExtensions.paramMap != nil {
+			ssm.Parameters = message.Parameters(s.Config.SetupExtensions.paramMap)
+		}
+	}
+
+	_, err = ssm.Encode(stream.Stream)
+	if err != nil {
+		slog.Error("failed to send a set-up responce", slog.String("error", err.Error()))
+		return err
+	}
+
+	sess := &session{internalSession: internal.NewSession(conn, stream), extensions: Parameters{scm.Parameters}}
+
+	s.SessionHandlerFunc(path, sess)
+
+	return nil
+}
+
+func (s *Server) ServeWebTransport(w http.ResponseWriter, r *http.Request) error {
+	wtsess, err := s.wts.Upgrade(w, r)
+	if err != nil {
+		slog.Error("failed to upgrade WebTransport session", slog.String("error", err.Error()))
+		w.WriteHeader(http.StatusInternalServerError)
+		return err
+	}
+
+	// Get a Connection
+	conn := transport.NewMOWTConnection(wtsess)
+
+	/*
+	 * Set up
+	 */
+	stream, scm, err := internal.AcceptSessionStream(conn, context.Background())
+	if err != nil {
+		slog.Error("failed to accept an session stream", slog.String("error", err.Error()))
+		return err
+	}
+
+	ssm := message.SessionServerMessage{
+		SelectedVersion: protocol.Version(internal.DefaultServerVersion),
+	}
+
+	if s.Config != nil {
+		if s.Config.SetupExtensions.paramMap != nil {
+			ssm.Parameters = message.Parameters(s.Config.SetupExtensions.paramMap)
+		}
+	}
+
+	_, err = ssm.Encode(stream.Stream)
+
+	if err != nil {
+		slog.Error("failed to send a set-up response", slog.String("error", err.Error()))
+		return err
+	}
+
+	// Initialize a Session
+	sess := &session{internalSession: internal.NewSession(conn, stream), extensions: Parameters{scm.Parameters}}
+
+	s.SessionHandlerFunc(r.URL.Path, sess)
+
+	return nil
 }
 
 func (s *Server) init() (err error) {
@@ -55,69 +176,8 @@ func (s *Server) init() (err error) {
 		return err
 	}
 
-	/*
-	 * WebTransport
-	 */
-	s.wts = &webtransport.Server{
-		H3: http3.Server{
-			Addr:       s.Addr,
-			TLSConfig:  s.TLSConfig,
-			QUICConfig: s.QUICConfig,
-		},
-	}
-
 	if s.ServeMux == nil {
-		s.ServeMux = DefaultHandler
-	}
-
-	s.ServeMux.mu.Lock()
-	defer s.ServeMux.mu.Unlock()
-	for path, handler := range s.ServeMux.handlerFuncs {
-		http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
-			/*
-			 *
-			 */
-			wtsess, err := s.wts.Upgrade(w, r)
-			if err != nil {
-				slog.Error("upgrading failed", slog.String("error", err.Error()))
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-
-			// Get a Connection
-			conn := transport.NewMOWTConnection(wtsess)
-
-			/*
-			 * Set up
-			 */
-			stream, scm, err := internal.AcceptSessionStream(conn, context.Background())
-			if err != nil {
-				slog.Error("failed to accept an session stream", slog.String("error", err.Error()))
-				return
-			}
-
-			ssm := message.SessionServerMessage{
-				SelectedVersion: protocol.Version(internal.DefaultServerVersion),
-			}
-
-			if s.Config != nil {
-				if s.Config.SetupExtensions.paramMap != nil {
-					ssm.Parameters = message.Parameters(s.Config.SetupExtensions.paramMap)
-				}
-			}
-
-			_, err = ssm.Encode(stream.Stream)
-
-			if err != nil {
-				slog.Error("failed to send a set-up response", slog.String("error", err.Error()))
-				return
-			}
-
-			// Initialize a Session
-			sess := internal.NewSession(conn, stream)
-
-			handler(&session{internalSession: sess, extensions: Parameters{scm.Parameters}})
-		})
+		s.ServeMux = DefaultMux
 	}
 
 	return nil
@@ -138,83 +198,39 @@ func (s *Server) ListenAndServe() error {
 			return err
 		}
 
-		go func(qconn quic.Connection) {
-			switch qconn.ConnectionState().TLS.NegotiatedProtocol {
-			case "h3":
-				/*
-				 * Listen and serve on Webtransport
-				 */
-				if s.wts == nil {
-					panic("webtranport.Server is nil")
+		switch qconn.ConnectionState().TLS.NegotiatedProtocol {
+		case http3.NextProtoH3:
+			/*
+			 * Listen and serve on webtransport
+			 */
+			// If the server is not initialized, initialize it
+			if s.wts == nil {
+				s.wts = &webtransport.Server{
+					H3: http3.Server{
+						Addr:       s.Addr,
+						TLSConfig:  s.TLSConfig,
+						QUICConfig: s.QUICConfig,
+					},
 				}
-
-				/*
-				 * Serve the QUIC Connection
-				 */
-				go s.wts.ServeQUICConn(qconn)
-
-				/*
-				 * The quic.Connection will be handled in the ServeQUICConn()
-				 * and will be served as a webtransport.Session in a http.HandlerFunc()
-				 * In the HandlerFunc() the ServerSession will be handled
-				 */
-			case "moq-00":
-				/*
-				 * Serve the QUIC Connection
-				 */
-				go func(qconn quic.Connection) {
-					/*
-					 * Listen and serve on raw QUIC
-					 */
-					conn := transport.NewMORQConnection(qconn)
-
-					/*
-					 * Set up
-					 */
-					stream, scm, err := internal.AcceptSessionStream(conn, context.Background())
-					if err != nil {
-						slog.Error("failed to accept a session stream", slog.String("error", err.Error()))
-						return
-					}
-
-					// Verify if the request contains a valid path
-					path, err := Parameters{scm.Parameters}.GetString(param_type_path)
-					if err != nil {
-						slog.Error("failed to get a path", slog.String("error", err.Error()))
-						return
-					}
-
-					if path == "" {
-						slog.Error("path not found")
-						return
-					}
-
-					// Send a set-up responce
-					ssm := message.SessionServerMessage{
-						SelectedVersion: protocol.Version(internal.DefaultServerVersion),
-					}
-
-					if s.Config != nil {
-						if s.Config.SetupExtensions.paramMap != nil {
-							ssm.Parameters = message.Parameters(s.Config.SetupExtensions.paramMap)
-						}
-					}
-
-					_, err = ssm.Encode(stream.Stream)
-					if err != nil {
-						slog.Error("failed to send a set-up responce", slog.String("error", err.Error()))
-						return
-					}
-
-					handler := s.ServeMux.findHandlerFunc("/" + path)
-
-					handler(&session{internalSession: internal.NewSession(conn, stream), extensions: Parameters{scm.Parameters}})
-				}(qconn)
-			default:
-				return
 			}
-		}(qconn)
+
+			/*
+			 * Serve the QUIC Connection
+			 */
+			go s.wts.ServeQUICConn(qconn)
+		case NextProtoMOQ:
+			/*
+			 * Serve the QUIC Connection
+			 */
+
+			go s.ServeQUIC(qconn)
+		default:
+			slog.Error("unsupported protocol", slog.String("protocol", qconn.ConnectionState().TLS.NegotiatedProtocol))
+			return fmt.Errorf("unsupported protocol: %s", qconn.ConnectionState().TLS.NegotiatedProtocol)
+		}
 
 	}
 
 }
+
+const NextProtoMOQ = "moq-00"

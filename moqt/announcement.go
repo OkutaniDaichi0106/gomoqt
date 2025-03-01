@@ -15,6 +15,17 @@ func NewAnnouncement(trackPath TrackPath) *Announcement {
 	return &ann
 }
 
+func newEndedAnnouncement(trackPath TrackPath) *Announcement {
+	ann := Announcement{
+		TrackPath: trackPath,
+	}
+
+	// Set the status to ENDED
+	ann.end()
+
+	return &ann
+}
+
 type Announcement struct {
 	active bool
 

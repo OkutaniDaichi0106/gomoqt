@@ -142,11 +142,11 @@ func (s *session) AcceptTrackStream(ctx context.Context, handler func(SubscribeC
 		return nil, ErrInternalError
 	}
 
-	sss := &receiveSubscribeStream{internalStream: ss}
+	sts := &sendTrackStream{subscribeStream: ss}
 
-	info, err := handler(sss.SubscribeConfig())
+	info, err := handler(sts.SubscribeConfig())
 	if err != nil {
-		sss.CloseWithError(err)
+		sts.CloseWithError(err)
 		return nil, err
 	}
 
@@ -156,16 +156,12 @@ func (s *session) AcceptTrackStream(ctx context.Context, handler func(SubscribeC
 		GroupOrder:          message.GroupOrder(info.GroupOrder),
 	}
 
-	_, err = im.Encode(sss.internalStream.Stream)
+	_, err = im.Encode(sts.subscribeStream.Stream)
 	if err != nil {
 		return nil, err
 	}
 
-	return &sendTrackStream{
-		session:                s.internalSession,
-		receiveSubscribeStream: sss.internalStream,
-		latestGroupSequence:    GroupSequence(info.LatestGroupSequence),
-	}, nil
+	return sts, nil
 }
 
 func (s *session) RespondTrackInfo(ctx context.Context, handler func(InfoRequest) (Info, error)) error {

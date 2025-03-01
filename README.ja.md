@@ -1,6 +1,6 @@
 # gomoqt
 
-MOQT (Media over QUIC Transport) のGo言語による実装です。
+MOQT (Media over QUIC Transfork) のGo言語による実装です。
 
 ## 概要
 

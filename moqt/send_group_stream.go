@@ -23,6 +23,31 @@ func (sgs *sendGroupStream) GroupSequence() GroupSequence {
 	return GroupSequence(sgs.internalStream.GroupMessage.GroupSequence)
 }
 
+func (sgs *sendGroupStream) WriteFrame(frame *Frame) error {
+	sgs.mu.Lock()
+	defer sgs.mu.Unlock()
+
+	if sgs.closed {
+		if sgs.closedErr != nil {
+			return sgs.closedErr
+		}
+
+		return ErrClosedGroup
+	}
+
+	err := sgs.internalStream.WriteFrameBytes(frame.bytes)
+	if err != nil {
+		sgs.CloseWithError(err)
+		return err
+	}
+
+	return nil
+}
+
+func (sgs *sendGroupStream) SetWriteDeadline(t time.Time) error {
+	return sgs.internalStream.SetWriteDeadline(t)
+}
+
 func (sgs *sendGroupStream) CloseWithError(err error) error {
 	sgs.mu.Lock()
 	defer sgs.mu.Unlock()
@@ -51,36 +76,11 @@ func (sgs *sendGroupStream) CloseWithError(err error) error {
 	return nil
 }
 
-func (sgs *sendGroupStream) SetWriteDeadline(t time.Time) error {
-	return sgs.internalStream.SetWriteDeadline(t)
-}
-
 func (sgs *sendGroupStream) Close() error {
 	sgs.mu.Lock()
 	defer sgs.mu.Unlock()
 
 	return sgs.close()
-}
-
-func (sgs *sendGroupStream) WriteFrame(frame []byte) error {
-	sgs.mu.Lock()
-	defer sgs.mu.Unlock()
-
-	if sgs.closed {
-		if sgs.closedErr != nil {
-			return sgs.closedErr
-		}
-
-		return ErrClosedGroup
-	}
-
-	err := sgs.internalStream.WriteFrame(frame)
-	if err != nil {
-		sgs.CloseWithError(err)
-		return err
-	}
-
-	return nil
 }
 
 func (sgs *sendGroupStream) close() error {

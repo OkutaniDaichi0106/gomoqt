@@ -6,7 +6,7 @@ import (
 )
 
 // NewGroupDirect_BytesPool_Copy creates a new Group with a direct []byte payload using copy
-func NewGroupDirect_BytesPool_Copy(payload []byte) GroupDirect {
+func NewGroupDirect_BytesPool_Copy(payload []byte) FrameDirect {
 	buf := bytesPool.Get().([]byte)
 	if cap(buf) < len(payload) {
 		buf = make([]byte, len(payload))
@@ -14,23 +14,23 @@ func NewGroupDirect_BytesPool_Copy(payload []byte) GroupDirect {
 		buf = (buf)[:len(payload)]
 	}
 	copy(buf, payload)
-	return GroupDirect{
+	return FrameDirect{
 		payload: buf,
 	}
 }
 
 // NewGroupDirect_BytesPool_Append creates a new Group with a direct []byte payload using append
-func NewGroupDirect_BytesPool_Append(payload []byte) GroupDirect {
+func NewGroupDirect_BytesPool_Append(payload []byte) FrameDirect {
 	buf := bytesPool.Get().([]byte)
 	buf = (buf)[:0]
 	buf = append(buf, payload...)
-	return GroupDirect{
+	return FrameDirect{
 		payload: buf,
 	}
 }
 
 // NewGroupDirect_PtrBytesPool_Copy creates a new Group with a direct []byte payload using copy
-func NewGroupDirect_PtrBytesPool_Copy(payload []byte) GroupDirect {
+func NewGroupDirect_PtrBytesPool_Copy(payload []byte) FrameDirect {
 	buf := ptrBytesPool.Get().(*[]byte)
 	if cap(*buf) < len(payload) {
 		*buf = make([]byte, len(payload))
@@ -38,24 +38,24 @@ func NewGroupDirect_PtrBytesPool_Copy(payload []byte) GroupDirect {
 		*buf = (*buf)[:len(payload)]
 	}
 	copy(*buf, payload)
-	return GroupDirect{
+	return FrameDirect{
 		payload: *buf,
 	}
 }
 
 // NewGroupDirect_PtrBytesPool_Append creates a new Group with a direct []byte payload using append
-func NewGroupDirect_PtrBytesPool_Append(payload []byte) GroupDirect {
+func NewGroupDirect_PtrBytesPool_Append(payload []byte) FrameDirect {
 	buf := ptrBytesPool.Get().(*[]byte)
 	*buf = (*buf)[:0]
 	*buf = append(*buf, payload...)
-	return GroupDirect{
+	return FrameDirect{
 		payload: *buf,
 	}
 }
 
 // NewGroupDirect_GroupDirectPool_Copy creates a new GroupDirect from GroupDirect pool using copy
-func NewGroupDirect_GroupDirectPool_Copy(payload []byte) GroupDirect {
-	group := groupDirectPool.Get().(GroupDirect)
+func NewGroupDirect_GroupDirectPool_Copy(payload []byte) FrameDirect {
+	group := groupDirectPool.Get().(FrameDirect)
 	if cap(group.payload) < len(payload) {
 		group.payload = make([]byte, len(payload))
 	} else {
@@ -66,16 +66,16 @@ func NewGroupDirect_GroupDirectPool_Copy(payload []byte) GroupDirect {
 }
 
 // NewGroupDirect_GroupDirectPool_Append creates a new GroupDirect from GroupDirect pool using append
-func NewGroupDirect_GroupDirectPool_Append(payload []byte) GroupDirect {
-	group := groupDirectPool.Get().(GroupDirect)
+func NewGroupDirect_GroupDirectPool_Append(payload []byte) FrameDirect {
+	group := groupDirectPool.Get().(FrameDirect)
 	group.payload = group.payload[:0]
 	group.payload = append(group.payload, payload...)
 	return group
 }
 
 // NewGroupDirect_GroupDirectAndBytesPool_Copy creates a new GroupDirect using two pools
-func NewGroupDirect_GroupDirectAndBytesPool_Copy(payload []byte) GroupDirect {
-	group := groupDirectPool.Get().(GroupDirect)
+func NewGroupDirect_GroupDirectAndBytesPool_Copy(payload []byte) FrameDirect {
+	group := groupDirectPool.Get().(FrameDirect)
 	buf := bytesPool.Get().([]byte)
 	if cap(buf) < len(payload) {
 		buf = make([]byte, len(payload))
@@ -88,8 +88,8 @@ func NewGroupDirect_GroupDirectAndBytesPool_Copy(payload []byte) GroupDirect {
 }
 
 // NewGroupDirect_GroupDirectAndBytesPool_Append creates a new GroupDirect using two pools
-func NewGroupDirect_GroupDirectAndBytesPool_Append(payload []byte) GroupDirect {
-	group := groupDirectPool.Get().(GroupDirect)
+func NewGroupDirect_GroupDirectAndBytesPool_Append(payload []byte) FrameDirect {
+	group := groupDirectPool.Get().(FrameDirect)
 	buf := bytesPool.Get().([]byte)
 	buf = buf[:0]
 	buf = append(buf, payload...)
@@ -98,8 +98,8 @@ func NewGroupDirect_GroupDirectAndBytesPool_Append(payload []byte) GroupDirect {
 }
 
 // NewGroupDirect_GroupDirectAndPtrBytesPool_Copy creates a new GroupDirect using two pools
-func NewGroupDirect_GroupDirectAndPtrBytesPool_Copy(payload []byte) GroupDirect {
-	group := groupDirectPool.Get().(GroupDirect)
+func NewGroupDirect_GroupDirectAndPtrBytesPool_Copy(payload []byte) FrameDirect {
+	group := groupDirectPool.Get().(FrameDirect)
 	ptr := ptrBytesPool.Get().(*[]byte)
 	if cap(*ptr) < len(payload) {
 		*ptr = make([]byte, len(payload))
@@ -112,8 +112,8 @@ func NewGroupDirect_GroupDirectAndPtrBytesPool_Copy(payload []byte) GroupDirect 
 }
 
 // NewGroupDirect_GroupDirectAndPtrBytesPool_Append creates a new GroupDirect using two pools
-func NewGroupDirect_GroupDirectAndPtrBytesPool_Append(payload []byte) GroupDirect {
-	group := groupDirectPool.Get().(GroupDirect)
+func NewGroupDirect_GroupDirectAndPtrBytesPool_Append(payload []byte) FrameDirect {
+	group := groupDirectPool.Get().(FrameDirect)
 	ptr := ptrBytesPool.Get().(*[]byte)
 	*ptr = (*ptr)[:0]
 	*ptr = append(*ptr, payload...)
@@ -122,16 +122,16 @@ func NewGroupDirect_GroupDirectAndPtrBytesPool_Append(payload []byte) GroupDirec
 }
 
 // NewGroupDirect_PtrGroupDirectPool_Append creates a new GroupDirect from PtrGroupDirect pool
-func NewGroupDirect_PtrGroupDirectPool_Append(payload []byte) GroupDirect {
-	group := ptrGroupDirectPool.Get().(*GroupDirect)
+func NewGroupDirect_PtrGroupDirectPool_Append(payload []byte) FrameDirect {
+	group := ptrGroupDirectPool.Get().(*FrameDirect)
 	group.payload = group.payload[:0]
 	group.payload = append(group.payload, payload...)
 	return *group
 }
 
 // NewGroupDirect_PtrGroupDirectPool_Copy creates a new GroupDirect from PtrGroupDirect pool
-func NewGroupDirect_PtrGroupDirectPool_Copy(payload []byte) GroupDirect {
-	group := ptrGroupDirectPool.Get().(*GroupDirect)
+func NewGroupDirect_PtrGroupDirectPool_Copy(payload []byte) FrameDirect {
+	group := ptrGroupDirectPool.Get().(*FrameDirect)
 	if cap(group.payload) < len(payload) {
 		group.payload = make([]byte, len(payload))
 	} else {
@@ -142,17 +142,17 @@ func NewGroupDirect_PtrGroupDirectPool_Copy(payload []byte) GroupDirect {
 }
 
 // NewPtrGroupDirect_BytesPool_Append creates a new PtrGroupDirect from Bytes pool using append
-func NewPtrGroupDirect_BytesPool_Append(payload []byte) *GroupDirect {
+func NewPtrGroupDirect_BytesPool_Append(payload []byte) *FrameDirect {
 	buf := bytesPool.Get().([]byte)
 	buf = (buf)[:0]
 	buf = append(buf, payload...)
-	return &GroupDirect{
+	return &FrameDirect{
 		payload: buf,
 	}
 }
 
 // NewPtrGroupDirect_BytesPool_Copy creates a new PtrGroupDirect from Bytes pool using copy
-func NewPtrGroupDirect_BytesPool_Copy(payload []byte) *GroupDirect {
+func NewPtrGroupDirect_BytesPool_Copy(payload []byte) *FrameDirect {
 	buf := bytesPool.Get().([]byte)
 	if cap(buf) < len(payload) {
 		buf = make([]byte, len(payload))
@@ -160,23 +160,23 @@ func NewPtrGroupDirect_BytesPool_Copy(payload []byte) *GroupDirect {
 		buf = (buf)[:len(payload)]
 	}
 	copy(buf, payload)
-	return &GroupDirect{
+	return &FrameDirect{
 		payload: buf,
 	}
 }
 
 // NewPtrGroupDirect_PtrBytesPool_Append creates a new PtrGroupDirect from PtrBytes pool using append
-func NewPtrGroupDirect_PtrBytesPool_Append(payload []byte) *GroupDirect {
+func NewPtrGroupDirect_PtrBytesPool_Append(payload []byte) *FrameDirect {
 	buf := ptrBytesPool.Get().(*[]byte)
 	*buf = (*buf)[:0]
 	*buf = append(*buf, payload...)
-	return &GroupDirect{
+	return &FrameDirect{
 		payload: *buf,
 	}
 }
 
 // NewPtrGroupDirect_PtrBytesPool_Copy creates a new PtrGroupDirect from PtrBytes pool using copy
-func NewPtrGroupDirect_PtrBytesPool_Copy(payload []byte) *GroupDirect {
+func NewPtrGroupDirect_PtrBytesPool_Copy(payload []byte) *FrameDirect {
 	buf := ptrBytesPool.Get().(*[]byte)
 	if cap(*buf) < len(payload) {
 		*buf = make([]byte, len(payload))
@@ -184,22 +184,22 @@ func NewPtrGroupDirect_PtrBytesPool_Copy(payload []byte) *GroupDirect {
 		*buf = (*buf)[:len(payload)]
 	}
 	copy(*buf, payload)
-	return &GroupDirect{
+	return &FrameDirect{
 		payload: *buf,
 	}
 }
 
 // NewPtrGroupDirect_GroupDirectPool_Append creates a new PtrGroupDirect from GroupDirect pool using append
-func NewPtrGroupDirect_GroupDirectPool_Append(payload []byte) *GroupDirect {
-	group := groupDirectPool.Get().(GroupDirect)
+func NewPtrGroupDirect_GroupDirectPool_Append(payload []byte) *FrameDirect {
+	group := groupDirectPool.Get().(FrameDirect)
 	group.payload = (group.payload)[:0]
 	group.payload = append(group.payload, payload...)
 	return &group
 }
 
 // NewPtrGroupDirect_GroupDirectPool_Copy creates a new PtrGroupDirect from GroupDirect pool using copy
-func NewPtrGroupDirect_GroupDirectPool_Copy(payload []byte) *GroupDirect {
-	group := groupDirectPool.Get().(GroupDirect)
+func NewPtrGroupDirect_GroupDirectPool_Copy(payload []byte) *FrameDirect {
+	group := groupDirectPool.Get().(FrameDirect)
 	if cap(group.payload) < len(payload) {
 		group.payload = make([]byte, len(payload))
 	} else {
@@ -210,16 +210,16 @@ func NewPtrGroupDirect_GroupDirectPool_Copy(payload []byte) *GroupDirect {
 }
 
 // NewPtrGroupDirect_PtrGroupDirectPool_Append creates a new PtrGroupDirect from PtrGroupDirect pool using append
-func NewPtrGroupDirect_PtrGroupDirectPool_Append(payload []byte) *GroupDirect {
-	group := ptrGroupDirectPool.Get().(*GroupDirect)
+func NewPtrGroupDirect_PtrGroupDirectPool_Append(payload []byte) *FrameDirect {
+	group := ptrGroupDirectPool.Get().(*FrameDirect)
 	group.payload = group.payload[:0]
 	group.payload = append(group.payload, payload...)
 	return group
 }
 
 // NewPtrGroupDirect_PtrGroupDirectPool_Copy creates a new PtrGroupDirect from PtrGroupDirect pool using copy
-func NewPtrGroupDirect_PtrGroupDirectPool_Copy(payload []byte) *GroupDirect {
-	group := ptrGroupDirectPool.Get().(*GroupDirect)
+func NewPtrGroupDirect_PtrGroupDirectPool_Copy(payload []byte) *FrameDirect {
+	group := ptrGroupDirectPool.Get().(*FrameDirect)
 	if cap(group.payload) < len(payload) {
 		group.payload = make([]byte, len(payload))
 	} else {
@@ -228,8 +228,8 @@ func NewPtrGroupDirect_PtrGroupDirectPool_Copy(payload []byte) *GroupDirect {
 	copy(group.payload, payload)
 	return group
 }
-func NewPtrGroupDirect_PtrGroupDirectAndBytesPool_Copy(payload []byte) *GroupDirect {
-	group := ptrGroupDirectPool.Get().(*GroupDirect)
+func NewPtrGroupDirect_PtrGroupDirectAndBytesPool_Copy(payload []byte) *FrameDirect {
+	group := ptrGroupDirectPool.Get().(*FrameDirect)
 	buf := bytesPool.Get().([]byte)
 	if cap(buf) < len(payload) {
 		buf = make([]byte, len(payload))
@@ -241,8 +241,8 @@ func NewPtrGroupDirect_PtrGroupDirectAndBytesPool_Copy(payload []byte) *GroupDir
 	return group
 }
 
-func NewPtrGroupDirect_PtrGroupDirectAndBytesPool_Append(payload []byte) *GroupDirect {
-	group := ptrGroupDirectPool.Get().(*GroupDirect)
+func NewPtrGroupDirect_PtrGroupDirectAndBytesPool_Append(payload []byte) *FrameDirect {
+	group := ptrGroupDirectPool.Get().(*FrameDirect)
 	buf := bytesPool.Get().([]byte)
 	buf = buf[:0]
 	buf = append(buf, payload...)
@@ -250,8 +250,8 @@ func NewPtrGroupDirect_PtrGroupDirectAndBytesPool_Append(payload []byte) *GroupD
 	return group
 }
 
-func NewPtrGroupDirect_PtrGroupDirectAndPtrBytesPool_Copy(payload []byte) *GroupDirect {
-	group := ptrGroupDirectPool.Get().(*GroupDirect)
+func NewPtrGroupDirect_PtrGroupDirectAndPtrBytesPool_Copy(payload []byte) *FrameDirect {
+	group := ptrGroupDirectPool.Get().(*FrameDirect)
 	ptr := ptrBytesPool.Get().(*[]byte)
 	if cap(*ptr) < len(payload) {
 		*ptr = make([]byte, len(payload))
@@ -263,8 +263,8 @@ func NewPtrGroupDirect_PtrGroupDirectAndPtrBytesPool_Copy(payload []byte) *Group
 	return group
 }
 
-func NewPtrGroupDirect_PtrGroupDirectAndPtrBytesPool_Append(payload []byte) *GroupDirect {
-	group := ptrGroupDirectPool.Get().(*GroupDirect)
+func NewPtrGroupDirect_PtrGroupDirectAndPtrBytesPool_Append(payload []byte) *FrameDirect {
+	group := ptrGroupDirectPool.Get().(*FrameDirect)
 	ptr := ptrBytesPool.Get().(*[]byte)
 	*ptr = (*ptr)[:0]
 	*ptr = append(*ptr, payload...)
@@ -273,8 +273,8 @@ func NewPtrGroupDirect_PtrGroupDirectAndPtrBytesPool_Append(payload []byte) *Gro
 }
 
 // New constructor functions for PtrGroupDirect with combined pools
-func NewPtrGroupDirect_GroupDirectAndBytesPool_Copy(payload []byte) *GroupDirect {
-	group := groupDirectPool.Get().(GroupDirect)
+func NewPtrGroupDirect_GroupDirectAndBytesPool_Copy(payload []byte) *FrameDirect {
+	group := groupDirectPool.Get().(FrameDirect)
 	buf := bytesPool.Get().([]byte)
 	if cap(buf) < len(payload) {
 		buf = make([]byte, len(payload))
@@ -286,8 +286,8 @@ func NewPtrGroupDirect_GroupDirectAndBytesPool_Copy(payload []byte) *GroupDirect
 	return &group
 }
 
-func NewPtrGroupDirect_GroupDirectAndBytesPool_Append(payload []byte) *GroupDirect {
-	group := groupDirectPool.Get().(GroupDirect)
+func NewPtrGroupDirect_GroupDirectAndBytesPool_Append(payload []byte) *FrameDirect {
+	group := groupDirectPool.Get().(FrameDirect)
 	buf := bytesPool.Get().([]byte)
 	buf = buf[:0]
 	buf = append(buf, payload...)
@@ -295,8 +295,8 @@ func NewPtrGroupDirect_GroupDirectAndBytesPool_Append(payload []byte) *GroupDire
 	return &group
 }
 
-func NewPtrGroupDirect_GroupDirectAndPtrBytesPool_Copy(payload []byte) *GroupDirect {
-	group := groupDirectPool.Get().(GroupDirect)
+func NewPtrGroupDirect_GroupDirectAndPtrBytesPool_Copy(payload []byte) *FrameDirect {
+	group := groupDirectPool.Get().(FrameDirect)
 	ptr := ptrBytesPool.Get().(*[]byte)
 	if cap(*ptr) < len(payload) {
 		*ptr = make([]byte, len(payload))
@@ -308,8 +308,8 @@ func NewPtrGroupDirect_GroupDirectAndPtrBytesPool_Copy(payload []byte) *GroupDir
 	return &group
 }
 
-func NewPtrGroupDirect_GroupDirectAndPtrBytesPool_Append(payload []byte) *GroupDirect {
-	group := groupDirectPool.Get().(GroupDirect)
+func NewPtrGroupDirect_GroupDirectAndPtrBytesPool_Append(payload []byte) *FrameDirect {
+	group := groupDirectPool.Get().(FrameDirect)
 	ptr := ptrBytesPool.Get().(*[]byte)
 	*ptr = (*ptr)[:0]
 	*ptr = append(*ptr, payload...)
@@ -318,8 +318,8 @@ func NewPtrGroupDirect_GroupDirectAndPtrBytesPool_Append(payload []byte) *GroupD
 }
 
 // New constructor functions for combined GroupDirect and PtrGroupDirect pools
-func NewGroupDirect_PtrGroupDirectAndBytes_Copy(payload []byte) GroupDirect {
-	group := ptrGroupDirectPool.Get().(*GroupDirect)
+func NewGroupDirect_PtrGroupDirectAndBytes_Copy(payload []byte) FrameDirect {
+	group := ptrGroupDirectPool.Get().(*FrameDirect)
 	buf := bytesPool.Get().([]byte)
 	if cap(buf) < len(payload) {
 		buf = make([]byte, len(payload))
@@ -331,8 +331,8 @@ func NewGroupDirect_PtrGroupDirectAndBytes_Copy(payload []byte) GroupDirect {
 	return *group
 }
 
-func NewGroupDirect_PtrGroupDirectAndBytes_Append(payload []byte) GroupDirect {
-	group := ptrGroupDirectPool.Get().(*GroupDirect)
+func NewGroupDirect_PtrGroupDirectAndBytes_Append(payload []byte) FrameDirect {
+	group := ptrGroupDirectPool.Get().(*FrameDirect)
 	buf := bytesPool.Get().([]byte)
 	buf = buf[:0]
 	buf = append(buf, payload...)
@@ -340,8 +340,8 @@ func NewGroupDirect_PtrGroupDirectAndBytes_Append(payload []byte) GroupDirect {
 	return *group
 }
 
-func NewGroupDirect_PtrGroupDirectAndPtrBytes_Copy(payload []byte) GroupDirect {
-	group := ptrGroupDirectPool.Get().(*GroupDirect)
+func NewGroupDirect_PtrGroupDirectAndPtrBytes_Copy(payload []byte) FrameDirect {
+	group := ptrGroupDirectPool.Get().(*FrameDirect)
 	ptr := ptrBytesPool.Get().(*[]byte)
 	if cap(*ptr) < len(payload) {
 		*ptr = make([]byte, len(payload))
@@ -353,8 +353,8 @@ func NewGroupDirect_PtrGroupDirectAndPtrBytes_Copy(payload []byte) GroupDirect {
 	return *group
 }
 
-func NewGroupDirect_PtrGroupDirectAndPtrBytes_Append(payload []byte) GroupDirect {
-	group := ptrGroupDirectPool.Get().(*GroupDirect)
+func NewGroupDirect_PtrGroupDirectAndPtrBytes_Append(payload []byte) FrameDirect {
+	group := ptrGroupDirectPool.Get().(*FrameDirect)
 	ptr := ptrBytesPool.Get().(*[]byte)
 	*ptr = (*ptr)[:0]
 	*ptr = append(*ptr, payload...)
@@ -363,36 +363,36 @@ func NewGroupDirect_PtrGroupDirectAndPtrBytes_Append(payload []byte) GroupDirect
 }
 
 // CopyPayload for GroupDirect copies the payload data
-func (f *GroupDirect) CopyPayload() []byte {
+func (f *FrameDirect) CopyPayload() []byte {
 	copyData := make([]byte, len(f.payload))
 	copy(copyData, f.payload)
 	return copyData
 }
 
 // Size for GroupDirect returns the size of the payload
-func (f *GroupDirect) Size() int {
+func (f *FrameDirect) Size() int {
 	return len(f.payload)
 }
 
 // ReleaseBytes releases the payload back to the Bytes pool
-func (f *GroupDirect) ReleaseBytes() {
+func (f *FrameDirect) ReleaseBytes() {
 	f.payload = f.payload[:0]
 	bytesPool.Put(f.payload)
 }
 
 // ReleaseGroupDirect releases the GroupDirect back to the GroupDirect pool
-func (f *GroupDirect) ReleaseGroupDirect() {
+func (f *FrameDirect) ReleaseGroupDirect() {
 	f.payload = f.payload[:0]
 	groupDirectPool.Put(*f)
 }
 
 // ReleasePtrGroupDirect releases the GroupDirect back to the PtrGroupDirect pool
-func (f *GroupDirect) ReleasePtrGroupDirect() {
+func (f *FrameDirect) ReleasePtrGroupDirect() {
 	f.payload = f.payload[:0]
 	ptrGroupDirectPool.Put(f)
 }
 
-func (f *GroupDirect) ReleasePtrBytes() {
+func (f *FrameDirect) ReleasePtrBytes() {
 	f.payload = f.payload[:0]
 	ptrBytesPool.Put(&f.payload)
 }
@@ -787,13 +787,13 @@ func TestNewFunctions(t *testing.T) {
 			var groupPayload []byte
 
 			switch f := group.(type) {
-			case GroupDirect:
+			case FrameDirect:
 				groupPayload = f.payload
-			case *GroupDirect:
+			case *FrameDirect:
 				groupPayload = f.payload
-			case GroupPointer:
+			case FramePointer:
 				groupPayload = *f.payload
-			case *GroupPointer:
+			case *FramePointer:
 				groupPayload = *f.payload
 			default:
 				t.Fatalf("unexpected group type: %T", group)

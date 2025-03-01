@@ -75,9 +75,9 @@ func (tr *trackBufferReader) AcceptGroup(ctx context.Context) (GroupReader, erro
 		if tr.sequenceHeap.Len() > 0 {
 			seq := heap.Pop(tr.sequenceHeap).(GroupSequence)
 
-			gb, err := tr.trackBuffer.getGroup(seq)
-			if err != nil {
-				return nil, err
+			gb, ok := tr.trackBuffer.getGroup(seq)
+			if !ok {
+				continue
 			}
 
 			return newGroupBufferReader(gb), nil

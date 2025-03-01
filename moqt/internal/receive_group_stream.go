@@ -25,7 +25,7 @@ type ReceiveGroupStream struct {
 	//errCodeCh chan StreamErrorCode
 }
 
-func (r ReceiveGroupStream) ReadFrame() ([]byte, error) {
+func (r ReceiveGroupStream) ReadFrameBytes() ([]byte, error) {
 	var fm message.FrameMessage
 	_, err := fm.Decode(r.ReceiveStream)
 	if err != nil {

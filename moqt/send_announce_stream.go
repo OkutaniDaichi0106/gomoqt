@@ -5,19 +5,24 @@ import (
 )
 
 type AnnouncementWriter interface {
-	SendAnnouncement(announcements []*Announcement) error
-	AnnounceConfig() AnnounceConfig
+	WriteAnnouncement(announcements []*Announcement) error
+	// AnnounceConfig() AnnounceConfig
 	Close() error
 	CloseWithError(error) error
 }
 
-var _ AnnouncementWriter = (*sendAnnounceStream)(nil)
+type SendAnnounceStream interface {
+	AnnouncementWriter
+	AnnounceConfig() AnnounceConfig
+}
+
+var _ SendAnnounceStream = (*sendAnnounceStream)(nil)
 
 type sendAnnounceStream struct {
 	internalStream *internal.SendAnnounceStream
 }
 
-func (sas *sendAnnounceStream) SendAnnouncement(announcements []*Announcement) error {
+func (sas *sendAnnounceStream) WriteAnnouncement(announcements []*Announcement) error {
 	var err error
 	var suffix string
 	for _, ann := range announcements {

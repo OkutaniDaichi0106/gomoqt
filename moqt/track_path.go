@@ -40,6 +40,10 @@ func (tp TrackPath) Equal(target TrackPath) bool {
 	return tp == target
 }
 
+func (tp TrackPath) Match(pattern string) bool {
+	return matchGlob(pattern, string(tp))
+}
+
 func (tp TrackPath) Parts() []string {
 	return strings.Split(string(tp), "/")
 }

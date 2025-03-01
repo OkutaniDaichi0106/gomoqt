@@ -23,7 +23,7 @@ type SendGroupStream struct {
 	startTime    time.Time
 }
 
-func (sgs *SendGroupStream) WriteFrame(frame []byte) error {
+func (sgs *SendGroupStream) WriteFrameBytes(frame []byte) error {
 	fm := message.FrameMessage{
 		Payload: frame,
 	}

@@ -1,12 +1,10 @@
 package moqt
 
 import (
-	"io"
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
 )
 
 var _ GroupReader = (*receiveGroupStream)(nil)
@@ -19,8 +17,12 @@ func (s *receiveGroupStream) GroupSequence() GroupSequence {
 	return GroupSequence(s.internalStream.GroupMessage.GroupSequence)
 }
 
-func (s *receiveGroupStream) ReadFrame() ([]byte, error) {
-	return s.internalStream.ReadFrame()
+func (s *receiveGroupStream) ReadFrame() (*Frame, error) {
+	bytes, err := s.internalStream.ReadFrameBytes()
+	if err != nil {
+		return nil, err
+	}
+	return NewFrame(bytes), nil
 }
 
 func (s *receiveGroupStream) CancelRead(err GroupError) {
@@ -29,16 +31,4 @@ func (s *receiveGroupStream) CancelRead(err GroupError) {
 
 func (s *receiveGroupStream) SetReadDeadline(t time.Time) error {
 	return s.internalStream.SetReadDeadline(t)
-}
-
-func (s *receiveGroupStream) newBytesReader() io.Reader {
-	return &streamBytesReader{s.internalStream.ReceiveStream}
-}
-
-type streamBytesReader struct {
-	stream transport.ReceiveStream
-}
-
-func (s *streamBytesReader) Read(p []byte) (int, error) {
-	return s.stream.Read(p)
 }

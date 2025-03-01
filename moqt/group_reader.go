@@ -7,7 +7,7 @@ import "time"
  */
 type GroupReader interface {
 	GroupSequence() GroupSequence
-	ReadFrame() ([]byte, error)
+	ReadFrame() (*Frame, error)
 	CancelRead(GroupError)
 	SetReadDeadline(time.Time) error
 }

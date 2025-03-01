@@ -39,17 +39,15 @@ func (w *groupBufferWriter) Close() error {
 	return nil
 }
 
-func (w *groupBufferWriter) WriteFrame(b []byte) error {
+func (w *groupBufferWriter) WriteFrame(frame *Frame) error {
 	w.groupBuffer.cond.L.Lock()
 	defer w.groupBuffer.cond.L.Unlock()
-
-	f := NewFrame(b)
 
 	if w.groupBuffer.closed {
 		return ErrClosedGroup
 	}
 
-	w.groupBuffer.frames = append(w.groupBuffer.frames, f)
+	w.groupBuffer.frames = append(w.groupBuffer.frames, frame)
 
 	w.groupBuffer.cond.Broadcast()
 

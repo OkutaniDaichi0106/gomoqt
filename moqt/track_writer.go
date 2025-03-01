@@ -22,6 +22,4 @@ type TrackWriter interface {
 	Close() error
 
 	CloseWithError(error) error
-
-	// TODO: Implement
 }

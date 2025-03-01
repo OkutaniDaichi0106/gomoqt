@@ -21,14 +21,14 @@ func AppendBytes(to []byte, bytes []byte) []byte {
 	return to
 }
 
-// Append a string array to the byte slice
-func AppendStringArray(to []byte, arr []string) []byte {
-	to = AppendNumber(to, uint64(len(arr)))
-	for _, str := range arr {
-		to = AppendString(to, str)
-	}
-	return to
-}
+// // Append a string array to the byte slice
+// func AppendStringArray(to []byte, arr []string) []byte {
+// 	to = AppendNumber(to, uint64(len(arr)))
+// 	for _, str := range arr {
+// 		to = AppendString(to, str)
+// 	}
+// 	return to
+// }
 
 // Append parameters to the byte slice
 func AppendParameters(p []byte, params Parameters) []byte {

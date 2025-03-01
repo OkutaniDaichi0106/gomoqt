@@ -49,14 +49,14 @@ https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html
 | 6.1.1. Version Specific Parameters           | :white_check_mark: | :white_check_mark: |
 | 6.2. SESSION_CLIENT                          | :white_check_mark: | :white_check_mark: |
 | 6.2. SESSION_SERVER                          | :white_check_mark: | :white_check_mark: |
-| 6.2. SESSION_UPDATE                          | :construction:     | :white_check_mark: |
-| 6.2.1. Versions                              | :white_check_mark: | :x:                |
+| 6.2. SESSION_UPDATE                          | :white_check_mark: | :white_check_mark: |
+| 6.2.1. Versions                              | :white_check_mark: | :white_check_mark: |
 | 6.2.2. Setup Parameters                      | :white_check_mark: | :white_check_mark: |
 | 6.3. ANNOUNCE_PLEASE                         | :white_check_mark: | :white_check_mark: |
 | 6.4. ANNOUNCE                                | :white_check_mark: | :white_check_mark: |
 | 6.5. SUBSCRIBE                               | :white_check_mark: | :white_check_mark: |
 | 6.6. SUBSCRIBE_UPDATE                        | :white_check_mark: | :white_check_mark: |
-| 6.7. SUBSCRIBE_GAP                           | :construction:     | :white_check_mark: |
+| 6.7. SUBSCRIBE_GAP                           | :x:                | :x:                |
 | 6.8. INFO                                    | :white_check_mark: | :white_check_mark: |
 | 6.9. INFO_PLEASE                             | :white_check_mark: | :white_check_mark: |
 | **Data Stream**                              |                    |                    |

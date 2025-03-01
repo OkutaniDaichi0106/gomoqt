@@ -5,11 +5,6 @@ import (
 	"time"
 )
 
-// func BuildGroup(seq GroupSequence) (GroupWriter, GroupReader) {
-// 	buf := newGroupBuffer(seq, DefaultGroupBufferSize)
-// 	return newGroupBufferWriter(buf), newGroupBufferReader(buf)
-// }
-
 // NewGroupBuffer creates a new GroupBuffer with the specified group sequence and initial capacity.
 func newGroupBuffer(seq GroupSequence, size int) *GroupBuffer {
 	if size <= 0 {

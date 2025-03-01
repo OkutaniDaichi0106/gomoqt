@@ -4,6 +4,12 @@ import "errors"
 
 var _ TrackWriter = (*trackBufferWriter)(nil)
 
+func newTrackBufferWriter(tb *TrackBuffer) *trackBufferWriter {
+	return &trackBufferWriter{
+		trackBuffer: tb,
+	}
+}
+
 type trackBufferWriter struct {
 	trackBuffer *TrackBuffer
 	priotity    TrackPriority
@@ -41,7 +47,8 @@ func (tw *trackBufferWriter) OpenGroup(seq GroupSequence) (GroupWriter, error) {
 
 	gb := newGroupBuffer(seq, DefaultGroupBufferSize)
 
-	if err := tw.trackBuffer.storeGroup(gb); err != nil {
+	err := tw.trackBuffer.storeGroup(gb)
+	if err != nil {
 		return nil, err
 	}
 

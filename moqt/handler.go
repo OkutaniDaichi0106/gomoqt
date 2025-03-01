@@ -1,55 +1,61 @@
 package moqt
 
-import (
-	"strings"
-	"sync"
-)
-
-type HandlerFunc func(Session)
-
-var NotFoundFunc HandlerFunc = func(Session) {}
-
-var DefaultHandler *ServeMux = NewServeMux()
-
-func NewServeMux() *ServeMux {
-	return &ServeMux{
-		handlerFuncs: make(map[string]HandlerFunc),
-	}
+type Handler interface {
+	ServeTrack(TrackWriter, SubscribeConfig)
+	ServeAnnouncement(AnnouncementWriter, AnnounceConfig)
+	ServeInfo(chan<- Info, InfoRequest)
 }
 
-type ServeMux struct {
-	mu sync.Mutex
+// import (
+// 	"strings"
+// 	"sync"
+// )
 
-	/*
-	 * Path pattern -> HandlerFunc
-	 */
-	handlerFuncs map[string]HandlerFunc
-}
+// type HandlerFunc func(Session)
 
-func (h *ServeMux) HandlerFunc(pattern string, op HandlerFunc) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
+// var NotFoundFunc HandlerFunc = func(Session) {}
 
-	if !strings.HasPrefix(pattern, "/") {
-		panic("invalid path: path should start with \"/\"")
-	}
+// var DefaultHandler *ServeMux = NewServeMux()
 
-	h.handlerFuncs[pattern] = op
-}
+// func NewServeMux() *ServeMux {
+// 	return &ServeMux{
+// 		handlerFuncs: make(map[string]HandlerFunc),
+// 	}
+// }
 
-func (mux *ServeMux) findHandlerFunc(pattern string) HandlerFunc {
-	mux.mu.Lock()
-	defer mux.mu.Unlock()
+// type ServeMux struct {
+// 	mu sync.Mutex
 
-	handlerFunc, ok := mux.handlerFuncs[pattern]
+// 	/*
+// 	 * Path pattern -> HandlerFunc
+// 	 */
+// 	handlerFuncs map[string]HandlerFunc
+// }
 
-	if !ok {
-		return NotFoundFunc
-	}
+// func (h *ServeMux) HandlerFunc(pattern string, op func(Session)) {
+// 	h.mu.Lock()
+// 	defer h.mu.Unlock()
 
-	return handlerFunc
-}
+// 	if !strings.HasPrefix(pattern, "/") {
+// 		panic("invalid path: path should start with \"/\"")
+// 	}
 
-func HandleFunc(pattern string, op func(Session)) {
-	DefaultHandler.HandlerFunc(pattern, op)
-}
+// 	h.handlerFuncs[pattern] = op
+// }
+
+// func (mux *ServeMux) findHandlerFunc(pattern string) HandlerFunc {
+// 	mux.mu.Lock()
+// 	defer mux.mu.Unlock()
+
+// 	handlerFunc, ok := mux.handlerFuncs[pattern]
+
+// 	if !ok {
+// 		return NotFoundFunc
+// 	}
+
+// 	return handlerFunc
+// }
+
+// func HandleFunc(pattern string, op func(Session)) {
+// 	DefaultHandler.HandlerFunc(pattern, op)
+// }

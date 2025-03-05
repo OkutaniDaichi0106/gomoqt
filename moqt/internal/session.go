@@ -75,7 +75,7 @@ type Session struct {
 
 	sessionStreamQueue chan *SessionStream
 	sessionStream      *SessionStream
-	once               sync.Once
+	once               sync.Once // TODO: use this if needed
 
 	//
 	receiveSubscribeStreamQueue *receiveSubscribeStreamQueue
@@ -85,6 +85,8 @@ type Session struct {
 	sendInfoStreamQueue *sendInfoStreamQueue
 
 	receiveGroupStreamQueues map[message.SubscribeID]*receiveGroupStreamQueue
+
+	sendGroupStreamQueue map[message.SubscribeID][]*SendGroupStream
 }
 
 func (sess *Session) Terminate(err error) {
@@ -111,6 +113,7 @@ func (sess *Session) Terminate(err error) {
 	slog.Info("Terminated a session")
 }
 
+// TODO: Implement this method
 func (sess *Session) updateSession(bitrate uint64) error {
 	slog.Debug("updating a session", slog.Uint64("bitrate", bitrate))
 
@@ -253,6 +256,24 @@ func (sess *Session) OpenInfoStream(irm message.InfoRequestMessage) (message.Inf
 	return im, nil
 }
 
+func (sess *Session) OpenGroupStream(gm message.GroupMessage) (*SendGroupStream, error) {
+	slog.Debug("opening a Group Stream")
+
+	stream, err := openStream(sess.conn, stream_type_group)
+	if err != nil {
+		slog.Error("failed to open a Group Stream", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	_, err = gm.Encode(stream)
+	if err != nil {
+		slog.Error("failed to write a Group message", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	return newSendGroupStream(&gm, stream), nil
+}
+
 func (sess *Session) AcceptSessionStream(ctx context.Context) (*SessionStream, error) {
 	if sess.sessionStream != nil {
 		return sess.sessionStream, nil
@@ -327,24 +348,6 @@ func (sess *Session) AcceptInfoStream(ctx context.Context) (*SendInfoStream, err
 		case <-sess.sendInfoStreamQueue.Chan():
 		}
 	}
-}
-
-func (sess *Session) OpenGroupStream(gm message.GroupMessage) (*SendGroupStream, error) {
-	slog.Debug("opening a Group Stream")
-
-	stream, err := openStream(sess.conn, stream_type_group)
-	if err != nil {
-		slog.Error("failed to open a Group Stream", slog.String("error", err.Error()))
-		return nil, err
-	}
-
-	_, err = gm.Encode(stream)
-	if err != nil {
-		slog.Error("failed to write a Group message", slog.String("error", err.Error()))
-		return nil, err
-	}
-
-	return newSendGroupStream(&gm, stream), nil
 }
 
 func listenSession(sess *Session, ctx context.Context) {

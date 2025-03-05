@@ -4,10 +4,6 @@ import "strings"
 
 type TrackPath string
 
-// func NewTrackPath(path string) TrackPath {
-// 	return TrackPath(path)
-// }
-
 func (tp TrackPath) String() string {
 	return string(tp)
 }

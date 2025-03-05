@@ -11,15 +11,8 @@ var _ SendTrackStream = (*sendTrackStream)(nil)
 
 type SendTrackStream interface {
 	SubscribeID() SubscribeID
-	TrackWriter
 	SubscribeConfig() SubscribeConfig
-}
-
-type sendTrackStream struct {
-	session             *internal.Session
-	subscribeStream     *internal.ReceiveSubscribeStream
-	latestGroupSequence GroupSequence
-	mu                  sync.Mutex
+	TrackWriter
 }
 
 func newSendTrackStream(session *internal.Session, receiveSubscribeStream *internal.ReceiveSubscribeStream) *sendTrackStream {
@@ -27,6 +20,13 @@ func newSendTrackStream(session *internal.Session, receiveSubscribeStream *inter
 		session:         session,
 		subscribeStream: receiveSubscribeStream,
 	}
+}
+
+type sendTrackStream struct {
+	session             *internal.Session
+	subscribeStream     *internal.ReceiveSubscribeStream
+	latestGroupSequence GroupSequence
+	mu                  sync.Mutex
 }
 
 func (s *sendTrackStream) SubscribeID() SubscribeID {

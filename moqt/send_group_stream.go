@@ -14,9 +14,10 @@ var _ GroupWriter = (*sendGroupStream)(nil)
 
 type sendGroupStream struct {
 	internalStream *internal.SendGroupStream
-	closed         bool
-	closedErr      error
-	mu             sync.Mutex
+
+	closed    bool
+	closedErr error
+	mu        sync.Mutex
 }
 
 func (sgs *sendGroupStream) GroupSequence() GroupSequence {
@@ -37,7 +38,7 @@ func (sgs *sendGroupStream) WriteFrame(frame *Frame) error {
 
 	err := sgs.internalStream.WriteFrameBytes(frame.bytes)
 	if err != nil {
-		sgs.CloseWithError(err)
+		sgs.CloseWithError(err) // TODO: should we close the stream?
 		return err
 	}
 

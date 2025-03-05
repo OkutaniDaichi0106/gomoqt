@@ -48,13 +48,7 @@ var _ Session = (*session)(nil)
 type session struct {
 	internalSession    *internal.Session
 	subscribeIDCounter uint64
-
-	// extensions Parameters
 }
-
-// func (s *session) UpdateSession(bitrate uint64) error {
-// 	return s.internalSession.UpdateSession(bitrate)
-// }
 
 func (s *session) Terminate(err error) {
 	s.internalSession.Terminate(err)
@@ -74,8 +68,9 @@ func (s *session) OpenAnnounceStream(config AnnounceConfig) (AnnouncementReader,
 }
 
 func (s *session) OpenTrackStream(config SubscribeConfig) (Info, ReceiveTrackStream, error) {
+	id := s.nextSubscribeID()
 	sm := message.SubscribeMessage{
-		SubscribeID:      s.nextSubscribeID(),
+		SubscribeID:      id,
 		TrackPath:        string(config.TrackPath),
 		GroupOrder:       message.GroupOrder(config.GroupOrder),
 		TrackPriority:    message.TrackPriority(config.TrackPriority),
@@ -142,7 +137,7 @@ func (s *session) AcceptTrackStream(ctx context.Context, handler func(SubscribeC
 		return nil, ErrInternalError
 	}
 
-	sts := &sendTrackStream{subscribeStream: ss}
+	sts := newSendTrackStream(s.internalSession, ss)
 
 	info, err := handler(sts.SubscribeConfig())
 	if err != nil {

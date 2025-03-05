@@ -5,23 +5,23 @@ import (
 	"sync"
 )
 
-var DefaultMux *ServeMux = defaultMux
+var DefaultMux *TrackMux = defaultMux
 
 var defaultMux = NewServeMux()
 
-var _ Handler = (*ServeMux)(nil)
+var _ Handler = (*TrackMux)(nil)
 
-func NewServeMux() *ServeMux {
-	return &ServeMux{}
+func NewServeMux() *TrackMux {
+	return &TrackMux{}
 }
 
-type ServeMux struct {
+type TrackMux struct {
 	mu    sync.RWMutex
 	tree  routingNode
 	index routingIndex
 }
 
-func (mux *ServeMux) Handle(path string, handler Handler) {
+func (mux *TrackMux) Handle(pattern string, handler Handler) {
 	mux.mu.Lock()
 	defer mux.mu.Unlock()
 
@@ -30,7 +30,7 @@ func (mux *ServeMux) Handle(path string, handler Handler) {
 		mux.tree.children = make(map[string]*routingNode)
 	}
 
-	p := newPattern(path)
+	p := newPattern(pattern)
 	mux.index.add(p)
 
 	node := &mux.tree
@@ -53,7 +53,7 @@ func (mux *ServeMux) Handle(path string, handler Handler) {
 	node.handler = handler
 }
 
-func (mux *ServeMux) ServeTrack(w TrackWriter, r SubscribeConfig) {
+func (mux *TrackMux) ServeTrack(w TrackWriter, r SubscribeConfig) {
 	mux.mu.RLock()
 	defer mux.mu.RUnlock()
 
@@ -67,7 +67,7 @@ func (mux *ServeMux) ServeTrack(w TrackWriter, r SubscribeConfig) {
 	handler.ServeTrack(w, r)
 }
 
-func (mux *ServeMux) ServeAnnouncement(w AnnouncementWriter, r AnnounceConfig) {
+func (mux *TrackMux) ServeAnnouncement(w AnnouncementWriter, r AnnounceConfig) {
 	// Example implementation: fetch path using r.GetPath() and call the handler from routingNode
 	mux.mu.RLock()
 	defer mux.mu.RUnlock()
@@ -97,7 +97,7 @@ func (mux *ServeMux) ServeAnnouncement(w AnnouncementWriter, r AnnounceConfig) {
 	}{w, r})
 }
 
-func (mux *ServeMux) ServeInfo(ch chan<- Info, r InfoRequest) {
+func (mux *TrackMux) ServeInfo(ch chan<- Info, r InfoRequest) {
 	// Example implementation: fetch path using GetPath() from InfoRequest and query handler from routingNode
 	mux.mu.RLock()
 	defer mux.mu.RUnlock()
@@ -112,7 +112,7 @@ func (mux *ServeMux) ServeInfo(ch chan<- Info, r InfoRequest) {
 	handler.ServeInfo(ch, r)
 }
 
-func (mux *ServeMux) findRoutingNode(ptn *pattern) *routingNode {
+func (mux *TrackMux) findRoutingNode(ptn *pattern) *routingNode {
 	mux.mu.RLock()
 	defer mux.mu.RUnlock()
 

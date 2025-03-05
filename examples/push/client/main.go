@@ -16,7 +16,9 @@ func main() {
 		return
 	}
 
-	info, stream, err := sess.OpenTrackStream(moqt.SubscribeConfig{})
+	info, stream, err := sess.OpenTrackStream(moqt.SubscribeConfig{
+		TrackPath: moqt.TrackPath("/text"),
+	})
 	if err != nil {
 		slog.Error("failed to open track stream", slog.String("error", err.Error()))
 		return

@@ -7,99 +7,120 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/url"
 	"strings"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/webtransport-go"
 )
 
 type Client struct {
+	/*
+	 * TLS configuration
+	 */
 	TLSConfig *tls.Config
 
+	/*
+	 * QUIC configuration
+	 */
 	QUICConfig *quic.Config
 
+	/*
+	 * MOQ Configuration
+	 */
 	Config *Config
-}
 
-func (c Client) Dial(urlStr string, ctx context.Context) (Session, SetupResponce, error) {
-	slog.Debug("dialing to the server")
-
-	parsedURL, err := url.Parse(urlStr)
-	if err != nil {
-		slog.Error("failed to parse the url", slog.String("error", err.Error()))
-		return nil, SetupResponce{}, err
-	}
+	/***/
+	SetupExtensions *Parameters
 
 	/*
-	 * Dial
+	 * Logger
 	 */
-	switch parsedURL.Scheme {
-	case "https":
-		return c.DialWebTransport(parsedURL.Hostname(), parsedURL.Port(), parsedURL.Path, ctx)
-	case "moqt":
-		return c.DialQUIC(parsedURL.Hostname(), parsedURL.Port(), parsedURL.Path, ctx)
-	default:
+	Logger slog.Logger
+}
 
+func (c Client) Dial(urlStr string, ctx context.Context) (Session, SetupResponse, error) {
+	c.Logger.Debug("dialing to the server", "url", urlStr)
+	req, err := NewSetupRequest(urlStr)
+	if err != nil {
+		c.Logger.Error("failed to parse the url", "error", err.Error())
+		return nil, SetupResponse{}, err
+	}
+
+	// Dial based on the scheme
+	switch req.uri.Scheme {
+	case "https":
+		return c.DialWebTransport(*req, ctx)
+	case "moqt":
+		return c.DialQUIC(*req, ctx)
+	default:
 		err = errors.New("invalid scheme")
-		slog.Error("unsupported url scheme", slog.String("scheme", parsedURL.Scheme))
-		return nil, SetupResponce{}, err
+		c.Logger.Error("unsupported url scheme", "scheme", req.uri.Scheme)
+		return nil, SetupResponse{}, err
 	}
 }
 
-func (c Client) DialWebTransport(host string, port string, path string, ctx context.Context) (Session, SetupResponce, error) {
-	// Check if Config is initialized
-	if c.Config == nil {
-		c.Config = &Config{
-			SetupExtensions: NewParameters(),
-		}
+func (c Client) DialWebTransport(req SetupRequest, ctx context.Context) (Session, SetupResponse, error) {
+	if req.uri.Scheme != "https" {
+		err := errors.New("invalid scheme")
+		c.Logger.Error("unsupported url scheme", "scheme", req.uri.Scheme)
+		return nil, SetupResponse{}, err
 	}
+
+	c.Logger.Debug("dialing WebTransport", "endpoint", "https://"+req.uri.Hostname()+":"+req.uri.Port()+req.uri.Path)
 
 	// Dial on webtransport
 	var d webtransport.Dialer
-	_, wtsess, err := d.Dial(ctx, "https://"+host+":"+port+path, http.Header{}) // TODO: configure the header
+	_, wtsess, err := d.Dial(ctx, "https://"+req.uri.Hostname()+":"+req.uri.Port()+req.uri.Path, http.Header{}) // TODO: configure the header
 	if err != nil {
-		slog.Error("failed to dial with webtransport", slog.String("error", err.Error()))
-		return nil, SetupResponce{}, err
+		c.Logger.Error("failed to dial with webtransport", "error", err.Error())
+		return nil, SetupResponse{}, err
 	}
 
 	// Ensure wtsess is not nil before proceeding
 	if wtsess == nil {
-		return nil, SetupResponce{}, errors.New("webtransport session is nil after dial")
+		return nil, SetupResponse{}, errors.New("webtransport session is nil after dial")
 	}
 
-	sess, ssm, err := internal.SetupWebTransport(ctx, wtsess, c.Config.SetupExtensions.paramMap)
+	// Open a session stream
+	sess, stream, err := internal.OpenSession(transport.NewMOWTConnection(wtsess), c.SetupExtensions.paramMap)
 	if err != nil {
-		slog.Error("failed to setup webtransport session", slog.String("error", err.Error()))
-		return nil, SetupResponce{}, err
+		c.Logger.Error("failed to open a session stream", slog.String("error", err.Error()))
+		sess.Terminate(err)
+		return nil, SetupResponse{}, err
 	}
 
-	rsp := SetupResponce{selectedVersion: ssm.SelectedVersion, Parameters: Parameters{ssm.Parameters}}
+	c.Logger.Debug("A session established over WebTransport", "selectedVersion", stream.SessionServerMessage.SelectedVersion)
+
+	rsp := SetupResponse{
+		selectedVersion: stream.SessionServerMessage.SelectedVersion,
+		Parameters:      Parameters{stream.SessionServerMessage.Parameters},
+	}
 
 	return &session{internalSession: sess}, rsp, nil
 }
 
-func (c Client) DialQUIC(host string, port string, path string, ctx context.Context) (Session, SetupResponce, error) {
-	// Check if Config is initialized
-	if c.Config == nil {
-		c.Config = &Config{
-			SetupExtensions: NewParameters(),
-		}
+func (c Client) DialQUIC(req SetupRequest, ctx context.Context) (Session, SetupResponse, error) {
+	if req.uri.Scheme != "moqt" {
+		err := errors.New("invalid scheme")
+		c.Logger.Error("unsupported url scheme", "scheme", req.uri.Scheme)
+		return nil, SetupResponse{}, err
 	}
 
+	c.Logger.Debug("dialing QUIC", "host", req.uri.Hostname(), "port", req.uri.Port(), "path", req.uri.Path)
+
 	// Add path parameter
-	c.Config.SetupExtensions.SetString(param_type_path, path)
+	c.SetupExtensions.SetString(param_type_path, req.uri.Path)
 
 	// Look up the IP address
 	var ips []net.IP
-	ips, err := net.LookupIP(host)
+	ips, err := net.LookupIP(req.uri.Hostname())
 	if err != nil {
-		slog.Error("failed to look up IP address", slog.String("error", err.Error()))
-		return nil, SetupResponce{}, err
+		c.Logger.Error("failed to look up IP address", "error", err.Error())
+		return nil, SetupResponse{}, err
 	}
+	c.Logger.Debug("resolved IPs", "ips", ips)
 
 	var qconn quic.Connection
 
@@ -111,54 +132,39 @@ func (c Client) DialQUIC(host string, port string, path string, ctx context.Cont
 		if strings.Contains(addr, ":") && !strings.HasPrefix(addr, "[") {
 			addr = "[" + addr + "]"
 		}
-		addr += ":" + port
+		addr += ":" + req.uri.Port()
 
 		// Dial
 		qconn, err = quic.DialAddrEarly(ctx, addr, c.TLSConfig, c.QUICConfig)
 		if err != nil {
-			slog.Error("failed to dial with quic", slog.String("error", err.Error()))
+			c.Logger.Error("failed to dial with quic", "error", err.Error(), "attempt", i+1)
 			if i+1 >= len(ips) {
 				err = errors.New("no more IPs")
-				slog.Error("failed to dial to the host",
-					slog.String("error", err.Error()),
-					slog.String("host", host),
+				c.Logger.Error("failed to dial to the host",
+					"error", err.Error(),
+					"host", req.uri.Hostname(),
 				)
-				return nil, SetupResponce{}, err
+				return nil, SetupResponse{}, err
 
 			}
 			continue
 		}
-
+		c.Logger.Debug("successful QUIC dial", "address", addr)
 		break
 	}
 
-	isess, ssm, err := internal.SetupQUIC(ctx, qconn, c.Config.SetupExtensions.paramMap)
+	isess, stream, err := internal.OpenSession(transport.NewMORQConnection(qconn), c.SetupExtensions.paramMap)
 	if err != nil {
-		slog.Error("failed to dial with quic", slog.String("error", err.Error()))
-		return nil, SetupResponce{}, err
+		c.Logger.Error("failed to dial with quic", "error", err.Error())
+		return nil, SetupResponse{}, err
 	}
 
-	rsp := SetupResponce{selectedVersion: ssm.SelectedVersion, Parameters: Parameters{ssm.Parameters}}
+	c.Logger.Debug("A session established over QUIC", "selected version", stream.SessionServerMessage.SelectedVersion)
+
+	rsp := SetupResponse{
+		selectedVersion: stream.SessionServerMessage.SelectedVersion,
+		Parameters:      Parameters{stream.SessionServerMessage.Parameters},
+	}
 
 	return &session{internalSession: isess}, rsp, nil
-}
-
-func openSession(conn transport.Connection, params Parameters) (Session, SetupResponce, error) {
-	scm := message.SessionClientMessage{
-		SupportedVersions: internal.DefaultClientVersions,
-		Parameters:        message.Parameters(params.paramMap),
-	}
-
-	sess, ssm, err := internal.OpenSessionStream(conn, scm)
-	if err != nil {
-		slog.Error("failed to setup a session", slog.String("error", err.Error()))
-		return nil, SetupResponce{}, err
-	}
-
-	rsp := SetupResponce{
-		selectedVersion: ssm.SelectedVersion,
-		Parameters:      Parameters{ssm.Parameters},
-	}
-
-	return &session{internalSession: internal.NewSession(conn, sess)}, rsp, nil
 }

@@ -60,7 +60,7 @@ func (sgs *sendGroupStream) CloseWithError(err error) error {
 	}
 
 	if err == nil {
-		return sgs.close()
+		err = ErrInternalError
 	}
 
 	var grperr GroupError
@@ -80,10 +80,6 @@ func (sgs *sendGroupStream) Close() error {
 	sgs.mu.Lock()
 	defer sgs.mu.Unlock()
 
-	return sgs.close()
-}
-
-func (sgs *sendGroupStream) close() error {
 	if sgs.closed {
 		if sgs.closedErr != nil {
 			return fmt.Errorf("stream has already closed due to: %w", sgs.closedErr)

@@ -6,22 +6,18 @@ import (
 
 func NewAnnouncement(trackPath TrackPath) *Announcement {
 	ann := Announcement{
+		active:    true,
 		TrackPath: trackPath,
 	}
-
-	// Set the status to ACTIVE
-	ann.activate()
 
 	return &ann
 }
 
 func newEndedAnnouncement(trackPath TrackPath) *Announcement {
 	ann := Announcement{
+		active:    false,
 		TrackPath: trackPath,
 	}
-
-	// Set the status to ENDED
-	ann.end()
 
 	return &ann
 }

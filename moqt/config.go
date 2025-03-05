@@ -6,5 +6,7 @@ type Config struct {
 
 	NewSessionURI string // TODO:
 
-	SetupExtensions Parameters
+	// SetupExtensions Parameters
+
+	CheckRoot func(r SetupRequest) bool
 }

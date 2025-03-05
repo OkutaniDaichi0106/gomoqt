@@ -58,7 +58,7 @@ func (srs *ReceiveSubscribeStream) CloseWithError(err error) error {
 	slog.Debug("closing a subscrbe receive stream", slog.Any("subscription", srs.SubscribeMessage))
 
 	if err == nil {
-		return srs.close()
+		err = ErrInternalError
 	}
 
 	var suberr SubscribeError
@@ -75,14 +75,10 @@ func (srs *ReceiveSubscribeStream) CloseWithError(err error) error {
 	return nil
 }
 
-func (srs *ReceiveSubscribeStream) Close() error {
-	srs.mu.Lock()
-	defer srs.mu.Unlock()
+func (rss *ReceiveSubscribeStream) Close() error {
+	rss.mu.Lock()
+	defer rss.mu.Unlock()
 
-	return srs.close()
-}
-
-func (rss *ReceiveSubscribeStream) close() error {
 	if rss.closed {
 		if rss.closeErr != nil {
 			return fmt.Errorf("stream has already closed due to: %w", rss.closeErr)

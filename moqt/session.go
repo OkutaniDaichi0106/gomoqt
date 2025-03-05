@@ -13,7 +13,7 @@ type Session interface {
 	 * Methods for the Client
 	 */
 	// Update the session
-	UpdateSession(bitrate uint64) error // TODO:
+	// UpdateSession(bitrate uint64) error // TODO:
 
 	// Terminate the session
 	Terminate(error)
@@ -49,12 +49,12 @@ type session struct {
 	internalSession    *internal.Session
 	subscribeIDCounter uint64
 
-	extensions Parameters
+	// extensions Parameters
 }
 
-func (s *session) UpdateSession(bitrate uint64) error {
-	return s.internalSession.UpdateSession(bitrate)
-}
+// func (s *session) UpdateSession(bitrate uint64) error {
+// 	return s.internalSession.UpdateSession(bitrate)
+// }
 
 func (s *session) Terminate(err error) {
 	s.internalSession.Terminate(err)

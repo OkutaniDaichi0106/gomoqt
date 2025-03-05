@@ -72,7 +72,7 @@ type Server struct {
 	closed bool
 }
 
-func (s *Server) serveQUICListener(ln QUICEarlyListener) error {
+func (s *Server) ServeQUICListener(ln QUICEarlyListener) error {
 	for {
 		qconn, err := ln.Accept(context.Background())
 		if err != nil {
@@ -80,11 +80,11 @@ func (s *Server) serveQUICListener(ln QUICEarlyListener) error {
 			return err
 		}
 
-		return s.serveQUICConn(qconn)
+		return s.ServeQUICConn(qconn)
 	}
 }
 
-func (s *Server) serveQUICConn(qconn quic.Connection) error {
+func (s *Server) ServeQUICConn(qconn quic.Connection) error {
 	// Debug: Log negotiated protocol.
 	s.Logger.Debug("Negotiated protocol", "protocol", qconn.ConnectionState().TLS.NegotiatedProtocol)
 
@@ -206,7 +206,7 @@ func (s *Server) ListenAndServe() error {
 		return err
 	}
 
-	return s.serveQUICListener(ln)
+	return s.ServeQUICListener(ln)
 }
 
 func (s *Server) ListenAndServeTLS(certFile, keyFile string) (err error) {
@@ -223,7 +223,7 @@ func (s *Server) ListenAndServeTLS(certFile, keyFile string) (err error) {
 		return err
 	}
 
-	return s.serveQUICListener(ln)
+	return s.ServeQUICListener(ln)
 }
 
 func (s *Server) Close() error {

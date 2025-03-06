@@ -11,6 +11,8 @@ import (
 )
 
 func OpenSession(conn transport.Connection, params message.Parameters) (*Session, *SessionStream, error) {
+	slog.Debug("opening a session")
+
 	sess := newSession(conn)
 
 	// Open a session stream
@@ -29,6 +31,8 @@ func OpenSession(conn transport.Connection, params message.Parameters) (*Session
 }
 
 func AcceptSession(ctx context.Context, conn transport.Connection, handler func(message.Parameters) (message.Parameters, error)) (*Session, error) {
+	slog.Debug("accepting session")
+
 	sess := newSession(conn)
 
 	// Listen the session stream
@@ -44,10 +48,18 @@ func AcceptSession(ctx context.Context, conn transport.Connection, handler func(
 		return nil, err
 	}
 
-	sess.sessionStream.SessionServerMessage = message.SessionServerMessage{
+	// Send a SESSION_SERVER message
+	ssm := message.SessionServerMessage{
 		SelectedVersion: DefaultServerVersion,
 		Parameters:      param,
 	}
+	_, err = ssm.Encode(stream.Stream)
+	if err != nil {
+		slog.Error("failed to send a SESSION_SERVER message", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	sess.sessionStream.SessionServerMessage = ssm // TODO: Is this necessary?
 
 	return sess, nil
 }
@@ -71,7 +83,7 @@ func newSession(conn transport.Connection) *Session {
 type Session struct {
 	conn transport.Connection
 
-	bitrate uint64
+	bitrate uint64 // TODO: use this when updating a session
 
 	sessionStreamQueue chan *SessionStream
 	sessionStream      *SessionStream
@@ -90,19 +102,19 @@ type Session struct {
 }
 
 func (sess *Session) Terminate(err error) {
-	slog.Info("Terminating a session", slog.String("reason", err.Error()))
-
 	var tererr TerminateError
 	if err == nil {
 		tererr = NoErrTerminate
 	} else {
 		if !errors.As(err, &tererr) {
-			tererr = ErrInternalError
+			tererr = ErrInternalError.WithReason(err.Error())
 		}
 	}
 
 	code := transport.SessionErrorCode(tererr.TerminateErrorCode())
 	reason := tererr.Error()
+
+	slog.Info("Terminating a session", slog.Any("code", code), slog.String("reason", tererr.Error()))
 
 	err = sess.conn.CloseWithError(code, reason)
 	if err != nil {
@@ -139,14 +151,14 @@ func (sess *Session) OpenSessionStream(scm message.SessionClientMessage) (*Sessi
 		return nil, err
 	}
 
-	// Send a set-up request
+	// Send a SESSION_CLIENT message
 	_, err = scm.Encode(stream)
 	if err != nil {
-		slog.Error("failed to request to set up", slog.String("error", err.Error()))
+		slog.Error("failed to send a SESSION_CLIENT message", slog.String("error", err.Error()))
 		return nil, err
 	}
 
-	// Receive a set-up responce
+	// Receive a set-up response
 	var ssm message.SessionServerMessage
 	_, err = ssm.Decode(stream)
 	if err != nil {
@@ -160,7 +172,7 @@ func (sess *Session) OpenSessionStream(scm message.SessionClientMessage) (*Sessi
 		SessionServerMessage: ssm,
 	}
 
-	slog.Debug("Opened a session stream")
+	slog.Debug("opened a session stream")
 
 	return sess.sessionStream, nil
 }
@@ -352,20 +364,6 @@ func (sess *Session) AcceptInfoStream(ctx context.Context) (*SendInfoStream, err
 
 func listenSession(sess *Session, ctx context.Context) {
 	wg := new(sync.WaitGroup)
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				//
-				return
-			}
-		}
-	}()
 
 	// Listen bidirectional streams
 	wg.Add(1)

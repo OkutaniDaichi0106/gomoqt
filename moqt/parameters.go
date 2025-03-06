@@ -13,8 +13,8 @@ import (
 
 type ParameterType uint64
 
-func NewParameters() Parameters {
-	return Parameters{
+func NewParameters() *Parameters {
+	return &Parameters{
 		paramMap: make(message.Parameters),
 	}
 }

@@ -19,9 +19,9 @@ var (
 
 	ErrDuplicatedSubscribeID = &Error{internal.ErrDuplicatedSubscribeID} // TODO: Use this error
 
-	ErrEndedTrack = &Error{errors.New("track has ended")}
+	ErrEndedTrack = &Error{internal.ErrEndedTrack}
 
-	ErrClosedTrack = &Error{errors.New("track is closed")}
+	ErrClosedTrack = &Error{internal.ErrClosedTrack}
 
 	NoErrTerminate = &Error{internal.NoErrTerminate}
 

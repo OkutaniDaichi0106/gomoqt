@@ -3,14 +3,17 @@ package main
 import (
 	"context"
 	"log/slog"
+	"os"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt"
 )
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})))
+
 	client := moqt.Client{}
 
-	sess, _, err := client.Dial("https://localhost:4444/relay", context.Background())
+	sess, _, err := client.Dial("https://localhost:4444/push", context.Background())
 	if err != nil {
 		slog.Error("failed to dial", slog.String("error", err.Error()))
 		return

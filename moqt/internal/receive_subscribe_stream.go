@@ -3,7 +3,6 @@ package internal
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
@@ -12,7 +11,12 @@ import (
 
 func newReceiveSubscribeStream(sm *message.SubscribeMessage, stream transport.Stream) *ReceiveSubscribeStream {
 	rss := &ReceiveSubscribeStream{
-		SubscribeMessage: *sm,
+		SubscribeID:      (*sm).SubscribeID,
+		TrackPath:        (*sm).TrackPath,
+		TrackPriority:    (*sm).TrackPriority,
+		GroupOrder:       (*sm).GroupOrder,
+		MinGroupSequence: (*sm).MinGroupSequence,
+		MaxGroupSequence: (*sm).MaxGroupSequence,
 		Stream:           stream,
 	}
 
@@ -20,7 +24,12 @@ func newReceiveSubscribeStream(sm *message.SubscribeMessage, stream transport.St
 }
 
 type ReceiveSubscribeStream struct {
-	SubscribeMessage message.SubscribeMessage
+	SubscribeID      message.SubscribeID
+	TrackPath        string
+	TrackPriority    message.TrackPriority
+	GroupOrder       message.GroupOrder
+	MinGroupSequence message.GroupSequence
+	MaxGroupSequence message.GroupSequence
 	Stream           transport.Stream
 	mu               sync.Mutex
 
@@ -46,16 +55,14 @@ type ReceiveSubscribeStream struct {
 // 	return nil
 // }
 
-func (rss *ReceiveSubscribeStream) ReadSubscribeUpdateMessage(smm *message.SubscribeUpdateMessage) error {
-	_, err := smm.Decode(rss.Stream)
+func (rss *ReceiveSubscribeStream) ReceiveSubscribeUpdate(sum *message.SubscribeUpdateMessage) error {
+	_, err := sum.Decode(rss.Stream)
 	return err
 }
 
 func (srs *ReceiveSubscribeStream) CloseWithError(err error) error {
 	srs.mu.Lock()
 	defer srs.mu.Unlock()
-
-	slog.Debug("closing a subscrbe receive stream", slog.Any("subscription", srs.SubscribeMessage))
 
 	if err == nil {
 		err = ErrInternalError
@@ -69,8 +76,6 @@ func (srs *ReceiveSubscribeStream) CloseWithError(err error) error {
 	code := transport.StreamErrorCode(suberr.SubscribeErrorCode())
 	srs.Stream.CancelRead(code)
 	srs.Stream.CancelWrite(code)
-
-	slog.Debug("closed a subscrbe receive stream", slog.Any("subscription", srs.SubscribeMessage))
 
 	return nil
 }

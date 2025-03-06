@@ -1,6 +1,8 @@
 package internal
 
 import (
+	"fmt"
+
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
 )
@@ -25,6 +27,21 @@ var (
 	ErrDuplicatedSubscribeID = defaultSubscribeError{
 		code:   subscriber_duplicated_id,
 		reason: "duplicated subscribe id",
+	}
+
+	ErrClosedTrack = defaultSubscribeError{
+		code:   subscribe_closed_track,
+		reason: "closed track",
+	}
+
+	ErrEndedTrack = defaultSubscribeError{
+		code:   subscribe_ended_track,
+		reason: "ended track",
+	}
+
+	ErrTimeout = defaultSubscribeError{ //TODO: Use this error
+		code:   subscribe_timeout,
+		reason: "timeout",
 	}
 
 	// ErrPriorityMismatch = defaultSubscribeError{
@@ -301,10 +318,18 @@ var _ SubscribeError = (*internalError)(nil)
 var _ InfoError = (*internalError)(nil)
 var _ GroupError = (*internalError)(nil)
 
-type internalError struct{}
+type internalError struct {
+	reason string
+}
 
-func (internalError) Error() string {
-	return "internal error"
+func (err internalError) Error() string {
+	return fmt.Sprintf("internal error: %s", err.reason)
+}
+
+func (internalError) WithReason(reason string) internalError {
+	return internalError{
+		reason: reason,
+	}
 }
 
 func (internalError) AnnounceErrorCode() protocol.AnnounceErrorCode {

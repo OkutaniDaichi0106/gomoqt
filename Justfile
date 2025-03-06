@@ -51,7 +51,7 @@ run:
 dev-setup:
 	@echo "Setting up development environment..."
 	@echo "Installing certificate tools (mkcert)..."
-	mkcert -install
+	mkcert -install || true
 	@echo "Installing development tools (goimports, golangci-lint)..."
 	go install golang.org/x/tools/cmd/goimports@latest
 	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
@@ -60,18 +60,15 @@ dev-setup:
 	@echo "Generating development certificates..."
 	# (Add commands for generating certificates if necessary)
 
-# New command: run-echo-server
-run-echo-server:
-	@echo "Starting echo server..."
-	# Replace with the actual echo server command if available
-	go run ./examples/echo/server/main.go
+# New command: run-push-server
+run-push-server:
+	@echo "Starting push server..."
+	go run ./examples/push/server/main.go
 
-
-# New command: run-echo-client
-run-echo-client:
-	@echo "Starting echo client..."
-	# Replace with the actual echo client command if available
-	go run ./examples/echo/client/main.go
+# New command: run-push-client
+run-push-client:
+	@echo "Starting push client..."
+	go run ./examples/push/client/main.go
 
 # New command: fmt
 fmt:

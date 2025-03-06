@@ -24,7 +24,7 @@ func (q *groupSequenceHeap) Len() int {
 	return len(q.queue)
 }
 
-func (q *groupSequenceHeap) Push(x interface{}) {
+func (q *groupSequenceHeap) Push(x any) {
 	gb, ok := x.(GroupSequence)
 	if !ok {
 		// Type mismatch handling (omitted)
@@ -51,7 +51,7 @@ func (q *groupSequenceHeap) Swap(i, j int) {
 	q.queue[i], q.queue[j] = q.queue[j], q.queue[i]
 }
 
-func (q *groupSequenceHeap) Pop() interface{} {
+func (q *groupSequenceHeap) Pop() any {
 	old := q.queue
 	n := len(old) - 1
 	gb := old[n]

@@ -7,7 +7,7 @@ type FrameSequence uint64
 var DefaultFrameSize = 2048
 
 var framePool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return &Frame{
 			bytes: make([]byte, 0, DefaultFrameSize),
 		}

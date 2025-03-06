@@ -30,20 +30,21 @@ type sendTrackStream struct {
 }
 
 func (s *sendTrackStream) SubscribeID() SubscribeID {
-	return SubscribeID(s.subscribeStream.SubscribeMessage.SubscribeID)
+	return SubscribeID(s.subscribeStream.SubscribeID)
 }
 
 func (s *sendTrackStream) TrackPath() TrackPath {
-	return TrackPath(s.subscribeStream.SubscribeMessage.TrackPath)
+	return TrackPath(s.subscribeStream.TrackPath)
 }
 
 func (s *sendTrackStream) TrackPriority() TrackPriority {
-	return TrackPriority(s.subscribeStream.SubscribeMessage.TrackPriority)
+	return TrackPriority(s.subscribeStream.TrackPriority)
 }
 
 func (s *sendTrackStream) GroupOrder() GroupOrder {
-	return GroupOrder(s.subscribeStream.SubscribeMessage.GroupOrder)
+	return GroupOrder(s.subscribeStream.GroupOrder)
 }
+
 func (s *sendTrackStream) LatestGroupSequence() GroupSequence {
 	return s.latestGroupSequence
 }
@@ -56,8 +57,8 @@ func (s *sendTrackStream) SubscribeConfig() SubscribeConfig {
 		TrackPath:        s.TrackPath(),
 		TrackPriority:    s.TrackPriority(),
 		GroupOrder:       s.GroupOrder(),
-		MinGroupSequence: GroupSequence(s.subscribeStream.SubscribeMessage.MinGroupSequence),
-		MaxGroupSequence: GroupSequence(s.subscribeStream.SubscribeMessage.MaxGroupSequence),
+		MinGroupSequence: GroupSequence(s.subscribeStream.MinGroupSequence),
+		MaxGroupSequence: GroupSequence(s.subscribeStream.MaxGroupSequence),
 	}
 }
 
@@ -71,7 +72,7 @@ func (s *sendTrackStream) Info() Info {
 
 func (s *sendTrackStream) OpenGroup(sequence GroupSequence) (GroupWriter, error) {
 	sgs, err := s.session.OpenGroupStream(message.GroupMessage{
-		SubscribeID:   s.subscribeStream.SubscribeMessage.SubscribeID,
+		SubscribeID:   s.subscribeStream.SubscribeID,
 		GroupSequence: message.GroupSequence(sequence),
 	})
 	if err != nil {

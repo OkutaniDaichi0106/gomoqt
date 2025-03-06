@@ -2,6 +2,7 @@ package moqt
 
 import (
 	"context"
+	"log/slog"
 	"sync/atomic"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
@@ -52,9 +53,12 @@ type session struct {
 
 func (s *session) Terminate(err error) {
 	s.internalSession.Terminate(err)
+	slog.Debug("session terminated", "error", err)
 }
 
 func (s *session) OpenAnnounceStream(config AnnounceConfig) (AnnouncementReader, error) {
+	slog.Debug("opening announce stream", "announce_config", config.String())
+
 	apm := message.AnnouncePleaseMessage{
 		TrackPrefix: config.TrackPrefix,
 	}
@@ -69,6 +73,9 @@ func (s *session) OpenAnnounceStream(config AnnounceConfig) (AnnouncementReader,
 
 func (s *session) OpenTrackStream(config SubscribeConfig) (Info, ReceiveTrackStream, error) {
 	id := s.nextSubscribeID()
+
+	slog.Debug("opening track stream", "subscribe_config", config.String(), "subscribe_id", id)
+
 	sm := message.SubscribeMessage{
 		SubscribeID:      id,
 		TrackPath:        string(config.TrackPath),
@@ -93,6 +100,8 @@ func (s *session) OpenTrackStream(config SubscribeConfig) (Info, ReceiveTrackStr
 }
 
 func (s *session) RequestTrackInfo(irm InfoRequest) (Info, error) {
+	slog.Debug("requesting track info", "info_request", irm.String())
+
 	im, err := s.internalSession.OpenInfoStream(message.InfoRequestMessage{
 		TrackPath: string(irm.TrackPath),
 	})
@@ -108,6 +117,8 @@ func (s *session) RequestTrackInfo(irm InfoRequest) (Info, error) {
 }
 
 func (s *session) AcceptAnnounceStream(ctx context.Context, handler func(AnnounceConfig) error) (AnnouncementWriter, error) {
+	slog.Debug("accepting announce stream")
+
 	as, err := s.internalSession.AcceptAnnounceStream(ctx)
 	if err != nil {
 		return nil, err
@@ -127,10 +138,11 @@ func (s *session) AcceptAnnounceStream(ctx context.Context, handler func(Announc
 }
 
 func (s *session) AcceptTrackStream(ctx context.Context, handler func(SubscribeConfig) (Info, error)) (SendTrackStream, error) {
+	slog.Debug("accepting track stream")
+
 	ss, err := s.internalSession.AcceptSubscribeStream(ctx)
 	if err != nil {
 		return nil, err
-
 	}
 
 	if ss == nil {
@@ -160,6 +172,8 @@ func (s *session) AcceptTrackStream(ctx context.Context, handler func(SubscribeC
 }
 
 func (s *session) RespondTrackInfo(ctx context.Context, handler func(InfoRequest) (Info, error)) error {
+	slog.Debug("responding to track info request")
+
 	irs, err := s.internalSession.AcceptInfoStream(ctx)
 	if err != nil {
 		return err

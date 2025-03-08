@@ -8,5 +8,13 @@ type Config struct {
 
 	// SetupExtensions Parameters
 
-	CheckRoot func(r SetupRequest) bool
+	CheckRoot func(r SetupRequest) bool // TODO:
+}
+
+func (c *Config) Clone() *Config {
+	return &Config{
+		MaxSubscribeID: c.MaxSubscribeID,
+		NewSessionURI:  c.NewSessionURI,
+		CheckRoot:      c.CheckRoot,
+	}
 }

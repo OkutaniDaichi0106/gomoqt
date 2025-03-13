@@ -6,20 +6,29 @@ import (
 	"time"
 )
 
+var DefaultExpires = 10 * time.Second
+
 func BuildTrack(path TrackPath, info Info, expires time.Duration) *TrackBuffer {
+	if expires == 0 {
+		expires = DefaultExpires
+	}
+
 	return &TrackBuffer{
 		path:                path,
-		groupMap:            make(map[GroupSequence]*GroupBuffer),
-		notifyChannels:      make([]chan GroupSequence, 0, 1), // TODO: Tune the size
+		latestGroupSequence: info.LatestGroupSequence,
 		expires:             expires,
-		mu:                  &sync.RWMutex{},
 		remoteTrackPriority: info.TrackPriority,
 		remoteGroupOrder:    info.GroupOrder,
-		latestGroupSequence: info.LatestGroupSequence,
+		groupMap:            make(map[GroupSequence]*GroupBuffer),
+		mapMu:               &sync.RWMutex{},
+		notifyChannels:      make([]chan GroupSequence, 0, 1), // TODO: Tune the size
+		chMu:                &sync.Mutex{},
+		announcement:        NewAnnouncement(path),
+		mu:                  &sync.RWMutex{},
 	}
 }
 
-var _ Handler = (*TrackBuffer)(nil)
+var _ TrackResolver = (*TrackBuffer)(nil)
 
 type TrackBuffer struct {
 	path                TrackPath
@@ -35,7 +44,7 @@ type TrackBuffer struct {
 	notifyChannels []chan GroupSequence
 	chMu           *sync.Mutex
 
-	announced []AnnouncementWriter
+	announcement *Announcement
 
 	closed    bool
 	closedErr error
@@ -124,7 +133,6 @@ func (t *TrackBuffer) CloseWithError(err error) error {
 
 func (t *TrackBuffer) ServeTrack(w TrackWriter, config SubscribeConfig) {
 	r, err := t.NewTrackReader(config.TrackPriority, config.GroupOrder)
-
 	if err != nil {
 		w.CloseWithError(err)
 		return
@@ -162,20 +170,19 @@ func (t *TrackBuffer) ServeTrack(w TrackWriter, config SubscribeConfig) {
 	}
 }
 
-func (t *TrackBuffer) ServeAnnouncement(w AnnouncementWriter, config AnnounceConfig) {
-	if !t.isReadable() {
+func (t *TrackBuffer) ServeAnnouncements(w AnnouncementWriter) {
+	announcement := t.announcement
+	if !announcement.IsActive() {
 		return
 	}
 
-	w.WriteAnnouncement([]*Announcement{})
-
+	if announcement.TrackPath().Match(w.AnnounceConfig().TrackPattern) {
+		w.SendAnnouncements([]*Announcement{t.announcement})
+	}
 }
 
-func (t *TrackBuffer) ServeInfo(w chan<- Info, r InfoRequest) {
-	go func() {
-		defer close(w)
-		w <- t.Info()
-	}()
+func (t *TrackBuffer) GetInfo(path TrackPath) (Info, error) {
+	return t.Info(), nil
 }
 
 func (t *TrackBuffer) storeGroup(gb *GroupBuffer) error {
@@ -220,32 +227,28 @@ func (t *TrackBuffer) removeGroup(seq GroupSequence) {
 
 	// Unannounce if no more groups
 	if !t.isReadable() {
-		t.unannounce()
+		t.announcement.End()
 	}
 }
 
-func (t *TrackBuffer) unannounce() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+// func (t *TrackBuffer) unannounce() {
+// 	t.mu.Lock()
+// 	defer t.mu.Unlock()
 
-	announcements := []*Announcement{newEndedAnnouncement(t.TrackPath())}
+// 	announcements := []*Announcement{newEndedAnnouncement(t.TrackPath())}
 
-	for _, a := range t.announced {
-		a.WriteAnnouncement(announcements)
-	}
+// 	for _, a := range t.announced {
+// 		a.WriteAnnouncement(announcements)
+// 	}
 
-	t.announced = nil
-}
+// 	t.announced = nil
+// }
 
 func (t *TrackBuffer) isWritable() bool {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
 	return !t.closed
 }
 
 func (t *TrackBuffer) isReadable() bool {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
 	return !t.closed && len(t.groupMap) > 0
 }
 

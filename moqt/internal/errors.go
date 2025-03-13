@@ -19,6 +19,11 @@ var (
 		code:   announce_duplicated_track_path,
 	}
 
+	ErrMismatchAnnouncement = defaultAnnounceError{
+		reason: "mismatch announcement",
+		code:   announce_mismatch_announcement,
+	}
+
 	ErrInvalidRange = defaultSubscribeError{
 		code:   subscribe_invalid_range,
 		reason: "invalid range",
@@ -154,7 +159,7 @@ const (
 const (
 	announce_internal_error        protocol.AnnounceErrorCode = 0x0
 	announce_duplicated_track_path protocol.AnnounceErrorCode = 0x1
-	announce_duplicated_interest   protocol.AnnounceErrorCode = 0x2
+	announce_mismatch_announcement protocol.AnnounceErrorCode = 0x2
 )
 
 type AnnounceError interface {

@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
 )
 
@@ -29,28 +28,17 @@ type ReceiveAnnounceStream struct {
 	closeErr error
 }
 
-func (ras *ReceiveAnnounceStream) ReadAnnounceMessage(am *message.AnnounceMessage) error {
+func (ras *ReceiveAnnounceStream) ReceiveAnnounceMessage(am *message.AnnounceMessage) error {
 	_, err := am.Decode(ras.stream)
-	return err
+	if err != nil {
+		slog.Error("failed to decode an ANNOUNCE message", "error", err)
+		return err
+	}
+
+	slog.Debug("received an ANNOUNCE message", slog.Any("announce", am))
+
+	return nil
 }
-
-// func (ras *ReceiveAnnounceStream) ReceiveAnnouncements() ([]message.AnnounceMessage, error) {
-// 	ras.mu.RLock()
-// 	defer ras.mu.RUnlock()
-
-// 	if ras.closed {
-// 		return nil, ras.closeErr
-// 	}
-
-// 	announcements := make([]message.AnnounceMessage, 0, len(ras.announcements))
-
-// 	//
-// 	for _, ann := range ras.announcements {
-// 		announcements = append(announcements, ann)
-// 	}
-
-// 	return announcements, nil
-// }
 
 func (ras *ReceiveAnnounceStream) Close() error {
 	ras.mu.Lock()
@@ -65,8 +53,16 @@ func (ras *ReceiveAnnounceStream) Close() error {
 	}
 
 	ras.closed = true
+	err := ras.stream.Close()
+	if err != nil {
+		return err
+	}
 
-	return ras.stream.Close()
+	slog.Debug("closed a receive announce stream",
+		slog.Any("stream_id", ras.stream.StreamID()),
+	)
+
+	return nil
 }
 
 func (ras *ReceiveAnnounceStream) CloseWithError(err error) error {
@@ -78,78 +74,27 @@ func (ras *ReceiveAnnounceStream) CloseWithError(err error) error {
 	}
 
 	if err == nil {
-		return ras.Close()
+		err = ErrInternalError
 	}
 
 	ras.closeErr = err
 	ras.closed = true
 
 	var annerr AnnounceError
-	var code protocol.AnnounceErrorCode
 
-	if errors.As(err, &annerr) {
-		code = annerr.AnnounceErrorCode()
-	} else {
-		code = ErrInternalError.AnnounceErrorCode()
+	if !errors.As(err, &annerr) {
+		annerr = ErrInternalError
 	}
+
+	code := transport.StreamErrorCode(annerr.AnnounceErrorCode())
 
 	ras.stream.CancelRead(transport.StreamErrorCode(code))
 	ras.stream.CancelWrite(transport.StreamErrorCode(code))
 
-	slog.Debug("closed a receive announce stream with an error", slog.String("error", err.Error()))
+	slog.Debug("closed a receive announce stream with an error",
+		slog.Any("stream_id", ras.stream.StreamID()),
+		slog.String("reason", err.Error()),
+	)
 
 	return nil
 }
-
-// func (ras *ReceiveAnnounceStream) findAnnouncement(trackPath string) (message.AnnounceMessage, bool) {
-// 	ras.mu.RLock()
-// 	defer ras.mu.RUnlock()
-
-// 	ann, exists := ras.announcements[trackPath]
-// 	return ann, exists
-// }
-
-// func (ras *ReceiveAnnounceStream) storeAnnouncement(am message.AnnounceMessage) {
-// 	ras.mu.Lock()
-// 	defer ras.mu.Unlock()
-// 	ras.announcements[am.TrackSuffix] = am
-// }
-
-// func (ras *ReceiveAnnounceStream) listenAnnouncements() {
-// 	for {
-// 		var am message.AnnounceMessage
-// 		_, err := am.Decode(ras.stream)
-// 		if err != nil {
-// 			return
-// 		}
-
-// 		switch am.AnnounceStatus {
-// 		case message.LIVE:
-// 			ras.liveAnn = am
-// 			ras.liveCh <- struct{}{}
-// 		case message.ACTIVE:
-// 			ann, exists := ras.findAnnouncement(am.TrackSuffix)
-// 			if exists && ann.AnnounceStatus == message.ACTIVE {
-// 				ras.CloseWithError(ErrProtocolViolation)
-// 				return
-// 			}
-
-// 			ras.storeAnnouncement(am)
-// 		case message.ENDED:
-// 			// Check if the announcement exists
-// 			ann, exists := ras.findAnnouncement(am.TrackSuffix)
-// 			if !exists {
-// 				ras.CloseWithError(ErrProtocolViolation)
-// 				return
-// 			}
-
-// 			// Check if the announcement is ACTIVE
-// 			if ann.AnnounceStatus == message.ENDED {
-// 				ras.CloseWithError(ErrProtocolViolation)
-// 				return
-// 			}
-
-// 			ras.storeAnnouncement(am)
-// 		}
-// 	}
-// }

@@ -65,7 +65,7 @@ func (s *receiveTrackStream) LatestGroupSequence() GroupSequence {
 
 func (s *receiveTrackStream) SubscribeConfig() SubscribeConfig {
 	return SubscribeConfig{
-		TrackPath:        TrackPath(s.subscribeStream.SubscribeMessage.TrackPath),
+		// TrackPath:        TrackPath(s.subscribeStream.SubscribeMessage.TrackPath),
 		TrackPriority:    TrackPriority(s.subscribeStream.SubscribeMessage.TrackPriority),
 		GroupOrder:       GroupOrder(s.subscribeStream.SubscribeMessage.GroupOrder),
 		MinGroupSequence: GroupSequence(s.subscribeStream.SubscribeMessage.MinGroupSequence),

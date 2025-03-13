@@ -11,10 +11,10 @@ func (id SubscribeID) String() string {
 }
 
 type SubscribeConfig struct {
-	/*
-	 * Required
-	 */
-	TrackPath TrackPath
+	// /*
+	//  * Required
+	//  */
+	// TrackPath TrackPath
 
 	/*
 	 * Optional
@@ -26,6 +26,6 @@ type SubscribeConfig struct {
 }
 
 func (sc SubscribeConfig) String() string {
-	return fmt.Sprintf("SubscribeConfig: { TrackPath: %s, TrackPriority: %d, GroupOrder: %d, MinGroupSequence: %d, MaxGroupSequence: %d }",
-		sc.TrackPath.String(), sc.TrackPriority, sc.GroupOrder, sc.MinGroupSequence, sc.MaxGroupSequence)
+	return fmt.Sprintf("SubscribeConfig: { TrackPriority: %d, GroupOrder: %d, MinGroupSequence: %d, MaxGroupSequence: %d }",
+		sc.TrackPriority, sc.GroupOrder, sc.MinGroupSequence, sc.MaxGroupSequence)
 }

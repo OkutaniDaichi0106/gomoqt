@@ -24,11 +24,10 @@ func (stm StreamTypeMessage) Len() int {
 }
 
 func (stm StreamTypeMessage) Encode(w io.Writer) (int, error) {
-	slog.Debug("encoding a STREAM_TYPE message")
 	// Write the Stream Type
 	n, err := w.Write([]byte{byte(stm.StreamType)})
 	if err != nil {
-		slog.Error("failed to write a stream type", slog.String("error", err.Error()))
+		slog.Error("failed to write a stream type", "error", err)
 		return n, err
 	}
 
@@ -38,13 +37,12 @@ func (stm StreamTypeMessage) Encode(w io.Writer) (int, error) {
 }
 
 func (stm *StreamTypeMessage) Decode(r io.Reader) (int, error) {
-	slog.Debug("decoding a STREAM_TYPE message")
 
 	// Read the Stream Type
 	buf := make([]byte, 1)
 	n, err := r.Read(buf)
 	if err != nil {
-		slog.Error("failed to read a stream type", slog.String("error", err.Error()))
+		slog.Error("failed to read a stream type", "error", err)
 		return n, err
 	}
 	stm.StreamType = StreamType(buf[0])

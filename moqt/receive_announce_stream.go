@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
@@ -11,7 +12,7 @@ import (
 )
 
 type AnnouncementReader interface {
-	NextAnnouncements(context.Context) ([]*Announcement, error)
+	ReceiveAnnouncements(context.Context) ([]*Announcement, error)
 	AnnounceConfig() AnnounceConfig
 	Close() error
 	CloseWithError(error) error
@@ -38,22 +39,26 @@ type receiveAnnounceStream struct {
 	// Track Suffix -> Announcement
 	announcements map[string]*Announcement
 
-	next   []*Announcement
+	next []*Announcement
+	mu   sync.RWMutex
+
 	liveCh chan struct{}
 
 	closed   bool
 	closeErr error
-	mu       sync.RWMutex
 }
 
-func (ras *receiveAnnounceStream) NextAnnouncements(ctx context.Context) ([]*Announcement, error) {
+func (ras *receiveAnnounceStream) ReceiveAnnouncements(ctx context.Context) ([]*Announcement, error) {
 	ras.mu.RLock()
 	defer ras.mu.RUnlock()
 
 	for {
 		if len(ras.next) > 0 {
 			next := ras.next
+
+			// Clear the next list
 			ras.next = ras.next[:0]
+
 			return next, nil
 		}
 		select {
@@ -67,7 +72,7 @@ func (ras *receiveAnnounceStream) NextAnnouncements(ctx context.Context) ([]*Ann
 
 func (ras *receiveAnnounceStream) AnnounceConfig() AnnounceConfig {
 	return AnnounceConfig{
-		TrackPrefix: ras.internalStream.AnnouncePleaseMessage.TrackPrefix,
+		TrackPattern: ras.internalStream.AnnouncePleaseMessage.TrackPattern,
 	}
 }
 
@@ -101,7 +106,7 @@ func (ras *receiveAnnounceStream) CloseWithError(err error) error {
 	}
 
 	if err == nil {
-		return ras.Close()
+		err = ErrInternalError
 	}
 
 	ras.closed = true
@@ -111,40 +116,71 @@ func (ras *receiveAnnounceStream) CloseWithError(err error) error {
 }
 
 func (ras *receiveAnnounceStream) listenAnnouncements() {
-	prefix := ras.internalStream.AnnouncePleaseMessage.TrackPrefix
+	prefix := ras.internalStream.AnnouncePleaseMessage.TrackPattern
 
 	var am message.AnnounceMessage
 	for {
-		err := ras.internalStream.ReadAnnounceMessage(&am)
+		err := ras.internalStream.ReceiveAnnounceMessage(&am)
 		if err != nil {
 			ras.CloseWithError(err) // TODO: is this correct?
 			return
 		}
+
+		announcement, ok := ras.announcements[am.TrackSuffix]
+
 		switch am.AnnounceStatus {
 		case message.ACTIVE:
-			_, ok := ras.announcements[am.TrackSuffix]
-			if !ok {
+			if !ok || (ok && !announcement.IsActive()) {
+				slog.Debug("active")
+				// Create a new announcement
 				ann := NewAnnouncement(TrackPath(prefix + am.TrackSuffix))
-				ras.announcements[am.TrackSuffix] = ann
-				ras.next = append(ras.next, ann)
+
+				ras.addAnnouncement(am.TrackSuffix, ann)
 			} else {
-				// Activate the existing announcement
-				ras.announcements[am.TrackSuffix].activate()
+				err := errors.New("announcement is already active")
+				slog.Error(err.Error(), "track_path", announcement.TrackPath)
+
+				// Close the stream with an error
+				ras.CloseWithError(err)
+				return
 			}
 		case message.ENDED:
-			_, ok := ras.announcements[am.TrackSuffix]
-			if ok {
+			if ok && announcement.IsActive() {
 				// End the existing announcement
-				ras.announcements[am.TrackSuffix].end()
+				err := announcement.End()
+				if err != nil {
+					slog.Error("failed to end a track", "error", err, "track_path", announcement.TrackPath)
+				}
+
+				ras.removeAnnouncement(am.TrackSuffix)
 			} else {
-				continue
-				// TODO: handle this case as an error
+				err := errors.New("announcement is already ended")
+				slog.Error(err.Error(), "track_path", TrackPath(prefix+am.TrackSuffix))
+
+				ras.CloseWithError(err)
+				return
 			}
 		case message.LIVE:
+			slog.Debug("all track are announced")
 			select {
 			case ras.liveCh <- struct{}{}:
 			default:
 			}
 		}
 	}
+}
+
+func (ras *receiveAnnounceStream) addAnnouncement(suffix string, ann *Announcement) {
+	ras.mu.Lock()
+	defer ras.mu.Unlock()
+
+	ras.announcements[suffix] = ann
+	ras.next = append(ras.next, ann)
+}
+
+func (ras *receiveAnnounceStream) removeAnnouncement(suffix string) {
+	ras.mu.Lock()
+	defer ras.mu.Unlock()
+
+	delete(ras.announcements, suffix)
 }

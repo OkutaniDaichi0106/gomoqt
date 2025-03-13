@@ -5,8 +5,10 @@
 #
 # Available commands:
 #   dev-setup       Set up the development environment
-#   run-echo-server Start the echo server
-#   run-echo-client Start the echo client
+#   run-broadcast-server Start the broadcast server
+#   run-broadcast-client Start the broadcast client
+#   run-chat-server Start the chat server
+#   run-chat-client Start the chat client
 #   fmt             Format Go source code
 #   lint            Run linter
 #   test            Run tests
@@ -60,15 +62,25 @@ dev-setup:
 	@echo "Generating development certificates..."
 	# (Add commands for generating certificates if necessary)
 
-# New command: run-push-server
-run-push-server:
-	@echo "Starting push server..."
-	go run ./examples/push/server/main.go
+# New command: run-broadcast-server
+run-broadcast-server:
+	@echo "Starting broadcast server..."
+	go run ./examples/broadcast/server/.
 
-# New command: run-push-client
-run-push-client:
-	@echo "Starting push client..."
-	go run ./examples/push/client/main.go
+# New command: run-broadcast-client
+run-broadcast-client:
+	@echo "Starting broadcast client..."
+	go run ./examples/broadcast/client/.
+
+# New command: run-chat-server
+run-chat-server:
+	@echo "Starting chat server..."
+	go run ./examples/chat/server/.
+
+# New command: run-chat-client
+run-chat-client:
+	@echo "Starting chat client..."
+	go run ./examples/chat/client/.
 
 # New command: fmt
 fmt:

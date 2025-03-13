@@ -19,10 +19,14 @@ type Frame struct {
 }
 
 // NewFrame creates a new Frame with the specified bytes.
-// The bytes are not copied, so the caller must not modify the bytes after calling this function.
 func NewFrame(b []byte) *Frame {
 	f := framePool.Get().(*Frame)
-	f.bytes = b
+	if cap(f.bytes) < len(b) {
+		f.bytes = make([]byte, len(b))
+	} else {
+		f.bytes = f.bytes[:len(b)]
+	}
+	copy(f.bytes, b)
 	return f
 }
 

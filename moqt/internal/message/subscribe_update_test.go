@@ -20,7 +20,6 @@ func TestSubscribeUpdateMessage_EncodeDecode(t *testing.T) {
 				MinGroupSequence: 10,
 				MaxGroupSequence: 20,
 				GroupOrder:       1,
-				// SubscribeUpdateParameters: message.Parameters{1: []byte("value1")},
 			},
 		},
 		"empty parameters": {

@@ -1,53 +1,96 @@
 package moqt
 
 import (
+	"log/slog"
+
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 )
 
 type AnnouncementWriter interface {
-	WriteAnnouncement(announcements []*Announcement) error
-	// AnnounceConfig() AnnounceConfig
+	SendAnnouncements(announcements []*Announcement) error
+	AnnounceConfig() AnnounceConfig
 	Close() error
 	CloseWithError(error) error
 }
 
-type SendAnnounceStream interface {
-	AnnouncementWriter
-	AnnounceConfig() AnnounceConfig
-}
+var _ AnnouncementWriter = (*sendAnnounceStream)(nil)
 
-var _ SendAnnounceStream = (*sendAnnounceStream)(nil)
+func newSendAnnounceStream(internalStream *internal.SendAnnounceStream) *sendAnnounceStream {
+	sas := &sendAnnounceStream{
+		internalStream: internalStream,
+		sendCh:         make(chan struct{}, 1),
+	}
+
+	go func() {
+		for range sas.sendCh {
+			err := sas.internalStream.SendAnnouncements()
+			if err != nil {
+				slog.Error("failed to send announcements", "err", err)
+			}
+		}
+	}()
+
+	return sas
+}
 
 type sendAnnounceStream struct {
 	internalStream *internal.SendAnnounceStream
+
+	sendCh chan struct{}
 }
 
-func (sas *sendAnnounceStream) WriteAnnouncement(announcements []*Announcement) error {
+func (sas *sendAnnounceStream) SendAnnouncements(announcements []*Announcement) error {
 	var err error
-	var suffix string
+	var path string
+
+	// Set active announcement
 	for _, ann := range announcements {
-		if !ann.TrackPath.HasPrefix(sas.TrackPrefix()) {
+		if !ann.TrackPath().Match(sas.TrackPattern()) {
+			// Ignore mismatched announcement
+			slog.Warn("Ignore mismatched announcement",
+				"track_path", ann.TrackPath(),
+				"pattern", sas.TrackPattern(),
+			)
 			continue
 		}
-		// Get the suffix of the track path from the prefix
-		suffix = ann.TrackPath.GetSuffix(sas.TrackPrefix())
 
-		if ann.active {
-			err = sas.internalStream.SetActiveAnnouncement(suffix)
-			if err != nil {
-				return err
-			}
-		} else {
-			err = sas.internalStream.SetEndedAnnouncement(suffix)
-			if err != nil {
-				return err
-			}
+		if !ann.IsActive() {
+			// Ignore inactive announcement
+			slog.Warn("Ignore inactive announcement",
+				"track_path", ann.TrackPath(),
+			)
+			continue
+		}
+
+		path = string(ann.TrackPath())
+
+		err = sas.internalStream.SetActiveAnnouncement(path)
+		if err != nil {
+			return err
 		}
 	}
 
-	err = sas.internalStream.SendAnnouncements()
-	if err != nil {
-		return err
+	select {
+	case sas.sendCh <- struct{}{}:
+	default:
+	}
+
+	// Send announcements
+	for _, ann := range announcements {
+		go func(ann *Announcement) {
+			err := sas.internalStream.SetEndedAnnouncement(ann.TrackPath().String())
+			if err != nil {
+				slog.Error("failed to set ended announcement",
+					"track_path", ann.TrackPath(),
+					"err", err)
+				return
+			}
+
+			select {
+			case sas.sendCh <- struct{}{}:
+			default:
+			}
+		}(ann)
 	}
 
 	return nil
@@ -55,12 +98,12 @@ func (sas *sendAnnounceStream) WriteAnnouncement(announcements []*Announcement) 
 
 func (s *sendAnnounceStream) AnnounceConfig() AnnounceConfig {
 	return AnnounceConfig{
-		TrackPrefix: s.internalStream.AnnouncePleaseMessage.TrackPrefix,
+		TrackPattern: s.internalStream.AnnouncePleaseMessage.TrackPattern,
 	}
 }
 
-func (s *sendAnnounceStream) TrackPrefix() string {
-	return s.internalStream.AnnouncePleaseMessage.TrackPrefix
+func (s *sendAnnounceStream) TrackPattern() string {
+	return s.internalStream.AnnouncePleaseMessage.TrackPattern
 }
 
 func (s *sendAnnounceStream) Close() error {

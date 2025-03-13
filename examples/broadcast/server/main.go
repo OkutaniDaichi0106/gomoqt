@@ -31,30 +31,31 @@ func main() {
 	}
 
 	// Serve moq over webtransport
-	http.HandleFunc("/push", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/broadcast", func(w http.ResponseWriter, r *http.Request) {
 		err := server.ServeWebTransport(w, r)
 		if err != nil {
-			slog.Error("failed to serve web transport", slog.String("error", err.Error()))
+			slog.Error("failed to serve web transport", "error", err)
 		}
 	})
 
 	err := server.ListenAndServe()
 	if err != nil {
-		slog.Error("failed to listen and serve", slog.String("error", err.Error()))
+		slog.Error("failed to listen and serve", "error", err)
 	}
 }
 
 func handleSession(path string, sess moqt.Session) {
 	slog.Info("handling a session", slog.String("path", path))
 
-	stream, err := sess.AcceptTrackStream(context.Background(), func(sc moqt.SubscribeConfig) (moqt.Info, error) {
-		slog.Info("subscribed to a track", slog.String("config", sc.String()))
+	// Accept a track stream
+	stream, err := sess.AcceptTrackStream(context.Background(), func(path moqt.TrackPath) (moqt.Info, error) {
+		slog.Info("subscribed to a track", slog.String("track_path", path.String()))
 		info := moqt.Info{}
-		slog.Info("accepted subscription", slog.String("info", info.String()))
+		slog.Info("accepted a subscription", slog.String("track_info", info.String()))
 		return info, nil
 	})
 	if err != nil {
-		slog.Error("failed to accept track stream", slog.String("error", err.Error()))
+		slog.Error("failed to accept track stream", "error", err)
 		return
 	}
 
@@ -62,16 +63,17 @@ func handleSession(path string, sess moqt.Session) {
 	for {
 		w, err := stream.OpenGroup(seq)
 		if err != nil {
-			slog.Error("failed to accept group", slog.String("error", err.Error()))
+			slog.Error("failed to accept group", "error", err)
 			break
 		}
 
 		slog.Info("group opened", slog.String("group sequence", seq.String()))
-		frame := moqt.NewFrame([]byte(fmt.Sprintf("Hello, group %s", seq.String())))
+
+		frame := moqt.NewFrame([]byte(fmt.Sprintf("Hello!!. Group: {%s}", seq.String())))
 		for {
 			err := w.WriteFrame(frame)
 			if err != nil {
-				slog.Error("failed to write frame", slog.String("error", err.Error()))
+				slog.Error("failed to write frame", "error", err)
 				break
 			}
 

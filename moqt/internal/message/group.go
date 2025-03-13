@@ -23,7 +23,6 @@ func (g GroupMessage) Len() int {
 }
 
 func (g GroupMessage) Encode(w io.Writer) (int, error) {
-	slog.Debug("encoding a GROUP message")
 
 	p := GetBytes()
 	defer PutBytes(p)
@@ -32,11 +31,18 @@ func (g GroupMessage) Encode(w io.Writer) (int, error) {
 	*p = AppendNumber(*p, uint64(g.SubscribeID))
 	*p = AppendNumber(*p, uint64(g.GroupSequence))
 
-	return w.Write(*p)
+	n, err := w.Write(*p)
+	if err != nil {
+		slog.Error("failed to write a GROUP message", "error", err)
+		return n, err
+	}
+
+	slog.Debug("encoded a GROUP message")
+
+	return n, nil
 }
 
 func (g *GroupMessage) Decode(r io.Reader) (int, error) {
-	slog.Debug("decoding a GROUP message")
 
 	buf, n, err := ReadBytes(quicvarint.NewReader(r))
 	if err != nil {
@@ -47,16 +53,19 @@ func (g *GroupMessage) Decode(r io.Reader) (int, error) {
 
 	num, _, err := ReadNumber(mr)
 	if err != nil {
+		slog.Error("failed to read subscribe ID", "error", err)
 		return n, err
 	}
 	g.SubscribeID = SubscribeID(num)
 
 	num, _, err = ReadNumber(mr)
 	if err != nil {
+		slog.Error("failed to read group sequence", "error", err)
 		return n, err
 	}
 	g.GroupSequence = GroupSequence(num)
 
 	slog.Debug("decoded a GROUP message")
+
 	return n, nil
 }

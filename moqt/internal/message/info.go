@@ -23,7 +23,6 @@ func (im InfoMessage) Len() int {
 }
 
 func (im InfoMessage) Encode(w io.Writer) (int, error) {
-	slog.Debug("encoding a INFO message")
 
 	p := GetBytes()
 	defer PutBytes(p)
@@ -35,7 +34,7 @@ func (im InfoMessage) Encode(w io.Writer) (int, error) {
 
 	n, err := w.Write(*p)
 	if err != nil {
-		slog.Error("failed to write a INFO message", slog.String("error", err.Error()))
+		slog.Error("failed to write a INFO message", "error", err)
 		return n, err
 	}
 
@@ -45,7 +44,6 @@ func (im InfoMessage) Encode(w io.Writer) (int, error) {
 }
 
 func (im *InfoMessage) Decode(r io.Reader) (int, error) {
-	slog.Debug("decoding a INFO message")
 
 	buf, n, err := ReadBytes(quicvarint.NewReader(r))
 	if err != nil {
@@ -73,5 +71,6 @@ func (im *InfoMessage) Decode(r io.Reader) (int, error) {
 	im.GroupOrder = GroupOrder(num)
 
 	slog.Debug("decoded a INFO message")
+
 	return n, nil
 }

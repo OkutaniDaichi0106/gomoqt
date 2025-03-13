@@ -13,17 +13,17 @@ func main() {
 
 	client := moqt.Client{}
 
-	sess, _, err := client.Dial("https://localhost:4444/push", context.Background())
+	sess, _, err := client.Dial("https://localhost:4444/broadcast", context.Background())
 	if err != nil {
-		slog.Error("failed to dial", slog.String("error", err.Error()))
+		slog.Error("failed to dial", "error", err)
 		return
 	}
 
 	info, stream, err := sess.OpenTrackStream(moqt.SubscribeConfig{
-		TrackPath: moqt.TrackPath("/text"),
+		TrackPath: moqt.TrackPath("/chat"),
 	})
 	if err != nil {
-		slog.Error("failed to open track stream", slog.String("error", err.Error()))
+		slog.Error("failed to open track stream", "error", err)
 		return
 	}
 
@@ -32,7 +32,7 @@ func main() {
 	for {
 		r, err := stream.AcceptGroup(context.Background())
 		if err != nil {
-			slog.Error("failed to accept group", slog.String("error", err.Error()))
+			slog.Error("failed to accept group", "error", err)
 			break
 		}
 
@@ -41,7 +41,7 @@ func main() {
 		for {
 			frame, err := r.ReadFrame()
 			if err != nil {
-				slog.Error("failed to accept frame", slog.String("error", err.Error()))
+				slog.Error("failed to accept frame", "error", err)
 				break
 			}
 

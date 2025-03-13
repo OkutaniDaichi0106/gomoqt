@@ -1,19 +1,26 @@
 package moqt
 
-type Handler interface {
+type TrackResolver interface {
 	ServeTrack(TrackWriter, SubscribeConfig)
-	ServeAnnouncement(AnnouncementWriter, AnnounceConfig)
-	ServeInfo(chan<- Info, InfoRequest)
+	ServeAnnouncements(AnnouncementWriter)
+
+	GetInfo(TrackPath) (Info, error)
 }
 
-// import (
-// 	"strings"
-// 	"sync"
-// )
+var NotFoundHandler TrackResolver = &notFoundHandler{}
 
-// type HandlerFunc func(Session)
+type notFoundHandler struct{}
 
-// var NotFoundFunc HandlerFunc = func(Session) {}
+func (h *notFoundHandler) ServeTrack(w TrackWriter, r SubscribeConfig) {
+	w.CloseWithError(ErrTrackDoesNotExist)
+}
+
+func (h *notFoundHandler) GetInfo(TrackPath) (Info, error) {
+	return Info{}, ErrTrackDoesNotExist
+}
+
+func (h *notFoundHandler) ServeAnnouncements(w AnnouncementWriter) {
+}
 
 // var DefaultHandler *ServeMux = NewServeMux()
 

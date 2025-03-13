@@ -18,7 +18,7 @@ func (s *receiveGroupStream) GroupSequence() GroupSequence {
 }
 
 func (s *receiveGroupStream) ReadFrame() (*Frame, error) {
-	bytes, err := s.internalStream.ReadFrameBytes()
+	bytes, err := s.internalStream.ReceiveFrameBytes()
 	if err != nil {
 		return nil, err
 	}

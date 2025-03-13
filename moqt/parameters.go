@@ -116,7 +116,7 @@ func (p Parameters) GetInt(key ParameterType) (int64, error) {
 
 	num, err := p.GetUint(key)
 	if err != nil {
-		slog.Error("failed to read a parameter as uint", slog.String("error", err.Error()))
+		slog.Error("failed to read a parameter as uint", "error", err)
 		return 0, err
 	}
 
@@ -149,7 +149,7 @@ func (p Parameters) GetBool(key ParameterType) (bool, error) {
 
 	num, err := p.GetUint(key)
 	if err != nil {
-		slog.Error("failed to read a parameter as uint", slog.String("error", err.Error()))
+		slog.Error("failed to read a parameter as uint", "error", err)
 		return false, err
 	}
 

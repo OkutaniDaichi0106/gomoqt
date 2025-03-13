@@ -34,6 +34,9 @@ type Client struct {
 	Config *Config
 
 	/***/
+	TrackResolver TrackResolver
+
+	/***/
 	SetupExtensions *Parameters
 
 	/*
@@ -130,10 +133,10 @@ func (c *Client) DialWebTransport(req SetupRequest, ctx context.Context) (Sessio
 
 	c.Logger.Info("setup response received", "version", rsp.selectedVersion, "parameters", rsp.Parameters)
 
-	return &session{internalSession: sess}, rsp, nil
+	return newSession(sess, c.TrackResolver), rsp, nil
 }
 
-func (c *Client) DialQUIC(req SetupRequest, ctx context.Context) (Session, SetupResponse, error) {
+func (c *Client) dialQUIC(req SetupRequest, ctx context.Context) (Session, SetupResponse, error) {
 	c.init()
 
 	c.Logger.Debug("dialing using QUIC")
@@ -216,5 +219,5 @@ func (c *Client) DialQUIC(req SetupRequest, ctx context.Context) (Session, Setup
 
 	c.Logger.Info("setup response received", "version", rsp.selectedVersion, "parameters", rsp.Parameters) // Changed to Info
 
-	return &session{internalSession: isess}, rsp, nil
+	return newSession(isess, c.TrackResolver), rsp, nil
 }

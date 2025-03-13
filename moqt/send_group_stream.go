@@ -36,7 +36,7 @@ func (sgs *sendGroupStream) WriteFrame(frame *Frame) error {
 		return ErrClosedGroup
 	}
 
-	err := sgs.internalStream.WriteFrameBytes(frame.bytes)
+	err := sgs.internalStream.SendFrameBytes(frame.bytes)
 	if err != nil {
 		sgs.CloseWithError(err) // TODO: should we close the stream?
 		return err

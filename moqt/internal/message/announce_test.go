@@ -18,26 +18,18 @@ func TestAnnounceMessage_EncodeDecode(t *testing.T) {
 			input: message.AnnounceMessage{
 				AnnounceStatus: message.AnnounceStatus(1),
 				TrackSuffix:    "path/to/track",
-				// AnnounceParameters: map[uint64][]byte{
-				// 	1: []byte("value1"),
-				// 	2: []byte("value2"),
-				// },
 			},
 		},
 		"empty track path suffix": {
 			input: message.AnnounceMessage{
 				AnnounceStatus: message.AnnounceStatus(1),
 				TrackSuffix:    "",
-				// AnnounceParameters: map[uint64][]byte{
-				// 	1: []byte("value1"),
-				// },
 			},
 		},
 		"empty parameters": {
 			input: message.AnnounceMessage{
 				AnnounceStatus: message.AnnounceStatus(1),
 				TrackSuffix:    "",
-				// AnnounceParameters: map[uint64][]byte{},
 			},
 		},
 		// "max values": {

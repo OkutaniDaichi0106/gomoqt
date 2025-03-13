@@ -22,23 +22,23 @@ type SendInfoStream struct {
 	mu                 sync.Mutex
 }
 
-func (sis *SendInfoStream) SendInfoAndClose(i message.InfoMessage) error {
+func (sis *SendInfoStream) SendInfoAndClose(im message.InfoMessage) error {
 	sis.mu.Lock()
 	defer sis.mu.Unlock()
 
-	im := message.InfoMessage{
-		TrackPriority:       message.TrackPriority(i.TrackPriority),
-		LatestGroupSequence: message.GroupSequence(i.LatestGroupSequence),
-		GroupOrder:          message.GroupOrder(i.GroupOrder),
-	}
-
 	_, err := im.Encode(sis.Stream)
 	if err != nil {
-		slog.Error("failed to send an INFO message", slog.String("error", err.Error()))
+		slog.Error("failed to send an INFO message",
+			"stream_id", sis.Stream.StreamID(),
+			"error", err,
+		)
+		sis.CloseWithError(err)
 		return err
 	}
 
-	slog.Info("sended an info")
+	slog.Debug("sent an INFO message",
+		slog.Any("stream_id", sis.Stream.StreamID()),
+	)
 
 	sis.Close()
 
@@ -50,30 +50,23 @@ func (sis *SendInfoStream) CloseWithError(err error) error {
 	defer sis.mu.Unlock()
 
 	if err == nil {
-		return sis.Close()
+		err = ErrInternalError
 	}
 
-	sis.mu.Lock()
-	defer sis.mu.Unlock()
-
-	var code transport.StreamErrorCode
-
-	var strerr transport.StreamError
-	if errors.As(err, &strerr) {
-		code = strerr.StreamErrorCode()
-	} else {
-		inferr, ok := err.(InfoError)
-		if ok {
-			code = transport.StreamErrorCode(inferr.InfoErrorCode())
-		} else {
-			code = ErrInternalError.StreamErrorCode()
-		}
+	var inferr InfoError
+	if !errors.As(err, &inferr) {
+		err = ErrInternalError.WithReason(err.Error())
 	}
+
+	code := transport.StreamErrorCode(inferr.InfoErrorCode())
 
 	sis.Stream.CancelRead(code)
 	sis.Stream.CancelWrite(code)
 
-	slog.Info("rejected an info request")
+	slog.Debug("closed an info stream with an error",
+		slog.String("reason", err.Error()),
+		slog.Any("stream_id", sis.Stream.StreamID()),
+	)
 
 	return nil
 }
@@ -82,5 +75,17 @@ func (sis *SendInfoStream) Close() error {
 	sis.mu.Lock()
 	defer sis.mu.Unlock()
 
-	return sis.Stream.Close()
+	err := sis.Stream.Close()
+	if err != nil {
+		slog.Error("failed to close an info stream",
+			"stream_id", sis.Stream.StreamID(),
+			"error", err,
+		)
+	}
+
+	slog.Debug("closed an info stream",
+		slog.Any("stream_id", sis.Stream.StreamID()),
+	)
+
+	return nil
 }

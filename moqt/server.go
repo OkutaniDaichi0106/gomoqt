@@ -46,9 +46,9 @@ type Server struct {
 	SetupExtensions func(req Parameters) (rsp Parameters, err error)
 
 	/*
-	 * TrackMux for routing requests
+	 * Handler
 	 */
-	Handler Handler
+	Handler TrackResolver
 
 	/*
 	 * Session Handler
@@ -212,7 +212,7 @@ func (s *Server) serveQUICConn(qconn quic.Connection) error {
 			return err
 		}
 
-		sess := &session{internalSession: internalSess}
+		sess := newSession(internalSess, s.Handler)
 
 		s.Logger.Debug("handle session", "remote_address", qconn.RemoteAddr(), "path", path)
 
@@ -245,6 +245,7 @@ func (s *Server) ServeWebTransport(w http.ResponseWriter, r *http.Request) error
 
 	s.Logger.Debug("WebTransport session established", "remote_address", r.RemoteAddr)
 
+	// Create a MOQ connection
 	conn := transport.NewMOWTConnection(wtsess)
 
 	var rspParam Parameters
@@ -269,7 +270,7 @@ func (s *Server) ServeWebTransport(w http.ResponseWriter, r *http.Request) error
 		return err
 	}
 
-	sess := &session{internalSession: internalSess}
+	sess := newSession(internalSess, s.Handler)
 
 	s.Logger.Debug("MOQ session established", "remote_address", r.RemoteAddr)
 

@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
 )
 
@@ -27,19 +26,22 @@ func (sss *SendSubscribeStream) SendSubscribeUpdate(sum message.SubscribeUpdateM
 	sss.mu.Lock()
 	defer sss.mu.Unlock()
 
-	slog.Debug("sending a subscribe update message", slog.Any("update", sum))
-
 	if sum.MinGroupSequence > sum.MaxGroupSequence {
 		return ErrInvalidRange
 	}
 
 	_, err := sum.Encode(sss.Stream)
 	if err != nil {
-		slog.Error("failed to write a subscribe update message", slog.String("error", err.Error()))
+		slog.Error("failed to encode a SUBSCRIBE_UPDATE message",
+			"error", err,
+			"stream_id", sss.Stream.StreamID(),
+		)
 		return err
 	}
 
-	slog.Debug("sent a subscribe update message", slog.Any("update", sum))
+	slog.Debug("sent a subscribe update message",
+		"stream_id", sss.Stream.StreamID(),
+	)
 
 	return nil
 }
@@ -50,7 +52,7 @@ func (sss *SendSubscribeStream) SendSubscribeUpdate(sum message.SubscribeUpdateM
 // 	var gap message.SubscribeGapMessage
 // 	_, err := gap.Decode(ss.Stream)
 // 	if err != nil {
-// 		slog.Error("failed to read a subscribe gap message", slog.String("error", err.Error()))
+// 		slog.Error("failed to read a subscribe gap message", "error", err,
 // 		return message.SubscribeGapMessage{}, err
 // 	}
 
@@ -60,40 +62,41 @@ func (sss *SendSubscribeStream) SendSubscribeUpdate(sum message.SubscribeUpdateM
 // }
 
 func (ss *SendSubscribeStream) Close() error {
-	slog.Debug("closing a subscrbe send stream", slog.Any("subscription", ss.SubscribeMessage))
-
 	err := ss.Stream.Close()
 	if err != nil {
-		slog.Debug("catch an error when closing a Subscribe Stream", slog.String("error", err.Error()))
+		slog.Debug("failed to close a subscrbe send stream",
+			"stream_id", ss.Stream.StreamID(),
+			"error", err,
+		)
 		return err
 	}
 
-	slog.Debug("closed a subscrbe send stream", slog.Any("subscription", ss.SubscribeMessage))
+	slog.Debug("closed a subscribe send stream",
+		"stream_id", ss.Stream.StreamID(),
+	)
 
 	return nil
 }
 
 func (sss *SendSubscribeStream) CloseWithError(err error) error {
-	slog.Debug("closing a subscrbe send stream", slog.Any("subscription", sss.SubscribeMessage))
-
 	if err == nil {
-		return sss.Close()
+		err = ErrInternalError
 	}
-
-	var code protocol.SubscribeErrorCode
 
 	var suberr SubscribeError
-
-	if errors.As(err, &suberr) {
-		code = suberr.SubscribeErrorCode()
-	} else {
-		code = ErrInternalError.SubscribeErrorCode()
+	if !errors.As(err, &suberr) {
+		suberr = ErrInternalError
 	}
 
-	sss.Stream.CancelRead(transport.StreamErrorCode(code))
-	sss.Stream.CancelWrite(transport.StreamErrorCode(code))
+	code := transport.StreamErrorCode(suberr.SubscribeErrorCode())
 
-	slog.Debug("closed a subscrbe receive stream", slog.Any("config", sss.SubscribeMessage))
+	sss.Stream.CancelRead(code)
+	sss.Stream.CancelWrite(code)
+
+	slog.Debug("closed a subscribe receive stream with an error",
+		"stream_id", sss.Stream.StreamID(),
+		"reason", err.Error(),
+	)
 
 	return nil
 }

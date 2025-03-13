@@ -35,7 +35,6 @@ func (su SubscribeUpdateMessage) Len() int {
 }
 
 func (su SubscribeUpdateMessage) Encode(w io.Writer) (int, error) {
-	slog.Debug("encoding a SUBSCRIBE_UPDATE message")
 
 	p := GetBytes()
 	defer PutBytes(p)
@@ -49,7 +48,9 @@ func (su SubscribeUpdateMessage) Encode(w io.Writer) (int, error) {
 
 	n, err := w.Write(*p)
 	if err != nil {
-		slog.Error("failed to write a SUBSCRIBE_UPDATE message", slog.String("error", err.Error()))
+		slog.Error("failed to write a SUBSCRIBE_UPDATE message",
+			"error", err,
+		)
 		return n, err
 	}
 
@@ -59,11 +60,10 @@ func (su SubscribeUpdateMessage) Encode(w io.Writer) (int, error) {
 }
 
 func (sum *SubscribeUpdateMessage) Decode(r io.Reader) (int, error) {
-	slog.Debug("decoding a SUBSCRIBE_UPDATE message")
 
 	buf, n, err := ReadBytes(quicvarint.NewReader(r))
 	if err != nil {
-		slog.Error("failed to read bytes for SUBSCRIBE_UPDATE message", slog.String("error", err.Error()), slog.Int("bytes_read", n))
+		slog.Error("failed to read payload for SUBSCRIBE_UPDATE message", "error", err)
 		return n, err
 	}
 
@@ -71,33 +71,33 @@ func (sum *SubscribeUpdateMessage) Decode(r io.Reader) (int, error) {
 
 	num, _, err := ReadNumber(mr)
 	if err != nil {
-		slog.Error("failed to read TrackPriority for SUBSCRIBE_UPDATE message", slog.String("error", err.Error()))
+		slog.Error("failed to read TrackPriority for SUBSCRIBE_UPDATE message", "error", err)
 		return n, err
 	}
 	sum.TrackPriority = TrackPriority(num)
 
 	num, _, err = ReadNumber(mr)
 	if err != nil {
-		slog.Error("failed to read GroupOrder for SUBSCRIBE_UPDATE message", slog.String("error", err.Error()))
+		slog.Error("failed to read GroupOrder for SUBSCRIBE_UPDATE message", "error", err)
 		return n, err
 	}
 	sum.GroupOrder = GroupOrder(num)
 
 	num, _, err = ReadNumber(mr)
 	if err != nil {
-		slog.Error("failed to read MinGroupSequence for SUBSCRIBE_UPDATE message", slog.String("error", err.Error()))
+		slog.Error("failed to read MinGroupSequence for SUBSCRIBE_UPDATE message", "error", err)
 		return n, err
 	}
 	sum.MinGroupSequence = GroupSequence(num)
 
 	num, _, err = ReadNumber(mr)
 	if err != nil {
-		slog.Error("failed to read MaxGroupSequence for SUBSCRIBE_UPDATE message", slog.String("error", err.Error()))
+		slog.Error("failed to read MaxGroupSequence for SUBSCRIBE_UPDATE message", "error", err)
 		return n, err
 	}
 	sum.MaxGroupSequence = GroupSequence(num)
 
-	slog.Debug("decoded a SUBSCRIBE_UPDATE message", slog.Int("bytes_read", n))
+	slog.Debug("decoded a SUBSCRIBE_UPDATE message")
 
 	return n, nil
 }

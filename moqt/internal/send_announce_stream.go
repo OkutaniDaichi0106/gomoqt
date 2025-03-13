@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strconv"
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
@@ -25,37 +24,53 @@ type SendAnnounceStream struct {
 	Stream transport.Stream
 	mu     sync.RWMutex
 
-	announcements []message.AnnounceMessage
+	announcements map[string]message.AnnounceMessage
 
 	closed   bool
 	closeErr error
 }
 
-func (sas *SendAnnounceStream) SetActiveAnnouncement(suffix string) error {
+func (sas *SendAnnounceStream) SetActiveAnnouncement(path string) error {
 	sas.mu.Lock()
 	defer sas.mu.Unlock()
 
-	slog.Debug("sending active announcement", slog.String("trackPathSuffix", suffix))
+	if sas.closed {
+		if sas.closeErr != nil {
+			return fmt.Errorf("stream already closed due to: %w", sas.closeErr)
+		}
+		return errors.New("stream already closed")
+	}
+
 	am := message.AnnounceMessage{
 		AnnounceStatus: message.ACTIVE,
-		TrackSuffix:    suffix,
+		TrackSuffix:    body,
 	}
 	sas.announcements = append(sas.announcements, am)
-	slog.Debug("active announcement added", slog.Any("announcement", am), slog.Int("totalAnnouncements", len(sas.announcements)))
+
+	slog.Debug("set active announcement", slog.String("track_suffix", body))
+
 	return nil
 }
 
-func (sas *SendAnnounceStream) SetEndedAnnouncement(suffix string) error {
+func (sas *SendAnnounceStream) SetEndedAnnouncement(path string) error {
 	sas.mu.Lock()
 	defer sas.mu.Unlock()
 
-	slog.Debug("sending ended announcement", slog.String("trackPathSuffix", suffix))
+	if sas.closed {
+		if sas.closeErr != nil {
+			return fmt.Errorf("stream already closed due to: %w", sas.closeErr)
+		}
+		return errors.New("stream already closed")
+	}
+
 	am := message.AnnounceMessage{
 		AnnounceStatus: message.ENDED,
 		TrackSuffix:    suffix,
 	}
 	sas.announcements = append(sas.announcements, am)
-	slog.Debug("ended announcement added", slog.Any("announcement", am), slog.Int("totalAnnouncements", len(sas.announcements)))
+
+	slog.Debug("set ended announcement", slog.String("track_suffix", suffix))
+
 	return nil
 }
 
@@ -63,17 +78,26 @@ func (sas *SendAnnounceStream) SendAnnouncements() error {
 	sas.mu.Lock()
 	defer sas.mu.Unlock()
 
-	slog.Debug("preparing to send announcements", slog.Int("announcementCount", len(sas.announcements)))
+	if sas.closed {
+		if sas.closeErr != nil {
+			return fmt.Errorf("stream already closed due to: %w", sas.closeErr)
+		}
+		return errors.New("stream already closed")
+	}
+
+	if len(sas.announcements) == 0 {
+		return nil
+	}
 
 	// Calculate the total length of the ANNOUNCE messages
 	var totalLen int
 	for _, am := range sas.announcements {
 		totalLen += am.Len()
 	}
-	am := message.AnnounceMessage{
+	live := message.AnnounceMessage{
 		AnnounceStatus: message.LIVE,
 	}
-	totalLen += am.Len()
+	totalLen += live.Len()
 
 	// Create a buffer
 	buf := bytes.NewBuffer(make([]byte, 0, totalLen))
@@ -83,19 +107,25 @@ func (sas *SendAnnounceStream) SendAnnouncements() error {
 		// Encode the ANNOUNCE message
 		_, err := am.Encode(buf)
 		if err != nil {
-			slog.Error("failed to encode an ANNOUNCE message", slog.String("error", err.Error()))
+			slog.Error("failed to encode an ANNOUNCE message", "error", err)
 			return err
 		}
 	}
-	slog.Debug("encoded announcements", slog.Int("bufferLength", buf.Len()))
-
-	// Send the ANNOUNCE messages
-	_, err := sas.Stream.Write(buf.Bytes())
+	// Encode the LIVE message
+	_, err := live.Encode(buf)
 	if err != nil {
-		slog.Error("failed to send ANNOUNCE messages", slog.String("error", err.Error()))
+		slog.Error("failed to encode a LIVE message", "error", err)
 		return err
 	}
-	slog.Debug("sent announcements successfully", slog.Int("bytesSent", buf.Len()))
+
+	// Send the ANNOUNCE messages
+	_, err = sas.Stream.Write(buf.Bytes())
+	if err != nil {
+		slog.Error("failed to send ANNOUNCE messages", "error", err)
+		return err
+	}
+
+	slog.Debug("sent announcement messages successfully", slog.Any("stream_id", sas.Stream.StreamID()))
 
 	return nil
 }
@@ -111,15 +141,13 @@ func (sas *SendAnnounceStream) Close() error {
 		return errors.New("stream already closed")
 	}
 
-	slog.Debug("closing stream")
 	sas.closed = true
-	err := sas.Stream.Close()
-	if err != nil {
-		slog.Error("error on stream close", slog.String("error", err.Error()))
-	} else {
-		slog.Debug("stream closed successfully")
-	}
-	return err
+
+	slog.Debug("closed a send announce stream gracefully",
+		slog.Any("stream_id", sas.Stream.StreamID()),
+	)
+
+	return sas.Stream.Close()
 }
 
 func (sas *SendAnnounceStream) CloseWithError(err error) error { // TODO
@@ -139,8 +167,10 @@ func (sas *SendAnnounceStream) CloseWithError(err error) error { // TODO
 	sas.Stream.CancelRead(code)
 	sas.Stream.CancelWrite(code)
 
-	slog.Debug("closed send announce stream with error",
-		slog.String("error", err.Error()),
-		slog.String("cancel code", strconv.Itoa(int(code))))
+	slog.Debug("closed a send announce stream with an error",
+		slog.Any("stream_id", sas.Stream.StreamID()),
+		slog.String("reason", err.Error()),
+	)
+
 	return nil
 }

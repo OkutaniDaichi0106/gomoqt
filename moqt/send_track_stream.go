@@ -11,7 +11,7 @@ var _ SendTrackStream = (*sendTrackStream)(nil)
 
 type SendTrackStream interface {
 	SubscribeID() SubscribeID
-	SubscribeConfig() SubscribeConfig
+	// SubscribeConfig() SubscribeConfig
 	TrackWriter
 }
 
@@ -26,7 +26,7 @@ type sendTrackStream struct {
 	session             *internal.Session
 	subscribeStream     *internal.ReceiveSubscribeStream
 	latestGroupSequence GroupSequence
-	mu                  sync.Mutex
+	mu                  sync.RWMutex
 }
 
 func (s *sendTrackStream) SubscribeID() SubscribeID {
@@ -37,36 +37,39 @@ func (s *sendTrackStream) TrackPath() TrackPath {
 	return TrackPath(s.subscribeStream.TrackPath)
 }
 
-func (s *sendTrackStream) TrackPriority() TrackPriority {
-	return TrackPriority(s.subscribeStream.TrackPriority)
-}
+// func (s *sendTrackStream) TrackPriority() TrackPriority {
+// 	return TrackPriority(s.subscribeStream.TrackPriority)
+// }
 
-func (s *sendTrackStream) GroupOrder() GroupOrder {
-	return GroupOrder(s.subscribeStream.GroupOrder)
-}
+// func (s *sendTrackStream) GroupOrder() GroupOrder {
+// 	return GroupOrder(s.subscribeStream.GroupOrder)
+// }
 
 func (s *sendTrackStream) LatestGroupSequence() GroupSequence {
 	return s.latestGroupSequence
 }
 
 func (s *sendTrackStream) SubscribeConfig() SubscribeConfig {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	return SubscribeConfig{
-		TrackPath:        s.TrackPath(),
-		TrackPriority:    s.TrackPriority(),
-		GroupOrder:       s.GroupOrder(),
+		// TrackPath:        s.TrackPath(),
+		TrackPriority:    TrackPriority(s.subscribeStream.TrackPriority),
+		GroupOrder:       GroupOrder(s.subscribeStream.GroupOrder),
 		MinGroupSequence: GroupSequence(s.subscribeStream.MinGroupSequence),
 		MaxGroupSequence: GroupSequence(s.subscribeStream.MaxGroupSequence),
 	}
 }
 
 func (s *sendTrackStream) Info() Info {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	return Info{
-		TrackPriority:       s.TrackPriority(),
+		TrackPriority:       TrackPriority(s.subscribeStream.TrackPriority),
 		LatestGroupSequence: s.latestGroupSequence,
-		GroupOrder:          s.GroupOrder(),
+		GroupOrder:          GroupOrder(s.subscribeStream.GroupOrder),
 	}
 }
 

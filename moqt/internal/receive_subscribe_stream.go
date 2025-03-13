@@ -3,6 +3,7 @@ package internal
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
@@ -46,7 +47,7 @@ type ReceiveSubscribeStream struct {
 
 // 	_, err := sgm.Encode(rss.Stream)
 // 	if err != nil {
-// 		slog.Error("failed to write a subscribe gap message", slog.String("error", err.Error()))
+// 		slog.Error("failed to write a subscribe gap message", "error", err,
 // 		return err
 // 	}
 
@@ -57,12 +58,35 @@ type ReceiveSubscribeStream struct {
 
 func (rss *ReceiveSubscribeStream) ReceiveSubscribeUpdate(sum *message.SubscribeUpdateMessage) error {
 	_, err := sum.Decode(rss.Stream)
-	return err
+	if err != nil {
+		slog.Error("failed to receive a SUBSCRIBE_UPDATE message",
+			"stream_id", rss.Stream.StreamID(),
+			"subscribe_id", rss.SubscribeID,
+			"error", err,
+		)
+		return err
+	}
+
+	slog.Debug("received a SUBSCRIBE_UPDATE message",
+		"stream_id", rss.Stream.StreamID(),
+		"subscribe_id", rss.SubscribeID,
+	)
+
+	return nil
 }
 
-func (srs *ReceiveSubscribeStream) CloseWithError(err error) error {
-	srs.mu.Lock()
-	defer srs.mu.Unlock()
+func (rss *ReceiveSubscribeStream) CloseWithError(err error) error {
+	rss.mu.Lock()
+	defer rss.mu.Unlock()
+
+	if rss.closed {
+		if rss.closeErr != nil {
+			return fmt.Errorf("stream has already closed due to: %w", rss.closeErr)
+		}
+		return errors.New("stream has already closed")
+	}
+
+	rss.closed = true
 
 	if err == nil {
 		err = ErrInternalError
@@ -74,8 +98,13 @@ func (srs *ReceiveSubscribeStream) CloseWithError(err error) error {
 	}
 
 	code := transport.StreamErrorCode(suberr.SubscribeErrorCode())
-	srs.Stream.CancelRead(code)
-	srs.Stream.CancelWrite(code)
+	rss.Stream.CancelRead(code)
+	rss.Stream.CancelWrite(code)
+
+	slog.Debug("closed a receive subscribe stream with an error",
+		"reason", err,
+		"stream_id", rss.Stream.StreamID(),
+	)
 
 	return nil
 }
@@ -92,5 +121,18 @@ func (rss *ReceiveSubscribeStream) Close() error {
 	}
 
 	rss.closed = true
-	return rss.Stream.Close()
+
+	err := rss.Stream.Close()
+	if err != nil {
+		slog.Error("failed to close a receive subscribe stream",
+			"stream_id", rss.Stream.StreamID(),
+			"error", err,
+		)
+	}
+
+	slog.Debug("closed a receive subscribe stream",
+		"stream_id", rss.Stream.StreamID(),
+	)
+
+	return nil
 }

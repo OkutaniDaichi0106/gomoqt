@@ -1,13 +1,9 @@
 package moqt
 
-import (
-	"fmt"
-)
+// type InfoRequest struct {
+// 	TrackPath TrackPath
+// }
 
-type InfoRequest struct {
-	TrackPath TrackPath
-}
-
-func (ir InfoRequest) String() string {
-	return fmt.Sprintf("InfoRequest: { TrackPath: %s }", ir.TrackPath.String())
-}
+// func (ir InfoRequest) String() string {
+// 	return fmt.Sprintf("InfoRequest: { TrackPath: %s }", ir.TrackPath.String())
+// }

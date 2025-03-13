@@ -16,25 +16,25 @@ func TestAnnouncePleaseMessage_EncodeDecode(t *testing.T) {
 	}{
 		"valid message": {
 			input: message.AnnouncePleaseMessage{
-				TrackPrefix: "part1/part2",
+				TrackPattern: "part1/part2",
 				// AnnounceParameters: message.Parameters{0: []byte("value")},
 			},
 		},
 		"empty track prefix": {
 			input: message.AnnouncePleaseMessage{
-				TrackPrefix: "",
+				TrackPattern: "",
 				// AnnounceParameters: message.Parameters{1: []byte("value")},
 			},
 		},
 		"empty parameters": {
 			input: message.AnnouncePleaseMessage{
-				TrackPrefix: "path",
+				TrackPattern: "path",
 				// AnnounceParameters: message.Parameters{},
 			},
 		},
 		"long path": {
 			input: message.AnnouncePleaseMessage{
-				TrackPrefix: "very/long/path/with/many/segments",
+				TrackPattern: "very/long/path/with/many/segments",
 				// AnnounceParameters: message.Parameters{1: []byte("value")},
 			},
 		},

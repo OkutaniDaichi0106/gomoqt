@@ -52,7 +52,6 @@ func (s SubscribeMessage) Len() int {
 }
 
 func (s SubscribeMessage) Encode(w io.Writer) (int, error) {
-	slog.Debug("encoding a SUBSCRIBE message")
 
 	p := GetBytes()
 	defer PutBytes(p)
@@ -66,11 +65,9 @@ func (s SubscribeMessage) Encode(w io.Writer) (int, error) {
 	*p = AppendNumber(*p, uint64(s.MinGroupSequence))
 	*p = AppendNumber(*p, uint64(s.MaxGroupSequence))
 
-	// *p = AppendParameters(*p, s.SubscribeParameters)
-
 	n, err := w.Write(*p)
 	if err != nil {
-		slog.Error("failed to write a SUBSCRIBE message", slog.String("error", err.Error()))
+		slog.Error("failed to write a SUBSCRIBE message", "error", err)
 		return n, err
 	}
 
@@ -80,11 +77,12 @@ func (s SubscribeMessage) Encode(w io.Writer) (int, error) {
 }
 
 func (s *SubscribeMessage) Decode(r io.Reader) (int, error) {
-	slog.Debug("decoding a SUBSCRIBE message")
 
 	buf, n, err := ReadBytes(quicvarint.NewReader(r))
 	if err != nil {
-		slog.Error("failed to read bytes for SUBSCRIBE message", slog.String("error", err.Error()), slog.Int("bytes_read", n))
+		slog.Error("failed to read payload for SUBSCRIBE message",
+			"error", err,
+		)
 		return n, err
 	}
 
@@ -92,50 +90,56 @@ func (s *SubscribeMessage) Decode(r io.Reader) (int, error) {
 
 	num, _, err := ReadNumber(mr)
 	if err != nil {
-		slog.Error("failed to read SubscribeID for SUBSCRIBE message", slog.String("error", err.Error()))
+		slog.Error("failed to read subscribe ID for SUBSCRIBE message",
+			"error", err,
+		)
 		return n, err
 	}
 	s.SubscribeID = SubscribeID(num)
 
 	s.TrackPath, _, err = ReadString(mr)
 	if err != nil {
-		slog.Error("failed to read TrackPath for SUBSCRIBE message", slog.String("error", err.Error()))
+		slog.Error("failed to read track path for SUBSCRIBE message",
+			"error", err,
+		)
 		return n, err
 	}
 
 	num, _, err = ReadNumber(mr)
 	if err != nil {
-		slog.Error("failed to read TrackPriority for SUBSCRIBE message", slog.String("error", err.Error()))
+		slog.Error("failed to read track priority for SUBSCRIBE message",
+			"error", err,
+		)
 		return n, err
 	}
 	s.TrackPriority = TrackPriority(num)
 
 	num, _, err = ReadNumber(mr)
 	if err != nil {
-		slog.Error("failed to read GroupOrder for SUBSCRIBE message", slog.String("error", err.Error()))
+		slog.Error("failed to read group order for SUBSCRIBE message",
+			"error", err,
+		)
 		return n, err
 	}
 	s.GroupOrder = GroupOrder(num)
 
 	num, _, err = ReadNumber(mr)
 	if err != nil {
-		slog.Error("failed to read MinGroupSequence for SUBSCRIBE message", slog.String("error", err.Error()))
+		slog.Error("failed to read min group sequence for SUBSCRIBE message",
+			"error", err,
+		)
 		return n, err
 	}
 	s.MinGroupSequence = GroupSequence(num)
 
 	num, _, err = ReadNumber(mr)
 	if err != nil {
-		slog.Error("failed to read MaxGroupSequence for SUBSCRIBE message", slog.String("error", err.Error()))
+		slog.Error("failed to read max group sequence for SUBSCRIBE message",
+			"error", err,
+		)
 		return n, err
 	}
 	s.MaxGroupSequence = GroupSequence(num)
-
-	// s.SubscribeParameters, _, err = ReadParameters(mr)
-	// if err != nil {
-	// 	slog.Error("failed to read SubscribeParameters for SUBSCRIBE message", slog.String("error", err.Error()))
-	// 	return n, err
-	// }
 
 	slog.Debug("decoded a SUBSCRIBE message")
 

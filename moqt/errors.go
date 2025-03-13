@@ -15,6 +15,8 @@ var (
 
 	ErrDuplicatedTrack = &Error{internal.ErrDuplicatedTrack}
 
+	ErrMismatchAnnouncement = &Error{internal.ErrMismatchAnnouncement}
+
 	ErrInvalidRange = &Error{internal.ErrInvalidRange}
 
 	ErrDuplicatedSubscribeID = &Error{internal.ErrDuplicatedSubscribeID} // TODO: Use this error

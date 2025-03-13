@@ -20,12 +20,11 @@ func (tw *trackBufferWriter) TrackPath() TrackPath {
 	return tw.trackBuffer.TrackPath()
 }
 
-func (tw *trackBufferWriter) TrackPriority() TrackPriority {
-	return tw.priotity
-}
-
-func (tw *trackBufferWriter) GroupOrder() GroupOrder {
-	return tw.order
+func (tw *trackBufferWriter) SubscribeConfig() SubscribeConfig {
+	return SubscribeConfig{
+		TrackPriority: tw.priotity,
+		GroupOrder:    tw.order,
+	}
 }
 
 func (tw *trackBufferWriter) LatestGroupSequence() GroupSequence {

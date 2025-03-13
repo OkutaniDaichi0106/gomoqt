@@ -6,60 +6,75 @@ import (
 
 type dummyHandler struct{}
 
-func (d *dummyHandler) ServeTrack(w TrackWriter, r SubscribeConfig)              {}
-func (d *dummyHandler) ServeAnnouncement(w AnnouncementWriter, r AnnounceConfig) {}
-func (d *dummyHandler) ServeInfo(ch chan<- Info, r InfoRequest)                  {}
+func (d *dummyHandler) ServeTrack(w TrackWriter, r SubscribeConfig) {}
+func (d *dummyHandler) ServeAnnouncement(w AnnouncementWriter)      {}
+func (d *dummyHandler) ServeInfo(ch chan<- Info, r InfoRequest)     {}
 
 func TestFindHandler(t *testing.T) {
-	mux := NewServeMux()
-	dummy := &dummyHandler{}
+	mux := NewTrackMux()
+	handler := &dummyHandler{}
 
-	// Register "/a/b/c/d"
-	mux.Handle("/a/b/c/d", dummy)
-	// Manually set dummy on the leaf node corresponding to "/a/b/c/d"
-	{
-		// Traverse: parts => ["", "a", "b", "c", "d"]
-		node, ok := mux.tree.children[""]
-		if !ok {
-			t.Fatal("root empty node not found")
-		}
-		node, ok = node.children["a"]
-		if !ok {
-			t.Fatal("node 'a' not found")
-		}
-		node, ok = node.children["b"]
-		if !ok {
-			t.Fatal("node 'b' not found")
-		}
-		node, ok = node.children["c"]
-		if !ok {
-			t.Fatal("node 'c' not found")
-		}
-		node, ok = node.children["d"]
-		if !ok {
-			t.Fatal("node 'd' not found")
-		}
-		node.handler = dummy
-	}
+	// Register handlers for specific paths
+	mux.Handle("/a/b/c/d", handler)
+	mux.Handle("/a/b", handler)
+	mux.Handle("/x/y/z", handler)
 
-	// Test patterns to match against "/a/b/c/d"
+	// Test cases with correct glob pattern expectations
 	testCases := []struct {
-		pattern  string
-		expected bool
+		pattern     string // The pattern to search for
+		targetPath  string // Path we're trying to match
+		shouldMatch bool   // Whether we expect a match
 	}{
-		{"*/c/d", true},
-		{"*/d", true},
-		{"/a/*", true},
-		{"*/b/*", true},
-		{"*/b/c/*", true},
+		// Basic exact matches
+		{"/a/b/c/d", "/a/b/c/d", true},
+		{"/a/b", "/a/b", true},
+		{"/x/y/z", "/x/y/z", true},
+
+		// Single wildcard matches
+		{"/a/*/c/d", "/a/b/c/d", true}, // * matches 'b'
+		{"/a/b/*/d", "/a/b/c/d", true}, // * matches 'c'
+		{"/a/b/*/*", "/a/b/c/d", true}, // * matches 'c' and 'd'
+		{"/*/b/c/d", "/a/b/c/d", true}, // * matches 'a'
+
+		// Double wildcard matches
+		{"/**/d", "/a/b/c/d", true},   // ** matches 'a/b/c'
+		{"/a/**", "/a/b/c/d", true},   // ** matches 'b/c/d'
+		{"/a/**/d", "/a/b/c/d", true}, // ** matches 'b/c'
+
+		// Non-matches
+		{"/b/*", "/a/b", false},       // Different base path
+		{"/a/*/d", "/a/b/c/d", false}, // Missing segment
+		{"/a/b/c", "/a/b/c/d", false}, // Path too short
+		{"/*", "/a/b", false},         // Single * only matches one segment
 	}
 
 	for _, tc := range testCases {
-		h := mux.findRoutingNode(newPattern(tc.pattern)).handler
-		if (h == dummy) != tc.expected {
-			t.Errorf("pattern %q: expected match %v, got %v", tc.pattern, tc.expected, h)
-		} else {
-			t.Logf("pattern %q matched as expected", tc.pattern)
-		}
+		t.Run(tc.pattern+"→"+tc.targetPath, func(t *testing.T) {
+			// Create pattern from the target path we're trying to match
+			// targetPattern := newPattern(tc.targetPath)
+
+			// Find the node using the glob pattern
+			node := mux.findRoutingNode(newPattern(tc.pattern))
+
+			if tc.shouldMatch {
+				if node == nil || node.handler != handler {
+					t.Errorf("Pattern %q should match path %q but did not", tc.pattern, tc.targetPath)
+				} else {
+					t.Logf("Pattern %q correctly matched path %q", tc.pattern, tc.targetPath)
+				}
+			} else {
+				if node != nil && node.handler == handler {
+					t.Errorf("Pattern %q should NOT match path %q but did", tc.pattern, tc.targetPath)
+				} else {
+					t.Logf("Pattern %q correctly did not match path %q", tc.pattern, tc.targetPath)
+				}
+			}
+
+			// Also test the reverse: direct glob matching function
+			if matchGlob(tc.pattern, tc.targetPath) != tc.shouldMatch {
+				t.Errorf("matchGlob(%q, %q) returned %v, expected %v",
+					tc.pattern, tc.targetPath, !tc.shouldMatch, tc.shouldMatch)
+			}
+		})
 	}
 }

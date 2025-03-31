@@ -3,6 +3,7 @@ package message
 import (
 	"io"
 	"log/slog"
+	"sync"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -15,6 +16,17 @@ type FrameSequence uint64
  *   Payload ([]byte),
  * }
  */
+
+func NewFrameMessage(payload []byte) *FrameMessage {
+	fm := framePool.Get().(*FrameMessage)
+	if cap(fm.Payload) < len(payload) {
+		fm.Payload = make([]byte, len(payload))
+	} else {
+		fm.Payload = fm.Payload[:len(payload)]
+	}
+	copy(fm.Payload, payload)
+	return fm
+}
 
 type FrameMessage struct {
 	Payload []byte
@@ -54,4 +66,30 @@ func (fm *FrameMessage) Decode(r io.Reader) (int, error) {
 	slog.Debug("decoded a FRAME message")
 
 	return n, nil
+}
+
+var framePool = sync.Pool{
+	New: func() any {
+		return &FrameMessage{
+			Payload: make([]byte, 0, DefaultFrameSize),
+		}
+	},
+}
+
+var DefaultFrameSize = 2048
+
+// CopyBytes method returns a copy of the internal slice.
+func (f *FrameMessage) CopyBytes() []byte {
+	b := make([]byte, len(f.Payload))
+	copy(b, f.Payload)
+	return b
+}
+
+func (f FrameMessage) Size() int {
+	return len(f.Payload)
+}
+
+func (f *FrameMessage) Release() {
+	f.Payload = f.Payload[:0]
+	framePool.Put(f)
 }

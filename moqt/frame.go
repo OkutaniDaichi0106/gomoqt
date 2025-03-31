@@ -1,47 +1,23 @@
 package moqt
 
-import "sync"
+import "github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 
 type FrameSequence uint64
 
 var DefaultFrameSize = 2048
 
-var framePool = sync.Pool{
-	New: func() any {
-		return &Frame{
-			bytes: make([]byte, 0, DefaultFrameSize),
-		}
-	},
-}
+type Frame interface {
+	// CopyBytes returns a copy of the internal slice.
+	CopyBytes() []byte
 
-type Frame struct {
-	bytes []byte
+	// Size returns the size of the internal slice.
+	Size() int
+
+	// Release releases the frame back to the pool.
+	Release()
 }
 
 // NewFrame creates a new Frame with the specified bytes.
-func NewFrame(b []byte) *Frame {
-	f := framePool.Get().(*Frame)
-	if cap(f.bytes) < len(b) {
-		f.bytes = make([]byte, len(b))
-	} else {
-		f.bytes = f.bytes[:len(b)]
-	}
-	copy(f.bytes, b)
-	return f
-}
-
-// Updated CopyBytes method to return a copy of the internal slice.
-func (f Frame) CopyBytes() []byte {
-	b := make([]byte, len(f.bytes))
-	copy(b, f.bytes)
-	return b
-}
-
-func (f Frame) Size() int {
-	return len(f.bytes)
-}
-
-func (f *Frame) Release() {
-	f.bytes = f.bytes[:0]
-	framePool.Put(f)
+func NewFrame(b []byte) Frame {
+	return message.NewFrameMessage(b)
 }

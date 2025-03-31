@@ -24,10 +24,7 @@ type SendGroupStream struct {
 	startTime    time.Time // TODO: Delete if not used
 }
 
-func (sgs *SendGroupStream) SendFrameBytes(frame []byte) error {
-	fm := message.FrameMessage{
-		Payload: frame,
-	}
+func (sgs *SendGroupStream) SendFrameMessage(fm *message.FrameMessage) error {
 	_, err := fm.Encode(sgs.SendStream)
 	if err != nil {
 		slog.Error("failed to write a frame message",

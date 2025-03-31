@@ -134,12 +134,12 @@ ptrFramePool := sync.Pool{
     }
 }
 
-func NewFrameBuffer() *Frame {
+func NewFrameBuffer() Frame {
     // Get
-    Frame := ptrFramePool.Get().(*Frame)
+    Frame := ptrFramePool.Get().(Frame)
 
     // Initialize the bytes
-    *Frame.bytes = *Frame.bytes[:0]
+    Frame.bytes = Frame.bytes[:0]
 
     return Frame
 }

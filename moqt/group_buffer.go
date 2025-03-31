@@ -13,7 +13,7 @@ func newGroupBuffer(seq GroupSequence, size int) *GroupBuffer {
 	return &GroupBuffer{
 		groupSequence: seq,
 		cond:          sync.NewCond(&sync.Mutex{}),
-		frames:        make([]*Frame, 0, size),
+		frames:        make([]Frame, 0, size),
 	}
 }
 
@@ -21,7 +21,7 @@ type GroupBuffer struct {
 	groupSequence GroupSequence
 
 	// frames
-	frames []*Frame
+	frames []Frame
 
 	closed bool
 
@@ -64,6 +64,6 @@ func (g *GroupBuffer) Release() {
 	// TODO: Release to sync.Pool
 }
 
-var DefaultGroupBufferSize = defaultBufferSize
+var DefaultGroupBufferSize = defaultBufferSize // TODO:
 
 const defaultBufferSize = 1024 * 1024 // 1MB

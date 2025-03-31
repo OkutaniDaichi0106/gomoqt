@@ -42,7 +42,6 @@ https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html
 | 6.1. Session Stream                          | :white_check_mark: | :white_check_mark: |
 | 6.2. Announce Stream                         | :white_check_mark: | :white_check_mark: |
 | 6.3. Subscribe Stream                        | :white_check_mark: | :white_check_mark: |
-| 6.4. Fetch Stream                            | :white_check_mark: | :white_check_mark: |
 | 6.5. Info Stream                             | :white_check_mark: | :white_check_mark: |
 | **Control Messages**                         |                    |                    |
 | 6.1. Parameters                              | :construction:     | :white_check_mark: |
@@ -60,7 +59,7 @@ https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html
 | 6.8. INFO                                    | :white_check_mark: | :white_check_mark: |
 | 6.9. INFO_PLEASE                             | :white_check_mark: | :white_check_mark: |
 | **Data Stream**                              |                    |                    |
-| 7.3. Group Streams                           | :white_check_mark: | :white_check_mark: |
+| 7.3. Group Stream                            | :white_check_mark: | :white_check_mark: |
 | **Data Message**                             |                    |                    |
 | 7.2. GROUP                                   | :white_check_mark: | :white_check_mark: |
 | 7.2. FRAME                                   | :white_check_mark: | :white_check_mark: |

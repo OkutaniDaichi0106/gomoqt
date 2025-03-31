@@ -23,10 +23,10 @@ type Session interface {
 	 * Methods for the Subscriber
 	 */
 	// Open an Announce Stream
-	OpenAnnounceStream(AnnounceConfig) (AnnouncementReader, error)
+	OpenAnnounceStream(*AnnounceConfig) (AnnouncementReader, error)
 
 	// Open a Track Stream
-	OpenTrackStream(TrackPath, SubscribeConfig) (Info, ReceiveTrackStream, error)
+	OpenTrackStream(TrackPath, *SubscribeConfig) (Info, ReceiveTrackStream, error)
 
 	// Request Track Info
 	RequestInfo(TrackPath) (Info, error)
@@ -46,10 +46,10 @@ type Session interface {
 
 var _ Session = (*session)(nil)
 
-func newSession(internalSession *internal.Session, resolver TrackResolver) Session {
+func newSession(internalSession *internal.Session, handler TrackHandler) Session {
 	sess := &session{
 		internalSession: internalSession,
-		resolver:        resolver,
+		handler:         handler,
 	}
 
 	go sess.resolveInfoRequest(context.TODO()) // TODO: context.TODO()?
@@ -61,7 +61,7 @@ type session struct {
 	internalSession    *internal.Session
 	subscribeIDCounter uint64
 
-	resolver TrackResolver
+	handler TrackHandler
 }
 
 func (s *session) Terminate(err error) {
@@ -69,8 +69,10 @@ func (s *session) Terminate(err error) {
 	slog.Debug("session terminated", "error", err)
 }
 
-func (s *session) OpenAnnounceStream(config AnnounceConfig) (AnnouncementReader, error) {
-	slog.Debug("opening announce stream", "announce_config", config.String())
+func (s *session) OpenAnnounceStream(config *AnnounceConfig) (AnnouncementReader, error) {
+	if config == nil {
+		config = &AnnounceConfig{TrackPattern: "/**"}
+	}
 
 	apm := message.AnnouncePleaseMessage{
 		TrackPattern: config.TrackPattern,
@@ -81,10 +83,16 @@ func (s *session) OpenAnnounceStream(config AnnounceConfig) (AnnouncementReader,
 		return nil, err
 	}
 
+	slog.Debug("opened an announce stream", "announce_config", config.String())
+
 	return newReceiveAnnounceStream(ras), nil
 }
 
-func (s *session) OpenTrackStream(path TrackPath, config SubscribeConfig) (Info, ReceiveTrackStream, error) {
+func (s *session) OpenTrackStream(path TrackPath, config *SubscribeConfig) (Info, ReceiveTrackStream, error) {
+	if config == nil {
+		config = &SubscribeConfig{}
+	}
+
 	id := s.nextSubscribeID()
 
 	slog.Debug("opening track stream", "subscribe_config", config.String(), "subscribe_id", id)
@@ -100,7 +108,7 @@ func (s *session) OpenTrackStream(path TrackPath, config SubscribeConfig) (Info,
 
 	im, ss, err := s.internalSession.OpenSubscribeStream(sm)
 	if err != nil {
-		return Info{}, nil, err
+		return NotFoundInfo, nil, err
 	}
 
 	info := Info{
@@ -123,7 +131,7 @@ func (s *session) RequestInfo(path TrackPath) (Info, error) {
 			"track_path", path,
 			"error", err,
 		)
-		return Info{}, err
+		return NotFoundInfo, err
 	}
 
 	info := Info{
@@ -167,7 +175,7 @@ func (s *session) AcceptTrackStream(ctx context.Context) (SendTrackStream, error
 	var info Info
 
 	path := sts.TrackPath()
-	info, err = s.resolver.GetInfo(path)
+	info, err = s.handler.GetInfo(path)
 	if err != nil {
 		slog.Error("failed to get track info",
 			"track_path", path,
@@ -205,7 +213,7 @@ func (s *session) resolveInfoRequest(ctx context.Context) {
 		var info Info
 
 		path := TrackPath(irs.InfoRequestMessage.TrackPath)
-		info, err = s.resolver.GetInfo(path)
+		info, err = s.handler.GetInfo(path)
 		if err != nil {
 			slog.Error("failed to get track info",
 				"track_path", path,

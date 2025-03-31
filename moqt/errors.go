@@ -193,16 +193,3 @@ type TerminateError interface {
 }
 
 type TerminateErrorCode uint64
-
-type defaultTerminateError struct {
-	reason string
-	code   TerminateErrorCode
-}
-
-func (err defaultTerminateError) Error() string {
-	return err.reason
-}
-
-func (err defaultTerminateError) TerminateErrorCode() TerminateErrorCode {
-	return err.code
-}

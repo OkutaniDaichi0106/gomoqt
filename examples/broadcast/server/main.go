@@ -48,12 +48,7 @@ func handleSession(path string, sess moqt.Session) {
 	slog.Info("handling a session", slog.String("path", path))
 
 	// Accept a track stream
-	stream, err := sess.AcceptTrackStream(context.Background(), func(path moqt.TrackPath) (moqt.Info, error) {
-		slog.Info("subscribed to a track", slog.String("track_path", path.String()))
-		info := moqt.Info{}
-		slog.Info("accepted a subscription", slog.String("track_info", info.String()))
-		return info, nil
-	})
+	stream, err := sess.AcceptTrackStream(context.Background())
 	if err != nil {
 		slog.Error("failed to accept track stream", "error", err)
 		return

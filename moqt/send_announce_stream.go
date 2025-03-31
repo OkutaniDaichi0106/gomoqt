@@ -75,9 +75,11 @@ func (sas *sendAnnounceStream) SendAnnouncements(announcements []*Announcement) 
 	default:
 	}
 
-	// Send announcements
+	// Send ended announcements
 	for _, ann := range announcements {
 		go func(ann *Announcement) {
+			ann.AwaitEnd()
+
 			err := sas.internalStream.SetEndedAnnouncement(ann.TrackPath().String())
 			if err != nil {
 				slog.Error("failed to set ended announcement",

@@ -28,7 +28,7 @@ func BuildTrack(path TrackPath, info Info, expires time.Duration) *TrackBuffer {
 	}
 }
 
-var _ TrackResolver = (*TrackBuffer)(nil)
+var _ TrackHandler = (*TrackBuffer)(nil)
 
 type TrackBuffer struct {
 	path                TrackPath

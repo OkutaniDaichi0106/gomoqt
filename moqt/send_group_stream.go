@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 )
 
@@ -24,7 +25,7 @@ func (sgs *sendGroupStream) GroupSequence() GroupSequence {
 	return GroupSequence(sgs.internalStream.GroupMessage.GroupSequence)
 }
 
-func (sgs *sendGroupStream) WriteFrame(frame *Frame) error {
+func (sgs *sendGroupStream) WriteFrame(frame Frame) error {
 	sgs.mu.Lock()
 	defer sgs.mu.Unlock()
 
@@ -32,14 +33,29 @@ func (sgs *sendGroupStream) WriteFrame(frame *Frame) error {
 		if sgs.closedErr != nil {
 			return sgs.closedErr
 		}
-
 		return ErrClosedGroup
 	}
 
-	err := sgs.internalStream.SendFrameBytes(frame.bytes)
-	if err != nil {
-		sgs.CloseWithError(err) // TODO: should we close the stream?
-		return err
+	if frame == nil {
+		return errors.New("frame is nil")
+	}
+
+	if fm, ok := frame.(*message.FrameMessage); ok {
+		err := sgs.internalStream.SendFrameMessage(fm)
+		if err != nil {
+			sgs.CloseWithError(err) // TODO: should we close the stream?
+			return err
+		}
+	} else {
+		bytes := frame.CopyBytes()
+		if bytes == nil {
+			return errors.New("frame is nil")
+		}
+		_, err := sgs.internalStream.SendStream.Write(bytes)
+		if err != nil {
+			sgs.CloseWithError(err)
+			return err
+		}
 	}
 
 	return nil

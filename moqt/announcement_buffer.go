@@ -1,28 +1,26 @@
 package moqt
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"sync"
 )
 
 var _ AnnouncementWriter = (*announcementsBuffer)(nil)
-var _ AnnouncementReader = (*announcementsBuffer)(nil)
 
 func newAnnouncementBuffer(config AnnounceConfig) *announcementsBuffer {
 	return &announcementsBuffer{
 		config:        config,
 		announcements: make([]*Announcement, 0),
-		notifyCh:      make(chan struct{}, 1),
+		cond:          sync.NewCond(&sync.Mutex{}),
 	}
 }
 
 type announcementsBuffer struct {
 	config        AnnounceConfig
 	announcements []*Announcement
-	mu            sync.Mutex
-	notifyCh      chan struct{}
+	mu            sync.RWMutex
+	cond          *sync.Cond
 
 	closed    bool
 	closedErr error
@@ -43,53 +41,49 @@ func (ab *announcementsBuffer) SendAnnouncements(announcements []*Announcement) 
 		return ab.closedErr
 	}
 
-	ab.announcements = append(ab.announcements, announcements...)
-
-	select {
-	case ab.notifyCh <- struct{}{}:
-	default:
-		// Skip if the channel is already full
+	// Append the new active announcements
+	for _, ann := range announcements {
+		if ann != nil && ann.IsActive() {
+			ab.announcements = append(ab.announcements, ann)
+		}
 	}
+
+	ab.cond.Broadcast()
 
 	return nil
 }
 
-func (ab *announcementsBuffer) ReceiveAnnouncements(ctx context.Context) ([]*Announcement, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-
-	for {
-		ab.mu.Lock()
-
-		// Check if the buffer is closed
-		if ab.closed {
-			err := ab.closedErr
-			if ab.closedErr == nil {
-				err = errors.New("announcement buffer is already closed")
+func (ab *announcementsBuffer) ServeAnnouncements(w AnnouncementWriter) {
+	go func() {
+		pos := 0
+		for {
+			for pos > len(ab.announcements) {
+				ab.cond.Wait()
 			}
-			ab.mu.Unlock()
-			return nil, err
-		}
 
-		// Check if there are any announcements
-		if len(ab.announcements) > 0 {
-			defer ab.mu.Unlock()
-			announcements := ab.announcements
-			ab.announcements = ab.announcements[:0]
-			return announcements, nil
-		}
+			// Check if the buffer is closed
+			if ab.closed {
+				err := ab.closedErr
+				if ab.closedErr == nil {
+					w.Close()
+					return
+				}
 
-		ab.mu.Unlock()
+				w.CloseWithError(err)
+				return
+			}
 
-		// Wait for the next announcement
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-ab.notifyCh:
-			continue
+			// Send the announcements from the current position to the end of the buffer
+			anns := ab.announcements[pos:]
+			err := w.SendAnnouncements(anns)
+			if err != nil {
+				w.CloseWithError(err)
+				return
+			}
+
+			pos = len(ab.announcements)
 		}
-	}
+	}()
 }
 
 func (ab *announcementsBuffer) AnnounceConfig() AnnounceConfig {
@@ -105,7 +99,9 @@ func (ab *announcementsBuffer) Close() error {
 	}
 
 	ab.closed = true
-	close(ab.notifyCh)
+
+	ab.cond.Broadcast()
+
 	return nil
 }
 
@@ -127,7 +123,8 @@ func (ab *announcementsBuffer) CloseWithError(err error) error {
 
 	ab.closedErr = err
 	ab.closed = true
-	close(ab.notifyCh)
+
+	ab.cond.Broadcast()
 
 	return nil
 }

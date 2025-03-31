@@ -20,8 +20,8 @@ func NewCluster(urlstr string, ctx context.Context) (*Cluster, error) {
 		session: sess,
 	}
 
-	annstr, err := sess.OpenAnnounceStream(moqt.AnnounceConfig{
-		TrackPattern: "/*",
+	annstr, err := sess.OpenAnnounceStream(&moqt.AnnounceConfig{
+		TrackPattern: "/**",
 	})
 	if err != nil {
 		return nil, err
@@ -29,7 +29,7 @@ func NewCluster(urlstr string, ctx context.Context) (*Cluster, error) {
 
 	go func() {
 		for {
-			anns, err := annstr.NextAnnouncements(ctx)
+			anns, err := annstr.ReceiveAnnouncements(ctx)
 			if err != nil {
 				return
 			}

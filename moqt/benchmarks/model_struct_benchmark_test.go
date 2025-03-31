@@ -14,7 +14,7 @@ type Frame struct {
 }
 
 type Group struct {
-	frames []*Frame
+	frames []Frame
 	// ...existing code...
 }
 
@@ -38,19 +38,19 @@ func BenchmarkNewFramePointer(b *testing.B) {
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = p.Get().(*Frame)
+		_ = p.Get().(Frame)
 	}
 }
 
 func BenchmarkNewSliceOfFramePointer(b *testing.B) {
 	p := &sync.Pool{
 		New: func() interface{} {
-			return []*Frame{}
+			return []Frame{}
 		},
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = p.Get().([]*Frame)
+		_ = p.Get().([]Frame)
 	}
 }
 
@@ -82,7 +82,7 @@ func BenchmarkFrameRoundTripDataWrite(b *testing.B) {
 	cases := []struct {
 		name    string
 		pool    *sync.Pool
-		getFunc func(interface{}) *Frame
+		getFunc func(interface{}) Frame
 	}{
 		{
 			name: "FrameValue",
@@ -90,7 +90,7 @@ func BenchmarkFrameRoundTripDataWrite(b *testing.B) {
 				New: func() interface{} { return Frame{} },
 			},
 			// For a Frame value, we work on a copy.
-			getFunc: func(obj interface{}) *Frame {
+			getFunc: func(obj interface{}) Frame {
 				f := obj.(Frame)
 				return &f
 			},
@@ -100,8 +100,8 @@ func BenchmarkFrameRoundTripDataWrite(b *testing.B) {
 			pool: &sync.Pool{
 				New: func() interface{} { return new(Frame) },
 			},
-			getFunc: func(obj interface{}) *Frame {
-				return obj.(*Frame)
+			getFunc: func(obj interface{}) Frame {
+				return obj.(Frame)
 			},
 		},
 	}

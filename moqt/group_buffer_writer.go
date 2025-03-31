@@ -39,7 +39,7 @@ func (w *groupBufferWriter) Close() error {
 	return nil
 }
 
-func (w *groupBufferWriter) WriteFrame(frame *Frame) error {
+func (w *groupBufferWriter) WriteFrame(frame Frame) error {
 	w.groupBuffer.cond.L.Lock()
 	defer w.groupBuffer.cond.L.Unlock()
 

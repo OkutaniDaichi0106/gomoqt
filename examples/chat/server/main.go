@@ -11,14 +11,10 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
-var mux *moqt.TrackMux
+// var mux *moqt.TrackMux
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})))
-
-	// Initialize the TrackMux
-	mux = moqt.NewTrackMux()
-	slog.Debug("initialized track mux")
 
 	server := moqt.Server{
 		Addr: "localhost:4444",

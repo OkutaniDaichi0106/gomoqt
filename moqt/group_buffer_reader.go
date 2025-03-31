@@ -25,7 +25,7 @@ func (r *groupBufferReader) GroupSequence() GroupSequence {
 	return r.groupBuffer.groupSequence
 }
 
-func (r *groupBufferReader) ReadFrame() (*Frame, error) {
+func (r *groupBufferReader) ReadFrame() (Frame, error) {
 	r.groupBuffer.cond.L.Lock()
 	defer r.groupBuffer.cond.L.Unlock()
 

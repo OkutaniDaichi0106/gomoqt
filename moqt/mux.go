@@ -1,8 +1,7 @@
 package moqt
 
 import (
-	"context"
-	"net/http"
+	"log/slog"
 	"strings"
 	"sync"
 )
@@ -11,28 +10,61 @@ var DefaultMux *TrackMux = defaultMux
 
 var defaultMux = NewTrackMux()
 
-var _ TrackResolver = (*TrackMux)(nil)
-
 func NewTrackMux() *TrackMux {
 	return &TrackMux{
-		tree: *newRoutingNode(nil, nil),
+		trackTree:    *newRoutingNode(),
+		announceTree: *newAnnouncingNode(),
 	}
 }
 
-type TrackMux struct {
-	http.ServeMux
-	mu   sync.RWMutex
-	tree routingNode
+func Handle(path TrackPath, handler TrackHandler) {
+	DefaultMux.Handle(path, handler)
 }
 
-func (mux *TrackMux) Handle(path TrackPath, handler TrackResolver) {
+func ServeTrack(w TrackWriter, config SubscribeConfig) {
+	DefaultMux.ServeTrack(w, config)
+}
+
+func ServeAnnouncement(w AnnouncementWriter) {
+	DefaultMux.ServeAnnouncements(w)
+}
+
+func GetInfo(path TrackPath) (Info, error) {
+	return DefaultMux.GetInfo(path)
+}
+
+var _ TrackHandler = (*TrackMux)(nil)
+
+type TrackMux struct {
+	// http.ServeMux
+	mu sync.RWMutex
+
+	// trackTree is the root node of the routing tree for tracks.
+	// It is used to find the handler for a given track path.
+	trackTree routingNode
+
+	// announceTree is the root node of the announcement tree.
+	// It is used to announce new tracks to existing announcement writers.
+	announceTree announcingNode
+}
+
+func (mux *TrackMux) Handle(path TrackPath, handler TrackHandler) {
 	mux.mu.Lock()
 	defer mux.mu.Unlock()
 
-	p := newPath(path.String())
+	p := newPath(path)
 
-	current := &mux.tree
-	for _, seg := range p.segments {
+	mux.registerHandler(p, handler)
+
+	mux.announce(p, handler)
+
+	slog.Debug("handling a track", "track_path", path)
+}
+
+func (mux *TrackMux) registerHandler(path *path, handler TrackHandler) {
+	// Register the handler on the routing tree
+	current := &mux.trackTree
+	for _, seg := range path.segments {
 		if current.children == nil {
 			current.children = make(map[string]*routingNode)
 		}
@@ -40,169 +72,226 @@ func (mux *TrackMux) Handle(path TrackPath, handler TrackResolver) {
 		if child, ok := current.children[seg]; ok {
 			current = child
 		} else {
-			child := newRoutingNode(nil, nil)
+			child := newRoutingNode()
+			current.children[seg] = child
+			current = child
+		}
+	}
+
+	if current.handler != nil && current.pattern != nil {
+		slog.Warn("trackmux: overwriting existing handler", "path", path.str)
+	}
+
+	// Set the handler on the leaf node
+	current.setHandler(path, handler)
+
+	slog.Debug("registered a handler", "track_path", path.str)
+}
+
+func (mux *TrackMux) announce(path *path, handler TrackHandler) {
+	mux.announceTree.announce(0, path, handler)
+
+	slog.Debug("announced a new track", "track_path", path.str)
+}
+
+func (mux *TrackMux) ServeAnnouncements(w AnnouncementWriter) {
+	pattern := newPattern(w.AnnounceConfig().TrackPattern)
+
+	// Register the handler on the routing tree
+	current := &mux.announceTree
+	for _, seg := range pattern.segments {
+		if current.children == nil {
+			current.children = make(map[string]*announcingNode)
+		}
+
+		if child, ok := current.children[seg]; ok {
+			current = child
+		} else {
+			child := newAnnouncingNode()
 			current.children[seg] = child
 			current = child
 		}
 	}
 
 	// Set the handler on the leaf node
-	current.handler = handler
+	if current.announcementsBuffer == nil {
+		current.announcementsBuffer = newAnnouncementBuffer(w.AnnounceConfig())
+	}
+
+	// Serve announcements
+	current.announcementsBuffer.ServeAnnouncements(w)
 }
 
-func (mux *TrackMux) Resolver(path TrackPath) TrackResolver {
+func (mux *TrackMux) Handler(path TrackPath) TrackHandler {
 	mux.mu.RLock()
 	defer mux.mu.RUnlock()
 
-	p := newPath(path.String())
+	p := newPath(path)
 
-	node := mux.findRoutingNode(p)
-	if node == nil {
-		return nil
+	// Find the handler for the given path
+	current := &mux.trackTree
+	for _, seg := range p.segments {
+		if current.children == nil {
+			return NotFoundHandler
+		}
+
+		child, ok := current.children[seg]
+		if !ok {
+			return NotFoundHandler
+		}
+
+		current = child
 	}
 
-	return node.handler
+	if current.handler == nil {
+		return NotFoundHandler
+	}
+
+	return current.handler
 }
 
 func (mux *TrackMux) ServeTrack(w TrackWriter, config SubscribeConfig) {
 	mux.mu.RLock()
 	defer mux.mu.RUnlock()
 
-	p := newPath(w.TrackPath().String())
-	node := mux.findRoutingNode(p)
-	if node == nil || node.handler == nil {
-		w.CloseWithError(ErrTrackDoesNotExist)
-		return
-	}
+	p := newPath(w.TrackPath())
 
-	node.handler.ServeTrack(w, config)
-}
-
-func (mux *TrackMux) ServeAnnouncements(w AnnouncementWriter) {
-	mux.mu.RLock()
-	defer mux.mu.RUnlock()
-
-	p := newPattern(w.AnnounceConfig().TrackPattern)
-
-	//
-	buf := newAnnouncementBuffer(w.AnnounceConfig())
-	defer buf.Close()
-
-	current := &mux.tree
-	for _, seg := range p.segments {
-		switch seg {
-		case "*", "**":
-			// Create wildcard node if it doesn't exist
-			if current.wildcard == nil {
-				child := newRoutingNode(p, nil)
-				current.wildcard = child
-			}
-			current = current.wildcard
-		default:
-			// Create child node if it doesn't exist
-			if _, ok := current.children[seg]; !ok {
-				child := newRoutingNode(p, nil)
-				current.children[seg] = child
-			}
-
-			current = current.children[seg]
-		}
-
-		if current.handler != nil {
-			current.handler.ServeAnnouncements(buf)
-		}
-	}
-
-	if current.announcers == nil {
-		current.announcers = make([]AnnouncementWriter, 0)
-	}
-
-	current.announcers = append(current.announcers, w)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	for {
-		anns, err := buf.ReceiveAnnouncements(ctx)
-		if err != nil {
-			w.CloseWithError(err)
-			break
-		}
-
-		err = w.SendAnnouncements(anns)
-		if err != nil {
-			w.CloseWithError(err)
-			break
-		}
-	}
+	mux.trackTree.serveTrack(0, p, w, config)
 }
 
 func (mux *TrackMux) GetInfo(path TrackPath) (Info, error) {
-	p := newPath(path.String())
+	p := newPath(path)
 
-	node := mux.findRoutingNode(p)
-
-	if node == nil {
-		return Info{}, ErrTrackDoesNotExist
-	}
-
-	return node.handler.GetInfo(path)
+	return mux.trackTree.getInfo(0, p)
 }
 
-func (mux *TrackMux) findRoutingNode(ptn *path) *routingNode { // TODO
-	var found *routingNode
-
-	var search func(node *routingNode)
-	search = func(node *routingNode) {
-		if node == nil || found != nil {
-			return
-		}
-
-		if node.pattern != nil && node.handler != nil {
-			if matchGlob(node.pattern.str, ptn.str) {
-				found = node
-				return
-			}
-		}
-		for _, child := range node.children {
-			search(child)
-			if found != nil {
-				return
-			}
-		}
-	}
-
-	search(&mux.tree)
-
-	return found
-}
-
-func newRoutingNode(ptn *pattern, handler TrackResolver) *routingNode {
-	if handler == nil {
-		handler = NotFoundHandler
-	}
-
+func newRoutingNode() *routingNode {
 	return &routingNode{
-		pattern: ptn,
-		handler: handler,
-		// announcer: make([]AnnouncementWriter, 0),
 		children: make(map[string]*routingNode),
 	}
 }
 
 type routingNode struct {
-	pattern *pattern
-	handler TrackResolver
-
-	//
-	announcers []AnnouncementWriter
+	// If this node is a leaf node, pattern and handler are set.
+	// If this node is not a leaf node, pattern and handler are nil.
+	pattern *path
+	handler TrackHandler
 
 	children map[string]*routingNode
-
-	wildcard *routingNode
 }
 
-func newPath(str string) *path {
-	return (*path)(newPattern(str))
+func (node *routingNode) setHandler(ptn *path, handler TrackHandler) {
+	if ptn == nil {
+		panic("mux: nil pattern")
+	} else if handler == nil {
+		panic("mux: nil handler")
+	}
+
+	node.pattern = ptn
+	node.handler = handler
+}
+
+func (node *routingNode) serveTrack(depth int, path *path, w TrackWriter, config SubscribeConfig) {
+	// If this node is a leaf node, call the handler.
+	if depth >= path.depth() {
+		if node.handler == nil {
+			NotFoundHandler.ServeTrack(w, config)
+			return
+		}
+
+		node.handler.ServeTrack(w, config)
+	}
+
+	// If this node is not a leaf node, call the child node.
+	segment := path.segments[depth]
+	child, ok := node.children[segment]
+	if !ok {
+		NotFoundHandler.ServeTrack(w, config)
+		return
+	}
+
+	child.serveTrack(depth+1, path, w, config)
+	return
+}
+
+func (node *routingNode) getInfo(depth int, path *path) (Info, error) {
+	if depth >= path.depth() {
+		if node.handler == nil {
+			return NotFoundInfo, ErrTrackDoesNotExist
+		}
+		return node.handler.GetInfo(TrackPath(path.str))
+	}
+
+	// If this node is not a leaf node, call the child node.
+	segment := path.segments[depth]
+	child, ok := node.children[segment]
+	if !ok {
+		return NotFoundInfo, ErrTrackDoesNotExist
+	}
+
+	return child.getInfo(depth+1, path)
+}
+
+func newAnnouncingNode() *announcingNode {
+	return &announcingNode{
+		children: make(map[string]*announcingNode),
+	}
+}
+
+// announcingNode is a node in the announcement tree.
+type announcingNode struct {
+	// If this node is a leaf node, pattern and handler are set.
+	// If this node is not a leaf node, pattern and handler are nil.
+	pattern             *pattern
+	announcementsBuffer *announcementsBuffer
+
+	children map[string]*announcingNode
+}
+
+func (node *announcingNode) announce(depth int, path *path, handler TrackHandler) {
+	if node.pattern == nil {
+		// Check for the next segment
+		seg := path.segments[depth]
+		child, ok := node.children[seg]
+		if ok {
+			child.announce(depth+1, path, handler)
+		}
+
+		// Check for single wildcard
+		child, ok = node.children["*"]
+		if ok {
+			child.announce(depth+1, path, handler)
+		}
+
+		// Check for double wildcard
+		child, ok = node.children["**"]
+		if ok {
+			for depth < path.depth() {
+				child.announce(depth+1, path, handler)
+				depth++
+			}
+
+			return
+		}
+
+		// If no matching child node is found, do nothing
+		return
+	}
+
+	if node.announcementsBuffer != nil {
+		handler.ServeAnnouncements(node.announcementsBuffer)
+	}
+}
+
+func (node *announcingNode) setPatternAndBuffer(p *pattern) {
+	node.pattern = p
+	node.announcementsBuffer = newAnnouncementBuffer(AnnounceConfig{
+		TrackPattern: p.str,
+	})
+}
+
+func newPath(p TrackPath) *path {
+	return (*path)(newPattern(string(p)))
 }
 
 func newPattern(str string) *pattern {
@@ -218,112 +307,11 @@ func newPattern(str string) *pattern {
 
 type path pattern
 
+func (p *path) depth() int {
+	return len(p.segments)
+}
+
 type pattern struct {
 	str      string
 	segments []string
-}
-
-func splitPath(p string) []string {
-	p = strings.Trim(p, "/")
-	if p == "" {
-		return []string{}
-	}
-	return strings.Split(p, "/")
-}
-
-func matchGlob(pattern, path string) bool {
-	// If pattern or path is empty, only match if both are empty
-	if pattern == "" {
-		return path == ""
-	}
-	if path == "" {
-		return pattern == ""
-	}
-
-	patternSegments := splitPath(pattern)
-	pathSegments := splitPath(path)
-
-	return matchSegments(patternSegments, pathSegments)
-}
-
-func matchSegments(patternSegments, pathSegments []string) bool {
-	// Base cases for recursion
-	if len(patternSegments) == 0 {
-		return len(pathSegments) == 0
-	}
-
-	// Check for wildcard in the pattern
-	if patternSegments[0] == "*" {
-		// '*' matches exactly one segment
-		if len(pathSegments) == 0 {
-			return false
-		}
-		return matchSegments(patternSegments[1:], pathSegments[1:])
-	} else if patternSegments[0] == "**" {
-		// '**' can match zero or more segments
-		if len(patternSegments) == 1 {
-			return true // "**" at the end matches everything
-		}
-
-		// Try matching '**' with 0, 1, 2, ... segments
-		for i := 0; i <= len(pathSegments); i++ {
-			if matchSegments(patternSegments[1:], pathSegments[i:]) {
-				return true
-			}
-		}
-		return false
-	}
-
-	// Check if we have path segments left to match
-	if len(pathSegments) == 0 {
-		return false
-	}
-
-	// Check if segments match exactly (no wildcards in segment)
-	if !strings.Contains(patternSegments[0], "*") && !strings.Contains(patternSegments[0], "?") {
-		if patternSegments[0] == pathSegments[0] {
-			return matchSegments(patternSegments[1:], pathSegments[1:])
-		}
-		return false
-	}
-
-	// Handle wildcard characters within segments (* and ?)
-	if matchSegment(patternSegments[0], pathSegments[0]) {
-		return matchSegments(patternSegments[1:], pathSegments[1:])
-	}
-
-	return false
-}
-
-func matchSegment(patternSegment, pathSegment string) bool {
-	patternPos, pathPos := 0, 0
-	starIdx, matchIdx := -1, 0
-
-	for pathPos < len(pathSegment) {
-		// Direct match or '?' wildcard.
-		if patternPos < len(patternSegment) &&
-			(patternSegment[patternPos] == '?' || patternSegment[patternPos] == pathSegment[pathPos]) {
-			patternPos++
-			pathPos++
-		} else if patternPos < len(patternSegment) && patternSegment[patternPos] == '*' {
-			// Record the position of '*' and the current string position.
-			starIdx = patternPos
-			matchIdx = pathPos
-			patternPos++
-		} else if starIdx != -1 {
-			// Backtrack: try to match one more character with the '*' and adjust position.
-			patternPos = starIdx + 1
-			matchIdx++
-			pathPos = matchIdx
-		} else {
-			return false
-		}
-	}
-
-	// Consume any trailing '*' in the pattern.
-	for patternPos < len(patternSegment) && patternSegment[patternPos] == '*' {
-		patternPos++
-	}
-
-	return patternPos == len(patternSegment)
 }

@@ -4,6 +4,8 @@ import (
 	"fmt"
 )
 
+var NotFoundInfo = Info{}
+
 type Info struct {
 	TrackPriority       TrackPriority
 	LatestGroupSequence GroupSequence

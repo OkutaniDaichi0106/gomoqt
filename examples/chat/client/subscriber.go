@@ -13,7 +13,7 @@ import (
 func runSubscriber(sess moqt.Session, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	annstr, err := sess.OpenAnnounceStream(moqt.AnnounceConfig{
+	annstr, err := sess.OpenAnnounceStream(&moqt.AnnounceConfig{
 		TrackPattern: "/kiu",
 	})
 	if err != nil {
@@ -25,7 +25,7 @@ func runSubscriber(sess moqt.Session, wg *sync.WaitGroup) {
 	annCh := make(chan *moqt.Announcement)
 	go func() {
 		for {
-			anns, err := annstr.NextAnnouncements(context.Background())
+			anns, err := annstr.ReceiveAnnouncements(context.Background())
 			if err != nil {
 				slog.Error("failed to read announcements", "error", err)
 				close(annCh)
@@ -42,15 +42,15 @@ func runSubscriber(sess moqt.Session, wg *sync.WaitGroup) {
 		slog.Debug("received an announcement", slog.String("announcement", ann.String()))
 		go func(ann *moqt.Announcement) {
 			// Subscribe to the track
-			config := moqt.SubscribeConfig{
-				TrackPath: ann.TrackPath(),
-			}
-			info, stream, err := sess.OpenTrackStream(config)
+			info, stream, err := sess.OpenTrackStream(ann.TrackPath(), nil)
 			if err != nil {
 				slog.Error("failed to open track stream", "error", err)
 				return
 			}
-			slog.Info("subscribed to a track", slog.String("config", config.String()), slog.String("info", info.String()))
+			slog.Info("subscribed to a track",
+				"track_path", ann.TrackPath().String(),
+				"info", info.String(),
+			)
 
 			name := strings.TrimPrefix(string(ann.TrackPath()), "/kiu/")
 			slog.Info("a new member joined", slog.String("name", name))

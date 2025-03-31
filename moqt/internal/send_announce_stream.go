@@ -15,6 +15,7 @@ func newSendAnnounceStream(stream transport.Stream, apm message.AnnouncePleaseMe
 	return &SendAnnounceStream{
 		AnnouncePleaseMessage: apm,
 		Stream:                stream,
+		announced:             make(map[string]message.AnnounceMessage),
 	}
 }
 
@@ -24,13 +25,15 @@ type SendAnnounceStream struct {
 	Stream transport.Stream
 	mu     sync.RWMutex
 
-	announcements map[string]message.AnnounceMessage
+	pending map[string]message.AnnounceMessage
+
+	announced map[string]message.AnnounceMessage
 
 	closed   bool
 	closeErr error
 }
 
-func (sas *SendAnnounceStream) SetActiveAnnouncement(path string) error {
+func (sas *SendAnnounceStream) SetActiveAnnouncement(suffix string) error {
 	sas.mu.Lock()
 	defer sas.mu.Unlock()
 
@@ -39,20 +42,36 @@ func (sas *SendAnnounceStream) SetActiveAnnouncement(path string) error {
 			return fmt.Errorf("stream already closed due to: %w", sas.closeErr)
 		}
 		return errors.New("stream already closed")
+	}
+
+	if am, ok := sas.announced[suffix]; ok {
+		if am.AnnounceStatus == message.ACTIVE {
+			return fmt.Errorf("duplicated announcement: %s", suffix)
+		}
+	}
+
+	//
+	if am, ok := sas.pending[suffix]; ok {
+		if am.AnnounceStatus == message.ACTIVE {
+			// Skip
+			slog.Warn("active announcement already set", "track_suffix", suffix)
+			return nil
+		}
 	}
 
 	am := message.AnnounceMessage{
 		AnnounceStatus: message.ACTIVE,
-		TrackSuffix:    body,
+		TrackSuffix:    suffix,
 	}
-	sas.announcements = append(sas.announcements, am)
 
-	slog.Debug("set active announcement", slog.String("track_suffix", body))
+	sas.pending[suffix] = am
+
+	slog.Debug("set active announcement", slog.String("track_suffix", suffix))
 
 	return nil
 }
 
-func (sas *SendAnnounceStream) SetEndedAnnouncement(path string) error {
+func (sas *SendAnnounceStream) SetEndedAnnouncement(suffix string) error {
 	sas.mu.Lock()
 	defer sas.mu.Unlock()
 
@@ -61,13 +80,30 @@ func (sas *SendAnnounceStream) SetEndedAnnouncement(path string) error {
 			return fmt.Errorf("stream already closed due to: %w", sas.closeErr)
 		}
 		return errors.New("stream already closed")
+	}
+
+	// Check if the same track has announced already
+	if old, ok := sas.announced[suffix]; ok {
+		if old.AnnounceStatus == message.ENDED {
+			return fmt.Errorf("ended announcement already set: %s", suffix)
+		}
+	}
+
+	// Check if the same track is to announce
+	if old, ok := sas.pending[suffix]; ok {
+		if old.AnnounceStatus == message.ENDED {
+			// Skip
+			slog.Warn("ended announcement already set", "track_suffix", suffix)
+			return nil
+		}
 	}
 
 	am := message.AnnounceMessage{
 		AnnounceStatus: message.ENDED,
 		TrackSuffix:    suffix,
 	}
-	sas.announcements = append(sas.announcements, am)
+
+	sas.pending[suffix] = am
 
 	slog.Debug("set ended announcement", slog.String("track_suffix", suffix))
 
@@ -85,13 +121,13 @@ func (sas *SendAnnounceStream) SendAnnouncements() error {
 		return errors.New("stream already closed")
 	}
 
-	if len(sas.announcements) == 0 {
+	if len(sas.announced) == 0 {
 		return nil
 	}
 
 	// Calculate the total length of the ANNOUNCE messages
 	var totalLen int
-	for _, am := range sas.announcements {
+	for _, am := range sas.announced {
 		totalLen += am.Len()
 	}
 	live := message.AnnounceMessage{
@@ -103,7 +139,7 @@ func (sas *SendAnnounceStream) SendAnnouncements() error {
 	buf := bytes.NewBuffer(make([]byte, 0, totalLen))
 
 	// Encode the ANNOUNCE messages
-	for _, am := range sas.announcements {
+	for _, am := range sas.announced {
 		// Encode the ANNOUNCE message
 		_, err := am.Encode(buf)
 		if err != nil {

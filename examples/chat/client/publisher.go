@@ -30,17 +30,7 @@ func runPublisher(sess moqt.Session, wg *sync.WaitGroup) {
 	}
 
 	// Accept a track stream
-	stream, err := sess.AcceptTrackStream(context.Background(), func(path moqt.TrackPath) (moqt.Info, error) {
-		slog.Debug("subscribed to a track", slog.String("track_path", path.String()))
-		// Accept a track stream only if the track path matches
-		if myPath != path {
-			return moqt.Info{}, moqt.ErrTrackDoesNotExist
-		}
-
-		info := moqt.Info{}
-		slog.Debug("accepted a subscription", slog.String("info", info.String()))
-		return info, nil
-	})
+	stream, err := sess.AcceptTrackStream(context.Background())
 	if err != nil {
 		slog.Error("failed to accept track stream", "error", err)
 		return

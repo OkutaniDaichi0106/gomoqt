@@ -48,7 +48,7 @@ type Server struct {
 	/*
 	 * Handler
 	 */
-	Handler TrackResolver
+	Handler TrackHandler
 
 	/*
 	 * Session Handler

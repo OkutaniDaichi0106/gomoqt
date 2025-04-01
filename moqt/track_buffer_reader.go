@@ -99,6 +99,17 @@ func (tr *trackBufferReader) Close() error {
 	}
 
 	close(tr.sequenceCh)
+	tr.trackBuffer.removeNotifyChannel(tr.sequenceCh)
+
+	tr.closed = true
+	tr.sequenceCh = nil
+	tr.sequenceHeap = nil
+	tr.ch = nil
+	tr.trackBuffer = nil
+	tr.priority = 0
+	tr.order = 0
+	tr.closeErr = nil
+
 	return nil
 }
 
@@ -112,6 +123,16 @@ func (tr *trackBufferReader) CloseWithError(err error) error {
 
 	close(tr.sequenceCh)
 	tr.closeErr = err
+	tr.trackBuffer.removeNotifyChannel(tr.sequenceCh)
+
+	tr.closed = true
+	tr.sequenceCh = nil
+	tr.sequenceHeap = nil
+	tr.ch = nil
+	tr.trackBuffer = nil
+	tr.priority = 0
+	tr.order = 0
+
 	return nil
 }
 

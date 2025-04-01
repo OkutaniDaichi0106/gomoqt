@@ -261,8 +261,8 @@ func (t *TrackBuffer) addNotifyChannel() chan GroupSequence {
 	return ch
 }
 
-func (t *TrackBuffer) removeNotifyChannel(ch chan GroupSequence) {
-	t.chMu.Lock()
+// removeNotifyChannel removes the notify channel from the list and closes it.
+func (t *TrackBuffer) removeNotifyChannel(ch chan GroupSequence) { // TODO: Use this function
 	defer t.chMu.Unlock()
 
 	for i, c := range t.notifyChannels {

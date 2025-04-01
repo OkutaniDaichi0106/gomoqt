@@ -110,11 +110,14 @@ type session struct {
 
 	bitrate uint64 // TODO: use this when updating a session
 
-	sessionStreamQueue chan *sessionStream
-	sessionStream      *sessionStream
+	// sessionStreamCh is the channel for signaling session streams
+	sessionStreamCh chan struct{}
+
+	// sessionStream is the session stream for the session
+	sessionStream *sessionStream
+
 	// once               sync.Once // TODO: use this if needed
 
-	//
 	receiveSubscribeStreamQueue *receiveSubscribeStreamQueue
 
 	sendAnnounceStreamQueue *sendAnnounceStreamQueue
@@ -310,7 +313,7 @@ func newSession(conn quic.Connection, handler TrackHandler) *session {
 		sendInfoStreamQueue:         newSendInfoStreamQueue(),
 		receiveGroupStreamQueues:    make(map[SubscribeID]*receiveGroupStreamQueue),
 		bitrate:                     0,
-		sessionStreamQueue:          make(chan *sessionStream),
+		sessionStreamCh:             make(chan struct{}),
 		handler:                     handler,
 	}
 
@@ -342,7 +345,7 @@ func newSession(conn quic.Connection, handler TrackHandler) *session {
 	return sess
 }
 
-// TODO: Implement this method
+// TODO: Implement this method and use it
 func (sess *session) updateSession(bitrate uint64) error {
 	slog.Debug("updating a session", slog.Uint64("bitrate", bitrate))
 
@@ -363,6 +366,9 @@ func (sess *session) updateSession(bitrate uint64) error {
 
 func (sess *session) openSessionStream(versions []protocol.Version, params *Parameters) error {
 	slog.Debug("opening a session stream")
+
+	// Close the session stream channel
+	close(sess.sessionStreamCh)
 
 	stream, err := openStream(sess.conn, stream_type_session)
 	if err != nil {
@@ -391,12 +397,13 @@ func (sess *session) openSessionStream(versions []protocol.Version, params *Para
 		return err
 	}
 
-	sess.sessionStream = &sessionStream{
-		stream:           stream,
-		selectedVersion:  ssm.SelectedVersion,
-		clientParameters: params,
-		serverParameters: &Parameters{ssm.Parameters},
-	}
+	// Set the selected version and parameters
+	sess.sessionStream = newSessionStream(
+		stream,
+		ssm.SelectedVersion,
+		params,
+		&Parameters{ssm.Parameters},
+	)
 
 	slog.Debug("opened a session stream")
 
@@ -533,12 +540,11 @@ func (sess *session) acceptSessionStream(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case stream := <-sess.sessionStreamQueue:
-		if stream == nil {
+	case <-sess.sessionStreamCh:
+		if sess.sessionStream == nil {
 			return errors.New("session stream is nil")
 		}
-		sess.sessionStream = stream
-		close(sess.sessionStreamQueue)
+		close(sess.sessionStreamCh)
 		return nil
 	}
 }
@@ -605,28 +611,31 @@ func (sess *session) acceptInfoStream(ctx context.Context) (*sendInfoStream, err
 	}
 }
 
+// listenBiStreams accepts bidirectional streams and handles them based on their type.
+// It listens for incoming streams and processes them in separate goroutines.
+// The function handles session streams, announce streams, subscribe streams, and info streams.
+// It also handles errors and terminates the session if an unknown stream type is encountered.
 func listenBiStreams(sess *session, ctx context.Context) {
 	for {
-		/*
-		 * Accept a bidirectional stream
-		 */
+		// Accept a bidirectional stream
 		stream, err := sess.conn.AcceptStream(ctx)
 		if err != nil {
 			slog.Error("failed to accept a bidirectional stream", "error", err)
 			return
 		}
 
-		slog.Debug("some control stream was opened")
+		slog.Debug("A some stream was opened")
 
 		// Handle the stream
 		go func(stream quic.Stream) {
-			/*
-			 * Get a Stream Type ID
-			 */
+			// Decode the STREAM_TYPE message and get the stream type ID
 			var stm message.StreamTypeMessage
 			_, err := stm.Decode(stream)
 			if err != nil {
-				slog.Error("failed to get a Stream Type ID", "error", err)
+				slog.Error("failed to get a Stream Type ID",
+					"error", err,
+					"stream_id", stream.StreamID(),
+				)
 				return
 			}
 
@@ -638,24 +647,29 @@ func listenBiStreams(sess *session, ctx context.Context) {
 				var scm message.SessionClientMessage
 				_, err := scm.Decode(stream)
 				if err != nil {
-					slog.Error("failed to get a SESSION_CLIENT message", "error", err)
+					slog.Error("failed to get a SESSION_CLIENT message",
+						"error", err,
+						"stream_id", stream.StreamID(),
+					)
+
+					stream.CancelRead(ErrInternalError.StreamErrorCode())
+					stream.CancelWrite(ErrInternalError.StreamErrorCode())
 					return
 				}
 
-				ss := sessionStream{
-					stream:           stream,
-					clientParameters: &Parameters{scm.Parameters},
-				}
+				ss := newSessionStream(stream, 0, &Parameters{scm.Parameters}, nil)
 
 				// Enqueue the session stream
-				sess.sessionStreamQueue <- &ss
+				sess.sessionStream = ss
+				// sess.sessionStreamCh <- struct{}{}
 
-				// Close the queue
-				close(sess.sessionStreamQueue)
+				// Close the channel
+				close(sess.sessionStreamCh)
 			case stream_type_announce:
 				// Handle the announce stream
 				slog.Debug("announce stream was opened")
-				// Get an Interest
+
+				// Decode the ANNOUNCE_PLEASE message
 				var apm message.AnnouncePleaseMessage
 				_, err := apm.Decode(stream)
 				if err != nil {
@@ -665,12 +679,13 @@ func listenBiStreams(sess *session, ctx context.Context) {
 					return
 				}
 
+				// Create a sendAnnounceStream
 				config := AnnounceConfig{
 					TrackPattern: string(apm.TrackPattern),
 				}
 				sas := newSendAnnounceStream(stream, config)
 
-				// Enqueue the interest
+				// Enqueue the stream
 				sess.sendAnnounceStreamQueue.Enqueue(sas)
 			case stream_type_subscribe:
 				slog.Debug("subscribe stream was opened")
@@ -695,7 +710,7 @@ func listenBiStreams(sess *session, ctx context.Context) {
 				}
 				rss := newReceiveSubscribeStream(id, path, config, stream)
 
-				// Enqueue the subscription
+				// Enqueue the stream
 				sess.receiveSubscribeStreamQueue.Enqueue(rss)
 			case stream_type_info:
 				slog.Debug("info stream was opened")
@@ -710,10 +725,10 @@ func listenBiStreams(sess *session, ctx context.Context) {
 
 				sis := newSendInfoStream(stream, TrackPath(imr.TrackPath))
 
-				// Enqueue the info-request
+				// Enqueue the stream
 				sess.sendInfoStreamQueue.Enqueue(sis)
 			default:
-				slog.Debug("An unknown type of stream was opend")
+				slog.Error("An unknown type of stream was opened")
 
 				// Terminate the session
 				sess.Terminate(ErrProtocolViolation)

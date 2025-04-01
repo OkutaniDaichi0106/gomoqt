@@ -1,4 +1,4 @@
-package internal
+package moqt
 
 import (
 	"errors"
@@ -6,23 +6,28 @@ import (
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-func newSendSubscribeStream(sm *message.SubscribeMessage, stream transport.Stream) *SendSubscribeStream {
-	return &SendSubscribeStream{
-		SubscribeMessage: *sm,
-		Stream:           stream,
+func newSendSubscribeStream(id SubscribeID, path TrackPath, config SubscribeConfig, stream quic.Stream) *sendSubscribeStream {
+	return &sendSubscribeStream{
+		id:     id,
+		path:   path,
+		config: config,
+		stream: stream,
 	}
 }
 
-type SendSubscribeStream struct {
-	SubscribeMessage message.SubscribeMessage
-	Stream           transport.Stream
-	mu               sync.Mutex
+type sendSubscribeStream struct {
+	id     SubscribeID
+	path   TrackPath
+	config SubscribeConfig
+
+	stream quic.Stream
+	mu     sync.Mutex
 }
 
-func (sss *SendSubscribeStream) SendSubscribeUpdate(sum message.SubscribeUpdateMessage) error {
+func (sss *sendSubscribeStream) SendSubscribeUpdate(sum message.SubscribeUpdateMessage) error {
 	sss.mu.Lock()
 	defer sss.mu.Unlock()
 
@@ -30,17 +35,17 @@ func (sss *SendSubscribeStream) SendSubscribeUpdate(sum message.SubscribeUpdateM
 		return ErrInvalidRange
 	}
 
-	_, err := sum.Encode(sss.Stream)
+	_, err := sum.Encode(sss.stream)
 	if err != nil {
 		slog.Error("failed to encode a SUBSCRIBE_UPDATE message",
 			"error", err,
-			"stream_id", sss.Stream.StreamID(),
+			"stream_id", sss.stream.StreamID(),
 		)
 		return err
 	}
 
 	slog.Debug("sent a subscribe update message",
-		"stream_id", sss.Stream.StreamID(),
+		"stream_id", sss.stream.StreamID(),
 	)
 
 	return nil
@@ -61,24 +66,24 @@ func (sss *SendSubscribeStream) SendSubscribeUpdate(sum message.SubscribeUpdateM
 // 	return gap, nil
 // }
 
-func (ss *SendSubscribeStream) Close() error {
-	err := ss.Stream.Close()
+func (ss *sendSubscribeStream) Close() error {
+	err := ss.stream.Close()
 	if err != nil {
 		slog.Debug("failed to close a subscrbe send stream",
-			"stream_id", ss.Stream.StreamID(),
+			"stream_id", ss.stream.StreamID(),
 			"error", err,
 		)
 		return err
 	}
 
 	slog.Debug("closed a subscribe send stream",
-		"stream_id", ss.Stream.StreamID(),
+		"stream_id", ss.stream.StreamID(),
 	)
 
 	return nil
 }
 
-func (sss *SendSubscribeStream) CloseWithError(err error) error {
+func (sss *sendSubscribeStream) CloseWithError(err error) error {
 	if err == nil {
 		err = ErrInternalError
 	}
@@ -88,13 +93,13 @@ func (sss *SendSubscribeStream) CloseWithError(err error) error {
 		suberr = ErrInternalError
 	}
 
-	code := transport.StreamErrorCode(suberr.SubscribeErrorCode())
+	code := quic.StreamErrorCode(suberr.SubscribeErrorCode())
 
-	sss.Stream.CancelRead(code)
-	sss.Stream.CancelWrite(code)
+	sss.stream.CancelRead(code)
+	sss.stream.CancelWrite(code)
 
 	slog.Debug("closed a subscribe receive stream with an error",
-		"stream_id", sss.Stream.StreamID(),
+		"stream_id", sss.stream.StreamID(),
 		"reason", err.Error(),
 	)
 

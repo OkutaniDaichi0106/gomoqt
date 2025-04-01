@@ -1,17 +1,20 @@
-package transport
+package quicgowrapper
 
 import (
 	"time"
 
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 	"github.com/quic-go/webtransport-go"
 )
+
+var _ quic.Stream = (*webtransportStream)(nil)
 
 type webtransportStream struct {
 	stream webtransport.Stream
 }
 
-func (wrapper webtransportStream) StreamID() StreamID {
-	return StreamID(wrapper.stream.StreamID())
+func (wrapper webtransportStream) StreamID() quic.StreamID {
+	return quic.StreamID(wrapper.stream.StreamID())
 }
 
 func (wrapper webtransportStream) Read(b []byte) (int, error) {
@@ -22,15 +25,15 @@ func (wrapper webtransportStream) Write(b []byte) (int, error) {
 	return wrapper.stream.Write(b)
 }
 
-func (wrapper webtransportStream) CancelRead(code StreamErrorCode) {
+func (wrapper webtransportStream) CancelRead(code quic.StreamErrorCode) {
 	wrapper.stream.CancelRead(webtransport.StreamErrorCode(code))
 }
 
-func (wrapper webtransportStream) CancelWrite(code StreamErrorCode) {
+func (wrapper webtransportStream) CancelWrite(code quic.StreamErrorCode) {
 	wrapper.stream.CancelWrite(webtransport.StreamErrorCode(code))
 }
 
-func (wrapper webtransportStream) SetDeadLine(time time.Time) error {
+func (wrapper webtransportStream) SetDeadline(time time.Time) error {
 	return wrapper.stream.SetDeadline(time)
 }
 
@@ -53,14 +56,14 @@ type webtransportReceiveStream struct {
 	stream webtransport.ReceiveStream
 }
 
-func (wrapper webtransportReceiveStream) StreamID() StreamID {
-	return StreamID(wrapper.stream.StreamID())
+func (wrapper webtransportReceiveStream) StreamID() quic.StreamID {
+	return quic.StreamID(wrapper.stream.StreamID())
 }
 func (wrapper webtransportReceiveStream) Read(b []byte) (int, error) {
 	return wrapper.stream.Read(b)
 }
 
-func (wrapper webtransportReceiveStream) CancelRead(code StreamErrorCode) {
+func (wrapper webtransportReceiveStream) CancelRead(code quic.StreamErrorCode) {
 	wrapper.stream.CancelRead(webtransport.StreamErrorCode(code))
 }
 
@@ -75,15 +78,15 @@ type webtransportSendStream struct {
 	stream webtransport.SendStream
 }
 
-func (wrapper webtransportSendStream) StreamID() StreamID {
-	return StreamID(wrapper.stream.StreamID())
+func (wrapper webtransportSendStream) StreamID() quic.StreamID {
+	return quic.StreamID(wrapper.stream.StreamID())
 }
 
 func (wrapper webtransportSendStream) Write(b []byte) (int, error) {
 	return wrapper.stream.Write(b)
 }
 
-func (wrapper webtransportSendStream) CancelWrite(code StreamErrorCode) {
+func (wrapper webtransportSendStream) CancelWrite(code quic.StreamErrorCode) {
 	wrapper.stream.CancelWrite(webtransport.StreamErrorCode(code))
 }
 

@@ -3,8 +3,8 @@ package message
 import "sync"
 
 var defaultBytesPool = &sync.Pool{
-	New: func() interface{} {
-		buf := make([]byte, 0, 0)
+	New: func() any {
+		buf := make([]byte, 0, 1<<8) // 64KB
 		return &buf
 	},
 }

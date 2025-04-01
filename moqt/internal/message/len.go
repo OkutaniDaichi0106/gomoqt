@@ -14,18 +14,6 @@ func bytesLen(b []byte) int {
 	return numberLen(uint64(len(b))) + len(b)
 }
 
-func stringArrayLen(arr []string) int {
-	if arr == nil {
-		return 0
-	}
-
-	l := numberLen(uint64(len(arr)))
-	for _, s := range arr {
-		l += stringLen(s)
-	}
-	return l
-}
-
 func parametersLen(p Parameters) int {
 	if p == nil {
 		return 0

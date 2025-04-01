@@ -1,137 +1,247 @@
-# Markdown Documentation Generation Template for Go Components
+# Go Implementation Documentation Generator Prompt v2
 
-This template helps you create prompts to generate comprehensive Markdown documentation for Go components.
+As a Go expert, your task is to create precise, standardized documentation for Go implementation files. Each documentation must strictly follow the template structure with no deviations.
 
-## Basic Prompt Structure
+## File Relationship
 
-```
-# MD File Generation: [ComponentName].md
+This template is designed to generate documentation for individual Go component files:
+- Each Go component implementation file (named `component.go`) should have a corresponding documentation file (named `component.doc.md`)
+- The documentation should cover exactly what is implemented in that specific Go file
+- Focus on documenting the component's purpose, types, functions, and interactions with other components
 
-## Requirements
+## Usage Instructions
 
-Please generate detailed Markdown documentation for the [ComponentName] component.
+To use this template:
+1. Examine the Go file for which documentation is needed (e.g., `component.go`)
+2. Identify the component name, types, methods, and dependencies from the file
+3. Generate a markdown document following this template's structure
+4. Save the documentation with the same base name as the Go file but with `.doc.md` extension (e.g., `component.doc.md`)
+5. Ensure all placeholders are replaced with concrete implementation details from the source file
 
-### Sections to Include
+## Documentation Structure Requirements
 
-1. **Type Definitions**: Complete interface and struct definitions
-2. **Package Dependencies**: Visualization of dependency structure
-3. **Architecture**: Overview of design patterns and responsibility allocation
-4. **Error Handling**: Error types and error handling patterns
-5. **Code Examples**: Common usage patterns and edge cases
-6. **Security**: Validation, authentication, and authorization methods
-7. **Testing Strategy**: Test examples and mocking techniques
-```
+Every documentation MUST:
+- Include ALL sections in the exact order specified
+- Maintain consistent formatting throughout
+- Use complete, executable code examples
+- Provide specific implementation details, not generalizations
+- Follow standard Go conventions for naming and documentation
+- Reflect only what exists in the corresponding Go file
 
-## 1. Section Creation Guide
+## Standardized Documentation Template
 
-### 1.1 Type Definitions
-```go
-// UserRepository interface
-type UserRepository interface {
-    FindByID(ctx context.Context, id string) (*User, error)
-    // ...other methods
+```markdown
+# {ComponentName} Component Documentation
+
+## Overview
+
+{EXACTLY 3-5 full sentences describing the component's purpose, role in the architecture, and primary responsibilities. Must include how it interacts with other components.}
+
+## Type Definitions
+
+{FOR EACH type, follow this exact structure}
+
+### {TypeName}
+
+~~~go
+// Complete type definition with comments following Go standards
+type {TypeName} struct {
+    {FieldName} {FieldType} // Single-line description of field purpose
+    {FieldName} {FieldType} // Single-line description of field purpose
 }
+~~~
 
-// User struct
-type User struct {
-    ID        string    `json:"id" db:"id"`
-    Email     string    `json:"email" db:"email"`
-    // ...other fields
-}
-```
+{EXACTLY 2-3 sentences describing the type's purpose and usage context}
 
-### 1.2 Error Handling
-```go
-// Error definitions
-var (
-    ErrUserNotFound = errors.New("user not found")
-    // ...other errors
+- `{FieldName}`: {EXACTLY 1 sentence describing the field's purpose and constraints}
+- `{FieldName}`: {EXACTLY 1 sentence describing the field's purpose and constraints}
+
+## Package Dependencies
+
+~~~go
+import (
+    // Standard library packages (alphabetically ordered)
+    "{stdlib1}"
+    "{stdlib2}"
+
+    // External dependencies (alphabetically ordered)
+    "{extdep1}"
+    "{extdep2}"
+
+    // Internal dependencies (alphabetically ordered)
+    "{intdep1}"
+    "{intdep2}"
 )
+~~~
 
-// Error wrapping example
-if err != nil {
-    return nil, fmt.Errorf("failed to find user: %w", err)
+~~~mermaid
+graph TD
+    {ComponentName}[{ComponentName}] --> {Dependency1}[{Dependency1}]
+    {ComponentName} --> {Dependency2}[{Dependency2}]
+    {ComponentName} --> {Dependency3}[{Dependency3}]
+~~~
+
+## References
+
+This section documents types that are used in the component but not defined within this file. It provides brief descriptions to help resolve type references during code generation.
+
+{FOR EACH type used but not defined in this file, follow this exact structure}
+
+### {TypeName}
+{EXACTLY 1-2 sentences describing the type and its role}
+
+~~~go
+package {PackageName}
+
+type {TypeName} struct {
+    {FieldName} {FieldType}
+    {FieldName} {FieldType}
 }
-```
 
-### 1.3 Pattern Examples
-```go
-// Transaction handling
-tx, err := db.BeginTx(ctx, nil)
-if err != nil {
-    return fmt.Errorf("failed to begin transaction: %w", err)
+func ({TypeName}) {MethodName}({ArgumentName} {ArgumentType}) ({ReturnType})
+
+func ({TypeName}) {MethodName}({ArgumentName} {ArgumentType}) ({ReturnType})
+
+func {FunctionName}({ArgumentName} {ArgumentType}) ({ReturnType})
+~~~
+
+### {InterfaceName}
+{EXACTLY 1-2 sentences describing the interface and its role}
+
+~~~go
+package {PackageName}
+
+type {InterfaceName} interface {
+    {MethodName}({ArgumentName} {ArgumentType}) ({ReturnType})
+    {MethodName}({ArgumentName} {ArgumentType}) ({ReturnType})
 }
 
-defer func() {
+// Implementations
+// {ImplementingType} implements {InterfaceName}
+~~~
+
+## Architecture
+
+{EXACTLY 3-5 sentences on the architectural approach and design patterns}
+
+1. {Design pattern name}: {EXACTLY 1-2 sentences explaining how it's implemented}
+2. {Design pattern name}: {EXACTLY 1-2 sentences explaining how it's implemented}
+3. {Key architectural decision}: {EXACTLY 1-2 sentences explaining rationale}
+
+## API Documentation
+
+{FOR EACH exported function/method, follow this exact format}
+
+### Method: {MethodName}
+
+Signature:
+~~~go
+func ({ReceiverName} *{ReceiverType}) {MethodName}({ParamName} {ParamType}, {ParamName} {ParamType}) ({ReturnType}, error)
+~~~
+
+Description: {EXACTLY 1-2 sentences describing the method's purpose and behavior}
+
+Parameters:
+- `{ParamName}`: {EXACTLY 1 sentence describing the parameter purpose and constraints}
+- `{ParamName}`: {EXACTLY 1 sentence describing the parameter purpose and constraints}
+
+Return Values:
+- `{ReturnType}`: {EXACTLY 1 sentence describing what is returned and when}
+- `error`: Returns an error in the following conditions:
+  - {Specific error condition 1}
+  - {Specific error condition 2}
+  - {Specific error condition 3 (if applicable)}
+
+Usage Example:
+~~~go
+func Example{MethodName}() {
+    // Complete runnable example with imports and variable declarations
+    {receiverVar} := New{ReceiverType}({RequiredParams})
+    result, err := {receiverVar}.{MethodName}({ParamValues})
     if err != nil {
-        tx.Rollback()
+        // Error handling with specific conditions
+        log.Fatalf("Failed to {action}: %v", err)
         return
     }
-    err = tx.Commit()
-}()
 
-// Concurrency pattern
-func FetchResources(ids []string) ([]*Resource, error) {
-    var wg sync.WaitGroup
-    results := make([]*Resource, len(ids))
-
-    for i, id := range ids {
-        wg.Add(1)
-        go func(idx int, resourceID string) {
-            defer wg.Done()
-            results[idx], _ = fetchSingle(resourceID)
-        }(i, id)
-    }
-
-    wg.Wait()
-    return results, nil
+    // Example using the result
+    fmt.Printf("Result: %v\n", result)
 }
-```
+~~~
 
-## 2. Integration with Development Workflow
+Edge Cases:
+- {Edge case 1}: {EXACTLY 1 sentence on how it's handled}
+- {Edge case 2}: {EXACTLY 1 sentence on how it's handled}
+- {Edge case 3 (if applicable)}: {EXACTLY 1 sentence on how it's handled}
 
-- **File Placement**: Save in the same directory as the related Go file (e.g., user_service.go and user_service.md)
-- **Documentation Updates**: Update the MD file when code changes and include in review processes
-- **AI Assistance**: Use as context information with AI development tools
+## Testing Strategy
 
-## 3. Prompt Example
+### Test Coverage Goals
+- Unit test coverage: {EXACTLY a specific percentage e.g., 85%} of all functions and methods
+- Integration test coverage: {EXACTLY a specific percentage e.g., 70%} of component interactions
+- Edge case coverage: {EXACTLY a specific percentage e.g., 95%} of all identified edge cases
 
-```
-# MD File Generation: user_service.md
+### Test Cases
+1. {TestCase1}: {EXACTLY 1 sentence describing what is being tested}
+2. {TestCase2}: {EXACTLY 1 sentence describing what is being tested}
+3. {TestCase3}: {EXACTLY 1 sentence describing what is being tested}
+4. {TestCase4}: {EXACTLY 1 sentence describing what is being tested}
+5. {TestCase5}: {EXACTLY 1 sentence describing what is being tested}
+6. {EdgeCase1}: {EXACTLY 1 sentence describing the edge case test}
+7. {EdgeCase2}: {EXACTLY 1 sentence describing the edge case test}
 
-## Requirements
+### Test Approach
+1. {Methodology1}: {EXACTLY 1-2 sentences describing this testing approach}
+2. {Methodology2}: {EXACTLY 1-2 sentences describing this testing approach}
+3. {Methodology3}: {EXACTLY 1-2 sentences describing this testing approach}
 
-Please generate detailed Markdown documentation for the UserService component.
+### Mock Strategies
+1. {MockStrategy1}: {EXACTLY 1-2 sentences describing this mocking approach}
+2. {MockStrategy2}: {EXACTLY 1-2 sentences describing this mocking approach}
 
-### Sections to Include
+## Performance Considerations
 
-1. **Type Definitions**
-   - UserService interface and methods
-   - Related structs (User, UserInput, etc.)
+- Optimizations:
+  1. {Optimization1}: {EXACTLY 1-2 sentences describing the optimization technique}
+  2. {Optimization2}: {EXACTLY 1-2 sentences describing the optimization technique}
+  3. {Optimization3}: {EXACTLY 1-2 sentences describing the optimization technique}
 
-2. **Dependencies**
-   - Dependency on UserRepository
-   - Dependencies on external authentication services
+- Anti-patterns:
+  1. {AntiPattern1}: {EXACTLY 1-2 sentences describing the issue and why to avoid it}
+  2. {AntiPattern2}: {EXACTLY 1-2 sentences describing the issue and why to avoid it}
+  3. {AntiPattern3}: {EXACTLY 1-2 sentences describing the issue and why to avoid it}
 
-3. **Architecture**
-   - Clean Architecture implementation
-   - Repository pattern usage
+## Concurrency Considerations
 
-4. **Error Handling**
-   - Custom error type definitions
-   - Error wrapping examples
+- Thread Safety:
+  - Component thread-safety: {EXACTLY "This component is thread-safe" OR "This component is not thread-safe"}
+  - {SafetyMechanism1}: {EXACTLY 1 sentence explaining this mechanism}
+  - {SafetyMechanism2}: {EXACTLY 1 sentence explaining this mechanism}
 
-5. **Code Examples**
-   - Transaction handling
-   - Authentication and authorization flows
+- Synchronization:
+  - {SyncApproach1}: {EXACTLY 1-2 sentences describing this synchronization approach}
+  - {SyncApproach2}: {EXACTLY 1-2 sentences describing this synchronization approach}
 
-6. **Security**
-   - Input validation and sanitization
-   - Authentication and authorization examples
+- Goroutine Management:
+  - {Pattern1}: {EXACTLY 1-2 sentences describing goroutine usage pattern}
+  - {Pattern2}: {EXACTLY 1-2 sentences describing goroutine usage pattern}
 
-7. **Testing Strategy**
-   - Unit test examples
-   - Integration test strategies
-```
+## Security Considerations
 
-Use this template to efficiently create detailed documentation for your Go components.
+1. Input Validation: {EXACTLY 2-3 sentences describing the input validation strategy}
+
+2. Resource Management: {EXACTLY 2-3 sentences describing the resource management strategy}
+
+3. Data Protection: {EXACTLY 2-3 sentences describing the data protection strategy}
+
+## Documentation Quality Checklist
+
+Before submitting, verify your documentation meets these requirements:
+
+✅ All sections are present in the exact order specified
+✅ Every type, method, and function is fully documented
+✅ All code examples are complete and executable
+✅ Error handling follows Go best practices with specific error conditions
+✅ Constraints and edge cases are explicitly documented
+✅ Performance and concurrency patterns are specifically addressed
+✅ Security considerations include concrete implementation examples

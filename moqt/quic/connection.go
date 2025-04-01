@@ -1,4 +1,4 @@
-package transport
+package quic
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 type Connection interface {
 	AcceptStream(ctx context.Context) (Stream, error)
 	AcceptUniStream(ctx context.Context) (ReceiveStream, error)
-	CloseWithError(code SessionErrorCode, msg string) error
+	CloseWithError(code ConnectionErrorCode, msg string) error
 	ConnectionState() quic.ConnectionState
 	Context() context.Context
 	LocalAddr() net.Addr
@@ -23,4 +23,4 @@ type Connection interface {
 	SendDatagram(b []byte) error
 }
 
-type SessionErrorCode uint32
+type ConnectionErrorCode uint32

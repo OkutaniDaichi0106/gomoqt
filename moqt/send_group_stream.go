@@ -6,15 +6,24 @@ import (
 	"sync"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
 var _ GroupWriter = (*sendGroupStream)(nil)
 
+func newSendGroupStream(stream quic.SendStream, id SubscribeID, sequence GroupSequence) *sendGroupStream {
+	return &sendGroupStream{
+		id:       id,
+		sequence: sequence,
+		stream:   stream,
+	}
+}
+
 type sendGroupStream struct {
-	internalStream *internal.SendGroupStream
+	id       SubscribeID
+	sequence GroupSequence
+	stream   quic.SendStream
 
 	closed    bool
 	closedErr error
@@ -22,7 +31,7 @@ type sendGroupStream struct {
 }
 
 func (sgs *sendGroupStream) GroupSequence() GroupSequence {
-	return GroupSequence(sgs.internalStream.GroupMessage.GroupSequence)
+	return sgs.sequence
 }
 
 func (sgs *sendGroupStream) WriteFrame(frame Frame) error {
@@ -41,7 +50,7 @@ func (sgs *sendGroupStream) WriteFrame(frame Frame) error {
 	}
 
 	if fm, ok := frame.(*message.FrameMessage); ok {
-		err := sgs.internalStream.SendFrameMessage(fm)
+		_, err := fm.Encode(sgs.stream)
 		if err != nil {
 			sgs.CloseWithError(err) // TODO: should we close the stream?
 			return err
@@ -51,7 +60,7 @@ func (sgs *sendGroupStream) WriteFrame(frame Frame) error {
 		if bytes == nil {
 			return errors.New("frame is nil")
 		}
-		_, err := sgs.internalStream.SendStream.Write(bytes)
+		_, err := sgs.stream.Write(bytes)
 		if err != nil {
 			sgs.CloseWithError(err)
 			return err
@@ -62,7 +71,7 @@ func (sgs *sendGroupStream) WriteFrame(frame Frame) error {
 }
 
 func (sgs *sendGroupStream) SetWriteDeadline(t time.Time) error {
-	return sgs.internalStream.SetWriteDeadline(t)
+	return sgs.stream.SetWriteDeadline(t)
 }
 
 func (sgs *sendGroupStream) CloseWithError(err error) error {
@@ -85,7 +94,7 @@ func (sgs *sendGroupStream) CloseWithError(err error) error {
 		errors.As(ErrInternalError, &grperr)
 	}
 
-	sgs.internalStream.CancelWrite(protocol.GroupErrorCode(grperr.GroupErrorCode()))
+	sgs.stream.CancelWrite(quic.StreamErrorCode(grperr.GroupErrorCode()))
 
 	sgs.closed = true
 	sgs.closedErr = err
@@ -106,5 +115,5 @@ func (sgs *sendGroupStream) Close() error {
 
 	sgs.closed = true
 
-	return sgs.internalStream.Close()
+	return sgs.stream.Close()
 }

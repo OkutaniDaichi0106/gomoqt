@@ -11,11 +11,6 @@ func (id SubscribeID) String() string {
 }
 
 type SubscribeConfig struct {
-	// /*
-	//  * Required
-	//  */
-	// TrackPath TrackPath
-
 	/*
 	 * Optional
 	 */

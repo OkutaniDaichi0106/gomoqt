@@ -1,16 +1,16 @@
-package internal
+package moqt
 
 import "sync"
 
 func newSendAnnounceStreamQueue() *sendAnnounceStreamQueue {
 	return &sendAnnounceStreamQueue{
-		queue: make([]*SendAnnounceStream, 0),
+		queue: make([]*sendAnnounceStream, 0),
 		ch:    make(chan struct{}, 1),
 	}
 }
 
 type sendAnnounceStreamQueue struct {
-	queue []*SendAnnounceStream
+	queue []*sendAnnounceStream
 	mu    sync.Mutex
 	ch    chan struct{}
 }
@@ -23,7 +23,7 @@ func (q *sendAnnounceStreamQueue) Chan() <-chan struct{} {
 	return q.ch
 }
 
-func (q *sendAnnounceStreamQueue) Enqueue(interest *SendAnnounceStream) {
+func (q *sendAnnounceStreamQueue) Enqueue(interest *sendAnnounceStream) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -35,7 +35,7 @@ func (q *sendAnnounceStreamQueue) Enqueue(interest *SendAnnounceStream) {
 	}
 }
 
-func (q *sendAnnounceStreamQueue) Dequeue() *SendAnnounceStream {
+func (q *sendAnnounceStreamQueue) Dequeue() *sendAnnounceStream {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 

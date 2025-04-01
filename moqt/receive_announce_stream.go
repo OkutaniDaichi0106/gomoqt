@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
 type AnnouncementReader interface {
@@ -18,12 +18,13 @@ type AnnouncementReader interface {
 	CloseWithError(error) error
 }
 
-func newReceiveAnnounceStream(stream *internal.ReceiveAnnounceStream) *receiveAnnounceStream {
+func newReceiveAnnounceStream(stream quic.Stream, config AnnounceConfig) *receiveAnnounceStream {
 	annstr := &receiveAnnounceStream{
-		internalStream: stream,
-		announcements:  make(map[string]*Announcement),
-		next:           make([]*Announcement, 0),
-		liveCh:         make(chan struct{}),
+		stream:        stream,
+		config:        config,
+		announcements: make(map[string]*Announcement),
+		next:          make([]*Announcement, 0),
+		liveCh:        make(chan struct{}),
 	}
 
 	go annstr.listenAnnouncements()
@@ -34,7 +35,11 @@ func newReceiveAnnounceStream(stream *internal.ReceiveAnnounceStream) *receiveAn
 var _ AnnouncementReader = (*receiveAnnounceStream)(nil)
 
 type receiveAnnounceStream struct {
-	internalStream *internal.ReceiveAnnounceStream
+	stream quic.Stream
+	config AnnounceConfig
+
+	closed   bool
+	closeErr error
 
 	// Track Suffix -> Announcement
 	announcements map[string]*Announcement
@@ -43,9 +48,6 @@ type receiveAnnounceStream struct {
 	mu   sync.RWMutex
 
 	liveCh chan struct{}
-
-	closed   bool
-	closeErr error
 }
 
 func (ras *receiveAnnounceStream) ReceiveAnnouncements(ctx context.Context) ([]*Announcement, error) {
@@ -71,9 +73,7 @@ func (ras *receiveAnnounceStream) ReceiveAnnouncements(ctx context.Context) ([]*
 }
 
 func (ras *receiveAnnounceStream) AnnounceConfig() AnnounceConfig {
-	return AnnounceConfig{
-		TrackPattern: ras.internalStream.AnnouncePleaseMessage.TrackPattern,
-	}
+	return ras.config
 }
 
 func (ras *receiveAnnounceStream) Close() error {
@@ -90,7 +90,16 @@ func (ras *receiveAnnounceStream) Close() error {
 
 	ras.closed = true
 
-	return ras.internalStream.Close()
+	err := ras.stream.Close()
+	if err != nil {
+		return err
+	}
+
+	slog.Debug("closed a receive announce stream",
+		slog.Any("stream_id", ras.stream.StreamID()),
+	)
+
+	return nil
 }
 
 func (ras *receiveAnnounceStream) CloseWithError(err error) error {
@@ -112,19 +121,37 @@ func (ras *receiveAnnounceStream) CloseWithError(err error) error {
 	ras.closed = true
 	ras.closeErr = err
 
-	return ras.internalStream.CloseWithError(err)
+	var annerr AnnounceError
+	if !errors.As(err, &annerr) {
+		annerr = ErrInternalError
+	}
+
+	code := quic.StreamErrorCode(annerr.AnnounceErrorCode())
+
+	ras.stream.CancelRead(code)
+	ras.stream.CancelWrite(code)
+
+	slog.Debug("closed a receive announce stream with an error",
+		slog.Any("stream_id", ras.stream.StreamID()),
+		slog.String("reason", err.Error()),
+	)
+
+	return nil
 }
 
 func (ras *receiveAnnounceStream) listenAnnouncements() {
-	prefix := ras.internalStream.AnnouncePleaseMessage.TrackPattern
+	prefix := ras.config.TrackPattern
 
 	var am message.AnnounceMessage
 	for {
-		err := ras.internalStream.ReceiveAnnounceMessage(&am)
+		_, err := am.Decode(ras.stream)
 		if err != nil {
+			slog.Error("failed to decode an ANNOUNCE message", "error", err)
 			ras.CloseWithError(err) // TODO: is this correct?
 			return
 		}
+
+		slog.Debug("received an ANNOUNCE message", "announce", am)
 
 		announcement, ok := ras.announcements[am.TrackSuffix]
 

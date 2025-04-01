@@ -1,10 +1,11 @@
-package transport
+package quicgowrapper
 
 import (
 	"context"
 	"net"
 
-	"github.com/quic-go/quic-go"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	quicgo "github.com/quic-go/quic-go"
 	"github.com/quic-go/webtransport-go"
 )
 
@@ -12,24 +13,31 @@ type webtransportConnection struct {
 	conn *webtransport.Session
 }
 
-func NewMOWTConnection(wtconn *webtransport.Session) Connection {
+func WrapWebTransportConnection(wtconn *webtransport.Session) quic.Connection {
 	return &webtransportConnection{
 		conn: wtconn,
 	}
 }
 
-func (conn *webtransportConnection) AcceptStream(ctx context.Context) (Stream, error) {
+func UnWrapWebTransportConnection(conn quic.Connection) *webtransport.Session {
+	if wconn, ok := conn.(*webtransportConnection); ok {
+		return wconn.conn
+	}
+	return nil
+}
+
+func (conn *webtransportConnection) AcceptStream(ctx context.Context) (quic.Stream, error) {
 	stream, err := conn.conn.AcceptStream(ctx)
 	return &webtransportStream{stream: stream}, err
 }
-func (conn *webtransportConnection) AcceptUniStream(ctx context.Context) (ReceiveStream, error) {
+func (conn *webtransportConnection) AcceptUniStream(ctx context.Context) (quic.ReceiveStream, error) {
 	stream, err := conn.conn.AcceptUniStream(ctx)
 	return &webtransportReceiveStream{stream: stream}, err
 }
-func (conn *webtransportConnection) CloseWithError(code SessionErrorCode, msg string) error {
+func (conn *webtransportConnection) CloseWithError(code quic.ConnectionErrorCode, msg string) error {
 	return conn.conn.CloseWithError(webtransport.SessionErrorCode(code), msg)
 }
-func (conn *webtransportConnection) ConnectionState() quic.ConnectionState {
+func (conn *webtransportConnection) ConnectionState() quicgo.ConnectionState {
 	return conn.conn.ConnectionState()
 }
 func (conn *webtransportConnection) Context() context.Context {
@@ -38,19 +46,19 @@ func (conn *webtransportConnection) Context() context.Context {
 func (conn *webtransportConnection) LocalAddr() net.Addr {
 	return conn.conn.LocalAddr()
 }
-func (conn *webtransportConnection) OpenStream() (Stream, error) {
+func (conn *webtransportConnection) OpenStream() (quic.Stream, error) {
 	stream, err := conn.conn.OpenStream()
 	return &webtransportStream{stream: stream}, err
 }
-func (conn *webtransportConnection) OpenStreamSync(ctx context.Context) (Stream, error) {
+func (conn *webtransportConnection) OpenStreamSync(ctx context.Context) (quic.Stream, error) {
 	stream, err := conn.conn.OpenStreamSync(ctx)
 	return &webtransportStream{stream: stream}, err
 }
-func (conn *webtransportConnection) OpenUniStream() (SendStream, error) {
+func (conn *webtransportConnection) OpenUniStream() (quic.SendStream, error) {
 	stream, err := conn.conn.OpenUniStream()
 	return &webtransportSendStream{stream: stream}, err
 }
-func (conn *webtransportConnection) OpenUniStreamSync(ctx context.Context) (SendStream, error) {
+func (conn *webtransportConnection) OpenUniStreamSync(ctx context.Context) (quic.SendStream, error) {
 	stream, err := conn.conn.OpenUniStreamSync(ctx)
 	return &webtransportSendStream{stream: stream}, err
 }

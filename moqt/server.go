@@ -10,12 +10,12 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
-	"github.com/quic-go/quic-go"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/quicgowrapper"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/webtransport"
+	quicgo "github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
-	"github.com/quic-go/webtransport-go"
+	webtransportgo "github.com/quic-go/webtransport-go"
 )
 
 type Server struct {
@@ -32,7 +32,7 @@ type Server struct {
 	/*
 	 * QUIC configuration
 	 */
-	QUICConfig *quic.Config
+	QUICConfig *quicgo.Config
 
 	/*
 	 * MOQ Configuration
@@ -43,7 +43,7 @@ type Server struct {
 	 * Setup Extensions
 	 * This function is called when a session is established
 	 */
-	SetupExtensions func(req Parameters) (rsp Parameters, err error)
+	SetupExtensions func(req *Parameters) (rsp *Parameters, err error)
 
 	/*
 	 * Handler
@@ -66,10 +66,10 @@ type Server struct {
 	 * If the server is configured with a WebTransport server, it is used to handle WebTransport sessions.
 	 * If not, a default server is used.
 	 */
-	WebtransportServer *webtransport.Server
+	WebtransportServer webtransport.Server
 
 	lnMu            sync.RWMutex
-	rawQUICListners map[*QUICEarlyListener]struct{}
+	rawQUICListners map[*quic.EarlyListener]struct{}
 
 	once   sync.Once
 	mu     sync.Mutex
@@ -85,7 +85,7 @@ func (s *Server) init() {
 		if s.Logger == nil {
 			s.Logger = slog.Default()
 		}
-		s.rawQUICListners = make(map[*QUICEarlyListener]struct{})
+		s.rawQUICListners = make(map[*quic.EarlyListener]struct{})
 
 		// Initialize signal channels
 		s.doneChan = make(chan struct{})
@@ -107,7 +107,7 @@ func (s *Server) init() {
 	})
 }
 
-func (s *Server) serveQUICListener(ln QUICEarlyListener) error {
+func (s *Server) serveQUICListener(ln quic.EarlyListener) error {
 	s.init()
 
 	s.addListener(&ln)
@@ -132,17 +132,17 @@ func (s *Server) serveQUICListener(ln QUICEarlyListener) error {
 
 	for {
 		// Listen for new QUIC connections
-		qconn, err := ln.Accept(ctx)
+		conn, err := ln.Accept(ctx)
 		if err != nil {
 			// Error due to shutdown
-			if errors.Is(err, quic.ErrServerClosed) || ctx.Err() != nil || s.closed.Load() {
+			if errors.Is(err, quicgo.ErrServerClosed) || ctx.Err() != nil || s.closed.Load() {
 				return http.ErrServerClosed
 			}
 			s.Logger.Error("failed to accept new QUIC connection", "listener", ln, "error", err.Error())
 			return err
 		}
 
-		s.Logger.Info("Accepted new QUIC connection", "remote_address", qconn.RemoteAddr())
+		s.Logger.Info("Accepted new QUIC connection", "remote_address", conn.RemoteAddr())
 
 		// Increment connection counter
 		s.incrementConnCount()
@@ -150,79 +150,75 @@ func (s *Server) serveQUICListener(ln QUICEarlyListener) error {
 		// Handle connection in a goroutine
 		go func() {
 			defer s.decrementConnCount()
-			if err := s.serveQUICConn(qconn); err != nil {
+			if err := s.serveQUICConn(conn); err != nil {
 				s.Logger.Debug("handling connection failed", "error", err)
 			}
 		}()
 	}
 }
 
-func (s *Server) serveQUICConn(qconn quic.Connection) error {
+func (s *Server) serveQUICConn(conn quic.Connection) error {
 	s.init()
 
-	protocol := qconn.ConnectionState().TLS.NegotiatedProtocol
+	protocol := conn.ConnectionState().TLS.NegotiatedProtocol
 
-	s.Logger.Info("Negotiated protocol", "remote_address", qconn.RemoteAddr(), "protocol", protocol)
+	s.Logger.Info("Negotiated protocol", "remote_address", conn.RemoteAddr(), "protocol", protocol)
 
 	switch protocol {
 	case http3.NextProtoH3:
-		s.Logger.Debug("handling webtransport session", "remote_address", qconn.RemoteAddr())
+		s.Logger.Debug("handling webtransport session", "remote_address", conn.RemoteAddr())
 		if s.WebtransportServer == nil {
 			s.setDefaultWebtransportServer()
 		}
-		return s.WebtransportServer.ServeQUICConn(qconn)
+		return s.WebtransportServer.ServeQUICConn(conn)
 	case NextProtoMOQ:
-		s.Logger.Debug("handling quic connection", "remote_address", qconn.RemoteAddr())
-		conn := transport.NewMORQConnection(qconn)
+		s.Logger.Debug("handling quic connection", "remote_address", conn.RemoteAddr())
 		var path string
-		handler := func(reqParam message.Parameters) (message.Parameters, error) {
+		params := func(reqParam *Parameters) (*Parameters, error) {
 			var err error
-			param := Parameters{reqParam}
 
 			// Get the path parameter
-			path, err = param.GetString(param_type_path)
+			path, err = reqParam.GetString(param_type_path)
 			if err != nil {
-				s.Logger.Error("failed to get 'path' parameter", "remote_address", qconn.RemoteAddr(), "error", err.Error())
+				s.Logger.Error("failed to get 'path' parameter", "remote_address", conn.RemoteAddr(), "error", err.Error())
 				return nil, err
 			}
 
 			// Get any setup extensions
-			rspParam, err := s.SetupExtensions(param)
+			rspParam, err := s.SetupExtensions(reqParam)
 			if err != nil {
-				s.Logger.Error("failed to get setup extensions", "remote_address", qconn.RemoteAddr(), "error", err.Error())
+				s.Logger.Error("failed to get setup extensions", "remote_address", conn.RemoteAddr(), "error", err.Error())
 				return nil, err
 			}
 
-			return rspParam.paramMap, nil
+			return rspParam, nil
 		}
 
-		internalSess, err := internal.AcceptSession(context.Background(), conn, handler)
+		sess, err := AcceptSession(context.Background(), conn, params, s.Handler)
 		if err != nil {
-			s.Logger.Error("failed to accept session", "remote_address", qconn.RemoteAddr(), "error", err.Error())
+			s.Logger.Error("failed to accept session", "remote_address", conn.RemoteAddr(), "error", err.Error())
 			return err
 		}
 
-		s.Logger.Info("established moq session over quic", "remote_address", qconn.RemoteAddr())
+		s.Logger.Info("established moq session over quic", "remote_address", conn.RemoteAddr())
 
 		if path == "" {
-			s.Logger.Error("Invalid session path", "remote_address", qconn.RemoteAddr(), "path", path)
+			s.Logger.Error("Invalid session path", "remote_address", conn.RemoteAddr(), "path", path)
 			err := fmt.Errorf("invalid session path")
 			// Terminate the session
-			internalSess.Terminate(err)
+			sess.Terminate(err)
 			return err
 		}
 
-		sess := newSession(internalSess, s.Handler)
-
-		s.Logger.Debug("handle session", "remote_address", qconn.RemoteAddr(), "path", path)
+		s.Logger.Debug("handle session", "remote_address", conn.RemoteAddr(), "path", path)
 
 		s.SessionHandlerFunc(path, sess)
 
-		s.Logger.Debug("completed session handling", "remote_address", qconn.RemoteAddr(), "path", path)
+		s.Logger.Debug("completed session handling", "remote_address", conn.RemoteAddr(), "path", path)
 
 		return nil
 	default:
-		s.Logger.Error("unsupported negotiated protocol", "remote_address", qconn.RemoteAddr(), "protocol", protocol)
+		s.Logger.Error("unsupported negotiated protocol", "remote_address", conn.RemoteAddr(), "protocol", protocol) // Updated to use conn.RemoteAddr()
 		return fmt.Errorf("unsupported protocol: %s", protocol)
 	}
 }
@@ -236,7 +232,7 @@ func (s *Server) ServeWebTransport(w http.ResponseWriter, r *http.Request) error
 	if s.WebtransportServer == nil {
 		s.setDefaultWebtransportServer()
 	}
-	wtsess, err := s.WebtransportServer.Upgrade(w, r)
+	conn, err := s.WebtransportServer.Upgrade(w, r)
 	if err != nil {
 		s.Logger.Error("WebTransport upgrade failed", "remote_address", r.RemoteAddr, "error", err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
@@ -245,32 +241,26 @@ func (s *Server) ServeWebTransport(w http.ResponseWriter, r *http.Request) error
 
 	s.Logger.Debug("WebTransport session established", "remote_address", r.RemoteAddr)
 
-	// Create a MOQ connection
-	conn := transport.NewMOWTConnection(wtsess)
-
-	var rspParam Parameters
-	handler := func(reqParam message.Parameters) (message.Parameters, error) {
+	params := func(reqParam *Parameters) (*Parameters, error) {
 		if s.SetupExtensions == nil {
 			s.setDefaultSetupExtensions()
 		}
 
 		// Get any setup extensions
-		rspParam, err = s.SetupExtensions(Parameters{reqParam})
+		rspParam, err := s.SetupExtensions(reqParam)
 		if err != nil {
 			s.Logger.Error("SetupExtensions error during WebTransport", "remote_address", r.RemoteAddr, "error", err.Error())
 			return nil, err
 		}
 
-		return rspParam.paramMap, nil
+		return rspParam, nil
 	}
 
-	internalSess, err := internal.AcceptSession(context.Background(), conn, handler)
+	sess, err := AcceptSession(context.Background(), conn, params, s.Handler)
 	if err != nil {
 		s.Logger.Error("failed to create internal WebTransport session", "remote_address", r.RemoteAddr, "error", err.Error())
 		return err
 	}
-
-	sess := newSession(internalSess, s.Handler)
 
 	s.Logger.Debug("MOQ session established", "remote_address", r.RemoteAddr)
 
@@ -298,8 +288,14 @@ func (s *Server) ListenAndServe() error {
 		tlsConfig.NextProtos = []string{NextProtoMOQ}
 	}
 
+	if ListenQUICFunc == nil {
+		ListenQUICFunc = func(addr string, tlsConf *tls.Config, config *quicgo.Config) (quic.EarlyListener, error) {
+			ln, err := quicgo.ListenAddrEarly(s.Addr, tlsConfig, s.QUICConfig)
+			return quicgowrapper.WrapListener(ln), err
+		}
+	}
 	// Start listener with configured TLS
-	ln, err := quic.ListenAddrEarly(s.Addr, tlsConfig, s.QUICConfig)
+	ln, err := ListenQUICFunc(s.Addr, tlsConfig, s.QUICConfig)
 	if err != nil {
 		s.Logger.Error("failed to start QUIC listener", "address", s.Addr, "error", err.Error())
 		return err
@@ -326,11 +322,19 @@ func (s *Server) ListenAndServeTLS(certFile, keyFile string) (err error) {
 	}
 	s.TLSConfig = tlsConfig
 
-	ln, err := quic.ListenAddrEarly(s.Addr, tlsConfig, s.QUICConfig)
+	if ListenQUICFunc == nil {
+		ListenQUICFunc = func(addr string, tlsConf *tls.Config, config *quicgo.Config) (quic.EarlyListener, error) {
+			ln, err := quicgo.ListenAddrEarly(s.Addr, tlsConfig, s.QUICConfig)
+			return quicgowrapper.WrapListener(ln), err
+		}
+	}
+
+	ln, err := ListenQUICFunc(s.Addr, tlsConfig, s.QUICConfig)
 	if err != nil {
 		s.Logger.Error("failed to start QUIC listener for TLS", "address", s.Addr, "error", err.Error())
 		return err
 	}
+
 	return s.serveQUICListener(ln)
 }
 
@@ -397,7 +401,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 	// Use WebTransport server's shutdown if available
 	if s.WebtransportServer != nil {
-		return s.WebtransportServer.H3.Shutdown(ctx)
+		return s.WebtransportServer.Shutdown(ctx)
 	}
 
 	// For active connections, wait for completion or context cancellation
@@ -417,16 +421,20 @@ func (s *Server) setDefaultWebtransportServer() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.WebtransportServer = &webtransport.Server{
+	wtserver := &webtransportgo.Server{
 		H3: http3.Server{
 			Addr: s.Addr,
 		},
 	}
+
+	// Wrap the WebTransport server
+	s.WebtransportServer = quicgowrapper.WrapWebTransportServer(wtserver)
+
 	if s.TLSConfig != nil {
-		s.WebtransportServer.H3.TLSConfig = s.TLSConfig.Clone()
+		s.WebtransportServer.SetTLSConfig(s.TLSConfig.Clone())
 	}
 	if s.QUICConfig != nil {
-		s.WebtransportServer.H3.QUICConfig = s.QUICConfig.Clone()
+		s.WebtransportServer.SetQUICConfig(s.QUICConfig.Clone())
 	}
 	s.Logger.Debug("set default WebTransport server", "address", s.Addr)
 }
@@ -440,14 +448,14 @@ func (s *Server) setDefaultSetupExtensions() {
 	s.Logger.Debug("set Default setup extensions")
 }
 
-func (s *Server) addListener(ln *QUICEarlyListener) {
+func (s *Server) addListener(ln *quic.EarlyListener) {
 	s.lnMu.Lock()
 	defer s.lnMu.Unlock()
 
 	s.rawQUICListners[ln] = struct{}{}
 }
 
-func (s *Server) removeListener(ln *QUICEarlyListener) {
+func (s *Server) removeListener(ln *quic.EarlyListener) {
 	s.lnMu.Lock()
 	defer s.lnMu.Unlock()
 
@@ -473,6 +481,6 @@ func (s *Server) decrementConnCount() {
 
 const NextProtoMOQ = "moq-00"
 
-var NoSetupExtensions = func(req Parameters) (rsp Parameters, err error) {
-	return Parameters{}, nil
+var NoSetupExtensions = func(req *Parameters) (rsp *Parameters, err error) {
+	return nil, nil
 }

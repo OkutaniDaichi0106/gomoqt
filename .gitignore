@@ -2,3 +2,6 @@ foalk
 examples/cert/localhost.pem
 examples/cert/localhost-key.pem
 hextra-starter-template
+
+.github
+*.doc.md

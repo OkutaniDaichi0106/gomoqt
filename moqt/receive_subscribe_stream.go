@@ -1,4 +1,4 @@
-package internal
+package moqt
 
 import (
 	"errors"
@@ -7,32 +7,26 @@ import (
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/transport"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-func newReceiveSubscribeStream(sm *message.SubscribeMessage, stream transport.Stream) *ReceiveSubscribeStream {
-	rss := &ReceiveSubscribeStream{
-		SubscribeID:      (*sm).SubscribeID,
-		TrackPath:        (*sm).TrackPath,
-		TrackPriority:    (*sm).TrackPriority,
-		GroupOrder:       (*sm).GroupOrder,
-		MinGroupSequence: (*sm).MinGroupSequence,
-		MaxGroupSequence: (*sm).MaxGroupSequence,
-		Stream:           stream,
+func newReceiveSubscribeStream(id SubscribeID, path TrackPath, config SubscribeConfig, stream quic.Stream) *receiveSubscribeStream {
+	rss := &receiveSubscribeStream{
+		id:     id,
+		path:   path,
+		config: config,
+		stream: stream,
 	}
 
 	return rss
 }
 
-type ReceiveSubscribeStream struct {
-	SubscribeID      message.SubscribeID
-	TrackPath        string
-	TrackPriority    message.TrackPriority
-	GroupOrder       message.GroupOrder
-	MinGroupSequence message.GroupSequence
-	MaxGroupSequence message.GroupSequence
-	Stream           transport.Stream
-	mu               sync.Mutex
+type receiveSubscribeStream struct {
+	id     SubscribeID
+	path   TrackPath
+	config SubscribeConfig
+	stream quic.Stream
+	mu     sync.Mutex
 
 	closed   bool
 	closeErr error
@@ -56,26 +50,26 @@ type ReceiveSubscribeStream struct {
 // 	return nil
 // }
 
-func (rss *ReceiveSubscribeStream) ReceiveSubscribeUpdate(sum *message.SubscribeUpdateMessage) error {
-	_, err := sum.Decode(rss.Stream)
+func (rss *receiveSubscribeStream) ReceiveSubscribeUpdate(sum *message.SubscribeUpdateMessage) error {
+	_, err := sum.Decode(rss.stream)
 	if err != nil {
 		slog.Error("failed to receive a SUBSCRIBE_UPDATE message",
-			"stream_id", rss.Stream.StreamID(),
-			"subscribe_id", rss.SubscribeID,
+			"stream_id", rss.stream.StreamID(),
+			"subscribe_id", rss.id,
 			"error", err,
 		)
 		return err
 	}
 
 	slog.Debug("received a SUBSCRIBE_UPDATE message",
-		"stream_id", rss.Stream.StreamID(),
-		"subscribe_id", rss.SubscribeID,
+		"stream_id", rss.stream.StreamID(),
+		"subscribe_id", rss.id,
 	)
 
 	return nil
 }
 
-func (rss *ReceiveSubscribeStream) CloseWithError(err error) error {
+func (rss *receiveSubscribeStream) CloseWithError(err error) error {
 	rss.mu.Lock()
 	defer rss.mu.Unlock()
 
@@ -97,19 +91,19 @@ func (rss *ReceiveSubscribeStream) CloseWithError(err error) error {
 		suberr = ErrInternalError
 	}
 
-	code := transport.StreamErrorCode(suberr.SubscribeErrorCode())
-	rss.Stream.CancelRead(code)
-	rss.Stream.CancelWrite(code)
+	code := quic.StreamErrorCode(suberr.SubscribeErrorCode())
+	rss.stream.CancelRead(code)
+	rss.stream.CancelWrite(code)
 
 	slog.Debug("closed a receive subscribe stream with an error",
 		"reason", err,
-		"stream_id", rss.Stream.StreamID(),
+		"stream_id", rss.stream.StreamID(),
 	)
 
 	return nil
 }
 
-func (rss *ReceiveSubscribeStream) Close() error {
+func (rss *receiveSubscribeStream) Close() error {
 	rss.mu.Lock()
 	defer rss.mu.Unlock()
 
@@ -122,16 +116,16 @@ func (rss *ReceiveSubscribeStream) Close() error {
 
 	rss.closed = true
 
-	err := rss.Stream.Close()
+	err := rss.stream.Close()
 	if err != nil {
 		slog.Error("failed to close a receive subscribe stream",
-			"stream_id", rss.Stream.StreamID(),
+			"stream_id", rss.stream.StreamID(),
 			"error", err,
 		)
 	}
 
 	slog.Debug("closed a receive subscribe stream",
-		"stream_id", rss.Stream.StreamID(),
+		"stream_id", rss.stream.StreamID(),
 	)
 
 	return nil

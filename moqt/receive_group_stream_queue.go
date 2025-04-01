@@ -1,17 +1,17 @@
-package internal
+package moqt
 
 import (
 	"container/heap"
 	"sync"
-
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 )
 
-func newGroupReceiverQueue(sm message.SubscribeMessage) *receiveGroupStreamQueue {
+func newGroupReceiverQueue(id SubscribeID, path TrackPath, config SubscribeConfig) *receiveGroupStreamQueue {
 	q := &receiveGroupStreamQueue{
-		queue: make([]*ReceiveGroupStream, 0, 1<<4), // TODO: Tune the initial capacity
-		ch:    make(chan struct{}, 1),
-		sm:    sm,
+		queue:  make([]*receiveGroupStream, 0, 1<<4), // TODO: Tune the initial capacity
+		ch:     make(chan struct{}, 1),
+		id:     id,
+		path:   path,
+		config: config,
 	}
 
 	heap.Init(q)
@@ -19,10 +19,12 @@ func newGroupReceiverQueue(sm message.SubscribeMessage) *receiveGroupStreamQueue
 }
 
 type receiveGroupStreamQueue struct {
-	queue []*ReceiveGroupStream
-	ch    chan struct{}
-	mu    sync.Mutex
-	sm    message.SubscribeMessage
+	queue  []*receiveGroupStream
+	ch     chan struct{}
+	mu     sync.Mutex
+	id     SubscribeID
+	path   TrackPath
+	config SubscribeConfig
 }
 
 // Len implements heap.Interface
@@ -41,13 +43,13 @@ func (q *receiveGroupStreamQueue) Less(i, j int) bool {
 		return false
 	}
 
-	switch q.sm.GroupOrder {
-	case message.GroupOrderDefault:
+	switch q.config.GroupOrder {
+	case GroupOrderDefault:
 		return true
-	case message.GroupOrderAscending:
-		return q.queue[i].GroupMessage.GroupSequence < q.queue[j].GroupMessage.GroupSequence
-	case message.GroupOrderDescending:
-		return q.queue[i].GroupMessage.GroupSequence > q.queue[j].GroupMessage.GroupSequence
+	case GroupOrderAscending:
+		return q.queue[i].GroupSequence() < q.queue[j].GroupSequence()
+	case GroupOrderDescending:
+		return q.queue[i].GroupSequence() > q.queue[j].GroupSequence()
 	default:
 		return false
 	}
@@ -69,7 +71,7 @@ func (q *receiveGroupStreamQueue) Push(x interface{}) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	stream, ok := x.(*ReceiveGroupStream)
+	stream, ok := x.(*receiveGroupStream)
 	if !ok || stream == nil {
 		return
 	}
@@ -97,12 +99,12 @@ func (q *receiveGroupStreamQueue) Chan() <-chan struct{} {
 }
 
 // Enqueue adds a new stream to the queue and maintains heap property
-func (q *receiveGroupStreamQueue) Enqueue(stream *ReceiveGroupStream) error {
+func (q *receiveGroupStreamQueue) Enqueue(stream *receiveGroupStream) error {
 	if stream == nil {
 		return ErrInternalError
 	}
 
-	if stream.GroupMessage.GroupSequence < q.sm.MinGroupSequence || stream.GroupMessage.GroupSequence > q.sm.MaxGroupSequence {
+	if stream.GroupSequence() < q.config.MinGroupSequence || stream.GroupSequence() > q.config.MaxGroupSequence {
 		return ErrInvalidRange
 	}
 
@@ -120,7 +122,7 @@ func (q *receiveGroupStreamQueue) Enqueue(stream *ReceiveGroupStream) error {
 }
 
 // Dequeue removes and returns the highest priority stream
-func (q *receiveGroupStreamQueue) Dequeue() *ReceiveGroupStream {
+func (q *receiveGroupStreamQueue) Dequeue() *receiveGroupStream {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -129,7 +131,7 @@ func (q *receiveGroupStreamQueue) Dequeue() *ReceiveGroupStream {
 	}
 
 	x := heap.Pop(q)
-	stream, ok := x.(*ReceiveGroupStream)
+	stream, ok := x.(*receiveGroupStream)
 	if !ok {
 		return nil
 	}

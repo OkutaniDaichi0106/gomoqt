@@ -6,11 +6,11 @@ type GroupOrder byte
 
 func (order GroupOrder) String() string {
 	switch order {
-	case DEFAULT:
+	case GroupOrderDefault:
 		return "default"
-	case ASCENDING:
+	case GroupOrderAscending:
 		return "ascending"
-	case DESCENDING:
+	case GroupOrderDescending:
 		return "descending"
 	default:
 		return "undefined group order"
@@ -18,7 +18,7 @@ func (order GroupOrder) String() string {
 }
 
 const (
-	DEFAULT    GroupOrder = 0x0
-	ASCENDING  GroupOrder = 0x1
-	DESCENDING GroupOrder = 0x2
+	GroupOrderDefault    GroupOrder = 0x0
+	GroupOrderAscending  GroupOrder = 0x1
+	GroupOrderDescending GroupOrder = 0x2
 )

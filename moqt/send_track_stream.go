@@ -2,20 +2,16 @@ package moqt
 
 import (
 	"sync"
-
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 )
 
 var _ SendTrackStream = (*sendTrackStream)(nil)
 
 type SendTrackStream interface {
 	SubscribeID() SubscribeID
-	// SubscribeConfig() SubscribeConfig
 	TrackWriter
 }
 
-func newSendTrackStream(session *internal.Session, receiveSubscribeStream *internal.ReceiveSubscribeStream) *sendTrackStream {
+func newSendTrackStream(session *session, receiveSubscribeStream *receiveSubscribeStream) *sendTrackStream {
 	return &sendTrackStream{
 		session:         session,
 		subscribeStream: receiveSubscribeStream,
@@ -23,18 +19,18 @@ func newSendTrackStream(session *internal.Session, receiveSubscribeStream *inter
 }
 
 type sendTrackStream struct {
-	session             *internal.Session
-	subscribeStream     *internal.ReceiveSubscribeStream
+	session             *session
+	subscribeStream     *receiveSubscribeStream
 	latestGroupSequence GroupSequence
 	mu                  sync.RWMutex
 }
 
 func (s *sendTrackStream) SubscribeID() SubscribeID {
-	return SubscribeID(s.subscribeStream.SubscribeID)
+	return s.subscribeStream.id
 }
 
 func (s *sendTrackStream) TrackPath() TrackPath {
-	return TrackPath(s.subscribeStream.TrackPath)
+	return s.subscribeStream.path
 }
 
 // func (s *sendTrackStream) TrackPriority() TrackPriority {
@@ -53,13 +49,7 @@ func (s *sendTrackStream) SubscribeConfig() SubscribeConfig {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return SubscribeConfig{
-		// TrackPath:        s.TrackPath(),
-		TrackPriority:    TrackPriority(s.subscribeStream.TrackPriority),
-		GroupOrder:       GroupOrder(s.subscribeStream.GroupOrder),
-		MinGroupSequence: GroupSequence(s.subscribeStream.MinGroupSequence),
-		MaxGroupSequence: GroupSequence(s.subscribeStream.MaxGroupSequence),
-	}
+	return s.subscribeStream.config
 }
 
 func (s *sendTrackStream) Info() Info {
@@ -67,17 +57,14 @@ func (s *sendTrackStream) Info() Info {
 	defer s.mu.RUnlock()
 
 	return Info{
-		TrackPriority:       TrackPriority(s.subscribeStream.TrackPriority),
+		TrackPriority:       s.subscribeStream.config.TrackPriority,
 		LatestGroupSequence: s.latestGroupSequence,
-		GroupOrder:          GroupOrder(s.subscribeStream.GroupOrder),
+		GroupOrder:          s.subscribeStream.config.GroupOrder,
 	}
 }
 
 func (s *sendTrackStream) OpenGroup(sequence GroupSequence) (GroupWriter, error) {
-	sgs, err := s.session.OpenGroupStream(message.GroupMessage{
-		SubscribeID:   s.subscribeStream.SubscribeID,
-		GroupSequence: message.GroupSequence(sequence),
-	})
+	stream, err := s.session.openGroupStream(s.subscribeStream.id, sequence)
 	if err != nil {
 		return nil, err
 	}
@@ -85,10 +72,6 @@ func (s *sendTrackStream) OpenGroup(sequence GroupSequence) (GroupWriter, error)
 	// Update latest group sequence
 	if sequence > s.latestGroupSequence {
 		s.latestGroupSequence = sequence
-	}
-
-	stream := &sendGroupStream{
-		internalStream: sgs,
 	}
 
 	return stream, nil

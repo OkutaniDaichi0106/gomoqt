@@ -36,11 +36,11 @@ func (q *groupSequenceHeap) Push(x any) {
 
 func (q *groupSequenceHeap) Less(i, j int) bool {
 	switch q.groupOrder {
-	case ASCENDING:
+	case GroupOrderAscending:
 		return q.queue[i] < q.queue[j]
-	case DESCENDING:
+	case GroupOrderDescending:
 		return q.queue[i] > q.queue[j]
-	case DEFAULT:
+	case GroupOrderDefault:
 		return true
 	default:
 		return false

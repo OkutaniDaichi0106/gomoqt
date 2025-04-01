@@ -1,4 +1,4 @@
-package transport
+package quic
 
 import (
 	"io"
@@ -28,7 +28,7 @@ type ReceiveStream interface {
 type Stream interface {
 	SendStream
 	ReceiveStream
-	SetDeadLine(time.Time) error
+	SetDeadline(time.Time) error
 }
 
 type StreamID int64

@@ -3,7 +3,6 @@ package moqt
 import (
 	"context"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 )
 
@@ -17,7 +16,7 @@ type ReceiveTrackStream interface {
 	UpdateSubscribe(SubscribeUpdate) error
 }
 
-func newReceiveTrackStream(session *internal.Session, info Info, subscribeStream *internal.SendSubscribeStream) *receiveTrackStream {
+func newReceiveTrackStream(session *session, info Info, subscribeStream *sendSubscribeStream) *receiveTrackStream {
 	rts := &receiveTrackStream{
 		session:             session,
 		subscribeStream:     subscribeStream,
@@ -30,21 +29,21 @@ func newReceiveTrackStream(session *internal.Session, info Info, subscribeStream
 }
 
 type receiveTrackStream struct {
-	session             *internal.Session
-	subscribeStream     *internal.SendSubscribeStream
+	session             *session
+	subscribeStream     *sendSubscribeStream
 	latestGroupSequence GroupSequence
 }
 
 func (s *receiveTrackStream) SubscribeID() SubscribeID {
-	return SubscribeID(s.subscribeStream.SubscribeMessage.SubscribeID)
+	return s.subscribeStream.id
 }
 
 func (s *receiveTrackStream) TrackPath() TrackPath {
-	return TrackPath(s.subscribeStream.SubscribeMessage.TrackPath)
+	return s.subscribeStream.path
 }
 
 func (s *receiveTrackStream) TrackPriority() TrackPriority {
-	return TrackPriority(s.subscribeStream.SubscribeMessage.TrackPriority)
+	return s.subscribeStream.config.TrackPriority
 }
 
 func (s *receiveTrackStream) Info() Info {
@@ -56,7 +55,7 @@ func (s *receiveTrackStream) Info() Info {
 }
 
 func (s *receiveTrackStream) GroupOrder() GroupOrder {
-	return GroupOrder(s.subscribeStream.SubscribeMessage.GroupOrder)
+	return s.subscribeStream.config.GroupOrder
 }
 
 func (s *receiveTrackStream) LatestGroupSequence() GroupSequence {
@@ -64,13 +63,7 @@ func (s *receiveTrackStream) LatestGroupSequence() GroupSequence {
 }
 
 func (s *receiveTrackStream) SubscribeConfig() SubscribeConfig {
-	return SubscribeConfig{
-		// TrackPath:        TrackPath(s.subscribeStream.SubscribeMessage.TrackPath),
-		TrackPriority:    TrackPriority(s.subscribeStream.SubscribeMessage.TrackPriority),
-		GroupOrder:       GroupOrder(s.subscribeStream.SubscribeMessage.GroupOrder),
-		MinGroupSequence: GroupSequence(s.subscribeStream.SubscribeMessage.MinGroupSequence),
-		MaxGroupSequence: GroupSequence(s.subscribeStream.SubscribeMessage.MaxGroupSequence),
-	}
+	return s.subscribeStream.config
 }
 
 func (s *receiveTrackStream) Close() error { // TODO: implement
@@ -89,12 +82,12 @@ func (s *receiveTrackStream) AcceptGroup(ctx context.Context) (GroupReader, erro
 
 	}
 
-	rgs, err := s.session.AcceptGroupStream(ctx, s.subscribeStream.SubscribeMessage.SubscribeID)
+	rgs, err := s.session.acceptGroupStream(ctx, s.subscribeStream.id)
 	if err != nil {
 		return nil, err
 	}
 
-	return &receiveGroupStream{rgs}, nil
+	return rgs, nil
 }
 
 func (s *receiveTrackStream) UpdateSubscribe(update SubscribeUpdate) error {

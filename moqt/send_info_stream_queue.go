@@ -1,16 +1,16 @@
-package internal
+package moqt
 
 import "sync"
 
-func newReceiveInfoStreamQueue() *sendInfoStreamQueue {
+func newSendInfoStreamQueue() *sendInfoStreamQueue {
 	return &sendInfoStreamQueue{
-		queue: make([]*SendInfoStream, 0),
+		queue: make([]*sendInfoStream, 0),
 		ch:    make(chan struct{}),
 	}
 }
 
 type sendInfoStreamQueue struct {
-	queue []*SendInfoStream
+	queue []*sendInfoStream
 	mu    sync.Mutex
 	ch    chan struct{}
 }
@@ -22,14 +22,14 @@ func (q *sendInfoStreamQueue) Len() int {
 	return len(q.queue)
 }
 
-func (q *sendInfoStreamQueue) Enqueue(req *SendInfoStream) {
+func (q *sendInfoStreamQueue) Enqueue(req *sendInfoStream) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	q.queue = append(q.queue, req)
 }
 
-func (q *sendInfoStreamQueue) Dequeue() *SendInfoStream {
+func (q *sendInfoStreamQueue) Dequeue() *sendInfoStream {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 

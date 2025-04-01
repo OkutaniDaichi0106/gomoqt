@@ -1,14 +1,10 @@
 package moqt
 
 import (
-	"context"
-	"net"
+	"crypto/tls"
 
-	"github.com/quic-go/quic-go"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	quicgo "github.com/quic-go/quic-go"
 )
 
-type QUICEarlyListener interface {
-	Accept(ctx context.Context) (quic.EarlyConnection, error)
-	Addr() net.Addr
-	Close() error
-}
+var ListenQUICFunc func(addr string, tlsConf *tls.Config, config *quicgo.Config) (quic.EarlyListener, error)

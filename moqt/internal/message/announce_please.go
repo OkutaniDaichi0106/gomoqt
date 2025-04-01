@@ -10,21 +10,17 @@ import (
 
 /*
  *	ANNOUNCE_PLEASE Message {
- *	  Track Prefix ([]string),
- *	  Announce Parameters (Parameters),
+ *	  Track Pattern (string),
  *	}
  */
-
 type AnnouncePleaseMessage struct {
 	TrackPattern string
-	// AnnounceParameters Parameters
 }
 
 func (aim AnnouncePleaseMessage) Len() int {
 	// Calculate the length of the payload
 	l := 0
 	l += stringLen(aim.TrackPattern)
-	// l += parametersLen(aim.AnnounceParameters)
 
 	return l
 }
@@ -37,7 +33,6 @@ func (aim AnnouncePleaseMessage) Encode(w io.Writer) (int, error) {
 	*p = AppendNumber(*p, uint64(aim.Len()))
 
 	*p = AppendString(*p, aim.TrackPattern)
-	// *p = AppendParameters(*p, aim.AnnounceParameters)
 
 	n, err := w.Write(*p)
 	if err != nil {

@@ -10,8 +10,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/quicgowrapper"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quicgowrapper"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/webtransport"
 	quicgo "github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"

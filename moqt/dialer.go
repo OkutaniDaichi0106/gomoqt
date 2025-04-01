@@ -6,8 +6,8 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/quicgowrapper"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quicgowrapper"
 	quicgo "github.com/quic-go/quic-go"
 	"github.com/quic-go/webtransport-go"
 )

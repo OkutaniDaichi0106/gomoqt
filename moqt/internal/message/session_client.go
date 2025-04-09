@@ -38,18 +38,18 @@ func (scm SessionClientMessage) Encode(w io.Writer) (int, error) {
 	p := GetBytes()
 	defer PutBytes(p)
 
-	*p = AppendNumber(*p, uint64(scm.Len()))
+	p = AppendNumber(p, uint64(scm.Len()))
 
 	// Append the supported versions
-	*p = AppendNumber(*p, uint64(len(scm.SupportedVersions)))
+	p = AppendNumber(p, uint64(len(scm.SupportedVersions)))
 	for _, version := range scm.SupportedVersions {
-		*p = AppendNumber(*p, uint64(version))
+		p = AppendNumber(p, uint64(version))
 	}
 
 	// Append the parameters
-	*p = AppendParameters(*p, scm.Parameters)
+	p = AppendParameters(p, scm.Parameters)
 
-	return w.Write(*p)
+	return w.Write(p)
 }
 
 func (scm *SessionClientMessage) Decode(r io.Reader) (int, error) {

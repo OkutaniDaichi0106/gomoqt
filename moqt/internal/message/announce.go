@@ -35,11 +35,11 @@ func (a AnnounceMessage) Encode(w io.Writer) (int, error) {
 	p := GetBytes()
 	defer PutBytes(p)
 
-	*p = AppendNumber(*p, uint64(a.Len()))
-	*p = AppendNumber(*p, uint64(a.AnnounceStatus))
-	*p = AppendString(*p, a.TrackSuffix)
+	p = AppendNumber(p, uint64(a.Len()))
+	p = AppendNumber(p, uint64(a.AnnounceStatus))
+	p = AppendString(p, a.TrackSuffix)
 
-	n, err := w.Write(*p)
+	n, err := w.Write(p)
 	if err != nil {
 		slog.Error("failed to write an ANNOUNCE message",
 			"error", err,

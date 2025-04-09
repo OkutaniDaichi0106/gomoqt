@@ -35,12 +35,12 @@ func (ssm SessionServerMessage) Encode(w io.Writer) (int, error) {
 	p := GetBytes()
 	defer PutBytes(p)
 
-	*p = AppendNumber(*p, uint64(ssm.Len()))
+	p = AppendNumber(p, uint64(ssm.Len()))
 
-	*p = AppendNumber(*p, uint64(ssm.SelectedVersion))
-	*p = AppendParameters(*p, ssm.Parameters)
+	p = AppendNumber(p, uint64(ssm.SelectedVersion))
+	p = AppendParameters(p, ssm.Parameters)
 
-	n, err := w.Write(*p)
+	n, err := w.Write(p)
 	if err != nil {
 		slog.Error("failed to write a SESSION_SERVER message", "error", err)
 		return n, err

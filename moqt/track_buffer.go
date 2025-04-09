@@ -6,9 +6,9 @@ import (
 	"time"
 )
 
-var DefaultExpires = 10 * time.Second
+var DefaultExpires = 10 * time.Second // TODO: Tune the value
 
-func BuildTrack(path TrackPath, info Info, expires time.Duration) *TrackBuffer {
+func NewTrack(path TrackPath, info Info, expires time.Duration) *TrackBuffer {
 	if expires == 0 {
 		expires = DefaultExpires
 	}
@@ -17,8 +17,8 @@ func BuildTrack(path TrackPath, info Info, expires time.Duration) *TrackBuffer {
 		path:                path,
 		latestGroupSequence: info.LatestGroupSequence,
 		expires:             expires,
-		remoteTrackPriority: info.TrackPriority,
-		remoteGroupOrder:    info.GroupOrder,
+		priority:            info.TrackPriority,
+		order:               info.GroupOrder,
 		groupMap:            make(map[GroupSequence]*GroupBuffer),
 		mapMu:               &sync.RWMutex{},
 		notifyChannels:      make([]chan GroupSequence, 0, 1), // TODO: Tune the size
@@ -28,6 +28,7 @@ func BuildTrack(path TrackPath, info Info, expires time.Duration) *TrackBuffer {
 	}
 }
 
+var _ TrackWriter = (*TrackBuffer)(nil)
 var _ TrackHandler = (*TrackBuffer)(nil)
 
 type TrackBuffer struct {
@@ -35,8 +36,8 @@ type TrackBuffer struct {
 	latestGroupSequence GroupSequence
 	expires             time.Duration
 
-	remoteTrackPriority TrackPriority
-	remoteGroupOrder    GroupOrder
+	priority TrackPriority
+	order    GroupOrder
 
 	groupMap map[GroupSequence]*GroupBuffer
 	mapMu    *sync.RWMutex
@@ -61,8 +62,8 @@ func (t *TrackBuffer) Info() Info {
 	defer t.mu.RUnlock()
 	return Info{
 		LatestGroupSequence: t.latestGroupSequence,
-		TrackPriority:       t.remoteTrackPriority,
-		GroupOrder:          t.remoteGroupOrder,
+		TrackPriority:       t.priority,
+		GroupOrder:          t.order,
 	}
 }
 
@@ -81,20 +82,27 @@ func (t *TrackBuffer) Count() int {
 	return count
 }
 
-func (t *TrackBuffer) NewTrackWriter(priority TrackPriority, order GroupOrder) (TrackWriter, error) {
+func (t *TrackBuffer) OpenGroup(seq GroupSequence) (GroupWriter, error) {
 	if !t.isWritable() {
 		return nil, ErrClosedTrack
 	}
 
-	return newTrackBufferWriter(t), nil
+	gb := newGroupBuffer(seq, DefaultGroupBufferSize)
+
+	err := t.storeGroup(gb)
+	if err != nil {
+		return nil, err
+	}
+
+	return gb, nil
 }
 
-func (t *TrackBuffer) NewTrackReader(priority TrackPriority, order GroupOrder) (TrackReader, error) {
+func (t *TrackBuffer) Subscribe(config *SubscribeConfig) (TrackReader, error) {
 	if !t.isReadable() {
 		return nil, ErrEndedTrack
 	}
 
-	return newTrackBufferReader(t, order), nil
+	return newTrackBufferReader(t, config), nil
 }
 
 func (t *TrackBuffer) Close() error {
@@ -131,8 +139,8 @@ func (t *TrackBuffer) CloseWithError(err error) error {
 	return nil
 }
 
-func (t *TrackBuffer) ServeTrack(w TrackWriter, config SubscribeConfig) {
-	r, err := t.NewTrackReader(config.TrackPriority, config.GroupOrder)
+func (t *TrackBuffer) ServeTrack(w TrackWriter, config *SubscribeConfig) {
+	r, err := t.Subscribe(config)
 	if err != nil {
 		w.CloseWithError(err)
 		return
@@ -170,13 +178,13 @@ func (t *TrackBuffer) ServeTrack(w TrackWriter, config SubscribeConfig) {
 	}
 }
 
-func (t *TrackBuffer) ServeAnnouncements(w AnnouncementWriter) {
+func (t *TrackBuffer) ServeAnnouncements(w AnnouncementWriter, config *AnnounceConfig) {
 	announcement := t.announcement
 	if !announcement.IsActive() {
 		return
 	}
 
-	if announcement.TrackPath().Match(w.AnnounceConfig().TrackPattern) {
+	if announcement.TrackPath().Match(config.TrackPattern) {
 		w.SendAnnouncements([]*Announcement{t.announcement})
 	}
 }

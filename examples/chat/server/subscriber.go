@@ -52,7 +52,7 @@ func runSubscriber(sess moqt.Session, wg *sync.WaitGroup) {
 				"info", info,
 			)
 
-			track := moqt.BuildTrack(ann.TrackPath(), info, 5*time.Second)
+			track := moqt.NewTrack(ann.TrackPath(), info, 5*time.Second)
 
 			moqt.Handle(path, track)
 

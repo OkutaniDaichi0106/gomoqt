@@ -36,10 +36,6 @@ func (tp TrackPath) Match(pattern string) bool {
 	return matchGlob(pattern, string(tp))
 }
 
-func (tp TrackPath) Parts() []string {
-	return strings.Split(strings.TrimPrefix(string(tp), "/"), "/")
-}
-
 // matchGlob checks if the given wildcard pattern matches the path
 // * matches any string within a single segment
 // ** matches multiple segments (directory levels)

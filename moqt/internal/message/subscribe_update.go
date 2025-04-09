@@ -39,14 +39,14 @@ func (su SubscribeUpdateMessage) Encode(w io.Writer) (int, error) {
 	p := GetBytes()
 	defer PutBytes(p)
 
-	*p = AppendNumber(*p, uint64(su.Len()))
-	*p = AppendNumber(*p, uint64(su.TrackPriority))
-	*p = AppendNumber(*p, uint64(su.GroupOrder))
-	*p = AppendNumber(*p, uint64(su.MinGroupSequence))
-	*p = AppendNumber(*p, uint64(su.MaxGroupSequence))
-	// *p = AppendParameters(*p, su.SubscribeUpdateParameters)
+	p = AppendNumber(p, uint64(su.Len()))
+	p = AppendNumber(p, uint64(su.TrackPriority))
+	p = AppendNumber(p, uint64(su.GroupOrder))
+	p = AppendNumber(p, uint64(su.MinGroupSequence))
+	p = AppendNumber(p, uint64(su.MaxGroupSequence))
+	// p = AppendParameters(p, su.SubscribeUpdateParameters)
 
-	n, err := w.Write(*p)
+	n, err := w.Write(p)
 	if err != nil {
 		slog.Error("failed to write a SUBSCRIBE_UPDATE message",
 			"error", err,

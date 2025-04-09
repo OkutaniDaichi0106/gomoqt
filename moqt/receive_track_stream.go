@@ -7,12 +7,10 @@ import (
 )
 
 var _ ReceiveTrackStream = (*receiveTrackStream)(nil)
-var _ TrackReader = (*receiveTrackStream)(nil)
 
 type ReceiveTrackStream interface {
 	TrackReader
 	SubscribeID() SubscribeID
-	SubscribeConfig() SubscribeConfig
 	UpdateSubscribe(SubscribeUpdate) error
 }
 
@@ -60,10 +58,6 @@ func (s *receiveTrackStream) GroupOrder() GroupOrder {
 
 func (s *receiveTrackStream) LatestGroupSequence() GroupSequence {
 	return s.latestGroupSequence
-}
-
-func (s *receiveTrackStream) SubscribeConfig() SubscribeConfig {
-	return s.subscribeStream.config
 }
 
 func (s *receiveTrackStream) Close() error { // TODO: implement

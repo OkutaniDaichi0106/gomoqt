@@ -1,63 +1,52 @@
 package moqt
 
-import "errors"
+// var _ TrackWriter = (*trackBufferWriter)(nil)
 
-var _ TrackWriter = (*trackBufferWriter)(nil)
+// func newTrackBufferWriter(tb *TrackBuffer, priority TrackPriority, order GroupOrder) *trackBufferWriter {
+// 	return &trackBufferWriter{
+// 		trackBuffer: tb,
+// 		priotity:    priority,
+// 		order:       order,
+// 	}
+// }
 
-func newTrackBufferWriter(tb *TrackBuffer) *trackBufferWriter {
-	return &trackBufferWriter{
-		trackBuffer: tb,
-	}
-}
+// type trackBufferWriter struct {
+// 	trackBuffer *TrackBuffer
+// 	priotity    TrackPriority
+// 	order       GroupOrder
+// }
 
-type trackBufferWriter struct {
-	trackBuffer *TrackBuffer
-	priotity    TrackPriority
-	order       GroupOrder
-}
+// func (tw *trackBufferWriter) TrackPath() TrackPath {
+// 	return tw.trackBuffer.TrackPath()
+// }
 
-func (tw *trackBufferWriter) TrackPath() TrackPath {
-	return tw.trackBuffer.TrackPath()
-}
+// func (tw *trackBufferWriter) LatestGroupSequence() GroupSequence {
+// 	return tw.trackBuffer.LatestGroupSequence()
+// }
 
-func (tw *trackBufferWriter) SubscribeConfig() SubscribeConfig {
-	return SubscribeConfig{
-		TrackPriority: tw.priotity,
-		GroupOrder:    tw.order,
-	}
-}
+// func (tw *trackBufferWriter) Info() Info {
+// 	return tw.trackBuffer.Info()
+// }
 
-func (tw *trackBufferWriter) LatestGroupSequence() GroupSequence {
-	return tw.trackBuffer.LatestGroupSequence()
-}
+// func (tw *trackBufferWriter) OpenGroup(seq GroupSequence) (GroupWriter, error) {
+// 	if tw.trackBuffer.closed {
+// 		return nil, ErrClosedTrack
+// 	}
 
-func (tw *trackBufferWriter) Info() Info {
-	return Info{
-		TrackPriority:       tw.priotity,
-		LatestGroupSequence: tw.LatestGroupSequence(),
-		GroupOrder:          tw.order,
-	}
-}
+// 	gb := newGroupBuffer(seq, DefaultGroupBufferSize)
 
-func (tw *trackBufferWriter) OpenGroup(seq GroupSequence) (GroupWriter, error) {
-	if tw.trackBuffer.closed {
-		return nil, errors.New("track buffer is closed")
-	}
+// 	err := tw.trackBuffer.storeGroup(gb)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	gb := newGroupBuffer(seq, DefaultGroupBufferSize)
+// 	return gb, nil
+// }
 
-	err := tw.trackBuffer.storeGroup(gb)
-	if err != nil {
-		return nil, err
-	}
+// func (tw *trackBufferWriter) Close() error {
+// 	return tw.trackBuffer.Close()
+// }
 
-	return newGroupBufferWriter(gb), nil
-}
-
-func (tw *trackBufferWriter) Close() error {
-	return tw.trackBuffer.Close()
-}
-
-func (tw *trackBufferWriter) CloseWithError(err error) error {
-	return tw.trackBuffer.CloseWithError(err)
-}
+// func (tw *trackBufferWriter) CloseWithError(err error) error {
+// 	return tw.trackBuffer.CloseWithError(err)
+// }

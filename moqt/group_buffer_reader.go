@@ -1,7 +1,6 @@
 package moqt
 
 import (
-	"errors"
 	"time"
 )
 
@@ -16,9 +15,9 @@ func newGroupBufferReader(buf *GroupBuffer) *groupBufferReader {
 type groupBufferReader struct {
 	groupBuffer *GroupBuffer
 	readFrames  int
-	closed      bool
-	closeCh     chan struct{}
-	closedErr   GroupError
+
+	canceled    bool
+	canceledErr GroupError
 }
 
 func (r *groupBufferReader) GroupSequence() GroupSequence {
@@ -29,25 +28,16 @@ func (r *groupBufferReader) ReadFrame() (Frame, error) {
 	r.groupBuffer.cond.L.Lock()
 	defer r.groupBuffer.cond.L.Unlock()
 
-	select {
-	case <-r.closeCh:
-		return nil, r.closedErr
-	default:
-		for r.readFrames >= len(r.groupBuffer.frames) {
-			// Check for reader cancellation
-			if r.closed {
-				return nil, r.closedErr
-			}
-			if r.groupBuffer.closed {
+	for r.readFrames >= len(r.groupBuffer.frames) {
+		// Check for reader cancellation
+		if r.groupBuffer.closed {
+			if r.groupBuffer.closedErr == nil {
 				return nil, r.groupBuffer.closedErr
 			}
-			r.groupBuffer.cond.Wait()
+			return nil, ErrClosedGroup
 		}
-	}
 
-	// Check cancellation before returning the frame.
-	if r.closed {
-		return nil, r.closedErr
+		r.groupBuffer.cond.Wait()
 	}
 
 	f := r.groupBuffer.frames[r.readFrames]
@@ -60,39 +50,23 @@ func (r *groupBufferReader) SetReadDeadline(t time.Time) error {
 
 	// If the deadline is in the past, cancel the read immediately.
 	if d <= 0 {
-		r.groupBuffer.cond.L.Lock()
-		defer r.groupBuffer.cond.L.Unlock()
-		if r.closed {
-			return nil
-		}
-		var grperr GroupError
-		if errors.As(ErrGroupExpired, &grperr) {
-			r.CancelRead(grperr)
-		}
+		r.CancelRead(ErrGroupExpired)
 		return nil
 	}
 
-	//
+	// Cancel the read after the deadline.
 	time.AfterFunc(d, func() {
-		r.groupBuffer.cond.L.Lock()
-		defer r.groupBuffer.cond.L.Unlock()
-		if !r.closed {
-			var grperr GroupError
-			if errors.As(ErrGroupExpired, &grperr) {
-				r.CancelRead(grperr)
-			}
-		}
+		r.CancelRead(ErrGroupExpired)
 	})
 
 	return nil
 }
 
 func (r *groupBufferReader) CancelRead(err GroupError) {
-	if r.closed {
+	if r.canceled {
 		return
 	}
 
-	r.closed = true
-	r.closedErr = err
-	close(r.closeCh)
+	r.canceled = true
+	r.canceledErr = err
 }

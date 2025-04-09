@@ -40,9 +40,9 @@ func (fm FrameMessage) Encode(w io.Writer) (int, error) {
 	b := GetBytes()
 	defer PutBytes(b)
 
-	*b = AppendBytes(*b, fm.Payload)
+	b = AppendBytes(b, fm.Payload)
 
-	n, err := w.Write(*b)
+	n, err := w.Write(b)
 	if err != nil {
 		slog.Error("failed to write a FRAME message", "error", err)
 		return n, err
@@ -71,7 +71,7 @@ func (fm *FrameMessage) Decode(r io.Reader) (int, error) {
 var framePool = sync.Pool{
 	New: func() any {
 		return &FrameMessage{
-			Payload: make([]byte, 0, DefaultFrameSize),
+			Payload: GetBytes(),
 		}
 	},
 }

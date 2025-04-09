@@ -37,35 +37,28 @@ func (p Parameters) String() string {
 	return sb.String()
 }
 
-func (p Parameters) SetByteArray(key ParameterType, value []byte) {
+func (p *Parameters) SetByteArray(key ParameterType, value []byte) {
 	if p.paramMap == nil {
 		p.paramMap = make(message.Parameters)
 	}
 	p.paramMap[uint64(key)] = value
 }
 
-func (p Parameters) SetString(key ParameterType, value string) {
+func (p *Parameters) SetString(key ParameterType, value string) {
 	if p.paramMap == nil {
 		p.paramMap = make(message.Parameters)
 	}
 	p.paramMap[uint64(key)] = []byte(value)
 }
 
-func (p Parameters) SetInt(key ParameterType, value int64) {
-	if p.paramMap == nil {
-		p.paramMap = make(message.Parameters)
-	}
-	p.paramMap[uint64(key)] = quicvarint.Append(make([]byte, 0), uint64(value))
-}
-
-func (p Parameters) SetUint(key ParameterType, value uint64) {
+func (p *Parameters) SetUint(key ParameterType, value uint64) {
 	if p.paramMap == nil {
 		p.paramMap = make(message.Parameters)
 	}
 	p.paramMap[uint64(key)] = quicvarint.Append(make([]byte, 0), value)
 }
 
-func (p Parameters) SetBool(key ParameterType, value bool) {
+func (p *Parameters) SetBool(key ParameterType, value bool) {
 	if p.paramMap == nil {
 		p.paramMap = make(message.Parameters)
 	}
@@ -76,7 +69,7 @@ func (p Parameters) SetBool(key ParameterType, value bool) {
 	}
 }
 
-func (p Parameters) Remove(key ParameterType) {
+func (p *Parameters) Remove(key ParameterType) {
 	if p.paramMap == nil {
 		return
 	}
@@ -107,20 +100,6 @@ func (p Parameters) GetString(key ParameterType) (string, error) {
 	}
 
 	return string(value), nil
-}
-
-func (p Parameters) GetInt(key ParameterType) (int64, error) {
-	if p.paramMap == nil {
-		return 0, ErrParameterNotFound
-	}
-
-	num, err := p.GetUint(key)
-	if err != nil {
-		slog.Error("failed to read a parameter as uint", "error", err)
-		return 0, err
-	}
-
-	return int64(num), nil
 }
 
 func (p Parameters) GetUint(key ParameterType) (uint64, error) {

@@ -39,10 +39,10 @@ type Session interface {
 	 * Methods for the Publisher
 	 */
 	// Accept an Announce Stream
-	AcceptAnnounceStream(context.Context) (AnnouncementWriter, error)
+	AcceptAnnounceStream(context.Context) (*AnnounceConfig, AnnouncementWriter, error)
 
 	// Accept a Track Stream
-	AcceptTrackStream(context.Context) (SendTrackStream, error)
+	AcceptTrackStream(context.Context) (*SubscribeConfig, SendTrackStream, error)
 }
 
 var _ Session = (*session)(nil)
@@ -156,7 +156,7 @@ func (s *session) OpenAnnounceStream(config *AnnounceConfig) (AnnouncementReader
 		config = &AnnounceConfig{TrackPattern: "/**"}
 	}
 
-	return s.openAnnounceStream(*config)
+	return s.openAnnounceStream(config)
 }
 
 func (s *session) OpenTrackStream(path TrackPath, config *SubscribeConfig) (Info, ReceiveTrackStream, error) {
@@ -207,22 +207,28 @@ func (s *session) RequestInfo(path TrackPath) (Info, error) {
 	return info, nil
 }
 
-func (s *session) AcceptAnnounceStream(ctx context.Context) (AnnouncementWriter, error) {
+func (s *session) AcceptAnnounceStream(ctx context.Context) (*AnnounceConfig, AnnouncementWriter, error) {
 	slog.Debug("accepting announce stream")
 
-	return s.acceptAnnounceStream(ctx)
+	stream, err := s.acceptAnnounceStream(ctx)
+	if err != nil {
+		slog.Error("failed to accept announce stream", "error", err)
+		return nil, nil, err
+	}
+
+	return &stream.config, stream, err
 }
 
-func (s *session) AcceptTrackStream(ctx context.Context) (SendTrackStream, error) {
+func (s *session) AcceptTrackStream(ctx context.Context) (*SubscribeConfig, SendTrackStream, error) {
 	slog.Debug("accepting track stream")
 
 	ss, err := s.acceptSubscribeStream(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if ss == nil {
-		return nil, ErrInternalError
+		return nil, nil, ErrInternalError
 	}
 
 	sts := newSendTrackStream(s, ss)
@@ -237,7 +243,7 @@ func (s *session) AcceptTrackStream(ctx context.Context) (SendTrackStream, error
 			"error", err,
 		)
 		sts.CloseWithError(err)
-		return nil, err
+		return nil, nil, err
 	}
 
 	im := message.InfoMessage{
@@ -248,10 +254,10 @@ func (s *session) AcceptTrackStream(ctx context.Context) (SendTrackStream, error
 
 	_, err = im.Encode(sts.subscribeStream.stream)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return sts, nil
+	return &ss.config, sts, nil
 }
 
 func (s *session) resolveInfoRequest(ctx context.Context) {
@@ -410,7 +416,7 @@ func (sess *session) openSessionStream(versions []protocol.Version, params *Para
 	return nil
 }
 
-func (s *session) openAnnounceStream(config AnnounceConfig) (*receiveAnnounceStream, error) {
+func (s *session) openAnnounceStream(config *AnnounceConfig) (*receiveAnnounceStream, error) {
 	apm := message.AnnouncePleaseMessage{
 		TrackPattern: config.TrackPattern,
 	}

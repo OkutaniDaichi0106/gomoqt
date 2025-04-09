@@ -30,11 +30,11 @@ func (aim AnnouncePleaseMessage) Encode(w io.Writer) (int, error) {
 	p := GetBytes()
 	defer PutBytes(p)
 
-	*p = AppendNumber(*p, uint64(aim.Len()))
+	p = AppendNumber(p, uint64(aim.Len()))
 
-	*p = AppendString(*p, aim.TrackPattern)
+	p = AppendString(p, aim.TrackPattern)
 
-	n, err := w.Write(*p)
+	n, err := w.Write(p)
 	if err != nil {
 		slog.Error("failed to encode an ANNOUNCE_PLEASE message",
 			"error", err,

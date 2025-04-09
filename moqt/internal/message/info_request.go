@@ -23,10 +23,10 @@ func (irm InfoRequestMessage) Encode(w io.Writer) (int, error) {
 	p := GetBytes()
 	defer PutBytes(p)
 
-	*p = AppendNumber(*p, uint64(irm.Len()))
-	*p = AppendString(*p, irm.TrackPath)
+	p = AppendNumber(p, uint64(irm.Len()))
+	p = AppendString(p, irm.TrackPath)
 
-	n, err := w.Write(*p)
+	n, err := w.Write(p)
 	if err != nil {
 		slog.Error("failed to write INFO_REQUEST message", "error", err)
 		return n, err

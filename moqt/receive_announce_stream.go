@@ -13,12 +13,11 @@ import (
 
 type AnnouncementReader interface {
 	ReceiveAnnouncements(context.Context) ([]*Announcement, error)
-	AnnounceConfig() AnnounceConfig
 	Close() error
 	CloseWithError(error) error
 }
 
-func newReceiveAnnounceStream(stream quic.Stream, config AnnounceConfig) *receiveAnnounceStream {
+func newReceiveAnnounceStream(stream quic.Stream, config *AnnounceConfig) *receiveAnnounceStream {
 	annstr := &receiveAnnounceStream{
 		stream:        stream,
 		config:        config,
@@ -36,7 +35,7 @@ var _ AnnouncementReader = (*receiveAnnounceStream)(nil)
 
 type receiveAnnounceStream struct {
 	stream quic.Stream
-	config AnnounceConfig
+	config *AnnounceConfig
 
 	closed   bool
 	closeErr error
@@ -70,10 +69,6 @@ func (ras *receiveAnnounceStream) ReceiveAnnouncements(ctx context.Context) ([]*
 			continue
 		}
 	}
-}
-
-func (ras *receiveAnnounceStream) AnnounceConfig() AnnounceConfig {
-	return ras.config
 }
 
 func (ras *receiveAnnounceStream) Close() error {
@@ -151,7 +146,7 @@ func (ras *receiveAnnounceStream) listenAnnouncements() {
 			return
 		}
 
-		slog.Debug("received an ANNOUNCE message", "announce", am)
+		slog.Debug("received an ANNOUNCE message", "announce_message", am)
 
 		announcement, ok := ras.announcements[am.TrackSuffix]
 

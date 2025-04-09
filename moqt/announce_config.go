@@ -5,5 +5,5 @@ type AnnounceConfig struct {
 }
 
 func (ac AnnounceConfig) String() string {
-	return "TrackPrefix: " + TrackPath(ac.TrackPattern).String()
+	return "TrackPattern: " + ac.TrackPattern
 }

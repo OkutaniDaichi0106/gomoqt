@@ -289,10 +289,7 @@ func (s *Server) ListenAndServe() error {
 	}
 
 	if ListenQUICFunc == nil {
-		ListenQUICFunc = func(addr string, tlsConf *tls.Config, config *quicgo.Config) (quic.EarlyListener, error) {
-			ln, err := quicgo.ListenAddrEarly(s.Addr, tlsConfig, s.QUICConfig)
-			return quicgowrapper.WrapListener(ln), err
-		}
+		panic("ListenQUICFunc is not initialized")
 	}
 	// Start listener with configured TLS
 	ln, err := ListenQUICFunc(s.Addr, tlsConfig, s.QUICConfig)
@@ -323,10 +320,7 @@ func (s *Server) ListenAndServeTLS(certFile, keyFile string) (err error) {
 	s.TLSConfig = tlsConfig
 
 	if ListenQUICFunc == nil {
-		ListenQUICFunc = func(addr string, tlsConf *tls.Config, config *quicgo.Config) (quic.EarlyListener, error) {
-			ln, err := quicgo.ListenAddrEarly(s.Addr, tlsConfig, s.QUICConfig)
-			return quicgowrapper.WrapListener(ln), err
-		}
+		panic("ListenQUICFunc is not initialized")
 	}
 
 	ln, err := ListenQUICFunc(s.Addr, tlsConfig, s.QUICConfig)

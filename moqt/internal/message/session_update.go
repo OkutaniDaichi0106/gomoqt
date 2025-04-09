@@ -23,11 +23,11 @@ func (sum SessionUpdateMessage) Encode(w io.Writer) (int, error) {
 	p := GetBytes()
 	defer PutBytes(p)
 
-	*p = AppendNumber(*p, uint64(sum.Len()))
+	p = AppendNumber(p, uint64(sum.Len()))
 
-	*p = AppendNumber(*p, sum.Bitrate)
+	p = AppendNumber(p, sum.Bitrate)
 
-	n, err := w.Write(*p)
+	n, err := w.Write(p)
 	if err != nil {
 		slog.Error("failed to write a SESSION_UPDATE message", "error", err)
 		return n, err

@@ -14,7 +14,7 @@ type Frame interface {
 	Size() int
 
 	// Release releases the frame back to the pool.
-	Release()
+	// Release()
 }
 
 // NewFrame creates a new Frame with the specified bytes.

@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 )
 
 var DefaultMux *TrackMux = defaultMux
@@ -21,16 +22,20 @@ func Handle(path TrackPath, handler TrackHandler) {
 	DefaultMux.Handle(path, handler)
 }
 
-func ServeTrack(w TrackWriter, config SubscribeConfig) {
+func ServeTrack(w TrackWriter, config *SubscribeConfig) {
 	DefaultMux.ServeTrack(w, config)
 }
 
-func ServeAnnouncement(w AnnouncementWriter) {
-	DefaultMux.ServeAnnouncements(w)
+func ServeAnnouncements(w AnnouncementWriter, config *AnnounceConfig) {
+	DefaultMux.ServeAnnouncements(w, config)
 }
 
 func GetInfo(path TrackPath) (Info, error) {
 	return DefaultMux.GetInfo(path)
+}
+
+func BuildTrack(path TrackPath, info Info, expires time.Duration) *TrackBuffer {
+	return DefaultMux.BuildTrack(path, info, expires)
 }
 
 var _ TrackHandler = (*TrackMux)(nil)
@@ -59,6 +64,85 @@ func (mux *TrackMux) Handle(path TrackPath, handler TrackHandler) {
 	mux.announce(p, handler)
 
 	slog.Debug("handling a track", "track_path", path)
+}
+
+func (mux *TrackMux) ServeAnnouncements(w AnnouncementWriter, config *AnnounceConfig) {
+	pattern := newPattern(config.TrackPattern)
+
+	// Register the handler on the routing tree
+	current := &mux.announceTree
+	for _, seg := range pattern.segments {
+		if current.children == nil {
+			current.children = make(map[string]*announcingNode)
+		}
+
+		if child, ok := current.children[seg]; ok {
+			current = child
+		} else {
+			child := newAnnouncingNode()
+			current.children[seg] = child
+			current = child
+		}
+	}
+
+	// Set the handler on the leaf node
+	if current.announcementsBuffer == nil {
+		current.announcementsBuffer = newAnnouncementBuffer(config)
+	}
+
+	// Serve announcements
+	current.announcementsBuffer.ServeAnnouncements(w, config)
+}
+
+func (mux *TrackMux) Handler(path TrackPath) TrackHandler {
+	mux.mu.RLock()
+	defer mux.mu.RUnlock()
+
+	p := newPath(path)
+
+	// Find the handler for the given path
+	current := &mux.trackTree
+	for _, seg := range p.segments {
+		if current.children == nil {
+			return NotFoundHandler
+		}
+
+		child, ok := current.children[seg]
+		if !ok {
+			return NotFoundHandler
+		}
+
+		current = child
+	}
+
+	if current.handler == nil {
+		return NotFoundHandler
+	}
+
+	return current.handler
+}
+
+func (mux *TrackMux) BuildTrack(path TrackPath, info Info, expires time.Duration) *TrackBuffer {
+	buf := NewTrack(path, info, expires)
+
+	mux.Handle(path, buf)
+
+	return buf
+}
+
+func (mux *TrackMux) ServeTrack(w TrackWriter, config *SubscribeConfig) {
+	mux.mu.RLock()
+	defer mux.mu.RUnlock()
+
+	p := newPath(w.TrackPath())
+
+	mux.trackTree.serveTrack(0, p, w, config)
+}
+
+func (mux *TrackMux) GetInfo(path TrackPath) (Info, error) {
+	p := newPath(path)
+
+	return mux.trackTree.getInfo(0, p)
 }
 
 func (mux *TrackMux) registerHandler(path *path, handler TrackHandler) {
@@ -94,77 +178,6 @@ func (mux *TrackMux) announce(path *path, handler TrackHandler) {
 	slog.Debug("announced a new track", "track_path", path.str)
 }
 
-func (mux *TrackMux) ServeAnnouncements(w AnnouncementWriter) {
-	pattern := newPattern(w.AnnounceConfig().TrackPattern)
-
-	// Register the handler on the routing tree
-	current := &mux.announceTree
-	for _, seg := range pattern.segments {
-		if current.children == nil {
-			current.children = make(map[string]*announcingNode)
-		}
-
-		if child, ok := current.children[seg]; ok {
-			current = child
-		} else {
-			child := newAnnouncingNode()
-			current.children[seg] = child
-			current = child
-		}
-	}
-
-	// Set the handler on the leaf node
-	if current.announcementsBuffer == nil {
-		current.announcementsBuffer = newAnnouncementBuffer(w.AnnounceConfig())
-	}
-
-	// Serve announcements
-	current.announcementsBuffer.ServeAnnouncements(w)
-}
-
-func (mux *TrackMux) Handler(path TrackPath) TrackHandler {
-	mux.mu.RLock()
-	defer mux.mu.RUnlock()
-
-	p := newPath(path)
-
-	// Find the handler for the given path
-	current := &mux.trackTree
-	for _, seg := range p.segments {
-		if current.children == nil {
-			return NotFoundHandler
-		}
-
-		child, ok := current.children[seg]
-		if !ok {
-			return NotFoundHandler
-		}
-
-		current = child
-	}
-
-	if current.handler == nil {
-		return NotFoundHandler
-	}
-
-	return current.handler
-}
-
-func (mux *TrackMux) ServeTrack(w TrackWriter, config SubscribeConfig) {
-	mux.mu.RLock()
-	defer mux.mu.RUnlock()
-
-	p := newPath(w.TrackPath())
-
-	mux.trackTree.serveTrack(0, p, w, config)
-}
-
-func (mux *TrackMux) GetInfo(path TrackPath) (Info, error) {
-	p := newPath(path)
-
-	return mux.trackTree.getInfo(0, p)
-}
-
 func newRoutingNode() *routingNode {
 	return &routingNode{
 		children: make(map[string]*routingNode),
@@ -191,7 +204,7 @@ func (node *routingNode) setHandler(ptn *path, handler TrackHandler) {
 	node.handler = handler
 }
 
-func (node *routingNode) serveTrack(depth int, path *path, w TrackWriter, config SubscribeConfig) {
+func (node *routingNode) serveTrack(depth int, path *path, w TrackWriter, config *SubscribeConfig) {
 	// If this node is a leaf node, call the handler.
 	if depth >= path.depth() {
 		if node.handler == nil {
@@ -200,6 +213,7 @@ func (node *routingNode) serveTrack(depth int, path *path, w TrackWriter, config
 		}
 
 		node.handler.ServeTrack(w, config)
+		return
 	}
 
 	// If this node is not a leaf node, call the child node.
@@ -211,7 +225,6 @@ func (node *routingNode) serveTrack(depth int, path *path, w TrackWriter, config
 	}
 
 	child.serveTrack(depth+1, path, w, config)
-	return
 }
 
 func (node *routingNode) getInfo(depth int, path *path) (Info, error) {
@@ -279,15 +292,16 @@ func (node *announcingNode) announce(depth int, path *path, handler TrackHandler
 	}
 
 	if node.announcementsBuffer != nil {
-		handler.ServeAnnouncements(node.announcementsBuffer)
+		handler.ServeAnnouncements(node.announcementsBuffer, node.announcementsBuffer.config)
 	}
 }
 
 func (node *announcingNode) setPatternAndBuffer(p *pattern) {
 	node.pattern = p
-	node.announcementsBuffer = newAnnouncementBuffer(AnnounceConfig{
+	config := &AnnounceConfig{
 		TrackPattern: p.str,
-	})
+	}
+	node.announcementsBuffer = newAnnouncementBuffer(config)
 }
 
 func newPath(p TrackPath) *path {

@@ -116,6 +116,9 @@ var (
 	// 	code:   group_duplicated_group,
 	// 	reason: "duplicated group",
 	// }
+
+	// Internal Errors with reason
+	ErrUnsubscribedTrack = ErrInternalError.WithReason("unsubscribed track")
 )
 
 // type Error interface {

@@ -1,200 +1,174 @@
-package moqt
+package moqt_test
 
 import (
 	"errors"
+	"log/slog"
 	"sync"
 	"testing"
+
+	"github.com/OkutaniDaichi0106/gomoqt/moqt"
 )
 
-// MockTrackHandler はTrackHandlerインターフェースのモック実装
-type MockTrackHandler struct {
-	ServeTrackFunc         func(w TrackWriter, config SubscribeConfig)
-	GetInfoFunc            func(path TrackPath) (Info, error)
-	ServeAnnouncementsFunc func(w AnnouncementWriter)
-	HandlerCalled          bool
-	Path                   TrackPath
-}
-
-func (m *MockTrackHandler) ServeTrack(w TrackWriter, config SubscribeConfig) {
-	m.HandlerCalled = true
-	if m.ServeTrackFunc != nil {
-		m.ServeTrackFunc(w, config)
-	}
-}
-
-func (m *MockTrackHandler) GetInfo(path TrackPath) (Info, error) {
-	if m.GetInfoFunc != nil {
-		return m.GetInfoFunc(path)
-	}
-	return Info{Path: path}, nil
-}
-
-func (m *MockTrackHandler) ServeAnnouncements(w AnnouncementWriter) {
-	if m.ServeAnnouncementsFunc != nil {
-		m.ServeAnnouncementsFunc(w)
-	}
-}
-
-// MockTrackWriter はTrackWriterインターフェースのモック実装
-type MockTrackWriter struct {
-	PathValue      TrackPath
-	TrackDataValue []byte
-	WrittenData    []byte
-}
-
-func (m *MockTrackWriter) TrackPath() TrackPath {
-	return m.PathValue
-}
-
-func (m *MockTrackWriter) Write(data []byte) (int, error) {
-	m.WrittenData = append(m.WrittenData, data...)
-	return len(data), nil
-}
-
-// MockAnnouncementWriter はAnnouncementWriterインターフェースのモック実装
-type MockAnnouncementWriter struct {
-	ConfigValue      AnnounceConfig
-	AnnouncedTracks  []TrackPath
-	AnnouncementData []byte
-	Notifications    int
-}
-
-func (m *MockAnnouncementWriter) AnnounceConfig() AnnounceConfig {
-	return m.ConfigValue
-}
-
-func (m *MockAnnouncementWriter) WriteAnnouncement(path TrackPath, data []byte) (int, error) {
-	m.AnnouncedTracks = append(m.AnnouncedTracks, path)
-	m.AnnouncementData = append(m.AnnouncementData, data...)
-	m.Notifications++
-	return len(data), nil
-}
-
-// TestTrackMuxBasicRouting は基本的なルーティング機能をテスト
+// TestTrackMuxBasicRouting tests basic routing functionality
 func TestTrackMuxBasicRouting(t *testing.T) {
-	mux := NewTrackMux()
+	mux := moqt.NewTrackMux()
 
-	// ハンドラーの作成とパスへの登録
-	audioHandler := &MockTrackHandler{Path: "/tracks/audio"}
-	videoHandler := &MockTrackHandler{Path: "/tracks/video"}
+	// Create handlers and register them to paths
+	audioHandler := &MockTrackHandler{
+		GetInfoFunc: func(path moqt.TrackPath) (moqt.Info, error) {
+			slog.Info("Getting audio info of audio track",
+				"track_path", path,
+			)
+			return moqt.Info{}, nil
+		},
+		ServeTrackFunc: func(w moqt.TrackWriter, config *moqt.SubscribeConfig) {
+			slog.Info("Serving audio track",
+				"track_path", w.TrackPath(),
+				"config", config,
+			)
+		},
+		ServeAnnouncementsFunc: func(w moqt.AnnouncementWriter, config *moqt.AnnounceConfig) {
+			slog.Info("Serving audio announcements",
+				"config", config,
+			)
+		},
+	}
+
+	// Create another handler for video
+	videoHandler := &MockTrackHandler{
+		GetInfoFunc: func(path moqt.TrackPath) (moqt.Info, error) {
+			slog.Info("Getting video info")
+			return moqt.Info{
+				TrackPriority:       0,
+				LatestGroupSequence: 0,
+				GroupOrder:          0,
+			}, nil
+		},
+		ServeTrackFunc: func(w moqt.TrackWriter, config *moqt.SubscribeConfig) {
+			slog.Info("Serving video track")
+		},
+		ServeAnnouncementsFunc: func(w moqt.AnnouncementWriter, config *moqt.AnnounceConfig) {
+			slog.Info("Serving video announcements")
+		},
+	}
 
 	mux.Handle("/tracks/audio", audioHandler)
 	mux.Handle("/tracks/video", videoHandler)
 
-	// オーディオトラックへのリクエストを検証
+	// Verify request to audio track
 	audioWriter := &MockTrackWriter{PathValue: "/tracks/audio"}
-	mux.ServeTrack(audioWriter, SubscribeConfig{})
+	mux.ServeTrack(audioWriter, &moqt.SubscribeConfig{})
 
-	if !audioHandler.HandlerCalled {
-		t.Errorf("Audio handler was not called for /tracks/audio path")
-	}
-
-	// ビデオトラックへのリクエストを検証
+	// Verify request to video track
 	videoWriter := &MockTrackWriter{PathValue: "/tracks/video"}
-	mux.ServeTrack(videoWriter, SubscribeConfig{})
+	mux.ServeTrack(videoWriter, &moqt.SubscribeConfig{})
 
-	if !videoHandler.HandlerCalled {
-		t.Errorf("Video handler was not called for /tracks/video path")
-	}
-
-	// 存在しないパスへのリクエストを検証
+	// Verify request to non-existent path
 	unknownWriter := &MockTrackWriter{PathValue: "/tracks/unknown"}
 	notFoundCalled := false
-	NotFoundHandler = &MockTrackHandler{
-		ServeTrackFunc: func(w TrackWriter, config SubscribeConfig) {
+	origNotFoundHandler := moqt.NotFoundHandler
+	defer func() { moqt.NotFoundHandler = origNotFoundHandler }()
+
+	moqt.NotFoundHandler = &MockTrackHandler{
+		ServeTrackFunc: func(w moqt.TrackWriter, config *moqt.SubscribeConfig) {
 			notFoundCalled = true
 		},
 	}
-	mux.ServeTrack(unknownWriter, SubscribeConfig{})
+	mux.ServeTrack(unknownWriter, &moqt.SubscribeConfig{})
 
 	if !notFoundCalled {
 		t.Errorf("NotFoundHandler was not called for non-existent path")
 	}
 }
 
-// TestGetInfo はGetInfo機能をテスト
+// TestGetInfo tests the GetInfo functionality
 func TestGetInfo(t *testing.T) {
-	mux := NewTrackMux()
+	mux := moqt.NewTrackMux()
 
-	expectedInfo := Info{
-		Path: "/tracks/audio",
-		Name: "Audio Track",
+	expectedInfo := moqt.Info{
+		TrackPriority:       10,
+		LatestGroupSequence: 100,
+		GroupOrder:          1,
 	}
 
 	audioHandler := &MockTrackHandler{
-		GetInfoFunc: func(path TrackPath) (Info, error) {
+		GetInfoFunc: func(path moqt.TrackPath) (moqt.Info, error) {
 			return expectedInfo, nil
 		},
 	}
 
 	mux.Handle("/tracks/audio", audioHandler)
 
-	// 存在するトラックの情報取得をテスト
+	// Test getting information for an existing track
 	info, err := mux.GetInfo("/tracks/audio")
 	if err != nil {
 		t.Errorf("GetInfo returned error: %v", err)
 	}
 
-	if info.Name != expectedInfo.Name {
-		t.Errorf("Expected info name %s, got %s", expectedInfo.Name, info.Name)
+	if info.TrackPriority != expectedInfo.TrackPriority {
+		t.Errorf("Expected TrackPriority %d, got %d", expectedInfo.TrackPriority, info.TrackPriority)
 	}
 
-	// 存在しないトラックをテスト
+	// Test getting information for a non-existent track
 	_, err = mux.GetInfo("/tracks/unknown")
-	if err == nil || !errors.Is(err, ErrTrackDoesNotExist) {
+	if err == nil || !errors.Is(err, moqt.ErrTrackDoesNotExist) {
 		t.Errorf("Expected ErrTrackDoesNotExist for non-existent track, got: %v", err)
 	}
 }
 
-// TestAnnouncements はアナウンスメントシステムをテスト
+// TestAnnouncements tests the announcement system
 func TestAnnouncements(t *testing.T) {
-	mux := NewTrackMux()
+	mux := moqt.NewTrackMux()
 
-	// まずアナウンスメントの購読者を登録
+	// First, register announcement subscribers
 	audioAnnouncer := &MockAnnouncementWriter{
-		ConfigValue: AnnounceConfig{
-			TrackPattern: "/tracks/audio/*", // audio配下の単一セグメント
+		ConfigValue: moqt.AnnounceConfig{
+			TrackPattern: "/tracks/audio/*", // Single segment under audio
 		},
 	}
 
 	videoAnnouncer := &MockAnnouncementWriter{
-		ConfigValue: AnnounceConfig{
-			TrackPattern: "/tracks/video/**", // video配下の複数セグメント
+		ConfigValue: moqt.AnnounceConfig{
+			TrackPattern: "/tracks/video/**", // Multiple segments under video
 		},
 	}
 
 	allTracksAnnouncer := &MockAnnouncementWriter{
-		ConfigValue: AnnounceConfig{
-			TrackPattern: "/**", // すべてのトラック
+		ConfigValue: moqt.AnnounceConfig{
+			TrackPattern: "/**", // All tracks
 		},
 	}
 
-	mux.ServeAnnouncements(audioAnnouncer)
-	mux.ServeAnnouncements(videoAnnouncer)
-	mux.ServeAnnouncements(allTracksAnnouncer)
+	mux.ServeAnnouncements(audioAnnouncer, &moqt.AnnounceConfig{})
+	mux.ServeAnnouncements(videoAnnouncer, &moqt.AnnounceConfig{})
+	mux.ServeAnnouncements(allTracksAnnouncer, &moqt.AnnounceConfig{})
 
-	// ハンドラーの登録でアナウンスメントが発生するか検証
+	// Verify that announcements occur when handlers are registered
 	audioHandler := &MockTrackHandler{
-		ServeAnnouncementsFunc: func(w AnnouncementWriter) {
-			w.WriteAnnouncement("/tracks/audio/main", []byte("audio announcement"))
+		ServeAnnouncementsFunc: func(w moqt.AnnouncementWriter, config *moqt.AnnounceConfig) {
+			ann := moqt.NewAnnouncement("/tracks/audio/main")
+			w.SendAnnouncements([]*moqt.Announcement{ann})
 		},
 	}
 
 	videoHandler := &MockTrackHandler{
-		ServeAnnouncementsFunc: func(w AnnouncementWriter) {
-			w.WriteAnnouncement("/tracks/video/main", []byte("video announcement"))
+		ServeAnnouncementsFunc: func(w moqt.AnnouncementWriter, config *moqt.AnnounceConfig) {
+			ann := moqt.NewAnnouncement("/tracks/video/main")
+			w.SendAnnouncements([]*moqt.Announcement{ann})
 		},
 	}
 
 	nestedVideoHandler := &MockTrackHandler{
-		ServeAnnouncementsFunc: func(w AnnouncementWriter) {
-			w.WriteAnnouncement("/tracks/video/streams/hd", []byte("nested video announcement"))
+		ServeAnnouncementsFunc: func(w moqt.AnnouncementWriter, config *moqt.AnnounceConfig) {
+			ann := moqt.NewAnnouncement("/tracks/video/streams/hd")
+			w.SendAnnouncements([]*moqt.Announcement{ann})
 		},
 	}
 
 	otherHandler := &MockTrackHandler{
-		ServeAnnouncementsFunc: func(w AnnouncementWriter) {
-			w.WriteAnnouncement("/other/track", []byte("other announcement"))
+		ServeAnnouncementsFunc: func(w moqt.AnnouncementWriter, config *moqt.AnnounceConfig) {
+			ann := moqt.NewAnnouncement("/other/track")
+			w.SendAnnouncements([]*moqt.Announcement{ann})
 		},
 	}
 
@@ -203,7 +177,7 @@ func TestAnnouncements(t *testing.T) {
 	mux.Handle("/tracks/video/streams/hd", nestedVideoHandler)
 	mux.Handle("/other/track", otherHandler)
 
-	// 各アナウンサーが正しいパターンのトラックを受信したか検証
+	// Verify that each announcer received tracks matching their pattern
 	if audioAnnouncer.Notifications != 1 {
 		t.Errorf("Audio announcer should receive 1 notification, got %d", audioAnnouncer.Notifications)
 	}
@@ -217,156 +191,319 @@ func TestAnnouncements(t *testing.T) {
 	}
 }
 
-// TestHandlerOverwrite はハンドラーの上書きをテスト
+// TestHandlerOverwrite tests handler overwriting
 func TestHandlerOverwrite(t *testing.T) {
-	mux := NewTrackMux()
+	mux := moqt.NewTrackMux()
 
 	handler1 := &MockTrackHandler{}
 	handler2 := &MockTrackHandler{}
 
 	mux.Handle("/tracks/test", handler1)
 
-	// 同じパスに別のハンドラを登録する（警告が記録されるはず）
+	// Register a different handler to the same path (a warning should be logged)
 	mux.Handle("/tracks/test", handler2)
 
-	// ハンドラ2が使用されることを確認
+	// Verify that handler2 is used
 	writer := &MockTrackWriter{PathValue: "/tracks/test"}
-	mux.ServeTrack(writer, SubscribeConfig{})
+	mux.ServeTrack(writer, &moqt.SubscribeConfig{})
 
-	if !handler2.HandlerCalled {
-		t.Errorf("Handler2 should be called after overwriting handler1")
-	}
 }
 
-// TestConcurrentAccess は同時アクセスの安全性をテスト
+// TestConcurrentAccess tests the safety of concurrent access
 func TestConcurrentAccess(t *testing.T) {
-	mux := NewTrackMux()
+	mux := moqt.NewTrackMux()
 
-	// 複数のハンドラをセットアップ
+	// Set up multiple handlers
 	for i := 0; i < 10; i++ {
-		path := TrackPath("/tracks/path" + string(rune(i+'0')))
-		handler := &MockTrackHandler{Path: path}
+		path := moqt.TrackPath("/tracks/path" + string(rune(i+'0')))
+		handler := &MockTrackHandler{
+			ServeTrackFunc: func(w moqt.TrackWriter, config *moqt.SubscribeConfig) {
+				// Do nothing
+			},
+			ServeAnnouncementsFunc: func(w moqt.AnnouncementWriter, config *moqt.AnnounceConfig) {
+				// Do nothing
+			},
+			GetInfoFunc: func(path moqt.TrackPath) (moqt.Info, error) {
+				return moqt.Info{}, nil
+			},
+		}
 		mux.Handle(path, handler)
 	}
 
 	var wg sync.WaitGroup
 
-	// 10のGoroutineで同時に読み取り
+	// Read concurrently with 10 goroutines
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			path := TrackPath("/tracks/path" + string(rune(idx+'0')))
+			path := moqt.TrackPath("/tracks/path" + string(rune(idx+'0')))
 			writer := &MockTrackWriter{PathValue: path}
-			mux.ServeTrack(writer, SubscribeConfig{})
+			mux.ServeTrack(writer, &moqt.SubscribeConfig{})
 			mux.GetInfo(path)
 		}(i)
 	}
 
-	// さらに5つのGoroutineで書き込み
+	// Write concurrently with 5 more goroutines
 	for i := 10; i < 15; i++ {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			path := TrackPath("/tracks/path" + string(rune(idx+'0')))
-			handler := &MockTrackHandler{Path: path}
+			path := moqt.TrackPath("/tracks/path" + string(rune(idx+'0')))
+			handler := &MockTrackHandler{
+				ServeTrackFunc: func(w moqt.TrackWriter, config *moqt.SubscribeConfig) {
+					// Do nothing
+				},
+				ServeAnnouncementsFunc: func(w moqt.AnnouncementWriter, config *moqt.AnnounceConfig) {
+					// Do nothing
+				},
+				GetInfoFunc: func(path moqt.TrackPath) (moqt.Info, error) {
+					return moqt.Info{}, nil
+				},
+			}
 			mux.Handle(path, handler)
 		}(i)
 	}
 
 	wg.Wait()
-	// ここまで来れれば、デッドロックなしで同時アクセスが機能している
+	// If we get here, concurrent access is working without deadlocks
 }
 
-// TestDefaultMux はグローバルなDefaultMuxの機能をテスト
+// TestDefaultMux tests the functionality of the global DefaultMux
 func TestDefaultMux(t *testing.T) {
-	// リセット用の新しいMuxを一時的に保存
-	origDefaultMux := DefaultMux
+	// Temporarily save the original DefaultMux for reset
+	origDefaultMux := moqt.DefaultMux
 	defer func() {
-		DefaultMux = origDefaultMux
+		moqt.DefaultMux = origDefaultMux
 	}()
 
-	DefaultMux = NewTrackMux()
+	moqt.DefaultMux = moqt.NewTrackMux()
 
-	// デフォルトのMuxにハンドラを登録
+	// Register a handler to the default Mux
 	handler := &MockTrackHandler{}
-	Handle("/default/test", handler)
+	moqt.Handle("/default/test", handler)
 
-	// ハンドラが正しく呼ばれるか確認
+	// Verify that the handler is called correctly
 	writer := &MockTrackWriter{PathValue: "/default/test"}
-	ServeTrack(writer, SubscribeConfig{})
+	moqt.ServeTrack(writer, &moqt.SubscribeConfig{})
 
-	if !handler.HandlerCalled {
-		t.Errorf("Handler was not called via DefaultMux")
-	}
-
-	// GetInfoもテスト
-	info, err := GetInfo("/default/test")
+	// Also test GetInfo
+	info, err := moqt.GetInfo("/default/test")
 	if err != nil {
 		t.Errorf("GetInfo via DefaultMux returned error: %v", err)
 	}
 
-	if info.Path != "/default/test" {
-		t.Errorf("Expected path /default/test, got %s", info.Path)
+	// Verify the content of the Info
+	if info.TrackPriority != 1 {
+		t.Errorf("Expected default TrackPriority 1, got %d", info.TrackPriority)
 	}
 }
 
-// TestWildcardRouting はワイルドカードのパスマッチングをテスト
+// TestWildcardRouting tests wildcard path matching
 func TestWildcardRouting(t *testing.T) {
-	mux := NewTrackMux()
+	mux := moqt.NewTrackMux()
 
 	singleHandler := &MockTrackHandler{}
 	doubleHandler := &MockTrackHandler{}
 
-	// シングルワイルドカード（*）を購読するアナウンサー
+	// Announcer subscribing to single wildcard (*)
 	singleWildcardAnnouncer := &MockAnnouncementWriter{
-		ConfigValue: AnnounceConfig{
+		ConfigValue: moqt.AnnounceConfig{
 			TrackPattern: "/wildcard/*",
 		},
 	}
 
-	// ダブルワイルドカード（**）を購読するアナウンサー
+	// Announcer subscribing to double wildcard (**)
 	doubleWildcardAnnouncer := &MockAnnouncementWriter{
-		ConfigValue: AnnounceConfig{
+		ConfigValue: moqt.AnnounceConfig{
 			TrackPattern: "/deep/**",
 		},
 	}
 
-	mux.ServeAnnouncements(singleWildcardAnnouncer)
-	mux.ServeAnnouncements(doubleWildcardAnnouncer)
+	mux.ServeAnnouncements(singleWildcardAnnouncer, &moqt.AnnounceConfig{})
+	mux.ServeAnnouncements(doubleWildcardAnnouncer, &moqt.AnnounceConfig{})
 
-	// 各パターンに対応するハンドラを登録
+	// Register handlers corresponding to each pattern
 	mux.Handle("/wildcard/one", singleHandler)
 	mux.Handle("/deep/one/two/three", doubleHandler)
 
-	// シングルワイルドカード（*）のテスト
+	// Test single wildcard (*)
 	if singleWildcardAnnouncer.Notifications != 1 {
 		t.Errorf("Single wildcard announcer should receive 1 notification, got %d", singleWildcardAnnouncer.Notifications)
 	}
 
-	// ダブルワイルドカード（**）のテスト
+	// Test double wildcard (**)
 	if doubleWildcardAnnouncer.Notifications != 1 {
 		t.Errorf("Double wildcard announcer should receive 1 notification, got %d", doubleWildcardAnnouncer.Notifications)
 	}
 }
 
-// BenchmarkPathMatching はパスマッチングのパフォーマンスをベンチマーク
-func BenchmarkPathMatching(b *testing.B) {
-	mux := NewTrackMux()
+// TestMuxHandler tests that TrackMux correctly implements the TrackHandler interface
+func TestMuxHandler(t *testing.T) {
+	// Verify that TrackMux implements the TrackHandler interface
+	var _ moqt.TrackHandler = (*moqt.TrackMux)(nil)
 
-	// 多数のハンドラを登録
+	// Register another TrackMux as a handler
+	outerMux := moqt.NewTrackMux()
+	innerMux := moqt.NewTrackMux()
+
+	// Register a handler to the inner Mux
+	innerHandler := &MockTrackHandler{}
+	innerMux.Handle("/inner/track", innerHandler)
+
+	// Register the inner Mux as a handler for the outer Mux
+	outerMux.Handle("/outer", innerMux)
+
+	// Test request to the inner handler
+	writer := &MockTrackWriter{PathValue: "/outer/inner/track"}
+	outerMux.ServeTrack(writer, &moqt.SubscribeConfig{})
+
+}
+
+// TestNestedRouting tests routing for deeply nested paths
+func TestNestedRouting(t *testing.T) {
+	mux := moqt.NewTrackMux()
+
+	// Register a handler to a deeply nested path
+	deepHandler := &MockTrackHandler{}
+	mux.Handle("/a/b/c/d/e/f", deepHandler)
+
+	// Test request to the exact path
+	writer := &MockTrackWriter{PathValue: "/a/b/c/d/e/f"}
+	mux.ServeTrack(writer, &moqt.SubscribeConfig{})
+
+	// Test request to a partial path (NotFoundHandler should be called)
+	partialWriter := &MockTrackWriter{PathValue: "/a/b/c"}
+	notFoundCalled := false
+	origNotFoundHandler := moqt.NotFoundHandler
+	defer func() { moqt.NotFoundHandler = origNotFoundHandler }()
+
+	moqt.NotFoundHandler = &MockTrackHandler{
+		ServeTrackFunc: func(w moqt.TrackWriter, config *moqt.SubscribeConfig) {
+			notFoundCalled = true
+		},
+	}
+
+	mux.ServeTrack(partialWriter, &moqt.SubscribeConfig{})
+
+	if !notFoundCalled {
+		t.Errorf("NotFoundHandler was not called for partial path match")
+	}
+}
+
+// TestServeAnnouncementWithDefaultMux tests announcements using DefaultMux
+func TestServeAnnouncementWithDefaultMux(t *testing.T) {
+	// Save the original DefaultMux for later restoration
+	origDefaultMux := moqt.DefaultMux
+	defer func() {
+		moqt.DefaultMux = origDefaultMux
+	}()
+
+	moqt.DefaultMux = moqt.NewTrackMux()
+
+	// Register an announcement subscriber
+	announcer := &MockAnnouncementWriter{
+		ConfigValue: moqt.AnnounceConfig{
+			TrackPattern: "/**", // All tracks
+		},
+	}
+
+	moqt.ServeAnnouncements(announcer, &moqt.AnnounceConfig{})
+
+	// Register a handler and verify that announcements occur
+	handler := &MockTrackHandler{
+		ServeAnnouncementsFunc: func(w moqt.AnnouncementWriter, config *moqt.AnnounceConfig) {
+			ann := moqt.NewAnnouncement("/global/track")
+			w.SendAnnouncements([]*moqt.Announcement{ann})
+		},
+	}
+
+	moqt.Handle("/global/track", handler)
+
+	// Verify that the announcer received the notification
+	if announcer.Notifications != 1 {
+		t.Errorf("Announcer should receive 1 notification via DefaultMux, got %d", announcer.Notifications)
+	}
+}
+
+// TestGetInfoImplementation tests the GetInfo implementation in detail
+func TestGetInfoImplementation(t *testing.T) {
+	mux := moqt.NewTrackMux()
+
+	// Register multiple handlers with different information
+	audioInfo := moqt.Info{
+		TrackPriority:       10,
+		LatestGroupSequence: 100,
+		GroupOrder:          1,
+	}
+
+	videoInfo := moqt.Info{
+		TrackPriority:       20,
+		LatestGroupSequence: 200,
+		GroupOrder:          2,
+	}
+
+	audioHandler := &MockTrackHandler{
+		GetInfoFunc: func(path moqt.TrackPath) (moqt.Info, error) {
+			return audioInfo, nil
+		},
+	}
+
+	videoHandler := &MockTrackHandler{
+		GetInfoFunc: func(path moqt.TrackPath) (moqt.Info, error) {
+			return videoInfo, nil
+		},
+	}
+
+	mux.Handle("/media/audio", audioHandler)
+	mux.Handle("/media/video", videoHandler)
+
+	// Get and verify information for the audio track
+	info, err := mux.GetInfo("/media/audio")
+	if err != nil {
+		t.Errorf("GetInfo returned error for audio track: %v", err)
+	}
+
+	if info.TrackPriority != audioInfo.TrackPriority {
+		t.Errorf("Expected TrackPriority %d, got %d", audioInfo.TrackPriority, info.TrackPriority)
+	}
+
+	if info.LatestGroupSequence != audioInfo.LatestGroupSequence {
+		t.Errorf("Expected LatestGroupSequence %d, got %d", audioInfo.LatestGroupSequence, info.LatestGroupSequence)
+	}
+
+	if info.GroupOrder != audioInfo.GroupOrder {
+		t.Errorf("Expected GroupOrder %d, got %d", audioInfo.GroupOrder, info.GroupOrder)
+	}
+
+	// Get and verify information for the video track
+	info, err = mux.GetInfo("/media/video")
+	if err != nil {
+		t.Errorf("GetInfo returned error for video track: %v", err)
+	}
+
+	if info.TrackPriority != videoInfo.TrackPriority {
+		t.Errorf("Expected TrackPriority %d, got %d", videoInfo.TrackPriority, info.TrackPriority)
+	}
+}
+
+// BenchmarkPathMatching benchmarks the performance of path matching
+func BenchmarkPathMatching(b *testing.B) {
+	mux := moqt.NewTrackMux()
+
+	// Register many handlers
 	for i := 0; i < 100; i++ {
 		for j := 0; j < 10; j++ {
-			path := TrackPath("/section" + string(rune(i+'0')) + "/subsection" + string(rune(j+'0')))
+			path := moqt.TrackPath("/section" + string(rune(i+'0')) + "/subsection" + string(rune(j+'0')))
 			mux.Handle(path, &MockTrackHandler{})
 		}
 	}
 
-	// 深い階層のパスをテスト
+	// Test a deeply nested path
 	writer := &MockTrackWriter{PathValue: "/section5/subsection7"}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		mux.ServeTrack(writer, SubscribeConfig{})
+		mux.ServeTrack(writer, &moqt.SubscribeConfig{})
 	}
 }

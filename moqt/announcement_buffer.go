@@ -8,7 +8,7 @@ import (
 
 var _ AnnouncementWriter = (*announcementsBuffer)(nil)
 
-func newAnnouncementBuffer(config AnnounceConfig) *announcementsBuffer {
+func newAnnouncementBuffer(config *AnnounceConfig) *announcementsBuffer {
 	return &announcementsBuffer{
 		config:        config,
 		announcements: make([]*Announcement, 0),
@@ -17,7 +17,7 @@ func newAnnouncementBuffer(config AnnounceConfig) *announcementsBuffer {
 }
 
 type announcementsBuffer struct {
-	config        AnnounceConfig
+	config        *AnnounceConfig
 	announcements []*Announcement
 	mu            sync.RWMutex
 	cond          *sync.Cond
@@ -53,41 +53,35 @@ func (ab *announcementsBuffer) SendAnnouncements(announcements []*Announcement) 
 	return nil
 }
 
-func (ab *announcementsBuffer) ServeAnnouncements(w AnnouncementWriter) {
-	go func() {
-		pos := 0
-		for {
-			for pos > len(ab.announcements) {
-				ab.cond.Wait()
-			}
-
-			// Check if the buffer is closed
-			if ab.closed {
-				err := ab.closedErr
-				if ab.closedErr == nil {
-					w.Close()
-					return
-				}
-
-				w.CloseWithError(err)
-				return
-			}
-
-			// Send the announcements from the current position to the end of the buffer
-			anns := ab.announcements[pos:]
-			err := w.SendAnnouncements(anns)
-			if err != nil {
-				w.CloseWithError(err)
-				return
-			}
-
-			pos = len(ab.announcements)
+func (ab *announcementsBuffer) ServeAnnouncements(w AnnouncementWriter, config *AnnounceConfig) {
+	pos := 0
+	for {
+		for pos > len(ab.announcements) {
+			ab.cond.Wait()
 		}
-	}()
-}
 
-func (ab *announcementsBuffer) AnnounceConfig() AnnounceConfig {
-	return ab.config
+		// Check if the buffer is closed
+		if ab.closed {
+			err := ab.closedErr
+			if ab.closedErr == nil {
+				w.Close()
+				return
+			}
+
+			w.CloseWithError(err)
+			return
+		}
+
+		// Send the announcements from the current position to the end of the buffer
+		anns := ab.announcements[pos:]
+		err := w.SendAnnouncements(anns)
+		if err != nil {
+			w.CloseWithError(err)
+			return
+		}
+
+		pos = len(ab.announcements)
+	}
 }
 
 func (ab *announcementsBuffer) Close() error {

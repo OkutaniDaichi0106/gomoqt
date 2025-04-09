@@ -33,23 +33,8 @@ func (s *sendTrackStream) TrackPath() TrackPath {
 	return s.subscribeStream.path
 }
 
-// func (s *sendTrackStream) TrackPriority() TrackPriority {
-// 	return TrackPriority(s.subscribeStream.TrackPriority)
-// }
-
-// func (s *sendTrackStream) GroupOrder() GroupOrder {
-// 	return GroupOrder(s.subscribeStream.GroupOrder)
-// }
-
 func (s *sendTrackStream) LatestGroupSequence() GroupSequence {
 	return s.latestGroupSequence
-}
-
-func (s *sendTrackStream) SubscribeConfig() SubscribeConfig {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	return s.subscribeStream.config
 }
 
 func (s *sendTrackStream) Info() Info {

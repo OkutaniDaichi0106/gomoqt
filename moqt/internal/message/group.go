@@ -27,11 +27,11 @@ func (g GroupMessage) Encode(w io.Writer) (int, error) {
 	p := GetBytes()
 	defer PutBytes(p)
 
-	*p = AppendNumber(*p, uint64(g.Len()))
-	*p = AppendNumber(*p, uint64(g.SubscribeID))
-	*p = AppendNumber(*p, uint64(g.GroupSequence))
+	p = AppendNumber(p, uint64(g.Len()))
+	p = AppendNumber(p, uint64(g.SubscribeID))
+	p = AppendNumber(p, uint64(g.GroupSequence))
 
-	n, err := w.Write(*p)
+	n, err := w.Write(p)
 	if err != nil {
 		slog.Error("failed to write a GROUP message", "error", err)
 		return n, err

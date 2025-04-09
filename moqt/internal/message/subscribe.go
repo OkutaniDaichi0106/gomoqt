@@ -56,16 +56,16 @@ func (s SubscribeMessage) Encode(w io.Writer) (int, error) {
 	p := GetBytes()
 	defer PutBytes(p)
 
-	*p = AppendNumber(*p, uint64(s.Len()))
+	p = AppendNumber(p, uint64(s.Len()))
 
-	*p = AppendNumber(*p, uint64(s.SubscribeID))
-	*p = AppendString(*p, s.TrackPath)
-	*p = AppendNumber(*p, uint64(s.TrackPriority))
-	*p = AppendNumber(*p, uint64(s.GroupOrder))
-	*p = AppendNumber(*p, uint64(s.MinGroupSequence))
-	*p = AppendNumber(*p, uint64(s.MaxGroupSequence))
+	p = AppendNumber(p, uint64(s.SubscribeID))
+	p = AppendString(p, s.TrackPath)
+	p = AppendNumber(p, uint64(s.TrackPriority))
+	p = AppendNumber(p, uint64(s.GroupOrder))
+	p = AppendNumber(p, uint64(s.MinGroupSequence))
+	p = AppendNumber(p, uint64(s.MaxGroupSequence))
 
-	n, err := w.Write(*p)
+	n, err := w.Write(p)
 	if err != nil {
 		slog.Error("failed to write a SUBSCRIBE message", "error", err)
 		return n, err

@@ -1,7 +1,5 @@
 package moqt
 
-type TrackPriority byte
-
 type GroupOrder byte
 
 func (order GroupOrder) String() string {

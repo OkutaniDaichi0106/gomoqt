@@ -13,7 +13,6 @@ import (
 
 type AnnouncementWriter interface {
 	SendAnnouncements(announcements []*Announcement) error
-	AnnounceConfig() AnnounceConfig
 	Close() error
 	CloseWithError(error) error
 }
@@ -113,10 +112,6 @@ func (sas *sendAnnounceStream) SendAnnouncements(announcements []*Announcement) 
 	}
 
 	return nil
-}
-
-func (s *sendAnnounceStream) AnnounceConfig() AnnounceConfig {
-	return s.config
 }
 
 func (s *sendAnnounceStream) TrackPattern() string {

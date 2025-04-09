@@ -1,93 +1,89 @@
 package moqt
 
-import (
-	"errors"
-	"fmt"
-	"time"
-)
+// import (
+// 	"errors"
+// 	"fmt"
+// 	"time"
+// )
 
-var _ GroupWriter = (*groupBufferWriter)(nil)
+// var _ GroupWriter = (*groupBufferWriter)(nil)
 
-func newGroupBufferWriter(buf *GroupBuffer) *groupBufferWriter {
-	return &groupBufferWriter{
-		groupBuffer: buf,
-	}
-}
+// func newGroupBufferWriter(buf *GroupBuffer) *groupBufferWriter {
+// 	return &groupBufferWriter{
+// 		groupBuffer: buf,
+// 	}
+// }
 
-type groupBufferWriter struct {
-	groupBuffer *GroupBuffer
-	closed      bool
-	closedErr   error
-}
+// type groupBufferWriter struct {
+// 	groupBuffer *GroupBuffer
+// 	closed      bool
+// 	closedErr   error
+// }
 
-func (w *groupBufferWriter) GroupSequence() GroupSequence {
-	return w.groupBuffer.groupSequence
-}
+// func (w *groupBufferWriter) GroupSequence() GroupSequence {
+// 	return w.groupBuffer.groupSequence
+// }
 
-func (w *groupBufferWriter) Close() error {
-	w.groupBuffer.cond.L.Lock()
-	defer w.groupBuffer.cond.L.Unlock()
+// func (w *groupBufferWriter) Close() error {
+// 	w.groupBuffer.cond.L.Lock()
+// 	defer w.groupBuffer.cond.L.Unlock()
 
-	if w.groupBuffer.closed {
-		return w.groupBuffer.closedErr
-	}
+// 	w.groupBuffer.cond.Broadcast()
 
-	w.groupBuffer.closed = true
+// 	return nil
+// }
 
-	w.groupBuffer.cond.Broadcast()
+// func (w *groupBufferWriter) WriteFrame(frame Frame) error {
+// 	w.groupBuffer.cond.L.Lock()
+// 	defer w.groupBuffer.cond.L.Unlock()
 
-	return nil
-}
+// 	if w.closed {
+// 		if w.closedErr != nil {
+// 			return w.closedErr
+// 		}
+// 		return ErrClosedGroup
+// 	}
 
-func (w *groupBufferWriter) WriteFrame(frame Frame) error {
-	w.groupBuffer.cond.L.Lock()
-	defer w.groupBuffer.cond.L.Unlock()
+// 	w.groupBuffer.frames = append(w.groupBuffer.frames, frame)
 
-	if w.groupBuffer.closed {
-		return ErrClosedGroup
-	}
+// 	w.groupBuffer.cond.Broadcast()
 
-	w.groupBuffer.frames = append(w.groupBuffer.frames, frame)
+// 	return nil
+// }
 
-	w.groupBuffer.cond.Broadcast()
+// // New method: SetWriteDeadline schedules cancellation at the given time.
+// func (w *groupBufferWriter) SetWriteDeadline(t time.Time) error {
+// 	d := time.Until(t)
 
-	return nil
-}
+// 	// If the deadline is in the past, cancel the write immediately.
+// 	if d <= 0 {
+// 		return w.CloseWithError(ErrGroupExpired)
+// 	}
 
-// New method: SetWriteDeadline schedules cancellation at the given time.
-func (w *groupBufferWriter) SetWriteDeadline(t time.Time) error {
-	d := time.Until(t)
+// 	// Cancel the write after the deadline.
+// 	time.AfterFunc(d, func() {
+// 		if !w.closed {
+// 			w.CloseWithError(ErrGroupExpired)
+// 		}
+// 	})
+// 	return nil
+// }
 
-	// If the deadline is in the past, cancel the write immediately.
-	if d <= 0 {
-		return w.CloseWithError(ErrGroupExpired)
+// func (w *groupBufferWriter) CloseWithError(err error) error {
+// 	w.groupBuffer.cond.L.Lock()
+// 	defer w.groupBuffer.cond.L.Unlock()
 
-	}
+// 	if w.closed {
+// 		if w.closedErr != nil {
+// 			return fmt.Errorf("group has already closed due to: %w", w.closedErr)
+// 		}
+// 		return errors.New("group has already closed")
+// 	}
 
-	// Cancel the write after the deadline.
-	time.AfterFunc(d, func() {
-		if !w.closed {
-			w.CloseWithError(ErrGroupExpired)
-		}
-	})
-	return nil
-}
+// 	w.closed = true
+// 	w.closedErr = err
 
-func (w *groupBufferWriter) CloseWithError(err error) error {
-	w.groupBuffer.cond.L.Lock()
-	defer w.groupBuffer.cond.L.Unlock()
+// 	w.groupBuffer.cond.Broadcast()
 
-	if w.groupBuffer.closed {
-		if w.groupBuffer.closedErr != nil {
-			return fmt.Errorf("group has already closed due to: %w", w.groupBuffer.closedErr)
-		}
-		return errors.New("group has already closed")
-	}
-
-	w.closed = true
-	w.closedErr = err
-
-	w.groupBuffer.cond.Broadcast()
-
-	return nil
-}
+// 	return nil
+// }

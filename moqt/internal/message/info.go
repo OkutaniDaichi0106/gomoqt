@@ -27,12 +27,12 @@ func (im InfoMessage) Encode(w io.Writer) (int, error) {
 	p := GetBytes()
 	defer PutBytes(p)
 
-	*p = AppendNumber(*p, uint64(im.Len()))
-	*p = AppendNumber(*p, uint64(im.TrackPriority))
-	*p = AppendNumber(*p, uint64(im.LatestGroupSequence))
-	*p = AppendNumber(*p, uint64(im.GroupOrder))
+	p = AppendNumber(p, uint64(im.Len()))
+	p = AppendNumber(p, uint64(im.TrackPriority))
+	p = AppendNumber(p, uint64(im.LatestGroupSequence))
+	p = AppendNumber(p, uint64(im.GroupOrder))
 
-	n, err := w.Write(*p)
+	n, err := w.Write(p)
 	if err != nil {
 		slog.Error("failed to write a INFO message", "error", err)
 		return n, err

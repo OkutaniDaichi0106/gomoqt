@@ -9,11 +9,6 @@ type SubscribeUpdate struct {
 	GroupOrder       GroupOrder
 	MinGroupSequence GroupSequence
 	MaxGroupSequence GroupSequence
-
-	/*
-	 * SubscribeParameters
-	 */
-	// SubscribeParameters Parameters
 }
 
 func (su SubscribeUpdate) String() string {

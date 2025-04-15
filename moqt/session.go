@@ -39,15 +39,15 @@ type Session interface {
 	 * Methods for the Publisher
 	 */
 	// Accept an Announce Stream
-	AcceptAnnounceStream(context.Context) (*AnnounceConfig, AnnouncementWriter, error)
+	AcceptAnnounceStream(context.Context) (AnnouncementWriter, *AnnounceConfig, error)
 
 	// Accept a Track Stream
-	AcceptTrackStream(context.Context) (*SubscribeConfig, SendTrackStream, error)
+	AcceptTrackStream(context.Context) (SendTrackStream, *SubscribeConfig, error)
 }
 
 var _ Session = (*session)(nil)
 
-func OpenSession(conn quic.Connection, params *Parameters, handler TrackHandler) (Session, *SetupResponse, error) {
+func OpenSession(conn quic.Connection, params *Parameters, handler Handler) (Session, *SetupResponse, error) {
 	slog.Debug("opening a session")
 
 	sess := newSession(conn, handler)
@@ -64,7 +64,7 @@ func OpenSession(conn quic.Connection, params *Parameters, handler TrackHandler)
 	}, nil
 }
 
-func AcceptSession(ctx context.Context, conn quic.Connection, params func(*Parameters) (*Parameters, error), handler TrackHandler) (Session, error) {
+func AcceptSession(ctx context.Context, conn quic.Connection, params func(*Parameters) (*Parameters, error), handler Handler) (Session, error) {
 	slog.Debug("accepting session")
 
 	sess := newSession(conn, handler)
@@ -126,7 +126,7 @@ type session struct {
 
 	receiveGroupStreamQueues map[SubscribeID]*receiveGroupStreamQueue
 
-	handler TrackHandler
+	handler Handler
 }
 
 func (s *session) Terminate(err error) {
@@ -207,7 +207,7 @@ func (s *session) RequestInfo(path TrackPath) (Info, error) {
 	return info, nil
 }
 
-func (s *session) AcceptAnnounceStream(ctx context.Context) (*AnnounceConfig, AnnouncementWriter, error) {
+func (s *session) AcceptAnnounceStream(ctx context.Context) (AnnouncementWriter, *AnnounceConfig, error) {
 	slog.Debug("accepting announce stream")
 
 	stream, err := s.acceptAnnounceStream(ctx)
@@ -216,10 +216,10 @@ func (s *session) AcceptAnnounceStream(ctx context.Context) (*AnnounceConfig, An
 		return nil, nil, err
 	}
 
-	return &stream.config, stream, err
+	return stream, &stream.config, err
 }
 
-func (s *session) AcceptTrackStream(ctx context.Context) (*SubscribeConfig, SendTrackStream, error) {
+func (s *session) AcceptTrackStream(ctx context.Context) (SendTrackStream, *SubscribeConfig, error) {
 	slog.Debug("accepting track stream")
 
 	ss, err := s.acceptSubscribeStream(ctx)
@@ -257,10 +257,12 @@ func (s *session) AcceptTrackStream(ctx context.Context) (*SubscribeConfig, Send
 		return nil, nil, err
 	}
 
-	return &ss.config, sts, nil
+	return sts, &ss.config, nil
 }
 
 func (s *session) resolveInfoRequest(ctx context.Context) {
+	var info Info
+
 	for {
 		irs, err := s.acceptInfoStream(ctx)
 		if err != nil {
@@ -268,10 +270,8 @@ func (s *session) resolveInfoRequest(ctx context.Context) {
 				"error", err,
 			)
 
-			// return err
+			return
 		}
-
-		var info Info
 
 		info, err = s.handler.GetInfo(irs.path)
 		if err != nil {
@@ -280,7 +280,6 @@ func (s *session) resolveInfoRequest(ctx context.Context) {
 				"error", err,
 			)
 			irs.CloseWithError(err)
-			// return err
 		}
 
 		im := message.InfoMessage{
@@ -296,12 +295,8 @@ func (s *session) resolveInfoRequest(ctx context.Context) {
 				"error", err,
 			)
 			irs.CloseWithError(err)
-			// return err
 		}
-
-		// return nil
 	}
-
 }
 
 func (s *session) nextSubscribeID() SubscribeID {
@@ -311,7 +306,7 @@ func (s *session) nextSubscribeID() SubscribeID {
 }
 
 // ////
-func newSession(conn quic.Connection, handler TrackHandler) *session {
+func newSession(conn quic.Connection, handler Handler) *session {
 	sess := &session{
 		conn:                        conn,
 		receiveSubscribeStreamQueue: newReceiveSubscribeStreamQueue(),

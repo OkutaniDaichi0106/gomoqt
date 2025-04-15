@@ -1,5 +1,9 @@
 package moqt
 
+const (
+	AnyTrackPattern = "/**"
+)
+
 type AnnounceConfig struct {
 	TrackPattern string
 }

@@ -21,7 +21,7 @@ func newReceiveAnnounceStream(stream quic.Stream, config *AnnounceConfig) *recei
 	annstr := &receiveAnnounceStream{
 		stream:        stream,
 		config:        config,
-		announcements: make(map[string]*Announcement),
+		announcements: make(map[TrackPath]*Announcement),
 		next:          make([]*Announcement, 0),
 		liveCh:        make(chan struct{}),
 	}
@@ -41,7 +41,7 @@ type receiveAnnounceStream struct {
 	closeErr error
 
 	// Track Suffix -> Announcement
-	announcements map[string]*Announcement
+	announcements map[TrackPath]*Announcement
 
 	next []*Announcement
 	mu   sync.RWMutex
@@ -148,16 +148,17 @@ func (ras *receiveAnnounceStream) listenAnnouncements() {
 
 		slog.Debug("received an ANNOUNCE message", "announce_message", am)
 
-		announcement, ok := ras.announcements[am.TrackSuffix]
+		path := BuildTrackPath(prefix, am.WildcardParameters...)
+
+		announcement, ok := ras.announcements[path]
 
 		switch am.AnnounceStatus {
 		case message.ACTIVE:
 			if !ok || (ok && !announcement.IsActive()) {
 				slog.Debug("active")
 				// Create a new announcement
-				ann := NewAnnouncement(TrackPath(prefix + am.TrackSuffix))
 
-				ras.addAnnouncement(am.TrackSuffix, ann)
+				ras.addAnnouncement(NewAnnouncement(path))
 			} else {
 				err := errors.New("announcement is already active")
 				slog.Error(err.Error(), "track_path", announcement.TrackPath)
@@ -174,10 +175,12 @@ func (ras *receiveAnnounceStream) listenAnnouncements() {
 					slog.Error("failed to end a track", "error", err, "track_path", announcement.TrackPath)
 				}
 
-				ras.removeAnnouncement(am.TrackSuffix)
+				ras.removeAnnouncement(announcement.path)
 			} else {
 				err := errors.New("announcement is already ended")
-				slog.Error(err.Error(), "track_path", TrackPath(prefix+am.TrackSuffix))
+				slog.Error(err.Error(),
+					"track_path", announcement.path,
+				)
 
 				ras.CloseWithError(err)
 				return
@@ -192,17 +195,17 @@ func (ras *receiveAnnounceStream) listenAnnouncements() {
 	}
 }
 
-func (ras *receiveAnnounceStream) addAnnouncement(suffix string, ann *Announcement) {
+func (ras *receiveAnnounceStream) addAnnouncement(ann *Announcement) {
 	ras.mu.Lock()
 	defer ras.mu.Unlock()
 
-	ras.announcements[suffix] = ann
+	ras.announcements[ann.path] = ann
 	ras.next = append(ras.next, ann)
 }
 
-func (ras *receiveAnnounceStream) removeAnnouncement(suffix string) {
+func (ras *receiveAnnounceStream) removeAnnouncement(path TrackPath) {
 	ras.mu.Lock()
 	defer ras.mu.Unlock()
 
-	delete(ras.announcements, suffix)
+	delete(ras.announcements, path)
 }

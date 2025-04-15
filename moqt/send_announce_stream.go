@@ -13,8 +13,8 @@ import (
 
 type AnnouncementWriter interface {
 	SendAnnouncements(announcements []*Announcement) error
-	Close() error
-	CloseWithError(error) error
+	// Close() error
+	// CloseWithError(error) error
 }
 
 var _ AnnouncementWriter = (*sendAnnounceStream)(nil)
@@ -23,8 +23,8 @@ func newSendAnnounceStream(stream quic.Stream, config AnnounceConfig) *sendAnnou
 	sas := &sendAnnounceStream{
 		config:    config,
 		stream:    stream,
-		announced: make(map[string]message.AnnounceMessage),
-		pending:   make(map[string]message.AnnounceMessage),
+		announced: make(map[TrackPath]message.AnnounceMessage),
+		pending:   make(map[TrackPath]message.AnnounceMessage),
 		sendCh:    make(chan struct{}, 1),
 	}
 
@@ -45,9 +45,9 @@ type sendAnnounceStream struct {
 	config AnnounceConfig
 	mu     sync.RWMutex
 
-	pending map[string]message.AnnounceMessage
+	pending map[TrackPath]message.AnnounceMessage
 
-	announced map[string]message.AnnounceMessage
+	announced map[TrackPath]message.AnnounceMessage
 
 	closed   bool
 	closeErr error
@@ -57,19 +57,9 @@ type sendAnnounceStream struct {
 
 func (sas *sendAnnounceStream) SendAnnouncements(announcements []*Announcement) error {
 	var err error
-	var path string
 
 	// Set active announcement
 	for _, ann := range announcements {
-		if !ann.TrackPath().Match(sas.TrackPattern()) {
-			// Ignore mismatched announcement
-			slog.Warn("Ignore mismatched announcement",
-				"track_path", ann.TrackPath(),
-				"pattern", sas.TrackPattern(),
-			)
-			continue
-		}
-
 		if !ann.IsActive() {
 			// Ignore inactive announcement
 			slog.Warn("Ignore inactive announcement",
@@ -78,9 +68,7 @@ func (sas *sendAnnounceStream) SendAnnouncements(announcements []*Announcement) 
 			continue
 		}
 
-		path = string(ann.TrackPath())
-
-		err = sas.setActiveAnnouncement(path)
+		err = sas.setActiveAnnouncement(ann.TrackPath())
 		if err != nil {
 			return err
 		}
@@ -96,7 +84,7 @@ func (sas *sendAnnounceStream) SendAnnouncements(announcements []*Announcement) 
 		go func(ann *Announcement) {
 			ann.AwaitEnd()
 
-			err := sas.setEndedAnnouncement(ann.TrackPath().String())
+			err := sas.setEndedAnnouncement(ann.TrackPath())
 			if err != nil {
 				slog.Error("failed to set ended announcement",
 					"track_path", ann.TrackPath(),
@@ -114,56 +102,56 @@ func (sas *sendAnnounceStream) SendAnnouncements(announcements []*Announcement) 
 	return nil
 }
 
-func (s *sendAnnounceStream) TrackPattern() string {
-	return s.config.TrackPattern
-}
+// func (s *sendAnnounceStream) TrackPattern() string {
+// 	return s.config.TrackPattern
+// }
 
-func (s *sendAnnounceStream) Close() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// func (s *sendAnnounceStream) Close() error {
+// 	s.mu.Lock()
+// 	defer s.mu.Unlock()
 
-	if s.closed {
-		if s.closeErr != nil {
-			return fmt.Errorf("stream already closed due to: %w", s.closeErr)
-		}
-		return errors.New("stream already closed")
-	}
+// 	if s.closed {
+// 		if s.closeErr != nil {
+// 			return fmt.Errorf("stream already closed due to: %w", s.closeErr)
+// 		}
+// 		return errors.New("stream already closed")
+// 	}
 
-	s.closed = true
+// 	s.closed = true
 
-	slog.Debug("closed a send announce stream gracefully",
-		slog.Any("stream_id", s.stream.StreamID()),
-	)
+// 	slog.Debug("closed a send announce stream gracefully",
+// 		slog.Any("stream_id", s.stream.StreamID()),
+// 	)
 
-	return s.stream.Close()
-}
+// 	return s.stream.Close()
+// }
 
-func (sas *sendAnnounceStream) CloseWithError(err error) error {
-	sas.mu.Lock()
-	defer sas.mu.Unlock()
+// func (sas *sendAnnounceStream) CloseWithError(err error) error {
+// 	sas.mu.Lock()
+// 	defer sas.mu.Unlock()
 
-	if err == nil {
-		err = ErrInternalError
-	}
+// 	if err == nil {
+// 		err = ErrInternalError
+// 	}
 
-	var annerr AnnounceError
-	if !errors.As(err, &annerr) {
-		annerr = ErrInternalError
-	}
+// 	var annerr AnnounceError
+// 	if !errors.As(err, &annerr) {
+// 		annerr = ErrInternalError
+// 	}
 
-	code := quic.StreamErrorCode(annerr.AnnounceErrorCode())
-	sas.stream.CancelRead(code)
-	sas.stream.CancelWrite(code)
+// 	code := quic.StreamErrorCode(annerr.AnnounceErrorCode())
+// 	sas.stream.CancelRead(code)
+// 	sas.stream.CancelWrite(code)
 
-	slog.Debug("closed a send announce stream with an error",
-		slog.Any("stream_id", sas.stream.StreamID()),
-		slog.String("reason", err.Error()),
-	)
+// 	slog.Debug("closed a send announce stream with an error",
+// 		slog.Any("stream_id", sas.stream.StreamID()),
+// 		slog.String("reason", err.Error()),
+// 	)
 
-	return nil
-}
+// 	return nil
+// }
 
-func (sas *sendAnnounceStream) setActiveAnnouncement(suffix string) error {
+func (sas *sendAnnounceStream) setActiveAnnouncement(path TrackPath) error {
 	sas.mu.Lock()
 	defer sas.mu.Unlock()
 
@@ -174,34 +162,41 @@ func (sas *sendAnnounceStream) setActiveAnnouncement(suffix string) error {
 		return errors.New("stream already closed")
 	}
 
-	if am, ok := sas.announced[suffix]; ok {
+	if am, ok := sas.announced[path]; ok {
 		if am.AnnounceStatus == message.ACTIVE {
-			return fmt.Errorf("duplicated announcement: %s", suffix)
+			return fmt.Errorf("duplicated announcement: %s", path)
 		}
 	}
 
 	//
-	if am, ok := sas.pending[suffix]; ok {
+	if am, ok := sas.pending[path]; ok {
 		if am.AnnounceStatus == message.ACTIVE {
 			// Skip
-			slog.Warn("active announcement already set", "track_suffix", suffix)
+			slog.Warn("active announcement already set", "track_suffix", path)
 			return nil
 		}
 	}
 
-	am := message.AnnounceMessage{
-		AnnounceStatus: message.ACTIVE,
-		TrackSuffix:    suffix,
+	params := path.ExtractParameters(sas.config.TrackPattern)
+	if params == nil {
+		return fmt.Errorf("failed to extract parameters from track path: %s", path)
 	}
 
-	sas.pending[suffix] = am
+	am := message.AnnounceMessage{
+		AnnounceStatus:     message.ACTIVE,
+		WildcardParameters: params,
+	}
 
-	slog.Debug("set active announcement", slog.String("track_suffix", suffix))
+	sas.pending[path] = am
+
+	slog.Debug("set active announcement",
+		"track_path", path,
+	)
 
 	return nil
 }
 
-func (sas *sendAnnounceStream) setEndedAnnouncement(suffix string) error {
+func (sas *sendAnnounceStream) setEndedAnnouncement(path TrackPath) error {
 	sas.mu.Lock()
 	defer sas.mu.Unlock()
 
@@ -213,29 +208,38 @@ func (sas *sendAnnounceStream) setEndedAnnouncement(suffix string) error {
 	}
 
 	// Check if the same track has announced already
-	if old, ok := sas.announced[suffix]; ok {
+	if old, ok := sas.announced[path]; ok {
 		if old.AnnounceStatus == message.ENDED {
-			return fmt.Errorf("ended announcement already set: %s", suffix)
+			return fmt.Errorf("ended announcement already set: %s", path)
 		}
 	}
 
 	// Check if the same track is to announce
-	if old, ok := sas.pending[suffix]; ok {
+	if old, ok := sas.pending[path]; ok {
 		if old.AnnounceStatus == message.ENDED {
 			// Skip
-			slog.Warn("ended announcement already set", "track_suffix", suffix)
+			slog.Warn("ended announcement already set",
+				"track_suffix", path,
+			)
 			return nil
 		}
 	}
 
-	am := message.AnnounceMessage{
-		AnnounceStatus: message.ENDED,
-		TrackSuffix:    suffix,
+	params := path.ExtractParameters(sas.config.TrackPattern)
+	if params == nil {
+		return fmt.Errorf("failed to extract parameters from track path: %s", path)
 	}
 
-	sas.pending[suffix] = am
+	am := message.AnnounceMessage{
+		AnnounceStatus:     message.ENDED,
+		WildcardParameters: params,
+	}
 
-	slog.Debug("set ended announcement", slog.String("track_suffix", suffix))
+	sas.pending[path] = am
+
+	slog.Debug("set ended announcement",
+		"track_suffix", path,
+	)
 
 	return nil
 }

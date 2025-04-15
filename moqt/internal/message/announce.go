@@ -17,27 +17,26 @@ const (
 type AnnounceStatus byte
 
 type AnnounceMessage struct {
-	AnnounceStatus AnnounceStatus
-	TrackSuffix    string
-	// AnnounceParameters Parameters
+	AnnounceStatus     AnnounceStatus
+	WildcardParameters []string
 }
 
 func (a AnnounceMessage) Len() int {
 	l := 0
 	l += numberLen(uint64(a.AnnounceStatus))
-	l += stringLen(a.TrackSuffix)
-	// l += parametersLen(a.AnnounceParameters)
+	l += stringArrayLen(a.WildcardParameters)
+
 	return l
 }
 
-func (a AnnounceMessage) Encode(w io.Writer) (int, error) {
+func (am AnnounceMessage) Encode(w io.Writer) (int, error) {
 
 	p := GetBytes()
 	defer PutBytes(p)
 
-	p = AppendNumber(p, uint64(a.Len()))
-	p = AppendNumber(p, uint64(a.AnnounceStatus))
-	p = AppendString(p, a.TrackSuffix)
+	p = AppendNumber(p, uint64(am.Len()))
+	p = AppendNumber(p, uint64(am.AnnounceStatus))
+	p = AppendStringArray(p, am.WildcardParameters)
 
 	n, err := w.Write(p)
 	if err != nil {
@@ -73,7 +72,7 @@ func (am *AnnounceMessage) Decode(r io.Reader) (int, error) {
 	}
 	am.AnnounceStatus = AnnounceStatus(status)
 
-	am.TrackSuffix, _, err = ReadString(mr)
+	am.WildcardParameters, _, err = ReadStringArray(mr)
 	if err != nil {
 		slog.Error("failed to read track suffix for ANNOUNCE message",
 			"error", err,

@@ -29,7 +29,7 @@ type Client struct {
 	Config *Config
 
 	/***/
-	TrackResolver TrackHandler
+	TrackResolver Handler
 
 	/***/
 	SetupExtensions *Parameters

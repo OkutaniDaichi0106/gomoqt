@@ -48,13 +48,13 @@ func handleSession(path string, sess moqt.Session) {
 	slog.Info("handling a session", slog.String("path", path))
 
 	// Accept a track stream
-	stream, err := sess.AcceptTrackStream(context.Background())
+	stream, config, err := sess.AcceptTrackStream(context.Background())
 	if err != nil {
 		slog.Error("failed to accept track stream", "error", err)
 		return
 	}
 
-	seq := moqt.FirstSequence
+	seq := config.MinGroupSequence
 	for {
 		w, err := stream.OpenGroup(seq)
 		if err != nil {

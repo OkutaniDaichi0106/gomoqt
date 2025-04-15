@@ -1,41 +1,37 @@
-package moqt_test
+package moqt
 
-import (
-	"github.com/OkutaniDaichi0106/gomoqt/moqt"
-)
-
-var _ moqt.TrackWriter = (*MockTrackWriter)(nil)
+var _ TrackWriter = (*MockTrackWriter)(nil)
 
 // MockTrackWriter is a mock implementation of the TrackWriter interface
 // It provides a simple implementation for testing purposes
 type MockTrackWriter struct {
-	PathValue moqt.TrackPath
+	PathValue TrackPath
 	// Add more fields as needed for testing
-	OpenGroupFunc func(seq moqt.GroupSequence) (moqt.GroupWriter, error)
+	OpenGroupFunc func(seq GroupSequence) (GroupWriter, error)
 
 	CloseFunc          func() error
 	CloseWithErrorFunc func(err error) error
 
-	LatestGroupSequenceValue moqt.GroupSequence
+	LatestGroupSequenceValue GroupSequence
 }
 
-func (m *MockTrackWriter) TrackPath() moqt.TrackPath {
+func (m *MockTrackWriter) TrackPath() TrackPath {
 	return m.PathValue
 }
 
-func (m *MockTrackWriter) LatestGroupSequence() moqt.GroupSequence {
+func (m *MockTrackWriter) LatestGroupSequence() GroupSequence {
 	return m.LatestGroupSequenceValue
 }
 
-func (m *MockTrackWriter) Info() moqt.Info {
-	return moqt.Info{
+func (m *MockTrackWriter) Info() Info {
+	return Info{
 		TrackPriority:       1,
 		LatestGroupSequence: 0,
 		GroupOrder:          0,
 	}
 }
 
-func (m *MockTrackWriter) OpenGroup(seq moqt.GroupSequence) (moqt.GroupWriter, error) {
+func (m *MockTrackWriter) OpenGroup(seq GroupSequence) (GroupWriter, error) {
 	// Update the latest group sequence
 	if m.LatestGroupSequenceValue < seq {
 		m.LatestGroupSequenceValue = seq

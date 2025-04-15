@@ -52,15 +52,9 @@ func runSubscriber(sess moqt.Session, wg *sync.WaitGroup) {
 				"info", info,
 			)
 
-			track := moqt.NewTrack(ann.TrackPath(), info, 5*time.Second)
+			track := moqt.NewTrackBuffer(ann.TrackPath(), info, 5*time.Second)
 
 			moqt.Handle(path, track)
-
-			tw, err := track.NewTrackWriter(info.TrackPriority, 0)
-			if err != nil {
-				slog.Error("failed to open group", "error", err)
-				return
-			}
 
 			for {
 				r, err := stream.AcceptGroup(context.Background())
@@ -69,7 +63,7 @@ func runSubscriber(sess moqt.Session, wg *sync.WaitGroup) {
 					break
 				}
 
-				w, err := tw.OpenGroup(r.GroupSequence())
+				w, err := track.OpenGroup(r.GroupSequence())
 				if err != nil {
 					slog.Error("failed to open group", "error", err)
 					break

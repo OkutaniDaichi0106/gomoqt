@@ -43,29 +43,29 @@ func ReadBytes(r reader) ([]byte, int, error) {
 	return b, n + n2, nil
 }
 
-// // Read a string array from the reader
-// func ReadStringArray(r reader) ([]string, int, error) {
-// 	count, n, err := ReadNumber(r)
-// 	if err != nil {
-// 		if err == io.EOF {
-// 			return nil, n, nil
-// 		}
-// 		return nil, n, err
-// 	}
+// Read a string array from the reader
+func ReadStringArray(r reader) ([]string, int, error) {
+	count, n, err := ReadNumber(r)
+	if err != nil {
+		if err == io.EOF {
+			return nil, n, nil
+		}
+		return nil, n, err
+	}
 
-// 	strs := make([]string, count)
-// 	totalBytes := n
-// 	for i := uint64(0); i < count; i++ {
-// 		str, n, err := ReadString(r)
-// 		if err != nil {
-// 			return nil, totalBytes + n, err
-// 		}
-// 		strs[i] = str
-// 		totalBytes += n
-// 	}
+	strs := make([]string, count)
+	totalBytes := n
+	for i := uint64(0); i < count; i++ {
+		str, n, err := ReadString(r)
+		if err != nil {
+			return nil, totalBytes + n, err
+		}
+		strs[i] = str
+		totalBytes += n
+	}
 
-// 	return strs, totalBytes, nil
-// }
+	return strs, totalBytes, nil
+}
 
 // Read parameters from the reader
 func ReadParameters(r reader) (Parameters, int, error) {

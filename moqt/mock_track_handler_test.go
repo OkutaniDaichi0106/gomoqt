@@ -1,38 +1,34 @@
-package moqt_test
+package moqt
 
-import (
-	"github.com/OkutaniDaichi0106/gomoqt/moqt"
-)
-
-var _ moqt.TrackHandler = (*MockTrackHandler)(nil)
+var _ Handler = (*MockTrackHandler)(nil)
 
 // MockTrackHandler is a mock implementation of the TrackHandler interface
 // It allows customizing behavior for testing different scenarios
 type MockTrackHandler struct {
 	// Function fields to customize behavior
-	ServeTrackFunc         func(w moqt.TrackWriter, config *moqt.SubscribeConfig)
-	GetInfoFunc            func(path moqt.TrackPath) (moqt.Info, error)
-	ServeAnnouncementsFunc func(w moqt.AnnouncementWriter, config *moqt.AnnounceConfig)
+	ServeTrackFunc         func(w TrackWriter, config *SubscribeConfig)
+	GetInfoFunc            func(path TrackPath) (Info, error)
+	ServeAnnouncementsFunc func(w AnnouncementWriter, config *AnnounceConfig)
 }
 
-func (m *MockTrackHandler) ServeTrack(w moqt.TrackWriter, config *moqt.SubscribeConfig) {
+func (m *MockTrackHandler) ServeTrack(w TrackWriter, config *SubscribeConfig) {
 	if m.ServeTrackFunc != nil {
 		m.ServeTrackFunc(w, config)
 	}
 }
 
-func (m *MockTrackHandler) GetInfo(path moqt.TrackPath) (moqt.Info, error) {
+func (m *MockTrackHandler) GetInfo(path TrackPath) (Info, error) {
 	if m.GetInfoFunc != nil {
 		return m.GetInfoFunc(path)
 	}
-	return moqt.Info{
+	return Info{
 		TrackPriority:       1,
 		LatestGroupSequence: 0,
 		GroupOrder:          0,
 	}, nil
 }
 
-func (m *MockTrackHandler) ServeAnnouncements(w moqt.AnnouncementWriter, config *moqt.AnnounceConfig) {
+func (m *MockTrackHandler) ServeAnnouncements(w AnnouncementWriter, config *AnnounceConfig) {
 	if m.ServeAnnouncementsFunc != nil {
 		m.ServeAnnouncementsFunc(w, config)
 	}

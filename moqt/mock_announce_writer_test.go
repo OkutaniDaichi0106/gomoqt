@@ -1,29 +1,32 @@
-package moqt_test
+package moqt
 
-import "github.com/OkutaniDaichi0106/gomoqt/moqt"
-
-var _ moqt.AnnouncementWriter = (*MockAnnouncementWriter)(nil)
+var _ AnnouncementWriter = (*MockAnnouncementWriter)(nil)
 
 // MockAnnouncementWriter is a mock implementation of the AnnouncementWriter interface
 // It tracks announcements for verification in tests
 type MockAnnouncementWriter struct {
-	ConfigValue     moqt.AnnounceConfig
-	AnnouncedTracks []moqt.TrackPath
-	Notifications   int
+	SendAnnouncementsFunc func(announcements []*Announcement) error
+	CloseFunc             func() error
+	CloseWithErrorFunc    func(err error) error
 }
 
-func (m *MockAnnouncementWriter) SendAnnouncements(announcements []*moqt.Announcement) error {
-	for _, ann := range announcements {
-		m.AnnouncedTracks = append(m.AnnouncedTracks, ann.TrackPath())
-		m.Notifications++
+func (m *MockAnnouncementWriter) SendAnnouncements(announcements []*Announcement) error {
+	if m.SendAnnouncementsFunc != nil {
+		return m.SendAnnouncementsFunc(announcements)
 	}
 	return nil
 }
 
 func (m *MockAnnouncementWriter) Close() error {
+	if m.CloseFunc != nil {
+		return m.CloseFunc()
+	}
 	return nil
 }
 
 func (m *MockAnnouncementWriter) CloseWithError(err error) error {
-	return err
+	if m.CloseWithErrorFunc != nil {
+		return m.CloseWithErrorFunc(err)
+	}
+	return nil
 }

@@ -217,3 +217,174 @@ func TestTrackPath_Match(t *testing.T) {
 		})
 	}
 }
+
+func TestTrackPath_ExtractParameters(t *testing.T) {
+	tests := map[string]struct {
+		path           moqt.TrackPath
+		pattern        string
+		expectedParams []string
+		expectedMatch  bool
+	}{
+		"empty path and pattern": {
+			path:           moqt.TrackPath(""),
+			pattern:        "",
+			expectedParams: nil,
+			expectedMatch:  false,
+		},
+		"pattern with no wildcards": {
+			path:           moqt.TrackPath("/test/path"),
+			pattern:        "/test/path",
+			expectedParams: nil,
+			expectedMatch:  false,
+		},
+		"single wildcard - successful match": {
+			path:           moqt.TrackPath("/test/value"),
+			pattern:        "/test/*",
+			expectedParams: []string{"value"},
+			expectedMatch:  true,
+		},
+		"single wildcard - no match": {
+			path:           moqt.TrackPath("/other/value"),
+			pattern:        "/test/*",
+			expectedParams: nil,
+			expectedMatch:  false,
+		},
+		"multiple single wildcards": {
+			path:           moqt.TrackPath("/users/123/posts/456"),
+			pattern:        "/users/*/posts/*",
+			expectedParams: []string{"123", "456"},
+			expectedMatch:  true,
+		},
+		"double wildcard - successful match": {
+			path:           moqt.TrackPath("/api/v1/users/123/profile"),
+			pattern:        "/api/**/profile",
+			expectedParams: []string{"v1/users/123"},
+			expectedMatch:  true,
+		},
+		"double wildcard - no match": {
+			path:           moqt.TrackPath("/api/v1/users/123/settings"),
+			pattern:        "/api/**/profile",
+			expectedParams: nil,
+			expectedMatch:  false,
+		},
+		"mixed wildcards": {
+			path:           moqt.TrackPath("/api/v1/users/123/posts/456/comments"),
+			pattern:        "/api/*/users/**/comments",
+			expectedParams: []string{"v1", "123/posts/456"},
+			expectedMatch:  true,
+		},
+		"wildcard at beginning": {
+			path:           moqt.TrackPath("/tenant1/resources"),
+			pattern:        "/*/resources",
+			expectedParams: []string{"tenant1"},
+			expectedMatch:  true,
+		},
+		"wildcard in middle": {
+			path:           moqt.TrackPath("/api/tenant1/resources"),
+			pattern:        "/api/*/resources",
+			expectedParams: []string{"tenant1"},
+			expectedMatch:  true,
+		},
+		"wildcard at end": {
+			path:           moqt.TrackPath("/api/resources/latest"),
+			pattern:        "/api/resources/*",
+			expectedParams: []string{"latest"},
+			expectedMatch:  true,
+		},
+		"empty segment in path": {
+			path:           moqt.TrackPath("/api//resources"),
+			pattern:        "/api/*/resources",
+			expectedParams: []string{""},
+			expectedMatch:  true,
+		},
+		"special characters in path": {
+			path:           moqt.TrackPath("/api/user@example.com/profile"),
+			pattern:        "/api/*/profile",
+			expectedParams: []string{"user@example.com"},
+			expectedMatch:  true,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			params := tt.path.ExtractParameters(tt.pattern)
+			assert.Equal(t, tt.expectedParams, params, "Extracted parameters should match expected values")
+		})
+	}
+}
+
+func TestBuildTrackPath(t *testing.T) {
+	tests := map[string]struct {
+		pattern  string
+		segments []string
+		expected moqt.TrackPath
+	}{
+		"empty pattern and segments": {
+			pattern:  "",
+			segments: []string{},
+			expected: moqt.TrackPath(""),
+		},
+		"single wildcard": {
+			pattern:  "/test/*",
+			segments: []string{"value"},
+			expected: moqt.TrackPath("/test/value"),
+		},
+		"multiple wildcards": {
+			pattern:  "/users/*/posts/*",
+			segments: []string{"123", "456"},
+			expected: moqt.TrackPath("/users/123/posts/456"),
+		},
+		"wildcard at beginning": {
+			pattern:  "/*/resources",
+			segments: []string{"tenant1"},
+			expected: moqt.TrackPath("/tenant1/resources"),
+		},
+		"wildcard in middle": {
+			pattern:  "/api/*/resources",
+			segments: []string{"tenant1"},
+			expected: moqt.TrackPath("/api/tenant1/resources"),
+		},
+		"wildcard at end": {
+			pattern:  "/api/resources/*",
+			segments: []string{"latest"},
+			expected: moqt.TrackPath("/api/resources/latest"),
+		},
+		"segment count mismatch fewer": {
+			pattern:  "/users/*/posts/*",
+			segments: []string{"123"},
+			expected: moqt.TrackPath("/users/123/posts/"),
+		},
+		"segment count mismatch more": {
+			pattern:  "/users/*",
+			segments: []string{"123", "456"},
+			expected: moqt.TrackPath("/users/123"),
+		},
+		"pattern with double wildcard": {
+			pattern:  "/api/**/profile",
+			segments: []string{},
+			expected: moqt.TrackPath("/api//profile"),
+		},
+		"special characters in segments": {
+			pattern:  "/api/*/profile",
+			segments: []string{"user@example.com"},
+			expected: moqt.TrackPath("/api/user@example.com/profile"),
+		},
+		"multiple double wildcards": {
+			pattern:  "/api/**/profile/**",
+			segments: []string{"v1/123", "456"},
+			expected: moqt.TrackPath("/api/v1/123/profile/456"),
+		},
+		"single and double wildcards": {
+			pattern:  "/api/*/users/**/comments",
+			segments: []string{"v1", "posts/123"},
+			expected: moqt.TrackPath("/api/v1/users/posts/123/comments"),
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			result := moqt.BuildTrackPath(tt.pattern, tt.segments...)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}

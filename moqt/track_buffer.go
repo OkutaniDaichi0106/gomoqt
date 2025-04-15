@@ -8,7 +8,7 @@ import (
 
 var DefaultExpires = 10 * time.Second // TODO: Tune the value
 
-func NewTrack(path TrackPath, info Info, expires time.Duration) *TrackBuffer {
+func NewTrackBuffer(path TrackPath, info Info, expires time.Duration) *TrackBuffer {
 	if expires == 0 {
 		expires = DefaultExpires
 	}
@@ -29,7 +29,7 @@ func NewTrack(path TrackPath, info Info, expires time.Duration) *TrackBuffer {
 }
 
 var _ TrackWriter = (*TrackBuffer)(nil)
-var _ TrackHandler = (*TrackBuffer)(nil)
+var _ Handler = (*TrackBuffer)(nil)
 
 type TrackBuffer struct {
 	path                TrackPath

@@ -17,6 +17,7 @@ require (
 	github.com/google/pprof v0.0.0-20250121033306-997b0b79cac0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/onsi/ginkgo/v2 v2.22.2 // indirect
+	github.com/ovechkin-dm/mockio/v2 v2.0.0-rc1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/quic-go/qpack v0.5.1 // indirect
 	golang.org/x/crypto v0.32.0 // indirect

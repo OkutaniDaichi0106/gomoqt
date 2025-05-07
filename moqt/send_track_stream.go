@@ -7,8 +7,9 @@ import (
 var _ SendTrackStream = (*sendTrackStream)(nil)
 
 type SendTrackStream interface {
-	SubscribeID() SubscribeID
 	TrackWriter
+	SubscribeID() SubscribeID
+	SubuscribeConfig() *SubscribeConfig
 }
 
 func newSendTrackStream(session *session, receiveSubscribeStream *receiveSubscribeStream) *sendTrackStream {
@@ -27,6 +28,10 @@ type sendTrackStream struct {
 
 func (s *sendTrackStream) SubscribeID() SubscribeID {
 	return s.subscribeStream.id
+}
+
+func (s *sendTrackStream) SubuscribeConfig() *SubscribeConfig {
+	return &s.subscribeStream.config
 }
 
 func (s *sendTrackStream) TrackPath() TrackPath {

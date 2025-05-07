@@ -509,11 +509,13 @@ func TestTrackMux_ServeAnnouncement(t *testing.T) {
 	}
 
 	mux.Handle(context.Background(), "/global/track", handler)
-	announced := <-announcedCh
-
-	// Verify that the announcer received the notification
-	assert.NotNil(t, announced)
-	assert.Equal(t, expectedAnnouncements, announced)
+	select {
+	case announced := <-announcedCh:
+		assert.NotNil(t, announced)
+		assert.Equal(t, expectedAnnouncements, announced)
+	case <-time.After(3 * time.Second):
+		t.Fatal("Timeout waiting for announcements")
+	}
 }
 
 // TestGetInfoImplementation tests the GetInfo implementation in detail

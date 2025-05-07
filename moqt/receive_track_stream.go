@@ -11,7 +11,7 @@ var _ ReceiveTrackStream = (*receiveTrackStream)(nil)
 type ReceiveTrackStream interface {
 	TrackReader
 	SubscribeID() SubscribeID
-	UpdateSubscribe(SubscribeUpdate) error
+	UpdateSubscribe(*SubscribeConfig) error
 }
 
 func newReceiveTrackStream(session *session, info Info, subscribeStream *sendSubscribeStream) *receiveTrackStream {
@@ -84,7 +84,11 @@ func (s *receiveTrackStream) AcceptGroup(ctx context.Context) (GroupReader, erro
 	return rgs, nil
 }
 
-func (s *receiveTrackStream) UpdateSubscribe(update SubscribeUpdate) error {
+func (s *receiveTrackStream) UpdateSubscribe(update *SubscribeConfig) error {
+	if update == nil {
+		return nil
+	}
+
 	sum := message.SubscribeUpdateMessage{
 		GroupOrder:       message.GroupOrder(update.GroupOrder),
 		TrackPriority:    message.TrackPriority(update.TrackPriority),

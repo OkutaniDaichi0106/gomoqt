@@ -33,7 +33,7 @@ type Session interface {
 	OpenTrackStream(TrackPath, *SubscribeConfig) (Info, ReceiveTrackStream, error)
 
 	// Request Track Info
-	RequestInfo(TrackPath) (Info, error)
+	GetInfo(TrackPath) (Info, error)
 
 	/*
 	 * Methods for the Publisher
@@ -182,7 +182,7 @@ func (s *session) OpenTrackStream(path TrackPath, config *SubscribeConfig) (Info
 	return info, newReceiveTrackStream(s, info, ss), nil
 }
 
-func (s *session) RequestInfo(path TrackPath) (Info, error) {
+func (s *session) GetInfo(path TrackPath) (Info, error) {
 	slog.Debug("requesting track info", "track_path", path)
 
 	im, err := s.openInfoStream(message.InfoRequestMessage{

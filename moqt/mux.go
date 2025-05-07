@@ -51,7 +51,7 @@ func GetInfo(path TrackPath) (Info, error) {
 
 // BuildTrack creates a new TrackBuffer for the specified path with the given info and expiration time.
 // It registers the TrackBuffer as a handler in DefaultMux and returns it.
-func BuildTrack(ctx context.Context, path TrackPath, info Info, expires time.Duration) *TrackBuffer {
+func BuildTrack(ctx context.Context, path TrackPath, info Info, expires time.Duration) TrackWriter {
 	return DefaultMux.BuildTrack(ctx, path, info, expires)
 }
 
@@ -220,7 +220,7 @@ func (mux *TrackMux) ServeAnnouncements(w AnnouncementWriter, config *AnnounceCo
 	}
 
 	// Start serving announcements
-	current.buffer.deliverAnnouncements(w)
+	current.buffer.serveAnnouncements(w)
 }
 
 // GetInfo retrieves information about the track at the specified path.

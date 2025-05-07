@@ -13,25 +13,35 @@ var _ AnnouncementWriter = (*announcementsBuffer)(nil)
 // newAnnouncementsBuffer creates a new announcements buffer.
 // The buffer stores announcements and allows efficient delivery to subscribers.
 func newAnnouncementsBuffer() *announcementsBuffer {
-	return &announcementsBuffer{
-		announcements: make([]*Announcement, 0),
-		mapping:       make(map[TrackPath]int),
-		cond:          sync.NewCond(&sync.Mutex{}),
+	buf := announcementsBuffer{
+		mapping:   make(map[TrackPath]int),
+		announced: make([]*Announcement, 0),
+		dests:     make(map[AnnouncementWriter]struct{}),
 	}
+	buf.cond = sync.NewCond(&buf.mu)
+
+	return &buf
 }
 
 // announcementsBuffer implements the AnnouncementWriter interface and provides a buffer for announcements.
 // It manages announcement states and delivery to writers efficiently.
 // The buffer must be closed using Close() or CloseWithError() when done to prevent resource leaks.
 type announcementsBuffer struct {
-	// mapping maps TrackPath to its index in the announcements slice
-	mapping map[TrackPath]int
+	mu sync.Mutex
 
 	// cond synchronizes access to announcements and signals when new announcements are added
 	cond *sync.Cond
 
-	// announcements stores active announcements in the buffer
-	announcements []*Announcement
+	// announced stores active announced in the buffer
+	// mapping maps TrackPath to its index in the announcements slice
+	mapping map[TrackPath]int
+
+	// announced stores active announced in the buffer
+	announced []*Announcement
+
+	// diff []*Announcement
+
+	dests map[AnnouncementWriter]struct{}
 
 	// closed indicates if the buffer has been closed
 	closed bool
@@ -50,6 +60,9 @@ func (ab *announcementsBuffer) SendAnnouncements(announcements []*Announcement) 
 		return nil
 	}
 
+	ab.mu.Lock()
+	defer ab.mu.Unlock()
+
 	// Check if the buffer is closed
 	if ab.closed {
 		if ab.closedErr == nil {
@@ -58,24 +71,25 @@ func (ab *announcementsBuffer) SendAnnouncements(announcements []*Announcement) 
 		return ab.closedErr
 	}
 
-	ab.cond.L.Lock()
-	defer ab.cond.L.Unlock()
+	// Map the announcements
+	var path TrackPath
 
-	defer ab.cond.Broadcast()
+	diff := make([]*Announcement, 0, len(announcements))
+	// copy(diff, announcements)
 
-	addedCount := 0
 	for _, ann := range announcements {
 		if ann == nil {
 			slog.Debug("skipping nil announcement")
 			continue
 		}
 
-		path := ann.path
+		path = ann.path
 
 		// Check if the announcement already exists
+		// If it does, end the old one and replace it with the new one
 		if pos, ok := ab.mapping[path]; ok {
 			// Update the existing announcement
-			old := ab.announcements[pos]
+			old := ab.announced[pos]
 			if old == ann {
 				// Skip if the announcement is the same
 				slog.Debug("skipping duplicate announcement reference",
@@ -84,89 +98,58 @@ func (ab *announcementsBuffer) SendAnnouncements(announcements []*Announcement) 
 				continue
 			} else {
 				// End the old announcement
-				slog.Debug("ending previous announcement for path",
-					"track_path", path.String(),
-				)
 				old.End()
-				delete(ab.mapping, path)
 			}
 		}
 
-		if ann.IsActive() {
-			// Add the mapping
-			ab.mapping[path] = len(ab.announcements)
-			// Append the new active announcement
-			ab.announcements = append(ab.announcements, ann)
-			addedCount++
-			slog.Debug("added announcement to buffer",
-				"track_path", path.String(),
-				"active", ann.IsActive())
-		} else {
-			slog.Debug("skipping inactive announcement",
-				"track_path", path.String())
-		}
+		// Map the new announcement
+		ab.announced = append(ab.announced, ann)
+		ab.mapping[path] = len(ab.announced) - 1
+		diff = append(diff, ann)
 	}
 
-	if addedCount > 0 {
-		slog.Debug("added announcements to buffer",
-			"count", addedCount,
-			"total_active", len(ab.announcements))
+	for w := range ab.dests {
+		w.SendAnnouncements(diff)
 	}
 
 	return nil
 }
 
-// deliverAnnouncements sends announcements to the provided writer until the buffer is closed.
+// serveAnnouncements sends announcements to the provided writer until the buffer is closed.
 // The caller must close the buffer using Close() or CloseWithError() when done to ensure this method exits.
 // This method will block waiting for new announcements or buffer closure, so it should typically be run in a separate goroutine.
-func (buf *announcementsBuffer) deliverAnnouncements(w AnnouncementWriter) {
+func (buf *announcementsBuffer) serveAnnouncements(w AnnouncementWriter) {
 	if w == nil {
 		slog.Error("cannot deliver announcements to nil writer")
 		return
 	}
 
-	buf.cond.L.Lock()
-	defer buf.cond.L.Unlock()
+	buf.mu.Lock()
+	defer buf.mu.Unlock()
 
-	slog.Debug("started announcement delivery", "buffer_size", len(buf.announcements))
-	pos := 0
-	for {
-		// Wait for new announcements or buffer closure
-		for pos >= len(buf.announcements) && !buf.closed {
-			buf.cond.Wait()
-		}
+	if buf.closed {
+		slog.Error("cannot deliver announcements to closed buffer")
+		return
+	}
 
-		// Check if the buffer is closed
-		if buf.closed {
-			slog.Debug("buffer closed, stopping announcement delivery")
-			// Exit the loop and serve no more announcements if the buffer is closed
-			return
-		}
+	// Register the writer
+	buf.dests[w] = struct{}{}
+	defer delete(buf.dests, w)
 
-		// Create a snapshot of announcements to deliver while minimizing lock time
-		nextAnnouncements := make([]*Announcement, len(buf.announcements[pos:]))
-		copy(nextAnnouncements, buf.announcements[pos:])
-		nextPos := len(buf.announcements)
+	// Send initial announcements
+	if len(buf.announced) == 0 {
+		slog.Debug("no initial announcements to send")
+		return
+	}
 
-		slog.Debug("delivering announcements",
-			"count", len(nextAnnouncements),
-			"start_pos", pos,
-			"total", nextPos,
-		)
+	err := w.SendAnnouncements(buf.announced)
+	if err != nil {
+		slog.Error("error sending initial announcements", "error", err)
+		return
+	}
 
-		// Unlock before sending to avoid deadlock if writer calls back into buffer
-		buf.cond.L.Unlock()
-		err := w.SendAnnouncements(nextAnnouncements)
-		buf.cond.L.Lock()
-
-		if err != nil {
-			slog.Error("error sending announcements", "error", err)
-			// Exit the loop and serve no more announcements if the writer returns an error
-			return
-		}
-
-		// Update the position after successful send
-		pos = nextPos
+	for !buf.closed {
+		buf.cond.Wait()
 	}
 }
 
@@ -174,33 +157,33 @@ func (buf *announcementsBuffer) deliverAnnouncements(w AnnouncementWriter) {
 // After the buffer is closed, no more announcements can be added and deliverAnnouncements will exit.
 // Returns an error if the buffer is already closed.
 func (ab *announcementsBuffer) Close() error {
-	// ab.cond.L.Lock()
-	// defer ab.cond.L.Unlock()
+	ab.mu.Lock()
+	defer ab.mu.Unlock()
 
-	// if ab.closed {
-	// 	return errors.New("announcement buffer is already closed")
-	// }
+	if ab.closed {
+		return errors.New("announcement buffer is already closed")
+	}
 
-	// defer ab.cond.Broadcast()
+	// End all active announcements before closing
+	for _, ann := range ab.announced {
+		if ann.IsActive() {
+			err := ann.End()
+			if err != nil {
+				slog.Warn("failed to end announcement during buffer close",
+					"track_path", ann.TrackPath().String(),
+					"error", err)
+			}
+		}
+	}
 
-	// // End all active announcements before closing
-	// for _, ann := range ab.announcements {
-	// 	if ann.IsActive() {
-	// 		err := ann.End()
-	// 		if err != nil {
-	// 			slog.Warn("failed to end announcement during buffer close",
-	// 				"track_path", ann.TrackPath().String(),
-	// 				"error", err)
-	// 		}
-	// 	}
-	// }
+	ab.closed = true
 
-	// ab.closed = true
+	// Clear the internal state to free resources
+	slog.Debug("closing announcement buffer", "announcement_count", len(ab.announced))
+	ab.announced = nil
+	ab.mapping = nil
 
-	// // Clear the internal state to free resources
-	// slog.Debug("closing announcement buffer", "announcement_count", len(ab.announcements))
-	// ab.announcements = nil
-	// ab.mapping = nil
+	ab.cond.Broadcast()
 
 	return nil
 }
@@ -211,8 +194,8 @@ func (ab *announcementsBuffer) Close() error {
 // If err is nil, a default internal error will be used.
 // Returns an error if the buffer is already closed.
 func (ab *announcementsBuffer) CloseWithError(err error) error {
-	ab.cond.L.Lock()
-	defer ab.cond.L.Unlock()
+	ab.mu.Lock()
+	defer ab.mu.Unlock()
 
 	if ab.closed {
 		if ab.closedErr != nil {
@@ -221,10 +204,8 @@ func (ab *announcementsBuffer) CloseWithError(err error) error {
 		return errors.New("announcement buffer is already closed")
 	}
 
-	defer ab.cond.Broadcast()
-
 	// End all active announcements before closing
-	for _, ann := range ab.announcements {
+	for _, ann := range ab.announced {
 		if ann.IsActive() {
 			err := ann.End()
 			if err != nil {
@@ -243,6 +224,8 @@ func (ab *announcementsBuffer) CloseWithError(err error) error {
 
 	ab.closedErr = err
 	ab.closed = true
+
+	ab.cond.Broadcast()
 
 	return nil
 }

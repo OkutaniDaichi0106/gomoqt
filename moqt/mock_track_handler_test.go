@@ -1,14 +1,13 @@
 package moqt
 
-var _ Handler = (*MockTrackHandler)(nil)
+var _ TrackHandler = (*MockTrackHandler)(nil)
 
 // MockTrackHandler is a mock implementation of the TrackHandler interface
 // It allows customizing behavior for testing different scenarios
 type MockTrackHandler struct {
 	// Function fields to customize behavior
-	ServeTrackFunc         func(w TrackWriter, config *SubscribeConfig)
-	GetInfoFunc            func(path TrackPath) (Info, error)
-	ServeAnnouncementsFunc func(w AnnouncementWriter, config *AnnounceConfig)
+	ServeTrackFunc func(w TrackWriter, config *SubscribeConfig)
+	GetInfoFunc    func(path TrackPath) (Info, error)
 }
 
 func (m *MockTrackHandler) ServeTrack(w TrackWriter, config *SubscribeConfig) {
@@ -26,10 +25,4 @@ func (m *MockTrackHandler) GetInfo(path TrackPath) (Info, error) {
 		LatestGroupSequence: 0,
 		GroupOrder:          0,
 	}, nil
-}
-
-func (m *MockTrackHandler) ServeAnnouncements(w AnnouncementWriter, config *AnnounceConfig) {
-	if m.ServeAnnouncementsFunc != nil {
-		m.ServeAnnouncementsFunc(w, config)
-	}
 }

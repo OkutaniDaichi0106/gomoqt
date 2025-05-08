@@ -1,25 +1,33 @@
 package moqt
 
-type Handler interface {
-	ServeTrack(TrackWriter, *SubscribeConfig)
-	ServeAnnouncements(AnnouncementWriter, *AnnounceConfig)
+// type Handler interface {
+// 	ServeTrack(TrackWriter, *SubscribeConfig)
+// 	ServeAnnouncements(AnnouncementWriter, *AnnounceConfig)
 
-	GetInfo(TrackPath) (Info, error)
-}
+// 	GetInfo(TrackPath) (Info, error)
+// }
 
 type TrackHandler interface {
 	ServeTrack(TrackWriter, *SubscribeConfig)
+
+	GetInfo(TrackPath) (Info, error)
 }
 
 type AnnouncementHandler interface {
 	ServeAnnouncements(AnnouncementWriter, *AnnounceConfig)
 }
 
-type InfoHandler interface {
-	GetInfo(TrackPath) (Info, error)
-}
+// type InfoHandler interface {
+// 	GetInfo(TrackPath) (Info, error)
+// }
 
-var NotFoundHandler Handler = &notFoundHandler{}
+var NotFoundTrackHandler TrackHandler = &notFoundHandler{}
+var NotFoundAnnouncementHandler AnnouncementHandler = &notFoundHandler{}
+
+var _ TrackHandler = (*notFoundHandler)(nil)
+var _ AnnouncementHandler = (*notFoundHandler)(nil)
+
+// var _ InfoHandler = (*notFoundHandler)(nil)
 
 type notFoundHandler struct{}
 

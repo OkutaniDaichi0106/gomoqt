@@ -29,7 +29,7 @@ func NewTrackBuffer(path TrackPath, info Info, expires time.Duration) *TrackBuff
 }
 
 var _ TrackWriter = (*TrackBuffer)(nil)
-var _ Handler = (*TrackBuffer)(nil)
+var _ TrackHandler = (*TrackBuffer)(nil)
 
 type TrackBuffer struct {
 	path                TrackPath

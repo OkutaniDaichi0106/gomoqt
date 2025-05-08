@@ -48,7 +48,9 @@ type Server struct {
 	/*
 	 * Handler
 	 */
-	Handler Handler
+	TrackHandler TrackHandler
+
+	AnnouncementHandler AnnouncementHandler
 
 	/*
 	 * Session Handler
@@ -94,9 +96,6 @@ func (s *Server) init() {
 		// TODO: Initialize TrackMux
 		// TODO: Initialize SessionHandlerFunc
 		// TODO: Initialize SetupExtensions
-		if s.SetupExtensions == nil {
-			s.setDefaultSetupExtensions()
-		}
 
 		// Initialize WebtransportServer
 		if s.WebtransportServer == nil {
@@ -194,7 +193,7 @@ func (s *Server) serveQUICConn(conn quic.Connection) error {
 			return rspParam, nil
 		}
 
-		sess, err := AcceptSession(context.Background(), conn, params, s.Handler)
+		sess, err := s.AcceptSession(context.Background(), conn, params)
 		if err != nil {
 			s.Logger.Error("failed to accept session", "remote_address", conn.RemoteAddr(), "error", err.Error())
 			return err
@@ -243,7 +242,7 @@ func (s *Server) ServeWebTransport(w http.ResponseWriter, r *http.Request) error
 
 	params := func(reqParam *Parameters) (*Parameters, error) {
 		if s.SetupExtensions == nil {
-			s.setDefaultSetupExtensions()
+			return nil, nil
 		}
 
 		// Get any setup extensions
@@ -256,7 +255,7 @@ func (s *Server) ServeWebTransport(w http.ResponseWriter, r *http.Request) error
 		return rspParam, nil
 	}
 
-	sess, err := AcceptSession(context.Background(), conn, params, s.Handler)
+	sess, err := s.AcceptSession(context.Background(), conn, params)
 	if err != nil {
 		s.Logger.Error("failed to create internal WebTransport session", "remote_address", r.RemoteAddr, "error", err.Error())
 		return err
@@ -424,23 +423,17 @@ func (s *Server) setDefaultWebtransportServer() {
 	// Wrap the WebTransport server
 	s.WebtransportServer = quicgowrapper.WrapWebTransportServer(wtserver)
 
-	if s.TLSConfig != nil {
-		s.WebtransportServer.SetTLSConfig(s.TLSConfig.Clone())
-	}
-	if s.QUICConfig != nil {
-		s.WebtransportServer.SetQUICConfig(s.QUICConfig.Clone())
-	}
 	s.Logger.Debug("set default WebTransport server", "address", s.Addr)
 }
 
-func (s *Server) setDefaultSetupExtensions() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// func (s *Server) setDefaultSetupExtensions() {
+// 	s.mu.Lock()
+// 	defer s.mu.Unlock()
 
-	s.SetupExtensions = NoSetupExtensions
+// 	s.SetupExtensions = NoSetupExtensions
 
-	s.Logger.Debug("set Default setup extensions")
-}
+// 	s.Logger.Debug("set Default setup extensions")
+// }
 
 func (s *Server) addListener(ln *quic.EarlyListener) {
 	s.lnMu.Lock()
@@ -475,6 +468,6 @@ func (s *Server) decrementConnCount() {
 
 const NextProtoMOQ = "moq-00"
 
-var NoSetupExtensions = func(req *Parameters) (rsp *Parameters, err error) {
-	return nil, nil
-}
+// var NoSetupExtensions = func(req *Parameters) (rsp *Parameters, err error) {
+// 	return nil, nil
+// }

@@ -29,7 +29,7 @@ type Client struct {
 	Config *Config
 
 	/***/
-	TrackResolver Handler
+	TrackHandler TrackHandler
 
 	/***/
 	SetupExtensions *Parameters
@@ -107,7 +107,7 @@ func (c *Client) DialWebTransport(ctx context.Context, req SetupRequest) (Sessio
 		c.Logger.Debug("no setup extensions provided")
 	}
 
-	sess, rsp, err := OpenSession(conn, &Parameters{params}, c.TrackResolver)
+	sess, rsp, err := c.OpenSession(conn, &Parameters{params})
 	if err != nil {
 		c.Logger.Error("failed to open session stream", "error", err.Error())
 		return nil, nil, err
@@ -159,7 +159,7 @@ func (c *Client) dialQUIC(ctx context.Context, req SetupRequest) (Session, *Setu
 	} else {
 		c.Logger.Debug("no setup extensions provided")
 	}
-	sess, rsp, err := OpenSession(conn, param, c.TrackResolver)
+	sess, rsp, err := c.OpenSession(conn, param)
 	if err != nil {
 		c.Logger.Error("failed to open session stream", "error", err.Error())
 		return nil, nil, err

@@ -18,9 +18,7 @@ type Connection interface {
 	OpenStreamSync(ctx context.Context) (Stream, error)
 	OpenUniStream() (SendStream, error)
 	OpenUniStreamSync(ctx context.Context) (str SendStream, err error)
-	ReceiveDatagram(ctx context.Context) ([]byte, error)
 	RemoteAddr() net.Addr
-	SendDatagram(b []byte) error
 }
 
 type ConnectionErrorCode uint32

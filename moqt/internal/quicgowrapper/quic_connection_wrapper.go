@@ -18,9 +18,8 @@ func UnWrapConnection(conn quic.Connection) quicgo.Connection {
 	if l, ok := conn.(*rawQuicConnection); ok {
 		return l.conn
 	} else {
-
+		return &quicgoConnection{conn: conn}
 	}
-	return nil
 }
 
 var _ quic.Connection = (*rawQuicConnection)(nil)

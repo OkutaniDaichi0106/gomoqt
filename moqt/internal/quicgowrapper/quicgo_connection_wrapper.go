@@ -2,6 +2,7 @@ package quicgowrapper
 
 import (
 	"context"
+	"errors"
 	"net"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
@@ -84,9 +85,13 @@ func (c *quicgoConnection) RemoteAddr() net.Addr {
 }
 
 func (c *quicgoConnection) ReceiveDatagram(ctx context.Context) ([]byte, error) {
-	return c.conn.ReceiveDatagram(ctx)
+	return nil, errors.New("not supported")
 }
 
 func (c *quicgoConnection) SendDatagram(data []byte) error {
-	return c.conn.SendDatagram(data)
+	return errors.New("not supported")
+}
+
+func (c *quicgoConnection) AddPath(*quicgo.Transport) (*quicgo.Path, error) {
+	return nil, errors.New("not supported")
 }

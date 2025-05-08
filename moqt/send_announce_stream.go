@@ -19,7 +19,7 @@ type AnnouncementWriter interface {
 
 var _ AnnouncementWriter = (*sendAnnounceStream)(nil)
 
-func newSendAnnounceStream(stream quic.Stream, config AnnounceConfig) *sendAnnounceStream {
+func newSendAnnounceStream(stream quic.Stream, config *AnnounceConfig) *sendAnnounceStream {
 	sas := &sendAnnounceStream{
 		config:    config,
 		stream:    stream,
@@ -42,7 +42,7 @@ func newSendAnnounceStream(stream quic.Stream, config AnnounceConfig) *sendAnnou
 
 type sendAnnounceStream struct {
 	stream quic.Stream
-	config AnnounceConfig
+	config *AnnounceConfig
 	mu     sync.RWMutex
 
 	pending map[TrackPath]message.AnnounceMessage
@@ -101,55 +101,6 @@ func (sas *sendAnnounceStream) SendAnnouncements(announcements []*Announcement) 
 
 	return nil
 }
-
-// func (s *sendAnnounceStream) TrackPattern() string {
-// 	return s.config.TrackPattern
-// }
-
-// func (s *sendAnnounceStream) Close() error {
-// 	s.mu.Lock()
-// 	defer s.mu.Unlock()
-
-// 	if s.closed {
-// 		if s.closeErr != nil {
-// 			return fmt.Errorf("stream already closed due to: %w", s.closeErr)
-// 		}
-// 		return errors.New("stream already closed")
-// 	}
-
-// 	s.closed = true
-
-// 	slog.Debug("closed a send announce stream gracefully",
-// 		slog.Any("stream_id", s.stream.StreamID()),
-// 	)
-
-// 	return s.stream.Close()
-// }
-
-// func (sas *sendAnnounceStream) CloseWithError(err error) error {
-// 	sas.mu.Lock()
-// 	defer sas.mu.Unlock()
-
-// 	if err == nil {
-// 		err = ErrInternalError
-// 	}
-
-// 	var annerr AnnounceError
-// 	if !errors.As(err, &annerr) {
-// 		annerr = ErrInternalError
-// 	}
-
-// 	code := quic.StreamErrorCode(annerr.AnnounceErrorCode())
-// 	sas.stream.CancelRead(code)
-// 	sas.stream.CancelWrite(code)
-
-// 	slog.Debug("closed a send announce stream with an error",
-// 		slog.Any("stream_id", sas.stream.StreamID()),
-// 		slog.String("reason", err.Error()),
-// 	)
-
-// 	return nil
-// }
 
 func (sas *sendAnnounceStream) setActiveAnnouncement(path TrackPath) error {
 	sas.mu.Lock()

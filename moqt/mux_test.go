@@ -35,11 +35,6 @@ func TestTrackMuxBasicRouting(t *testing.T) {
 				"config", config,
 			)
 		},
-		ServeAnnouncementsFunc: func(w moqt.AnnouncementWriter, config *moqt.AnnounceConfig) {
-			slog.Info("Serving audio announcements",
-				"config", config,
-			)
-		},
 	}
 
 	// Create another handler for video
@@ -55,12 +50,7 @@ func TestTrackMuxBasicRouting(t *testing.T) {
 		ServeTrackFunc: func(w moqt.TrackWriter, config *moqt.SubscribeConfig) {
 			slog.Info("Serving video track",
 				"track_path", w.TrackPath(),
-				"config", config.String(),
-			)
-		},
-		ServeAnnouncementsFunc: func(w moqt.AnnouncementWriter, config *moqt.AnnounceConfig) {
-			slog.Info("Serving video announcements",
-				"config", config.String(),
+				"config", config,
 			)
 		},
 	}
@@ -124,10 +114,10 @@ func TestTrackMuxBasicRouting(t *testing.T) {
 		mux.ServeTrack(videoWriter, &moqt.SubscribeConfig{})
 	}()
 	notFoundCalled := false
-	origNotFoundHandler := moqt.NotFoundHandler
-	defer func() { moqt.NotFoundHandler = origNotFoundHandler }()
+	origNotFoundTrackHandler := moqt.NotFoundTrackHandler
+	defer func() { moqt.NotFoundTrackHandler = origNotFoundTrackHandler }()
 
-	moqt.NotFoundHandler = &moqt.MockTrackHandler{
+	moqt.NotFoundTrackHandler = &moqt.MockTrackHandler{
 		ServeTrackFunc: func(w moqt.TrackWriter, config *moqt.SubscribeConfig) {
 			notFoundCalled = true
 		},
@@ -164,7 +154,7 @@ func TestTrackMuxBasicRouting(t *testing.T) {
 	wg.Wait()
 
 	if !notFoundCalled {
-		t.Errorf("NotFoundHandler was not called for non-existent path")
+		t.Errorf("NotFoundTrackHandler was not called for non-existent path")
 	}
 }
 
@@ -256,33 +246,13 @@ func TestAnnouncements(t *testing.T) {
 	go mux.ServeAnnouncements(allTracksAnnouncer, allTracksAnnounceConfig)
 
 	// Verify that announcements occur when handlers are registered
-	audioHandler := &moqt.MockTrackHandler{
-		ServeAnnouncementsFunc: func(w moqt.AnnouncementWriter, config *moqt.AnnounceConfig) {
-			ann := moqt.NewAnnouncement("/tracks/audio/main")
-			w.SendAnnouncements([]*moqt.Announcement{ann})
-		},
-	}
+	audioHandler := &moqt.MockTrackHandler{}
 
-	videoHandler := &moqt.MockTrackHandler{
-		ServeAnnouncementsFunc: func(w moqt.AnnouncementWriter, config *moqt.AnnounceConfig) {
-			ann := moqt.NewAnnouncement("/tracks/video/main")
-			w.SendAnnouncements([]*moqt.Announcement{ann})
-		},
-	}
+	videoHandler := &moqt.MockTrackHandler{}
 
-	nestedVideoHandler := &moqt.MockTrackHandler{
-		ServeAnnouncementsFunc: func(w moqt.AnnouncementWriter, config *moqt.AnnounceConfig) {
-			ann := moqt.NewAnnouncement("/tracks/video/streams/hd")
-			w.SendAnnouncements([]*moqt.Announcement{ann})
-		},
-	}
+	nestedVideoHandler := &moqt.MockTrackHandler{}
 
-	otherHandler := &moqt.MockTrackHandler{
-		ServeAnnouncementsFunc: func(w moqt.AnnouncementWriter, config *moqt.AnnounceConfig) {
-			ann := moqt.NewAnnouncement("/other/track")
-			w.SendAnnouncements([]*moqt.Announcement{ann})
-		},
-	}
+	otherHandler := &moqt.MockTrackHandler{}
 
 	// Add context
 	ctx := context.Background()
@@ -338,9 +308,6 @@ func TestTrackMux_ConcurrentAccess(t *testing.T) {
 			ServeTrackFunc: func(w moqt.TrackWriter, config *moqt.SubscribeConfig) {
 				// Do nothing
 			},
-			ServeAnnouncementsFunc: func(w moqt.AnnouncementWriter, config *moqt.AnnounceConfig) {
-				// Do nothing
-			},
 			GetInfoFunc: func(path moqt.TrackPath) (moqt.Info, error) {
 				return moqt.Info{}, nil
 			},
@@ -370,9 +337,6 @@ func TestTrackMux_ConcurrentAccess(t *testing.T) {
 			path := moqt.TrackPath("/tracks/path" + string(rune(idx+'0')))
 			handler := &moqt.MockTrackHandler{
 				ServeTrackFunc: func(w moqt.TrackWriter, config *moqt.SubscribeConfig) {
-					// Do nothing
-				},
-				ServeAnnouncementsFunc: func(w moqt.AnnouncementWriter, config *moqt.AnnounceConfig) {
 					// Do nothing
 				},
 				GetInfoFunc: func(path moqt.TrackPath) (moqt.Info, error) {
@@ -423,7 +387,7 @@ func TestDefaultMux(t *testing.T) {
 // TestMuxHandler tests that TrackMux correctly implements the TrackHandler interface
 func TestTrackMux_HandledByInnerMux(t *testing.T) {
 	// Verify that TrackMux implements the TrackHandler interface
-	var _ moqt.Handler = (*moqt.TrackMux)(nil)
+	var _ moqt.TrackHandler = (*moqt.TrackMux)(nil)
 
 	// Register another TrackMux as a handler
 	outerMux := moqt.NewTrackMux()
@@ -455,13 +419,13 @@ func TestTrackMux_NestedRouting(t *testing.T) {
 	writer := &moqt.MockTrackWriter{PathValue: "/a/b/c/d/e/f"}
 	go mux.ServeTrack(writer, &moqt.SubscribeConfig{})
 
-	// Test request to a partial path (NotFoundHandler should be called)
+	// Test request to a partial path (NotFoundTrackHandler should be called)
 	partialWriter := &moqt.MockTrackWriter{PathValue: "/a/b/c"}
 	notFoundCalled := false
-	origNotFoundHandler := moqt.NotFoundHandler
-	defer func() { moqt.NotFoundHandler = origNotFoundHandler }()
+	origNotFoundTrackHandler := moqt.NotFoundTrackHandler
+	defer func() { moqt.NotFoundTrackHandler = origNotFoundTrackHandler }()
 
-	moqt.NotFoundHandler = &moqt.MockTrackHandler{
+	moqt.NotFoundTrackHandler = &moqt.MockTrackHandler{
 		ServeTrackFunc: func(w moqt.TrackWriter, config *moqt.SubscribeConfig) {
 			notFoundCalled = true
 		},
@@ -470,7 +434,7 @@ func TestTrackMux_NestedRouting(t *testing.T) {
 	mux.ServeTrack(partialWriter, &moqt.SubscribeConfig{})
 
 	if !notFoundCalled {
-		t.Errorf("NotFoundHandler was not called for partial path match")
+		t.Errorf("NotFoundTrackHandler was not called for partial path match")
 	}
 }
 
@@ -499,14 +463,7 @@ func TestTrackMux_ServeAnnouncement(t *testing.T) {
 	go mux.ServeAnnouncements(announcer, &moqt.AnnounceConfig{TrackPattern: "/**"})
 
 	// Register a handler and verify that announcements occur
-	handler := &moqt.MockTrackHandler{
-		ServeAnnouncementsFunc: func(w moqt.AnnouncementWriter, config *moqt.AnnounceConfig) {
-			slog.Info("Sending announcements from handler",
-				"announcements", expectedAnnouncements,
-			)
-			w.SendAnnouncements(expectedAnnouncements)
-		},
-	}
+	handler := &moqt.MockTrackHandler{}
 
 	mux.Handle(context.Background(), "/global/track", handler)
 	select {
@@ -602,10 +559,10 @@ func TestTrackMux_ContextLifecycleManagement(t *testing.T) {
 
 		// Verify handler was removed
 		notFoundCalled := false
-		origNotFoundHandler := moqt.NotFoundHandler
-		defer func() { moqt.NotFoundHandler = origNotFoundHandler }()
+		origNotFoundTrackHandler := moqt.NotFoundTrackHandler
+		defer func() { moqt.NotFoundTrackHandler = origNotFoundTrackHandler }()
 
-		moqt.NotFoundHandler = &moqt.MockTrackHandler{
+		moqt.NotFoundTrackHandler = &moqt.MockTrackHandler{
 			ServeTrackFunc: func(w moqt.TrackWriter, config *moqt.SubscribeConfig) {
 				notFoundCalled = true
 			},
@@ -640,10 +597,10 @@ func TestTrackMux_ContextLifecycleManagement(t *testing.T) {
 
 		// Verify handler was removed
 		notFoundCalled := false
-		origNotFoundHandler := moqt.NotFoundHandler
-		defer func() { moqt.NotFoundHandler = origNotFoundHandler }()
+		origNotFoundTrackHandler := moqt.NotFoundTrackHandler
+		defer func() { moqt.NotFoundTrackHandler = origNotFoundTrackHandler }()
 
-		moqt.NotFoundHandler = &moqt.MockTrackHandler{
+		moqt.NotFoundTrackHandler = &moqt.MockTrackHandler{
 			ServeTrackFunc: func(w moqt.TrackWriter, config *moqt.SubscribeConfig) {
 				notFoundCalled = true
 			},
@@ -686,10 +643,10 @@ func TestTrackMux_ContextLifecycleManagement(t *testing.T) {
 		time.Sleep(10 * time.Millisecond) // Wait for cancellation processing
 
 		notFoundCalled := false
-		origNotFoundHandler := moqt.NotFoundHandler
-		defer func() { moqt.NotFoundHandler = origNotFoundHandler }()
+		origNotFoundTrackHandler := moqt.NotFoundTrackHandler
+		defer func() { moqt.NotFoundTrackHandler = origNotFoundTrackHandler }()
 
-		moqt.NotFoundHandler = &moqt.MockTrackHandler{
+		moqt.NotFoundTrackHandler = &moqt.MockTrackHandler{
 			ServeTrackFunc: func(w moqt.TrackWriter, config *moqt.SubscribeConfig) {
 				notFoundCalled = true
 			},
@@ -698,7 +655,7 @@ func TestTrackMux_ContextLifecycleManagement(t *testing.T) {
 		mux.ServeTrack(writer, &moqt.SubscribeConfig{})
 
 		if !notFoundCalled {
-			t.Errorf("NotFoundHandler should have been called after context cancellation")
+			t.Errorf("NotFoundTrackHandler should have been called after context cancellation")
 		}
 	})
 }
@@ -748,10 +705,10 @@ func TestTrackMux_HandlerOverwriteWithContext(t *testing.T) {
 
 	// Verify handler was removed
 	notFoundCalled := false
-	origNotFoundHandler := moqt.NotFoundHandler
-	defer func() { moqt.NotFoundHandler = origNotFoundHandler }()
+	origNotFoundTrackHandler := moqt.NotFoundTrackHandler
+	defer func() { moqt.NotFoundTrackHandler = origNotFoundTrackHandler }()
 
-	moqt.NotFoundHandler = &moqt.MockTrackHandler{
+	moqt.NotFoundTrackHandler = &moqt.MockTrackHandler{
 		ServeTrackFunc: func(w moqt.TrackWriter, config *moqt.SubscribeConfig) {
 			notFoundCalled = true
 		},
@@ -802,10 +759,10 @@ func TestTrackMux_HierarchicalContextManagement(t *testing.T) {
 
 	// Verify all handlers were removed
 	notFoundCalled := 0
-	origNotFoundHandler := moqt.NotFoundHandler
-	defer func() { moqt.NotFoundHandler = origNotFoundHandler }()
+	origNotFoundTrackHandler := moqt.NotFoundTrackHandler
+	defer func() { moqt.NotFoundTrackHandler = origNotFoundTrackHandler }()
 
-	moqt.NotFoundHandler = &moqt.MockTrackHandler{
+	moqt.NotFoundTrackHandler = &moqt.MockTrackHandler{
 		ServeTrackFunc: func(w moqt.TrackWriter, config *moqt.SubscribeConfig) {
 			notFoundCalled++
 		},
@@ -843,10 +800,10 @@ func TestTrackMux_NodeCleanupAfterCancellation(t *testing.T) {
 
 	// Verify handler was removed
 	notFoundCalled := false
-	origNotFoundHandler := moqt.NotFoundHandler
-	defer func() { moqt.NotFoundHandler = origNotFoundHandler }()
+	origNotFoundTrackHandler := moqt.NotFoundTrackHandler
+	defer func() { moqt.NotFoundTrackHandler = origNotFoundTrackHandler }()
 
-	moqt.NotFoundHandler = &moqt.MockTrackHandler{
+	moqt.NotFoundTrackHandler = &moqt.MockTrackHandler{
 		ServeTrackFunc: func(w moqt.TrackWriter, config *moqt.SubscribeConfig) {
 			notFoundCalled = true
 		},
@@ -862,7 +819,7 @@ func TestTrackMux_NodeCleanupAfterCancellation(t *testing.T) {
 	intermediateWriter := &moqt.MockTrackWriter{PathValue: "/deep/path"}
 	intermediateNotFoundCalled := false
 
-	moqt.NotFoundHandler = &moqt.MockTrackHandler{
+	moqt.NotFoundTrackHandler = &moqt.MockTrackHandler{
 		ServeTrackFunc: func(w moqt.TrackWriter, config *moqt.SubscribeConfig) {
 			intermediateNotFoundCalled = true
 		},
@@ -910,12 +867,12 @@ func TestTrackMux_ConcurrentContextCancellation(t *testing.T) {
 	removedCount := 0
 	var checkWg sync.WaitGroup
 
-	origNotFoundHandler := moqt.NotFoundHandler
-	defer func() { moqt.NotFoundHandler = origNotFoundHandler }()
+	origNotFoundTrackHandler := moqt.NotFoundTrackHandler
+	defer func() { moqt.NotFoundTrackHandler = origNotFoundTrackHandler }()
 
 	var mu sync.Mutex // Mutex for thread-safe counter access
 
-	moqt.NotFoundHandler = &moqt.MockTrackHandler{
+	moqt.NotFoundTrackHandler = &moqt.MockTrackHandler{
 		ServeTrackFunc: func(w moqt.TrackWriter, config *moqt.SubscribeConfig) {
 			mu.Lock()
 			removedCount++
@@ -989,10 +946,10 @@ func TestTrackMux_MultipleHandlersWithSingleContext(t *testing.T) {
 
 	// Verify all handlers were removed
 	notFoundCalled := 0
-	origNotFoundHandler := moqt.NotFoundHandler
-	defer func() { moqt.NotFoundHandler = origNotFoundHandler }()
+	origNotFoundTrackHandler := moqt.NotFoundTrackHandler
+	defer func() { moqt.NotFoundTrackHandler = origNotFoundTrackHandler }()
 
-	moqt.NotFoundHandler = &moqt.MockTrackHandler{
+	moqt.NotFoundTrackHandler = &moqt.MockTrackHandler{
 		ServeTrackFunc: func(w moqt.TrackWriter, config *moqt.SubscribeConfig) {
 			notFoundCalled++
 		},
@@ -1036,19 +993,9 @@ func TestTrackMux_SingleWildcardAnnounce(t *testing.T) {
 	go mux.ServeAnnouncements(singleWildcardAnnouncer, singleWildcardConfig)
 
 	// Register handlers and verify that announcements occur
-	handler1 := &moqt.MockTrackHandler{
-		ServeAnnouncementsFunc: func(w moqt.AnnouncementWriter, config *moqt.AnnounceConfig) {
-			ann := moqt.NewAnnouncement("/tracks/audio/main")
-			w.SendAnnouncements([]*moqt.Announcement{ann})
-		},
-	}
+	handler1 := &moqt.MockTrackHandler{}
 
-	handler2 := &moqt.MockTrackHandler{
-		ServeAnnouncementsFunc: func(w moqt.AnnouncementWriter, config *moqt.AnnounceConfig) {
-			ann := moqt.NewAnnouncement("/tracks/audio/sub")
-			w.SendAnnouncements([]*moqt.Announcement{ann})
-		},
-	}
+	handler2 := &moqt.MockTrackHandler{}
 
 	wg.Add(1) // Increment WaitGroup for one handler
 	mux.Handle(context.Background(), "/tracks/audio/main", handler1)
@@ -1104,23 +1051,9 @@ func TestTrackMux_DoubleWildcardAnnounce(t *testing.T) {
 	go mux.ServeAnnouncements(doubleWildcardAnnouncer, doubleWildcardConfig)
 
 	// Set up test handlers
-	handler1 := &moqt.MockTrackHandler{
-		ServeAnnouncementsFunc: func(w moqt.AnnouncementWriter, config *moqt.AnnounceConfig) {
-			// Announce a top-level video track
-			ann := moqt.NewAnnouncement("/tracks/video/main")
-			wg.Add(1) // Increment counter before calling SendAnnouncements
-			w.SendAnnouncements([]*moqt.Announcement{ann})
-		},
-	}
+	handler1 := &moqt.MockTrackHandler{}
 
-	handler2 := &moqt.MockTrackHandler{
-		ServeAnnouncementsFunc: func(w moqt.AnnouncementWriter, config *moqt.AnnounceConfig) {
-			// Announce a nested video track
-			ann := moqt.NewAnnouncement("/tracks/video/streams/hd")
-			wg.Add(1) // Increment counter before calling SendAnnouncements
-			w.SendAnnouncements([]*moqt.Announcement{ann})
-		},
-	}
+	handler2 := &moqt.MockTrackHandler{}
 
 	// Register handlers
 	mux.Handle(ctx, "/tracks/video/main", handler1)

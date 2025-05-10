@@ -87,6 +87,11 @@ var (
 		reason: "too many subscribes",
 	}
 
+	ErrGoAwayTimeout = defaultTerminateError{
+		code:   terminate_goaway_timeout,
+		reason: "goaway timeout",
+	}
+
 	ErrGroupRejected = defaultGroupError{
 		code:   group_send_interrupted,
 		reason: "send interrupted",

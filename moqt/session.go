@@ -41,7 +41,7 @@ var _ Session = (*session)(nil)
 type session struct {
 	conn quic.Connection
 
-	subscribeIDCounter uint64
+	subscribeIDCounter atomic.Uint64
 
 	bitrate uint64 // TODO: use this when updating a session
 
@@ -60,9 +60,13 @@ type session struct {
 	sendInfoStreamQueue *sendInfoStreamQueue
 
 	receiveGroupStreamQueues map[SubscribeID]*receiveGroupStreamQueue
+
+	onTerminate func()
 }
 
 func (s *session) Terminate(err error) {
+	s.onTerminate()
+
 	var tererr TerminateError
 	if err == nil {
 		tererr = NoErrTerminate
@@ -144,12 +148,6 @@ func (s *session) GetInfo(path TrackPath) (Info, error) {
 // 	return s.uri
 // }
 
-func (s *session) nextSubscribeID() SubscribeID {
-	// Increment and return the previous value atomically
-	id := atomic.AddUint64(&s.subscribeIDCounter, 1) - 1
-	return SubscribeID(id)
-}
-
 func newSession(conn quic.Connection) *session {
 	sess := &session{
 		conn:                        conn,
@@ -181,6 +179,12 @@ func newSession(conn quic.Connection) *session {
 	wg.Wait()
 
 	return sess
+}
+
+func (s *session) nextSubscribeID() SubscribeID {
+	// Increment and return the previous value atomically
+	id := s.subscribeIDCounter.Add(1)
+	return SubscribeID(id)
 }
 
 // TODO: Implement this method and use it
@@ -475,6 +479,10 @@ func (sess *session) acceptInfoStream(ctx context.Context) (*sendInfoStream, err
 		case <-sess.sendInfoStreamQueue.Chan():
 		}
 	}
+}
+
+func (sess *session) goAway(uri string) {
+
 }
 
 // listenBiStreams accepts bidirectional streams and handles them based on their type.

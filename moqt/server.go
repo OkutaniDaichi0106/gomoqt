@@ -69,22 +69,24 @@ type Server struct {
 	 */
 	WebtransportServer webtransport.Server
 
-	lnMu            sync.RWMutex
-	rawQUICListners map[*quic.EarlyListener]struct{}
+	mu            sync.RWMutex
+	listeners     map[*quic.EarlyListener]struct{}
+	listenerGroup sync.WaitGroup
+	//
+	activeSess map[*session]struct{}
+	// onShutdown []func() // TODO: Implement if needed
 
-	cancelFuncs []context.CancelFunc
+	// cancelFuncs []context.CancelFunc
 
 	initOnce sync.Once
 
-	closeMu    sync.Mutex
-	isClosed   atomic.Bool
-	isShutdown atomic.Bool
+	inShutdown atomic.Bool
 
 	nativeQUICCh chan quic.Connection
 
 	doneChan     chan struct{} // Signal channel (notifies when server is completely closed)
 	shutdownChan chan struct{} // Shutdown notification channel
-	connCount    atomic.Int64  // Active connection counter
+	// connCount    atomic.Int64  // Active connection counter
 }
 
 func (s *Server) AcceptQUIC(ctx context.Context) (string, Session, error) {
@@ -127,9 +129,14 @@ func (s *Server) AcceptQUIC(ctx context.Context) (string, Session, error) {
 		}
 
 		ctx, cancel = context.WithCancel(conn.Context())
-		s.cancelFuncs = append(s.cancelFuncs, cancel)
 
 		s.handleStreams(ctx, sess)
+
+		s.addSession(sess)
+		sess.onTerminate = func() {
+			s.removeSession(sess)
+			cancel()
+		}
 
 		return path, sess, nil
 	}
@@ -162,7 +169,7 @@ func (s *Server) init() {
 		if s.Logger == nil {
 			s.Logger = slog.Default()
 		}
-		s.rawQUICListners = make(map[*quic.EarlyListener]struct{})
+		s.listeners = make(map[*quic.EarlyListener]struct{})
 
 		// Initialize signal channels
 		s.doneChan = make(chan struct{})
@@ -191,6 +198,10 @@ func (s *Server) init() {
 func (s *Server) ServeQUICListener(ln quic.EarlyListener) error {
 	s.init()
 
+	if s.shuttingDown() {
+		return errors.New("server is shutting down")
+	}
+
 	s.addListener(&ln)
 	defer s.removeListener(&ln)
 
@@ -199,27 +210,26 @@ func (s *Server) ServeQUICListener(ln quic.EarlyListener) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Monitor shutdown notification and cancel context
-	go func() {
-		select {
-		case <-s.shutdownChan:
-			cancel()
-		case <-ctx.Done():
-			// Context canceled for other reasons
-		}
-	}()
+	// // Monitor shutdown notification and cancel context
+	// go func() {
+	// 	select {
+	// 	case <-s.shutdownChan:
+	// 		cancel()
+	// 	case <-ctx.Done():
+	// 		// Context canceled for other reasons
+	// 	}
+	// }()
 
 	s.Logger.Debug("listening for QUIC connections", "listener", ln)
 
 	for {
+		if s.shuttingDown() {
+			return errors.New("server is shutting down")
+		}
+
 		// Listen for new QUIC connections
 		conn, err := ln.Accept(ctx)
 		if err != nil {
-			// Error due to shutdown
-			if errors.Is(err, quicgo.ErrServerClosed) || ctx.Err() != nil || s.isClosed.Load() {
-				return http.ErrServerClosed
-			}
-			s.Logger.Error("failed to accept new QUIC connection", "listener", ln, "error", err.Error())
 			return err
 		}
 
@@ -227,7 +237,6 @@ func (s *Server) ServeQUICListener(ln quic.EarlyListener) error {
 
 		// Handle connection in a goroutine
 		go func(conn quic.Connection) {
-
 			if err := s.ServeQUICConn(conn); err != nil {
 				s.Logger.Debug("handling connection failed", "error", err)
 			}
@@ -237,9 +246,6 @@ func (s *Server) ServeQUICListener(ln quic.EarlyListener) error {
 
 func (s *Server) ServeQUICConn(conn quic.Connection) error {
 	s.init()
-
-	s.incrementConnCount()
-	defer s.decrementConnCount()
 
 	protocol := conn.ConnectionState().TLS.NegotiatedProtocol
 
@@ -269,12 +275,9 @@ func (s *Server) ServeQUICConn(conn quic.Connection) error {
 // It upgrades the HTTP/3 connection to a WebTransport session and calls the session handler.
 // If the server is not configured with a WebTransport server, it creates a default server.
 func (s *Server) AcceptWebTransport(w http.ResponseWriter, r *http.Request) (Session, error) {
-	if s.isClosed.Load() {
+	if s.shuttingDown() {
 		return nil, errors.New("server is closed")
 	}
-
-	s.closeMu.Lock()
-	defer s.closeMu.Unlock()
 
 	s.init()
 
@@ -305,9 +308,14 @@ func (s *Server) AcceptWebTransport(w http.ResponseWriter, r *http.Request) (Ses
 	}
 
 	ctx, cancel = context.WithCancel(context.Background())
-	s.cancelFuncs = append(s.cancelFuncs, cancel)
 
 	s.handleStreams(ctx, sess)
+
+	s.addSession(sess)
+	sess.onTerminate = func() {
+		s.removeSession(sess)
+		cancel()
+	}
 
 	return sess, nil
 }
@@ -374,37 +382,30 @@ func (s *Server) ListenAndServeTLS(certFile, keyFile string) (err error) {
 }
 
 func (s *Server) Close() error {
-	s.lnMu.Lock()
-	defer s.lnMu.Unlock()
+	s.inShutdown.Store(true)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	s.Logger.Info("closing server", "address", s.Addr)
-
-	// Early return if already closed
-	if s.isClosed.Load() {
-		return nil
-	}
-
-	// Mark the server as closed
-	s.isClosed.Store(true)
 
 	// Send shutdown notification (cancels listener's Accept)
 	close(s.shutdownChan)
 
 	// Close all listeners
-	if s.rawQUICListners != nil {
+	if s.listeners != nil {
 		s.Logger.Info("closing QUIC listeners", "address", s.Addr)
-		for ln := range s.rawQUICListners {
+		for ln := range s.listeners {
 			(*ln).Close()
 		}
 	}
 
-	if s.WebtransportServer != nil {
-		s.Logger.Info("closing WebTransport server", "address", s.Addr)
-		s.WebtransportServer.Close()
+	for sess := range s.activeSess {
+		(*sess).Terminate(NoErrTerminate)
 	}
 
 	// Wait for active connections to complete if any
-	if s.connCount.Load() > 0 {
+	if len(s.activeSess) > 0 {
 		<-s.doneChan
 	}
 
@@ -412,36 +413,35 @@ func (s *Server) Close() error {
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
-	// Early return if already closed
-	if s.isClosed.Load() {
-		return nil
+	s.inShutdown.Store(true)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for ln := range s.listeners {
+		(*ln).Close()
 	}
+	s.listeners = nil
 
-	// Mark the server as closed
-	s.isClosed.Store(true)
+	// Wait
+	s.mu.Unlock()
+	s.listenerGroup.Wait()
+	s.mu.Lock()
 
-	// Send shutdown notification (cancels listener's Accept)
-	close(s.shutdownChan)
-
-	// Close all listeners
-	if s.rawQUICListners != nil {
-		for ln := range s.rawQUICListners {
-			(*ln).Close()
-		}
-	}
-	s.lnMu.Unlock()
-
-	// Use WebTransport server's shutdown if available
-	if s.WebtransportServer != nil {
-		return s.WebtransportServer.Shutdown(ctx)
+	// Go away all active sessions
+	for sess := range s.activeSess {
+		s.goAway(sess)
 	}
 
 	// For active connections, wait for completion or context cancellation
-	if s.connCount.Load() > 0 {
+	if len(s.activeSess) > 0 {
 		select {
 		case <-s.doneChan:
 			return nil
 		case <-ctx.Done():
+			for sess := range s.activeSess {
+				(*sess).Terminate(ErrGoAwayTimeout)
+			}
 			return ctx.Err()
 		}
 	}
@@ -463,28 +463,45 @@ func (s *Server) setDefaultWebtransportServer() {
 }
 
 func (s *Server) addListener(ln *quic.EarlyListener) {
-	s.lnMu.Lock()
-	defer s.lnMu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	s.rawQUICListners[ln] = struct{}{}
+	if s.listeners == nil {
+		s.listeners = make(map[*quic.EarlyListener]struct{})
+	}
+	s.listeners[ln] = struct{}{}
+	s.listenerGroup.Add(1)
 }
 
 func (s *Server) removeListener(ln *quic.EarlyListener) {
-	s.lnMu.Lock()
-	defer s.lnMu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	delete(s.rawQUICListners, ln)
+	if s.listeners == nil {
+		return
+	}
+	delete(s.listeners, ln)
+	s.listenerGroup.Done()
 }
 
-func (s *Server) incrementConnCount() {
-	s.connCount.Add(1)
+func (s *Server) addSession(sess *session) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if sess == nil {
+		return
+	}
+	s.activeSess[sess] = struct{}{}
 }
 
-func (s *Server) decrementConnCount() {
-	newCount := s.connCount.Add(-1)
+func (s *Server) removeSession(sess *session) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.activeSess, sess)
 
 	// Send completion signal if connections reach zero and server is closed
-	if newCount == 0 && s.isClosed.Load() {
+	if len(s.activeSess) == 0 && s.shuttingDown() {
 		select {
 		case s.doneChan <- struct{}{}:
 		default:
@@ -493,12 +510,20 @@ func (s *Server) decrementConnCount() {
 	}
 }
 
+func (s *Server) shuttingDown() bool {
+	return s.inShutdown.Load()
+}
+
 func (s *Server) acceptTimeout() time.Duration {
 	if s.AcceptTimeout != 0 {
 		return s.AcceptTimeout
 	}
-	http.Server{}
 	return 5 * time.Second
+}
+
+func (s *Server) goAway(sess *session) {
+	// TODO: Implement go away
+	// sess.goAway("")
 }
 
 const NextProtoMOQ = "moq-00"

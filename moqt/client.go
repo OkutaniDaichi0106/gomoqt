@@ -30,8 +30,14 @@ type Client struct {
 	 */
 	Config *Config
 
-	/***/
+	/*
+	 * Handlers
+	 * TrackHandler:
+	 * AnnouncementHandler:
+	 */
 	TrackHandler TrackHandler
+
+	AnnouncementHandler AnnouncementHandler
 
 	/***/
 	SetupExtensions *Parameters
@@ -41,11 +47,11 @@ type Client struct {
 	 */
 	Logger *slog.Logger
 
-	once sync.Once
+	initOnce sync.Once
 }
 
 func (c *Client) init() {
-	c.once.Do(func() {
+	c.initOnce.Do(func() {
 		if c.Logger == nil {
 			c.Logger = slog.Default()
 		}
@@ -68,10 +74,10 @@ func (c *Client) Dial(urlStr string, ctx context.Context) (Session, *SetupRespon
 	switch req.uri.Scheme {
 	case "https":
 		c.Logger.Debug("dialing using WebTransport")
-		return c.DialWebTransport(ctx, *req)
+		return c.DialWebTransport(ctx, req)
 	case "moqt":
 		c.Logger.Debug("dialing using QUIC")
-		return c.dialQUIC(ctx, *req)
+		return c.DialQUIC(ctx, req)
 	default:
 		err = errors.New("invalid scheme")
 		c.Logger.Error("unsupported URL scheme", "scheme", req.uri.Scheme, "url", urlStr)
@@ -79,7 +85,7 @@ func (c *Client) Dial(urlStr string, ctx context.Context) (Session, *SetupRespon
 	}
 }
 
-func (c *Client) DialWebTransport(ctx context.Context, req SetupRequest) (Session, *SetupResponse, error) {
+func (c *Client) DialWebTransport(ctx context.Context, req *SetupRequest) (Session, *SetupResponse, error) {
 	c.init()
 
 	if req.uri.Scheme != "https" {
@@ -120,7 +126,7 @@ func (c *Client) DialWebTransport(ctx context.Context, req SetupRequest) (Sessio
 }
 
 // TODO: Expose this method if QUIC is supported
-func (c *Client) dialQUIC(ctx context.Context, req SetupRequest) (Session, *SetupResponse, error) {
+func (c *Client) DialQUIC(ctx context.Context, req *SetupRequest) (Session, *SetupResponse, error) {
 	c.init()
 
 	c.Logger.Debug("dialing using QUIC")
@@ -133,17 +139,8 @@ func (c *Client) dialQUIC(ctx context.Context, req SetupRequest) (Session, *Setu
 
 	c.Logger.Debug("dialing QUIC", "host", req.uri.Hostname(), "port", req.uri.Port(), "path", req.uri.Path)
 
-	// Add path parameter
-	if c.SetupExtensions == nil {
-		c.SetupExtensions = NewParameters()
-		c.Logger.Debug("SetupExtensions initialized")
-	}
-	c.SetupExtensions.SetString(param_type_path, req.uri.Path)
-	c.Logger.Debug("path parameter set", "path", req.uri.Path)
-
 	if DialQUICFunc == nil {
-		DialQUICFunc = defaultDialQUICFunc
-		c.Logger.Debug("DialQUICFunc initialized")
+		panic("no DialQUICFunc provided")
 	}
 
 	// Dial QUIC connection
@@ -154,13 +151,17 @@ func (c *Client) dialQUIC(ctx context.Context, req SetupRequest) (Session, *Setu
 		return nil, nil, err
 	}
 
+	//
 	var param *Parameters
 	if c.SetupExtensions != nil {
 		param = c.SetupExtensions
 		c.Logger.Debug("using setup extensions", "extensions", param)
 	} else {
 		c.Logger.Debug("no setup extensions provided")
+		param = NewParameters()
 	}
+	param.SetString(param_type_path, req.uri.Path)
+
 	sess, rsp, err := c.openSession(conn, param)
 	if err != nil {
 		c.Logger.Error("failed to open session stream", "error", err.Error())
@@ -172,7 +173,7 @@ func (c *Client) dialQUIC(ctx context.Context, req SetupRequest) (Session, *Setu
 	return sess, rsp, nil
 }
 
-func (c *Client) openSession(conn quic.Connection, params *Parameters) (Session, *SetupResponse, error) {
+func (c *Client) openSession(conn quic.Connection, params *Parameters) (*session, *SetupResponse, error) {
 	c.init()
 
 	c.Logger.Debug("opening a session")
@@ -186,6 +187,14 @@ func (c *Client) openSession(conn quic.Connection, params *Parameters) (Session,
 	}
 
 	c.Logger.Debug("session stream opened")
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	handleRequests(ctx, sess, c.TrackHandler, c.AnnouncementHandler)
+
+	sess.onTerminate = func() {
+		cancel()
+	}
 
 	return sess, &SetupResponse{
 		selectedVersion: sess.sessionStream.selectedVersion,

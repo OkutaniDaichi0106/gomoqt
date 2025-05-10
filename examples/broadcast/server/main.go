@@ -1,9 +1,7 @@
 package main
 
 import (
-	"context"
 	"crypto/tls"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -26,13 +24,11 @@ func main() {
 			Allow0RTT:       true,
 			EnableDatagrams: true,
 		},
-
-		SessionHandlerFunc: handleSession,
 	}
 
 	// Serve moq over webtransport
 	http.HandleFunc("/broadcast", func(w http.ResponseWriter, r *http.Request) {
-		err := server.ServeWebTransport(w, r)
+		sess, err := server.AcceptWebTransport(w, r)
 		if err != nil {
 			slog.Error("failed to serve web transport", "error", err)
 		}
@@ -41,41 +37,6 @@ func main() {
 	err := server.ListenAndServe()
 	if err != nil {
 		slog.Error("failed to listen and serve", "error", err)
-	}
-}
-
-func handleSession(path string, sess moqt.Session) {
-	slog.Info("handling a session", slog.String("path", path))
-
-	// Accept a track stream
-	stream, config, err := sess.AcceptTrackStream(context.Background())
-	if err != nil {
-		slog.Error("failed to accept track stream", "error", err)
-		return
-	}
-
-	seq := config.MinGroupSequence
-	for {
-		w, err := stream.OpenGroup(seq)
-		if err != nil {
-			slog.Error("failed to accept group", "error", err)
-			break
-		}
-
-		slog.Info("group opened", slog.String("group sequence", seq.String()))
-
-		frame := moqt.NewFrame([]byte(fmt.Sprintf("Hello!!. Group: {%s}", seq.String())))
-		for {
-			err := w.WriteFrame(frame)
-			if err != nil {
-				slog.Error("failed to write frame", "error", err)
-				break
-			}
-
-			slog.Info("frame written", slog.String("message", string(frame.CopyBytes())))
-		}
-
-		seq = seq.Next()
 	}
 }
 

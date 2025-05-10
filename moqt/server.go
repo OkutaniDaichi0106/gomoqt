@@ -130,7 +130,7 @@ func (s *Server) AcceptQUIC(ctx context.Context) (string, Session, error) {
 
 		ctx, cancel = context.WithCancel(conn.Context())
 
-		s.handleStreams(ctx, sess)
+		handleRequests(ctx, sess, s.TrackHandler, s.AnnouncementHandler)
 
 		s.addSession(sess)
 		sess.onTerminate = func() {
@@ -142,23 +142,23 @@ func (s *Server) AcceptQUIC(ctx context.Context) (string, Session, error) {
 	}
 }
 
-func (s *Server) handleStreams(ctx context.Context, sess *session) {
+func handleRequests(ctx context.Context, sess *session, track TrackHandler, announce AnnouncementHandler) {
 	// TODO: Handle streams
 	wg := new(sync.WaitGroup) // TODO: sync.WaitGroup
 	wg.Add(3)
 	go func() {
 		wg.Done()
-		handleSubscribeStream(ctx, sess, s.TrackHandler)
+		handleSubscribeStream(ctx, sess, track)
 	}()
 
 	go func() {
 		wg.Done()
-		handleInfoStream(ctx, sess, s.TrackHandler)
+		handleInfoStream(ctx, sess, track)
 	}()
 
 	go func() {
 		wg.Done()
-		handleAnnounceStream(ctx, sess, s.AnnouncementHandler)
+		handleAnnounceStream(ctx, sess, announce)
 	}()
 
 	wg.Wait()
@@ -188,7 +188,7 @@ func (s *Server) init() {
 		}
 
 		if s.nativeQUICCh == nil {
-			s.nativeQUICCh = make(chan quic.Connection, 0)
+			s.nativeQUICCh = make(chan quic.Connection, 1<<4)
 		}
 
 		s.Logger.Debug("initialized server", "address", s.Addr)
@@ -309,7 +309,7 @@ func (s *Server) AcceptWebTransport(w http.ResponseWriter, r *http.Request) (Ses
 
 	ctx, cancel = context.WithCancel(context.Background())
 
-	s.handleStreams(ctx, sess)
+	handleRequests(ctx, sess, s.TrackHandler, s.AnnouncementHandler)
 
 	s.addSession(sess)
 	sess.onTerminate = func() {

@@ -34,80 +34,9 @@ type Session interface {
 
 	// Request Track Info
 	GetInfo(TrackPath) (Info, error)
-
-	/*
-	 * Methods for the Publisher
-	 */
-	// Accept an Announce Stream
-	// AcceptAnnounceStream(context.Context) (AnnouncementWriter, *AnnounceConfig, error)
-
-	// Accept a Track Stream
-	// AcceptTrackStream(context.Context) (SendTrackStream, *SubscribeConfig, error)
 }
 
 var _ Session = (*session)(nil)
-
-func (c *Client) OpenSession(conn quic.Connection, params *Parameters) (Session, *SetupResponse, error) {
-	slog.Debug("opening a session")
-
-	sess := newSession(conn)
-
-	err := sess.openSessionStream(internal.DefaultClientVersions, params)
-	if err != nil {
-		slog.Error("failed to open a session stream", "error", err)
-		return nil, nil, err
-	}
-
-	return sess, &SetupResponse{
-		selectedVersion: sess.sessionStream.selectedVersion,
-		Parameters:      sess.sessionStream.serverParameters,
-	}, nil
-}
-
-func (s *Server) AcceptSession(ctx context.Context, conn quic.Connection, params func(*Parameters) (*Parameters, error)) (Session, error) {
-	slog.Debug("accepting session")
-
-	sess := newSession(conn)
-
-	// Listen the session stream
-	err := sess.acceptSessionStream(ctx)
-	if err != nil {
-		slog.Error("failed to accept session stream", "error", err)
-		return nil, err
-	}
-
-	param, err := params(sess.sessionStream.ClientParameters())
-	if err != nil {
-		slog.Error("failed to handle the session stream", "error", err)
-		return nil, err
-	}
-
-	// Send a SESSION_SERVER message
-	ssm := message.SessionServerMessage{
-		SelectedVersion: internal.DefaultServerVersion,
-		Parameters:      param.paramMap,
-	}
-
-	_, err = ssm.Encode(sess.sessionStream.stream)
-	if err != nil {
-		slog.Error("failed to send a SESSION_SERVER message", "error", err)
-		return nil, err
-	}
-
-	// Set the selected version and parameters
-	sess.sessionStream.selectedVersion = ssm.SelectedVersion
-
-	// Set the server parameters
-	sess.sessionStream.serverParameters = &Parameters{ssm.Parameters} // TODO: Is this necessary?
-
-	go handleSubscribeStream(ctx, sess, s.TrackHandler)
-
-	go handleInfoStream(ctx, sess, s.TrackHandler)
-
-	go handleAnnounceStream(ctx, sess, s.AnnouncementHandler)
-
-	return sess, nil
-}
 
 type session struct {
 	conn quic.Connection
@@ -117,7 +46,7 @@ type session struct {
 	bitrate uint64 // TODO: use this when updating a session
 
 	// sessionStreamCh is the channel for signaling session streams
-	sessionStreamCh chan struct{}
+	sessionStreamCh chan *sessionStream
 
 	// sessionStream is the session stream for the session
 	sessionStream *sessionStream
@@ -211,57 +140,8 @@ func (s *session) GetInfo(path TrackPath) (Info, error) {
 	return info, nil
 }
 
-// func (s *session) AcceptAnnounceStream(ctx context.Context) (AnnouncementWriter, *AnnounceConfig, error) {
-// 	slog.Debug("accepting announce stream")
-
-// 	stream, err := s.acceptAnnounceStream(ctx)
-// 	if err != nil {
-// 		slog.Error("failed to accept announce stream", "error", err)
-// 		return nil, nil, err
-// 	}
-
-// 	return stream, &stream.config, err
-// }
-
-// func (s *session) AcceptTrackStream(ctx context.Context) (SendTrackStream, *SubscribeConfig, error) {
-// 	slog.Debug("accepting track stream")
-
-// 	ss, err := s.acceptSubscribeStream(ctx)
-// 	if err != nil {
-// 		return nil, nil, err
-// 	}
-
-// 	if ss == nil {
-// 		return nil, nil, ErrInternalError
-// 	}
-
-// 	sts := newSendTrackStream(s, ss)
-
-// 	var info Info
-
-// 	path := sts.TrackPath()
-// 	info, err = s.handler.GetInfo(path)
-// 	if err != nil {
-// 		slog.Error("failed to get track info",
-// 			"track_path", path,
-// 			"error", err,
-// 		)
-// 		sts.CloseWithError(err)
-// 		return nil, nil, err
-// 	}
-
-// 	im := message.InfoMessage{
-// 		TrackPriority:       message.TrackPriority(info.TrackPriority),
-// 		LatestGroupSequence: message.GroupSequence(info.LatestGroupSequence),
-// 		GroupOrder:          message.GroupOrder(info.GroupOrder),
-// 	}
-
-// 	_, err = im.Encode(sts.subscribeStream.stream)
-// 	if err != nil {
-// 		return nil, nil, err
-// 	}
-
-// 	return sts, &ss.config, nil
+// func (s *session) URI() *url.URL {
+// 	return s.uri
 // }
 
 func (s *session) nextSubscribeID() SubscribeID {
@@ -270,7 +150,6 @@ func (s *session) nextSubscribeID() SubscribeID {
 	return SubscribeID(id)
 }
 
-// ////
 func newSession(conn quic.Connection) *session {
 	sess := &session{
 		conn:                        conn,
@@ -279,8 +158,7 @@ func newSession(conn quic.Connection) *session {
 		sendInfoStreamQueue:         newSendInfoStreamQueue(),
 		receiveGroupStreamQueues:    make(map[SubscribeID]*receiveGroupStreamQueue),
 		bitrate:                     0,
-		sessionStreamCh:             make(chan struct{}),
-		// handler:                     handler,
+		sessionStreamCh:             make(chan *sessionStream),
 	}
 
 	wg := new(sync.WaitGroup) // TODO: sync.WaitGroup
@@ -289,16 +167,18 @@ func newSession(conn quic.Connection) *session {
 	// Listen bidirectional streams
 	wg.Add(1)
 	go func() {
-		defer wg.Done()
+		wg.Done()
 		sess.listenBiStreams(ctx)
 	}()
 
 	// Listen unidirectional streams
 	wg.Add(1)
 	go func() {
-		defer wg.Done()
+		wg.Done()
 		sess.listenUniStreams(ctx)
 	}()
+
+	wg.Wait()
 
 	return sess
 }
@@ -491,18 +371,46 @@ func (sess *session) openGroupStream(id SubscribeID, sequence GroupSequence) (*s
 	return newSendGroupStream(stream, id, sequence), nil
 }
 
-func (sess *session) acceptSessionStream(ctx context.Context) error {
+func (sess *session) acceptSessionStream(ctx context.Context, params func(*Parameters) (*Parameters, error)) error {
 	if sess.sessionStream != nil {
 		return nil
 	}
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-sess.sessionStreamCh:
-		if sess.sessionStream == nil {
+	case stream := <-sess.sessionStreamCh:
+		if stream == nil {
 			return errors.New("session stream is nil")
 		}
 		close(sess.sessionStreamCh)
+
+		serverParams, err := params(stream.clientParameters)
+		if err != nil {
+			return err
+		}
+
+		version := internal.DefaultServerVersion
+
+		// Send a SESSION_SERVER message
+		ssm := message.SessionServerMessage{
+			SelectedVersion: version,
+			Parameters:      serverParams.paramMap,
+		}
+
+		_, err = ssm.Encode(sess.sessionStream.stream)
+		if err != nil {
+			slog.Error("failed to send a SESSION_SERVER message", "error", err)
+			return err
+		}
+
+		// Set the selected version and parameters
+		stream.selectedVersion = version
+
+		// Set the server parameters
+		stream.serverParameters = serverParams // TODO: Is this necessary?
+
+		sess.sessionStream = stream
+
 		return nil
 	}
 }

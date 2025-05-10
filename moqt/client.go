@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 	quicgo "github.com/quic-go/quic-go"
 )
 
@@ -107,7 +109,7 @@ func (c *Client) DialWebTransport(ctx context.Context, req SetupRequest) (Sessio
 		c.Logger.Debug("no setup extensions provided")
 	}
 
-	sess, rsp, err := c.OpenSession(conn, &Parameters{params})
+	sess, rsp, err := c.openSession(conn, &Parameters{params})
 	if err != nil {
 		c.Logger.Error("failed to open session stream", "error", err.Error())
 		return nil, nil, err
@@ -159,7 +161,7 @@ func (c *Client) dialQUIC(ctx context.Context, req SetupRequest) (Session, *Setu
 	} else {
 		c.Logger.Debug("no setup extensions provided")
 	}
-	sess, rsp, err := c.OpenSession(conn, param)
+	sess, rsp, err := c.openSession(conn, param)
 	if err != nil {
 		c.Logger.Error("failed to open session stream", "error", err.Error())
 		return nil, nil, err
@@ -168,4 +170,25 @@ func (c *Client) dialQUIC(ctx context.Context, req SetupRequest) (Session, *Setu
 	c.Logger.Debug("setup response received", "version", rsp.selectedVersion, "parameters", rsp.Parameters)
 
 	return sess, rsp, nil
+}
+
+func (c *Client) openSession(conn quic.Connection, params *Parameters) (Session, *SetupResponse, error) {
+	c.init()
+
+	c.Logger.Debug("opening a session")
+
+	sess := newSession(conn)
+
+	err := sess.openSessionStream(internal.DefaultClientVersions, params)
+	if err != nil {
+		c.Logger.Error("failed to open a session stream", "error", err.Error())
+		return nil, nil, err
+	}
+
+	c.Logger.Debug("session stream opened")
+
+	return sess, &SetupResponse{
+		selectedVersion: sess.sessionStream.selectedVersion,
+		Parameters:      sess.sessionStream.serverParameters,
+	}, nil
 }

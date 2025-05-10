@@ -9,7 +9,6 @@ package moqt
 
 type TrackHandler interface {
 	ServeTrack(TrackWriter, *SubscribeConfig)
-
 	GetInfo(TrackPath) (Info, error)
 }
 

@@ -92,6 +92,6 @@ func (c *quicgoConnection) SendDatagram(data []byte) error {
 	return errors.New("not supported")
 }
 
-func (c *quicgoConnection) AddPath(*quicgo.Transport) (*quicgo.Path, error) {
-	return nil, errors.New("not supported")
-}
+// func (c *quicgoConnection) AddPath(*quicgo.Transport) (*quicgo.Path, error) {
+// 	return nil, errors.New("not supported")
+// }

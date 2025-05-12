@@ -51,8 +51,6 @@ type Server struct {
 	 * - TrackHandler:
 	 * - AnnouncementHandler:
 	 */
-	TrackHandler        TrackHandler
-	AnnouncementHandler AnnouncementHandler
 
 	//
 	AcceptTimeout time.Duration // TODO: Rename
@@ -84,84 +82,8 @@ type Server struct {
 
 	nativeQUICCh chan quic.Connection
 
-	doneChan     chan struct{} // Signal channel (notifies when server is completely closed)
-	shutdownChan chan struct{} // Shutdown notification channel
+	doneChan chan struct{} // Signal channel (notifies when server is completely closed)
 	// connCount    atomic.Int64  // Active connection counter
-}
-
-func (s *Server) AcceptQUIC(ctx context.Context) (string, Session, error) {
-	select {
-	case <-ctx.Done():
-		return "", nil, ctx.Err()
-	case conn := <-s.nativeQUICCh:
-		s.Logger.Debug("handling quic connection", "remote_address", conn.RemoteAddr())
-
-		sess := newSession(conn)
-
-		var path string
-		// Listen the session stream
-		params := func(reqParam *Parameters) (*Parameters, error) {
-			var err error
-
-			// Get the path parameter
-			path, err = reqParam.GetString(param_type_path)
-			if err != nil {
-				s.Logger.Error("failed to get 'path' parameter", "remote_address", conn.RemoteAddr(), "error", err.Error())
-				return nil, err
-			}
-
-			// Get any setup extensions
-			rspParam, err := s.SetupExtensions(reqParam)
-			if err != nil {
-				s.Logger.Error("failed to get setup extensions", "remote_address", conn.RemoteAddr(), "error", err.Error())
-				return nil, err
-			}
-
-			return rspParam, nil
-		}
-
-		ctx, cancel := context.WithTimeout(conn.Context(), s.acceptTimeout())
-		err := sess.acceptSessionStream(ctx, params)
-		if err != nil {
-			cancel()
-			slog.Error("failed to accept session stream", "error", err)
-			return "", nil, err
-		}
-
-		ctx, cancel = context.WithCancel(conn.Context())
-
-		handleRequests(ctx, sess, s.TrackHandler, s.AnnouncementHandler)
-
-		s.addSession(sess)
-		sess.onTerminate = func() {
-			s.removeSession(sess)
-			cancel()
-		}
-
-		return path, sess, nil
-	}
-}
-
-func handleRequests(ctx context.Context, sess *session, track TrackHandler, announce AnnouncementHandler) {
-	// TODO: Handle streams
-	wg := new(sync.WaitGroup) // TODO: sync.WaitGroup
-	wg.Add(3)
-	go func() {
-		wg.Done()
-		handleSubscribeStream(ctx, sess, track)
-	}()
-
-	go func() {
-		wg.Done()
-		handleInfoStream(ctx, sess, track)
-	}()
-
-	go func() {
-		wg.Done()
-		handleAnnounceStream(ctx, sess, announce)
-	}()
-
-	wg.Wait()
 }
 
 func (s *Server) init() {
@@ -173,14 +95,6 @@ func (s *Server) init() {
 
 		// Initialize signal channels
 		s.doneChan = make(chan struct{})
-		s.shutdownChan = make(chan struct{})
-
-		if s.TrackHandler == nil {
-			s.TrackHandler = DefaultMux
-		}
-		if s.AnnouncementHandler == nil {
-			s.AnnouncementHandler = DefaultMux
-		}
 
 		// Initialize WebtransportServer
 		if s.WebtransportServer == nil {
@@ -196,11 +110,11 @@ func (s *Server) init() {
 }
 
 func (s *Server) ServeQUICListener(ln quic.EarlyListener) error {
-	s.init()
-
 	if s.shuttingDown() {
 		return errors.New("server is shutting down")
 	}
+
+	s.init()
 
 	s.addListener(&ln)
 	defer s.removeListener(&ln)
@@ -209,16 +123,6 @@ func (s *Server) ServeQUICListener(ln quic.EarlyListener) error {
 	// This context will be canceled when the server is shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	// // Monitor shutdown notification and cancel context
-	// go func() {
-	// 	select {
-	// 	case <-s.shutdownChan:
-	// 		cancel()
-	// 	case <-ctx.Done():
-	// 		// Context canceled for other reasons
-	// 	}
-	// }()
 
 	s.Logger.Debug("listening for QUIC connections", "listener", ln)
 
@@ -245,6 +149,10 @@ func (s *Server) ServeQUICListener(ln quic.EarlyListener) error {
 }
 
 func (s *Server) ServeQUICConn(conn quic.Connection) error {
+	if s.shuttingDown() {
+		return ErrServerClosed
+	}
+
 	s.init()
 
 	protocol := conn.ConnectionState().TLS.NegotiatedProtocol
@@ -271,12 +179,53 @@ func (s *Server) ServeQUICConn(conn quic.Connection) error {
 	}
 }
 
+func (s *Server) AcceptQUIC(ctx context.Context, mux *TrackMux) (string, Session, error) {
+	if s.shuttingDown() {
+		return "", nil, ErrServerClosed
+	}
+	select {
+	case <-ctx.Done():
+		return "", nil, ctx.Err()
+	case conn := <-s.nativeQUICCh:
+		s.Logger.Debug("handling quic connection", "remote_address", conn.RemoteAddr())
+
+		var path string
+		// Listen the session stream
+		params := func(reqParam *Parameters) (*Parameters, error) {
+			var err error
+
+			// Get the path parameter
+			path, err = reqParam.GetString(param_type_path)
+			if err != nil {
+				s.Logger.Error("failed to get 'path' parameter", "remote_address", conn.RemoteAddr(), "error", err.Error())
+				return nil, err
+			}
+
+			// Get any setup extensions
+			rspParam, err := s.SetupExtensions(reqParam)
+			if err != nil {
+				s.Logger.Error("failed to get setup extensions", "remote_address", conn.RemoteAddr(), "error", err.Error())
+				return nil, err
+			}
+
+			return rspParam, nil
+		}
+
+		sess, err := s.acceptSession(conn, params, mux)
+		if err != nil {
+			return "", nil, err
+		}
+
+		return path, sess, nil
+	}
+}
+
 // ServeWebTransport serves a WebTransport session.
 // It upgrades the HTTP/3 connection to a WebTransport session and calls the session handler.
 // If the server is not configured with a WebTransport server, it creates a default server.
-func (s *Server) AcceptWebTransport(w http.ResponseWriter, r *http.Request) (Session, error) {
+func (s *Server) AcceptWebTransport(w http.ResponseWriter, r *http.Request, mux *TrackMux) (Session, error) {
 	if s.shuttingDown() {
-		return nil, errors.New("server is closed")
+		return nil, ErrServerClosed
 	}
 
 	s.init()
@@ -294,28 +243,38 @@ func (s *Server) AcceptWebTransport(w http.ResponseWriter, r *http.Request) (Ses
 
 	s.Logger.Debug("WebTransport session established", "remote_address", r.RemoteAddr)
 
-	sess := newSession(conn)
-
 	params := s.SetupExtensions
 
-	ctx, cancel := context.WithTimeout(r.Context(), s.acceptTimeout())
-	defer cancel()
+	return s.acceptSession(conn, params, mux)
+}
 
-	err = sess.acceptSessionStream(ctx, params)
+func (s *Server) acceptSession(conn quic.Connection, params func(req *Parameters) (rsp *Parameters, err error), mux *TrackMux) (Session, error) {
+	ctx, cancel := context.WithCancel(conn.Context())
+
+	sess := newSession(ctx, conn)
+
+	ctxAccept, cancelAccept := context.WithTimeout(ctx, s.acceptTimeout())
+	defer cancelAccept()
+	err := sess.acceptSessionStream(ctxAccept, params)
 	if err != nil {
 		slog.Error("failed to accept session stream", "error", err)
 		return nil, err
 	}
 
-	ctx, cancel = context.WithCancel(context.Background())
+	if mux == nil {
+		mux = DefaultMux
+	}
 
-	handleRequests(ctx, sess, s.TrackHandler, s.AnnouncementHandler)
+	go sess.handleAnnounceStream(ctx, mux)
+	go sess.handleSubscribeStream(ctx, mux)
+	go sess.handleInfoStream(ctx, mux)
 
 	s.addSession(sess)
-	sess.onTerminate = func() {
-		s.removeSession(sess)
+	go func() {
+		<-sess.doneCh
 		cancel()
-	}
+		s.removeSession(sess)
+	}()
 
 	return sess, nil
 }
@@ -389,9 +348,6 @@ func (s *Server) Close() error {
 
 	s.Logger.Info("closing server", "address", s.Addr)
 
-	// Send shutdown notification (cancels listener's Accept)
-	close(s.shutdownChan)
-
 	// Close all listeners
 	if s.listeners != nil {
 		s.Logger.Info("closing QUIC listeners", "address", s.Addr)
@@ -402,6 +358,7 @@ func (s *Server) Close() error {
 
 	for sess := range s.activeSess {
 		(*sess).Terminate(NoErrTerminate)
+		s.removeSession(sess)
 	}
 
 	// Wait for active connections to complete if any
@@ -441,6 +398,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		case <-ctx.Done():
 			for sess := range s.activeSess {
 				(*sess).Terminate(ErrGoAwayTimeout)
+				s.removeSession(sess)
 			}
 			return ctx.Err()
 		}

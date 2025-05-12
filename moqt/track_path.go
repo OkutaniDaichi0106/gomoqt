@@ -122,7 +122,7 @@ func matchParts(patternParts, pathParts []string, variables *[]string) bool {
 	return i == len(patternParts) && j == len(pathParts)
 }
 
-func BuildTrackPath(pattern string, segments ...string) TrackPath {
+func NewTrackPath(pattern string, segments ...string) TrackPath {
 	count := strings.Count(pattern, "*") - strings.Count(pattern, "**")
 
 	if count > len(segments) {

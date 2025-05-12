@@ -27,15 +27,15 @@ type sendTrackStream struct {
 }
 
 func (s *sendTrackStream) SubscribeID() SubscribeID {
-	return s.subscribeStream.id
+	return s.subscribeStream.SubscribeID()
 }
 
 func (s *sendTrackStream) SubuscribeConfig() *SubscribeConfig {
-	return &s.subscribeStream.config
+	return s.subscribeStream.SubuscribeConfig()
 }
 
 func (s *sendTrackStream) TrackPath() TrackPath {
-	return s.subscribeStream.path
+	return s.subscribeStream.TrackPath()
 }
 
 func (s *sendTrackStream) LatestGroupSequence() GroupSequence {

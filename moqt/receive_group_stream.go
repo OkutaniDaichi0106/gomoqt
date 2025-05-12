@@ -28,8 +28,8 @@ func (s *receiveGroupStream) GroupSequence() GroupSequence {
 	return s.sequence
 }
 
-func (s *receiveGroupStream) ReadFrame() (Frame, error) {
-	var fm message.FrameMessage
+func (s *receiveGroupStream) ReadFrame() (*Frame, error) {
+	fm := message.NewFrameMessage(nil)
 	_, err := fm.Decode(s.stream)
 	if err != nil {
 		slog.Error("failed to decode a FRAME message", "error", err)
@@ -38,7 +38,9 @@ func (s *receiveGroupStream) ReadFrame() (Frame, error) {
 
 	slog.Info("received a FRAME message", slog.String("payload", string(fm.Payload)))
 
-	return &fm, nil
+	return &Frame{
+		message: fm,
+	}, nil
 }
 
 func (s *receiveGroupStream) CancelRead(err GroupError) {

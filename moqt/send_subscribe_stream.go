@@ -9,7 +9,7 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-func newSendSubscribeStream(id SubscribeID, path TrackPath, config SubscribeConfig, stream quic.Stream) *sendSubscribeStream {
+func newSendSubscribeStream(id SubscribeID, path TrackPath, config *SubscribeConfig, stream quic.Stream) *sendSubscribeStream {
 	return &sendSubscribeStream{
 		id:     id,
 		path:   path,
@@ -21,10 +21,22 @@ func newSendSubscribeStream(id SubscribeID, path TrackPath, config SubscribeConf
 type sendSubscribeStream struct {
 	id     SubscribeID
 	path   TrackPath
-	config SubscribeConfig
+	config *SubscribeConfig
 
 	stream quic.Stream
 	mu     sync.Mutex
+}
+
+func (sss *sendSubscribeStream) SubscribeID() SubscribeID {
+	return sss.id
+}
+
+func (sss *sendSubscribeStream) TrackPath() TrackPath {
+	return sss.path
+}
+
+func (sss *sendSubscribeStream) SubuscribeConfig() *SubscribeConfig {
+	return sss.config
 }
 
 func (sss *sendSubscribeStream) SendSubscribeUpdate(sum message.SubscribeUpdateMessage) error {

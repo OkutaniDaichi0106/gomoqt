@@ -154,7 +154,7 @@ func (t *TrackBuffer) ServeTrack(w TrackWriter, config *SubscribeConfig) {
 		}
 
 		// Check if GroupSequence is in range
-		if !gr.GroupSequence().IsInRange(config.MinGroupSequence, config.MaxGroupSequence) {
+		if !config.IsInRange(gr.GroupSequence()) {
 			continue
 		}
 

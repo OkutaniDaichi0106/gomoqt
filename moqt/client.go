@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
+	"sync/atomic"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
@@ -30,15 +31,6 @@ type Client struct {
 	 */
 	Config *Config
 
-	/*
-	 * Handlers
-	 * TrackHandler:
-	 * AnnouncementHandler:
-	 */
-	TrackHandler TrackHandler
-
-	AnnouncementHandler AnnouncementHandler
-
 	/***/
 	SetupExtensions *Parameters
 
@@ -47,7 +39,14 @@ type Client struct {
 	 */
 	Logger *slog.Logger
 
+	//
 	initOnce sync.Once
+
+	mu         sync.RWMutex
+	activeSess map[*session]struct{}
+
+	inShutdown atomic.Bool
+	doneChan   chan struct{}
 }
 
 func (c *Client) init() {
@@ -60,7 +59,10 @@ func (c *Client) init() {
 	})
 }
 
-func (c *Client) Dial(urlStr string, ctx context.Context) (Session, *SetupResponse, error) {
+func (c *Client) Dial(ctx context.Context, urlStr string, mux *TrackMux) (Session, *SetupResponse, error) {
+	if c.shuttingDown() {
+		return nil, nil, ErrClientClosed
+	}
 	c.init()
 
 	c.Logger.Info("dialing server", "url", urlStr) // Changed to Info for better visibility
@@ -74,10 +76,10 @@ func (c *Client) Dial(urlStr string, ctx context.Context) (Session, *SetupRespon
 	switch req.uri.Scheme {
 	case "https":
 		c.Logger.Debug("dialing using WebTransport")
-		return c.DialWebTransport(ctx, req)
+		return c.DialWebTransport(ctx, req, mux)
 	case "moqt":
 		c.Logger.Debug("dialing using QUIC")
-		return c.DialQUIC(ctx, req)
+		return c.DialQUIC(ctx, req, mux)
 	default:
 		err = errors.New("invalid scheme")
 		c.Logger.Error("unsupported URL scheme", "scheme", req.uri.Scheme, "url", urlStr)
@@ -85,7 +87,10 @@ func (c *Client) Dial(urlStr string, ctx context.Context) (Session, *SetupRespon
 	}
 }
 
-func (c *Client) DialWebTransport(ctx context.Context, req *SetupRequest) (Session, *SetupResponse, error) {
+func (c *Client) DialWebTransport(ctx context.Context, req *SetupRequest, mux *TrackMux) (Session, *SetupResponse, error) {
+	if c.shuttingDown() {
+		return nil, nil, ErrClientClosed
+	}
 	c.init()
 
 	if req.uri.Scheme != "https" {
@@ -115,7 +120,7 @@ func (c *Client) DialWebTransport(ctx context.Context, req *SetupRequest) (Sessi
 		c.Logger.Debug("no setup extensions provided")
 	}
 
-	sess, rsp, err := c.openSession(conn, &Parameters{params})
+	sess, rsp, err := c.openSession(conn, &Parameters{params}, mux)
 	if err != nil {
 		c.Logger.Error("failed to open session stream", "error", err.Error())
 		return nil, nil, err
@@ -126,7 +131,11 @@ func (c *Client) DialWebTransport(ctx context.Context, req *SetupRequest) (Sessi
 }
 
 // TODO: Expose this method if QUIC is supported
-func (c *Client) DialQUIC(ctx context.Context, req *SetupRequest) (Session, *SetupResponse, error) {
+func (c *Client) DialQUIC(ctx context.Context, req *SetupRequest, mux *TrackMux) (Session, *SetupResponse, error) {
+	if c.shuttingDown() {
+		return nil, nil, ErrClientClosed
+	}
+
 	c.init()
 
 	c.Logger.Debug("dialing using QUIC")
@@ -162,7 +171,7 @@ func (c *Client) DialQUIC(ctx context.Context, req *SetupRequest) (Session, *Set
 	}
 	param.SetString(param_type_path, req.uri.Path)
 
-	sess, rsp, err := c.openSession(conn, param)
+	sess, rsp, err := c.openSession(conn, param, mux)
 	if err != nil {
 		c.Logger.Error("failed to open session stream", "error", err.Error())
 		return nil, nil, err
@@ -173,31 +182,113 @@ func (c *Client) DialQUIC(ctx context.Context, req *SetupRequest) (Session, *Set
 	return sess, rsp, nil
 }
 
-func (c *Client) openSession(conn quic.Connection, params *Parameters) (*session, *SetupResponse, error) {
-	c.init()
-
-	c.Logger.Debug("opening a session")
-
-	sess := newSession(conn)
+func (c *Client) openSession(conn quic.Connection, params *Parameters, mux *TrackMux) (*session, *SetupResponse, error) {
+	ctx, cancel := context.WithCancel(conn.Context())
+	sess := newSession(ctx, conn)
 
 	err := sess.openSessionStream(internal.DefaultClientVersions, params)
 	if err != nil {
+		cancel()
 		c.Logger.Error("failed to open a session stream", "error", err.Error())
 		return nil, nil, err
 	}
 
 	c.Logger.Debug("session stream opened")
 
-	ctx, cancel := context.WithCancel(context.Background())
-
-	handleRequests(ctx, sess, c.TrackHandler, c.AnnouncementHandler)
-
-	sess.onTerminate = func() {
-		cancel()
+	if mux != nil {
+		mux = DefaultMux
 	}
+
+	go sess.handleAnnounceStream(ctx, mux)
+	go sess.handleSubscribeStream(ctx, mux)
+	go sess.handleInfoStream(ctx, mux)
+
+	c.addSession(sess)
+	go func() {
+		<-sess.doneCh
+		cancel()
+		c.removeSession(sess)
+	}()
 
 	return sess, &SetupResponse{
 		selectedVersion: sess.sessionStream.selectedVersion,
 		Parameters:      sess.sessionStream.serverParameters,
 	}, nil
 }
+
+func (s *Client) addSession(sess *session) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if sess == nil {
+		return
+	}
+	s.activeSess[sess] = struct{}{}
+}
+
+func (s *Client) removeSession(sess *session) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.activeSess, sess)
+
+	// Send completion signal if connections reach zero and server is closed
+	if len(s.activeSess) == 0 && s.shuttingDown() {
+		select {
+		case s.doneChan <- struct{}{}:
+		default:
+			// Channel might already be closed
+		}
+	}
+}
+
+func (s *Client) shuttingDown() bool {
+	return s.inShutdown.Load()
+}
+
+func (c *Client) Close() error {
+	c.inShutdown.Store(true)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for sess := range c.activeSess {
+		(*sess).Terminate(NoErrTerminate)
+	}
+
+	// Wait for active connections to complete if any
+	if len(c.activeSess) > 0 {
+		<-c.doneChan
+	}
+
+	return nil
+}
+
+func (c *Client) Shutdown(ctx context.Context) error {
+	c.inShutdown.Store(true)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Go away all active sessions
+	for sess := range c.activeSess {
+		c.goAway(sess)
+	}
+
+	// For active connections, wait for completion or context cancellation
+	if len(c.activeSess) > 0 {
+		select {
+		case <-c.doneChan:
+			return nil
+		case <-ctx.Done():
+			for sess := range c.activeSess {
+				(*sess).Terminate(ErrGoAwayTimeout)
+			}
+			return ctx.Err()
+		}
+	}
+
+	return nil
+}
+
+func (c *Client) goAway(sess *session) {}

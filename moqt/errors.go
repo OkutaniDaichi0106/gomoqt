@@ -1,6 +1,7 @@
 package moqt
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
@@ -15,38 +16,38 @@ var (
 	ErrTrackDoesNotExist = trackDoesNotExistError{}
 
 	ErrDuplicatedTrack = defaultAnnounceError{
-		reason: "duplicated track path",
+		reason: "moq: duplicated track path",
 		code:   announce_duplicated_track_path,
 	}
 
 	ErrMismatchAnnouncement = defaultAnnounceError{
-		reason: "mismatch announcement",
+		reason: "moq: mismatch announcement",
 		code:   announce_mismatch_announcement,
 	}
 
 	ErrInvalidRange = defaultSubscribeError{
 		code:   subscribe_invalid_range,
-		reason: "invalid range",
+		reason: "moq: invalid range",
 	}
 
 	ErrDuplicatedSubscribeID = defaultSubscribeError{
 		code:   subscriber_duplicated_id,
-		reason: "duplicated subscribe id",
+		reason: "moq: duplicated subscribe id",
 	}
 
 	ErrClosedTrack = defaultSubscribeError{
 		code:   subscribe_closed_track,
-		reason: "closed track",
+		reason: "moq: closed track",
 	}
 
 	ErrEndedTrack = defaultSubscribeError{
 		code:   subscribe_ended_track,
-		reason: "ended track",
+		reason: "moq: ended track",
 	}
 
 	ErrTimeout = defaultSubscribeError{ //TODO: Use this error
 		code:   subscribe_timeout,
-		reason: "timeout",
+		reason: "moq: timeout",
 	}
 
 	// ErrPriorityMismatch = defaultSubscribeError{
@@ -69,47 +70,47 @@ var (
 
 	NoErrTerminate = defaultTerminateError{
 		code:   terminate_no_error,
-		reason: "no error",
+		reason: "moq: no error",
 	}
 
 	ErrProtocolViolation = defaultTerminateError{
 		code:   terminate_protocol_violation,
-		reason: "protocol violation",
+		reason: "moq: protocol violation",
 	}
 
 	ErrParameterLengthMismatch = defaultTerminateError{
 		code:   terminate_parameter_length_mismatch,
-		reason: "parameter length mismatch",
+		reason: "moq: parameter length mismatch",
 	}
 
 	ErrTooManySubscribes = defaultTerminateError{
 		code:   terminate_too_many_subscribes,
-		reason: "too many subscribes",
+		reason: "moq: too many subscribes",
 	}
 
 	ErrGoAwayTimeout = defaultTerminateError{
 		code:   terminate_goaway_timeout,
-		reason: "goaway timeout",
+		reason: "moq: goaway timeout",
 	}
 
 	ErrGroupRejected = defaultGroupError{
 		code:   group_send_interrupted,
-		reason: "send interrupted",
+		reason: "moq: send interrupted",
 	}
 
 	ErrGroupOutOfRange = defaultGroupError{
 		code:   group_out_of_range,
-		reason: "out of range",
+		reason: "moq: out of range",
 	}
 
 	ErrGroupExpired = defaultGroupError{
 		code:   group_expires,
-		reason: "expires",
+		reason: "moq: expires",
 	}
 
 	ErrClosedGroup = defaultGroupError{
 		code:   group_closed,
-		reason: "group is closed",
+		reason: "moq: group is closed",
 	}
 
 	// ErrGroupDeliveryTimeout = defaultGroupError{
@@ -123,7 +124,10 @@ var (
 	// }
 
 	// Internal Errors with reason
-	ErrUnsubscribedTrack = ErrInternalError.WithReason("unsubscribed track")
+	ErrUnsubscribedTrack = ErrInternalError.WithReason("moq:unsubscribed track")
+
+	ErrServerClosed = errors.New("moq: server closed")
+	ErrClientClosed = errors.New("moq: client closed")
 )
 
 // type Error interface {
@@ -337,7 +341,7 @@ type internalError struct {
 }
 
 func (err internalError) Error() string {
-	return fmt.Sprintf("internal error: %s", err.reason)
+	return fmt.Sprintf("moq: internal error: %s", err.reason)
 }
 
 func (internalError) WithReason(reason string) internalError {
@@ -379,7 +383,7 @@ var _ TerminateError = (*unauthorizedError)(nil)
 type unauthorizedError struct{}
 
 func (unauthorizedError) Error() string {
-	return "unauthorized"
+	return "moq: unauthorized"
 }
 
 func (unauthorizedError) SubscribeErrorCode() protocol.SubscribeErrorCode {
@@ -399,7 +403,7 @@ var _ InfoError = (*trackDoesNotExistError)(nil)
 type trackDoesNotExistError struct{}
 
 func (trackDoesNotExistError) Error() string {
-	return "track does not exist"
+	return "moq: track does not exist"
 }
 
 func (trackDoesNotExistError) SubscribeErrorCode() protocol.SubscribeErrorCode {

@@ -37,7 +37,7 @@ func (s *receiveTrackStream) SubscribeID() SubscribeID {
 }
 
 func (s *receiveTrackStream) TrackPath() TrackPath {
-	return s.subscribeStream.path
+	return s.subscribeStream.TrackPath()
 }
 
 func (s *receiveTrackStream) TrackPriority() TrackPriority {

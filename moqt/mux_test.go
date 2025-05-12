@@ -366,7 +366,7 @@ func TestDefaultMux(t *testing.T) {
 	// Register a handler to the default Mux
 	handler := &moqt.MockTrackHandler{}
 	ctx := context.Background()
-	moqt.Handle(ctx, "/default/test", handler)
+	moqt.Handle(ctx, "/default/test", moqt.Info{}, handler)
 
 	// Verify that the handler is called correctly
 	writer := &moqt.MockTrackWriter{PathValue: "/default/test"}

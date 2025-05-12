@@ -18,7 +18,7 @@ func newTrackBufferReader(tb *TrackBuffer, config *SubscribeConfig) *trackBuffer
 		trackBuffer:  tb,
 		config:       config,
 		sequenceCh:   tb.addNotifyChannel(),
-		sequenceHeap: newGroupSequenceHeap(config.GroupOrder),
+		sequenceHeap: newGroupSequenceHeap(config.GroupOrder, config.MinGroupSequence, config.MaxGroupSequence),
 	}
 
 	return tr

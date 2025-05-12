@@ -313,7 +313,7 @@ func TestTrackPath_ExtractParameters(t *testing.T) {
 	}
 }
 
-func TestBuildTrackPath(t *testing.T) {
+func TestNewTrackPath(t *testing.T) {
 	tests := map[string]struct {
 		pattern  string
 		segments []string
@@ -323,6 +323,11 @@ func TestBuildTrackPath(t *testing.T) {
 			pattern:  "",
 			segments: []string{},
 			expected: moqt.TrackPath(""),
+		},
+		"empty segments": {
+			pattern:  "/test/audio",
+			segments: []string{},
+			expected: moqt.TrackPath("/test/audio"),
 		},
 		"single wildcard": {
 			pattern:  "/test/*",
@@ -383,7 +388,7 @@ func TestBuildTrackPath(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			result := moqt.BuildTrackPath(tt.pattern, tt.segments...)
+			result := moqt.NewTrackPath(tt.pattern, tt.segments...)
 			assert.Equal(t, tt.expected, result)
 		})
 	}

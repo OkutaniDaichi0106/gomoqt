@@ -2,13 +2,13 @@ package moqt
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
+
+var MaxSendFrames = 1 << 4
 
 var _ GroupWriter = (*sendGroupStream)(nil)
 
@@ -17,6 +17,7 @@ func newSendGroupStream(stream quic.SendStream, id SubscribeID, sequence GroupSe
 		id:       id,
 		sequence: sequence,
 		stream:   stream,
+		frames:   make([]*Frame, 0, MaxSendFrames),
 	}
 }
 
@@ -24,6 +25,11 @@ type sendGroupStream struct {
 	id       SubscribeID
 	sequence GroupSequence
 	stream   quic.SendStream
+
+	frames []*Frame
+	ch     chan struct{}
+
+	scheduler *trackPriorityHeap
 
 	closed    bool
 	closedErr error
@@ -34,38 +40,33 @@ func (sgs *sendGroupStream) GroupSequence() GroupSequence {
 	return sgs.sequence
 }
 
-func (sgs *sendGroupStream) WriteFrame(frame Frame) error {
+func (sgs *sendGroupStream) WriteFrame(frame *Frame) error {
 	sgs.mu.Lock()
-	defer sgs.mu.Unlock()
 
 	if sgs.closed {
 		if sgs.closedErr != nil {
+			sgs.mu.Unlock()
 			return sgs.closedErr
 		}
+		sgs.mu.Unlock()
 		return ErrClosedGroup
 	}
 
 	if frame == nil {
+		sgs.mu.Unlock()
 		return errors.New("frame is nil")
 	}
 
-	if fm, ok := frame.(*message.FrameMessage); ok {
-		_, err := fm.Encode(sgs.stream)
-		if err != nil {
-			sgs.CloseWithError(err) // TODO: should we close the stream?
-			return err
-		}
-	} else {
-		bytes := frame.CopyBytes()
-		if bytes == nil {
-			return errors.New("frame is nil")
-		}
-		_, err := sgs.stream.Write(bytes)
-		if err != nil {
-			sgs.CloseWithError(err)
-			return err
-		}
+	sgs.frames = append(sgs.frames, frame)
+
+	sgs.mu.Unlock()
+
+	select {
+	case sgs.ch <- struct{}{}:
+	default:
 	}
+
+	// TODO: Consider waiting briefly before sending if the frame queue is full.
 
 	return nil
 }
@@ -80,9 +81,9 @@ func (sgs *sendGroupStream) CloseWithError(err error) error {
 
 	if sgs.closed {
 		if sgs.closedErr != nil {
-			return fmt.Errorf("stream has already closed due to: %w", sgs.closedErr)
+			return sgs.closedErr
 		}
-		return errors.New("stream has already closed")
+		return nil
 	}
 
 	if err == nil {
@@ -108,12 +109,39 @@ func (sgs *sendGroupStream) Close() error {
 
 	if sgs.closed {
 		if sgs.closedErr != nil {
-			return fmt.Errorf("stream has already closed due to: %w", sgs.closedErr)
+			return sgs.closedErr
 		}
-		return errors.New("stream has already closed")
+		return nil
 	}
 
 	sgs.closed = true
 
 	return sgs.stream.Close()
+}
+
+func (sgs *sendGroupStream) flush() error {
+	sgs.mu.Lock()
+	defer sgs.mu.Unlock()
+
+	if sgs.closed {
+		if sgs.closedErr != nil {
+			return sgs.closedErr
+		}
+		return ErrClosedGroup
+	}
+
+	if len(sgs.frames) == 0 {
+		return nil
+	}
+
+	for _, frame := range sgs.frames {
+		_, err := frame.message.Encode(sgs.stream)
+		if err != nil {
+			return err
+		}
+	}
+
+	sgs.frames = sgs.frames[:0]
+
+	return nil
 }

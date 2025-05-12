@@ -148,7 +148,7 @@ func (ras *receiveAnnounceStream) listenAnnouncements() {
 
 		slog.Debug("received an ANNOUNCE message", "announce_message", am)
 
-		path := BuildTrackPath(prefix, am.WildcardParameters...)
+		path := NewTrackPath(prefix, am.WildcardParameters...)
 
 		announcement, ok := ras.announcements[path]
 
@@ -175,11 +175,11 @@ func (ras *receiveAnnounceStream) listenAnnouncements() {
 					slog.Error("failed to end a track", "error", err, "track_path", announcement.TrackPath)
 				}
 
-				ras.removeAnnouncement(announcement.path)
+				ras.removeAnnouncement(announcement.TrackPath())
 			} else {
 				err := errors.New("announcement is already ended")
 				slog.Error(err.Error(),
-					"track_path", announcement.path,
+					"track_path", announcement.TrackPath(),
 				)
 
 				ras.CloseWithError(err)
@@ -199,7 +199,7 @@ func (ras *receiveAnnounceStream) addAnnouncement(ann *Announcement) {
 	ras.mu.Lock()
 	defer ras.mu.Unlock()
 
-	ras.announcements[ann.path] = ann
+	ras.announcements[ann.TrackPath()] = ann
 	ras.next = append(ras.next, ann)
 }
 

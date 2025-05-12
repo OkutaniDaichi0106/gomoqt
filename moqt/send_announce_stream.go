@@ -108,9 +108,9 @@ func (sas *sendAnnounceStream) setActiveAnnouncement(path TrackPath) error {
 
 	if sas.closed {
 		if sas.closeErr != nil {
-			return fmt.Errorf("stream already closed due to: %w", sas.closeErr)
+			return sas.closeErr
 		}
-		return errors.New("stream already closed")
+		return nil
 	}
 
 	if am, ok := sas.announced[path]; ok {
@@ -153,9 +153,9 @@ func (sas *sendAnnounceStream) setEndedAnnouncement(path TrackPath) error {
 
 	if sas.closed {
 		if sas.closeErr != nil {
-			return fmt.Errorf("stream already closed due to: %w", sas.closeErr)
+			return sas.closeErr
 		}
-		return errors.New("stream already closed")
+		return nil
 	}
 
 	// Check if the same track has announced already
@@ -247,6 +247,39 @@ func (sas *sendAnnounceStream) sendAnnouncements() error {
 	}
 
 	slog.Debug("sent announcement messages successfully", slog.Any("stream_id", sas.stream.StreamID()))
+
+	return nil
+}
+
+func (sas *sendAnnounceStream) Close() error {
+	sas.mu.Lock()
+	defer sas.mu.Unlock()
+
+	if sas.closed {
+		if sas.closeErr != nil {
+			return sas.closeErr
+		}
+		return nil
+	}
+
+	sas.closed = true
+
+	return nil
+}
+
+func (sas *sendAnnounceStream) CloseWithError(err error) error {
+	sas.mu.Lock()
+	defer sas.mu.Unlock()
+
+	if sas.closed {
+		if sas.closeErr != nil {
+			return sas.closeErr
+		}
+		return nil
+	}
+
+	sas.closed = true
+	sas.closeErr = err
 
 	return nil
 }

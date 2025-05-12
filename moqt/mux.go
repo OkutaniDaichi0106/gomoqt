@@ -4,6 +4,7 @@ package moqt
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"sync"
@@ -27,7 +28,7 @@ func NewTrackMux() *TrackMux {
 
 // Handle registers the handler for the given track path in the DefaultMux.
 // The handler will remain active until the context is canceled.
-func Handle(ctx context.Context, path TrackPath, handler TrackHandler) {
+func Handle(ctx context.Context, path TrackPath, info Info, handler TrackHandler) {
 	DefaultMux.Handle(ctx, path, handler)
 }
 
@@ -61,7 +62,8 @@ func BuildTrack(ctx context.Context, path TrackPath, info Info, expires time.Dur
 
 // TrackMux implements the Handler interface.
 var _ TrackHandler = (*TrackMux)(nil)
-var _ AnnouncementHandler = (*TrackMux)(nil)
+
+// var _ AnnouncementHandler = (*TrackMux)(nil)
 
 // TrackMux is a multiplexer for routing track requests and announcements.
 // It maintains separate trees for track routing and announcements, allowing efficient
@@ -145,7 +147,7 @@ func (mux *TrackMux) Handler(path TrackPath) TrackHandler {
 
 // BuildTrack creates a new TrackBuffer for the specified path with the given info and expiration time.
 // It registers the TrackBuffer as a handler and returns it.
-func (mux *TrackMux) BuildTrack(ctx context.Context, path TrackPath, info Info, expires time.Duration) *TrackBuffer {
+func (mux *TrackMux) BuildTrack(ctx context.Context, path TrackPath, info Info, expires time.Duration) TrackWriter {
 	if path == "" {
 		slog.Warn("mux: empty track path for track building")
 		return nil
@@ -234,19 +236,35 @@ func (mux *TrackMux) ServeAnnouncements(w AnnouncementWriter, config *AnnounceCo
 // Returns track information and any error encountered during the lookup.
 func (mux *TrackMux) GetInfo(path TrackPath) (Info, error) {
 	if path == "" {
-		slog.Warn("mux: empty track path for info lookup")
-		return NotFoundInfo, ErrTrackDoesNotExist
+		slog.Warn("mux: empty track path for handler lookup")
+		return Info{}, errors.New("empty track path")
 	}
+
+	mux.mu.RLock()
+	defer mux.mu.RUnlock()
 
 	p := newPath(path)
 
-	info, err := mux.trackTree.getInfo(0, p)
-	if err != nil {
-		slog.Debug("track info not found", "track_path", path, "error", err)
-		return NotFoundInfo, err
+	// Find the handler for the given path
+	current := &mux.trackTree
+	for _, seg := range p.segments {
+		if current.children == nil {
+			return Info{}, ErrTrackDoesNotExist
+		}
+
+		child, ok := current.children[seg]
+		if !ok {
+			return Info{}, ErrTrackDoesNotExist
+		}
+
+		current = child
 	}
 
-	return info, nil
+	if current.handler == nil {
+		return Info{}, ErrTrackDoesNotExist
+	}
+
+	return *current.info, nil
 }
 
 // registerHandler registers the handler for the given track path in the routing tree.
@@ -542,36 +560,36 @@ func (node *routingNode) findTrackHandler(depth int, path *path) TrackHandler {
 // It recursively traverses the routing tree to find the handler for the path,
 // and then calls GetInfo on that handler.
 // Returns NotFoundInfo and an error if no matching handler is found.
-func (node *routingNode) getInfo(depth int, path *path) (Info, error) {
-	if depth > path.depth() {
-		if node.handler == nil {
-			slog.Debug("mux: no handler at node for info", "path", path.str)
-			return NotFoundInfo, ErrTrackDoesNotExist
-		}
+// func (node *routingNode) getInfo(path *path) (Info, error) {
+// 	// if depth > path.depth() {
+// 	// 	if node.handler == nil {
+// 	// 		slog.Debug("mux: no handler at node for info", "path", path.str)
+// 	// 		return NotFoundInfo, ErrTrackDoesNotExist
+// 	// 	}
 
-		info, err := node.handler.GetInfo(TrackPath(path.str))
-		if err != nil {
-			slog.Debug("track info retrieval failed",
-				"path", path.str,
-				"error", err,
-			)
-		}
-		return info, err
-	}
+// 	// 	info, err := node.handler.GetInfo(TrackPath(path.str))
+// 	// 	if err != nil {
+// 	// 		slog.Debug("track info retrieval failed",
+// 	// 			"path", path.str,
+// 	// 			"error", err,
+// 	// 		)
+// 	// 	}
+// 	// 	return info, err
+// 	// }
 
-	// If we haven't reached the end of the path, continue traversal
-	segment := path.segments[depth]
-	child, ok := node.children[segment]
-	if !ok {
-		slog.Debug("mux: no child node for info segment",
-			"path", path.str,
-			"segment", segment,
-			"depth", depth)
-		return NotFoundInfo, ErrTrackDoesNotExist
-	}
+// 	// If we haven't reached the end of the path, continue traversal
+// 	segment := path.segments[depth]
+// 	child, ok := node.children[segment]
+// 	if !ok {
+// 		slog.Debug("mux: no child node for info segment",
+// 			"path", path.str,
+// 			"segment", segment,
+// 			"depth", depth)
+// 		return NotFoundInfo, ErrTrackDoesNotExist
+// 	}
 
-	return child.getInfo(depth+1, path)
-}
+// 	return child.getInfo(depth+1, path)
+// }
 
 // newAnnouncingNode creates and initializes a new announcement tree node.
 func newAnnouncingNode() *announcingNode {

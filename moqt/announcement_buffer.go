@@ -83,7 +83,7 @@ func (ab *announcementsBuffer) SendAnnouncements(announcements []*Announcement) 
 			continue
 		}
 
-		path = ann.path
+		path = ann.TrackPath()
 
 		// Check if the announcement already exists
 		// If it does, end the old one and replace it with the new one

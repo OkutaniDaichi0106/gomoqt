@@ -10,7 +10,7 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-func newReceiveSubscribeStream(id SubscribeID, path TrackPath, config SubscribeConfig, stream quic.Stream) *receiveSubscribeStream {
+func newReceiveSubscribeStream(id SubscribeID, path TrackPath, config *SubscribeConfig, stream quic.Stream) *receiveSubscribeStream {
 	rss := &receiveSubscribeStream{
 		id:     id,
 		path:   path,
@@ -24,7 +24,7 @@ func newReceiveSubscribeStream(id SubscribeID, path TrackPath, config SubscribeC
 type receiveSubscribeStream struct {
 	id     SubscribeID
 	path   TrackPath
-	config SubscribeConfig
+	config *SubscribeConfig
 	stream quic.Stream
 	mu     sync.Mutex
 
@@ -47,8 +47,19 @@ type receiveSubscribeStream struct {
 
 // 	slog.Debug("sent a data gap", slog.Any("gap", sgm))
 
-// 	return nil
-// }
+//		return nil
+//	}
+func (rss *receiveSubscribeStream) SubscribeID() SubscribeID {
+	return rss.id
+}
+
+func (rss *receiveSubscribeStream) TrackPath() TrackPath {
+	return rss.path
+}
+
+func (rss *receiveSubscribeStream) SubuscribeConfig() *SubscribeConfig {
+	return rss.config
+}
 
 func (rss *receiveSubscribeStream) ReceiveSubscribeUpdate(sum *message.SubscribeUpdateMessage) error {
 	_, err := sum.Decode(rss.stream)

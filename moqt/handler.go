@@ -9,22 +9,23 @@ package moqt
 
 type TrackHandler interface {
 	ServeTrack(TrackWriter, *SubscribeConfig)
-	GetInfo(TrackPath) (Info, error)
 }
 
-type AnnouncementHandler interface {
-	ServeAnnouncements(AnnouncementWriter, *AnnounceConfig)
-}
+// type AnnouncementHandler interface {
+// 	ServeAnnouncements(AnnouncementWriter, *AnnounceConfig)
+// }
 
 // type InfoHandler interface {
 // 	GetInfo(TrackPath) (Info, error)
 // }
 
 var NotFoundTrackHandler TrackHandler = &notFoundHandler{}
-var NotFoundAnnouncementHandler AnnouncementHandler = &notFoundHandler{}
+
+// var NotFoundAnnouncementHandler AnnouncementHandler = &notFoundHandler{}
 
 var _ TrackHandler = (*notFoundHandler)(nil)
-var _ AnnouncementHandler = (*notFoundHandler)(nil)
+
+// var _ AnnouncementHandler = (*notFoundHandler)(nil)
 
 // var _ InfoHandler = (*notFoundHandler)(nil)
 

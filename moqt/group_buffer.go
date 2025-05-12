@@ -14,7 +14,7 @@ func newGroupBuffer(seq GroupSequence, size int) *GroupBuffer {
 	return &GroupBuffer{
 		groupSequence: seq,
 		cond:          sync.NewCond(&sync.Mutex{}),
-		frames:        make([]Frame, 0, size),
+		frames:        make([]*Frame, 0, size),
 	}
 }
 
@@ -24,7 +24,7 @@ type GroupBuffer struct {
 	groupSequence GroupSequence
 
 	// frames
-	frames []Frame
+	frames []*Frame
 
 	cond *sync.Cond
 
@@ -39,7 +39,7 @@ func (g *GroupBuffer) GroupSequence() GroupSequence {
 	return g.groupSequence
 }
 
-func (g *GroupBuffer) WriteFrame(frame Frame) error {
+func (g *GroupBuffer) WriteFrame(frame *Frame) error {
 	g.cond.L.Lock()
 	defer g.cond.L.Unlock()
 	if g.closed {

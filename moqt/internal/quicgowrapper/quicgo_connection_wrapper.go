@@ -69,7 +69,7 @@ func (c *quicgoConnection) CloseWithError(code quicgo.ApplicationErrorCode, msg 
 }
 
 func (c *quicgoConnection) ConnectionState() quicgo.ConnectionState {
-	return c.conn.ConnectionState()
+	return quicgo.ConnectionState(c.conn.ConnectionState())
 }
 
 func (c *quicgoConnection) Context() context.Context {

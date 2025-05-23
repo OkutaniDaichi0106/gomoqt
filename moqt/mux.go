@@ -4,20 +4,18 @@ package moqt
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"strings"
 	"sync"
-	"time"
 )
 
-// DefaultMux is the default TrackMux used by the top-level functions.
-// It can be used directly instead of creating a new TrackMux.
+// DefaultMux is the default trackMux used by the top-level functions.
+// It can be used directly instead of creating a new trackMux.
 var DefaultMux *TrackMux = defaultMux
 
 var defaultMux = NewTrackMux()
 
-// NewTrackMux creates a new TrackMux for handling track and announcement routing.
+// NewTrackMux creates a new trackMux for handling track and announcement routing.
 // It initializes the routing and announcement trees with empty root nodes.
 func NewTrackMux() *TrackMux {
 	return &TrackMux{
@@ -28,42 +26,13 @@ func NewTrackMux() *TrackMux {
 
 // Handle registers the handler for the given track path in the DefaultMux.
 // The handler will remain active until the context is canceled.
-func Handle(ctx context.Context, path TrackPath, info Info, handler TrackHandler) {
+func Handle(ctx context.Context, path TrackPath, handler TrackHandler) {
 	DefaultMux.Handle(ctx, path, handler)
 }
 
-// ServeTrack serves the track at the specified path to the given TrackWriter using DefaultMux.
-// It finds the appropriate handler for the path and delegates the serving to it.
-func ServeTrack(w TrackWriter, config *SubscribeConfig) {
-	DefaultMux.ServeTrack(w, config)
+func Announce(announcement *Announcement, handler TrackHandler) {
+	DefaultMux.Announce(announcement, handler)
 }
-
-// ServeAnnouncements serves announcements for tracks matching the given pattern using DefaultMux.
-// It registers the AnnouncementWriter and sends announcements for matching tracks.
-func ServeAnnouncements(w AnnouncementWriter, config *AnnounceConfig) {
-	DefaultMux.ServeAnnouncements(w, config)
-}
-
-// GetInfo retrieves information about the track at the specified path using DefaultMux.
-// Returns track information and any error encountered during the lookup.
-func GetInfo(path TrackPath) (Info, error) {
-	return DefaultMux.GetInfo(path)
-}
-
-// BuildTrack creates a new TrackBuffer for the specified path with the given info and expiration time.
-// It registers the TrackBuffer as a handler in DefaultMux and returns it.
-func BuildTrack(ctx context.Context, path TrackPath, info Info, expires time.Duration) TrackWriter {
-	return DefaultMux.BuildTrack(ctx, path, info, expires)
-}
-
-// func Unhandle(path TrackPath) bool {
-// 	return DefaultMux.Unhandle(path)
-// }
-
-// TrackMux implements the Handler interface.
-var _ TrackHandler = (*TrackMux)(nil)
-
-// var _ AnnouncementHandler = (*TrackMux)(nil)
 
 // TrackMux is a multiplexer for routing track requests and announcements.
 // It maintains separate trees for track routing and announcements, allowing efficient
@@ -83,24 +52,28 @@ type TrackMux struct {
 // Handle registers the handler for the given track path.
 // The handler will remain active until the context is canceled.
 func (mux *TrackMux) Handle(ctx context.Context, path TrackPath, handler TrackHandler) {
+	mux.Announce(NewAnnouncement(ctx, path), handler)
+}
+
+func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) {
+	path := announcement.TrackPath()
 	if path == "" {
-		slog.Warn("mux: empty track path")
+		slog.Warn("mux: empty track path for announcement")
 		return
 	}
 
-	// Check if the context is already done
-	if ctx.Err() != nil {
+	if !announcement.IsActive() {
+		slog.Warn("mux: announcement is not active")
 		return
 	}
 
 	p := newPath(path)
-	announcement := NewAnnouncement(path)
 
 	mux.mu.Lock()
 	defer mux.mu.Unlock()
 
 	// Register the handler on the routing tree
-	mux.registerHandler(ctx, p, handler)
+	mux.registerHandler(p, announcement, handler)
 
 	// Announce the track to all announcement writers
 	mux.announce(p, announcement)
@@ -145,30 +118,16 @@ func (mux *TrackMux) Handler(path TrackPath) TrackHandler {
 	return current.handler
 }
 
-// BuildTrack creates a new TrackBuffer for the specified path with the given info and expiration time.
-// It registers the TrackBuffer as a handler and returns it.
-func (mux *TrackMux) BuildTrack(ctx context.Context, path TrackPath, info Info, expires time.Duration) TrackWriter {
-	if path == "" {
-		slog.Warn("mux: empty track path for track building")
-		return nil
-	}
-
-	buf := NewTrackBuffer(path, info, expires)
-
-	mux.Handle(ctx, path, buf)
-
-	return buf
-}
-
 // ServeTrack serves the track at the specified path to the given TrackWriter.
 // It finds the appropriate handler for the path and delegates the serving to it.
-func (mux *TrackMux) ServeTrack(w TrackWriter, config *SubscribeConfig) {
+func (mux *TrackMux) ServeTrack(path TrackPath, w TrackWriter, sub ReceivedSubscription) {
 	if w == nil {
 		slog.Error("mux: nil track writer")
 		return
 	}
 
-	path := w.TrackPath()
+	// path := sub.TrackPath()
+
 	if path == "" {
 		slog.Warn("mux: empty track path for serving")
 		return
@@ -180,13 +139,7 @@ func (mux *TrackMux) ServeTrack(w TrackWriter, config *SubscribeConfig) {
 
 	mux.mu.RUnlock()
 
-	if h == NotFoundTrackHandler {
-		slog.Debug("track not found for serving", "track_path", path)
-	} else if slog.Default().Enabled(context.Background(), slog.LevelDebug) {
-		slog.Debug("serving track", "track_path", path)
-	}
-
-	h.ServeTrack(w, config)
+	h.HandleTrack(w, sub)
 }
 
 // ServeAnnouncements serves announcements for tracks matching the given pattern.
@@ -198,8 +151,7 @@ func (mux *TrackMux) ServeAnnouncements(w AnnouncementWriter, config *AnnounceCo
 	}
 
 	if config == nil || config.TrackPattern == "" {
-		slog.Warn("mux: empty or nil track pattern for announcements")
-		return
+		config = anyAnnounceConfig
 	}
 
 	mux.mu.Lock()
@@ -209,12 +161,14 @@ func (mux *TrackMux) ServeAnnouncements(w AnnouncementWriter, config *AnnounceCo
 
 	// Register the handler on the routing tree
 	current := &mux.announceTree
+	exists := false
 	for _, seg := range pattern.segments {
 		if current.children == nil {
 			current.children = make(map[string]*announcingNode)
 		}
 
 		if child, ok := current.children[seg]; ok {
+			exists = true
 			current = child
 		} else {
 			child := newAnnouncingNode()
@@ -223,21 +177,37 @@ func (mux *TrackMux) ServeAnnouncements(w AnnouncementWriter, config *AnnounceCo
 		}
 	}
 
-	// Set the handler on the leaf node
-	if current.pattern == nil && current.buffer == nil {
-		current.setPattern(pattern, config)
+	if !exists {
+		// find all announcements matchs to the pattern
+		current.announcements = mux.findAnnouncements(pattern)
 	}
 
 	// Start serving announcements
-	current.buffer.serveAnnouncements(w)
+	w.SendAnnouncements(current.announcements)
+	pos := len(current.announcements)
+	var err error
+
+	for {
+		for len(current.announcements) > pos {
+			current.cond.Wait()
+		}
+
+		next := current.announcements[pos:]
+
+		err = w.SendAnnouncements(next)
+		if err != nil {
+			return
+		}
+		pos = len(current.announcements)
+	}
 }
 
 // GetInfo retrieves information about the track at the specified path.
 // Returns track information and any error encountered during the lookup.
-func (mux *TrackMux) GetInfo(path TrackPath) (Info, error) {
+func (mux *TrackMux) GetInfo(path TrackPath) (Info, bool) {
 	if path == "" {
 		slog.Warn("mux: empty track path for handler lookup")
-		return Info{}, errors.New("empty track path")
+		return Info{}, false
 	}
 
 	mux.mu.RLock()
@@ -249,31 +219,37 @@ func (mux *TrackMux) GetInfo(path TrackPath) (Info, error) {
 	current := &mux.trackTree
 	for _, seg := range p.segments {
 		if current.children == nil {
-			return Info{}, ErrTrackDoesNotExist
+			return Info{}, false
 		}
 
 		child, ok := current.children[seg]
 		if !ok {
-			return Info{}, ErrTrackDoesNotExist
+			return Info{}, false
 		}
 
 		current = child
 	}
 
 	if current.handler == nil {
-		return Info{}, ErrTrackDoesNotExist
+		return Info{}, false
 	}
 
-	return *current.info, nil
+	return current.handler.Info()
+}
+
+func (mux *TrackMux) Clear() {
+	mux.mu.Lock()
+	defer mux.mu.Unlock()
+
+	mux.trackTree = *newRoutingNode()
+	mux.announceTree = *newAnnouncingNode()
+
+	// TODO: Test
 }
 
 // registerHandler registers the handler for the given track path in the routing tree.
 // It traverses the tree to find the appropriate node and sets the handler at the leaf node.
-func (mux *TrackMux) registerHandler(ctx context.Context, path *path, handler TrackHandler) {
-	if ctx.Err() != nil {
-		return
-	}
-
+func (mux *TrackMux) registerHandler(path *path, ann *Announcement, handler TrackHandler) {
 	// Register the handler on the routing tree
 	current := &mux.trackTree
 	var parents []*routingNode
@@ -299,37 +275,16 @@ func (mux *TrackMux) registerHandler(ctx context.Context, path *path, handler Tr
 	// Check if this node has a handler
 	if current.handler != nil {
 		slog.Warn("mux: overwriting existing handler", "path", path.str)
-
-		// Cancel the previous handler
-		if current.cancelFunc != nil {
-			slog.Debug("cancelling previous handler", "track_path", path.str)
-
-			// Unlock the mutex to avoid deadlock
-			mux.mu.Unlock()
-
-			// Signal the previous handler to stop handling the track and clean up resources.
-			current.cancelFunc()
-
-			// Lock the mutex again
-			mux.mu.Lock()
-		}
-
-		// Reset the fields of the node
-		current.handler = nil
-		current.pattern = nil
-		current.cancelFunc = nil
 	}
 
-	// Wrap the context with a cancel function
-	ctx, cancelFunc := context.WithCancel(ctx)
-
 	// Set the handler on the leaf node
-	current.setHandler(path, handler, cancelFunc)
-
+	current.path = path
+	current.announcement = ann
+	current.handler = handler
 	slog.Debug("registered a handler", "track_path", path.str)
 
 	go func() {
-		<-ctx.Done()
+		<-ann.AwaitEnd()
 
 		mux.mu.Lock()
 		defer mux.mu.Unlock()
@@ -340,7 +295,7 @@ func (mux *TrackMux) registerHandler(ctx context.Context, path *path, handler Tr
 
 		// Remove the handler
 		current.handler = nil
-		current.pattern = nil
+		current.path = nil
 
 		for i := len(parents) - 1; i > 0; i-- {
 			parent := parents[i]
@@ -362,68 +317,52 @@ func (mux *TrackMux) findTrackHandler(path *path) TrackHandler {
 	return mux.trackTree.findTrackHandler(0, path)
 }
 
-// func (mux *TrackMux) removeHandler(path *path) bool {
-// 	if len(path.segments) == 0 {
-// 		return true
-// 	}
-
-// 	// Navigate to the correct node
-// 	current := &mux.trackTree
-// 	var parents []*routingNode
-// 	var segments []string
-
-// 	for _, seg := range path.segments {
-// 		parents = append(parents, current)
-// 		segments = append(segments, seg)
-
-// 		if current.children == nil {
-// 			return false
-// 		}
-
-// 		child, ok := current.children[seg]
-// 		if !ok {
-// 			return false
-// 		}
-
-// 		current = child
-// 	}
-
-// 	// Check if this node has a handler
-// 	if current.handler == nil {
-// 		return false
-// 	}
-
-// 	// Remove the handler
-// 	current.handler = nil
-// 	current.pattern = nil
-
-// 	// Clean up empty nodes (nodes without children and handlers)
-// 	// Start from the leaf node and move up the tree
-// 	for i := len(parents) - 1; i >= 0; i-- {
-// 		parent := parents[i]
-// 		seg := segments[i]
-
-// 		node := parent.children[seg]
-// 		if node.handler == nil && len(node.children) == 0 {
-// 			delete(parent.children, seg)
-// 		}
-// 	}
-
-// 	slog.Debug("unregistered a handler", "track_path", path.str)
-// 	return true
-// }
-
 // announce dispatches track announcements to all registered announcement writers
 // that match the given path.
 func (mux *TrackMux) announce(path *path, announcement *Announcement) {
 	// Announce the track to all announcement writers
 	mux.announceTree.announce(path.segments[1:], announcement)
 
-	if slog.Default().Enabled(context.Background(), slog.LevelDebug) {
-		slog.Debug("announced new track",
-			"track_path", path.str,
-		)
+	slog.Debug("announced new track",
+		"track_path", path.str,
+	)
+
+}
+
+func (mux *TrackMux) findAnnouncements(pattern *pattern) []*Announcement {
+	var announcements []*Announcement
+	// TODO:
+	var search func(node *routingNode, index int, path string)
+	search = func(node *routingNode, index int, path string) {
+		if index >= pattern.depth() {
+			if node.handler != nil && node.announcement.IsActive() {
+				announcements = append(announcements, node.announcement)
+			}
+			return
+		}
+
+		segment := pattern.segments[index]
+
+		switch segment {
+		case "*":
+			for childSeg, childNode := range node.children {
+				nextPath := path + "/" + childSeg
+				search(childNode, index+1, nextPath)
+			}
+		case "**":
+			search(node, index+1, path)
+			for childSeg, childNode := range node.children {
+				nextPath := path + "/" + childSeg
+				search(childNode, index, nextPath)
+			}
+		default:
+			if childNode, ok := node.children[segment]; ok {
+				nextPath := path + "/" + segment
+				search(childNode, index, nextPath)
+			}
+		}
 	}
+	return announcements
 }
 
 // newRoutingNode creates and initializes a new routing tree node.
@@ -436,30 +375,14 @@ func newRoutingNode() *routingNode {
 // routingNode represents a node in the track routing tree.
 // It contains references to child nodes and may contain a handler if it's a leaf node.
 type routingNode struct {
-	// If this node is a leaf node, pattern and handler are set.
-	// If this node is not a leaf node, pattern and handler are nil.
-	pattern      *path
+	// If this node is a leaf node, path and handler are set.
+	// If this node is not a leaf node, path and handler are nil.
+	path         *path
 	handler      TrackHandler
 	announcement *Announcement
-	info         *Info
-
-	cancelFunc context.CancelFunc
+	// info         *Info
 
 	children map[string]*routingNode
-}
-
-// setHandler sets the handler, pattern and cancel function for a routing node.
-// This method is called when registering a new handler at a leaf node in the routing tree.
-func (node *routingNode) setHandler(ptn *path, handler TrackHandler, cancelFunc context.CancelFunc) {
-	if ptn == nil {
-		panic("mux: nil pattern")
-	} else if handler == nil {
-		panic("mux: nil handler")
-	}
-
-	node.pattern = ptn
-	node.handler = handler
-	node.cancelFunc = cancelFunc
 }
 
 // findTrackHandler searches for a handler matching the given path starting at this node.
@@ -499,103 +422,14 @@ func (node *routingNode) findTrackHandler(depth int, path *path) TrackHandler {
 	return child.findTrackHandler(depth+1, path)
 }
 
-// // serveAnnouncements sends announcements to the given writer for tracks that match the pattern.
-// // It traverses the routing tree to find handlers that match the pattern and calls their
-// // ServeAnnouncements method.
-// //
-// // Parameters:
-// //   - depth: Current depth in the pattern tree
-// //   - pattern: The pattern to match against tracks
-// //   - w: The announcement writer to send announcements to
-// //   - config: Configuration for the announcement service
-// func (node *routingNode) serveAnnouncements(depth int, pattern *pattern, w AnnouncementWriter, config *AnnounceConfig) {
-// 	// If we've reached a matching leaf node with a handler, serve announcements
-// 	if depth == pattern.depth() && node.handler != nil {
-// 		if h, ok := node.handler.(AnnouncementHandler); ok {
-// 			slog.Debug("serving announcement",
-// 				"path", node.pattern.str,
-// 				"pattern", pattern.str,
-// 			)
-// 			h.ServeAnnouncements(w, config)
-// 		}
-// 		return
-// 	}
-
-// 	// Stop recursion if we've gone past the pattern depth or this node has no children
-// 	if depth >= pattern.depth() || node.children == nil || len(node.children) == 0 {
-// 		return
-// 	}
-
-// 	// Get the current segment to match in the pattern
-// 	segment := pattern.segments[depth+1]
-
-// 	// Case 1: Exact segment match
-// 	if child, ok := node.children[segment]; ok {
-// 		child.serveAnnouncements(depth+1, pattern, w, config)
-// 	}
-
-// 	// Case 2: Single wildcard match (*) - matches any single segment
-// 	if segment == "*" {
-// 		for childSegment, child := range node.children {
-// 			slog.Debug("* wildcard matching child", "segment", childSegment)
-// 			child.serveAnnouncements(depth+1, pattern, w, config)
-// 		}
-// 	}
-
-// 	// Case 3: Double wildcard match (**) - matches any number of segments
-// 	if segment == "**" {
-// 		// Match zero segments by continuing at the next pattern depth
-// 		node.serveAnnouncements(depth+1, pattern, w, config)
-
-// 		// Match one or more segments by recursively checking all children
-// 		for childSegment, child := range node.children {
-// 			slog.Debug("** wildcard matching child", "segment", childSegment)
-// 			// Keep the same pattern depth to continue matching with ** wildcard
-// 			child.serveAnnouncements(depth, pattern, w, config)
-// 		}
-// 	}
-// }
-
-// getInfo retrieves track information for the given path starting at this node.
-// It recursively traverses the routing tree to find the handler for the path,
-// and then calls GetInfo on that handler.
-// Returns NotFoundInfo and an error if no matching handler is found.
-// func (node *routingNode) getInfo(path *path) (Info, error) {
-// 	// if depth > path.depth() {
-// 	// 	if node.handler == nil {
-// 	// 		slog.Debug("mux: no handler at node for info", "path", path.str)
-// 	// 		return NotFoundInfo, ErrTrackDoesNotExist
-// 	// 	}
-
-// 	// 	info, err := node.handler.GetInfo(TrackPath(path.str))
-// 	// 	if err != nil {
-// 	// 		slog.Debug("track info retrieval failed",
-// 	// 			"path", path.str,
-// 	// 			"error", err,
-// 	// 		)
-// 	// 	}
-// 	// 	return info, err
-// 	// }
-
-// 	// If we haven't reached the end of the path, continue traversal
-// 	segment := path.segments[depth]
-// 	child, ok := node.children[segment]
-// 	if !ok {
-// 		slog.Debug("mux: no child node for info segment",
-// 			"path", path.str,
-// 			"segment", segment,
-// 			"depth", depth)
-// 		return NotFoundInfo, ErrTrackDoesNotExist
-// 	}
-
-// 	return child.getInfo(depth+1, path)
-// }
-
 // newAnnouncingNode creates and initializes a new announcement tree node.
 func newAnnouncingNode() *announcingNode {
-	return &announcingNode{
+	node := &announcingNode{
 		children: make(map[string]*announcingNode),
 	}
+	node.cond = sync.NewCond(&node.mu)
+
+	return node
 }
 
 // announcingNode is a node in the announcement tree.
@@ -606,10 +440,15 @@ type announcingNode struct {
 	pattern *pattern
 
 	// config is the announcement configuration for this node
-	config *AnnounceConfig
+	// config *AnnounceConfig
 
 	//
-	buffer *announcementsBuffer
+	// buffer *announcementsBuffer
+	announcements []*Announcement
+	mu            sync.Mutex
+	cond          *sync.Cond
+
+	// announcers []AnnouncementWriter
 
 	// children maps segment names to child nodes
 	children map[string]*announcingNode
@@ -617,15 +456,15 @@ type announcingNode struct {
 
 // setPattern sets the pattern and announcement configuration for this node.
 // This is called when registering a new announcement writer at a leaf node.
-func (node *announcingNode) setPattern(pattern *pattern, config *AnnounceConfig) {
-	if config == nil {
-		panic("mux: nil announce config")
-	}
+// func (node *announcingNode) setPattern(pattern *pattern, config *AnnounceConfig) {
+// 	if config == nil {
+// 		panic("mux: nil announce config")
+// 	}
 
-	node.pattern = pattern
-	node.config = config
-	node.buffer = newAnnouncementsBuffer()
-}
+// 	node.pattern = pattern
+// 	// node.config = config
+// 	// node.buffer = newAnnouncementsBuffer()
+// }
 
 // announce dispatches announcements to all registered announcement writers that match the given path.
 // It traverses the announcement tree and delivers announcements to all matching nodes.
@@ -636,10 +475,10 @@ func (node *announcingNode) setPattern(pattern *pattern, config *AnnounceConfig)
 func (node *announcingNode) announce(segments []string, announcement *Announcement) {
 	if len(segments) == 0 {
 		// Serve announcements to the buffer
-		slog.Debug("mux: serving announcements to buffer",
+		slog.Debug("mux: serving announcements",
 			"pattern", node.pattern.str,
 		)
-		node.buffer.SendAnnouncements([]*Announcement{announcement})
+		// for _, w := range node.
 		return
 	}
 

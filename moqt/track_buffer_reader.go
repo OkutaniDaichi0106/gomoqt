@@ -3,8 +3,6 @@ package moqt
 import (
 	"container/heap"
 	"context"
-	"fmt"
-	"io"
 )
 
 var _ TrackReader = (*trackBufferReader)(nil)
@@ -15,61 +13,52 @@ func newTrackBufferReader(tb *TrackBuffer, config *SubscribeConfig) *trackBuffer
 	}
 
 	tr := &trackBufferReader{
-		trackBuffer:  tb,
-		config:       config,
-		sequenceCh:   tb.addNotifyChannel(),
-		sequenceHeap: newGroupSequenceHeap(config.GroupOrder, config.MinGroupSequence, config.MaxGroupSequence),
+		buffer:     tb,
+		config:     config,
+		sequenceCh: tb.addNotifyChannel(),
+		heap:       newGroupSequenceHeap(config.GroupOrder),
 	}
 
 	return tr
 }
 
 type trackBufferReader struct {
-	trackBuffer *TrackBuffer
+	buffer *TrackBuffer
 
 	config *SubscribeConfig
 
-	sequenceCh   chan GroupSequence
-	sequenceHeap *groupSequenceHeap
+	sequenceCh chan GroupSequence
+	heap       *groupSequenceHeap
 
-	canceled    bool
-	canceledErr error
-}
-
-func (tr *trackBufferReader) TrackPath() TrackPath {
-	return tr.trackBuffer.TrackPath()
-}
-
-func (tr *trackBufferReader) LatestGroupSequence() GroupSequence {
-	return tr.trackBuffer.LatestGroupSequence()
-}
-
-func (tr *trackBufferReader) Info() Info {
-	return tr.trackBuffer.Info()
+	closed    bool
+	closedErr error
 }
 
 func (tr *trackBufferReader) AcceptGroup(ctx context.Context) (GroupReader, error) {
 	// Return EOF if the track is closed and there are no more groups.
-	if len(tr.trackBuffer.groupMap) <= 0 && tr.trackBuffer.closed {
-		return nil, io.EOF
+	if len(tr.buffer.groupMap) <= 0 && tr.buffer.closed.Load() {
+		if tr.buffer.closedErr != nil {
+			return nil, tr.buffer.closedErr
+		}
+		return nil, ErrClosedGroup
 	}
 
 	for {
 		// Check for reader cancellation
-		if tr.canceled {
-			if tr.canceledErr != nil {
-				return nil, fmt.Errorf("track already unsubscribed with error: %w", tr.canceledErr)
+		if tr.closed {
+			if tr.closedErr != nil {
+				return nil, tr.closedErr
 			}
-			return nil, ErrUnsubscribedTrack
+			return nil, ErrUnsubscribedTrack // TODO:
 		}
 
 		// If the heap is not empty, pop the GroupSequence from the heap.
-		if tr.sequenceHeap.Len() > 0 {
+		if tr.heap.Len() > 0 {
 			// Pop the GroupSequence from the heap.
-			seq := heap.Pop(tr.sequenceHeap).(GroupSequence)
+			seq := heap.Pop(tr.heap).(GroupSequence)
 
 			// Get a group with the group sequence.
-			gb, ok := tr.trackBuffer.getGroup(seq)
+			gb, ok := tr.buffer.getGroup(seq)
 			if !ok {
 				continue
 			}
@@ -88,48 +77,48 @@ func (tr *trackBufferReader) AcceptGroup(ctx context.Context) (GroupReader, erro
 			}
 
 			// Enqueue the GroupSequence to the heap.
-			heap.Push(tr.sequenceHeap, seq)
+			heap.Push(tr.heap, seq)
 		}
 	}
 }
 
 func (tr *trackBufferReader) Close() error {
-	if tr.canceled {
-		if tr.canceledErr == nil {
-			return fmt.Errorf("track already closed with error: %w", tr.canceledErr)
+	if tr.closed {
+		if tr.closedErr != nil {
+			return tr.closedErr
 		}
 		return ErrClosedTrack
 	}
 
 	// Close the sequence channel and remove it from the track buffer.
 	close(tr.sequenceCh)
-	tr.trackBuffer.removeNotifyChannel(tr.sequenceCh)
+	tr.buffer.removeNotifyChannel(tr.sequenceCh)
 	tr.sequenceCh = nil
 
-	tr.canceled = true
-	tr.sequenceHeap = nil
-	tr.trackBuffer = nil
-	tr.canceledErr = nil
+	tr.closed = true
+	tr.heap = nil
+	tr.buffer = nil
+	tr.closedErr = nil
 
 	return nil
 }
 
 func (tr *trackBufferReader) CloseWithError(err error) error {
-	if tr.canceled {
-		if tr.canceledErr == nil {
-			return fmt.Errorf("track already closed with error: %w", tr.canceledErr)
+	if tr.closed {
+		if tr.closedErr != nil {
+			return tr.closedErr
 		}
 		return ErrClosedTrack
 	}
 
 	close(tr.sequenceCh)
-	tr.trackBuffer.removeNotifyChannel(tr.sequenceCh)
+	tr.buffer.removeNotifyChannel(tr.sequenceCh)
 	tr.sequenceCh = nil
 
-	tr.canceled = true
-	tr.sequenceHeap = nil
-	tr.trackBuffer = nil
-	tr.canceledErr = err
+	tr.closed = true
+	tr.heap = nil
+	tr.buffer = nil
+	tr.closedErr = err
 
 	return nil
 }

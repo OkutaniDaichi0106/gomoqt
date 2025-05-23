@@ -3,83 +3,63 @@ package moqt
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
-var DefaultExpires = 10 * time.Second // TODO: Tune the value
+// var DefaultExpires = 10 * time.Second // TODO: Tune the value
 
-func NewTrackBuffer(path TrackPath, info Info, expires time.Duration) *TrackBuffer {
-	if expires == 0 {
-		expires = DefaultExpires
+func NewTrackBuffer(info Info, expires time.Duration) *TrackBuffer {
+	// if expires == 0 {
+	// 	expires = DefaultExpires
+	// }
+	buf := &TrackBuffer{
+		expires:        expires,
+		priority:       info.TrackPriority,
+		order:          info.GroupOrder,
+		groupMap:       make(map[GroupSequence]*GroupBuffer),
+		notifyChannels: make([]chan GroupSequence, 0, 1<<4), // TODO: Tune the size
 	}
 
-	return &TrackBuffer{
-		path:                path,
-		latestGroupSequence: info.LatestGroupSequence,
-		expires:             expires,
-		priority:            info.TrackPriority,
-		order:               info.GroupOrder,
-		groupMap:            make(map[GroupSequence]*GroupBuffer),
-		mapMu:               &sync.RWMutex{},
-		notifyChannels:      make([]chan GroupSequence, 0, 1), // TODO: Tune the size
-		chMu:                &sync.Mutex{},
-		announcement:        NewAnnouncement(path),
-		mu:                  &sync.RWMutex{},
-	}
+	buf.latestGroupSequence.Store(uint64(info.LatestGroupSequence))
+
+	return buf
 }
 
 var _ TrackWriter = (*TrackBuffer)(nil)
 var _ TrackHandler = (*TrackBuffer)(nil)
 
 type TrackBuffer struct {
-	path                TrackPath
-	latestGroupSequence GroupSequence
+	announcement        *Announcement
+	latestGroupSequence atomic.Uint64
 	expires             time.Duration
 
 	priority TrackPriority
 	order    GroupOrder
 
 	groupMap map[GroupSequence]*GroupBuffer
-	mapMu    *sync.RWMutex
+	mapMu    sync.RWMutex
 
 	notifyChannels []chan GroupSequence
-	chMu           *sync.Mutex
+	chMu           sync.Mutex
 
-	announcement *Announcement
-
-	closed    bool
+	closed    atomic.Bool
 	closedErr error
-
-	mu *sync.RWMutex
 }
 
-func (t *TrackBuffer) TrackPath() TrackPath {
-	return t.path
-}
-
-func (t *TrackBuffer) Info() Info {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
+func (t *TrackBuffer) Info() (Info, bool) {
+	if !t.isReadable() {
+		return Info{}, false
+	}
 	return Info{
-		LatestGroupSequence: t.latestGroupSequence,
+		LatestGroupSequence: GroupSequence(t.latestGroupSequence.Load()),
 		TrackPriority:       t.priority,
 		GroupOrder:          t.order,
-	}
+	}, true
 }
 
-func (t *TrackBuffer) LatestGroupSequence() GroupSequence {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-
-	seq := t.latestGroupSequence
-	return seq
-}
-
-func (t *TrackBuffer) Count() int {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	count := len(t.groupMap)
-	return count
+func (t *TrackBuffer) Announcemnt() *Announcement {
+	return t.announcement
 }
 
 func (t *TrackBuffer) OpenGroup(seq GroupSequence) (GroupWriter, error) {
@@ -97,22 +77,19 @@ func (t *TrackBuffer) OpenGroup(seq GroupSequence) (GroupWriter, error) {
 	return gb, nil
 }
 
-func (t *TrackBuffer) Subscribe(config *SubscribeConfig) (TrackReader, error) {
-	if !t.isReadable() {
-		return nil, ErrEndedTrack
-	}
-
-	return newTrackBufferReader(t, config), nil
-}
-
-func (t *TrackBuffer) Close() error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.closed {
+func (t *TrackBuffer) SendGap(gap Gap) error {
+	if !t.isWritable() {
 		return ErrClosedTrack
 	}
 
-	t.closed = true
+}
+
+func (t *TrackBuffer) Close() error {
+	if t.closed.Load() {
+		return ErrClosedTrack
+	}
+
+	t.closed.Store(true)
 	for _, ch := range t.notifyChannels {
 		close(ch)
 	}
@@ -122,14 +99,12 @@ func (t *TrackBuffer) Close() error {
 }
 
 func (t *TrackBuffer) CloseWithError(err error) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.closed {
+	if t.closed.Load() {
 		return ErrClosedTrack
 	}
 
 	t.closedErr = err
-	t.closed = true
+	t.closed.Store(true)
 
 	for _, ch := range t.notifyChannels {
 		close(ch)
@@ -139,14 +114,16 @@ func (t *TrackBuffer) CloseWithError(err error) error {
 	return nil
 }
 
-func (t *TrackBuffer) ServeTrack(w TrackWriter, config *SubscribeConfig) {
-	r, err := t.Subscribe(config)
-	if err != nil {
-		w.CloseWithError(err)
+func (t *TrackBuffer) HandleTrack(w TrackWriter, sub ReceivedSubscription) {
+	if !t.isReadable() {
+		w.CloseWithError(ErrEndedTrack)
 		return
 	}
 
-	ctx := context.Background() // TODO: Cancel in 10 seconds
+	r := newTrackBufferReader(t, config)
+	defer r.Close()
+
+	ctx := context.Background()
 	for {
 		gr, err := r.AcceptGroup(ctx)
 		if err != nil {
@@ -178,30 +155,18 @@ func (t *TrackBuffer) ServeTrack(w TrackWriter, config *SubscribeConfig) {
 	}
 }
 
-func (t *TrackBuffer) ServeAnnouncements(w AnnouncementWriter, config *AnnounceConfig) {
-	announcement := t.announcement
-	if !announcement.IsActive() {
-		return
-	}
-
-	if announcement.TrackPath().Match(config.TrackPattern) {
-		w.SendAnnouncements([]*Announcement{t.announcement})
-	}
-}
-
-func (t *TrackBuffer) GetInfo(path TrackPath) (Info, error) {
-	return t.Info(), nil
-}
-
 func (t *TrackBuffer) storeGroup(gb *GroupBuffer) error {
 	t.mapMu.Lock()
 	defer t.mapMu.Unlock()
-	if t.closed {
+	if t.closed.Load() {
+		if t.closedErr != nil {
+			return t.closedErr
+		}
 		return ErrClosedTrack
 	}
 	t.groupMap[gb.GroupSequence()] = gb
-	if gb.GroupSequence() > t.latestGroupSequence {
-		t.latestGroupSequence = gb.GroupSequence()
+	if gb.GroupSequence() > GroupSequence(t.latestGroupSequence.Load()) {
+		t.latestGroupSequence.Store(uint64(gb.GroupSequence()))
 	}
 	// Always enqueue GroupSequence into notifyChannels (blocking send)
 	for _, ch := range t.notifyChannels {
@@ -239,38 +204,26 @@ func (t *TrackBuffer) removeGroup(seq GroupSequence) {
 	}
 }
 
-// func (t *TrackBuffer) unannounce() {
-// 	t.mu.Lock()
-// 	defer t.mu.Unlock()
-
-// 	announcements := []*Announcement{newEndedAnnouncement(t.TrackPath())}
-
-// 	for _, a := range t.announced {
-// 		a.WriteAnnouncement(announcements)
-// 	}
-
-// 	t.announced = nil
-// }
-
 func (t *TrackBuffer) isWritable() bool {
-	return !t.closed
+	return !t.closed.Load()
 }
 
 func (t *TrackBuffer) isReadable() bool {
-	return !t.closed && len(t.groupMap) > 0
+	return !t.closed.Load() && len(t.groupMap) > 0
 }
 
 func (t *TrackBuffer) addNotifyChannel() chan GroupSequence {
 	t.chMu.Lock()
 	defer t.chMu.Unlock()
 
-	ch := make(chan GroupSequence, 1)
+	ch := make(chan GroupSequence, 1<<2)
 	t.notifyChannels = append(t.notifyChannels, ch)
 	return ch
 }
 
 // removeNotifyChannel removes the notify channel from the list and closes it.
 func (t *TrackBuffer) removeNotifyChannel(ch chan GroupSequence) { // TODO: Use this function
+	t.chMu.Lock()
 	defer t.chMu.Unlock()
 
 	for i, c := range t.notifyChannels {

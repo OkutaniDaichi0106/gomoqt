@@ -2,7 +2,6 @@ package moqt
 
 import (
 	"errors"
-	"fmt"
 	"log/slog"
 	"sync"
 
@@ -12,11 +11,14 @@ import (
 
 func newReceiveSubscribeStream(id SubscribeID, path TrackPath, config *SubscribeConfig, stream quic.Stream) *receiveSubscribeStream {
 	rss := &receiveSubscribeStream{
-		id:     id,
-		path:   path,
-		config: config,
-		stream: stream,
+		id:        id,
+		path:      path,
+		config:    config,
+		stream:    stream,
+		updatedCh: make(chan struct{}, 1),
 	}
+
+	go rss.listenUpdates()
 
 	return rss
 }
@@ -28,27 +30,36 @@ type receiveSubscribeStream struct {
 	stream quic.Stream
 	mu     sync.Mutex
 
+	updatedCh chan struct{}
+
 	closed   bool
 	closeErr error
 }
 
-// TODO: Implement this method
-// func (rss *ReceiveSubscribeStream) SendSubscribeGap(sgm message.SubscribeGapMessage) error {
-// 	slog.Debug("sending a data gap", slog.Any("gap", sgm))
+func (rss *receiveSubscribeStream) NotifyGap(min, max GroupSequence, reason error) error {
+	rss.mu.Lock()
+	defer rss.mu.Unlock()
 
-// 	rss.mu.Lock()
-// 	defer rss.mu.Unlock()
+	var grperr GroupError
+	if !errors.As(reason, grperr) {
+		grperr = ErrInternalError
+	}
 
-// 	_, err := sgm.Encode(rss.Stream)
-// 	if err != nil {
-// 		slog.Error("failed to write a subscribe gap message", "error", err,
-// 		return err
-// 	}
+	sgm := message.SubscribeGapMessage{
+		StartGroupSequence: message.GroupSequence(min),
+		GapCount:           uint64(max - min),
+		GroupErrorCode:     grperr.GroupErrorCode(),
+	}
 
-// 	slog.Debug("sent a data gap", slog.Any("gap", sgm))
+	_, err := sgm.Encode(rss.stream)
+	if err != nil {
+		slog.Error("failed to write a subscribe gap message", "error", err)
+		return err
+	}
 
-//		return nil
-//	}
+	return nil
+}
+
 func (rss *receiveSubscribeStream) SubscribeID() SubscribeID {
 	return rss.id
 }
@@ -61,23 +72,47 @@ func (rss *receiveSubscribeStream) SubuscribeConfig() *SubscribeConfig {
 	return rss.config
 }
 
-func (rss *receiveSubscribeStream) ReceiveSubscribeUpdate(sum *message.SubscribeUpdateMessage) error {
-	_, err := sum.Decode(rss.stream)
-	if err != nil {
-		slog.Error("failed to receive a SUBSCRIBE_UPDATE message",
+func (rss *receiveSubscribeStream) Updated() <-chan struct{} {
+	return rss.updatedCh
+}
+
+func (rss *receiveSubscribeStream) listenUpdates() {
+	var sum message.SubscribeUpdateMessage
+	for {
+		if rss.closed {
+			return
+		}
+
+		_, err := sum.Decode(rss.stream)
+		if err != nil {
+			slog.Error("failed to receive a SUBSCRIBE_UPDATE message",
+				"stream_id", rss.stream.StreamID(),
+				"subscribe_id", rss.id,
+				"error", err,
+			)
+			return
+		}
+
+		slog.Debug("received a SUBSCRIBE_UPDATE message",
 			"stream_id", rss.stream.StreamID(),
 			"subscribe_id", rss.id,
-			"error", err,
 		)
-		return err
+
+		config := &SubscribeConfig{
+			TrackPriority:    TrackPriority(sum.TrackPriority),
+			GroupOrder:       GroupOrder(sum.GroupOrder),
+			MinGroupSequence: GroupSequence(sum.MinGroupSequence),
+			MaxGroupSequence: GroupSequence(sum.MaxGroupSequence),
+		}
+
+		rss.config = config
+
+		select {
+		case rss.updatedCh <- struct{}{}:
+		default:
+		}
+
 	}
-
-	slog.Debug("received a SUBSCRIBE_UPDATE message",
-		"stream_id", rss.stream.StreamID(),
-		"subscribe_id", rss.id,
-	)
-
-	return nil
 }
 
 func (rss *receiveSubscribeStream) CloseWithError(err error) error {
@@ -86,9 +121,9 @@ func (rss *receiveSubscribeStream) CloseWithError(err error) error {
 
 	if rss.closed {
 		if rss.closeErr != nil {
-			return fmt.Errorf("stream has already closed due to: %w", rss.closeErr)
+			return rss.closeErr
 		}
-		return errors.New("stream has already closed")
+		return nil
 	}
 
 	rss.closed = true
@@ -120,9 +155,9 @@ func (rss *receiveSubscribeStream) Close() error {
 
 	if rss.closed {
 		if rss.closeErr != nil {
-			return fmt.Errorf("stream has already closed due to: %w", rss.closeErr)
+			return rss.closeErr
 		}
-		return errors.New("stream has already closed")
+		return nil
 	}
 
 	rss.closed = true

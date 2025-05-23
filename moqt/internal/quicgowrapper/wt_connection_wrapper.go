@@ -5,7 +5,6 @@ import (
 	"net"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
-	quicgo "github.com/quic-go/quic-go"
 	"github.com/quic-go/webtransport-go"
 )
 
@@ -37,8 +36,8 @@ func (conn *webtransportConnection) AcceptUniStream(ctx context.Context) (quic.R
 func (conn *webtransportConnection) CloseWithError(code quic.ConnectionErrorCode, msg string) error {
 	return conn.conn.CloseWithError(webtransport.SessionErrorCode(code), msg)
 }
-func (conn *webtransportConnection) ConnectionState() quicgo.ConnectionState {
-	return conn.conn.ConnectionState()
+func (conn *webtransportConnection) ConnectionState() quic.ConnectionState {
+	return quic.ConnectionState(conn.conn.ConnectionState())
 }
 func (conn *webtransportConnection) Context() context.Context {
 	return conn.conn.Context()

@@ -11,7 +11,7 @@ type Connection interface {
 	AcceptStream(ctx context.Context) (Stream, error)
 	AcceptUniStream(ctx context.Context) (ReceiveStream, error)
 	CloseWithError(code ConnectionErrorCode, msg string) error
-	ConnectionState() quic.ConnectionState
+	ConnectionState() ConnectionState
 	Context() context.Context
 	LocalAddr() net.Addr
 	OpenStream() (Stream, error)
@@ -22,3 +22,5 @@ type Connection interface {
 }
 
 type ConnectionErrorCode uint32
+
+type ConnectionState quic.ConnectionState

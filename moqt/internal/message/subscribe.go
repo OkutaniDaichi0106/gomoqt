@@ -26,7 +26,6 @@ const (
 *   Group Order (varint),
 *   Min Group Sequence (varint),
 *   Max Group Sequence (varint),
-*   // Subscribe Parameters (Parameters),
 * }
  */
 type SubscribeMessage struct {
@@ -36,7 +35,6 @@ type SubscribeMessage struct {
 	GroupOrder       GroupOrder
 	MinGroupSequence GroupSequence
 	MaxGroupSequence GroupSequence
-	// SubscribeParameters Parameters
 }
 
 func (s SubscribeMessage) Len() int {

@@ -1,100 +1,95 @@
 package moqt
 
-import (
-	"context"
+// var _ ReceiveTrackStream = (*receiveTrackStream)(nil)
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-)
+// type ReceiveTrackStream interface {
+// 	TrackReader
+// 	SubscribeID() SubscribeID
+// 	UpdateSubscribe(*SubscribeConfig) error
+// }
 
-var _ ReceiveTrackStream = (*receiveTrackStream)(nil)
+// var _ SentSubscription = (*receivedTrack)
+// func newReceiveTrackStream(session *Session, info Info, subscribeStream *sendSubscribeStream) *receiveTrackStream {
+// 	rts := &receiveTrackStream{
+// 		session:             session,
+// 		subscribeStream:     subscribeStream,
+// 		latestGroupSequence: GroupSequence(info.LatestGroupSequence),
+// 	}
 
-type ReceiveTrackStream interface {
-	TrackReader
-	SubscribeID() SubscribeID
-	UpdateSubscribe(*SubscribeConfig) error
-}
+// 	// TODO: Handle the info properly, maybe validate or process it further
 
-func newReceiveTrackStream(session *session, info Info, subscribeStream *sendSubscribeStream) *receiveTrackStream {
-	rts := &receiveTrackStream{
-		session:             session,
-		subscribeStream:     subscribeStream,
-		latestGroupSequence: GroupSequence(info.LatestGroupSequence),
-	}
+// 	return rts
+// }
 
-	// TODO: Handle the info properly, maybe validate or process it further
+// type receiveTrackStream struct {
+// 	session             *Session
+// 	subscribeStream     *sendSubscribeStream
+// 	latestGroupSequence GroupSequence
+// }
 
-	return rts
-}
+// func (s *receiveTrackStream) SubscribeID() SubscribeID {
+// 	return s.subscribeStream.id
+// }
 
-type receiveTrackStream struct {
-	session             *session
-	subscribeStream     *sendSubscribeStream
-	latestGroupSequence GroupSequence
-}
+// func (s *receiveTrackStream) TrackPath() TrackPath {
+// 	return s.subscribeStream.TrackPath()
+// }
 
-func (s *receiveTrackStream) SubscribeID() SubscribeID {
-	return s.subscribeStream.id
-}
+// func (s *receiveTrackStream) TrackPriority() TrackPriority {
+// 	return s.subscribeStream.config.TrackPriority
+// }
 
-func (s *receiveTrackStream) TrackPath() TrackPath {
-	return s.subscribeStream.TrackPath()
-}
+// func (s *receiveTrackStream) Info() Info {
+// 	return Info{
+// 		TrackPriority:       s.TrackPriority(),
+// 		LatestGroupSequence: s.latestGroupSequence,
+// 		GroupOrder:          s.GroupOrder(),
+// 	}
+// }
 
-func (s *receiveTrackStream) TrackPriority() TrackPriority {
-	return s.subscribeStream.config.TrackPriority
-}
+// func (s *receiveTrackStream) GroupOrder() GroupOrder {
+// 	return s.subscribeStream.config.GroupOrder
+// }
 
-func (s *receiveTrackStream) Info() Info {
-	return Info{
-		TrackPriority:       s.TrackPriority(),
-		LatestGroupSequence: s.latestGroupSequence,
-		GroupOrder:          s.GroupOrder(),
-	}
-}
+// func (s *receiveTrackStream) LatestGroupSequence() GroupSequence {
+// 	return s.latestGroupSequence
+// }
 
-func (s *receiveTrackStream) GroupOrder() GroupOrder {
-	return s.subscribeStream.config.GroupOrder
-}
+// func (s *receiveTrackStream) Close() error { // TODO: implement
+// 	return s.subscribeStream.Close()
+// }
 
-func (s *receiveTrackStream) LatestGroupSequence() GroupSequence {
-	return s.latestGroupSequence
-}
+// func (s *receiveTrackStream) CloseWithError(err error) error { // TODO: implement
+// 	return s.subscribeStream.CloseWithError(err)
+// }
 
-func (s *receiveTrackStream) Close() error { // TODO: implement
-	return s.subscribeStream.Close()
-}
+// func (s *receiveTrackStream) AcceptGroup(ctx context.Context) (GroupReader, error) {
+// 	select {
+// 	case <-ctx.Done():
+// 		return nil, ctx.Err()
+// 	default:
 
-func (s *receiveTrackStream) CloseWithError(err error) error { // TODO: implement
-	return s.subscribeStream.CloseWithError(err)
-}
+// 	}
 
-func (s *receiveTrackStream) AcceptGroup(ctx context.Context) (GroupReader, error) {
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	default:
+// 	rgs, err := s.session.acceptGroupStream(ctx, s.subscribeStream.id)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	}
+// 	return rgs, nil
+// }
 
-	rgs, err := s.session.acceptGroupStream(ctx, s.subscribeStream.id)
-	if err != nil {
-		return nil, err
-	}
+// func (s *receiveTrackStream) UpdateSubscribe(update *SubscribeConfig) error {
+// 	if update == nil {
+// 		return nil
+// 	}
 
-	return rgs, nil
-}
+// 	sum := message.SubscribeUpdateMessage{
+// 		GroupOrder:       message.GroupOrder(update.GroupOrder),
+// 		TrackPriority:    message.TrackPriority(update.TrackPriority),
+// 		MinGroupSequence: message.GroupSequence(update.MinGroupSequence),
+// 		MaxGroupSequence: message.GroupSequence(update.MaxGroupSequence),
+// 	}
 
-func (s *receiveTrackStream) UpdateSubscribe(update *SubscribeConfig) error {
-	if update == nil {
-		return nil
-	}
-
-	sum := message.SubscribeUpdateMessage{
-		GroupOrder:       message.GroupOrder(update.GroupOrder),
-		TrackPriority:    message.TrackPriority(update.TrackPriority),
-		MinGroupSequence: message.GroupSequence(update.MinGroupSequence),
-		MaxGroupSequence: message.GroupSequence(update.MaxGroupSequence),
-	}
-
-	return s.subscribeStream.SendSubscribeUpdate(sum)
-}
+// 	return s.subscribeStream.SendSubscribeUpdate(sum)
+// }

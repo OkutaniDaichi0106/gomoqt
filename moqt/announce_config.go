@@ -1,7 +1,13 @@
 package moqt
 
 const (
-	AnyTrackPattern = "/**"
+	anyTrackPattern = "/**"
+)
+
+var (
+	anyAnnounceConfig = &AnnounceConfig{
+		TrackPattern: anyTrackPattern,
+	}
 )
 
 type AnnounceConfig struct {

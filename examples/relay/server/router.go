@@ -2,7 +2,7 @@ package main
 
 import "github.com/OkutaniDaichi0106/gomoqt/moqt"
 
-var _ moqt.Handler = (*Router)(nil)
+var _ moqt.TrackHandler = (*Router)(nil)
 
 type Router struct {
 	announcement *moqt.Announcement

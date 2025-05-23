@@ -8,8 +8,6 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-var MaxSendFrames = 1 << 4
-
 var _ GroupWriter = (*sendGroupStream)(nil)
 
 func newSendGroupStream(stream quic.SendStream, id SubscribeID, sequence GroupSequence) *sendGroupStream {
@@ -17,7 +15,6 @@ func newSendGroupStream(stream quic.SendStream, id SubscribeID, sequence GroupSe
 		id:       id,
 		sequence: sequence,
 		stream:   stream,
-		frames:   make([]*Frame, 0, MaxSendFrames),
 	}
 }
 
@@ -25,11 +22,6 @@ type sendGroupStream struct {
 	id       SubscribeID
 	sequence GroupSequence
 	stream   quic.SendStream
-
-	frames []*Frame
-	ch     chan struct{}
-
-	scheduler *trackPriorityHeap
 
 	closed    bool
 	closedErr error
@@ -42,28 +34,22 @@ func (sgs *sendGroupStream) GroupSequence() GroupSequence {
 
 func (sgs *sendGroupStream) WriteFrame(frame *Frame) error {
 	sgs.mu.Lock()
+	defer sgs.mu.Unlock()
 
 	if sgs.closed {
 		if sgs.closedErr != nil {
-			sgs.mu.Unlock()
 			return sgs.closedErr
 		}
-		sgs.mu.Unlock()
 		return ErrClosedGroup
 	}
 
 	if frame == nil {
-		sgs.mu.Unlock()
 		return errors.New("frame is nil")
 	}
 
-	sgs.frames = append(sgs.frames, frame)
-
-	sgs.mu.Unlock()
-
-	select {
-	case sgs.ch <- struct{}{}:
-	default:
+	_, err := frame.message.Encode(sgs.stream)
+	if err != nil {
+		return err
 	}
 
 	// TODO: Consider waiting briefly before sending if the frame queue is full.
@@ -117,31 +103,4 @@ func (sgs *sendGroupStream) Close() error {
 	sgs.closed = true
 
 	return sgs.stream.Close()
-}
-
-func (sgs *sendGroupStream) flush() error {
-	sgs.mu.Lock()
-	defer sgs.mu.Unlock()
-
-	if sgs.closed {
-		if sgs.closedErr != nil {
-			return sgs.closedErr
-		}
-		return ErrClosedGroup
-	}
-
-	if len(sgs.frames) == 0 {
-		return nil
-	}
-
-	for _, frame := range sgs.frames {
-		_, err := frame.message.Encode(sgs.stream)
-		if err != nil {
-			return err
-		}
-	}
-
-	sgs.frames = sgs.frames[:0]
-
-	return nil
 }

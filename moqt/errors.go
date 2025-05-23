@@ -16,38 +16,38 @@ var (
 	ErrTrackDoesNotExist = trackDoesNotExistError{}
 
 	ErrDuplicatedTrack = defaultAnnounceError{
-		reason: "moq: duplicated track path",
+		reason: "moqt: duplicated track path",
 		code:   announce_duplicated_track_path,
 	}
 
 	ErrMismatchAnnouncement = defaultAnnounceError{
-		reason: "moq: mismatch announcement",
+		reason: "moqt: mismatch announcement",
 		code:   announce_mismatch_announcement,
 	}
 
 	ErrInvalidRange = defaultSubscribeError{
 		code:   subscribe_invalid_range,
-		reason: "moq: invalid range",
+		reason: "moqt: invalid range",
 	}
 
 	ErrDuplicatedSubscribeID = defaultSubscribeError{
 		code:   subscriber_duplicated_id,
-		reason: "moq: duplicated subscribe id",
+		reason: "moqt: duplicated subscribe id",
 	}
 
 	ErrClosedTrack = defaultSubscribeError{
 		code:   subscribe_closed_track,
-		reason: "moq: closed track",
+		reason: "moqt: closed track",
 	}
 
 	ErrEndedTrack = defaultSubscribeError{
 		code:   subscribe_ended_track,
-		reason: "moq: ended track",
+		reason: "moqt: ended track",
 	}
 
 	ErrTimeout = defaultSubscribeError{ //TODO: Use this error
 		code:   subscribe_timeout,
-		reason: "moq: timeout",
+		reason: "moqt: timeout",
 	}
 
 	// ErrPriorityMismatch = defaultSubscribeError{
@@ -70,47 +70,47 @@ var (
 
 	NoErrTerminate = defaultTerminateError{
 		code:   terminate_no_error,
-		reason: "moq: no error",
+		reason: "moqt: no error",
 	}
 
 	ErrProtocolViolation = defaultTerminateError{
 		code:   terminate_protocol_violation,
-		reason: "moq: protocol violation",
+		reason: "moqt: protocol violation",
 	}
 
 	ErrParameterLengthMismatch = defaultTerminateError{
 		code:   terminate_parameter_length_mismatch,
-		reason: "moq: parameter length mismatch",
+		reason: "moqt: parameter length mismatch",
 	}
 
 	ErrTooManySubscribes = defaultTerminateError{
 		code:   terminate_too_many_subscribes,
-		reason: "moq: too many subscribes",
+		reason: "moqt: too many subscribes",
 	}
 
 	ErrGoAwayTimeout = defaultTerminateError{
 		code:   terminate_goaway_timeout,
-		reason: "moq: goaway timeout",
+		reason: "moqt: goaway timeout",
 	}
 
 	ErrGroupRejected = defaultGroupError{
 		code:   group_send_interrupted,
-		reason: "moq: send interrupted",
+		reason: "moqt: send interrupted",
 	}
 
 	ErrGroupOutOfRange = defaultGroupError{
 		code:   group_out_of_range,
-		reason: "moq: out of range",
+		reason: "moqt: out of range",
 	}
 
 	ErrGroupExpired = defaultGroupError{
 		code:   group_expires,
-		reason: "moq: expires",
+		reason: "moqt: expires",
 	}
 
 	ErrClosedGroup = defaultGroupError{
 		code:   group_closed,
-		reason: "moq: group is closed",
+		reason: "moqt: group is closed",
 	}
 
 	// ErrGroupDeliveryTimeout = defaultGroupError{
@@ -124,10 +124,10 @@ var (
 	// }
 
 	// Internal Errors with reason
-	ErrUnsubscribedTrack = ErrInternalError.WithReason("moq:unsubscribed track")
+	ErrUnsubscribedTrack = ErrInternalError.WithReason("moqt: unsubscribed track")
 
-	ErrServerClosed = errors.New("moq: server closed")
-	ErrClientClosed = errors.New("moq: client closed")
+	ErrServerClosed = errors.New("moqt: server closed")
+	ErrClientClosed = errors.New("moqt: client closed")
 )
 
 // type Error interface {
@@ -341,7 +341,7 @@ type internalError struct {
 }
 
 func (err internalError) Error() string {
-	return fmt.Sprintf("moq: internal error: %s", err.reason)
+	return fmt.Sprintf("moqt: internal error: %s", err.reason)
 }
 
 func (internalError) WithReason(reason string) internalError {
@@ -383,7 +383,7 @@ var _ TerminateError = (*unauthorizedError)(nil)
 type unauthorizedError struct{}
 
 func (unauthorizedError) Error() string {
-	return "moq: unauthorized"
+	return "moqt: unauthorized"
 }
 
 func (unauthorizedError) SubscribeErrorCode() protocol.SubscribeErrorCode {
@@ -403,7 +403,7 @@ var _ InfoError = (*trackDoesNotExistError)(nil)
 type trackDoesNotExistError struct{}
 
 func (trackDoesNotExistError) Error() string {
-	return "moq: track does not exist"
+	return "moqt: track does not exist"
 }
 
 func (trackDoesNotExistError) SubscribeErrorCode() protocol.SubscribeErrorCode {

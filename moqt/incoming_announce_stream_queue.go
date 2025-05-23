@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-func newSendAnnounceStreamQueue() *incomingAnnounceStreamQueue {
+func newIncomingAnnounceStreamQueue() *incomingAnnounceStreamQueue {
 	return &incomingAnnounceStreamQueue{
 		queue: make([]*sendAnnounceStream, 0),
 		ch:    make(chan struct{}, 1),

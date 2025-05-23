@@ -1,37 +1,39 @@
 package moqt
 
 import (
-	"errors"
+	"context"
 	"strings"
-	"sync"
 )
 
-func NewAnnouncement(trackPath TrackPath) *Announcement {
+func NewAnnouncement(ctx context.Context, path TrackPath) *Announcement {
+	ctx, cancel := context.WithCancel(ctx)
+
 	ann := Announcement{
-		active: true,
-		cond:   sync.NewCond(&sync.Mutex{}),
-		path:   trackPath,
+		path:   path,
+		ctx:    ctx,
+		cancel: cancel,
+	}
+
+	if ctx.Err() != nil {
+
 	}
 
 	return &ann
 }
 
 type Announcement struct {
-	active bool
-	cond   *sync.Cond
+	ctx    context.Context
+	cancel context.CancelFunc
 
-	/*
-	 *
-	 */
 	path TrackPath
 }
 
-func (a Announcement) String() string {
+func (a *Announcement) String() string {
 	var sb strings.Builder
 	sb.WriteString("Announcement: {")
 	sb.WriteString(" ")
 	sb.WriteString("AnnounceStatus: ")
-	if a.active {
+	if a.IsActive() {
 		sb.WriteString("ACTIVE")
 	} else {
 		sb.WriteString("ENDED")
@@ -47,31 +49,18 @@ func (a *Announcement) TrackPath() TrackPath {
 	return a.path
 }
 
-func (a *Announcement) End() error {
-	a.cond.L.Lock()
-	defer a.cond.L.Unlock()
-
-	if !a.active {
-		return errors.New("announcement has already ended")
-	}
-
-	a.active = false
-
-	// notify any waiting goroutines that the announcement has ended
-	a.cond.Broadcast()
-
-	return nil
+func (a *Announcement) AwaitEnd() <-chan struct{} {
+	return a.ctx.Done()
 }
 
-func (a *Announcement) AwaitEnd() {
-	a.cond.L.Lock()
-	defer a.cond.L.Unlock()
-
-	for a.active {
-		a.cond.Wait()
-	}
+func (a *Announcement) IsActive() bool {
+	return a.ctx.Err() == nil
 }
 
-func (a Announcement) IsActive() bool {
-	return a.active
+func (a *Announcement) End() {
+	a.cancel()
+}
+
+func (a *Announcement) Clone() *Announcement {
+	return NewAnnouncement(a.ctx, a.path)
 }

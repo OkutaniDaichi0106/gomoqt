@@ -44,7 +44,7 @@ func NewCluster(urlstr string, ctx context.Context) (*Cluster, error) {
 	return cluster, nil
 }
 
-var _ moqt.Handler = (*Cluster)(nil)
+var _ moqt.TrackHandler = (*Cluster)(nil)
 
 type Cluster struct {
 	urlstr string

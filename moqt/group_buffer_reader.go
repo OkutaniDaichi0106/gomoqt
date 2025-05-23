@@ -21,7 +21,7 @@ type groupBufferReader struct {
 }
 
 func (r *groupBufferReader) GroupSequence() GroupSequence {
-	return r.groupBuffer.groupSequence
+	return r.groupBuffer.sequence
 }
 
 func (r *groupBufferReader) ReadFrame() (*Frame, error) {

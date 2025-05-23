@@ -18,8 +18,8 @@ var DefaultFrameSize = 2048
 // }
 
 // NewFrame creates a new Frame with the specified bytes.
-func NewFrame(b []byte) Frame {
-	return Frame{message: message.NewFrameMessage(b)}
+func NewFrame(b []byte) *Frame {
+	return &Frame{message: message.NewFrameMessage(b)}
 }
 
 type Frame struct {

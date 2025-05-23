@@ -3,17 +3,10 @@ package moqt
 import "context"
 
 type TrackReader interface {
-	// Get the track path
-	TrackPath() TrackPath
-
-	// Get the latest group sequence
-	LatestGroupSequence() GroupSequence
-
-	// Get the track info
-	Info() Info
-
 	// Accept a group
 	AcceptGroup(context.Context) (GroupReader, error)
+
+	ReceiveGap(context.Context) (Gap, error)
 
 	Close() error
 

@@ -4,7 +4,7 @@ go 1.23.4
 
 require (
 	github.com/quic-go/quic-go v0.48.0
-	github.com/quic-go/webtransport-go v0.8.0
+	github.com/quic-go/webtransport-go v0.8.1-0.20250328130601-2671ef85124d
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/exp v0.0.0-20250506013437-ce4c2cf36ca6
 	golang.org/x/term v0.32.0

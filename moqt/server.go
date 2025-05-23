@@ -71,7 +71,7 @@ type Server struct {
 	listeners     map[*quic.EarlyListener]struct{}
 	listenerGroup sync.WaitGroup
 	//
-	activeSess map[*session]struct{}
+	activeSess map[*Session]struct{}
 	// onShutdown []func() // TODO: Implement if needed
 
 	// cancelFuncs []context.CancelFunc
@@ -179,7 +179,7 @@ func (s *Server) ServeQUICConn(conn quic.Connection) error {
 	}
 }
 
-func (s *Server) AcceptQUIC(ctx context.Context, mux *TrackMux) (string, Session, error) {
+func (s *Server) AcceptQUIC(ctx context.Context, mux *TrackMux) (string, *Session, error) {
 	if s.shuttingDown() {
 		return "", nil, ErrServerClosed
 	}
@@ -223,7 +223,7 @@ func (s *Server) AcceptQUIC(ctx context.Context, mux *TrackMux) (string, Session
 // ServeWebTransport serves a WebTransport session.
 // It upgrades the HTTP/3 connection to a WebTransport session and calls the session handler.
 // If the server is not configured with a WebTransport server, it creates a default server.
-func (s *Server) AcceptWebTransport(w http.ResponseWriter, r *http.Request, mux *TrackMux) (Session, error) {
+func (s *Server) AcceptWebTransport(w http.ResponseWriter, r *http.Request, mux *TrackMux) (*Session, error) {
 	if s.shuttingDown() {
 		return nil, ErrServerClosed
 	}
@@ -248,12 +248,10 @@ func (s *Server) AcceptWebTransport(w http.ResponseWriter, r *http.Request, mux 
 	return s.acceptSession(conn, params, mux)
 }
 
-func (s *Server) acceptSession(conn quic.Connection, params func(req *Parameters) (rsp *Parameters, err error), mux *TrackMux) (Session, error) {
-	ctx, cancel := context.WithCancel(conn.Context())
+func (s *Server) acceptSession(conn quic.Connection, params func(req *Parameters) (rsp *Parameters, err error), mux *TrackMux) (*Session, error) {
+	sess := newSession(conn, mux)
 
-	sess := newSession(ctx, conn)
-
-	ctxAccept, cancelAccept := context.WithTimeout(ctx, s.acceptTimeout())
+	ctxAccept, cancelAccept := context.WithTimeout(sess.Context(), s.acceptTimeout())
 	defer cancelAccept()
 	err := sess.acceptSessionStream(ctxAccept, params)
 	if err != nil {
@@ -265,14 +263,13 @@ func (s *Server) acceptSession(conn quic.Connection, params func(req *Parameters
 		mux = DefaultMux
 	}
 
-	go sess.handleAnnounceStream(ctx, mux)
-	go sess.handleSubscribeStream(ctx, mux)
-	go sess.handleInfoStream(ctx, mux)
+	go sess.handleAnnounceStream()
+	go sess.handleSubscribeStreams()
+	go sess.handleInfoStreams()
 
 	s.addSession(sess)
 	go func() {
-		<-sess.doneCh
-		cancel()
+		<-sess.Context().Done()
 		s.removeSession(sess)
 	}()
 
@@ -283,13 +280,12 @@ func (s *Server) ListenAndServe() error {
 	s.init()
 
 	// Configure TLS for QUIC
-	tlsConfig := s.TLSConfig
-	if tlsConfig == nil {
+	if s.TLSConfig == nil {
 		return errors.New("configuration for TLS is required for QUIC")
 	}
 
 	// Clone the TLS config to avoid modifying the original
-	tlsConfig = tlsConfig.Clone()
+	tlsConfig := s.TLSConfig.Clone()
 
 	// Make sure we have NextProtos set for ALPN negotiation
 	if len(tlsConfig.NextProtos) == 0 {
@@ -325,7 +321,7 @@ func (s *Server) ListenAndServeTLS(certFile, keyFile string) (err error) {
 		Certificates: certs,
 		NextProtos:   []string{NextProtoMOQ, http3.NextProtoH3},
 	}
-	s.TLSConfig = tlsConfig
+	s.TLSConfig = tlsConfig.Clone()
 
 	if ListenQUICFunc == nil {
 		panic("ListenQUICFunc is not initialized")
@@ -442,7 +438,7 @@ func (s *Server) removeListener(ln *quic.EarlyListener) {
 	s.listenerGroup.Done()
 }
 
-func (s *Server) addSession(sess *session) {
+func (s *Server) addSession(sess *Session) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -452,7 +448,7 @@ func (s *Server) addSession(sess *session) {
 	s.activeSess[sess] = struct{}{}
 }
 
-func (s *Server) removeSession(sess *session) {
+func (s *Server) removeSession(sess *Session) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -479,7 +475,7 @@ func (s *Server) acceptTimeout() time.Duration {
 	return 5 * time.Second
 }
 
-func (s *Server) goAway(sess *session) {
+func (s *Server) goAway(sess *Session) {
 	// TODO: Implement go away
 	// sess.goAway("")
 }

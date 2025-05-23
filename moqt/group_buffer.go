@@ -11,17 +11,23 @@ func newGroupBuffer(seq GroupSequence, size int) *GroupBuffer {
 	if size <= 0 {
 		size = DefaultGroupBufferSize
 	}
-	return &GroupBuffer{
-		groupSequence: seq,
-		cond:          sync.NewCond(&sync.Mutex{}),
-		frames:        make([]*Frame, 0, size),
+
+	buf := &GroupBuffer{
+		sequence: seq,
+		frames:   make([]*Frame, 0, size),
 	}
+
+	buf.cond = sync.NewCond(&buf.mu)
+
+	return buf
 }
 
 var _ GroupWriter = (*GroupBuffer)(nil)
 
 type GroupBuffer struct {
-	groupSequence GroupSequence
+	mu sync.Mutex
+
+	sequence GroupSequence
 
 	// frames
 	frames []*Frame
@@ -36,18 +42,20 @@ type GroupBuffer struct {
 }
 
 func (g *GroupBuffer) GroupSequence() GroupSequence {
-	return g.groupSequence
+	return g.sequence
 }
 
 func (g *GroupBuffer) WriteFrame(frame *Frame) error {
-	g.cond.L.Lock()
-	defer g.cond.L.Unlock()
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
 	if g.closed {
 		if g.closedErr != nil {
 			return g.closedErr
 		}
 		return ErrClosedGroup
 	}
+
 	g.frames = append(g.frames, frame)
 
 	g.cond.Broadcast()
@@ -55,20 +63,20 @@ func (g *GroupBuffer) WriteFrame(frame *Frame) error {
 	return nil
 }
 
-func (g *GroupBuffer) SetDeadline(t time.Time) {
-	g.cond.L.Lock()
-	defer g.cond.L.Unlock()
+// func (g *GroupBuffer) SetDeadline(t time.Time) {
+// 	g.mu.Lock()
+// 	defer g.mu.Unlock()
 
-	if g.deadlineTimer != nil {
-		g.deadlineTimer.Stop()
-	}
+// 	if g.deadlineTimer != nil {
+// 		g.deadlineTimer.Stop()
+// 	}
 
-	g.deadline = &t
-}
+// 	g.deadline = &t
+// }
 
 func (g *GroupBuffer) SetWriteDeadline(t time.Time) error {
-	g.cond.L.Lock()
-	defer g.cond.L.Unlock()
+	g.mu.Lock()
+	defer g.mu.Unlock()
 
 	if g.closed {
 		if g.closedErr != nil {
@@ -83,12 +91,12 @@ func (g *GroupBuffer) SetWriteDeadline(t time.Time) error {
 }
 
 func (g *GroupBuffer) CloseWithError(err error) error {
-	g.cond.L.Lock()
-	defer g.cond.L.Unlock()
+	g.mu.Lock()
+	defer g.mu.Unlock()
 
 	if g.closed {
 		if g.closedErr != nil {
-			return fmt.Errorf("group has already closed due to: %w", g.closedErr)
+			return g.closedErr
 		}
 		return ErrClosedGroup
 	}
@@ -106,8 +114,8 @@ func (g *GroupBuffer) CloseWithError(err error) error {
 }
 
 func (g *GroupBuffer) Close() error {
-	g.cond.L.Lock()
-	defer g.cond.L.Unlock()
+	g.mu.Lock()
+	defer g.mu.Unlock()
 
 	if g.closed {
 		if g.closedErr != nil {
@@ -126,8 +134,8 @@ func (g *GroupBuffer) Close() error {
 
 // Release resets the buffer with a new group sequence.
 func (g *GroupBuffer) Release() {
-	g.cond.L.Lock()
-	defer g.cond.L.Unlock()
+	g.mu.Lock()
+	defer g.mu.Unlock()
 
 	if len(g.frames) > 0 {
 		g.frames = g.frames[:0]

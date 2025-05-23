@@ -7,7 +7,7 @@ import (
 )
 
 func TestIncomingInfoStreamQueue_EnqueueAndAccept(t *testing.T) {
-	queue := newSendInfoStreamQueue()
+	queue := newIncomingInfoStreamQueue()
 	stream := &sendInfoStream{}
 
 	// Enqueue a stream
@@ -28,7 +28,7 @@ func TestIncomingInfoStreamQueue_EnqueueAndAccept(t *testing.T) {
 }
 
 func TestIncomingInfoStreamQueue_AcceptTimeout(t *testing.T) {
-	queue := newSendInfoStreamQueue()
+	queue := newIncomingInfoStreamQueue()
 
 	// Accept with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)

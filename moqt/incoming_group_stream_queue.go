@@ -8,8 +8,8 @@ import (
 
 func newGroupReceiverQueue(id SubscribeID, path TrackPath, config *SubscribeConfig) *incomingGroupStreamQueue {
 	q := &incomingGroupStreamQueue{
-		queue:  make(map[GroupSequence]*receiveGroupStream),
-		heap:   newGroupSequenceHeap(config.GroupOrder, config.MinGroupSequence, config.MaxGroupSequence),
+		queue:  make([]*receiveGroupStream, 0, 1<<4),
+		heap:   newGroupSequenceHeap(config.GroupOrder),
 		ch:     make(chan struct{}, 1),
 		id:     id,
 		path:   path,
@@ -19,14 +19,14 @@ func newGroupReceiverQueue(id SubscribeID, path TrackPath, config *SubscribeConf
 	return q
 }
 
+var _ TrackReader = (*incomingGroupStreamQueue)(nil)
+
 type incomingGroupStreamQueue struct {
-	queue  map[GroupSequence]*receiveGroupStream
-	heap   *groupSequenceHeap
-	ch     chan struct{}
-	mu     sync.Mutex
-	id     SubscribeID
-	path   TrackPath
-	config *SubscribeConfig
+	queue []*receiveGroupStream
+	heap  *groupSequenceHeap
+	ch    chan struct{}
+	mu    sync.Mutex
+	// subscription SentSubscription
 }
 
 // // Len implements heap.Interface
@@ -101,9 +101,9 @@ type incomingGroupStreamQueue struct {
 // }
 
 // Enqueue adds a new stream to the queue and maintains heap property
-func (q *incomingGroupStreamQueue) Enqueue(stream *receiveGroupStream) error {
+func (q *incomingGroupStreamQueue) enqueue(stream *receiveGroupStream) {
 	if stream == nil {
-		return ErrInternalError
+		return
 	}
 
 	seq := stream.GroupSequence()
@@ -112,9 +112,18 @@ func (q *incomingGroupStreamQueue) Enqueue(stream *receiveGroupStream) error {
 		return ErrInvalidRange
 	}
 
+	q.queue = append(q.queue, stream)
+
+	entry := struct {
+		seq   GroupSequence
+		index int
+	}{
+		seq:   seq,
+		index: len(q.queue) - 1,
+	}
+
 	q.mu.Lock()
-	heap.Push(q.heap, seq)
-	q.queue[seq] = stream
+	heap.Push(q.heap, entry)
 	q.mu.Unlock()
 
 	// Send a notification (non-blocking)
@@ -123,7 +132,6 @@ func (q *incomingGroupStreamQueue) Enqueue(stream *receiveGroupStream) error {
 	default:
 	}
 
-	return nil
 }
 
 // // Dequeue removes and returns the highest priority stream
@@ -143,7 +151,7 @@ func (q *incomingGroupStreamQueue) Enqueue(stream *receiveGroupStream) error {
 // 	return stream
 // }
 
-func (q *incomingGroupStreamQueue) Accept(ctx context.Context) (*receiveGroupStream, error) {
+func (q *incomingGroupStreamQueue) AcceptGroup(ctx context.Context) (GroupReader, error) {
 	for {
 		q.mu.Lock()
 		if q.heap.Len() > 0 {
@@ -173,10 +181,14 @@ func (q *incomingGroupStreamQueue) Accept(ctx context.Context) (*receiveGroupStr
 	}
 }
 
-func (q *incomingGroupStreamQueue) UpdateConfig(config *SubscribeConfig) {
+func (q *incomingGroupStreamQueue) CancelRead(err error) {
+
+}
+
+func (q *incomingGroupStreamQueue) removeGroups(min, max GroupSequence) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	q.heap.ResetConfig(config.GroupOrder, config.MinGroupSequence, config.MaxGroupSequence)
+	q.heap.ResetOrder(config.GroupOrder)
 	q.config = config
 }

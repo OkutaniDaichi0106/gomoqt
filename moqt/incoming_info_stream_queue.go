@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-func newSendInfoStreamQueue() *incomingInfoStreamQueue {
+func newIncomingInfoStreamQueue() *incomingInfoStreamQueue {
 	return &incomingInfoStreamQueue{
 		queue: make([]*sendInfoStream, 0),
 		ch:    make(chan struct{}),

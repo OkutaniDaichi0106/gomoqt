@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-func newReceiveSubscribeStreamQueue() *incomingSubscribeStreamQueue {
+func newIncomingSubscribeStreamQueue() *incomingSubscribeStreamQueue {
 	return &incomingSubscribeStreamQueue{
 		queue: make([]*receiveSubscribeStream, 0),
 		ch:    make(chan struct{}, 1),
@@ -30,7 +30,7 @@ type incomingSubscribeStreamQueue struct {
 // 	return q.ch
 // }
 
-func (q *incomingSubscribeStreamQueue) Enqueue(rss *receiveSubscribeStream) {
+func (q *incomingSubscribeStreamQueue) enqueue(rss *receiveSubscribeStream) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -57,7 +57,7 @@ func (q *incomingSubscribeStreamQueue) Enqueue(rss *receiveSubscribeStream) {
 // 	return next
 // }
 
-func (q *incomingSubscribeStreamQueue) Accept(ctx context.Context) (*receiveSubscribeStream, error) {
+func (q *incomingSubscribeStreamQueue) accept(ctx context.Context) (*receiveSubscribeStream, error) {
 	for {
 		q.mu.Lock()
 		if q.pos <= len(q.queue) {

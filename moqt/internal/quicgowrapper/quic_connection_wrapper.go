@@ -39,8 +39,8 @@ func (wrapper *rawQuicConnection) AcceptUniStream(ctx context.Context) (quic.Rec
 func (wrapper *rawQuicConnection) CloseWithError(code quic.ConnectionErrorCode, msg string) error {
 	return wrapper.conn.CloseWithError(quicgo.ApplicationErrorCode(code), msg)
 }
-func (wrapper *rawQuicConnection) ConnectionState() quicgo.ConnectionState {
-	return wrapper.conn.ConnectionState()
+func (wrapper *rawQuicConnection) ConnectionState() quic.ConnectionState {
+	return quic.ConnectionState(wrapper.conn.ConnectionState())
 }
 func (wrapper *rawQuicConnection) Context() context.Context {
 	return wrapper.conn.Context()

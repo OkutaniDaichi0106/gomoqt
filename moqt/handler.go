@@ -1,44 +1,28 @@
 package moqt
 
-// type Handler interface {
-// 	ServeTrack(TrackWriter, *SubscribeConfig)
-// 	ServeAnnouncements(AnnouncementWriter, *AnnounceConfig)
-
-// 	GetInfo(TrackPath) (Info, error)
-// }
-
 type TrackHandler interface {
-	ServeTrack(TrackWriter, *SubscribeConfig)
+	HandleTrack(TrackWriter, ReceivedSubscription)
+	Info() (Info, bool)
 }
 
-// type AnnouncementHandler interface {
-// 	ServeAnnouncements(AnnouncementWriter, *AnnounceConfig)
+var NotFoundTrackHandler TrackHandler = nil
+
+// func NewTrackHandler(info Info, handler func(TrackWriter, *SubscribeConfig)) TrackHandler {
+// 	return &trackHandler{
+// 		info:    info,
+// 		handler: handler,
+// 	}
 // }
 
-// type InfoHandler interface {
-// 	GetInfo(TrackPath) (Info, error)
-// }
+var _ TrackHandler = (*defaultNotFoundTrackHandler)(nil)
 
-var NotFoundTrackHandler TrackHandler = &notFoundHandler{}
+type defaultNotFoundTrackHandler struct {
+}
 
-// var NotFoundAnnouncementHandler AnnouncementHandler = &notFoundHandler{}
-
-var _ TrackHandler = (*notFoundHandler)(nil)
-
-// var _ AnnouncementHandler = (*notFoundHandler)(nil)
-
-// var _ InfoHandler = (*notFoundHandler)(nil)
-
-type notFoundHandler struct{}
-
-func (h *notFoundHandler) ServeTrack(w TrackWriter, config *SubscribeConfig) {
+func (h *defaultNotFoundTrackHandler) HandleTrack(w TrackWriter, sub ReceivedSubscription) {
 	w.CloseWithError(ErrTrackDoesNotExist)
 }
 
-func (h *notFoundHandler) GetInfo(TrackPath) (Info, error) {
-	return NotFoundInfo, ErrTrackDoesNotExist
-}
-
-func (h *notFoundHandler) ServeAnnouncements(w AnnouncementWriter, config *AnnounceConfig) {
-	// Do nothing
+func (h *defaultNotFoundTrackHandler) Info() (Info, bool) {
+	return Info{}, false
 }

@@ -43,7 +43,7 @@ type Client struct {
 	initOnce sync.Once
 
 	mu         sync.RWMutex
-	activeSess map[*session]struct{}
+	activeSess map[*Session]struct{}
 
 	inShutdown atomic.Bool
 	doneChan   chan struct{}
@@ -59,7 +59,7 @@ func (c *Client) init() {
 	})
 }
 
-func (c *Client) Dial(ctx context.Context, urlStr string, mux *TrackMux) (Session, *SetupResponse, error) {
+func (c *Client) Dial(ctx context.Context, urlStr string, mux *TrackMux) (*Session, *SetupResponse, error) {
 	if c.shuttingDown() {
 		return nil, nil, ErrClientClosed
 	}
@@ -87,7 +87,7 @@ func (c *Client) Dial(ctx context.Context, urlStr string, mux *TrackMux) (Sessio
 	}
 }
 
-func (c *Client) DialWebTransport(ctx context.Context, req *SetupRequest, mux *TrackMux) (Session, *SetupResponse, error) {
+func (c *Client) DialWebTransport(ctx context.Context, req *SetupRequest, mux *TrackMux) (*Session, *SetupResponse, error) {
 	if c.shuttingDown() {
 		return nil, nil, ErrClientClosed
 	}
@@ -131,7 +131,7 @@ func (c *Client) DialWebTransport(ctx context.Context, req *SetupRequest, mux *T
 }
 
 // TODO: Expose this method if QUIC is supported
-func (c *Client) DialQUIC(ctx context.Context, req *SetupRequest, mux *TrackMux) (Session, *SetupResponse, error) {
+func (c *Client) DialQUIC(ctx context.Context, req *SetupRequest, mux *TrackMux) (*Session, *SetupResponse, error) {
 	if c.shuttingDown() {
 		return nil, nil, ErrClientClosed
 	}
@@ -182,13 +182,11 @@ func (c *Client) DialQUIC(ctx context.Context, req *SetupRequest, mux *TrackMux)
 	return sess, rsp, nil
 }
 
-func (c *Client) openSession(conn quic.Connection, params *Parameters, mux *TrackMux) (*session, *SetupResponse, error) {
-	ctx, cancel := context.WithCancel(conn.Context())
-	sess := newSession(ctx, conn)
+func (c *Client) openSession(conn quic.Connection, params *Parameters, mux *TrackMux) (*Session, *SetupResponse, error) {
+	sess := newSession(conn)
 
 	err := sess.openSessionStream(internal.DefaultClientVersions, params)
 	if err != nil {
-		cancel()
 		c.Logger.Error("failed to open a session stream", "error", err.Error())
 		return nil, nil, err
 	}
@@ -199,14 +197,13 @@ func (c *Client) openSession(conn quic.Connection, params *Parameters, mux *Trac
 		mux = DefaultMux
 	}
 
-	go sess.handleAnnounceStream(ctx, mux)
-	go sess.handleSubscribeStream(ctx, mux)
-	go sess.handleInfoStream(ctx, mux)
+	go sess.handleAnnounceStream(mux)
+	go sess.handleSubscribeStream(mux)
+	go sess.handleInfoStream(mux)
 
 	c.addSession(sess)
 	go func() {
-		<-sess.doneCh
-		cancel()
+		<-sess.Context().Done()
 		c.removeSession(sess)
 	}()
 
@@ -216,7 +213,7 @@ func (c *Client) openSession(conn quic.Connection, params *Parameters, mux *Trac
 	}, nil
 }
 
-func (s *Client) addSession(sess *session) {
+func (s *Client) addSession(sess *Session) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -226,7 +223,7 @@ func (s *Client) addSession(sess *session) {
 	s.activeSess[sess] = struct{}{}
 }
 
-func (s *Client) removeSession(sess *session) {
+func (s *Client) removeSession(sess *Session) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -291,4 +288,4 @@ func (c *Client) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-func (c *Client) goAway(sess *session) {}
+func (c *Client) goAway(sess *Session) {}

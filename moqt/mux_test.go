@@ -17,6 +17,37 @@ import (
 // Define a custom type for context keys
 type contextKey string
 
+// MockReceivedSubscription is a mock implementation of ReceivedSubscription for testing.
+type MockReceivedSubscription struct {
+	SubscribeIDFunc      func() SubscribeID
+	SubuscribeConfigFunc func() *SubscribeConfig
+	UpdatedFunc          func() <-chan struct{}
+}
+
+func (m *MockReceivedSubscription) SubscribeID() SubscribeID {
+	if m.SubscribeIDFunc != nil {
+		return m.SubscribeIDFunc()
+	}
+	return 0
+}
+
+func (m *MockReceivedSubscription) SubuscribeConfig() *SubscribeConfig {
+	if m.SubuscribeConfigFunc != nil {
+		return m.SubuscribeConfigFunc()
+	}
+	return &SubscribeConfig{}
+}
+
+func (m *MockReceivedSubscription) Updated() <-chan struct{} {
+	if m.UpdatedFunc != nil {
+		return m.UpdatedFunc()
+	}
+	// Return a closed channel so it doesn't block if not overridden
+	ch := make(chan struct{})
+	close(ch)
+	return ch
+}
+
 // TestTrackMuxBasicRouting tests basic routing functionality
 func TestTrackMuxBasicRouting(t *testing.T) {
 	mux := moqt.NewTrackMux()
@@ -64,8 +95,7 @@ func TestTrackMuxBasicRouting(t *testing.T) {
 
 	wg.Add(1)
 	go func() {
-		defer wg.Done()
-		// Verify request to audio track
+		defer wg.Done()		// Verify request to audio track
 		audioWriter := &moqt.MockTrackWriter{
 			PathValue: "/tracks/audio",
 			OpenGroupFunc: func(seq moqt.GroupSequence) (moqt.GroupWriter, error) {
@@ -85,13 +115,13 @@ func TestTrackMuxBasicRouting(t *testing.T) {
 				return nil
 			},
 		}
-		mux.ServeTrack(audioWriter, &moqt.SubscribeConfig{})
+		mockSub := &MockReceivedSubscription{}
+		mux.ServeTrack("/tracks/audio", audioWriter, mockSub)
 	}()
 
 	wg.Add(1)
 	go func() {
-		defer wg.Done()
-		// Verify request to video track
+		defer wg.Done()		// Verify request to video track
 		videoWriter := &moqt.MockTrackWriter{
 			PathValue: "/tracks/video",
 			OpenGroupFunc: func(seq moqt.GroupSequence) (moqt.GroupWriter, error) {
@@ -111,7 +141,8 @@ func TestTrackMuxBasicRouting(t *testing.T) {
 				return nil
 			},
 		}
-		mux.ServeTrack(videoWriter, &moqt.SubscribeConfig{})
+		mockSub := &MockReceivedSubscription{}
+		mux.ServeTrack("/tracks/video", videoWriter, mockSub)
 	}()
 	notFoundCalled := false
 	origNotFoundTrackHandler := moqt.NotFoundTrackHandler
@@ -126,7 +157,6 @@ func TestTrackMuxBasicRouting(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-
 		// Verify request to non-existent path
 		unknownWriter := &moqt.MockTrackWriter{
 			PathValue: "/tracks/unknown",
@@ -147,8 +177,8 @@ func TestTrackMuxBasicRouting(t *testing.T) {
 				return nil
 			},
 		}
-
-		mux.ServeTrack(unknownWriter, &moqt.SubscribeConfig{})
+		mockSub := &MockReceivedSubscription{}
+		mux.ServeTrack("/tracks/unknown", unknownWriter, mockSub)
 	}()
 
 	wg.Wait()
@@ -288,10 +318,10 @@ func TestTrackMux_HandlerOverwrite(t *testing.T) {
 
 	// Register a different handler to the same path (a warning should be logged)
 	mux.Handle(ctx, "/tracks/test", handler2)
-
 	// Verify that handler2 is used
 	writer := &moqt.MockTrackWriter{PathValue: "/tracks/test"}
-	mux.ServeTrack(writer, &moqt.SubscribeConfig{})
+	mockSub := &MockReceivedSubscription{}
+	mux.ServeTrack("/tracks/test", writer, mockSub)
 
 	// Add check to verify that context for handler1 was cancelled
 }
@@ -321,10 +351,10 @@ func TestTrackMux_ConcurrentAccess(t *testing.T) {
 	for i := range 10 {
 		wg.Add(1)
 		go func(idx int) {
-			defer wg.Done()
-			path := moqt.TrackPath("/tracks/path" + string(rune(idx+'0')))
+			defer wg.Done()			path := moqt.TrackPath("/tracks/path" + string(rune(idx+'0')))
 			writer := &moqt.MockTrackWriter{PathValue: path}
-			mux.ServeTrack(writer, &moqt.SubscribeConfig{})
+			mockSub := &MockReceivedSubscription{}
+			mux.ServeTrack(path, writer, mockSub)
 			mux.GetInfo(path)
 		}(i)
 	}

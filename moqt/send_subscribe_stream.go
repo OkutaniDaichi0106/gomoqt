@@ -9,6 +9,11 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
+type sentSubscription struct {
+	groupQueue      *incomingGroupStreamQueue
+	subscribeStream *sendSubscribeStream
+}
+
 func newSendSubscribeStream(id SubscribeID, path TrackPath, config *SubscribeConfig, stream quic.Stream) *sendSubscribeStream {
 	return &sendSubscribeStream{
 		id:     id,
@@ -17,6 +22,8 @@ func newSendSubscribeStream(id SubscribeID, path TrackPath, config *SubscribeCon
 		stream: stream,
 	}
 }
+
+var _ SentSubscription = (*sendSubscribeStream)(nil)
 
 type sendSubscribeStream struct {
 	id     SubscribeID
@@ -39,12 +46,41 @@ func (sss *sendSubscribeStream) SubuscribeConfig() *SubscribeConfig {
 	return sss.config
 }
 
-func (sss *sendSubscribeStream) SendSubscribeUpdate(sum message.SubscribeUpdateMessage) error {
+func (sss *sendSubscribeStream) UpdateSubscribe(new *SubscribeConfig) error {
 	sss.mu.Lock()
 	defer sss.mu.Unlock()
 
-	if sum.MinGroupSequence > sum.MaxGroupSequence {
-		return ErrInvalidRange
+	old := sss.config
+
+	if new.MaxGroupSequence != 0 {
+		if new.MinGroupSequence > new.MaxGroupSequence {
+			return ErrInvalidRange
+		}
+	}
+
+	if old.MinGroupSequence != 0 {
+		if new.MinGroupSequence == 0 {
+			return ErrInvalidRange
+		}
+		if old.MinGroupSequence > new.MinGroupSequence {
+			return ErrInvalidRange
+		}
+	}
+
+	if old.MaxGroupSequence != 0 {
+		if new.MaxGroupSequence == 0 {
+			return ErrInvalidRange
+		}
+		if old.MaxGroupSequence < new.MaxGroupSequence {
+			return ErrInvalidRange
+		}
+	}
+
+	sum := message.SubscribeUpdateMessage{
+		TrackPriority:    message.TrackPriority(new.TrackPriority),
+		GroupOrder:       message.GroupOrder(new.GroupOrder),
+		MinGroupSequence: message.GroupSequence(new.MinGroupSequence),
+		MaxGroupSequence: message.GroupSequence(new.MaxGroupSequence),
 	}
 
 	_, err := sum.Encode(sss.stream)
@@ -60,23 +96,10 @@ func (sss *sendSubscribeStream) SendSubscribeUpdate(sum message.SubscribeUpdateM
 		"stream_id", sss.stream.StreamID(),
 	)
 
+	sss.config = new
+
 	return nil
 }
-
-// func (ss *SendSubscribeStream) ReceiveSubscribeGap() (message.SubscribeGapMessage, error) {
-// 	slog.Debug("receiving a data gap")
-
-// 	var gap message.SubscribeGapMessage
-// 	_, err := gap.Decode(ss.Stream)
-// 	if err != nil {
-// 		slog.Error("failed to read a subscribe gap message", "error", err,
-// 		return message.SubscribeGapMessage{}, err
-// 	}
-
-// 	slog.Debug("received a data gap", slog.Any("gap", gap))
-
-// 	return gap, nil
-// }
 
 func (ss *sendSubscribeStream) Close() error {
 	err := ss.stream.Close()

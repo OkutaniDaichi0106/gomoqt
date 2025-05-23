@@ -1,6 +1,6 @@
 # gomoqt
 
-A Go implementation of Media over QUIC Transfork (MOQT), designed for efficient media streaming over QUIC.
+A Go implementation of Media over QUIC (MOQ), designed for efficient media streaming over QUIC.
 
 ## Overview
 
@@ -8,8 +8,9 @@ This implementation follows the [MOQ Transfork specification](https://kixelated.
 
 ## Features
 
-- **MOQT Protocol**: Core implementation of the MOQTransfork protocol.
-- **WebTransport Support**: Supports both WebTransport and raw QUIC connections.
+- **MOQ Protocol**: Core implementation of the MOQTransfork protocol.
+- **WebTransport Support**: Supports WebTransport connections.
+- **Raw QUIC Support**: Supports raw QUIC connections.
 - **Sample Implementations**: Provides several code examples for common use cases.
 
 ## Components
@@ -17,6 +18,8 @@ This implementation follows the [MOQ Transfork specification](https://kixelated.
 ### moqt
 
 Implements the main interactions defined by MOQ Transfork.
+
+Note: There are several specifications for MOQ (such as moq-lite (moqtransfork) and moqtransport), and gomoqt is implemented with reference to these. However, since none of these specifications are stable yet, gomoqt uses some custom specifications until the standards are finalized。
 
 ### lomc (Coming Soon)
 
@@ -131,8 +134,8 @@ This project is licensed under the MIT License; see [LICENSE](LICENSE) for detai
 
 - [quic-go](https://github.com/quic-go/quic-go) - QUIC implementation in Go
 - [webtransport-go](https://github.com/quic-go/webtransport-go) - WebTransport implementation in Go
-- [moq-drafts](https://github.com/kixelated/moq-drafts) - MOQ Transfork specification
-
+- [moq-lite](https://github.com/kixelated/moq-drafts) - MOQ Transfork specification
+- [moqtransport](https://github.com/moq-transport/moqtransport) - MOQ Transport specification
 
 
 

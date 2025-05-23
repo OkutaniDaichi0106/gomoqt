@@ -7,8 +7,8 @@ var _ TrackWriter = (*MockTrackWriter)(nil)
 type MockTrackWriter struct {
 	PathValue TrackPath
 	// Add more fields as needed for testing
-	OpenGroupFunc func(seq GroupSequence) (GroupWriter, error)
-
+	OpenGroupFunc      func(seq GroupSequence) (GroupWriter, error)
+	SendGapFunc        func(gap Gap) error
 	CloseFunc          func() error
 	CloseWithErrorFunc func(err error) error
 
@@ -56,4 +56,11 @@ func (m *MockTrackWriter) CloseWithError(err error) error {
 		return nil
 	}
 	return m.CloseWithErrorFunc(err)
+}
+
+func (m *MockTrackWriter) SendGap(gap Gap) error {
+	if m.SendGapFunc == nil {
+		return nil
+	}
+	return m.SendGapFunc(gap)
 }

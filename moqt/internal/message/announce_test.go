@@ -16,14 +16,14 @@ func TestAnnounceMessage_EncodeDecode(t *testing.T) {
 	}{
 		"valid message": {
 			input: message.AnnounceMessage{
-				AnnounceStatus:     message.AnnounceStatus(1),
-				WildcardParameters: []string{"path", "to", "track"},
+				AnnounceStatus: message.AnnounceStatus(1),
+				TrackSuffix:    "path/to/track",
 			},
 		},
 		"empty wildcard parameters": {
 			input: message.AnnounceMessage{
-				AnnounceStatus:     message.AnnounceStatus(1),
-				WildcardParameters: []string{},
+				AnnounceStatus: message.AnnounceStatus(1),
+				TrackSuffix:    "",
 			},
 		},
 		// "max values": {
@@ -65,25 +65,4 @@ func TestAnnounceMessage_EncodeDecode(t *testing.T) {
 			assert.Equal(t, en, dn, "encoded and decoded message should have the same length")
 		})
 	}
-}
-
-func TestAnounceMessage_EncodeNilWildcardParameters(t *testing.T) {
-	var buf bytes.Buffer
-	msg := message.AnnounceMessage{
-		AnnounceStatus:     message.AnnounceStatus(1),
-		WildcardParameters: nil,
-	}
-	_, err := msg.Encode(&buf)
-	require.NoError(t, err)
-
-	var decoded message.AnnounceMessage
-	_, err = decoded.Decode(&buf)
-	require.NoError(t, err)
-
-	expected := message.AnnounceMessage{
-		AnnounceStatus:     message.AnnounceStatus(1),
-		WildcardParameters: []string{},
-	}
-
-	assert.Equal(t, expected, decoded, "decoded message should match input")
 }

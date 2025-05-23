@@ -9,7 +9,7 @@ type Router struct {
 }
 
 func (r *Router) ServeAnnouncement(w moqt.AnnouncementWriter, config moqt.AnnounceConfig) {
-	if r.announcement.TrackPath.HasPrefix(config.TrackPattern) {
+	if r.announcement.TrackPath.HasPrefix(config.TrackPrefix) {
 		return
 	}
 

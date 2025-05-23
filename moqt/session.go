@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -127,15 +128,15 @@ func (s *Session) Terminate(err error) {
 	slog.Debug("terminated a session")
 }
 
-func (s *Session) OpenAnnounceStream(config *AnnounceConfig) (AnnouncementReader, error) {
-	if config == nil {
-		config = &AnnounceConfig{TrackPattern: "/**"}
+func (s *Session) OpenAnnounceStream(prefix string) (AnnouncementReader, error) {
+	if !strings.HasPrefix(prefix, "/") {
+		panic("prefix must start with '/'")
 	}
 
-	return s.openAnnounceStream(config)
+	return s.openAnnounceStream(prefix)
 }
 
-func (s *Session) OpenTrackStream(path TrackPath, config *SubscribeConfig) (Info, SentSubscription, TrackReader, error) {
+func (s *Session) OpenTrackStream(path BroadcastPath, name string, config *SubscribeConfig) (SentSubscription, TrackReader, error) {
 	if config == nil {
 		config = &SubscribeConfig{}
 	}
@@ -156,31 +157,6 @@ func (s *Session) OpenTrackStream(path TrackPath, config *SubscribeConfig) (Info
 	}
 
 	return info, newReceiveTrackStream(s, info, ss), nil
-}
-
-func (s *Session) GetInfo(path TrackPath) (Info, error) {
-	slog.Debug("requesting track info", "track_path", path)
-
-	im, err := s.openInfoStream(message.InfoRequestMessage{
-		TrackPath: string(path),
-	})
-	if err != nil {
-		slog.Error("failed to request track info",
-			"track_path", path,
-			"error", err,
-		)
-		return NotFoundInfo, err
-	}
-
-	info := Info{
-		TrackPriority:       TrackPriority(im.TrackPriority),
-		LatestGroupSequence: GroupSequence(im.LatestGroupSequence),
-		GroupOrder:          GroupOrder(im.GroupOrder),
-	}
-
-	slog.Debug("received track info", "info", info.String())
-
-	return info, nil
 }
 
 func (s *Session) Context() context.Context {
@@ -257,9 +233,9 @@ func (sess *Session) openSessionStream(versions []protocol.Version, params *Para
 	return nil
 }
 
-func (s *Session) openAnnounceStream(config *AnnounceConfig) (*receiveAnnounceStream, error) {
+func (s *Session) openAnnounceStream(prefix string) (*receiveAnnounceStream, error) {
 	apm := message.AnnouncePleaseMessage{
-		TrackPattern: config.TrackPattern,
+		TrackPrefix: prefix,
 	}
 
 	slog.Debug("opening an announce stream", slog.Any("config", apm))
@@ -277,12 +253,10 @@ func (s *Session) openAnnounceStream(config *AnnounceConfig) (*receiveAnnounceSt
 		return nil, err
 	}
 
-	slog.Debug("opened an announce stream", "announce_config", config.String())
-
-	return newReceiveAnnounceStream(stream, config), nil
+	return newReceiveAnnounceStream(stream, prefix), nil
 }
 
-func (s *Session) openSubscribeStream(id SubscribeID, path TrackPath, config *SubscribeConfig) (Info, *sendSubscribeStream, error) {
+func (s *Session) openSubscribeStream(id SubscribeID, path BroadcastPath, config *SubscribeConfig) (Info, *sendSubscribeStream, error) {
 	// Open a Subscribe Stream
 	stream, err := openStream(s.conn, stream_type_subscribe)
 	if err != nil {
@@ -293,7 +267,7 @@ func (s *Session) openSubscribeStream(id SubscribeID, path TrackPath, config *Su
 	// Send a SUBSCRIBE message
 	sm := message.SubscribeMessage{
 		SubscribeID:      message.SubscribeID(id),
-		TrackPath:        string(path),
+		BroadcastPath:    string(path),
 		GroupOrder:       message.GroupOrder(config.GroupOrder),
 		TrackPriority:    message.TrackPriority(config.TrackPriority),
 		MinGroupSequence: message.GroupSequence(config.MinGroupSequence),
@@ -547,7 +521,7 @@ func (sess *Session) processBiStream(stream quic.Stream) {
 
 		// Create a sendAnnounceStream
 		config := &AnnounceConfig{
-			TrackPattern: string(apm.TrackPattern),
+			TrackPrefix: string(apm.TrackPrefix),
 		}
 		sas := newSendAnnounceStream(stream, config)
 
@@ -567,7 +541,7 @@ func (sess *Session) processBiStream(stream quic.Stream) {
 
 		// Create a receiveSubscribeStream
 		id := SubscribeID(sm.SubscribeID)
-		path := TrackPath(sm.TrackPath)
+		path := BroadcastPath(sm.BroadcastPath)
 		config := &SubscribeConfig{
 			GroupOrder:       GroupOrder(sm.GroupOrder),
 			TrackPriority:    TrackPriority(sm.TrackPriority),
@@ -589,7 +563,7 @@ func (sess *Session) processBiStream(stream quic.Stream) {
 			return
 		}
 
-		sis := newSendInfoStream(stream, TrackPath(imr.TrackPath))
+		sis := newSendInfoStream(stream, BroadcastPath(imr.TrackPath))
 
 		// Enqueue the stream
 		sess.sendInfoStreamQueue.Enqueue(sis)
@@ -669,10 +643,9 @@ func (sess *Session) processUniStream(stream quic.ReceiveStream) {
 
 func (sess *Session) handleSubscribeStreams() {
 	ctx := sess.Context()
-	var path TrackPath
-	var info Info
+	var path BroadcastPath
 	var ok bool
-	var im message.InfoMessage
+	var subok message.SubscribeOkMessage
 
 	for {
 		select {
@@ -693,7 +666,7 @@ func (sess *Session) handleSubscribeStreams() {
 		// sts := newSendTrackStream(sess, ss)
 
 		path = ss.TrackPath()
-		info, ok = sess.mux.GetInfo(path)
+		handler = sess.mux.Handler(path)
 		if !ok {
 			slog.Error("failed to get track info",
 				"track_path", path,
@@ -702,10 +675,8 @@ func (sess *Session) handleSubscribeStreams() {
 			return
 		}
 
-		im = message.InfoMessage{
-			TrackPriority:       message.TrackPriority(info.TrackPriority),
-			LatestGroupSequence: message.GroupSequence(info.LatestGroupSequence),
-			GroupOrder:          message.GroupOrder(info.GroupOrder),
+		subok = message.SubscribeOkMessage{
+			GroupOrder: message.GroupOrder(info.GroupOrder),
 		}
 
 		_, err = im.Encode(ss.stream)
@@ -719,54 +690,7 @@ func (sess *Session) handleSubscribeStreams() {
 	}
 }
 
-func (sess *Session) handleInfoStreams() {
-	ctx := sess.Context()
-	var info Info
-	var ok bool
-	var im message.InfoMessage
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		irs, err := sess.acceptInfoStream(ctx)
-		if err != nil {
-			slog.Error("failed to accept info stream",
-				"error", err,
-			)
-
-			return
-		}
-
-		info, ok = sess.mux.GetInfo(irs.path)
-		if !ok {
-			slog.Error("failed to get track info",
-				"track_path", irs.path,
-			)
-			irs.CloseWithError(ErrTrackDoesNotExist)
-		}
-
-		im = message.InfoMessage{
-			TrackPriority:       message.TrackPriority(info.TrackPriority),
-			LatestGroupSequence: message.GroupSequence(info.LatestGroupSequence),
-			GroupOrder:          message.GroupOrder(info.GroupOrder),
-		}
-
-		_, err = im.Encode(irs.stream)
-		if err != nil {
-			slog.Error("failed to send track info",
-				"info", info,
-				"error", err,
-			)
-			irs.CloseWithError(err)
-		}
-	}
-}
-
-func (sess *Session) handleAnnounceStream() {
+func (sess *Session) handleAnnounceStreams() {
 	for {
 		annstr, err := sess.acceptAnnounceStream(sess.Context())
 		if err != nil {

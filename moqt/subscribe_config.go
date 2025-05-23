@@ -6,7 +6,6 @@ import (
 
 type SubscribeConfig struct {
 	TrackPriority    TrackPriority
-	GroupOrder       GroupOrder
 	MinGroupSequence GroupSequence
 	MaxGroupSequence GroupSequence
 }
@@ -27,24 +26,7 @@ func (config *SubscribeConfig) IsInRange(seq GroupSequence) bool {
 	return config.MinGroupSequence <= seq && seq <= config.MaxGroupSequence
 }
 
-func (config *SubscribeConfig) Update(new *SubscribeConfig) {
-	//
-	config.TrackPriority = new.TrackPriority
-
-	//
-	if new.GroupOrder != GroupOrderDefault {
-		config.GroupOrder = new.GroupOrder
-	}
-
-	if new.MinGroupSequence != 0 {
-		config.MinGroupSequence = new.MinGroupSequence
-	}
-	if new.MaxGroupSequence != 0 {
-		config.MaxGroupSequence = new.MaxGroupSequence
-	}
-}
-
 func (sc SubscribeConfig) String() string {
-	return fmt.Sprintf("SubscribeConfig: { TrackPriority: %d, GroupOrder: %d, MinGroupSequence: %d, MaxGroupSequence: %d }",
-		sc.TrackPriority, sc.GroupOrder, sc.MinGroupSequence, sc.MaxGroupSequence)
+	return fmt.Sprintf("SubscribeConfig: { TrackPriority: %d, MinGroupSequence: %d, MaxGroupSequence: %d }",
+		sc.TrackPriority, sc.MinGroupSequence, sc.MaxGroupSequence)
 }

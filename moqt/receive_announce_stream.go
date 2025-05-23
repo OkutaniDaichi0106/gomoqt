@@ -17,11 +17,11 @@ type AnnouncementReader interface {
 	CloseWithError(error) error
 }
 
-func newReceiveAnnounceStream(stream quic.Stream, config *AnnounceConfig) *receiveAnnounceStream {
+func newReceiveAnnounceStream(stream quic.Stream, prefix string) *receiveAnnounceStream {
 	annstr := &receiveAnnounceStream{
 		stream:        stream,
-		config:        config,
-		announcements: make(map[TrackPath]*Announcement),
+		prefix:        prefix,
+		announcements: make(map[string]*Announcement),
 		next:          make([]*Announcement, 0),
 		liveCh:        make(chan struct{}, 1),
 	}
@@ -34,14 +34,13 @@ func newReceiveAnnounceStream(stream quic.Stream, config *AnnounceConfig) *recei
 var _ AnnouncementReader = (*receiveAnnounceStream)(nil)
 
 type receiveAnnounceStream struct {
-	stream quic.Stream
-	config *AnnounceConfig
-
+	stream   quic.Stream
+	prefix   string
 	closed   bool
 	closeErr error
 
 	// Track Suffix -> Announcement
-	announcements map[TrackPath]*Announcement
+	announcements map[string]*Announcement
 
 	next []*Announcement
 	mu   sync.Mutex
@@ -139,11 +138,12 @@ func (ras *receiveAnnounceStream) CloseWithError(err error) error {
 }
 
 func (ras *receiveAnnounceStream) listenAnnouncements() {
-	pattern := ras.config.TrackPattern
-
 	var am message.AnnounceMessage
+	var suffix string
+	var err error
+
 	for {
-		_, err := am.Decode(ras.stream)
+		_, err = am.Decode(ras.stream)
 		if err != nil {
 			slog.Error("failed to decode an ANNOUNCE message", "error", err)
 			ras.CloseWithError(err) // TODO: is this correct?
@@ -154,9 +154,9 @@ func (ras *receiveAnnounceStream) listenAnnouncements() {
 			"announce_message", am,
 		)
 
-		path := NewTrackPath(pattern, am.WildcardParameters...)
+		suffix = am.TrackSuffix
 
-		old, ok := ras.announcements[path]
+		old, ok := ras.announcements[suffix]
 
 		switch am.AnnounceStatus {
 		case message.ACTIVE:
@@ -164,7 +164,7 @@ func (ras *receiveAnnounceStream) listenAnnouncements() {
 				slog.Debug("active")
 				// Create a new announcement
 
-				ras.addAnnouncement(NewAnnouncement(context.Background(), path))
+				ras.next = append(ras.next, NewAnnouncement(context.Background(), BroadcastPath(ras.prefix+suffix)))
 			} else {
 				slog.Error("announcement is already active", "track_path", old.TrackPath)
 
@@ -178,7 +178,7 @@ func (ras *receiveAnnounceStream) listenAnnouncements() {
 				old.End()
 
 				// Remove the announcement from the map
-				ras.removeAnnouncement(old.TrackPath())
+				delete(ras.announcements, suffix)
 			} else {
 				slog.Error("announcement is already ended",
 					"track_path", old.TrackPath(),
@@ -187,27 +187,12 @@ func (ras *receiveAnnounceStream) listenAnnouncements() {
 				ras.CloseWithError(ErrProtocolViolation)
 				return
 			}
-		case message.LIVE:
-			slog.Debug("all track are announced")
-			select {
-			case ras.liveCh <- struct{}{}:
-			default:
-			}
+		default:
+			slog.Error("unknown announce status",
+				"status", am.AnnounceStatus,
+			)
+			ras.CloseWithError(ErrProtocolViolation)
+			return
 		}
 	}
-}
-
-func (ras *receiveAnnounceStream) addAnnouncement(ann *Announcement) {
-	ras.mu.Lock()
-	defer ras.mu.Unlock()
-
-	ras.announcements[ann.TrackPath()] = ann
-	ras.next = append(ras.next, ann)
-}
-
-func (ras *receiveAnnounceStream) removeAnnouncement(path TrackPath) {
-	ras.mu.Lock()
-	defer ras.mu.Unlock()
-
-	delete(ras.announcements, path)
 }

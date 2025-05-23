@@ -6,7 +6,7 @@ import (
 	"sync"
 )
 
-func newGroupReceiverQueue(id SubscribeID, path TrackPath, config *SubscribeConfig) *incomingGroupStreamQueue {
+func newGroupReceiverQueue(id SubscribeID, path BroadcastPath, config *SubscribeConfig) *incomingGroupStreamQueue {
 	q := &incomingGroupStreamQueue{
 		queue:  make([]*receiveGroupStream, 0, 1<<4),
 		heap:   newGroupSequenceHeap(config.GroupOrder),
@@ -133,23 +133,6 @@ func (q *incomingGroupStreamQueue) enqueue(stream *receiveGroupStream) {
 	}
 
 }
-
-// // Dequeue removes and returns the highest priority stream
-// func (q *incomingGroupStreamQueue) Dequeue() *receiveGroupStream {
-// 	q.mu.Lock()
-// 	defer q.mu.Unlock()
-
-// 	if len(q.queue) == 0 {
-// 		return nil
-// 	}
-
-// 	x := heap.Pop(q)
-// 	stream, ok := x.(*receiveGroupStream)
-// 	if !ok {
-// 		return nil
-// 	}
-// 	return stream
-// }
 
 func (q *incomingGroupStreamQueue) AcceptGroup(ctx context.Context) (GroupReader, error) {
 	for {

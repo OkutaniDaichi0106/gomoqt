@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-func NewAnnouncement(ctx context.Context, path TrackPath) *Announcement {
+func NewAnnouncement(ctx context.Context, path BroadcastPath) *Announcement {
 	ctx, cancel := context.WithCancel(ctx)
 
 	ann := Announcement{
@@ -25,7 +25,7 @@ type Announcement struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	path TrackPath
+	path BroadcastPath
 }
 
 func (a *Announcement) String() string {
@@ -39,13 +39,13 @@ func (a *Announcement) String() string {
 		sb.WriteString("ENDED")
 	}
 	sb.WriteString(", ")
-	sb.WriteString("TrackPath: ")
+	sb.WriteString("Broadcast: ")
 	sb.WriteString(a.path.String())
 	sb.WriteString(" }")
 	return sb.String()
 }
 
-func (a *Announcement) TrackPath() TrackPath {
+func (a *Announcement) BroadcastPath() BroadcastPath {
 	return a.path
 }
 

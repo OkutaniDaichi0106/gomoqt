@@ -14,13 +14,13 @@ import (
  *	}
  */
 type AnnouncePleaseMessage struct {
-	TrackPattern string
+	TrackPrefix string
 }
 
 func (aim AnnouncePleaseMessage) Len() int {
 	// Calculate the length of the payload
 	l := 0
-	l += stringLen(aim.TrackPattern)
+	l += stringLen(aim.TrackPrefix)
 
 	return l
 }
@@ -32,7 +32,7 @@ func (aim AnnouncePleaseMessage) Encode(w io.Writer) (int, error) {
 
 	p = AppendNumber(p, uint64(aim.Len()))
 
-	p = AppendString(p, aim.TrackPattern)
+	p = AppendString(p, aim.TrackPrefix)
 
 	n, err := w.Write(p)
 	if err != nil {
@@ -61,7 +61,7 @@ func (aim *AnnouncePleaseMessage) Decode(r io.Reader) (int, error) {
 	// Decode the payload
 	mr := bytes.NewReader(buf)
 
-	aim.TrackPattern, _, err = ReadString(mr)
+	aim.TrackPrefix, _, err = ReadString(mr)
 	if err != nil {
 		slog.Error("failed to read TrackPrefix for ANNOUNCE_PLEASE message",
 			"error", err,

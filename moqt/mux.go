@@ -26,7 +26,7 @@ func NewTrackMux() *TrackMux {
 
 // Handle registers the handler for the given track path in the DefaultMux.
 // The handler will remain active until the context is canceled.
-func Handle(ctx context.Context, path TrackPath, handler TrackHandler) {
+func Handle(ctx context.Context, path BroadcastPath, handler TrackHandler) {
 	DefaultMux.Handle(ctx, path, handler)
 }
 
@@ -51,12 +51,12 @@ type TrackMux struct {
 
 // Handle registers the handler for the given track path.
 // The handler will remain active until the context is canceled.
-func (mux *TrackMux) Handle(ctx context.Context, path TrackPath, handler TrackHandler) {
+func (mux *TrackMux) Handle(ctx context.Context, path BroadcastPath, handler TrackHandler) {
 	mux.Announce(NewAnnouncement(ctx, path), handler)
 }
 
 func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) {
-	path := announcement.TrackPath()
+	path := announcement.BroadcastPath()
 	if path == "" {
 		slog.Warn("mux: empty track path for announcement")
 		return
@@ -85,10 +85,10 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 
 // Handler returns the handler for the specified track path.
 // If no handler is found, NotFoundTrackHandler is returned.
-func (mux *TrackMux) Handler(path TrackPath) TrackHandler {
+func (mux *TrackMux) Handler(path BroadcastPath) TrackHandler {
 	if path == "" {
 		slog.Warn("mux: empty track path for handler lookup")
-		return NotFoundTrackHandler
+		return NotFoundHandler
 	}
 
 	mux.mu.RLock()
@@ -100,19 +100,19 @@ func (mux *TrackMux) Handler(path TrackPath) TrackHandler {
 	current := &mux.trackTree
 	for _, seg := range p.segments {
 		if current.children == nil {
-			return NotFoundTrackHandler
+			return NotFoundHandler
 		}
 
 		child, ok := current.children[seg]
 		if !ok {
-			return NotFoundTrackHandler
+			return NotFoundHandler
 		}
 
 		current = child
 	}
 
 	if current.handler == nil {
-		return NotFoundTrackHandler
+		return NotFoundHandler
 	}
 
 	return current.handler
@@ -120,55 +120,35 @@ func (mux *TrackMux) Handler(path TrackPath) TrackHandler {
 
 // ServeTrack serves the track at the specified path to the given TrackWriter.
 // It finds the appropriate handler for the path and delegates the serving to it.
-func (mux *TrackMux) ServeTrack(path TrackPath, w TrackWriter, sub ReceivedSubscription) {
+func (mux *TrackMux) ServeTrack(path BroadcastPath, w TrackWriter, sub ReceivedSubscription) {
 	if w == nil {
 		slog.Error("mux: nil track writer")
 		return
 	}
 
-	// path := sub.TrackPath()
-
-	if path == "" {
-		slog.Warn("mux: empty track path for serving")
-		return
-	}
-
-	mux.mu.RLock()
-
-	h := mux.findTrackHandler(newPath(path))
-
-	mux.mu.RUnlock()
-
-	h.HandleTrack(w, sub)
+	mux.Handler(path).ServeTrack(w, sub)
 }
 
 // ServeAnnouncements serves announcements for tracks matching the given pattern.
 // It registers the AnnouncementWriter and sends announcements for matching tracks.
-func (mux *TrackMux) ServeAnnouncements(w AnnouncementWriter, config *AnnounceConfig) {
+func (mux *TrackMux) ServeAnnouncements(w AnnouncementWriter, prefix string) {
 	if w == nil {
 		slog.Error("mux: nil announcement writer")
 		return
 	}
 
-	if config == nil || config.TrackPattern == "" {
-		config = anyAnnounceConfig
-	}
-
 	mux.mu.Lock()
-	defer mux.mu.Unlock()
 
-	pattern := newPattern(config.TrackPattern)
+	pattern := newPattern(prefix)
 
 	// Register the handler on the routing tree
 	current := &mux.announceTree
-	exists := false
 	for _, seg := range pattern.segments {
 		if current.children == nil {
 			current.children = make(map[string]*announcingNode)
 		}
 
 		if child, ok := current.children[seg]; ok {
-			exists = true
 			current = child
 		} else {
 			child := newAnnouncingNode()
@@ -177,14 +157,17 @@ func (mux *TrackMux) ServeAnnouncements(w AnnouncementWriter, config *AnnounceCo
 		}
 	}
 
-	if !exists {
+	if current.announcements == nil {
 		// find all announcements matchs to the pattern
-		current.announcements = mux.findAnnouncements(pattern)
+		current.announcements = mux.findActiveAnnouncements(pattern)
 	}
 
 	// Start serving announcements
 	w.SendAnnouncements(current.announcements)
 	pos := len(current.announcements)
+
+	mux.mu.Unlock()
+
 	var err error
 
 	for {
@@ -200,41 +183,6 @@ func (mux *TrackMux) ServeAnnouncements(w AnnouncementWriter, config *AnnounceCo
 		}
 		pos = len(current.announcements)
 	}
-}
-
-// GetInfo retrieves information about the track at the specified path.
-// Returns track information and any error encountered during the lookup.
-func (mux *TrackMux) GetInfo(path TrackPath) (Info, bool) {
-	if path == "" {
-		slog.Warn("mux: empty track path for handler lookup")
-		return Info{}, false
-	}
-
-	mux.mu.RLock()
-	defer mux.mu.RUnlock()
-
-	p := newPath(path)
-
-	// Find the handler for the given path
-	current := &mux.trackTree
-	for _, seg := range p.segments {
-		if current.children == nil {
-			return Info{}, false
-		}
-
-		child, ok := current.children[seg]
-		if !ok {
-			return Info{}, false
-		}
-
-		current = child
-	}
-
-	if current.handler == nil {
-		return Info{}, false
-	}
-
-	return current.handler.Info()
 }
 
 func (mux *TrackMux) Clear() {
@@ -313,55 +261,71 @@ func (mux *TrackMux) registerHandler(path *path, ann *Announcement, handler Trac
 	}()
 }
 
-func (mux *TrackMux) findTrackHandler(path *path) TrackHandler {
-	return mux.trackTree.findTrackHandler(0, path)
-}
-
 // announce dispatches track announcements to all registered announcement writers
 // that match the given path.
 func (mux *TrackMux) announce(path *path, announcement *Announcement) {
+	var announce func(node *announcingNode, index int)
+	announce = func(node *announcingNode, index int) {
+		if node == nil {
+			return
+		}
+		if path.depth() < index {
+			return
+		}
+
+		node.announce(announcement)
+
+		child, ok := node.children[path.segments[index]]
+		if !ok {
+			return
+		}
+
+		announce(child, index+1)
+	}
+
 	// Announce the track to all announcement writers
-	mux.announceTree.announce(path.segments[1:], announcement)
+	announce(&mux.announceTree, 0)
 
 	slog.Debug("announced new track",
 		"track_path", path.str,
 	)
-
 }
 
-func (mux *TrackMux) findAnnouncements(pattern *pattern) []*Announcement {
+func (mux *TrackMux) findActiveAnnouncements(p *pattern) []*Announcement {
 	var announcements []*Announcement
-	// TODO:
-	var search func(node *routingNode, index int, path string)
-	search = func(node *routingNode, index int, path string) {
-		if index >= pattern.depth() {
-			if node.handler != nil && node.announcement.IsActive() {
-				announcements = append(announcements, node.announcement)
-			}
-			return
+
+	// Find the handler for the given path
+	current := &mux.trackTree
+	for _, seg := range p.segments {
+		if current.children == nil {
+			return nil
 		}
 
-		segment := pattern.segments[index]
+		child, ok := current.children[seg]
+		if !ok {
+			return nil
+		}
 
-		switch segment {
-		case "*":
-			for childSeg, childNode := range node.children {
-				nextPath := path + "/" + childSeg
-				search(childNode, index+1, nextPath)
-			}
-		case "**":
-			search(node, index+1, path)
-			for childSeg, childNode := range node.children {
-				nextPath := path + "/" + childSeg
-				search(childNode, index, nextPath)
-			}
-		default:
-			if childNode, ok := node.children[segment]; ok {
-				nextPath := path + "/" + segment
-				search(childNode, index, nextPath)
-			}
+		current = child
+	}
+
+	if current.handler == nil {
+		return nil
+	}
+
+	var search func(node *routingNode)
+	search = func(node *routingNode) {
+		if node.announcement != nil && node.announcement.IsActive() {
+			announcements = append(announcements, node.announcement)
+		}
+
+		for _, child := range node.children {
+			search(child)
 		}
 	}
+
+	search(current)
+
 	return announcements
 }
 
@@ -385,42 +349,42 @@ type routingNode struct {
 	children map[string]*routingNode
 }
 
-// findTrackHandler searches for a handler matching the given path starting at this node.
-// It recursively traverses the routing tree to find the appropriate handler for the path.
-// Returns NotFoundTrackHandler if no matching handler is found.
-func (node *routingNode) findTrackHandler(depth int, path *path) TrackHandler {
-	// If we've gone past the path depth or this is a leaf node, check if it has a handler
-	if depth > path.depth() {
-		slog.Debug("mux: path depth exceeded", "path", path.str, "depth", depth)
-		return NotFoundTrackHandler
-	} else if depth == path.depth() {
-		if node.handler == nil {
-			slog.Debug("mux: no handler at leaf node", "path", path.str)
-			return NotFoundTrackHandler
-		}
+// // findTrackHandler searches for a handler matching the given path starting at this node.
+// // It recursively traverses the routing tree to find the appropriate handler for the path.
+// // Returns NotFoundTrackHandler if no matching handler is found.
+// func (node *routingNode) findTrackHandler(depth int, path *path) TrackHandler {
+// 	// If we've gone past the path depth or this is a leaf node, check if it has a handler
+// 	if depth > path.depth() {
+// 		slog.Debug("mux: path depth exceeded", "path", path.str, "depth", depth)
+// 		return NotFoundHandler
+// 	} else if depth == path.depth() {
+// 		if node.handler == nil {
+// 			slog.Debug("mux: no handler at leaf node", "path", path.str)
+// 			return NotFoundHandler
+// 		}
 
-		if slog.Default().Enabled(context.Background(), slog.LevelDebug) {
-			slog.Debug("mux: handler found",
-				"path", path.str,
-			)
-		}
-		return node.handler
-	}
+// 		if slog.Default().Enabled(context.Background(), slog.LevelDebug) {
+// 			slog.Debug("mux: handler found",
+// 				"path", path.str,
+// 			)
+// 		}
+// 		return node.handler
+// 	}
 
-	// If this node is not a leaf node, get the next segment and look for a matching child
-	segment := path.segments[depth]
-	child, ok := node.children[segment]
-	if !ok {
-		slog.Debug("mux: no child node for segment",
-			"path", path.str,
-			"segment", segment,
-			"depth", depth)
-		return NotFoundTrackHandler
-	}
+// 	// If this node is not a leaf node, get the next segment and look for a matching child
+// 	segment := path.segments[depth]
+// 	child, ok := node.children[segment]
+// 	if !ok {
+// 		slog.Debug("mux: no child node for segment",
+// 			"path", path.str,
+// 			"segment", segment,
+// 			"depth", depth)
+// 		return NotFoundHandler
+// 	}
 
-	// Continue traversal with the child node at the next depth
-	return child.findTrackHandler(depth+1, path)
-}
+// 	// Continue traversal with the child node at the next depth
+// 	return child.findTrackHandler(depth+1, path)
+// }
 
 // newAnnouncingNode creates and initializes a new announcement tree node.
 func newAnnouncingNode() *announcingNode {
@@ -454,50 +418,23 @@ type announcingNode struct {
 	children map[string]*announcingNode
 }
 
-// setPattern sets the pattern and announcement configuration for this node.
-// This is called when registering a new announcement writer at a leaf node.
-// func (node *announcingNode) setPattern(pattern *pattern, config *AnnounceConfig) {
-// 	if config == nil {
-// 		panic("mux: nil announce config")
-// 	}
-
-// 	node.pattern = pattern
-// 	// node.config = config
-// 	// node.buffer = newAnnouncementsBuffer()
-// }
-
 // announce dispatches announcements to all registered announcement writers that match the given path.
 // It traverses the announcement tree and delivers announcements to all matching nodes.
 //
 // Parameters:
 //   - segments: The path segments to match against patterns in the tree
 //   - handler: The handler that will serve announcements to matching writers
-func (node *announcingNode) announce(segments []string, announcement *Announcement) {
-	if len(segments) == 0 {
-		// Serve announcements to the buffer
-		slog.Debug("mux: serving announcements",
-			"pattern", node.pattern.str,
-		)
-		// for _, w := range node.
-		return
-	}
+func (node *announcingNode) announce(announcement *Announcement) {
+	node.mu.Lock()
+	defer node.mu.Unlock()
 
-	if node.children == nil {
-		return
-	}
-
-	segment := segments[0]
-	child, ok := node.children[segment]
-	if !ok {
-		return
-	}
-
-	child.announce(segments[1:], announcement)
+	node.announcements = append(node.announcements, announcement)
+	node.cond.Broadcast()
 }
 
 // newPath creates a path from a TrackPath.
 // It converts the string-based path to a structured path for efficient routing.
-func newPath(p TrackPath) *path {
+func newPath(p BroadcastPath) *path {
 	if p == "" {
 		slog.Warn("mux: creating pattern from empty string")
 		p = "/"
@@ -519,7 +456,7 @@ func newPath(p TrackPath) *path {
 // It is derived from a pattern but used specifically for exact matching.
 type path struct {
 	// str is the original string representation of the path
-	str TrackPath
+	str BroadcastPath
 
 	// segments is the path split into segments
 	segments []string

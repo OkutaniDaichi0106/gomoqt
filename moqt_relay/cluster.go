@@ -6,7 +6,7 @@ type Cluster struct{}
 
 type Origins struct {
 	src    moqt.AnnouncementReader
-	routes map[moqt.TrackPath][]moqt.Session
+	routes map[moqt.BroadcastPath][]moqt.Session
 }
 
 type Route struct {

@@ -14,7 +14,7 @@ func runSubscriber(sess moqt.Session, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	annstr, err := sess.OpenAnnounceStream(&moqt.AnnounceConfig{
-		TrackPattern: "/kiu",
+		TrackPrefix: "/kiu",
 	})
 	if err != nil {
 		slog.Error("failed to open announce stream", "error", err)

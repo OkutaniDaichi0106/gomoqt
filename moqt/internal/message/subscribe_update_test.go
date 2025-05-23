@@ -19,7 +19,6 @@ func TestSubscribeUpdateMessage_EncodeDecode(t *testing.T) {
 				TrackPriority:    5,
 				MinGroupSequence: 10,
 				MaxGroupSequence: 20,
-				GroupOrder:       1,
 			},
 		},
 		"empty parameters": {
@@ -27,7 +26,6 @@ func TestSubscribeUpdateMessage_EncodeDecode(t *testing.T) {
 				TrackPriority:    5,
 				MinGroupSequence: 10,
 				MaxGroupSequence: 20,
-				GroupOrder:       1,
 			},
 		},
 		// "max values": {
@@ -44,7 +42,6 @@ func TestSubscribeUpdateMessage_EncodeDecode(t *testing.T) {
 				TrackPriority:    0,
 				MinGroupSequence: 0,
 				MaxGroupSequence: 0,
-				GroupOrder:       0,
 			},
 		},
 	}

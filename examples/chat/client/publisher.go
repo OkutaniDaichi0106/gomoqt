@@ -13,7 +13,7 @@ func runPublisher(sess moqt.Session, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	// Get the path of the track
-	myPath := moqt.TrackPath("/kiu" + "/" + *name)
+	myPath := moqt.BroadcastPath("/kiu" + "/" + *name)
 	slog.Info("my path", slog.String("path", myPath.String()))
 	track := moqt.BuildTrack(myPath, moqt.Info{}, 0)
 

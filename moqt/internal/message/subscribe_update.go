@@ -19,7 +19,6 @@ import (
  */
 type SubscribeUpdateMessage struct {
 	TrackPriority    TrackPriority
-	GroupOrder       GroupOrder
 	MinGroupSequence GroupSequence
 	MaxGroupSequence GroupSequence
 }
@@ -27,7 +26,6 @@ type SubscribeUpdateMessage struct {
 func (su SubscribeUpdateMessage) Len() int {
 	l := 0
 	l += numberLen(uint64(su.TrackPriority))
-	l += numberLen(uint64(su.GroupOrder))
 	l += numberLen(uint64(su.MinGroupSequence))
 	l += numberLen(uint64(su.MaxGroupSequence))
 
@@ -41,10 +39,8 @@ func (su SubscribeUpdateMessage) Encode(w io.Writer) (int, error) {
 
 	p = AppendNumber(p, uint64(su.Len()))
 	p = AppendNumber(p, uint64(su.TrackPriority))
-	p = AppendNumber(p, uint64(su.GroupOrder))
 	p = AppendNumber(p, uint64(su.MinGroupSequence))
 	p = AppendNumber(p, uint64(su.MaxGroupSequence))
-	// p = AppendParameters(p, su.SubscribeUpdateParameters)
 
 	n, err := w.Write(p)
 	if err != nil {
@@ -75,13 +71,6 @@ func (sum *SubscribeUpdateMessage) Decode(r io.Reader) (int, error) {
 		return n, err
 	}
 	sum.TrackPriority = TrackPriority(num)
-
-	num, _, err = ReadNumber(mr)
-	if err != nil {
-		slog.Error("failed to read GroupOrder for SUBSCRIBE_UPDATE message", "error", err)
-		return n, err
-	}
-	sum.GroupOrder = GroupOrder(num)
 
 	num, _, err = ReadNumber(mr)
 	if err != nil {

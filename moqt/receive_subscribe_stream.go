@@ -9,7 +9,7 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-func newReceiveSubscribeStream(id SubscribeID, path TrackPath, config *SubscribeConfig, stream quic.Stream) *receiveSubscribeStream {
+func newReceiveSubscribeStream(id SubscribeID, path BroadcastPath, config *SubscribeConfig, stream quic.Stream) *receiveSubscribeStream {
 	rss := &receiveSubscribeStream{
 		id:        id,
 		path:      path,
@@ -25,7 +25,7 @@ func newReceiveSubscribeStream(id SubscribeID, path TrackPath, config *Subscribe
 
 type receiveSubscribeStream struct {
 	id     SubscribeID
-	path   TrackPath
+	path   BroadcastPath
 	config *SubscribeConfig
 	stream quic.Stream
 	mu     sync.Mutex
@@ -64,7 +64,7 @@ func (rss *receiveSubscribeStream) SubscribeID() SubscribeID {
 	return rss.id
 }
 
-func (rss *receiveSubscribeStream) TrackPath() TrackPath {
+func (rss *receiveSubscribeStream) TrackPath() BroadcastPath {
 	return rss.path
 }
 

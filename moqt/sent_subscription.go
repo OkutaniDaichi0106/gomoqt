@@ -2,7 +2,7 @@ package moqt
 
 type SentSubscription interface {
 	SubscribeID() SubscribeID
+	TrackName() string
 	SubuscribeConfig() *SubscribeConfig
-	// TrackPath() TrackPath
 	UpdateSubscribe(new *SubscribeConfig) error
 }

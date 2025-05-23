@@ -31,7 +31,7 @@ func main() {
 			slog.Error("failed to serve moq over webtransport", "error", err)
 		}
 
-		anns, err := sess.OpenAnnounceStream(&moqt.AnnounceConfig{TrackPattern: "/**"})
+		anns, err := sess.OpenAnnounceStream(&moqt.AnnounceConfig{TrackPrefix: "/**"})
 		if err != nil {
 			slog.Error("failed to open announce stream", "error", err)
 		}

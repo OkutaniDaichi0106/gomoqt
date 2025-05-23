@@ -21,7 +21,7 @@ func NewCluster(urlstr string, ctx context.Context) (*Cluster, error) {
 	}
 
 	annstr, err := sess.OpenAnnounceStream(&moqt.AnnounceConfig{
-		TrackPattern: "/**",
+		TrackPrefix: "/**",
 	})
 	if err != nil {
 		return nil, err

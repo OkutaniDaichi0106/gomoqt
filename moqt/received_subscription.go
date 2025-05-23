@@ -2,7 +2,7 @@ package moqt
 
 type ReceivedSubscription interface {
 	SubscribeID() SubscribeID
-	// TrackPath() TrackPath
+	TrackName() string
 	SubuscribeConfig() *SubscribeConfig
 	Updated() <-chan struct{}
 }

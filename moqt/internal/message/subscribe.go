@@ -21,18 +21,18 @@ const (
 /*
 * SUBSCRIBE Message {
 *   Subscribe ID (varint),
-*   Track Path ([]string),
+*   Broadcast Path (string),
+*   Track Name (string),
 *   Track Priority (varint),
-*   Group Order (varint),
 *   Min Group Sequence (varint),
 *   Max Group Sequence (varint),
 * }
  */
 type SubscribeMessage struct {
 	SubscribeID      SubscribeID
-	TrackPath        string
+	BroadcastPath    string
+	TrackName        string
 	TrackPriority    TrackPriority
-	GroupOrder       GroupOrder
 	MinGroupSequence GroupSequence
 	MaxGroupSequence GroupSequence
 }
@@ -40,12 +40,11 @@ type SubscribeMessage struct {
 func (s SubscribeMessage) Len() int {
 	l := 0
 	l += numberLen(uint64(s.SubscribeID))
-	l += stringLen(s.TrackPath)
+	l += stringLen(s.BroadcastPath)
+	l += stringLen(s.TrackName)
 	l += numberLen(uint64(s.TrackPriority))
-	l += numberLen(uint64(s.GroupOrder))
 	l += numberLen(uint64(s.MinGroupSequence))
 	l += numberLen(uint64(s.MaxGroupSequence))
-	// l += parametersLen(s.SubscribeParameters)
 	return l
 }
 
@@ -57,9 +56,9 @@ func (s SubscribeMessage) Encode(w io.Writer) (int, error) {
 	p = AppendNumber(p, uint64(s.Len()))
 
 	p = AppendNumber(p, uint64(s.SubscribeID))
-	p = AppendString(p, s.TrackPath)
+	p = AppendString(p, s.BroadcastPath)
+	p = AppendString(p, s.TrackName)
 	p = AppendNumber(p, uint64(s.TrackPriority))
-	p = AppendNumber(p, uint64(s.GroupOrder))
 	p = AppendNumber(p, uint64(s.MinGroupSequence))
 	p = AppendNumber(p, uint64(s.MaxGroupSequence))
 
@@ -95,9 +94,17 @@ func (s *SubscribeMessage) Decode(r io.Reader) (int, error) {
 	}
 	s.SubscribeID = SubscribeID(num)
 
-	s.TrackPath, _, err = ReadString(mr)
+	s.BroadcastPath, _, err = ReadString(mr)
 	if err != nil {
 		slog.Error("failed to read track path for SUBSCRIBE message",
+			"error", err,
+		)
+		return n, err
+	}
+
+	s.TrackName, _, err = ReadString(mr)
+	if err != nil {
+		slog.Error("failed to read track name for SUBSCRIBE message",
 			"error", err,
 		)
 		return n, err
@@ -111,15 +118,6 @@ func (s *SubscribeMessage) Decode(r io.Reader) (int, error) {
 		return n, err
 	}
 	s.TrackPriority = TrackPriority(num)
-
-	num, _, err = ReadNumber(mr)
-	if err != nil {
-		slog.Error("failed to read group order for SUBSCRIBE message",
-			"error", err,
-		)
-		return n, err
-	}
-	s.GroupOrder = GroupOrder(num)
 
 	num, _, err = ReadNumber(mr)
 	if err != nil {

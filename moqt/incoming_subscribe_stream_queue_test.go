@@ -11,13 +11,13 @@ func TestIncomingSubscribeStreamQueue_EnqueueAndAccept(t *testing.T) {
 	stream := &receiveSubscribeStream{}
 
 	// Enqueue a stream
-	queue.Enqueue(stream)
+	queue.enqueue(stream)
 
 	// Accept the stream
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	acceptedStream, err := queue.Accept(ctx)
+	acceptedStream, err := queue.accept(ctx)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -34,7 +34,7 @@ func TestIncomingSubscribeStreamQueue_AcceptTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
 
-	_, err := queue.Accept(ctx)
+	_, err := queue.accept(ctx)
 	if err == nil {
 		t.Fatal("expected timeout error, got nil")
 	}

@@ -183,7 +183,7 @@ func (c *Client) DialQUIC(ctx context.Context, req *SetupRequest, mux *TrackMux)
 }
 
 func (c *Client) openSession(conn quic.Connection, params *Parameters, mux *TrackMux) (*Session, *SetupResponse, error) {
-	sess := newSession(conn)
+	sess := newSession(conn, mux)
 
 	err := sess.openSessionStream(internal.DefaultClientVersions, params)
 	if err != nil {
@@ -197,9 +197,8 @@ func (c *Client) openSession(conn quic.Connection, params *Parameters, mux *Trac
 		mux = DefaultMux
 	}
 
-	go sess.handleAnnounceStream(mux)
-	go sess.handleSubscribeStream(mux)
-	go sess.handleInfoStream(mux)
+	go sess.handleAnnounceStreams()
+	go sess.handleSubscribeStreams()
 
 	c.addSession(sess)
 	go func() {

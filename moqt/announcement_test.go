@@ -8,7 +8,7 @@ import (
 
 func TestNewAnnouncement(t *testing.T) {
 	ctx := context.Background()
-	path := TrackPath("test/path")
+	path := BroadcastPath("test/path")
 
 	announcement := NewAnnouncement(ctx, path)
 
@@ -31,18 +31,18 @@ func TestNewAnnouncement(t *testing.T) {
 
 func TestAnnouncement_TrackPath(t *testing.T) {
 	ctx := context.Background()
-	path := TrackPath("test/path")
+	path := BroadcastPath("test/path")
 
 	announcement := NewAnnouncement(ctx, path)
 
-	if got := announcement.TrackPath(); got != path {
+	if got := announcement.BroadcastPath(); got != path {
 		t.Errorf("TrackPath() = %v, want %v", got, path)
 	}
 }
 
 func TestAnnouncement_String(t *testing.T) {
 	ctx := context.Background()
-	path := TrackPath("test/path")
+	path := BroadcastPath("test/path")
 
 	announcement := NewAnnouncement(ctx, path)
 
@@ -61,7 +61,7 @@ func TestAnnouncement_String(t *testing.T) {
 
 func TestAnnouncement_IsActive(t *testing.T) {
 	ctx := context.Background()
-	path := TrackPath("test/path")
+	path := BroadcastPath("test/path")
 
 	announcement := NewAnnouncement(ctx, path)
 
@@ -78,7 +78,7 @@ func TestAnnouncement_IsActive(t *testing.T) {
 
 func TestAnnouncement_End(t *testing.T) {
 	ctx := context.Background()
-	path := TrackPath("test/path")
+	path := BroadcastPath("test/path")
 
 	announcement := NewAnnouncement(ctx, path)
 
@@ -95,7 +95,7 @@ func TestAnnouncement_End(t *testing.T) {
 
 func TestAnnouncement_AwaitEnd(t *testing.T) {
 	ctx := context.Background()
-	path := TrackPath("test/path")
+	path := BroadcastPath("test/path")
 
 	announcement := NewAnnouncement(ctx, path)
 
@@ -124,7 +124,7 @@ func TestAnnouncement_AwaitEnd(t *testing.T) {
 func TestAnnouncement_WithCancelledContext(t *testing.T) {
 	// Test with a context that gets cancelled externally
 	ctx, cancel := context.WithCancel(context.Background())
-	path := TrackPath("test/path")
+	path := BroadcastPath("test/path")
 
 	announcement := NewAnnouncement(ctx, path)
 

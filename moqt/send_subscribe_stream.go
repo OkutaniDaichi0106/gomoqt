@@ -14,7 +14,7 @@ type sentSubscription struct {
 	subscribeStream *sendSubscribeStream
 }
 
-func newSendSubscribeStream(id SubscribeID, path TrackPath, config *SubscribeConfig, stream quic.Stream) *sendSubscribeStream {
+func newSendSubscribeStream(id SubscribeID, path BroadcastPath, config *SubscribeConfig, stream quic.Stream) *sendSubscribeStream {
 	return &sendSubscribeStream{
 		id:     id,
 		path:   path,
@@ -27,7 +27,7 @@ var _ SentSubscription = (*sendSubscribeStream)(nil)
 
 type sendSubscribeStream struct {
 	id     SubscribeID
-	path   TrackPath
+	path   BroadcastPath
 	config *SubscribeConfig
 
 	stream quic.Stream
@@ -38,7 +38,7 @@ func (sss *sendSubscribeStream) SubscribeID() SubscribeID {
 	return sss.id
 }
 
-func (sss *sendSubscribeStream) TrackPath() TrackPath {
+func (sss *sendSubscribeStream) TrackPath() BroadcastPath {
 	return sss.path
 }
 

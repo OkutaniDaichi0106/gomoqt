@@ -63,7 +63,7 @@ func main() {
 		return
 	}
 
-	annstr, err := sess.OpenAnnounceStream(&moqt.AnnounceConfig{TrackPattern: "/**"})
+	annstr, err := sess.OpenAnnounceStream(&moqt.AnnounceConfig{TrackPrefix: "/**"})
 	if err != nil {
 		slog.Error("failed to open announce stream", "error", err)
 		return

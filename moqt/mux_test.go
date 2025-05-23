@@ -54,7 +54,7 @@ func TestTrackMuxBasicRouting(t *testing.T) {
 
 	// Create handlers and register them to paths
 	audioHandler := &moqt.MockTrackHandler{
-		GetInfoFunc: func(path moqt.TrackPath) (moqt.Info, error) {
+		GetInfoFunc: func(path moqt.BroadcastPath) (moqt.Info, error) {
 			slog.Info("Getting audio info of audio track",
 				"track_path", path,
 			)
@@ -70,7 +70,7 @@ func TestTrackMuxBasicRouting(t *testing.T) {
 
 	// Create another handler for video
 	videoHandler := &moqt.MockTrackHandler{
-		GetInfoFunc: func(path moqt.TrackPath) (moqt.Info, error) {
+		GetInfoFunc: func(path moqt.BroadcastPath) (moqt.Info, error) {
 			slog.Info("Getting video info")
 			return moqt.Info{
 				TrackPriority:       0,
@@ -95,7 +95,7 @@ func TestTrackMuxBasicRouting(t *testing.T) {
 
 	wg.Add(1)
 	go func() {
-		defer wg.Done()		// Verify request to audio track
+		defer wg.Done() // Verify request to audio track
 		audioWriter := &moqt.MockTrackWriter{
 			PathValue: "/tracks/audio",
 			OpenGroupFunc: func(seq moqt.GroupSequence) (moqt.GroupWriter, error) {
@@ -121,7 +121,7 @@ func TestTrackMuxBasicRouting(t *testing.T) {
 
 	wg.Add(1)
 	go func() {
-		defer wg.Done()		// Verify request to video track
+		defer wg.Done() // Verify request to video track
 		videoWriter := &moqt.MockTrackWriter{
 			PathValue: "/tracks/video",
 			OpenGroupFunc: func(seq moqt.GroupSequence) (moqt.GroupWriter, error) {
@@ -199,7 +199,7 @@ func TestGetInfo(t *testing.T) {
 	}
 
 	audioHandler := &moqt.MockTrackHandler{
-		GetInfoFunc: func(path moqt.TrackPath) (moqt.Info, error) {
+		GetInfoFunc: func(path moqt.BroadcastPath) (moqt.Info, error) {
 			return expectedInfo, nil
 		},
 	}
@@ -240,7 +240,7 @@ func TestAnnouncements(t *testing.T) {
 		},
 	}
 	audioAnnounceConfig := &moqt.AnnounceConfig{
-		TrackPattern: "/tracks/audio/*", // Single segments under audio
+		TrackPrefix: "/tracks/audio/*", // Single segments under audio
 	}
 
 	videoAnnounced := 0
@@ -254,7 +254,7 @@ func TestAnnouncements(t *testing.T) {
 		},
 	}
 	videoAnnounceConfig := &moqt.AnnounceConfig{
-		TrackPattern: "/tracks/video/**", // All segments under video
+		TrackPrefix: "/tracks/video/**", // All segments under video
 	}
 
 	allTracksAnnounced := 0
@@ -268,7 +268,7 @@ func TestAnnouncements(t *testing.T) {
 		},
 	}
 	allTracksAnnounceConfig := &moqt.AnnounceConfig{
-		TrackPattern: "/**", // All tracks
+		TrackPrefix: "/**", // All tracks
 	}
 
 	go mux.ServeAnnouncements(audioAnnouncer, audioAnnounceConfig)
@@ -333,12 +333,12 @@ func TestTrackMux_ConcurrentAccess(t *testing.T) {
 
 	// Set up multiple handlers
 	for i := 0; i < 10; i++ {
-		path := moqt.TrackPath("/tracks/path" + string(rune(i+'0')))
+		path := moqt.BroadcastPath("/tracks/path" + string(rune(i+'0')))
 		handler := &moqt.MockTrackHandler{
 			ServeTrackFunc: func(w moqt.TrackWriter, config *moqt.SubscribeConfig) {
 				// Do nothing
 			},
-			GetInfoFunc: func(path moqt.TrackPath) (moqt.Info, error) {
+			GetInfoFunc: func(path moqt.BroadcastPath) (moqt.Info, error) {
 				return moqt.Info{}, nil
 			},
 		}
@@ -351,7 +351,8 @@ func TestTrackMux_ConcurrentAccess(t *testing.T) {
 	for i := range 10 {
 		wg.Add(1)
 		go func(idx int) {
-			defer wg.Done()			path := moqt.TrackPath("/tracks/path" + string(rune(idx+'0')))
+			defer wg.Done()
+			path := moqt.TrackPath("/tracks/path" + string(rune(idx+'0')))
 			writer := &moqt.MockTrackWriter{PathValue: path}
 			mockSub := &MockReceivedSubscription{}
 			mux.ServeTrack(path, writer, mockSub)
@@ -490,7 +491,7 @@ func TestTrackMux_ServeAnnouncement(t *testing.T) {
 		},
 	}
 
-	go mux.ServeAnnouncements(announcer, &moqt.AnnounceConfig{TrackPattern: "/**"})
+	go mux.ServeAnnouncements(announcer, &moqt.AnnounceConfig{TrackPrefix: "/**"})
 
 	// Register a handler and verify that announcements occur
 	handler := &moqt.MockTrackHandler{}
@@ -524,13 +525,13 @@ func TestTrackMux_GetInfo(t *testing.T) {
 	}
 
 	audioHandler := &moqt.MockTrackHandler{
-		GetInfoFunc: func(path moqt.TrackPath) (moqt.Info, error) {
+		GetInfoFunc: func(path moqt.BroadcastPath) (moqt.Info, error) {
 			return audioInfo, nil
 		},
 	}
 
 	videoHandler := &moqt.MockTrackHandler{
-		GetInfoFunc: func(path moqt.TrackPath) (moqt.Info, error) {
+		GetInfoFunc: func(path moqt.BroadcastPath) (moqt.Info, error) {
 			return videoInfo, nil
 		},
 	}
@@ -651,7 +652,7 @@ func TestTrackMux_ContextLifecycleManagement(t *testing.T) {
 		defer cancel()
 
 		handler := &moqt.MockTrackHandler{}
-		path := moqt.TrackPath("/dual/mode/path")
+		path := moqt.BroadcastPath("/dual/mode/path")
 
 		mux.Handle(ctx, path, handler)
 
@@ -875,7 +876,7 @@ func TestTrackMux_ConcurrentContextCancellation(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 
-			path := moqt.TrackPath(fmt.Sprintf("/concurrent/path%d", idx))
+			path := moqt.BroadcastPath(fmt.Sprintf("/concurrent/path%d", idx))
 			ctx, cancel := context.WithTimeout(context.Background(), time.Duration(20+idx)*time.Millisecond)
 			defer cancel()
 
@@ -914,7 +915,7 @@ func TestTrackMux_ConcurrentContextCancellation(t *testing.T) {
 		checkWg.Add(1)
 		go func(idx int) {
 			defer checkWg.Done()
-			path := moqt.TrackPath(fmt.Sprintf("/concurrent/path%d", idx))
+			path := moqt.BroadcastPath(fmt.Sprintf("/concurrent/path%d", idx))
 			writer := &moqt.MockTrackWriter{PathValue: path}
 			mux.ServeTrack(writer, &moqt.SubscribeConfig{})
 		}(i)
@@ -1016,7 +1017,7 @@ func TestTrackMux_SingleWildcardAnnounce(t *testing.T) {
 		},
 	}
 	singleWildcardConfig := &moqt.AnnounceConfig{
-		TrackPattern: "/tracks/audio/*", // Single segments under audio
+		TrackPrefix: "/tracks/audio/*", // Single segments under audio
 	}
 
 	// Start serving announcements in a separate goroutine
@@ -1074,7 +1075,7 @@ func TestTrackMux_DoubleWildcardAnnounce(t *testing.T) {
 
 	// Use a double wildcard pattern
 	doubleWildcardConfig := &moqt.AnnounceConfig{
-		TrackPattern: "/tracks/video/**", // Matches all paths under the video directory
+		TrackPrefix: "/tracks/video/**", // Matches all paths under the video directory
 	}
 
 	// Start the announcement service

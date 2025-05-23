@@ -263,9 +263,8 @@ func (s *Server) acceptSession(conn quic.Connection, params func(req *Parameters
 		mux = DefaultMux
 	}
 
-	go sess.handleAnnounceStream()
+	go sess.handleAnnounceStreams()
 	go sess.handleSubscribeStreams()
-	go sess.handleInfoStreams()
 
 	s.addSession(sess)
 	go func() {

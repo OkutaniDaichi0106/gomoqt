@@ -8,7 +8,7 @@ import (
 
 func TestIncomingGroupStreamQueue_EnqueueAndAccept(t *testing.T) {
 	config := &SubscribeConfig{MinGroupSequence: 0, MaxGroupSequence: 100, GroupOrder: GroupOrderDefault}
-	queue := newGroupReceiverQueue(SubscribeID(1), TrackPath("test"), config)
+	queue := newGroupReceiverQueue(SubscribeID(1), BroadcastPath("test"), config)
 	stream := &receiveGroupStream{}
 
 	// Enqueue a stream
@@ -33,7 +33,7 @@ func TestIncomingGroupStreamQueue_EnqueueAndAccept(t *testing.T) {
 
 func TestIncomingGroupStreamQueue_AcceptTimeout(t *testing.T) {
 	config := &SubscribeConfig{MinGroupSequence: 0, MaxGroupSequence: 100, GroupOrder: GroupOrderDefault}
-	queue := newGroupReceiverQueue(SubscribeID(1), TrackPath("test"), config)
+	queue := newGroupReceiverQueue(SubscribeID(1), BroadcastPath("test"), config)
 
 	// Accept with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)

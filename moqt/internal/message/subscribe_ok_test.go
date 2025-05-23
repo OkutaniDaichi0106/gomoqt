@@ -9,32 +9,31 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestInfoMessage_EncodeDecode(t *testing.T) {
+func TestSubscribeOkMessage_EncodeDecode(t *testing.T) {
 	tests := map[string]struct {
-		input   message.InfoMessage
+		input   message.SubscribeOkMessage
 		wantErr bool
 	}{
-		"valid message": {
-			input: message.InfoMessage{
-				TrackPriority:       1,
-				LatestGroupSequence: 2,
-				GroupOrder:          3,
+		"valid message with default group order": {
+			input: message.SubscribeOkMessage{
+				GroupOrder: message.GroupOrderDefault,
 			},
 		},
-		"zero values": {
-			input: message.InfoMessage{
-				TrackPriority:       0,
-				LatestGroupSequence: 0,
-				GroupOrder:          0,
+		"valid message with ascending group order": {
+			input: message.SubscribeOkMessage{
+				GroupOrder: message.GroupOrderAscending,
 			},
 		},
-		// "max values": {
-		// 	input: message.InfoMessage{
-		// 		TrackPriority:       message.TrackPriority(^byte(0)),
-		// 		LatestGroupSequence: message.GroupSequence(^uint64(0)),
-		// 		GroupOrder:          message.GroupOrder(^byte(0)),
-		// 	},
-		// },
+		"valid message with descending group order": {
+			input: message.SubscribeOkMessage{
+				GroupOrder: message.GroupOrderDescending,
+			},
+		},
+		"zero value": {
+			input: message.SubscribeOkMessage{
+				GroupOrder: 0,
+			},
+		},
 	}
 
 	for name, tc := range tests {
@@ -50,11 +49,11 @@ func TestInfoMessage_EncodeDecode(t *testing.T) {
 			require.NoError(t, err)
 
 			// Decode
-			var decoded message.InfoMessage
+			var decoded message.SubscribeOkMessage
 			dn, err := decoded.Decode(&buf)
 			require.NoError(t, err)
 
-			// Compare fields
+			// Compare all fields
 			assert.Equal(t, tc.input, decoded, "decoded message should match input")
 			assert.Equal(t, en, dn, "encoded and decoded message should have the same length")
 		})

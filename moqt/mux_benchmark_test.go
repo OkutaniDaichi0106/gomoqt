@@ -16,7 +16,7 @@ func BenchmarkPathMatching(b *testing.B) {
 	// Register many handlers
 	for i := 0; i < 100; i++ {
 		for j := 0; j < 10; j++ {
-			path := moqt.TrackPath("/section" + string(rune(i+'0')) + "/subsection" + string(rune(j+'0')))
+			path := moqt.BroadcastPath("/section" + string(rune(i+'0')) + "/subsection" + string(rune(j+'0')))
 			mux.Handle(ctx, path, &moqt.MockTrackHandler{})
 		}
 	}
@@ -38,7 +38,7 @@ func BenchmarkHandlerRegistration(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		path := moqt.TrackPath("/bench/path" + string(rune(i%10+'0')))
+		path := moqt.BroadcastPath("/bench/path" + string(rune(i%10+'0')))
 		mux.Handle(ctx, path, handler)
 	}
 }
@@ -50,7 +50,7 @@ func BenchmarkConcurrentPathMatching(b *testing.B) {
 
 	// Register paths
 	for i := 0; i < 100; i++ {
-		path := moqt.TrackPath("/section" + string(rune(i%10+'0')))
+		path := moqt.BroadcastPath("/section" + string(rune(i%10+'0')))
 		mux.Handle(ctx, path, &moqt.MockTrackHandler{})
 	}
 
@@ -76,7 +76,7 @@ func BenchmarkNodeCleanup(b *testing.B) {
 			ctx, cancel := context.WithCancel(context.Background())
 			contexts = append(contexts, cancel)
 
-			path := moqt.TrackPath("/section" + string(rune(j%10+'0')) + "/cleanup")
+			path := moqt.BroadcastPath("/section" + string(rune(j%10+'0')) + "/cleanup")
 			mux.Handle(ctx, path, &moqt.MockTrackHandler{})
 		}
 
@@ -119,7 +119,7 @@ func BenchmarkWildcardMatching(b *testing.B) {
 func BenchmarkOverwriteHandler(b *testing.B) {
 	mux := moqt.NewTrackMux()
 	ctx := context.Background()
-	path := moqt.TrackPath("/overwrite/test")
+	path := moqt.BroadcastPath("/overwrite/test")
 
 	// Create a set of handlers to rotate through
 	handlers := make([]*moqt.MockTrackHandler, 10)
@@ -140,7 +140,7 @@ func BenchmarkDeepPathTraversal(b *testing.B) {
 	ctx := context.Background()
 
 	// Create deeply nested path
-	deepPath := moqt.TrackPath("/level1/level2/level3/level4/level5/level6/level7/level8/level9/level10")
+	deepPath := moqt.BroadcastPath("/level1/level2/level3/level4/level5/level6/level7/level8/level9/level10")
 	handler := &moqt.MockTrackHandler{}
 	mux.Handle(ctx, deepPath, handler)
 

@@ -64,14 +64,14 @@ func (sas *sendAnnounceStream) SendAnnouncements(announcements []*Announcement) 
 		if !ann.IsActive() {
 			// Ignore inactive announcement
 			slog.Warn("Ignore inactive announcement",
-				"track_path", ann.TrackPath(),
+				"track_path", ann.BroadcastPath(),
 			)
 			continue
 		}
 
-		suffix, ok := ann.TrackPath().GetSuffix(sas.prefix)
+		suffix, ok := ann.BroadcastPath().GetSuffix(sas.prefix)
 		if !ok {
-			return fmt.Errorf("failed to get suffix from track path: %s", ann.TrackPath())
+			return fmt.Errorf("failed to get suffix from broadcast path: %s", ann.BroadcastPath())
 		}
 
 		if active, ok := sas.actives[suffix]; ok {

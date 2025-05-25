@@ -1,16 +1,16 @@
 package moqt
 
 type TrackHandler interface {
-	ServeTrack(TrackWriter, ReceivedSubscription)
+	ServeTrack(TrackWriter, SendTrackStream)
 }
 
-var NotFound = func(w TrackWriter, sub ReceivedSubscription) {
+var NotFound = func(w TrackWriter, sub SendTrackStream) {
 	w.CloseWithError(ErrTrackDoesNotExist)
 }
 var NotFoundHandler TrackHandler = TrackHandlerFunc(NotFound)
 
-type TrackHandlerFunc func(TrackWriter, ReceivedSubscription)
+type TrackHandlerFunc func(TrackWriter, SendTrackStream)
 
-func (f TrackHandlerFunc) ServeTrack(w TrackWriter, sub ReceivedSubscription) {
+func (f TrackHandlerFunc) ServeTrack(w TrackWriter, sub SendTrackStream) {
 	f(w, sub)
 }

@@ -1,32 +1,26 @@
 package moqt
 
 import (
-	"container/heap"
 	"context"
 	"sync"
 )
 
-func newGroupReceiverQueue(id SubscribeID, path BroadcastPath, config *SubscribeConfig) *incomingGroupStreamQueue {
-	q := &incomingGroupStreamQueue{
+func newGroupReceiverQueue(config func() *SubscribeConfig) *incomingGroupStreamQueue {
+	return &incomingGroupStreamQueue{
 		queue:  make([]*receiveGroupStream, 0, 1<<4),
-		heap:   newGroupSequenceHeap(config.GroupOrder),
 		ch:     make(chan struct{}, 1),
-		id:     id,
-		path:   path,
 		config: config,
 	}
-
-	return q
 }
 
 var _ TrackReader = (*incomingGroupStreamQueue)(nil)
 
 type incomingGroupStreamQueue struct {
 	queue []*receiveGroupStream
-	heap  *groupSequenceHeap
 	ch    chan struct{}
 	mu    sync.Mutex
-	// subscription SentSubscription
+
+	config func() *SubscribeConfig
 }
 
 // // Len implements heap.Interface
@@ -108,23 +102,15 @@ func (q *incomingGroupStreamQueue) enqueue(stream *receiveGroupStream) {
 
 	seq := stream.GroupSequence()
 
-	if seq < q.config.MinGroupSequence || seq > q.config.MaxGroupSequence {
-		return ErrInvalidRange
-	}
-
-	q.queue = append(q.queue, stream)
-
-	entry := struct {
-		seq   GroupSequence
-		index int
-	}{
-		seq:   seq,
-		index: len(q.queue) - 1,
+	if q.config().IsInRange(seq) {
+		stream.CancelRead(ErrGroupOutOfRange)
+		return
 	}
 
 	q.mu.Lock()
-	heap.Push(q.heap, entry)
-	q.mu.Unlock()
+	defer q.mu.Unlock()
+
+	q.queue = append(q.queue, stream)
 
 	// Send a notification (non-blocking)
 	select {
@@ -135,18 +121,22 @@ func (q *incomingGroupStreamQueue) enqueue(stream *receiveGroupStream) {
 }
 
 func (q *incomingGroupStreamQueue) AcceptGroup(ctx context.Context) (GroupReader, error) {
+	var stream *receiveGroupStream
+	var seq GroupSequence
+
 	for {
 		q.mu.Lock()
-		if q.heap.Len() > 0 {
-			seq := heap.Pop(q.heap).(GroupSequence)
-			stream := q.queue[seq]
+		if len(q.queue) > 0 {
+			stream = q.queue[0]
 
 			if stream == nil {
 				q.mu.Unlock()
 				continue
 			}
 
-			if !q.config.IsInRange(seq) {
+			seq = stream.GroupSequence()
+
+			if !q.config().IsInRange(seq) {
 				stream.CancelRead(ErrGroupOutOfRange)
 				q.mu.Unlock()
 				continue
@@ -164,14 +154,16 @@ func (q *incomingGroupStreamQueue) AcceptGroup(ctx context.Context) (GroupReader
 	}
 }
 
-func (q *incomingGroupStreamQueue) CancelRead(err error) {
+func (q *incomingGroupStreamQueue) Close() error {}
+
+func (q *incomingGroupStreamQueue) CloseWithError(reason error) error {
 
 }
 
-func (q *incomingGroupStreamQueue) removeGroups(min, max GroupSequence) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
+// func (q *incomingGroupStreamQueue) removeGroups(min, max GroupSequence) {
+// 	q.mu.Lock()
+// 	defer q.mu.Unlock()
 
-	q.heap.ResetOrder(config.GroupOrder)
-	q.config = config
-}
+// 	q.heap.ResetOrder(config.GroupOrder)
+// 	q.config = config
+// }

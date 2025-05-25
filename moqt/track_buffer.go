@@ -114,7 +114,7 @@ func (t *TrackBuffer) CloseWithError(err error) error {
 	return nil
 }
 
-func (t *TrackBuffer) HandleTrack(w TrackWriter, sub ReceivedSubscription) {
+func (t *TrackBuffer) HandleTrack(w TrackWriter, sub SendTrackStream) {
 	if !t.isReadable() {
 		w.CloseWithError(ErrEndedTrack)
 		return

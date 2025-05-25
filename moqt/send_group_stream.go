@@ -12,14 +12,14 @@ var _ GroupWriter = (*sendGroupStream)(nil)
 
 func newSendGroupStream(stream quic.SendStream, id SubscribeID, sequence GroupSequence) *sendGroupStream {
 	return &sendGroupStream{
-		id:       id,
+		// id:       id,
 		sequence: sequence,
 		stream:   stream,
 	}
 }
 
 type sendGroupStream struct {
-	id       SubscribeID
+	// id       SubscribeID
 	sequence GroupSequence
 	stream   quic.SendStream
 

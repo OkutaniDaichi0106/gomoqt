@@ -166,7 +166,7 @@ func (ras *receiveAnnounceStream) listenAnnouncements() {
 
 				ras.next = append(ras.next, NewAnnouncement(context.Background(), BroadcastPath(ras.prefix+suffix)))
 			} else {
-				slog.Error("announcement is already active", "track_path", old.TrackPath)
+				slog.Error("announcement is already active", "track_path", old.BroadcastPath())
 
 				// Close the stream with an error
 				ras.CloseWithError(ErrProtocolViolation)
@@ -181,7 +181,7 @@ func (ras *receiveAnnounceStream) listenAnnouncements() {
 				delete(ras.announcements, suffix)
 			} else {
 				slog.Error("announcement is already ended",
-					"track_path", old.TrackPath(),
+					"track_path", old.BroadcastPath(),
 				)
 
 				ras.CloseWithError(ErrProtocolViolation)

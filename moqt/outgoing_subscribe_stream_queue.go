@@ -4,47 +4,37 @@ import "sync"
 
 func newOutgoingSubscribeStreamQueue() *outgoingSubscribeStreamQueue {
 	return &outgoingSubscribeStreamQueue{
-		queue: make([]*sendSubscribeStream, 0),
+		queue: make([]*SendSubscribeStream, 0),
 	}
 }
 
 type outgoingSubscribeStreamQueue struct {
-	queue []*sendSubscribeStream
+	queue []*SendSubscribeStream
 	mu    sync.Mutex
 }
 
-// func (q *outgoingSubscribeStreamQueue) Len() int {
-// 	q.mu.Lock()
-// 	defer q.mu.Unlock()
-// 	return len(q.queue)
-// }
-
-// func (q *outgoingSubscribeStreamQueue) Chan() <-chan struct{} {
-// 	return q.ch
-// }
-
-func (q *outgoingSubscribeStreamQueue) Enqueue(stream *sendSubscribeStream) {
+func (q *outgoingSubscribeStreamQueue) enqueue(stream *SendSubscribeStream) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	q.queue = append(q.queue, stream)
 }
 
-func (q *outgoingSubscribeStreamQueue) Clear() {
+func (q *outgoingSubscribeStreamQueue) close() {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	for _, stream := range q.queue {
-		stream.Close()
+		stream.close()
 	}
 }
 
-func (q *outgoingSubscribeStreamQueue) ClearWithError(err error) {
+func (q *outgoingSubscribeStreamQueue) closeWithError(err error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	for _, stream := range q.queue {
-		stream.CloseWithError(err)
+		stream.closeWithError(err)
 	}
 }
 

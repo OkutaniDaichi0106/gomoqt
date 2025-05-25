@@ -5,11 +5,11 @@ import (
 	"sync"
 )
 
-func newOutgoingGroupStreamQueue(config *SubscribeConfig) *outgoingGroupStreamQueue {
+func newOutgoingGroupStreamQueue(config func() *SubscribeConfig, order GroupOrder) *outgoingGroupStreamQueue {
 	q := &outgoingGroupStreamQueue{
 		queue:  make([]*sendGroupStream, 0, 1<<4), // TODO: Tune the initial capacity
 		config: config,
-		heap:   newGroupSequenceHeap(config.GroupOrder),
+		heap:   newGroupSequenceHeap(order),
 	}
 
 	return q
@@ -21,11 +21,11 @@ type outgoingGroupStreamQueue struct {
 	queue []*sendGroupStream
 	heap  *groupSequenceHeap
 
-	config *SubscribeConfig
+	config func() *SubscribeConfig
 }
 
 // Enqueue adds a new stream to the queue and maintains heap property
-func (q *outgoingGroupStreamQueue) Enqueue(stream *sendGroupStream) {
+func (q *outgoingGroupStreamQueue) enqueue(stream *sendGroupStream) {
 	if stream == nil {
 		return
 	}

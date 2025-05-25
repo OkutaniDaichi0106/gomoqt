@@ -9,44 +9,36 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-type sentSubscription struct {
-	groupQueue      *incomingGroupStreamQueue
-	subscribeStream *sendSubscribeStream
-}
-
-func newSendSubscribeStream(id SubscribeID, path BroadcastPath, config *SubscribeConfig, stream quic.Stream) *sendSubscribeStream {
-	return &sendSubscribeStream{
-		id:     id,
-		path:   path,
-		config: config,
-		stream: stream,
+func newSendSubscribeStream(id SubscribeID, config *SubscribeConfig, stream quic.Stream) *SendSubscribeStream {
+	return &SendSubscribeStream{
+		SubscribeID: id,
+		config:      config,
+		stream:      stream,
 	}
 }
 
-var _ SentSubscription = (*sendSubscribeStream)(nil)
-
-type sendSubscribeStream struct {
-	id     SubscribeID
-	path   BroadcastPath
+type SendSubscribeStream struct {
+	SubscribeID SubscribeID
+	// path   BroadcastPath
 	config *SubscribeConfig
 
 	stream quic.Stream
 	mu     sync.Mutex
 }
 
-func (sss *sendSubscribeStream) SubscribeID() SubscribeID {
-	return sss.id
-}
+// func (sss *SendSubscribeStream) SubscribeID() SubscribeID {
+// 	return sss.id
+// }
 
-func (sss *sendSubscribeStream) TrackPath() BroadcastPath {
-	return sss.path
-}
+// func (sss *sendSubscribeStream) TrackPath() BroadcastPath {
+// 	return sss.path
+// }
 
-func (sss *sendSubscribeStream) SubuscribeConfig() *SubscribeConfig {
+func (sss *SendSubscribeStream) SubuscribeConfig() *SubscribeConfig {
 	return sss.config
 }
 
-func (sss *sendSubscribeStream) UpdateSubscribe(new *SubscribeConfig) error {
+func (sss *SendSubscribeStream) UpdateSubscribe(new *SubscribeConfig) error {
 	sss.mu.Lock()
 	defer sss.mu.Unlock()
 
@@ -78,7 +70,6 @@ func (sss *sendSubscribeStream) UpdateSubscribe(new *SubscribeConfig) error {
 
 	sum := message.SubscribeUpdateMessage{
 		TrackPriority:    message.TrackPriority(new.TrackPriority),
-		GroupOrder:       message.GroupOrder(new.GroupOrder),
 		MinGroupSequence: message.GroupSequence(new.MinGroupSequence),
 		MaxGroupSequence: message.GroupSequence(new.MaxGroupSequence),
 	}
@@ -101,7 +92,7 @@ func (sss *sendSubscribeStream) UpdateSubscribe(new *SubscribeConfig) error {
 	return nil
 }
 
-func (ss *sendSubscribeStream) Close() error {
+func (ss *SendSubscribeStream) close() error {
 	err := ss.stream.Close()
 	if err != nil {
 		slog.Debug("failed to close a subscrbe send stream",
@@ -118,7 +109,7 @@ func (ss *sendSubscribeStream) Close() error {
 	return nil
 }
 
-func (sss *sendSubscribeStream) CloseWithError(err error) error {
+func (sss *SendSubscribeStream) closeWithError(err error) error {
 	if err == nil {
 		err = ErrInternalError
 	}

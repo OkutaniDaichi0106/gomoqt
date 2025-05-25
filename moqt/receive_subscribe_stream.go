@@ -100,7 +100,6 @@ func (rss *receiveSubscribeStream) listenUpdates() {
 
 		config := &SubscribeConfig{
 			TrackPriority:    TrackPriority(sum.TrackPriority),
-			GroupOrder:       GroupOrder(sum.GroupOrder),
 			MinGroupSequence: GroupSequence(sum.MinGroupSequence),
 			MaxGroupSequence: GroupSequence(sum.MaxGroupSequence),
 		}

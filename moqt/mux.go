@@ -120,7 +120,7 @@ func (mux *TrackMux) Handler(path BroadcastPath) TrackHandler {
 
 // ServeTrack serves the track at the specified path to the given TrackWriter.
 // It finds the appropriate handler for the path and delegates the serving to it.
-func (mux *TrackMux) ServeTrack(path BroadcastPath, w TrackWriter, sub ReceivedSubscription) {
+func (mux *TrackMux) ServeTrack(path BroadcastPath, w TrackWriter, sub SendTrackStream) {
 	if w == nil {
 		slog.Error("mux: nil track writer")
 		return

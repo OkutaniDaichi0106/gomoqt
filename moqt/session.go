@@ -41,7 +41,6 @@ func newSession(conn quic.Connection, mux *TrackMux) *Session {
 		sendSubscribeStreamQueue:    newOutgoingSubscribeStreamQueue(),
 		sendAnnounceStreamQueue:     newIncomingAnnounceStreamQueue(),
 		receiveAnnounceStreamQueue:  newOutgoingAnnounceStreamQueue(),
-		sendInfoStreamQueue:         newIncomingInfoStreamQueue(),
 		receiveGroupStreamQueues:    make(map[SubscribeID]*incomingGroupStreamQueue),
 		sendGroupStreamQueues:       make(map[SubscribeID]*outgoingGroupStreamQueue),
 		bitrate:                     0,
@@ -86,9 +85,6 @@ type Session struct {
 
 	sendAnnounceStreamQueue    *incomingAnnounceStreamQueue
 	receiveAnnounceStreamQueue *outgoingAnnounceStreamQueue
-
-	sendInfoStreamQueue *incomingInfoStreamQueue
-	// receiveInfoStreamQueue *outgoingInfoStreamQueue
 
 	receiveGroupStreamQueues map[SubscribeID]*incomingGroupStreamQueue
 	receiveGroupMapLocker    sync.RWMutex
@@ -136,7 +132,7 @@ func (s *Session) OpenAnnounceStream(prefix string) (AnnouncementReader, error) 
 	return s.openAnnounceStream(prefix)
 }
 
-func (s *Session) OpenTrackStream(path BroadcastPath, name string, config *SubscribeConfig) (SentSubscription, TrackReader, error) {
+func (s *Session) OpenTrackStream(path BroadcastPath, name string, config *SubscribeConfig) (*ReceiveTrackStream, error) {
 	if config == nil {
 		config = &SubscribeConfig{}
 	}
@@ -145,18 +141,23 @@ func (s *Session) OpenTrackStream(path BroadcastPath, name string, config *Subsc
 
 	slog.Debug("opening track stream", "subscribe_config", config.String(), "subscribe_id", id)
 
-	im, ss, err := s.openSubscribeStream(id, path, config)
+	substr, err := s.openSubscribeStream(id, path, name, config)
 	if err != nil {
-		return NotFoundInfo, nil, err
+		return nil, err
 	}
 
-	info := Info{
-		TrackPriority:       TrackPriority(im.TrackPriority),
-		LatestGroupSequence: GroupSequence(im.LatestGroupSequence),
-		GroupOrder:          GroupOrder(im.GroupOrder),
-	}
+	// Create a receive group stream queue
+	track := newGroupReceiverQueue(substr.SubuscribeConfig)
+	s.receiveGroupMapLocker.Lock()
+	s.receiveGroupStreamQueues[id] = track
+	s.receiveGroupMapLocker.Unlock()
 
-	return info, newReceiveTrackStream(s, info, ss), nil
+	return &ReceiveTrackStream{
+		BroadcastPath:   path,
+		TrackName:       name,
+		SubscribeStream: substr,
+		TrackReader:     track,
+	}, nil
 }
 
 func (s *Session) Context() context.Context {
@@ -256,19 +257,19 @@ func (s *Session) openAnnounceStream(prefix string) (*receiveAnnounceStream, err
 	return newReceiveAnnounceStream(stream, prefix), nil
 }
 
-func (s *Session) openSubscribeStream(id SubscribeID, path BroadcastPath, config *SubscribeConfig) (Info, *sendSubscribeStream, error) {
+func (s *Session) openSubscribeStream(id SubscribeID, path BroadcastPath, name string, config *SubscribeConfig) (*SendSubscribeStream, error) {
 	// Open a Subscribe Stream
 	stream, err := openStream(s.conn, stream_type_subscribe)
 	if err != nil {
 		slog.Error("failed to open a Subscribe Stream", "error", err)
-		return NotFoundInfo, nil, err
+		return nil, err
 	}
 
 	// Send a SUBSCRIBE message
 	sm := message.SubscribeMessage{
 		SubscribeID:      message.SubscribeID(id),
 		BroadcastPath:    string(path),
-		GroupOrder:       message.GroupOrder(config.GroupOrder),
+		TrackName:        name,
 		TrackPriority:    message.TrackPriority(config.TrackPriority),
 		MinGroupSequence: message.GroupSequence(config.MinGroupSequence),
 		MaxGroupSequence: message.GroupSequence(config.MaxGroupSequence),
@@ -276,60 +277,20 @@ func (s *Session) openSubscribeStream(id SubscribeID, path BroadcastPath, config
 	_, err = sm.Encode(stream)
 	if err != nil {
 		slog.Error("failed to send a SUBSCRIBE message", "error", err)
-		return NotFoundInfo, nil, err
+		return nil, err
 	}
 
 	// Receive an INFO message
-	var im message.InfoMessage
-	_, err = im.Decode(stream)
+	var subok message.SubscribeOkMessage
+	_, err = subok.Decode(stream)
 	if err != nil {
 		slog.Error("failed to get a Info", "error", err)
-		return NotFoundInfo, nil, err
+		return nil, err
 	}
 
-	// Create a receive group stream queue
-	s.receiveGroupMapLocker.Lock()
-	s.receiveGroupStreamQueues[id] = newGroupReceiverQueue(id, path, config)
-	s.receiveGroupMapLocker.Unlock()
+	substr := newSendSubscribeStream(id, config, stream)
 
-	slog.Debug("Successfully opened a subscribe stream", slog.Any("config", sm), slog.Any("info", im))
-
-	info := Info{
-		TrackPriority:       TrackPriority(im.TrackPriority),
-		LatestGroupSequence: GroupSequence(im.LatestGroupSequence),
-		GroupOrder:          GroupOrder(im.GroupOrder),
-	}
-
-	return info, newSendSubscribeStream(id, path, config, stream), nil
-}
-
-func (sess *Session) openInfoStream(irm message.InfoRequestMessage) (message.InfoMessage, error) {
-	// Open an Info Stream
-	stream, err := openStream(sess.conn, stream_type_info)
-	if err != nil {
-		slog.Error("failed to open an Info Stream", "error", err)
-		return message.InfoMessage{}, err
-	}
-
-	// Close the stream
-	defer stream.Close()
-
-	// Send an INFO_REQUEST message
-	_, err = irm.Encode(stream)
-	if err != nil {
-		slog.Error("failed to send an INFO_REQUEST message", "error", err)
-		return message.InfoMessage{}, err
-	}
-
-	// Receive a INFO message
-	var im message.InfoMessage
-	_, err = im.Decode(stream)
-	if err != nil {
-		slog.Error("failed to get a INFO message", "error", err)
-		return message.InfoMessage{}, err
-	}
-
-	return im, nil
+	return substr, nil
 }
 
 func (sess *Session) openGroupStream(id SubscribeID, sequence GroupSequence) (*sendGroupStream, error) {
@@ -345,19 +306,24 @@ func (sess *Session) openGroupStream(id SubscribeID, sequence GroupSequence) (*s
 		sess.sendGroupMapLocker.RUnlock()
 		return nil, ErrProtocolViolation // TODO:
 	}
+
+	if !queue.config().IsInRange(sequence) {
+		return nil, ErrGroupOutOfRange // TODO:
+	}
+
 	sess.sendGroupMapLocker.RUnlock()
 
-	gm := message.GroupMessage{
+	_, err = message.GroupMessage{
 		SubscribeID:   message.SubscribeID(id),
 		GroupSequence: message.GroupSequence(sequence),
-	}
-	_, err = gm.Encode(stream)
+	}.Encode(stream)
 	if err != nil {
 		return nil, err
 	}
+
 	sgs := newSendGroupStream(stream, id, sequence)
 
-	queue.Enqueue(sgs)
+	queue.enqueue(sgs)
 
 	return sgs, nil
 }
@@ -418,7 +384,7 @@ func (sess *Session) acceptAnnounceStream(ctx context.Context) (*sendAnnounceStr
 }
 
 func (sess *Session) acceptSubscribeStream(ctx context.Context) (*receiveSubscribeStream, error) {
-	stream, err := sess.receiveSubscribeStreamQueue.Accept(ctx)
+	stream, err := sess.receiveSubscribeStreamQueue.accept(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -434,10 +400,6 @@ func (sess *Session) acceptSubscribeStream(ctx context.Context) (*receiveSubscri
 	sess.sendGroupMapLocker.Unlock()
 
 	return stream, err
-}
-
-func (sess *Session) acceptInfoStream(ctx context.Context) (*sendInfoStream, error) {
-	return sess.sendInfoStreamQueue.Accept(ctx)
 }
 
 func (sess *Session) goAway(uri string) {
@@ -519,11 +481,7 @@ func (sess *Session) processBiStream(stream quic.Stream) {
 			return
 		}
 
-		// Create a sendAnnounceStream
-		config := &AnnounceConfig{
-			TrackPrefix: string(apm.TrackPrefix),
-		}
-		sas := newSendAnnounceStream(stream, config)
+		sas := newSendAnnounceStream(stream, apm.TrackPrefix)
 
 		// Enqueue the stream
 		sess.sendAnnounceStreamQueue.Enqueue(sas)
@@ -543,7 +501,6 @@ func (sess *Session) processBiStream(stream quic.Stream) {
 		id := SubscribeID(sm.SubscribeID)
 		path := BroadcastPath(sm.BroadcastPath)
 		config := &SubscribeConfig{
-			GroupOrder:       GroupOrder(sm.GroupOrder),
 			TrackPriority:    TrackPriority(sm.TrackPriority),
 			MinGroupSequence: GroupSequence(sm.MinGroupSequence),
 			MaxGroupSequence: GroupSequence(sm.MaxGroupSequence),

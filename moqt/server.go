@@ -15,7 +15,6 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/webtransport"
 	quicgo "github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
-	webtransportgo "github.com/quic-go/webtransport-go"
 )
 
 type Server struct {
@@ -97,7 +96,7 @@ func (s *Server) init() {
 
 		// Initialize WebtransportServer
 		if s.WebtransportServer == nil {
-			s.setDefaultWebtransportServer()
+			s.WebtransportServer = webtransport.NewDefaultServer(s.Addr)
 		}
 		if s.nativeQUICCh == nil {
 			s.nativeQUICCh = make(chan quic.Connection, 1<<4)
@@ -169,7 +168,7 @@ func (s *Server) ServeQUICConn(conn quic.Connection) error {
 			s.Logger.Debug("handling webtransport session", "remote_address", conn.RemoteAddr())
 		}
 		if s.WebtransportServer == nil {
-			s.setDefaultWebtransportServer()
+			s.WebtransportServer = webtransport.NewDefaultServer(s.Addr)
 		}
 		return s.WebtransportServer.ServeQUICConn(conn)
 	case NextProtoMOQ:
@@ -245,7 +244,7 @@ func (s *Server) AcceptWebTransport(w http.ResponseWriter, r *http.Request, mux 
 	s.init()
 
 	if s.WebtransportServer == nil {
-		s.setDefaultWebtransportServer()
+		s.WebtransportServer = webtransport.NewDefaultServer(s.Addr)
 	}
 	conn, err := s.WebtransportServer.Upgrade(w, r)
 	if err != nil {
@@ -414,20 +413,6 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-func (s *Server) setDefaultWebtransportServer() {
-	wtserver := &webtransportgo.Server{
-		H3: http3.Server{
-			Addr: s.Addr,
-		},
-	}
-	// Wrap the WebTransport server
-	s.WebtransportServer = webtransport.WrapWebTransportServer(wtserver)
-
-	if s.Logger != nil {
-		s.Logger.Debug("set default WebTransport server", "address", s.Addr)
-	}
 }
 
 func (s *Server) addListener(ln *quic.EarlyListener) {

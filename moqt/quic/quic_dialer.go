@@ -9,8 +9,8 @@ import (
 
 var DialFunc = defaultDialQUICFunc
 
-var defaultDialQUICFunc = func(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quicgo.Config) (Connection, error) {
-	conn, err := quicgo.DialAddrEarly(ctx, addr, tlsConfig, quicConfig)
+var defaultDialQUICFunc = func(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *Config) (Connection, error) {
+	conn, err := quicgo.DialAddrEarly(ctx, addr, tlsConfig, (*quicgo.Config)(quicConfig))
 	if err != nil {
 		return nil, err
 	}

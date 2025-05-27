@@ -7,9 +7,10 @@ import (
 
 func newIncomingGroupStreamQueue(config func() *SubscribeConfig) *incomingGroupStreamQueue {
 	return &incomingGroupStreamQueue{
-		queue:  make([]*receiveGroupStream, 0, 1<<4),
-		ch:     make(chan struct{}, 1),
-		config: config,
+		queue:    make([]*receiveGroupStream, 0, 1<<4),
+		ch:       make(chan struct{}, 1),
+		config:   config,
+		dequeued: make(map[*receiveGroupStream]struct{}),
 	}
 }
 
@@ -33,7 +34,7 @@ func (q *incomingGroupStreamQueue) enqueue(stream *receiveGroupStream) {
 
 	seq := stream.GroupSequence()
 
-	if q.config().IsInRange(seq) {
+	if !q.config().IsInRange(seq) {
 		stream.CancelRead(ErrGroupOutOfRange)
 		return
 	}

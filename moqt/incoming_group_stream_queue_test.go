@@ -4,14 +4,38 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
+
+// Mock ReceiveStream for testing
+type mockReceiveStream struct{}
+
+func (m *mockReceiveStream) StreamID() quic.StreamID {
+	return quic.StreamID(1)
+}
+
+func (m *mockReceiveStream) Read(b []byte) (int, error) {
+	return 0, nil
+}
+
+func (m *mockReceiveStream) CancelRead(code quic.StreamErrorCode) {
+	// Mock implementation - does nothing
+}
+
+func (m *mockReceiveStream) SetReadDeadline(t time.Time) error {
+	return nil
+}
 
 func TestIncomingGroupStreamQueue_EnqueueAndAccept(t *testing.T) {
 	config := func() *SubscribeConfig {
 		return &SubscribeConfig{MinGroupSequence: 0, MaxGroupSequence: 100}
 	}
 	queue := newIncomingGroupStreamQueue(config)
-	stream := &receiveGroupStream{}
+
+	// Create a properly initialized receiveGroupStream with a mock stream
+	mockStream := &mockReceiveStream{}
+	stream := newReceiveGroupStream(SubscribeID(1), GroupSequence(50), mockStream)
 
 	// Enqueue a stream
 	queue.enqueue(stream)

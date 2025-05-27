@@ -9,17 +9,9 @@ type MockTrackWriter struct {
 	OpenGroupFunc      func(seq GroupSequence) (GroupWriter, error)
 	CloseFunc          func() error
 	CloseWithErrorFunc func(err error) error
-
-	// Additional fields for testing that are not part of the interface
-	LatestGroupSequenceValue GroupSequence
 }
 
 func (m *MockTrackWriter) OpenGroup(seq GroupSequence) (GroupWriter, error) {
-	// Update the latest group sequence
-	if m.LatestGroupSequenceValue < seq {
-		m.LatestGroupSequenceValue = seq
-	}
-
 	if m.OpenGroupFunc == nil {
 		return nil, nil
 	}

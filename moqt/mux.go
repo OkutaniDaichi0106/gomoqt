@@ -86,13 +86,44 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 // Handler returns the handler for the specified track path.
 // If no handler is found, NotFoundTrackHandler is returned.
 func (mux *TrackMux) Handler(path BroadcastPath) TrackHandler {
-	if path == "" {
-		slog.Warn("mux: empty track path for handler lookup")
+	mux.mu.RLock()
+	defer mux.mu.RUnlock()
+
+	ann, handler := mux.findHandler(path)
+
+	if !ann.IsActive() {
 		return NotFoundHandler
 	}
 
-	mux.mu.RLock()
-	defer mux.mu.RUnlock()
+	return handler
+}
+
+// ServeTrack serves the track at the specified path using the appropriate handler.
+// It finds the handler for the path and delegates the serving to it.
+func (mux *TrackMux) ServeTrack(pub *Publisher) {
+	if pub == nil {
+		slog.Error("mux: nil publisher")
+		return
+	}
+	if pub.TrackWriter == nil {
+		slog.Error("mux: nil track writer")
+		return
+	}
+	if pub.SubscribeStream == nil {
+		slog.Error("mux: nil subscribe stream")
+		return
+	}
+
+	handler := mux.Handler(pub.BroadcastPath)
+
+	handler.ServeTrack(pub)
+}
+
+func (mux *TrackMux) findHandler(path BroadcastPath) (*Announcement, TrackHandler) {
+	if path == "" {
+		slog.Warn("mux: empty track path for handler lookup")
+		return nil, NotFoundHandler
+	}
 
 	p := newPath(path)
 
@@ -100,33 +131,21 @@ func (mux *TrackMux) Handler(path BroadcastPath) TrackHandler {
 	current := &mux.trackTree
 	for _, seg := range p.segments {
 		if current.children == nil {
-			return NotFoundHandler
+			return nil, NotFoundHandler
 		}
 
 		child, ok := current.children[seg]
 		if !ok {
-			return NotFoundHandler
+			return nil, NotFoundHandler
 		}
 
 		current = child
 	}
 
 	if current.handler == nil {
-		return NotFoundHandler
+		return nil, NotFoundHandler
 	}
-
-	return current.handler
-}
-
-// ServeTrack serves the track at the specified path to the given TrackWriter.
-// It finds the appropriate handler for the path and delegates the serving to it.
-func (mux *TrackMux) ServeTrack(path BroadcastPath, w TrackWriter, sub SendTrackStream) {
-	if w == nil {
-		slog.Error("mux: nil track writer")
-		return
-	}
-
-	mux.Handler(path).ServeTrack(w, sub)
+	return current.announcement.Fork(), current.handler
 }
 
 // ServeAnnouncements serves announcements for tracks matching the given pattern.
@@ -401,18 +420,11 @@ func newAnnouncingNode() *announcingNode {
 type announcingNode struct {
 	// If this node is a leaf node, pattern and config are set.
 	// If this node is not a leaf node, pattern and config are nil.
-	pattern *pattern
+	// pattern *pattern
 
-	// config is the announcement configuration for this node
-	// config *AnnounceConfig
-
-	//
-	// buffer *announcementsBuffer
 	announcements []*Announcement
 	mu            sync.Mutex
 	cond          *sync.Cond
-
-	// announcers []AnnouncementWriter
 
 	// children maps segment names to child nodes
 	children map[string]*announcingNode
@@ -495,10 +507,4 @@ type pattern struct {
 
 	// segments is the path split into segments
 	segments []string
-}
-
-// depth returns the effective depth of the pattern (number of segments minus 1).
-// The depth is used to determine when we've reached the end of a pattern in the matching algorithm.
-func (p *pattern) depth() int {
-	return len(p.segments) - 1
 }

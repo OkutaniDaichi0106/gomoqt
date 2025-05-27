@@ -1,4 +1,4 @@
-package quicgowrapper
+package webtransport
 
 import (
 	"context"
@@ -7,20 +7,19 @@ import (
 	"net/http"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/webtransport"
 	quicgo "github.com/quic-go/quic-go"
 	webtransportgo "github.com/quic-go/webtransport-go"
 )
 
-func WrapWebTransportServer(server *webtransportgo.Server) webtransport.Server {
+func WrapWebTransportServer(server *webtransportgo.Server) Server {
 	return &webTransportServer{
 		server: server,
 	}
 }
 
-var _ webtransport.Server = (*webTransportServer)(nil)
+var _ Server = (*webTransportServer)(nil)
 
-// webTransportServer is a wrapper for webtransport.Server
+// webTransportServer is a wrapper for Server
 type webTransportServer struct {
 	server *webtransportgo.Server
 }
@@ -51,7 +50,7 @@ func (wrapper *webTransportServer) Upgrade(w http.ResponseWriter, r *http.Reques
 }
 
 func (w *webTransportServer) ServeQUICConn(conn quic.Connection) error {
-	return w.server.ServeQUICConn(UnWrapConnection(conn))
+	return w.server.ServeQUICConn(quic.UnWrapConnection(conn))
 }
 
 func (w *webTransportServer) Serve(conn net.PacketConn) error {

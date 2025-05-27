@@ -1,77 +1,41 @@
 package moqt
 
 import (
-	"context"
 	"sync"
 )
 
-func newIncomingSubscribeStreamQueue() *incomingSubscribeStreamQueue {
+func newIncomingSubscriptionQueue() *incomingSubscribeStreamQueue {
 	return &incomingSubscribeStreamQueue{
-		queue: make([]*receiveSubscribeStream, 0),
-		ch:    make(chan struct{}, 1),
+		dequeued: make(map[*receiveSubscribeStream]struct{}, 0),
 	}
 }
 
 type incomingSubscribeStreamQueue struct {
-	queue []*receiveSubscribeStream
-	mu    sync.Mutex
-	ch    chan struct{}
-	pos   int
+	// queue []*receiveSubscribeStream
+	mu sync.Mutex
+
+	dequeued map[*receiveSubscribeStream]struct{}
 }
-
-// func (q *incomingSubscribeStreamQueue) Len() int {
-// 	q.mu.Lock()
-// 	defer q.mu.Unlock()
-
-// 	return len(q.queue)
-// }
-
-// func (q *incomingSubscribeStreamQueue) Chan() <-chan struct{} {
-// 	return q.ch
-// }
 
 func (q *incomingSubscribeStreamQueue) enqueue(rss *receiveSubscribeStream) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	q.queue = append(q.queue, rss)
-
-	select {
-	case q.ch <- struct{}{}:
-	default:
-	}
+	q.dequeued[rss] = struct{}{}
 }
 
-// func (q *incomingSubscribeStreamQueue) Dequeue() *receiveSubscribeStream {
-// 	q.mu.Lock()
-// 	defer q.mu.Unlock()
+func (q *incomingSubscribeStreamQueue) remove(rss *receiveSubscribeStream) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
 
-// 	if len(q.queue) <= q.pos {
-// 		return nil
-// 	}
+	delete(q.dequeued, rss)
+}
 
-// 	next := q.queue[q.pos]
+func (q *incomingSubscribeStreamQueue) clear(reason error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
 
-// 	q.pos++
-
-// 	return next
-// }
-
-func (q *incomingSubscribeStreamQueue) accept(ctx context.Context) (*receiveSubscribeStream, error) {
-	for {
-		q.mu.Lock()
-		if q.pos <= len(q.queue) {
-			stream := q.queue[q.pos]
-			q.pos++
-
-			q.mu.Unlock()
-			return stream, nil
-		}
-		q.mu.Unlock()
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-q.ch:
-		}
+	for stream := range q.dequeued {
+		stream.closeWithError(reason)
 	}
 }

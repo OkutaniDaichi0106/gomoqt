@@ -3,7 +3,6 @@ package moqt
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"log/slog"
 	"sync"
 
@@ -13,11 +12,9 @@ import (
 
 type AnnouncementWriter interface {
 	SendAnnouncements(announcements []*Announcement) error
-	// Close() error
-	// CloseWithError(error) error
 }
 
-var _ AnnouncementWriter = (*sendAnnounceStream)(nil)
+// func (w AnnouncementWriter) SendAnnouncements(announcements []*Announcement) error {}
 
 func newSendAnnounceStream(stream quic.Stream, prefix string) *sendAnnounceStream {
 	sas := &sendAnnounceStream{
@@ -40,14 +37,19 @@ func newSendAnnounceStream(stream quic.Stream, prefix string) *sendAnnounceStrea
 	return sas
 }
 
+var _ AnnouncementWriter = (*sendAnnounceStream)(nil)
+
 type sendAnnounceStream struct {
-	stream quic.Stream
 	prefix string
-	mu     sync.Mutex
+
+	stream quic.Stream
+
+	mu sync.Mutex
 
 	actives map[string]*Announcement
 
-	pendings map[string]message.AnnounceMessage
+	pendings  map[string]message.AnnounceMessage
+	pendingMu sync.Mutex
 
 	closed   bool
 	closeErr error
@@ -56,80 +58,78 @@ type sendAnnounceStream struct {
 }
 
 func (sas *sendAnnounceStream) SendAnnouncements(announcements []*Announcement) error {
-	sas.mu.Lock()
-	defer sas.mu.Unlock()
+	sas.pendingMu.Lock()
+	defer sas.pendingMu.Unlock()
 
 	// Set active announcement
 	for _, ann := range announcements {
-		if !ann.IsActive() {
-			// Ignore inactive announcement
-			slog.Warn("Ignore inactive announcement",
-				"track_path", ann.BroadcastPath(),
-			)
+		suffix, ok := ann.BroadcastPath().GetSuffix(sas.prefix)
+		if !ok {
 			continue
 		}
 
-		suffix, ok := ann.BroadcastPath().GetSuffix(sas.prefix)
-		if !ok {
-			return fmt.Errorf("failed to get suffix from broadcast path: %s", ann.BroadcastPath())
-		}
-
 		if active, ok := sas.actives[suffix]; ok {
-			if active == ann {
-				continue
-			}
-
-			active.End()
+			active.cancel()
 			delete(sas.actives, suffix)
 		}
 
-		new := ann.Clone()
-		sas.actives[suffix] = new
+		sas.actives[suffix] = ann
 
-		am := message.AnnounceMessage{
-			AnnounceStatus: message.ACTIVE,
-			TrackSuffix:    suffix,
+		err := sas.set(suffix, true)
+		if err != nil {
+			return err
 		}
-
-		sas.pendings[suffix] = am
 
 		go func(ann *Announcement) {
 			<-ann.AwaitEnd()
 
-			sas.mu.Lock()
-			defer sas.mu.Unlock()
-
-			am := message.AnnounceMessage{
-				AnnounceStatus: message.ENDED,
-				TrackSuffix:    suffix,
-			}
-
-			if _, ok := sas.pendings[suffix]; ok {
-				delete(sas.pendings, suffix)
-			} else {
-				sas.pendings[suffix] = am
+			err := sas.set(suffix, false)
+			if err != nil {
+				slog.Error("failed to set an ended announcement",
+					"suffix", suffix,
+					"error", err,
+				)
+				return
 			}
 
 			delete(sas.actives, suffix)
 
 			sas.sendCh <- struct{}{}
-		}(new)
+		}(ann)
 	}
-
-	sas.sendCh <- struct{}{}
 
 	return nil
 }
 
-func (sas *sendAnnounceStream) set(path BroadcastPath) error {
-	sas.mu.Lock()
-	defer sas.mu.Unlock()
+func (sas *sendAnnounceStream) set(suffix string, active bool) error {
+	sas.pendingMu.Lock()
+	defer sas.pendingMu.Unlock()
 
 	if sas.closed {
 		if sas.closeErr != nil {
 			return sas.closeErr
 		}
+		return errors.New("stream already closed")
+	}
+
+	_, ok := sas.pendings[suffix]
+
+	if active {
+		sas.pendings[suffix] = message.AnnounceMessage{
+			AnnounceStatus: message.ACTIVE,
+			TrackSuffix:    suffix,
+		}
+
 		return nil
+	} else {
+		if ok {
+			delete(sas.pendings, suffix)
+		} else {
+			sas.pendings[suffix] = message.AnnounceMessage{
+				AnnounceStatus: message.ENDED,
+				TrackSuffix:    suffix,
+			}
+		}
 	}
 
 	return nil

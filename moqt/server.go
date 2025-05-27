@@ -11,7 +11,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/quicgowrapper"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/webtransport"
 	quicgo "github.com/quic-go/quic-go"
@@ -249,9 +248,10 @@ func (s *Server) AcceptWebTransport(w http.ResponseWriter, r *http.Request, mux 
 }
 
 func (s *Server) acceptSession(conn quic.Connection, params func(req *Parameters) (rsp *Parameters, err error), mux *TrackMux) (*Session, error) {
-	sess := newSession(conn, mux)
+	sessCtx := newSessionContext(conn.Context(), s.Logger)
+	sess := newSession(sessCtx, conn, mux)
 
-	ctxAccept, cancelAccept := context.WithTimeout(sess.Context(), s.acceptTimeout())
+	ctxAccept, cancelAccept := context.WithTimeout(sessCtx, s.acceptTimeout())
 	defer cancelAccept()
 	err := sess.acceptSessionStream(ctxAccept, params)
 	if err != nil {
@@ -259,16 +259,9 @@ func (s *Server) acceptSession(conn quic.Connection, params func(req *Parameters
 		return nil, err
 	}
 
-	if mux == nil {
-		mux = DefaultMux
-	}
-
-	go sess.handleAnnounceStreams()
-	go sess.handleSubscribeStreams()
-
 	s.addSession(sess)
 	go func() {
-		<-sess.Context().Done()
+		<-sessCtx.Done()
 		s.removeSession(sess)
 	}()
 
@@ -410,7 +403,7 @@ func (s *Server) setDefaultWebtransportServer() {
 	}
 
 	// Wrap the WebTransport server
-	s.WebtransportServer = quicgowrapper.WrapWebTransportServer(wtserver)
+	s.WebtransportServer = webtransport.WrapWebTransportServer(wtserver)
 
 	s.Logger.Debug("set default WebTransport server", "address", s.Addr)
 }

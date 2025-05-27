@@ -9,6 +9,10 @@ import (
 )
 
 var (
+	ErrInvalidScheme = errors.New("moqt: invalid scheme")
+
+	ErrClosedSession = errors.New("moqt: closed session")
+
 	ErrInternalError = internalError{}
 
 	ErrUnauthorizedError = unauthorizedError{}

@@ -26,6 +26,8 @@ type Announcement struct {
 	cancel context.CancelFunc
 
 	path BroadcastPath
+
+	info Info
 }
 
 func (a *Announcement) String() string {
@@ -61,6 +63,6 @@ func (a *Announcement) End() {
 	a.cancel()
 }
 
-func (a *Announcement) Clone() *Announcement {
+func (a *Announcement) Fork() *Announcement {
 	return NewAnnouncement(a.ctx, a.path)
 }

@@ -4,16 +4,16 @@ import "sync"
 
 func newOutgoingSubscribeStreamQueue() *outgoingSubscribeStreamQueue {
 	return &outgoingSubscribeStreamQueue{
-		queue: make([]*SendSubscribeStream, 0),
+		queue: make([]*sendSubscribeStream, 0),
 	}
 }
 
 type outgoingSubscribeStreamQueue struct {
-	queue []*SendSubscribeStream
+	queue []*sendSubscribeStream
 	mu    sync.Mutex
 }
 
-func (q *outgoingSubscribeStreamQueue) enqueue(stream *SendSubscribeStream) {
+func (q *outgoingSubscribeStreamQueue) enqueue(stream *sendSubscribeStream) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 

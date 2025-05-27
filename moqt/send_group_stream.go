@@ -1,6 +1,7 @@
 package moqt
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"time"
@@ -10,37 +11,31 @@ import (
 
 var _ GroupWriter = (*sendGroupStream)(nil)
 
-func newSendGroupStream(stream quic.SendStream, id SubscribeID, sequence GroupSequence) *sendGroupStream {
+func newSendGroupStream(stream quic.SendStream, groupCtx *groupContext) *sendGroupStream {
 	return &sendGroupStream{
-		// id:       id,
-		sequence: sequence,
+		groupCtx: groupCtx,
 		stream:   stream,
 	}
 }
 
 type sendGroupStream struct {
-	// id       SubscribeID
-	sequence GroupSequence
-	stream   quic.SendStream
+	groupCtx *groupContext
 
-	closed    bool
-	closedErr error
-	mu        sync.Mutex
+	stream quic.SendStream
+
+	mu sync.Mutex
 }
 
 func (sgs *sendGroupStream) GroupSequence() GroupSequence {
-	return sgs.sequence
+	return sgs.groupCtx.seq
 }
 
 func (sgs *sendGroupStream) WriteFrame(frame *Frame) error {
 	sgs.mu.Lock()
 	defer sgs.mu.Unlock()
 
-	if sgs.closed {
-		if sgs.closedErr != nil {
-			return sgs.closedErr
-		}
-		return ErrClosedGroup
+	if err := sgs.closedErr(); err != nil {
+		return err
 	}
 
 	if frame == nil {
@@ -65,12 +60,11 @@ func (sgs *sendGroupStream) CloseWithError(err error) error {
 	sgs.mu.Lock()
 	defer sgs.mu.Unlock()
 
-	if sgs.closed {
-		if sgs.closedErr != nil {
-			return sgs.closedErr
-		}
-		return nil
+	if err := sgs.closedErr(); err != nil {
+		return err
 	}
+
+	sgs.groupCtx.cancel(err)
 
 	if err == nil {
 		err = ErrInternalError
@@ -78,13 +72,10 @@ func (sgs *sendGroupStream) CloseWithError(err error) error {
 
 	var grperr GroupError
 	if !errors.As(err, &grperr) {
-		errors.As(ErrInternalError, &grperr)
+		grperr = ErrInternalError
 	}
 
 	sgs.stream.CancelWrite(quic.StreamErrorCode(grperr.GroupErrorCode()))
-
-	sgs.closed = true
-	sgs.closedErr = err
 
 	return nil
 }
@@ -93,14 +84,28 @@ func (sgs *sendGroupStream) Close() error {
 	sgs.mu.Lock()
 	defer sgs.mu.Unlock()
 
-	if sgs.closed {
-		if sgs.closedErr != nil {
-			return sgs.closedErr
-		}
-		return nil
+	if err := sgs.closedErr(); err != nil {
+		return err
 	}
 
-	sgs.closed = true
+	sgs.groupCtx.cancel(ErrClosedGroup)
+
+	err := sgs.stream.Close()
+	if err != nil {
+		return err
+	}
 
 	return sgs.stream.Close()
+}
+
+func (sgs *sendGroupStream) closedErr() error {
+	if sgs.groupCtx.Err() != nil {
+		reason := context.Cause(sgs.groupCtx)
+		if reason != nil {
+			return reason
+		}
+		return ErrClosedGroup
+	}
+
+	return nil
 }

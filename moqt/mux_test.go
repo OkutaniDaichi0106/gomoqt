@@ -17,30 +17,41 @@ import (
 // Define a custom type for context keys
 type contextKey string
 
-// MockReceivedSubscription is a mock implementation of ReceivedSubscription for testing.
+// MockReceivedSubscription is a mock implementation of ReceiveSubscribeStream for testing.
 type MockReceivedSubscription struct {
-	SubscribeIDFunc      func() SubscribeID
-	SubuscribeConfigFunc func() *SubscribeConfig
-	UpdatedFunc          func() <-chan struct{}
+	SubscribeIDFunc     func() moqt.SubscribeID
+	SubscribeConfigFunc func() *moqt.SubscribeConfig
+	UpdatedFunc         func() <-chan struct{}
+	DoneFunc            func() <-chan struct{}
 }
 
-func (m *MockReceivedSubscription) SubscribeID() SubscribeID {
+func (m *MockReceivedSubscription) SubscribeID() moqt.SubscribeID {
 	if m.SubscribeIDFunc != nil {
 		return m.SubscribeIDFunc()
 	}
 	return 0
 }
 
-func (m *MockReceivedSubscription) SubuscribeConfig() *SubscribeConfig {
-	if m.SubuscribeConfigFunc != nil {
-		return m.SubuscribeConfigFunc()
+func (m *MockReceivedSubscription) SubscribeConfig() *moqt.SubscribeConfig {
+	if m.SubscribeConfigFunc != nil {
+		return m.SubscribeConfigFunc()
 	}
-	return &SubscribeConfig{}
+	return &moqt.SubscribeConfig{}
 }
 
 func (m *MockReceivedSubscription) Updated() <-chan struct{} {
 	if m.UpdatedFunc != nil {
 		return m.UpdatedFunc()
+	}
+	// Return a closed channel so it doesn't block if not overridden
+	ch := make(chan struct{})
+	close(ch)
+	return ch
+}
+
+func (m *MockReceivedSubscription) Done() <-chan struct{} {
+	if m.DoneFunc != nil {
+		return m.DoneFunc()
 	}
 	// Return a closed channel so it doesn't block if not overridden
 	ch := make(chan struct{})

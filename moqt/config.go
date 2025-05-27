@@ -1,5 +1,7 @@
 package moqt
 
+import "time"
+
 type Config struct {
 	// Configurations
 	MaxSubscribeID SubscribeID // TODO:
@@ -9,6 +11,8 @@ type Config struct {
 	// SetupExtensions Parameters
 
 	CheckRoot func(r SetupRequest) bool // TODO:
+
+	Timeout time.Duration
 }
 
 func (c *Config) Clone() *Config {

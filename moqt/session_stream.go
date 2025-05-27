@@ -1,8 +1,8 @@
 package moqt
 
 import (
+	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"sync"
 
@@ -11,21 +11,18 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-type SessionStream interface {
-	UpdateSession(bitrate uint64) error
-	ClientParameters() *Parameters
-	ServerParameters() *Parameters
-	Version() protocol.Version
-	Close() error
-	CloseWithError(err error) error
-}
+// type SessionStream interface {
+// 	UpdateSession(bitrate uint64) error
+// 	ClientParameters() *Parameters
+// 	ServerParameters() *Parameters
+// 	Version() protocol.Version
+// 	Close() error
+// 	CloseWithError(err error) error
+// }
 
 func newSessionStream(stream quic.Stream, selectedVersion protocol.Version, clientParameters, serverParameters *Parameters) *sessionStream {
 	sess := &sessionStream{
-		stream:           stream,
-		selectedVersion:  selectedVersion,
-		clientParameters: clientParameters,
-		serverParameters: serverParameters,
+		stream: stream,
 	}
 
 	// Start listening for updates in a separate goroutine
@@ -34,26 +31,17 @@ func newSessionStream(stream quic.Stream, selectedVersion protocol.Version, clie
 	return sess
 }
 
-var _ SessionStream = (*sessionStream)(nil)
+// var _ SessionStream = (*sessionStream)(nil)
 
 type sessionStream struct {
+	sessCtx *sessionContext
+
 	stream quic.Stream
 	mu     sync.Mutex
-
-	// Versions selected by the server
-	selectedVersion protocol.Version
-
-	// Parameters specified by the client and server
-	clientParameters *Parameters
-
-	// Parameters specified by the server
-	serverParameters *Parameters
-
-	closed   bool
-	closeErr error
 }
 
 func (ss *sessionStream) UpdateSession(bitrate uint64) error {
+
 	sum := message.SessionUpdateMessage{Bitrate: bitrate}
 	_, err := sum.Encode(ss.stream)
 	if err != nil {
@@ -66,19 +54,25 @@ func (ss *sessionStream) UpdateSession(bitrate uint64) error {
 	return nil
 }
 
-func (ss *sessionStream) ClientParameters() *Parameters {
-	return ss.clientParameters
-}
+// func (ss *sessionStream) ClientParameters() *Parameters {
+// 	return ss.clientParameters
+// }
 
-func (ss *sessionStream) ServerParameters() *Parameters {
-	return ss.serverParameters
-}
+// func (ss *sessionStream) ServerParameters() *Parameters {
+// 	return ss.serverParameters
+// }
 
-func (ss *sessionStream) Version() protocol.Version {
-	return ss.selectedVersion
-}
+// func (ss *sessionStream) Version() protocol.Version {
+// 	return ss.selectedVersion
+// }
 
 func (ss *sessionStream) Close() error {
+	if ss.closedErr() != nil {
+		return ss.closedErr()
+	}
+
+	ss.sessCtx.cancel(nil)
+
 	return ss.stream.Close()
 }
 
@@ -86,20 +80,15 @@ func (ss *sessionStream) CloseWithError(err error) error {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
 
-	if ss.closed {
-		if ss.closeErr == nil {
-			return fmt.Errorf("stream has already closed due to: %v", ss.closeErr)
-		}
-
-		return errors.New("stream has already closed")
+	if ss.closedErr() != nil {
+		return ss.closedErr()
 	}
+
+	ss.sessCtx.cancel(err)
 
 	if err == nil {
 		err = ErrInternalError
 	}
-
-	ss.closed = true
-	ss.closeErr = err
 
 	var annerr TerminateError
 	if !errors.As(err, &annerr) {
@@ -136,3 +125,17 @@ func (ss *sessionStream) listenUpdates() {
 		// TODO: Handle the session update message
 	}
 }
+
+func (ss *sessionStream) closedErr() error {
+	if ss.sessCtx.Err() != nil {
+		reason := context.Cause(ss.sessCtx)
+		if reason != nil {
+			return reason
+		}
+		return ErrClosedSession
+	}
+
+	return nil
+}
+
+//

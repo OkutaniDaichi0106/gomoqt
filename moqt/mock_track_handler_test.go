@@ -6,20 +6,11 @@ var _ TrackHandler = (*MockTrackHandler)(nil)
 // It allows customizing behavior for testing different scenarios
 type MockTrackHandler struct {
 	// Function fields to customize behavior
-	ServeTrackFunc func(w TrackWriter, sub SendTrackStream)
-	GetInfoFunc    func() (Info, bool)
-	SendGapFunc    func(gap Gap) error
+	ServeTrackFunc func(pub *Publisher)
 }
 
-func (m *MockTrackHandler) HandleTrack(w TrackWriter, sub SendTrackStream) {
+func (m *MockTrackHandler) ServeTrack(pub *Publisher) {
 	if m.ServeTrackFunc != nil {
-		m.ServeTrackFunc(w, sub)
+		m.ServeTrackFunc(pub)
 	}
-}
-
-func (m *MockTrackHandler) Info() (Info, bool) {
-	if m.GetInfoFunc != nil {
-		return m.GetInfoFunc()
-	}
-	return Info{}, true
 }

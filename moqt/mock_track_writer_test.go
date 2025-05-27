@@ -5,30 +5,13 @@ var _ TrackWriter = (*MockTrackWriter)(nil)
 // MockTrackWriter is a mock implementation of the TrackWriter interface
 // It provides a simple implementation for testing purposes
 type MockTrackWriter struct {
-	PathValue BroadcastPath
 	// Add more fields as needed for testing
 	OpenGroupFunc      func(seq GroupSequence) (GroupWriter, error)
-	SendGapFunc        func(gap Gap) error
 	CloseFunc          func() error
 	CloseWithErrorFunc func(err error) error
 
+	// Additional fields for testing that are not part of the interface
 	LatestGroupSequenceValue GroupSequence
-}
-
-func (m *MockTrackWriter) TrackPath() BroadcastPath {
-	return m.PathValue
-}
-
-func (m *MockTrackWriter) LatestGroupSequence() GroupSequence {
-	return m.LatestGroupSequenceValue
-}
-
-func (m *MockTrackWriter) Info() Info {
-	return Info{
-		TrackPriority:       1,
-		LatestGroupSequence: 0,
-		GroupOrder:          0,
-	}
 }
 
 func (m *MockTrackWriter) OpenGroup(seq GroupSequence) (GroupWriter, error) {
@@ -56,11 +39,4 @@ func (m *MockTrackWriter) CloseWithError(err error) error {
 		return nil
 	}
 	return m.CloseWithErrorFunc(err)
-}
-
-func (m *MockTrackWriter) SendGap(gap Gap) error {
-	if m.SendGapFunc == nil {
-		return nil
-	}
-	return m.SendGapFunc(gap)
 }

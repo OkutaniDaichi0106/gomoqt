@@ -19,7 +19,7 @@ type incomingAnnounceStreamQueue struct {
 	pos   int
 }
 
-func (q *incomingAnnounceStreamQueue) Accept(ctx context.Context) (*sendAnnounceStream, error) {
+func (q *incomingAnnounceStreamQueue) accept(ctx context.Context) (*sendAnnounceStream, error) {
 	for {
 		q.mu.Lock()
 		if q.pos <= len(q.queue) {
@@ -38,17 +38,7 @@ func (q *incomingAnnounceStreamQueue) Accept(ctx context.Context) (*sendAnnounce
 	}
 }
 
-// func (q *incomingAnnounceStreamQueue) Len() int {
-// 	q.mu.Lock()
-// 	defer q.mu.Unlock()
-// 	return len(q.queue)
-// }
-
-// func (q *incomingAnnounceStreamQueue) Chan() <-chan struct{} {
-// 	return q.ch
-// }
-
-func (q *incomingAnnounceStreamQueue) Enqueue(stream *sendAnnounceStream) {
+func (q *incomingAnnounceStreamQueue) enqueue(stream *sendAnnounceStream) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -60,18 +50,3 @@ func (q *incomingAnnounceStreamQueue) Enqueue(stream *sendAnnounceStream) {
 		stream.Close()
 	}
 }
-
-// func (q *incomingAnnounceStreamQueue) Dequeue() *sendAnnounceStream {
-// 	q.mu.Lock()
-// 	defer q.mu.Unlock()
-
-// 	if q.Len() <= q.pos {
-// 		return nil
-// 	}
-
-// 	sas := q.queue[q.pos]
-
-// 	q.pos++
-
-// 	return sas
-// }

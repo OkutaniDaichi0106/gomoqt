@@ -1,4 +1,4 @@
-package quicgowrapper
+package webtransport
 
 import (
 	"context"

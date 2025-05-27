@@ -9,36 +9,37 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-func newSendSubscribeStream(id SubscribeID, config *SubscribeConfig, stream quic.Stream) *SendSubscribeStream {
-	return &SendSubscribeStream{
-		SubscribeID: id,
-		config:      config,
-		stream:      stream,
+type SendSubscribeStream interface {
+	SubscribeID() SubscribeID
+	SubuscribeConfig() *SubscribeConfig
+	UpdateSubscribe(*SubscribeConfig) error
+}
+
+func newSendSubscribeStream(id SubscribeID, config *SubscribeConfig, stream quic.Stream) *sendSubscribeStream {
+	return &sendSubscribeStream{
+		id:     id,
+		config: config,
+		stream: stream,
 	}
 }
 
-type SendSubscribeStream struct {
-	SubscribeID SubscribeID
-	// path   BroadcastPath
+type sendSubscribeStream struct {
+	id     SubscribeID
 	config *SubscribeConfig
 
 	stream quic.Stream
 	mu     sync.Mutex
 }
 
-// func (sss *SendSubscribeStream) SubscribeID() SubscribeID {
-// 	return sss.id
-// }
+func (sss *sendSubscribeStream) SubscribeID() SubscribeID {
+	return sss.id
+}
 
-// func (sss *sendSubscribeStream) TrackPath() BroadcastPath {
-// 	return sss.path
-// }
-
-func (sss *SendSubscribeStream) SubuscribeConfig() *SubscribeConfig {
+func (sss *sendSubscribeStream) SubuscribeConfig() *SubscribeConfig {
 	return sss.config
 }
 
-func (sss *SendSubscribeStream) UpdateSubscribe(new *SubscribeConfig) error {
+func (sss *sendSubscribeStream) UpdateSubscribe(new *SubscribeConfig) error {
 	sss.mu.Lock()
 	defer sss.mu.Unlock()
 
@@ -92,7 +93,7 @@ func (sss *SendSubscribeStream) UpdateSubscribe(new *SubscribeConfig) error {
 	return nil
 }
 
-func (ss *SendSubscribeStream) close() error {
+func (ss *sendSubscribeStream) close() error {
 	err := ss.stream.Close()
 	if err != nil {
 		slog.Debug("failed to close a subscrbe send stream",
@@ -109,7 +110,7 @@ func (ss *SendSubscribeStream) close() error {
 	return nil
 }
 
-func (sss *SendSubscribeStream) closeWithError(err error) error {
+func (sss *sendSubscribeStream) closeWithError(err error) error {
 	if err == nil {
 		err = ErrInternalError
 	}

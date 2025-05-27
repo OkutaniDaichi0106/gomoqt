@@ -1,15 +1,12 @@
 package moqt
 
 import (
-	"container/heap"
 	"sync"
 )
 
-func newOutgoingGroupStreamQueue(config func() *SubscribeConfig, order GroupOrder) *outgoingGroupStreamQueue {
+func newOutgoingGroupStreamQueue() *outgoingGroupStreamQueue {
 	q := &outgoingGroupStreamQueue{
-		queue:  make([]*sendGroupStream, 0, 1<<4), // TODO: Tune the initial capacity
-		config: config,
-		heap:   newGroupSequenceHeap(order),
+		queue: make(map[*sendGroupStream]struct{}), // TODO: Tune the initial capacity
 	}
 
 	return q
@@ -18,39 +15,33 @@ func newOutgoingGroupStreamQueue(config func() *SubscribeConfig, order GroupOrde
 // outgoingGroupStreamQueue represents a queue for outgoing group streams.
 type outgoingGroupStreamQueue struct {
 	mu    sync.Mutex
-	queue []*sendGroupStream
-	heap  *groupSequenceHeap
+	queue map[*sendGroupStream]struct{}
 
-	config func() *SubscribeConfig
+	// openStreamFunc func(GroupSequence) (*sendGroupStream, error)
+
+	// configFunc func() *SubscribeConfig
 }
 
-// Enqueue adds a new stream to the queue and maintains heap property
-func (q *outgoingGroupStreamQueue) enqueue(stream *sendGroupStream) {
-	if stream == nil {
-		return
-	}
-
+func (q *outgoingGroupStreamQueue) add(str *sendGroupStream) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	q.queue = append(q.queue, stream)
-
-	entry := struct {
-		seq   GroupSequence
-		index int
-	}{
-		seq:   stream.GroupSequence(),
-		index: len(q.queue) - 1,
-	}
-
-	heap.Push(q.heap, entry)
+	q.queue[str] = struct{}{}
 }
-
-func (q *outgoingGroupStreamQueue) Clear() {
+func (q *outgoingGroupStreamQueue) remove(str *sendGroupStream) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	for _, stream := range q.queue {
-		stream.Close()
+	delete(q.queue, str)
+}
+
+func (q *outgoingGroupStreamQueue) clear(reason error) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	for stream := range q.queue {
+		stream.CloseWithError(reason)
 	}
+
+	return nil
 }

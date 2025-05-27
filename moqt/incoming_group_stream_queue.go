@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-func newGroupReceiverQueue(config func() *SubscribeConfig) *incomingGroupStreamQueue {
+func newIncomingGroupStreamQueue(config func() *SubscribeConfig) *incomingGroupStreamQueue {
 	return &incomingGroupStreamQueue{
 		queue:  make([]*receiveGroupStream, 0, 1<<4),
 		ch:     make(chan struct{}, 1),
@@ -13,86 +13,17 @@ func newGroupReceiverQueue(config func() *SubscribeConfig) *incomingGroupStreamQ
 	}
 }
 
-var _ TrackReader = (*incomingGroupStreamQueue)(nil)
+// var _ TrackReader = (*incomingGroupStreamQueue)(nil)
 
 type incomingGroupStreamQueue struct {
 	queue []*receiveGroupStream
 	ch    chan struct{}
 	mu    sync.Mutex
 
+	dequeued map[*receiveGroupStream]struct{}
+
 	config func() *SubscribeConfig
 }
-
-// // Len implements heap.Interface
-// func (q *incomingGroupStreamQueue) Len() int {
-// 	q.mu.Lock()
-// 	defer q.mu.Unlock()
-// 	return len(q.queue)
-// }
-
-// // Less implements heap.Interface
-// func (q *incomingGroupStreamQueue) Less(i, j int) bool {
-// 	q.mu.Lock()
-// 	defer q.mu.Unlock()
-
-// 	if i >= len(q.queue) || j >= len(q.queue) {
-// 		return false
-// 	}
-
-// 	switch q.config.GroupOrder {
-// 	case GroupOrderDefault:
-// 		return true
-// 	case GroupOrderAscending:
-// 		return q.queue[i].GroupSequence() < q.queue[j].GroupSequence()
-// 	case GroupOrderDescending:
-// 		return q.queue[i].GroupSequence() > q.queue[j].GroupSequence()
-// 	default:
-// 		return false
-// 	}
-// }
-
-// Swap implements heap.Interface
-// func (q *incomingGroupStreamQueue) Swap(i, j int) {
-// 	q.mu.Lock()
-// 	defer q.mu.Unlock()
-
-// 	if i >= len(q.queue) || j >= len(q.queue) {
-// 		return
-// 	}
-// 	q.queue[i], q.queue[j] = q.queue[j], q.queue[i]
-// }
-
-// // Push implements heap.Interface
-// func (q *incomingGroupStreamQueue) Push(x interface{}) {
-// 	q.mu.Lock()
-// 	defer q.mu.Unlock()
-
-// 	stream, ok := x.(*receiveGroupStream)
-// 	if !ok || stream == nil {
-// 		return
-// 	}
-// 	q.queue = append(q.queue, stream)
-// }
-
-// // Pop implements heap.Interface
-// func (q *incomingGroupStreamQueue) Pop() interface{} {
-// 	q.mu.Lock()
-// 	defer q.mu.Unlock()
-
-// 	if len(q.queue) == 0 {
-// 		return nil
-// 	}
-
-// 	n := len(q.queue) - 1
-// 	item := q.queue[n]
-// 	q.queue = q.queue[:n]
-// 	return item
-// }
-
-// // Chan returns the notification channel
-// func (q *incomingGroupStreamQueue) Chan() <-chan struct{} {
-// 	return q.ch
-// }
 
 // Enqueue adds a new stream to the queue and maintains heap property
 func (q *incomingGroupStreamQueue) enqueue(stream *receiveGroupStream) {
@@ -120,23 +51,25 @@ func (q *incomingGroupStreamQueue) enqueue(stream *receiveGroupStream) {
 
 }
 
-func (q *incomingGroupStreamQueue) AcceptGroup(ctx context.Context) (GroupReader, error) {
-	var stream *receiveGroupStream
-	var seq GroupSequence
+func (q *incomingGroupStreamQueue) remove(stream *receiveGroupStream) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
 
+	delete(q.dequeued, stream)
+}
+
+func (q *incomingGroupStreamQueue) dequeue(ctx context.Context) (*receiveGroupStream, error) {
 	for {
 		q.mu.Lock()
 		if len(q.queue) > 0 {
-			stream = q.queue[0]
+			stream := q.queue[0]
 
 			if stream == nil {
 				q.mu.Unlock()
 				continue
 			}
 
-			seq = stream.GroupSequence()
-
-			if !q.config().IsInRange(seq) {
+			if !q.config().IsInRange(stream.GroupSequence()) {
 				stream.CancelRead(ErrGroupOutOfRange)
 				q.mu.Unlock()
 				continue
@@ -154,16 +87,20 @@ func (q *incomingGroupStreamQueue) AcceptGroup(ctx context.Context) (GroupReader
 	}
 }
 
-func (q *incomingGroupStreamQueue) Close() error {}
+func (q *incomingGroupStreamQueue) clear(reason GroupError) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
 
-func (q *incomingGroupStreamQueue) CloseWithError(reason error) error {
+	for _, stream := range q.queue {
+		stream.CancelRead(reason)
+	}
 
+	for stream := range q.dequeued {
+		stream.CancelRead(reason)
+	}
+
+	q.queue = q.queue[:0]
+	q.dequeued = nil
+
+	return reason
 }
-
-// func (q *incomingGroupStreamQueue) removeGroups(min, max GroupSequence) {
-// 	q.mu.Lock()
-// 	defer q.mu.Unlock()
-
-// 	q.heap.ResetOrder(config.GroupOrder)
-// 	q.config = config
-// }

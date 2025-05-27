@@ -21,7 +21,7 @@ func runPublisher(sess moqt.Session, wg *sync.WaitGroup) {
 	go func() {
 		defer wg.Done()
 
-		seq := moqt.FirstGroupSequence
+		seq := moqt.GroupSequenceFirst
 		for {
 			w, err := track.OpenGroup(seq)
 			if err != nil {

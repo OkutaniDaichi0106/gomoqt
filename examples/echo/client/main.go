@@ -13,7 +13,7 @@ func main() {
 			return
 		}
 
-		seq := moqt.FirstGroupSequence
+		seq := moqt.GroupSequenceFirst
 		for {
 			gw, err := pub.TrackWriter.OpenGroup(seq)
 			if err != nil {

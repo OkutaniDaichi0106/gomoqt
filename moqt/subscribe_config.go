@@ -11,15 +11,15 @@ type SubscribeConfig struct {
 }
 
 func (config *SubscribeConfig) IsInRange(seq GroupSequence) bool {
-	if config.MinGroupSequence == NotSpecifiedGroupSequence && config.MaxGroupSequence == NotSpecifiedGroupSequence {
+	if config.MinGroupSequence == GroupSequenceNotSpecified && config.MaxGroupSequence == GroupSequenceNotSpecified {
 		return true
 	}
 
-	if config.MinGroupSequence == NotSpecifiedGroupSequence {
+	if config.MinGroupSequence == GroupSequenceNotSpecified {
 		return seq <= config.MaxGroupSequence
 	}
 
-	if config.MaxGroupSequence == NotSpecifiedGroupSequence {
+	if config.MaxGroupSequence == GroupSequenceNotSpecified {
 		return config.MinGroupSequence <= seq
 	}
 

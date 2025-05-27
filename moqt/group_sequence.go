@@ -13,10 +13,10 @@ import (
 type GroupSequence uint64
 
 const (
-	NotSpecifiedGroupSequence GroupSequence = 0
-	LatestGroupSequence       GroupSequence = 0
-	LargestGroupSequence      GroupSequence = 0
-	FirstGroupSequence        GroupSequence = 1
+	GroupSequenceNotSpecified GroupSequence = 0
+	GroupSequenceLatest       GroupSequence = 0
+	GroupSequenceLargest      GroupSequence = 0
+	GroupSequenceFirst        GroupSequence = 1
 	MaxGroupSequence          GroupSequence = 0xFFFFFFFF
 )
 
@@ -25,7 +25,7 @@ func (gs GroupSequence) String() string {
 }
 
 func (gs GroupSequence) Next() GroupSequence {
-	if gs == NotSpecifiedGroupSequence {
+	if gs == GroupSequenceNotSpecified {
 		return 1
 	}
 

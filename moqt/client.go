@@ -14,7 +14,6 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/webtransport"
-	quicgo "github.com/quic-go/quic-go"
 )
 
 type Client struct {
@@ -26,7 +25,7 @@ type Client struct {
 	/*
 	 * QUIC configuration
 	 */
-	QUICConfig *quicgo.Config
+	QUICConfig *quic.Config
 
 	/*
 	 * MOQ Configuration

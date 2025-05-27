@@ -53,11 +53,9 @@ type Client struct {
 
 func (c *Client) init() {
 	c.initOnce.Do(func() {
-		if c.Logger == nil {
-			c.Logger = slog.Default()
+		if c.Logger != nil {
+			c.Logger.Debug("Client initialized")
 		}
-
-		c.Logger.Debug("Client initialized")
 	})
 }
 
@@ -74,25 +72,34 @@ func (c *Client) Dial(ctx context.Context, urlStr string, mux *TrackMux) (*Sessi
 	}
 	c.init()
 
-	c.Logger.Info("dialing server", "url", urlStr) // Changed to Info for better visibility
+	if c.Logger != nil {
+		c.Logger.Info("dialing server", "url", urlStr) // Changed to Info for better visibility
+	}
+
 	req, err := NewSetupRequest(urlStr)
 	if err != nil {
-		c.Logger.Error("failed to create setup request", "error", err.Error(), "url", urlStr)
+		if c.Logger != nil {
+			c.Logger.Error("failed to create setup request", "error", err.Error(), "url", urlStr)
+		}
 		return nil, err
 	}
 
 	// Dial based on the scheme
 	switch req.uri.Scheme {
 	case "https":
-		c.Logger.Debug("dialing using WebTransport")
+		// c.Logger.Debug("dialing using WebTransport")
 		return c.DialWebTransport(req, mux)
 	case "moqt":
-		c.Logger.Debug("dialing using QUIC")
+		// c.Logger.Debug("dialing using QUIC")
 		return c.DialQUIC(req, mux)
 	default:
-		err = errors.New("invalid scheme")
-		c.Logger.Error("unsupported URL scheme", "scheme", req.uri.Scheme, "url", urlStr)
-		return nil, err
+		if c.Logger != nil {
+			c.Logger.Error("unsupported URL scheme",
+				"scheme", req.uri.Scheme,
+				"url", urlStr,
+			)
+		}
+		return nil, ErrInvalidScheme
 	}
 }
 
@@ -111,14 +118,16 @@ func (c *Client) DialWebTransport(req *SetupRequest, mux *TrackMux) (*Session, e
 	}
 
 	if c.Logger != nil {
-		c.Logger.Debug("dialing WebTransport", "endpoint", "https://"+req.uri.Hostname()+":"+req.uri.Port()+req.uri.Path)
+		c.Logger.Info("dialing WebTransport", "endpoint", "https://"+req.uri.Hostname()+":"+req.uri.Port()+req.uri.Path)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout())
 	defer cancel()
 	_, conn, err := webtransport.DialWebtransportFunc(ctx, req.uri.String(), http.Header{})
 	if err != nil {
-		c.Logger.Error("failed to dial WebTransport", "error", err.Error(), "endpoint", "https://"+req.uri.Hostname()+":"+req.uri.Port()+req.uri.Path)
+		if c.Logger != nil {
+			c.Logger.Error("failed to dial WebTransport", "error", err.Error(), "endpoint", "https://"+req.uri.Hostname()+":"+req.uri.Port()+req.uri.Path)
+		}
 		return nil, err
 	}
 
@@ -126,14 +135,20 @@ func (c *Client) DialWebTransport(req *SetupRequest, mux *TrackMux) (*Session, e
 	var params message.Parameters
 	if c.SetupExtensions != nil {
 		params = c.SetupExtensions.paramMap
-		c.Logger.Debug("using setup extensions", "extensions", params)
+		if c.Logger != nil {
+			c.Logger.Debug("using setup extensions", "extensions", params)
+		}
 	} else {
-		c.Logger.Debug("no setup extensions provided")
+		if c.Logger != nil {
+			c.Logger.Debug("no setup extensions provided")
+		}
 	}
 
 	sess, err := c.openSession(conn, &Parameters{params}, mux)
 	if err != nil {
-		c.Logger.Error("failed to open session stream", "error", err.Error())
+		if c.Logger != nil {
+			c.Logger.Error("failed to open session stream", "error", err.Error())
+		}
 		return nil, err
 	}
 
@@ -175,15 +190,22 @@ func (c *Client) DialQUIC(req *SetupRequest, mux *TrackMux) (*Session, error) {
 	}
 
 	// Dial QUIC connection
-	c.Logger.Debug("dialing QUIC connection",
-		"address", req.uri.Hostname()+":"+req.uri.Port(),
-	)
+	if c.Logger != nil {
+		c.Logger.Debug("dialing QUIC connection",
+			"address", req.uri.Hostname()+":"+req.uri.Port(),
+		)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout())
 	defer cancel()
 	conn, err := quic.DialFunc(ctx, req.uri.Hostname()+":"+req.uri.Port(), c.TLSConfig, c.QUICConfig)
 	if err != nil {
-		c.Logger.Error("failed to dial QUIC connection", "error", err.Error(), "address", req.uri.Hostname()+":"+req.uri.Port())
+		if c.Logger != nil {
+			c.Logger.Error("failed to dial QUIC connection",
+				"error", err,
+				"address", req.uri.Hostname()+":"+req.uri.Port(),
+			)
+		}
 		return nil, err
 	}
 
@@ -191,16 +213,22 @@ func (c *Client) DialQUIC(req *SetupRequest, mux *TrackMux) (*Session, error) {
 	var param *Parameters
 	if c.SetupExtensions != nil {
 		param = c.SetupExtensions
-		c.Logger.Debug("using setup extensions", "extensions", param)
+		if c.Logger != nil {
+			c.Logger.Debug("using setup extensions", "extensions", param)
+		}
 	} else {
-		c.Logger.Debug("no setup extensions provided")
+		if c.Logger != nil {
+			c.Logger.Debug("no setup extensions provided")
+		}
 		param = NewParameters()
 	}
 	param.SetString(param_type_path, req.uri.Path)
 
 	sess, err := c.openSession(conn, param, mux)
 	if err != nil {
-		c.Logger.Error("failed to open session stream", "error", err.Error())
+		if c.Logger != nil {
+			c.Logger.Error("failed to open session stream", "error", err.Error())
+		}
 		return nil, err
 	}
 
@@ -213,11 +241,15 @@ func (c *Client) openSession(conn quic.Connection, params *Parameters, mux *Trac
 
 	err := sess.openSessionStream(internal.DefaultClientVersions, params)
 	if err != nil {
-		c.Logger.Error("failed to open a session stream", "error", err.Error())
+		if c.Logger != nil {
+			c.Logger.Error("failed to open a session stream", "error", err.Error())
+		}
 		return nil, err
 	}
 
-	c.Logger.Debug("session stream opened")
+	if c.Logger != nil {
+		c.Logger.Debug("session stream opened")
+	}
 
 	c.addSession(sess)
 	go func() {

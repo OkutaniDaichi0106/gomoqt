@@ -13,7 +13,6 @@ import (
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/webtransport"
-	quicgo "github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 )
 
@@ -31,7 +30,7 @@ type Server struct {
 	/*
 	 * QUIC configuration
 	 */
-	QUICConfig *quicgo.Config
+	QUICConfig *quic.Config
 
 	/*
 	 * MOQ Configuration
@@ -175,7 +174,7 @@ func (s *Server) ServeQUICConn(conn quic.Connection) error {
 		select {
 		case s.nativeQUICCh <- conn:
 		default:
-			conn.CloseWithError(quic.ConnectionErrorCode(quicgo.ConnectionRefused), "")
+			conn.CloseWithError(quic.ConnectionErrorCode(quic.ConnectionRefused), "")
 		}
 		return nil
 	default:

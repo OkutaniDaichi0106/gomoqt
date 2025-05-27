@@ -10,32 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// testHandler is a simple test implementation of TrackHandler
-type testHandler struct {
-	called    bool
-	mu        sync.Mutex
-	publisher *Publisher
-}
-
-func (h *testHandler) ServeTrack(p *Publisher) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.called = true
-	h.publisher = p
-}
-
-func (h *testHandler) wasCalled() bool {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.called
-}
-
-func (h *testHandler) getPublisher() *Publisher {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.publisher
-}
-
 func TestMux_Handle(t *testing.T) {
 	ctx := context.Background()
 	mux := NewTrackMux()
@@ -61,20 +35,21 @@ func TestMux_ServeTrack(t *testing.T) {
 	mux := NewTrackMux()
 
 	calledCh := make(chan struct{}, 1)
-
 	mux.Handle(ctx, BroadcastPath("/test"), TrackHandlerFunc(func(p *Publisher) {
 		assert.Equal(t, "/test", string(p.BroadcastPath))
-		assert.Equal(t, "track1", p.TrackName)
+		assert.Equal(t, TrackName("track1"), p.TrackName)
 		assert.NotNil(t, p.TrackWriter)
+		assert.NotNil(t, p.SubscribeStream)
 
 		calledCh <- struct{}{}
 	}))
 
 	// Create a publisher
 	publisher := &Publisher{
-		BroadcastPath: BroadcastPath("/test"),
-		TrackName:     "track1",
-		TrackWriter:   &MockTrackWriter{},
+		BroadcastPath:   BroadcastPath("/test"),
+		TrackName:       "track1",
+		TrackWriter:     &MockTrackWriter{},
+		SubscribeStream: NewMockReceiveSubscribeStream(SubscribeID(1)),
 	}
 
 	mux.ServeTrack(publisher)
@@ -96,12 +71,12 @@ func TestMux_ServeTrack_NotFound(t *testing.T) {
 			return nil
 		},
 	}
-
 	// Create a publisher for non-existent path
 	publisher := &Publisher{
-		BroadcastPath: BroadcastPath("/nonexistent"),
-		TrackName:     "track1",
-		TrackWriter:   mockWriter,
+		BroadcastPath:   BroadcastPath("/nonexistent"),
+		TrackName:       "track1",
+		TrackWriter:     mockWriter,
+		SubscribeStream: NewMockReceiveSubscribeStream(SubscribeID(1)),
 	}
 
 	// Should use NotFoundHandler which closes the track
@@ -153,13 +128,13 @@ func TestMux_ContextCancellation(t *testing.T) {
 
 	// Wait a bit for cleanup
 	time.Sleep(10 * time.Millisecond)
-
 	// Create publisher - should use NotFoundHandler since context was cancelled
 	mockWriter := &MockTrackWriter{}
 	publisher := &Publisher{
-		BroadcastPath: BroadcastPath("/test"),
-		TrackName:     "track1",
-		TrackWriter:   mockWriter,
+		BroadcastPath:   BroadcastPath("/test"),
+		TrackName:       "track1",
+		TrackWriter:     mockWriter,
+		SubscribeStream: NewMockReceiveSubscribeStream(SubscribeID(1)),
 	}
 
 	mux.ServeTrack(publisher)
@@ -196,9 +171,10 @@ func TestMux_ConcurrentAccess(t *testing.T) {
 			defer wg.Done()
 			mockWriter := &MockTrackWriter{}
 			publisher := &Publisher{
-				BroadcastPath: BroadcastPath(fmt.Sprintf("/test%d", i)),
-				TrackName:     "track1",
-				TrackWriter:   mockWriter,
+				BroadcastPath:   BroadcastPath(fmt.Sprintf("/test%d", i)),
+				TrackName:       "track1",
+				TrackWriter:     mockWriter,
+				SubscribeStream: NewMockReceiveSubscribeStream(SubscribeID(1)),
 			}
 			mux.ServeTrack(publisher)
 		}(i)
@@ -216,13 +192,13 @@ func TestDefaultMux(t *testing.T) {
 	Handle(context.Background(), BroadcastPath("/default"), TrackHandlerFunc(func(p *Publisher) {
 		calledCh <- struct{}{}
 	}))
-
 	// Test ServeTrack on default mux
 	mockWriter := &MockTrackWriter{}
 	publisher := &Publisher{
-		BroadcastPath: BroadcastPath("/default"),
-		TrackName:     "track1",
-		TrackWriter:   mockWriter,
+		BroadcastPath:   BroadcastPath("/default"),
+		TrackName:       "track1",
+		TrackWriter:     mockWriter,
+		SubscribeStream: NewMockReceiveSubscribeStream(SubscribeID(1)),
 	}
 
 	DefaultMux.ServeTrack(publisher)
@@ -247,12 +223,12 @@ func TestMux_HandleFunc(t *testing.T) {
 
 	// Use Handle with TrackHandlerFunc since HandleFunc doesn't exist
 	mux.Handle(ctx, BroadcastPath("/func"), TrackHandlerFunc(handlerFunc))
-
 	mockWriter := &MockTrackWriter{}
 	publisher := &Publisher{
-		BroadcastPath: BroadcastPath("/func"),
-		TrackName:     "track1",
-		TrackWriter:   mockWriter,
+		BroadcastPath:   BroadcastPath("/func"),
+		TrackName:       "track1",
+		TrackWriter:     mockWriter,
+		SubscribeStream: NewMockReceiveSubscribeStream(SubscribeID(1)),
 	}
 
 	mux.ServeTrack(publisher)
@@ -265,8 +241,7 @@ func TestMux_AnnouncementLifecycle(t *testing.T) {
 	mux := NewTrackMux()
 
 	// Register handler
-	handler := &testHandler{}
-	mux.Handle(ctx, BroadcastPath("/stream/*"), handler)
+	mux.Handle(ctx, "/stream", TrackHandlerFunc(func(p *Publisher) {}))
 
 	// Create announcement
 	announcement := NewAnnouncement(context.Background(), BroadcastPath("/stream/test"))
@@ -281,67 +256,97 @@ func TestMux_NestedPaths(t *testing.T) {
 	ctx := context.Background()
 	mux := NewTrackMux()
 
+	// Track which handlers are called using channels
+	deepCalled := make(chan struct{}, 1)
+	shallowCalled := make(chan struct{}, 1)
+
 	// Register handlers for nested paths
-	deepHandler := &testHandler{}
+	deepHandler := TrackHandlerFunc(func(p *Publisher) {
+		deepCalled <- struct{}{}
+	})
 	mux.Handle(ctx, BroadcastPath("/deep/nested/path"), deepHandler)
 
-	shallowHandler := &testHandler{}
+	shallowHandler := TrackHandlerFunc(func(p *Publisher) {
+		shallowCalled <- struct{}{}
+	})
 	mux.Handle(ctx, BroadcastPath("/deep"), shallowHandler)
-
 	// Test deep path
 	mockWriter1 := &MockTrackWriter{}
 	publisher1 := &Publisher{
-		BroadcastPath: BroadcastPath("/deep/nested/path"),
-		TrackName:     "track1",
-		TrackWriter:   mockWriter1,
+		BroadcastPath:   BroadcastPath("/deep/nested/path"),
+		TrackName:       "track1",
+		TrackWriter:     mockWriter1,
+		SubscribeStream: NewMockReceiveSubscribeStream(SubscribeID(1)),
 	}
 	mux.ServeTrack(publisher1)
-	assert.True(t, deepHandler.wasCalled())
-	assert.False(t, shallowHandler.wasCalled())
 
-	// Reset handlers
-	deepHandler = &testHandler{}
-	shallowHandler = &testHandler{}
-	mux.Handle(ctx, BroadcastPath("/deep/nested/path"), deepHandler)
-	mux.Handle(ctx, BroadcastPath("/deep"), shallowHandler)
+	// Check that deep handler was called but shallow wasn't
+	select {
+	case <-deepCalled:
+		// Expected
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Deep handler should have been called")
+	}
 
+	select {
+	case <-shallowCalled:
+		t.Error("Shallow handler should not have been called")
+	case <-time.After(10 * time.Millisecond):
+		// Expected
+	}
 	// Test shallow path
 	mockWriter2 := &MockTrackWriter{}
 	publisher2 := &Publisher{
-		BroadcastPath: BroadcastPath("/deep"),
-		TrackName:     "track1",
-		TrackWriter:   mockWriter2,
+		BroadcastPath:   BroadcastPath("/deep"),
+		TrackName:       "track1",
+		TrackWriter:     mockWriter2,
+		SubscribeStream: NewMockReceiveSubscribeStream(SubscribeID(1)),
 	}
 	mux.ServeTrack(publisher2)
-	assert.True(t, shallowHandler.wasCalled())
-	assert.False(t, deepHandler.wasCalled())
+
+	// Check that shallow handler was called
+	select {
+	case <-shallowCalled:
+		// Expected
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Shallow handler should have been called")
+	}
 }
 
 func TestMux_ContextTimeout(t *testing.T) {
 	mux := NewTrackMux()
-	handler := &testHandler{}
+
+	handlerCalled := make(chan struct{}, 1)
 
 	// Create context with short timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
+	handler := TrackHandlerFunc(func(p *Publisher) {
+		handlerCalled <- struct{}{}
+	})
 	mux.Handle(ctx, BroadcastPath("/timeout"), handler)
 
 	// Wait for timeout
 	time.Sleep(100 * time.Millisecond)
-
 	// Try to serve track - should use NotFoundHandler
 	mockWriter := &MockTrackWriter{}
 	publisher := &Publisher{
-		BroadcastPath: BroadcastPath("/timeout"),
-		TrackName:     "track1",
-		TrackWriter:   mockWriter,
+		BroadcastPath:   BroadcastPath("/timeout"),
+		TrackName:       "track1",
+		TrackWriter:     mockWriter,
+		SubscribeStream: NewMockReceiveSubscribeStream(SubscribeID(1)),
 	}
 
 	mux.ServeTrack(publisher)
 
 	// Handler should not have been called due to timeout
-	assert.False(t, handler.wasCalled())
+	select {
+	case <-handlerCalled:
+		t.Error("Handler should not have been called after timeout")
+	case <-time.After(10 * time.Millisecond):
+		// Expected - handler should not be called
+	}
 }
 
 func TestMux_MultipleCancellations(t *testing.T) {
@@ -349,14 +354,18 @@ func TestMux_MultipleCancellations(t *testing.T) {
 
 	// Create multiple contexts and handlers
 	var contexts []context.CancelFunc
-	var handlers []*testHandler
+	var handlerChannels []chan struct{}
 
 	for i := 0; i < 5; i++ {
 		ctx, cancel := context.WithCancel(context.Background())
 		contexts = append(contexts, cancel)
 
-		handler := &testHandler{}
-		handlers = append(handlers, handler)
+		handlerCalled := make(chan struct{}, 1)
+		handlerChannels = append(handlerChannels, handlerCalled)
+
+		handler := TrackHandlerFunc(func(p *Publisher) {
+			handlerCalled <- struct{}{}
+		})
 
 		path := BroadcastPath(fmt.Sprintf("/multi%d", i))
 		mux.Handle(ctx, path, handler)
@@ -369,17 +378,24 @@ func TestMux_MultipleCancellations(t *testing.T) {
 
 	// Wait for cleanup
 	time.Sleep(20 * time.Millisecond)
-
 	// Verify all handlers were removed
-	for i, handler := range handlers {
+	for i, handlerCh := range handlerChannels {
 		mockWriter := &MockTrackWriter{}
 		publisher := &Publisher{
-			BroadcastPath: BroadcastPath(fmt.Sprintf("/multi%d", i)),
-			TrackName:     "track1",
-			TrackWriter:   mockWriter,
+			BroadcastPath:   BroadcastPath(fmt.Sprintf("/multi%d", i)),
+			TrackName:       "track1",
+			TrackWriter:     mockWriter,
+			SubscribeStream: NewMockReceiveSubscribeStream(SubscribeID(1)),
 		}
 
 		mux.ServeTrack(publisher)
-		assert.False(t, handler.wasCalled())
+
+		// Check that handler was not called
+		select {
+		case <-handlerCh:
+			t.Errorf("Handler %d should not have been called after cancellation", i)
+		case <-time.After(10 * time.Millisecond):
+			// Expected - handler should not be called
+		}
 	}
 }

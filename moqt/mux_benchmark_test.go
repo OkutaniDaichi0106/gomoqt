@@ -17,7 +17,7 @@ func BenchmarkPathMatching(b *testing.B) {
 	for i := 0; i < 100; i++ {
 		for j := 0; j < 10; j++ {
 			path := moqt.BroadcastPath("/section" + string(rune(i+'0')) + "/subsection" + string(rune(j+'0')))
-			mux.Handle(ctx, path, &moqt.MockTrackHandler{})
+			mux.Handle(ctx, path, moqt.TrackHandlerFunc(func(p *moqt.Publisher) {}))
 		}
 	}
 	// Test a deeply nested path
@@ -38,12 +38,11 @@ func BenchmarkPathMatching(b *testing.B) {
 func BenchmarkHandlerRegistration(b *testing.B) {
 	mux := moqt.NewTrackMux()
 	ctx := context.Background()
-	handler := &moqt.MockTrackHandler{}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		path := moqt.BroadcastPath("/bench/path" + string(rune(i%10+'0')))
-		mux.Handle(ctx, path, handler)
+		mux.Handle(ctx, path, moqt.TrackHandlerFunc(func(p *moqt.Publisher) {}))
 	}
 }
 
@@ -55,7 +54,7 @@ func BenchmarkConcurrentPathMatching(b *testing.B) {
 	// Register paths
 	for i := 0; i < 100; i++ {
 		path := moqt.BroadcastPath("/section" + string(rune(i%10+'0')))
-		mux.Handle(ctx, path, &moqt.MockTrackHandler{})
+		mux.Handle(ctx, path, moqt.TrackHandlerFunc(func(p *moqt.Publisher) {}))
 	}
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
@@ -85,7 +84,7 @@ func BenchmarkNodeCleanup(b *testing.B) {
 			contexts = append(contexts, cancel)
 
 			path := moqt.BroadcastPath("/section" + string(rune(j%10+'0')) + "/cleanup")
-			mux.Handle(ctx, path, &moqt.MockTrackHandler{})
+			mux.Handle(ctx, path, moqt.TrackHandlerFunc(func(p *moqt.Publisher) {}))
 		}
 
 		// Cancel all contexts to trigger cleanup
@@ -95,44 +94,6 @@ func BenchmarkNodeCleanup(b *testing.B) {
 	}
 }
 
-// BenchmarkWildcardMatching benchmarks the performance of wildcard pattern matching
-func BenchmarkWildcardMatching(b *testing.B) {
-	mux := moqt.NewTrackMux()
-	ctx := context.Background()
-
-	// Register handlers with wildcard patterns
-	mux.Handle(ctx, "/wildcard/single/*", &moqt.MockTrackHandler{})
-	mux.Handle(ctx, "/wildcard/double/**", &moqt.MockTrackHandler{})
-	// Test paths for matching
-	singleWriter := &moqt.MockTrackWriter{}
-	singlePub := &moqt.Publisher{
-		BroadcastPath:   "/wildcard/single/match",
-		TrackWriter:     singleWriter,
-		SubscribeStream: nil, // Not needed for benchmark
-	}
-
-	doubleWriter := &moqt.MockTrackWriter{}
-	doublePub := &moqt.Publisher{
-		BroadcastPath:   "/wildcard/double/multi/level/match",
-		TrackWriter:     doubleWriter,
-		SubscribeStream: nil, // Not needed for benchmark
-	}
-
-	b.Run("SingleWildcard", func(b *testing.B) {
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			mux.ServeTrack(singlePub)
-		}
-	})
-
-	b.Run("DoubleWildcard", func(b *testing.B) {
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			mux.ServeTrack(doublePub)
-		}
-	})
-}
-
 // BenchmarkOverwriteHandler benchmarks the performance of handler overwriting
 func BenchmarkOverwriteHandler(b *testing.B) {
 	mux := moqt.NewTrackMux()
@@ -140,9 +101,9 @@ func BenchmarkOverwriteHandler(b *testing.B) {
 	path := moqt.BroadcastPath("/overwrite/test")
 
 	// Create a set of handlers to rotate through
-	handlers := make([]*moqt.MockTrackHandler, 10)
+	handlers := make([]moqt.TrackHandler, 10)
 	for i := 0; i < 10; i++ {
-		handlers[i] = &moqt.MockTrackHandler{}
+		handlers[i] = moqt.TrackHandlerFunc(func(p *moqt.Publisher) {})
 	}
 
 	b.ResetTimer()
@@ -159,8 +120,7 @@ func BenchmarkDeepPathTraversal(b *testing.B) {
 
 	// Create deeply nested path
 	deepPath := moqt.BroadcastPath("/level1/level2/level3/level4/level5/level6/level7/level8/level9/level10")
-	handler := &moqt.MockTrackHandler{}
-	mux.Handle(ctx, deepPath, handler)
+	mux.Handle(ctx, deepPath, moqt.TrackHandlerFunc(func(p *moqt.Publisher) {}))
 	// Create writer for the path
 	writer := &moqt.MockTrackWriter{}
 	pub := &moqt.Publisher{

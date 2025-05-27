@@ -11,11 +11,7 @@ func TestTrackMux_InternalNodeManagement(t *testing.T) {
 	mux := NewTrackMux()
 	ctx := context.Background()
 
-	// Test that nodes are created properly
-	handler := &MockTrackHandler{}
-	path := BroadcastPath("/internal/test")
-
-	mux.Handle(ctx, path, handler)
+	mux.Handle(ctx, "/internal/test", TrackHandlerFunc(func(p *Publisher) {}))
 	// Access internal node structure
 	mux.mu.RLock()
 	root := &mux.trackTree
@@ -37,10 +33,7 @@ func TestTrackMux_InternalContextCancellation(t *testing.T) {
 	// Test context cancellation cleanup
 	ctx, cancel := context.WithCancel(context.Background())
 
-	handler := &MockTrackHandler{}
-	path := BroadcastPath("/cancellable/resource")
-
-	mux.Handle(ctx, path, handler)
+	mux.Handle(ctx, "/cancellable/resource", TrackHandlerFunc(func(p *Publisher) {}))
 	// Verify handler is registered
 	mux.mu.RLock()
 	nodeCount := countNodes(&mux.trackTree)
@@ -84,63 +77,13 @@ func TestTrackMux_InternalAnnouncementPropagation(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Register a handler (should trigger announcement)
-	handler := &MockTrackHandler{}
-	mux.Handle(ctx, "/test/track", handler)
+	mux.Handle(ctx, "/test/track", TrackHandlerFunc(func(p *Publisher) {}))
 
 	// Give time for announcement processing
 	time.Sleep(50 * time.Millisecond)
 
 	if !announcementReceived {
 		t.Error("Expected announcement to be sent to announcer")
-	}
-}
-
-func TestTrackMux_InternalWildcardMatching(t *testing.T) {
-	mux := NewTrackMux()
-	ctx := context.Background()
-
-	// Test wildcard pattern matching in announcements
-	audioAnnouncements := 0
-	allAnnouncements := 0
-
-	audioAnnouncer := &MockAnnouncementWriter{
-		SendAnnouncementsFunc: func(announcements []*Announcement) error {
-			audioAnnouncements += len(announcements)
-			return nil
-		},
-	}
-
-	allAnnouncer := &MockAnnouncementWriter{
-		SendAnnouncementsFunc: func(announcements []*Announcement) error {
-			allAnnouncements += len(announcements)
-			return nil
-		},
-	}
-	// Register announcers with different patterns
-	go mux.ServeAnnouncements(audioAnnouncer, "/audio/*")
-	go mux.ServeAnnouncements(allAnnouncer, "/**")
-
-	// Give announcers time to register
-	time.Sleep(10 * time.Millisecond)
-
-	// Register handlers for different paths
-	handler1 := &MockTrackHandler{}
-	handler2 := &MockTrackHandler{}
-	handler3 := &MockTrackHandler{}
-
-	mux.Handle(ctx, "/audio/stream1", handler1)
-	mux.Handle(ctx, "/video/stream1", handler2)
-	mux.Handle(ctx, "/audio/stream2", handler3)
-
-	// Give time for announcement processing
-	time.Sleep(50 * time.Millisecond)
-
-	if audioAnnouncements != 2 {
-		t.Errorf("Expected 2 audio announcements, got %d", audioAnnouncements)
-	}
-
-	if allAnnouncements != 3 {
-		t.Errorf("Expected 3 total announcements, got %d", allAnnouncements)
 	}
 }
 

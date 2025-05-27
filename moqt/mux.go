@@ -99,7 +99,7 @@ func (mux *TrackMux) Handler(path BroadcastPath) TrackHandler {
 
 	ann, handler := mux.findHandler(path)
 
-	if !ann.IsActive() {
+	if ann == nil || !ann.IsActive() {
 		return NotFoundHandler
 	}
 

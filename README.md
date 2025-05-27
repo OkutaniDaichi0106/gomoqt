@@ -1,25 +1,31 @@
 # gomoqt
 
-A Go implementation of Media over QUIC (MOQ), designed for efficient media streaming over QUIC.
+A Go implementation of Media over QUIC Transport (MOQT), specifically implementing the MOQ Lite specification for efficient media streaming over QUIC.
 
 ## Overview
 
-This implementation follows the [MOQ Transfork specification](https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html), providing a foundation for building media streaming applications using QUIC transport.
+This implementation follows the [MOQ Lite specification](https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html), providing a foundation for building real-time media streaming applications using QUIC transport. MOQ Lite is a simplified version of the Media over QUIC Transport protocol, designed for lower latency and reduced complexity while maintaining the core benefits of QUIC-based media delivery.
 
 ## Features
 
-- **MOQ Protocol**: Core implementation of the MOQTransfork protocol.
-- **WebTransport Support**: Supports WebTransport connections.
-- **Raw QUIC Support**: Supports raw QUIC connections.
-- **Sample Implementations**: Provides several code examples for common use cases.
+- **MOQ Lite Protocol**: Core implementation of the MOQ Lite specification
+- **WebTransport Support**: Full support for WebTransport connections in browsers
+- **Raw QUIC Support**: Direct QUIC connections for native applications
+- **Track Management**: Publisher/Subscriber pattern for media track handling
+- **Multiplexed Streaming**: Efficient multiplexing of multiple media tracks
+- **Sample Applications**: Complete examples demonstrating various use cases
 
 ## Components
 
 ### moqt
 
-Implements the main interactions defined by MOQ Transfork.
+The core package implementing the MOQ Lite protocol interactions, including:
+- Session establishment and management
+- Track publishing and subscription
+- Announcement handling
+- Stream multiplexing and routing
 
-Note: There are several specifications for MOQ (such as moq-lite (moqtransfork) and moqtransport), and gomoqt is implemented with reference to these. However, since none of these specifications are stable yet, gomoqt uses some custom specifications until the standards are finalized。
+This implementation is specifically designed for the MOQ Lite specification, focusing on simplicity and performance for real-time media streaming applications.
 
 ### lomc (Coming Soon)
 
@@ -107,7 +113,12 @@ The [examples](examples) directory includes sample applications demonstrating ho
 ### Documentation
 
 - [GoDoc](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt)
-- [Specification](https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html)
+- [MOQ Lite Specification](https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html)
+- [Implementation Status](moqt/README.md) - Detailed implementation progress
+
+## Specification Compliance
+
+This implementation targets the MOQ Lite specification, which provides a simplified approach to Media over QUIC Transport. The current implementation status can be found in the [moqt package README](moqt/README.md), which includes detailed tracking of implemented features according to the specification sections.
 
 ## Contributing
 
@@ -134,8 +145,7 @@ This project is licensed under the MIT License; see [LICENSE](LICENSE) for detai
 
 - [quic-go](https://github.com/quic-go/quic-go) - QUIC implementation in Go
 - [webtransport-go](https://github.com/quic-go/webtransport-go) - WebTransport implementation in Go
-- [moq-lite](https://github.com/kixelated/moq-drafts) - MOQ Transfork specification
-- [moqtransport](https://github.com/moq-transport/moqtransport) - MOQ Transport specification
+- [MOQ Lite Specification](https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html) - The specification this implementation follows
 
 
 

@@ -348,38 +348,6 @@ func (sess *Session) acceptSessionStream(ctx context.Context, params func(*Param
 	}
 }
 
-// func (sess *Session) acceptGroupStream(ctx context.Context, id SubscribeID) (*receiveGroupStream, error) {
-// 	sess.receiveGroupMapLocker.RLock()
-// 	queue, ok := sess.receiveGroupStreamQueues[id]
-// 	if !ok {
-// 		sess.receiveGroupMapLocker.RUnlock()
-// 		return nil, ErrProtocolViolation // TODO:
-// 	}
-// 	sess.receiveGroupMapLocker.RUnlock()
-
-// 	return queue.Accept(ctx)
-// }
-
-// func (sess *Session) acceptAnnounceStream(ctx context.Context) (*sendAnnounceStream, error) {
-// 	return sess.sendAnnounceStreamQueue.accept(ctx)
-// }
-
-// func (sess *Session) acceptSubscription(ctx context.Context) (*Publisher, error) {
-// 	sub, err := sess.receivedSubscriptionQueue.accept(ctx)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	sess.sendGroupMapLocker.Lock()
-// 	_, ok := sess.sendGroupStreamQueues[sub.SubscribeID]
-// 	if ok {
-// 		sess.sendGroupMapLocker.Unlock()
-// 		return nil, ErrDuplicatedSubscribeID // TODO:
-// 	}
-
-// 	return sub, err
-// }
-
 func (sess *Session) goAway(uri string) {
 	// TODO
 }

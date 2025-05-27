@@ -68,6 +68,8 @@ func (s *trackSender) Close() error {
 
 	s.trackCtx.cancel(ErrClosedGroup)
 
+	s.groupQueue.clear(nil)
+
 	return nil
 }
 
@@ -80,6 +82,8 @@ func (s *trackSender) CloseWithError(reason error) error {
 	}
 
 	s.trackCtx.cancel(reason)
+
+	s.groupQueue.clear(reason)
 
 	return nil
 }

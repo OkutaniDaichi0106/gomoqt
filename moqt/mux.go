@@ -30,6 +30,10 @@ func Handle(ctx context.Context, path BroadcastPath, handler TrackHandler) {
 	DefaultMux.Handle(ctx, path, handler)
 }
 
+func HandleFunc(ctx context.Context, path BroadcastPath, f func(pub *Publisher)) {
+	DefaultMux.HandleFunc(ctx, path, f)
+}
+
 func Announce(announcement *Announcement, handler TrackHandler) {
 	DefaultMux.Announce(announcement, handler)
 }
@@ -47,6 +51,10 @@ type TrackMux struct {
 	// announceTree is the root node of the announcement tree.
 	// It is used to announce new tracks to existing announcement writers.
 	announceTree announcingNode
+}
+
+func (mux *TrackMux) HandleFunc(ctx context.Context, path BroadcastPath, f func(pub *Publisher)) {
+	mux.Handle(ctx, path, TrackHandlerFunc(f))
 }
 
 // Handle registers the handler for the given track path.
@@ -367,43 +375,6 @@ type routingNode struct {
 
 	children map[string]*routingNode
 }
-
-// // findTrackHandler searches for a handler matching the given path starting at this node.
-// // It recursively traverses the routing tree to find the appropriate handler for the path.
-// // Returns NotFoundTrackHandler if no matching handler is found.
-// func (node *routingNode) findTrackHandler(depth int, path *path) TrackHandler {
-// 	// If we've gone past the path depth or this is a leaf node, check if it has a handler
-// 	if depth > path.depth() {
-// 		slog.Debug("mux: path depth exceeded", "path", path.str, "depth", depth)
-// 		return NotFoundHandler
-// 	} else if depth == path.depth() {
-// 		if node.handler == nil {
-// 			slog.Debug("mux: no handler at leaf node", "path", path.str)
-// 			return NotFoundHandler
-// 		}
-
-// 		if slog.Default().Enabled(context.Background(), slog.LevelDebug) {
-// 			slog.Debug("mux: handler found",
-// 				"path", path.str,
-// 			)
-// 		}
-// 		return node.handler
-// 	}
-
-// 	// If this node is not a leaf node, get the next segment and look for a matching child
-// 	segment := path.segments[depth]
-// 	child, ok := node.children[segment]
-// 	if !ok {
-// 		slog.Debug("mux: no child node for segment",
-// 			"path", path.str,
-// 			"segment", segment,
-// 			"depth", depth)
-// 		return NotFoundHandler
-// 	}
-
-// 	// Continue traversal with the child node at the next depth
-// 	return child.findTrackHandler(depth+1, path)
-// }
 
 // newAnnouncingNode creates and initializes a new announcement tree node.
 func newAnnouncingNode() *announcingNode {

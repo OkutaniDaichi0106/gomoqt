@@ -20,13 +20,17 @@ func BenchmarkPathMatching(b *testing.B) {
 			mux.Handle(ctx, path, &moqt.MockTrackHandler{})
 		}
 	}
-
 	// Test a deeply nested path
-	writer := &moqt.MockTrackWriter{PathValue: "/section5/subsection7"}
+	writer := &moqt.MockTrackWriter{}
+	pub := &moqt.Publisher{
+		BroadcastPath:   "/section5/subsection7",
+		TrackWriter:     writer,
+		SubscribeStream: nil, // Not needed for benchmark
+	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		mux.ServeTrack(writer, &moqt.SubscribeConfig{})
+		mux.ServeTrack(pub)
 	}
 }
 
@@ -53,12 +57,16 @@ func BenchmarkConcurrentPathMatching(b *testing.B) {
 		path := moqt.BroadcastPath("/section" + string(rune(i%10+'0')))
 		mux.Handle(ctx, path, &moqt.MockTrackHandler{})
 	}
-
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
-		writer := &moqt.MockTrackWriter{PathValue: "/section5"}
+		writer := &moqt.MockTrackWriter{}
+		pub := &moqt.Publisher{
+			BroadcastPath:   "/section5",
+			TrackWriter:     writer,
+			SubscribeStream: nil, // Not needed for benchmark
+		}
 		for pb.Next() {
-			mux.ServeTrack(writer, &moqt.SubscribeConfig{})
+			mux.ServeTrack(pub)
 		}
 	})
 }
@@ -95,22 +103,32 @@ func BenchmarkWildcardMatching(b *testing.B) {
 	// Register handlers with wildcard patterns
 	mux.Handle(ctx, "/wildcard/single/*", &moqt.MockTrackHandler{})
 	mux.Handle(ctx, "/wildcard/double/**", &moqt.MockTrackHandler{})
-
 	// Test paths for matching
-	singleWriter := &moqt.MockTrackWriter{PathValue: "/wildcard/single/match"}
-	doubleWriter := &moqt.MockTrackWriter{PathValue: "/wildcard/double/multi/level/match"}
+	singleWriter := &moqt.MockTrackWriter{}
+	singlePub := &moqt.Publisher{
+		BroadcastPath:   "/wildcard/single/match",
+		TrackWriter:     singleWriter,
+		SubscribeStream: nil, // Not needed for benchmark
+	}
+
+	doubleWriter := &moqt.MockTrackWriter{}
+	doublePub := &moqt.Publisher{
+		BroadcastPath:   "/wildcard/double/multi/level/match",
+		TrackWriter:     doubleWriter,
+		SubscribeStream: nil, // Not needed for benchmark
+	}
 
 	b.Run("SingleWildcard", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			mux.ServeTrack(singleWriter, &moqt.SubscribeConfig{})
+			mux.ServeTrack(singlePub)
 		}
 	})
 
 	b.Run("DoubleWildcard", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			mux.ServeTrack(doubleWriter, &moqt.SubscribeConfig{})
+			mux.ServeTrack(doublePub)
 		}
 	})
 }
@@ -143,12 +161,16 @@ func BenchmarkDeepPathTraversal(b *testing.B) {
 	deepPath := moqt.BroadcastPath("/level1/level2/level3/level4/level5/level6/level7/level8/level9/level10")
 	handler := &moqt.MockTrackHandler{}
 	mux.Handle(ctx, deepPath, handler)
-
 	// Create writer for the path
-	writer := &moqt.MockTrackWriter{PathValue: deepPath}
+	writer := &moqt.MockTrackWriter{}
+	pub := &moqt.Publisher{
+		BroadcastPath:   deepPath,
+		TrackWriter:     writer,
+		SubscribeStream: nil, // Not needed for benchmark
+	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		mux.ServeTrack(writer, &moqt.SubscribeConfig{})
+		mux.ServeTrack(pub)
 	}
 }

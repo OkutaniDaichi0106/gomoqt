@@ -25,6 +25,17 @@ func newReceiveSubscribeStream(trackCtx *trackContext, stream quic.Stream, confi
 
 	go rss.listenUpdates()
 
+	go func() {
+		<-trackCtx.Done()
+		reason := context.Cause(trackCtx)
+		if reason == nil {
+			rss.close()
+		} else {
+			rss.closeWithError(reason)
+		}
+
+	}()
+
 	return rss
 }
 
@@ -43,10 +54,6 @@ type receiveSubscribeStream struct {
 func (rss *receiveSubscribeStream) SubscribeID() SubscribeID {
 	return rss.trackCtx.id
 }
-
-// func (rss *receiveSubscribeStream) TrackPath() BroadcastPath {
-// 	return rss.path
-// }
 
 func (rss *receiveSubscribeStream) SubuscribeConfig() *SubscribeConfig {
 	return rss.config

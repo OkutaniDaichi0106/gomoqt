@@ -284,11 +284,11 @@ func (s *Server) ListenAndServe() error {
 		tlsConfig.NextProtos = []string{NextProtoMOQ}
 	}
 
-	if ListenQUICFunc == nil {
+	if quic.ListenQUICFunc == nil {
 		panic("ListenQUICFunc is nil")
 	}
 	// Start listener with configured TLS
-	ln, err := ListenQUICFunc(s.Addr, tlsConfig, s.QUICConfig)
+	ln, err := quic.ListenQUICFunc(s.Addr, tlsConfig, s.QUICConfig)
 	if err != nil {
 		s.Logger.Error("failed to start QUIC listener", "address", s.Addr, "error", err.Error())
 		return err
@@ -315,11 +315,7 @@ func (s *Server) ListenAndServeTLS(certFile, keyFile string) (err error) {
 	}
 	s.TLSConfig = tlsConfig.Clone()
 
-	if ListenQUICFunc == nil {
-		panic("ListenQUICFunc is not initialized")
-	}
-
-	ln, err := ListenQUICFunc(s.Addr, tlsConfig, s.QUICConfig)
+	ln, err := quic.ListenQUICFunc(s.Addr, tlsConfig, s.QUICConfig)
 	if err != nil {
 		s.Logger.Error("failed to start QUIC listener for TLS", "address", s.Addr, "error", err.Error())
 		return err

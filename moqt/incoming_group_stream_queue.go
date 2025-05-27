@@ -64,6 +64,8 @@ func (q *incomingGroupStreamQueue) dequeue(ctx context.Context) (*receiveGroupSt
 		if len(q.queue) > 0 {
 			stream := q.queue[0]
 
+			q.queue = q.queue[1:]
+
 			if stream == nil {
 				q.mu.Unlock()
 				continue
@@ -74,6 +76,8 @@ func (q *incomingGroupStreamQueue) dequeue(ctx context.Context) (*receiveGroupSt
 				q.mu.Unlock()
 				continue
 			}
+
+			q.dequeued[stream] = struct{}{}
 
 			q.mu.Unlock()
 			return stream, nil

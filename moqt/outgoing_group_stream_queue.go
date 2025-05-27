@@ -16,10 +16,6 @@ func newOutgoingGroupStreamQueue() *outgoingGroupStreamQueue {
 type outgoingGroupStreamQueue struct {
 	mu    sync.Mutex
 	queue map[*sendGroupStream]struct{}
-
-	// openStreamFunc func(GroupSequence) (*sendGroupStream, error)
-
-	// configFunc func() *SubscribeConfig
 }
 
 func (q *outgoingGroupStreamQueue) add(str *sendGroupStream) {

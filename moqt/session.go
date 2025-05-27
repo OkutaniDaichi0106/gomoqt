@@ -19,17 +19,13 @@ func newSession(sessCtx *sessionContext, conn quic.Connection, mux *TrackMux) *S
 	}
 
 	sess := &Session{
-		sessCtx:                    sessCtx,
-		conn:                       conn,
-		mux:                        mux,
-		receivedSubscriptionQueue:  newIncomingSubscriptionQueue(),
-		sendSubscribeStreamQueue:   newOutgoingSubscribeStreamQueue(),
-		sendAnnounceStreamQueue:    newIncomingAnnounceStreamQueue(),
-		receiveAnnounceStreamQueue: newOutgoingAnnounceStreamQueue(),
-		receiveGroupStreamQueues:   make(map[SubscribeID]*incomingGroupStreamQueue),
-		sendGroupStreamQueues:      make(map[SubscribeID]*outgoingGroupStreamQueue),
-		bitrate:                    0,
-		sessionStreamch:            make(chan struct{}),
+		sessCtx:                  sessCtx,
+		conn:                     conn,
+		mux:                      mux,
+		receiveGroupStreamQueues: make(map[SubscribeID]*incomingGroupStreamQueue),
+		sendGroupStreamQueues:    make(map[SubscribeID]*outgoingGroupStreamQueue),
+		bitrate:                  0,
+		sessionStreamch:          make(chan struct{}),
 	}
 
 	sess.wg.Add(2)
@@ -65,12 +61,6 @@ type Session struct {
 
 	// sessionStream is the session stream for the session
 	sessionStream *sessionStream
-
-	receivedSubscriptionQueue *incomingSubscribeStreamQueue
-	sendSubscribeStreamQueue  *outgoingSubscribeStreamQueue
-
-	sendAnnounceStreamQueue    *incomingAnnounceStreamQueue
-	receiveAnnounceStreamQueue *outgoingAnnounceStreamQueue
 
 	receiveGroupStreamQueues map[SubscribeID]*incomingGroupStreamQueue
 	receiveGroupMapLocker    sync.RWMutex
@@ -137,7 +127,9 @@ func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *Su
 			"subscribe_id", id)
 	}
 
-	substr, err := s.openSubscribeStream(id, path, name, config)
+	trackCtx := newTrackContext(s.sessCtx, id, path, name)
+
+	substr, err := s.openSubscribeStream(trackCtx, config)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +141,7 @@ func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *Su
 	s.receiveGroupMapLocker.Lock()
 	s.receiveGroupStreamQueues[id] = queue
 	s.receiveGroupMapLocker.Unlock()
-	trackCtx := newTrackContext(s.sessCtx, id, path, name)
+
 	return &Subscriber{
 		BroadcastPath:   path,
 		TrackName:       name,
@@ -273,7 +265,7 @@ func (s *Session) openAnnounceStream(prefix string) (*receiveAnnounceStream, err
 	return newReceiveAnnounceStream(stream, prefix), nil
 }
 
-func (s *Session) openSubscribeStream(id SubscribeID, path BroadcastPath, name TrackName, config *SubscribeConfig) (*sendSubscribeStream, error) {
+func (s *Session) openSubscribeStream(trackCtx *trackContext, config *SubscribeConfig) (*sendSubscribeStream, error) {
 	// Open a Subscribe Stream
 	stream, err := openStream(s.conn, stream_type_subscribe)
 	if err != nil {
@@ -285,9 +277,9 @@ func (s *Session) openSubscribeStream(id SubscribeID, path BroadcastPath, name T
 
 	// Send a SUBSCRIBE message
 	sm := message.SubscribeMessage{
-		SubscribeID:      message.SubscribeID(id),
-		BroadcastPath:    string(path),
-		TrackName:        string(name),
+		SubscribeID:      message.SubscribeID(trackCtx.id),
+		BroadcastPath:    string(trackCtx.path),
+		TrackName:        string(trackCtx.name),
 		TrackPriority:    message.TrackPriority(config.TrackPriority),
 		MinGroupSequence: message.GroupSequence(config.MinGroupSequence),
 		MaxGroupSequence: message.GroupSequence(config.MaxGroupSequence),
@@ -310,7 +302,7 @@ func (s *Session) openSubscribeStream(id SubscribeID, path BroadcastPath, name T
 		return nil, err
 	}
 
-	substr := newSendSubscribeStream(id, config, stream)
+	substr := newSendSubscribeStream(trackCtx, config, stream)
 
 	return substr, nil
 }
@@ -634,6 +626,7 @@ func (sess *Session) processUniStream(stream quic.ReceiveStream) { /*
 
 		// Enqueue the receiver
 		sess.receiveGroupStreamQueues[id].enqueue(rgs)
+
 	default:
 		if logger := sess.sessCtx.Logger(); logger != nil {
 			logger.Debug("An unknown type of stream was opened")

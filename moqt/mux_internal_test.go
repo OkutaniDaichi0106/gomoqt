@@ -16,15 +16,10 @@ func TestTrackMux_InternalNodeManagement(t *testing.T) {
 	path := BroadcastPath("/internal/test")
 
 	mux.Handle(ctx, path, handler)
-
 	// Access internal node structure
 	mux.mu.RLock()
-	root := mux.root
+	root := &mux.trackTree
 	mux.mu.RUnlock()
-
-	if root == nil {
-		t.Error("Expected root node to be created")
-	}
 
 	// Verify node hierarchy
 	if root.children == nil {
@@ -46,10 +41,9 @@ func TestTrackMux_InternalContextCancellation(t *testing.T) {
 	path := BroadcastPath("/cancellable/resource")
 
 	mux.Handle(ctx, path, handler)
-
 	// Verify handler is registered
 	mux.mu.RLock()
-	nodeCount := countNodes(mux.root)
+	nodeCount := countNodes(&mux.trackTree)
 	mux.mu.RUnlock()
 
 	if nodeCount < 2 { // root + at least one child
@@ -61,10 +55,9 @@ func TestTrackMux_InternalContextCancellation(t *testing.T) {
 
 	// Give time for cleanup
 	time.Sleep(50 * time.Millisecond)
-
 	// Verify cleanup occurred (nodes should be removed)
 	mux.mu.RLock()
-	newNodeCount := countNodes(mux.root)
+	newNodeCount := countNodes(&mux.trackTree)
 	mux.mu.RUnlock()
 
 	if newNodeCount >= nodeCount {
@@ -84,8 +77,7 @@ func TestTrackMux_InternalAnnouncementPropagation(t *testing.T) {
 			return nil
 		},
 	}
-
-	config := &AnnounceConfig{TrackPrefix: "/**"}
+	config := "/**"
 	go mux.ServeAnnouncements(announcer, config)
 
 	// Give announcer time to register
@@ -124,10 +116,9 @@ func TestTrackMux_InternalWildcardMatching(t *testing.T) {
 			return nil
 		},
 	}
-
 	// Register announcers with different patterns
-	go mux.ServeAnnouncements(audioAnnouncer, &AnnounceConfig{TrackPrefix: "/audio/*"})
-	go mux.ServeAnnouncements(allAnnouncer, &AnnounceConfig{TrackPrefix: "/**"})
+	go mux.ServeAnnouncements(audioAnnouncer, "/audio/*")
+	go mux.ServeAnnouncements(allAnnouncer, "/**")
 
 	// Give announcers time to register
 	time.Sleep(10 * time.Millisecond)
@@ -154,7 +145,7 @@ func TestTrackMux_InternalWildcardMatching(t *testing.T) {
 }
 
 // Helper function to count nodes in the tree
-func countNodes(node *muxNode) int {
+func countNodes(node *routingNode) int {
 	if node == nil {
 		return 0
 	}

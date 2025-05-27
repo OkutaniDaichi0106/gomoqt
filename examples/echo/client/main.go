@@ -8,21 +8,20 @@ import (
 )
 
 func main() {
-	mux := moqt.NewTrackMux()
+	moqt.HandleFunc(context.Background(), "client.echo", func(pub *moqt.Publisher) {
+		if pub.TrackName != "index" {
+			return
+		}
 
-	audio := mux.BuildTrack(context.TODO(), "/audio", moqt.Info{}, 0)
-	video := mux.BuildTrack(context.TODO(), "/video", moqt.Info{}, 0)
-
-	go func() {
 		seq := moqt.FirstGroupSequence
 		for {
-			gw, err := audio.OpenGroup(seq)
+			gw, err := pub.TrackWriter.OpenGroup(seq)
 			if err != nil {
 				slog.Error("failed to open group", "error", err)
 				return
 			}
 
-			err = gw.WriteFrame(moqt.NewFrame([]byte("AUDIO_FRAME" + seq.String())))
+			err = gw.WriteFrame(moqt.NewFrame([]byte("FRAME " + seq.String())))
 			if err != nil {
 				slog.Error("failed to write frame", "error", err)
 				return
@@ -32,38 +31,17 @@ func main() {
 
 			seq = seq.Next()
 		}
-	}()
-
-	go func() {
-		seq := moqt.FirstGroupSequence
-		for {
-			gw, err := video.OpenGroup(seq)
-			if err != nil {
-				slog.Error("failed to open group", "error", err)
-				return
-			}
-
-			err = gw.WriteFrame(moqt.NewFrame([]byte("VIDEO_FRAME" + seq.String())))
-			if err != nil {
-				slog.Error("failed to write frame", "error", err)
-				return
-			}
-
-			gw.Close()
-
-			seq = seq.Next()
-		}
-	}()
+	})
 
 	client := moqt.Client{}
 
-	sess, _, err := client.Dial(context.Background(), "https://localhost:4444/broadcast", mux)
+	sess, err := client.Dial(context.Background(), "https://localhost:4444/broadcast", nil)
 	if err != nil {
 		slog.Error("failed to dial", "error", err)
 		return
 	}
 
-	annstr, err := sess.OpenAnnounceStream(&moqt.AnnounceConfig{TrackPrefix: "/**"})
+	annstr, err := sess.OpenAnnounceStream("/client")
 	if err != nil {
 		slog.Error("failed to open announce stream", "error", err)
 		return
@@ -76,14 +54,14 @@ func main() {
 		}
 		for _, ann := range announcements {
 			go func(ann *moqt.Announcement) {
-				_, tr, err := sess.OpenTrackStream(ann.TrackPath(), nil)
+				sub, err := sess.OpenTrackStream(ann.BroadcastPath(), "index", nil)
 				if err != nil {
 					slog.Error("failed to open track stream", "error", err)
 					return
 				}
 
 				for {
-					gr, err := tr.AcceptGroup(context.Background())
+					gr, err := sub.TrackReader.AcceptGroup(context.Background())
 					if err != nil {
 						slog.Error("failed to accept group", "error", err)
 						return

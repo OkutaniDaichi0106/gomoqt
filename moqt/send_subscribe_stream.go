@@ -1,6 +1,7 @@
 package moqt
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"sync"
@@ -15,16 +16,31 @@ type SendSubscribeStream interface {
 	UpdateSubscribe(*SubscribeConfig) error
 }
 
-func newSendSubscribeStream(id SubscribeID, config *SubscribeConfig, stream quic.Stream) *sendSubscribeStream {
-	return &sendSubscribeStream{
-		id:     id,
-		config: config,
-		stream: stream,
+func newSendSubscribeStream(trackCtx *trackContext, config *SubscribeConfig, stream quic.Stream) *sendSubscribeStream {
+	substr := &sendSubscribeStream{
+		trackCtx: trackCtx,
+		config:   config,
+		stream:   stream,
 	}
+
+	go func() {
+		<-trackCtx.Done()
+		reason := context.Cause(trackCtx)
+		if reason == nil {
+			substr.close()
+		} else {
+			substr.closeWithError(reason)
+		}
+	}()
+
+	return substr
 }
 
+var _ SendSubscribeStream = (*sendSubscribeStream)(nil)
+
 type sendSubscribeStream struct {
-	id     SubscribeID
+	trackCtx *trackContext
+
 	config *SubscribeConfig
 
 	stream quic.Stream
@@ -32,7 +48,7 @@ type sendSubscribeStream struct {
 }
 
 func (sss *sendSubscribeStream) SubscribeID() SubscribeID {
-	return sss.id
+	return sss.trackCtx.id
 }
 
 func (sss *sendSubscribeStream) SubuscribeConfig() *SubscribeConfig {

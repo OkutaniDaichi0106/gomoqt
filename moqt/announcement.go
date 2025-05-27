@@ -41,7 +41,7 @@ func (a *Announcement) String() string {
 		sb.WriteString("ENDED")
 	}
 	sb.WriteString(", ")
-	sb.WriteString("Broadcast: ")
+	sb.WriteString("BroadcastPath: ")
 	sb.WriteString(a.path.String())
 	sb.WriteString(" }")
 	return sb.String()

@@ -7,21 +7,20 @@ import (
 )
 
 func TestIncomingGroupStreamQueue_EnqueueAndAccept(t *testing.T) {
-	config := &SubscribeConfig{MinGroupSequence: 0, MaxGroupSequence: 100, GroupOrder: GroupOrderDefault}
-	queue := newIncomingGroupStreamQueue(SubscribeID(1), BroadcastPath("test"), config)
+	config := func() *SubscribeConfig {
+		return &SubscribeConfig{MinGroupSequence: 0, MaxGroupSequence: 100}
+	}
+	queue := newIncomingGroupStreamQueue(config)
 	stream := &receiveGroupStream{}
 
 	// Enqueue a stream
-	err := queue.Enqueue(stream)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	queue.enqueue(stream)
 
 	// Accept the stream
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	acceptedStream, err := queue.Accept(ctx)
+	acceptedStream, err := queue.dequeue(ctx)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -32,14 +31,16 @@ func TestIncomingGroupStreamQueue_EnqueueAndAccept(t *testing.T) {
 }
 
 func TestIncomingGroupStreamQueue_AcceptTimeout(t *testing.T) {
-	config := &SubscribeConfig{MinGroupSequence: 0, MaxGroupSequence: 100, GroupOrder: GroupOrderDefault}
-	queue := newIncomingGroupStreamQueue(SubscribeID(1), BroadcastPath("test"), config)
+	config := func() *SubscribeConfig {
+		return &SubscribeConfig{MinGroupSequence: 0, MaxGroupSequence: 100}
+	}
+	queue := newIncomingGroupStreamQueue(config)
 
 	// Accept with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
 
-	_, err := queue.Accept(ctx)
+	_, err := queue.dequeue(ctx)
 	if err == nil {
 		t.Fatal("expected timeout error, got nil")
 	}

@@ -1,10 +1,8 @@
 package moqt
 
 import (
-	"log/slog"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
@@ -19,6 +17,7 @@ func newReceiveGroupStream(id SubscribeID, sequence GroupSequence, stream quic.R
 }
 
 type receiveGroupStream struct {
+	groupCtx *groupContext
 	id       SubscribeID
 	sequence GroupSequence
 	stream   quic.ReceiveStream
@@ -29,18 +28,16 @@ func (s *receiveGroupStream) GroupSequence() GroupSequence {
 }
 
 func (s *receiveGroupStream) ReadFrame() (*Frame, error) {
-	fm := message.NewFrameMessage(nil)
-	_, err := fm.Decode(s.stream)
+	frame := NewFrame(nil)
+	_, err := frame.message.Decode(s.stream)
 	if err != nil {
-		slog.Error("failed to decode a FRAME message", "error", err)
+		if logger := s.groupCtx.Logger(); logger != nil {
+			logger.Error("failed to decode a FRAME message", "error", err)
+		}
 		return nil, err
 	}
 
-	slog.Info("received a FRAME message", slog.String("payload", string(fm.Payload)))
-
-	return &Frame{
-		message: fm,
-	}, nil
+	return frame, nil
 }
 
 func (s *receiveGroupStream) CancelRead(err GroupError) {
@@ -50,19 +47,13 @@ func (s *receiveGroupStream) CancelRead(err GroupError) {
 func (s *receiveGroupStream) SetReadDeadline(t time.Time) error {
 	err := s.stream.SetReadDeadline(t)
 	if err != nil {
-		slog.Error("failed to set read deadline",
-			"error", err,
-			"deadline", t.String(),
-			"stream_id", s.stream.StreamID(),
-			"subscribe_id", s.id,
-			"sequence", s.sequence,
-		)
+		if logger := s.groupCtx.Logger(); logger != nil {
+			logger.Error("failed to set read deadline",
+				"error", err,
+			)
+		}
 		return err
 	}
-
-	slog.Info("set read deadline successfully",
-		slog.String("deadline", t.String()),
-	)
 
 	return nil
 }

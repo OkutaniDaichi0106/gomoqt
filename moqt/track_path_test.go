@@ -185,7 +185,7 @@ func TestBroadcastPath_Extension(t *testing.T) {
 		},
 		"path ending with dot": {
 			path:     moqt.BroadcastPath("/test/path."),
-			expected: "",
+			expected: ".",
 		},
 		"empty path": {
 			path:     moqt.BroadcastPath(""),

@@ -188,21 +188,24 @@ func (mux *TrackMux) ServeAnnouncements(w AnnouncementWriter, prefix string) {
 		// find all announcements matchs to the pattern
 		current.announcements = mux.findActiveAnnouncements(pattern)
 	}
-
 	// Start serving announcements
-	w.SendAnnouncements(current.announcements)
+	err := w.SendAnnouncements(current.announcements)
 	pos := len(current.announcements)
 
 	mux.mu.Unlock()
 
-	var err error
+	if err != nil {
+		return
+	}
 
 	for {
-		for len(current.announcements) > pos {
+		current.mu.Lock()
+		for pos >= len(current.announcements) {
 			current.cond.Wait()
 		}
 
 		next := current.announcements[pos:]
+		current.mu.Unlock()
 
 		err = w.SendAnnouncements(next)
 		if err != nil {
@@ -321,7 +324,7 @@ func (mux *TrackMux) announce(path *path, announcement *Announcement) {
 func (mux *TrackMux) findActiveAnnouncements(p *pattern) []*Announcement {
 	var announcements []*Announcement
 
-	// Find the handler for the given path
+	// Find the node for the given pattern
 	current := &mux.trackTree
 	for _, seg := range p.segments {
 		if current.children == nil {
@@ -336,10 +339,7 @@ func (mux *TrackMux) findActiveAnnouncements(p *pattern) []*Announcement {
 		current = child
 	}
 
-	if current.handler == nil {
-		return nil
-	}
-
+	// Search this node and all its children for active announcements
 	var search func(node *routingNode)
 	search = func(node *routingNode) {
 		if node.announcement != nil && node.announcement.IsActive() {

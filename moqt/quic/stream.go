@@ -1,29 +1,8 @@
 package quic
 
 import (
-	"io"
 	"time"
 )
-
-type SendStream interface {
-	io.Writer
-	io.Closer
-
-	StreamID() StreamID
-	CancelWrite(StreamErrorCode)
-
-	SetWriteDeadline(time.Time) error
-}
-
-type ReceiveStream interface {
-	io.Reader
-
-	StreamID() StreamID
-
-	CancelRead(StreamErrorCode)
-
-	SetReadDeadline(time.Time) error
-}
 
 type Stream interface {
 	SendStream

@@ -24,6 +24,7 @@ func (q *outgoingGroupStreamQueue) add(str *sendGroupStream) {
 
 	q.queue[str] = struct{}{}
 }
+
 func (q *outgoingGroupStreamQueue) remove(str *sendGroupStream) {
 	q.mu.Lock()
 	defer q.mu.Unlock()

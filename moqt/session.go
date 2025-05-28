@@ -19,7 +19,7 @@ func newSession(sessCtx *sessionContext, conn quic.Connection, mux *TrackMux) *S
 	}
 
 	sess := &Session{
-		sessCtx:                  sessCtx,
+		ctx:                      sessCtx,
 		conn:                     conn,
 		mux:                      mux,
 		receiveGroupStreamQueues: make(map[SubscribeID]*incomingGroupStreamQueue),
@@ -49,9 +49,6 @@ type Session struct {
 
 	mux *TrackMux // TODO
 
-	SetupRequest  *SetupRequest
-	SetupResponse *SetupResponse
-
 	subscribeIDCounter atomic.Uint64
 
 	bitrate uint64 // TODO: use this when updating a session
@@ -68,7 +65,7 @@ type Session struct {
 	sendGroupStreamQueues map[SubscribeID]*outgoingGroupStreamQueue
 	sendGroupMapLocker    sync.RWMutex
 
-	sessCtx *sessionContext
+	ctx *sessionContext
 
 	wg *sync.WaitGroup
 }
@@ -83,13 +80,13 @@ func (s *Session) Terminate(reason error) {
 		}
 	}
 
-	s.sessCtx.cancel(trmerr)
+	s.ctx.cancel(trmerr)
 
 	code := quic.ConnectionErrorCode(trmerr.TerminateErrorCode())
 
 	err := s.conn.CloseWithError(code, trmerr.Error())
 	if err != nil {
-		if logger := s.sessCtx.Logger(); logger != nil {
+		if logger := s.ctx.Logger(); logger != nil {
 			logger.Error("failed to close the Connection",
 				"error", err,
 			)
@@ -97,7 +94,7 @@ func (s *Session) Terminate(reason error) {
 	}
 	s.wg.Wait()
 
-	if logger := s.sessCtx.Logger(); logger != nil {
+	if logger := s.ctx.Logger(); logger != nil {
 		logger.Debug("terminated a session",
 			"reason", trmerr,
 		)
@@ -119,7 +116,7 @@ func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *Su
 	}
 	id := s.nextSubscribeID()
 
-	if logger := s.sessCtx.Logger(); logger != nil {
+	if logger := s.ctx.Logger(); logger != nil {
 		logger.Debug("opening track stream",
 			"subscribe_config", config.String(),
 			"broadcast_path", path,
@@ -127,7 +124,7 @@ func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *Su
 			"subscribe_id", id)
 	}
 
-	trackCtx := newTrackContext(s.sessCtx, id, path, name)
+	trackCtx := newTrackContext(s.ctx, id, path, name)
 
 	substr, err := s.openSubscribeStream(trackCtx, config)
 	if err != nil {
@@ -151,7 +148,7 @@ func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *Su
 }
 
 func (s *Session) Context() context.Context {
-	return s.sessCtx
+	return s.ctx
 }
 
 func (s *Session) nextSubscribeID() SubscribeID {
@@ -162,14 +159,14 @@ func (s *Session) nextSubscribeID() SubscribeID {
 
 // TODO: Implement this method and use it
 func (sess *Session) updateSession(bitrate uint64) error {
-	if logger := sess.sessCtx.Logger(); logger != nil {
+	if logger := sess.ctx.Logger(); logger != nil {
 		logger.Debug("updating a session", "bitrate", bitrate)
 	}
 
 	// Send a SESSION_UPDATE message
 	err := sess.sessionStream.UpdateSession(bitrate)
 	if err != nil {
-		if logger := sess.sessCtx.Logger(); logger != nil {
+		if logger := sess.ctx.Logger(); logger != nil {
 			logger.Error("failed to update a session",
 				"error", err,
 			)
@@ -184,7 +181,8 @@ func (sess *Session) updateSession(bitrate uint64) error {
 }
 
 func (sess *Session) openSessionStream(versions []protocol.Version, params *Parameters) error {
-	if logger := sess.sessCtx.Logger(); logger != nil {
+	logger := sess.ctx.Logger()
+	if logger != nil {
 		logger.Debug("opening a session stream")
 	}
 
@@ -193,7 +191,7 @@ func (sess *Session) openSessionStream(versions []protocol.Version, params *Para
 
 	stream, err := openStream(sess.conn, stream_type_session)
 	if err != nil {
-		if logger := sess.sessCtx.Logger(); logger != nil {
+		if logger != nil {
 			logger.Error("failed to open a session stream", "error", err)
 		}
 		return err
@@ -206,7 +204,7 @@ func (sess *Session) openSessionStream(versions []protocol.Version, params *Para
 	}
 	_, err = scm.Encode(stream)
 	if err != nil {
-		if logger := sess.sessCtx.Logger(); logger != nil {
+		if logger := sess.ctx.Logger(); logger != nil {
 			logger.Error("failed to send a SESSION_CLIENT message", "error", err)
 		}
 		return err
@@ -216,20 +214,21 @@ func (sess *Session) openSessionStream(versions []protocol.Version, params *Para
 	var ssm message.SessionServerMessage
 	_, err = ssm.Decode(stream)
 	if err != nil {
-		if logger := sess.sessCtx.Logger(); logger != nil {
+		if logger != nil {
 			logger.Error("failed to receive a SESSION_SERVER message", "error", err)
 		}
 		return err
 	}
+
+	sess.ctx.setup(ssm.SelectedVersion, params, &Parameters{paramMap: ssm.Parameters})
+
 	// Set the selected version and parameters
 	sess.sessionStream = newSessionStream(
+		sess.ctx,
 		stream,
-		ssm.SelectedVersion,
-		params,
-		&Parameters{ssm.Parameters},
 	)
 
-	if logger := sess.sessCtx.Logger(); logger != nil {
+	if logger != nil {
 		logger.Debug("opened a session stream")
 	}
 
@@ -241,14 +240,14 @@ func (s *Session) openAnnounceStream(prefix string) (*receiveAnnounceStream, err
 		TrackPrefix: prefix,
 	}
 
-	if logger := s.sessCtx.Logger(); logger != nil {
+	if logger := s.ctx.Logger(); logger != nil {
 		logger.Debug("opening an announce stream", "config", apm)
 	}
 
 	// Open an Announce Stream
 	stream, err := openStream(s.conn, stream_type_announce)
 	if err != nil {
-		if logger := s.sessCtx.Logger(); logger != nil {
+		if logger := s.ctx.Logger(); logger != nil {
 			logger.Error("failed to open an Announce Stream", "error", err)
 		}
 		return nil, err
@@ -256,7 +255,7 @@ func (s *Session) openAnnounceStream(prefix string) (*receiveAnnounceStream, err
 
 	_, err = apm.Encode(stream)
 	if err != nil {
-		if logger := s.sessCtx.Logger(); logger != nil {
+		if logger := s.ctx.Logger(); logger != nil {
 			logger.Error("failed to write an Interest message", "error", err)
 		}
 		return nil, err
@@ -269,7 +268,7 @@ func (s *Session) openSubscribeStream(trackCtx *trackContext, config *SubscribeC
 	// Open a Subscribe Stream
 	stream, err := openStream(s.conn, stream_type_subscribe)
 	if err != nil {
-		if logger := s.sessCtx.Logger(); logger != nil {
+		if logger := s.ctx.Logger(); logger != nil {
 			logger.Error("failed to open a Subscribe Stream", "error", err)
 		}
 		return nil, err
@@ -286,7 +285,7 @@ func (s *Session) openSubscribeStream(trackCtx *trackContext, config *SubscribeC
 	}
 	_, err = sm.Encode(stream)
 	if err != nil {
-		if logger := s.sessCtx.Logger(); logger != nil {
+		if logger := s.ctx.Logger(); logger != nil {
 			logger.Error("failed to send a SUBSCRIBE message", "error", err)
 		}
 		return nil, err
@@ -296,7 +295,7 @@ func (s *Session) openSubscribeStream(trackCtx *trackContext, config *SubscribeC
 	var subok message.SubscribeOkMessage
 	_, err = subok.Decode(stream)
 	if err != nil {
-		if logger := s.sessCtx.Logger(); logger != nil {
+		if logger := s.ctx.Logger(); logger != nil {
 			logger.Error("failed to get a Info", "error", err)
 		}
 		return nil, err
@@ -312,6 +311,8 @@ func (sess *Session) acceptSessionStream(ctx context.Context, params func(*Param
 		return nil
 	}
 
+	logger := sess.ctx.Logger()
+
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -320,29 +321,30 @@ func (sess *Session) acceptSessionStream(ctx context.Context, params func(*Param
 			return errors.New("session stream is nil")
 		}
 
-		serverParams, err := params(sess.sessCtx.clientParameters)
+		serverParams, err := params(sess.ctx.clientParameters)
 		if err != nil {
 			return err
 		}
 
 		// Set the selected version and parameters
-		sess.sessCtx.version = internal.DefaultServerVersion
+		version := internal.DefaultServerVersion
 
 		//
-		sess.sessCtx.serverParameters = serverParams
+		sess.ctx.serverParameters = serverParams
 
 		// Send a SESSION_SERVER message
-		ssm := message.SessionServerMessage{
-			SelectedVersion: sess.sessCtx.version,
+		_, err = message.SessionServerMessage{
+			SelectedVersion: version,
 			Parameters:      serverParams.paramMap,
-		}
-		_, err = ssm.Encode(sess.sessionStream.stream)
+		}.Encode(sess.sessionStream.stream)
 		if err != nil {
-			if logger := sess.sessCtx.Logger(); logger != nil {
+			if logger != nil {
 				logger.Error("failed to send a SESSION_SERVER message", "error", err)
 			}
 			return err
 		}
+
+		sess.ctx.version = version
 
 		return nil
 	}
@@ -357,16 +359,21 @@ func (sess *Session) goAway(uri string) {
 // The function handles session streams, announce streams, subscribe streams, and info streams.
 // It also handles errors and terminates the session if an unknown stream type is encountered.
 func (sess *Session) handleBiStreams(ctx context.Context) {
+	logger := sess.ctx.Logger()
+	if logger != nil {
+		logger.Debug("listening for bidirectional streams")
+	}
+
 	for { // Accept a bidirectional stream
 		stream, err := sess.conn.AcceptStream(ctx)
 		if err != nil {
-			if logger := sess.sessCtx.Logger(); logger != nil {
+			if logger != nil {
 				logger.Error("failed to accept a bidirectional stream", "error", err)
 			}
 			return
 		}
 
-		if logger := sess.sessCtx.Logger(); logger != nil {
+		if logger != nil {
 			logger.Debug("A some stream was opened")
 		}
 
@@ -376,11 +383,12 @@ func (sess *Session) handleBiStreams(ctx context.Context) {
 }
 
 func (sess *Session) processBiStream(stream quic.Stream) {
+	logger := sess.ctx.Logger()
 	// Decode the STREAM_TYPE message and get the stream type ID
 	var stm message.StreamTypeMessage
 	_, err := stm.Decode(stream)
 	if err != nil {
-		if logger := sess.sessCtx.Logger(); logger != nil {
+		if logger != nil {
 			logger.Error("failed to get a Stream Type ID",
 				"error", err,
 				"stream_id", stream.StreamID(),
@@ -392,14 +400,14 @@ func (sess *Session) processBiStream(stream quic.Stream) {
 	// Handle the stream by the Stream Type ID
 	switch stm.StreamType {
 	case stream_type_session:
-		if logger := sess.sessCtx.Logger(); logger != nil {
+		if logger := sess.ctx.Logger(); logger != nil {
 			logger.Debug("session stream was opened")
 		}
 
 		var scm message.SessionClientMessage
 		_, err := scm.Decode(stream)
 		if err != nil {
-			if logger := sess.sessCtx.Logger(); logger != nil {
+			if logger != nil {
 				logger.Error("failed to get a SESSION_CLIENT message",
 					"error", err,
 					"stream_id", stream.StreamID(),
@@ -411,7 +419,7 @@ func (sess *Session) processBiStream(stream quic.Stream) {
 			return
 		}
 
-		ss := newSessionStream(stream, 0, &Parameters{scm.Parameters}, nil)
+		ss := newSessionStream(sess.ctx, stream)
 
 		// Enqueue the session stream
 		select {
@@ -423,7 +431,7 @@ func (sess *Session) processBiStream(stream quic.Stream) {
 		close(sess.sessionStreamch)
 	case stream_type_announce:
 		// Handle the announce stream
-		if logger := sess.sessCtx.Logger(); logger != nil {
+		if logger != nil {
 			logger.Debug("announce stream was opened")
 		}
 
@@ -431,7 +439,7 @@ func (sess *Session) processBiStream(stream quic.Stream) {
 		var apm message.AnnouncePleaseMessage
 		_, err := apm.Decode(stream)
 		if err != nil {
-			if logger := sess.sessCtx.Logger(); logger != nil {
+			if logger != nil {
 				logger.Error("failed to get an Interest", "error", err)
 			}
 			stream.CancelRead(ErrInternalError.StreamErrorCode())
@@ -442,16 +450,17 @@ func (sess *Session) processBiStream(stream quic.Stream) {
 		prefix := apm.TrackPrefix
 
 		annstr := newSendAnnounceStream(stream, prefix)
+
 		sess.mux.ServeAnnouncements(annstr, prefix)
 	case stream_type_subscribe:
-		if logger := sess.sessCtx.Logger(); logger != nil {
+		if logger != nil {
 			logger.Debug("subscribe stream was opened")
 		}
 
 		var sm message.SubscribeMessage
 		_, err := sm.Decode(stream)
 		if err != nil {
-			if logger := sess.sessCtx.Logger(); logger != nil {
+			if logger != nil {
 				logger.Debug("failed to read a SUBSCRIBE message", "error", err)
 			}
 			stream.CancelRead(ErrInternalError.StreamErrorCode())
@@ -471,7 +480,7 @@ func (sess *Session) processBiStream(stream quic.Stream) {
 
 		ann, handler := sess.mux.findHandler(path)
 
-		trackCtx := newTrackContext(sess.sessCtx, id, path, name)
+		trackCtx := newTrackContext(sess.ctx, id, path, name)
 
 		substr := newReceiveSubscribeStream(trackCtx, stream, config)
 
@@ -489,7 +498,7 @@ func (sess *Session) processBiStream(stream quic.Stream) {
 		openStreamFunc := func(groupCtx *groupContext) (*sendGroupStream, error) {
 			grpstr, err := openStream(sess.conn, stream_type_group)
 			if err != nil {
-				if logger := sess.sessCtx.Logger(); logger != nil {
+				if logger := sess.ctx.Logger(); logger != nil {
 					logger.Error("failed to open a Group Stream", "error", err)
 				}
 				return nil, err
@@ -520,7 +529,7 @@ func (sess *Session) processBiStream(stream quic.Stream) {
 
 		go handler.ServeTrack(pub)
 	default:
-		if logger := sess.sessCtx.Logger(); logger != nil {
+		if logger := sess.ctx.Logger(); logger != nil {
 			logger.Error("An unknown type of stream was opened")
 		}
 
@@ -537,13 +546,13 @@ func (sess *Session) handleUniStreams(ctx context.Context) {
 		 */
 		stream, err := sess.conn.AcceptUniStream(ctx)
 		if err != nil {
-			if logger := sess.sessCtx.Logger(); logger != nil {
+			if logger := sess.ctx.Logger(); logger != nil {
 				logger.Error("failed to accept a unidirectional stream", "error", err)
 			}
 			return
 		}
 
-		if logger := sess.sessCtx.Logger(); logger != nil {
+		if logger := sess.ctx.Logger(); logger != nil {
 			logger.Debug("some data stream was opened")
 		}
 
@@ -558,7 +567,7 @@ func (sess *Session) processUniStream(stream quic.ReceiveStream) { /*
 	var stm message.StreamTypeMessage
 	_, err := stm.Decode(stream)
 	if err != nil {
-		if logger := sess.sessCtx.Logger(); logger != nil {
+		if logger := sess.ctx.Logger(); logger != nil {
 			logger.Error("failed to get a Stream Type ID", "error", err)
 		}
 		return
@@ -567,14 +576,14 @@ func (sess *Session) processUniStream(stream quic.ReceiveStream) { /*
 	// Handle the stream by the Stream Type ID
 	switch stm.StreamType {
 	case stream_type_group:
-		if logger := sess.sessCtx.Logger(); logger != nil {
+		if logger := sess.ctx.Logger(); logger != nil {
 			logger.Debug("group stream was opened")
 		}
 
 		var gm message.GroupMessage
 		_, err := gm.Decode(stream)
 		if err != nil {
-			if logger := sess.sessCtx.Logger(); logger != nil {
+			if logger := sess.ctx.Logger(); logger != nil {
 				logger.Error("failed to get a group", "error", err)
 			}
 			return
@@ -585,7 +594,7 @@ func (sess *Session) processUniStream(stream quic.ReceiveStream) { /*
 		rgs := newReceiveGroupStream(id, sequence, stream)
 		_, ok := sess.receiveGroupStreamQueues[id]
 		if !ok {
-			if logger := sess.sessCtx.Logger(); logger != nil {
+			if logger := sess.ctx.Logger(); logger != nil {
 				logger.Error("failed to get a data receive stream queue", "error", "queue not found")
 			}
 			stream.CancelRead(ErrInternalError.StreamErrorCode())
@@ -596,7 +605,7 @@ func (sess *Session) processUniStream(stream quic.ReceiveStream) { /*
 		sess.receiveGroupStreamQueues[id].enqueue(rgs)
 
 	default:
-		if logger := sess.sessCtx.Logger(); logger != nil {
+		if logger := sess.ctx.Logger(); logger != nil {
 			logger.Debug("An unknown type of stream was opened")
 		}
 

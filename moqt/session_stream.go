@@ -7,22 +7,13 @@ import (
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-// type SessionStream interface {
-// 	UpdateSession(bitrate uint64) error
-// 	ClientParameters() *Parameters
-// 	ServerParameters() *Parameters
-// 	Version() protocol.Version
-// 	Close() error
-// 	CloseWithError(err error) error
-// }
-
-func newSessionStream(stream quic.Stream, selectedVersion protocol.Version, clientParameters, serverParameters *Parameters) *sessionStream {
+func newSessionStream(sessCtx *sessionContext, stream quic.Stream) *sessionStream {
 	sess := &sessionStream{
-		stream: stream,
+		sessCtx: sessCtx,
+		stream:  stream,
 	}
 
 	// Start listening for updates in a separate goroutine
@@ -41,9 +32,9 @@ type sessionStream struct {
 }
 
 func (ss *sessionStream) UpdateSession(bitrate uint64) error {
-
-	sum := message.SessionUpdateMessage{Bitrate: bitrate}
-	_, err := sum.Encode(ss.stream)
+	_, err := message.SessionUpdateMessage{
+		Bitrate: bitrate,
+	}.Encode(ss.stream)
 	if err != nil {
 		slog.Error("failed to send a SESSION_UPDATE message", "error", err)
 		return err
@@ -53,18 +44,6 @@ func (ss *sessionStream) UpdateSession(bitrate uint64) error {
 
 	return nil
 }
-
-// func (ss *sessionStream) ClientParameters() *Parameters {
-// 	return ss.clientParameters
-// }
-
-// func (ss *sessionStream) ServerParameters() *Parameters {
-// 	return ss.serverParameters
-// }
-
-// func (ss *sessionStream) Version() protocol.Version {
-// 	return ss.selectedVersion
-// }
 
 func (ss *sessionStream) Close() error {
 	if ss.closedErr() != nil {

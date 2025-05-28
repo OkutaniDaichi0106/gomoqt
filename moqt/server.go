@@ -44,15 +44,6 @@ type Server struct {
 	SetupExtensions func(req *Parameters) (rsp *Parameters, err error)
 
 	/*
-	 * Handlers
-	 * - TrackHandler:
-	 * - AnnouncementHandler:
-	 */
-
-	//
-	AcceptTimeout time.Duration // TODO: Rename
-
-	/*
 	 * Logger
 	 */
 	Logger *slog.Logger
@@ -85,31 +76,27 @@ type Server struct {
 
 func (s *Server) init() {
 	s.initOnce.Do(func() {
-		if s.Logger == nil {
-			s.Logger = slog.Default()
-		}
 		s.listeners = make(map[*quic.EarlyListener]struct{})
-
-		// Initialize signal channels
 		s.doneChan = make(chan struct{})
+		s.activeSess = make(map[*Session]struct{})
+		s.nativeQUICCh = make(chan quic.Connection, 1<<4)
 
 		// Initialize WebtransportServer
+
 		if s.WebtransportServer == nil {
 			s.WebtransportServer = webtransport.NewDefaultServer(s.Addr)
 		}
-		if s.nativeQUICCh == nil {
-			s.nativeQUICCh = make(chan quic.Connection, 1<<4)
-		}
 
 		if s.Logger != nil {
-			s.Logger.Debug("initialized server", "address", s.Addr)
+			s.Logger = s.Logger.With("address", s.Addr)
+			s.Logger.Debug("initialized server")
 		}
 	})
 }
 
 func (s *Server) ServeQUICListener(ln quic.EarlyListener) error {
 	if s.shuttingDown() {
-		return errors.New("server is shutting down")
+		return ErrServerClosed
 	}
 
 	s.init()
@@ -122,28 +109,39 @@ func (s *Server) ServeQUICListener(ln quic.EarlyListener) error {
 	defer cancel()
 
 	if s.Logger != nil {
-		s.Logger.Debug("listening for QUIC connections", "listener", ln)
+		s.Logger.Debug("listening for QUIC connections")
 	}
 
 	for {
 		if s.shuttingDown() {
-			return errors.New("server is shutting down")
+			return ErrServerClosed
 		}
 
 		// Listen for new QUIC connections
 		conn, err := ln.Accept(ctx)
 		if err != nil {
+			if s.Logger != nil {
+				s.Logger.Error("failed to accept QUIC connection",
+					"error", err.Error(),
+				)
+			}
 			return err
 		}
 
 		if s.Logger != nil {
-			s.Logger.Info("Accepted new QUIC connection", "remote_address", conn.RemoteAddr())
+			s.Logger.Debug("accepted a new QUIC connection",
+				"remote_address", conn.RemoteAddr(),
+			)
 		}
+
 		// Handle connection in a goroutine
 		go func(conn quic.Connection) {
 			if err := s.ServeQUICConn(conn); err != nil {
 				if s.Logger != nil {
-					s.Logger.Debug("handling connection failed", "error", err)
+					s.Logger.Debug("handling connection failed",
+						"remote_address", conn.RemoteAddr(),
+						"error", err,
+					)
 				}
 			}
 		}(conn)
@@ -156,19 +154,19 @@ func (s *Server) ServeQUICConn(conn quic.Connection) error {
 	}
 
 	s.init()
-	protocol := conn.ConnectionState().TLS.NegotiatedProtocol
 
-	if s.Logger != nil {
-		s.Logger.Info("Negotiated protocol", "remote_address", conn.RemoteAddr(), "protocol", protocol)
-	}
-	switch protocol {
+	switch protocol := conn.ConnectionState().TLS.NegotiatedProtocol; protocol {
 	case http3.NextProtoH3:
-		if s.Logger != nil {
-			s.Logger.Debug("handling webtransport session", "remote_address", conn.RemoteAddr())
-		}
 		if s.WebtransportServer == nil {
 			s.WebtransportServer = webtransport.NewDefaultServer(s.Addr)
 		}
+
+		if s.Logger != nil {
+			s.Logger.Debug("handling webtransport session",
+				"remote_address", conn.RemoteAddr(),
+			)
+		}
+
 		return s.WebtransportServer.ServeQUICConn(conn)
 	case NextProtoMOQ:
 		select {
@@ -179,19 +177,22 @@ func (s *Server) ServeQUICConn(conn quic.Connection) error {
 		return nil
 	default:
 		if s.Logger != nil {
-			s.Logger.Error("unsupported negotiated protocol", "remote_address", conn.RemoteAddr(), "protocol", protocol)
+			s.Logger.Error("unsupported negotiated protocol",
+				"remote_address", conn.RemoteAddr(),
+				"protocol", protocol,
+			)
 		}
 		return fmt.Errorf("unsupported protocol: %s", protocol)
 	}
 }
 
-func (s *Server) AcceptQUIC(ctx context.Context, mux *TrackMux) (string, *Session, error) {
+func (s *Server) AcceptQUIC(ctx context.Context, mux *TrackMux) (*Session, error) {
 	if s.shuttingDown() {
-		return "", nil, ErrServerClosed
+		return nil, ErrServerClosed
 	}
 	select {
 	case <-ctx.Done():
-		return "", nil, ctx.Err()
+		return nil, ctx.Err()
 	case conn := <-s.nativeQUICCh:
 		if s.Logger != nil {
 			s.Logger.Debug("handling quic connection", "remote_address", conn.RemoteAddr())
@@ -223,12 +224,7 @@ func (s *Server) AcceptQUIC(ctx context.Context, mux *TrackMux) (string, *Sessio
 			return rspParam, nil
 		}
 
-		sess, err := s.acceptSession(conn, params, mux)
-		if err != nil {
-			return "", nil, err
-		}
-
-		return path, sess, nil
+		return s.acceptSession(newSessionContext(ctx, path, s.Logger), conn, params, mux)
 	}
 }
 
@@ -258,15 +254,13 @@ func (s *Server) AcceptWebTransport(w http.ResponseWriter, r *http.Request, mux 
 		s.Logger.Debug("WebTransport session established", "remote_address", r.RemoteAddr)
 	}
 
-	params := s.SetupExtensions
-
-	return s.acceptSession(conn, params, mux)
+	return s.acceptSession(newSessionContext(r.Context(), r.URL.Path, s.Logger), conn, s.SetupExtensions, mux)
 }
 
-func (s *Server) acceptSession(conn quic.Connection, params func(req *Parameters) (rsp *Parameters, err error), mux *TrackMux) (*Session, error) {
-	sessCtx := newSessionContext(conn.Context(), s.Logger)
+func (s *Server) acceptSession(sessCtx *sessionContext, conn quic.Connection, params func(req *Parameters) (rsp *Parameters, err error), mux *TrackMux) (*Session, error) {
 	sess := newSession(sessCtx, conn, mux)
-	ctxAccept, cancelAccept := context.WithTimeout(sessCtx, s.acceptTimeout())
+
+	ctxAccept, cancelAccept := context.WithTimeout(sess.ctx, s.acceptTimeout())
 	defer cancelAccept()
 	err := sess.acceptSessionStream(ctxAccept, params)
 	if err != nil {
@@ -278,7 +272,7 @@ func (s *Server) acceptSession(conn quic.Connection, params func(req *Parameters
 
 	s.addSession(sess)
 	go func() {
-		<-sessCtx.Done()
+		<-sess.ctx.Done()
 		s.removeSession(sess)
 	}()
 
@@ -467,8 +461,8 @@ func (s *Server) shuttingDown() bool {
 }
 
 func (s *Server) acceptTimeout() time.Duration {
-	if s.AcceptTimeout != 0 {
-		return s.AcceptTimeout
+	if s.Config != nil && s.Config.Timeout != 0 {
+		return s.Config.Timeout
 	}
 	return 5 * time.Second
 }

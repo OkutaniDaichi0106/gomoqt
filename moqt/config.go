@@ -1,24 +1,30 @@
 package moqt
 
-import "time"
+import (
+	"time"
+
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/moqtrace"
+)
 
 type Config struct {
 	// Configurations
-	MaxSubscribeID SubscribeID // TODO:
+	// MaxSubscribeID SubscribeID // TODO:
 
-	NewSessionURI string // TODO:
+	// NewSessionURI string // TODO:
 
-	// SetupExtensions Parameters
+	Tracer func() moqtrace.SessionTracer
 
-	CheckRoot func(r SetupRequest) bool // TODO:
+	// CheckRoot func(r SetupRequest) bool // TODO:
 
 	Timeout time.Duration
 }
 
 func (c *Config) Clone() *Config {
 	return &Config{
-		MaxSubscribeID: c.MaxSubscribeID,
-		NewSessionURI:  c.NewSessionURI,
-		CheckRoot:      c.CheckRoot,
+		// MaxSubscribeID: c.MaxSubscribeID,
+		// NewSessionURI:  c.NewSessionURI,
+		// CheckRoot:      c.CheckRoot,
+		Tracer:  c.Tracer,
+		Timeout: c.Timeout,
 	}
 }

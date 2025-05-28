@@ -7,13 +7,11 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-func newSession(sessCtx *sessionContext, conn quic.Connection, mux *TrackMux) *Session {
+func newSession(sessCtx *sessionContext, stream *sessionStream, conn quic.Connection, mux *TrackMux) *Session {
 	if mux == nil {
 		mux = DefaultMux
 	}
@@ -22,10 +20,10 @@ func newSession(sessCtx *sessionContext, conn quic.Connection, mux *TrackMux) *S
 		ctx:                      sessCtx,
 		conn:                     conn,
 		mux:                      mux,
+		sessionStream:            stream,
 		receiveGroupStreamQueues: make(map[SubscribeID]*incomingGroupStreamQueue),
 		sendGroupStreamQueues:    make(map[SubscribeID]*outgoingGroupStreamQueue),
 		bitrate:                  0,
-		sessionStreamch:          make(chan struct{}),
 	}
 
 	sess.wg.Add(2)
@@ -54,7 +52,7 @@ type Session struct {
 	bitrate uint64 // TODO: use this when updating a session
 
 	// sessionStreamch is the channel for signaling session streams
-	sessionStreamch chan struct{}
+	// sessionStreamch chan struct{}
 
 	// sessionStream is the session stream for the session
 	sessionStream *sessionStream
@@ -92,6 +90,8 @@ func (s *Session) Terminate(reason error) {
 			)
 		}
 	}
+
+	// Wait for finishing handling streams
 	s.wg.Wait()
 
 	if logger := s.ctx.Logger(); logger != nil {
@@ -180,61 +180,6 @@ func (sess *Session) updateSession(bitrate uint64) error {
 	return nil
 }
 
-func (sess *Session) openSessionStream(versions []protocol.Version, params *Parameters) error {
-	logger := sess.ctx.Logger()
-	if logger != nil {
-		logger.Debug("opening a session stream")
-	}
-
-	// Close the session stream channel
-	close(sess.sessionStreamch)
-
-	stream, err := openStream(sess.conn, stream_type_session)
-	if err != nil {
-		if logger != nil {
-			logger.Error("failed to open a session stream", "error", err)
-		}
-		return err
-	}
-
-	// Send a SESSION_CLIENT message
-	scm := message.SessionClientMessage{
-		SupportedVersions: versions,
-		Parameters:        params.paramMap,
-	}
-	_, err = scm.Encode(stream)
-	if err != nil {
-		if logger := sess.ctx.Logger(); logger != nil {
-			logger.Error("failed to send a SESSION_CLIENT message", "error", err)
-		}
-		return err
-	}
-
-	// Receive a set-up response
-	var ssm message.SessionServerMessage
-	_, err = ssm.Decode(stream)
-	if err != nil {
-		if logger != nil {
-			logger.Error("failed to receive a SESSION_SERVER message", "error", err)
-		}
-		return err
-	}
-
-	sess.ctx.setup(ssm.SelectedVersion, params, &Parameters{paramMap: ssm.Parameters})
-
-	// Set the selected version and parameters
-	sess.sessionStream = newSessionStream(
-		sess.ctx,
-		stream,
-	)
-
-	if logger != nil {
-		logger.Debug("opened a session stream")
-	}
-
-	return nil
-}
-
 func (s *Session) openAnnounceStream(prefix string) (*receiveAnnounceStream, error) {
 	apm := message.AnnouncePleaseMessage{
 		TrackPrefix: prefix,
@@ -306,50 +251,6 @@ func (s *Session) openSubscribeStream(trackCtx *trackContext, config *SubscribeC
 	return substr, nil
 }
 
-func (sess *Session) acceptSessionStream(ctx context.Context, params func(*Parameters) (*Parameters, error)) error {
-	if sess.sessionStream != nil {
-		return nil
-	}
-
-	logger := sess.ctx.Logger()
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-sess.sessionStreamch:
-		if sess.sessionStream == nil {
-			return errors.New("session stream is nil")
-		}
-
-		serverParams, err := params(sess.ctx.clientParameters)
-		if err != nil {
-			return err
-		}
-
-		// Set the selected version and parameters
-		version := internal.DefaultServerVersion
-
-		//
-		sess.ctx.serverParameters = serverParams
-
-		// Send a SESSION_SERVER message
-		_, err = message.SessionServerMessage{
-			SelectedVersion: version,
-			Parameters:      serverParams.paramMap,
-		}.Encode(sess.sessionStream.stream)
-		if err != nil {
-			if logger != nil {
-				logger.Error("failed to send a SESSION_SERVER message", "error", err)
-			}
-			return err
-		}
-
-		sess.ctx.version = version
-
-		return nil
-	}
-}
-
 func (sess *Session) goAway(uri string) {
 	// TODO
 }
@@ -399,36 +300,6 @@ func (sess *Session) processBiStream(stream quic.Stream) {
 	}
 	// Handle the stream by the Stream Type ID
 	switch stm.StreamType {
-	case stream_type_session:
-		if logger := sess.ctx.Logger(); logger != nil {
-			logger.Debug("session stream was opened")
-		}
-
-		var scm message.SessionClientMessage
-		_, err := scm.Decode(stream)
-		if err != nil {
-			if logger != nil {
-				logger.Error("failed to get a SESSION_CLIENT message",
-					"error", err,
-					"stream_id", stream.StreamID(),
-				)
-			}
-
-			stream.CancelRead(ErrInternalError.StreamErrorCode())
-			stream.CancelWrite(ErrInternalError.StreamErrorCode())
-			return
-		}
-
-		ss := newSessionStream(sess.ctx, stream)
-
-		// Enqueue the session stream
-		select {
-		case sess.sessionStreamch <- struct{}{}:
-			sess.sessionStream = ss
-		default:
-		}
-		// Close the channel
-		close(sess.sessionStreamch)
 	case stream_type_announce:
 		// Handle the announce stream
 		if logger != nil {
@@ -529,7 +400,7 @@ func (sess *Session) processBiStream(stream quic.Stream) {
 
 		go handler.ServeTrack(pub)
 	default:
-		if logger := sess.ctx.Logger(); logger != nil {
+		if logger != nil {
 			logger.Error("An unknown type of stream was opened")
 		}
 

@@ -12,7 +12,7 @@ func NewSetupRequest(urlstr string) (*SetupRequest, error) {
 	}
 
 	return &SetupRequest{
-		uri:        uri,
+		URI:        uri,
 		Parameters: nil,
 	}, nil
 }
@@ -21,12 +21,12 @@ type SetupRequest struct {
 	Parameters *Parameters
 
 	// URI is the URL of the server
-	uri *url.URL
+	URI *url.URL
 }
 
 func (sr SetupRequest) String() string {
 	if sr.Parameters == nil {
-		return fmt.Sprintf("SetupRequest: { URI: %s, Parameters: No Parameters }", sr.uri)
+		return fmt.Sprintf("SetupRequest: { URI: %s, Parameters: No Parameters }", sr.URI)
 	}
-	return fmt.Sprintf("SetupRequest: { URI: %s, Parameters: %s }", sr.uri, sr.Parameters.String())
+	return fmt.Sprintf("SetupRequest: { URI: %s, Parameters: %s }", sr.URI, sr.Parameters.String())
 }

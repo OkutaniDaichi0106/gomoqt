@@ -7,6 +7,10 @@ import (
 )
 
 type Config struct {
+	ClientSetupExtensions func() *Parameters
+
+	ServerSetupExtensions func(req *Parameters) (rsp *Parameters, err error)
+
 	// Configurations
 	// MaxSubscribeID SubscribeID // TODO:
 

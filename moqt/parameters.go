@@ -23,6 +23,16 @@ type Parameters struct {
 	paramMap message.Parameters
 }
 
+func (p *Parameters) Clone() *Parameters {
+	clone := &Parameters{
+		paramMap: make(message.Parameters, len(p.paramMap)),
+	}
+	for key, value := range p.paramMap {
+		clone.paramMap[key] = value
+	}
+	return clone
+}
+
 func (p Parameters) String() string {
 	var sb strings.Builder
 	sb.WriteString("Parameters: {")

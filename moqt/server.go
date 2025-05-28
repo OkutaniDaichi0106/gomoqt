@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/webtransport"
 	"github.com/quic-go/quic-go/http3"
@@ -41,7 +43,6 @@ type Server struct {
 	 * Setup Extensions
 	 * This function is called when a session is established
 	 */
-	SetupExtensions func(req *Parameters) (rsp *Parameters, err error)
 
 	/*
 	 * Logger
@@ -194,37 +195,60 @@ func (s *Server) AcceptQUIC(ctx context.Context, mux *TrackMux) (*Session, error
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case conn := <-s.nativeQUICCh:
-		if s.Logger != nil {
-			s.Logger.Debug("handling quic connection", "remote_address", conn.RemoteAddr())
+		logger := s.Logger
+		if logger != nil {
+			logger = logger.With(
+				"remote_address", conn.RemoteAddr(),
+			)
+			logger.Debug("handling quic connection", "remote_address", conn.RemoteAddr())
 		}
 
 		var path string
 		// Listen the session stream
-		params := func(reqParam *Parameters) (*Parameters, error) {
+		extensions := func(clientParams *Parameters) (*Parameters, error) {
 			var err error
 
 			// Get the path parameter
-			path, err = reqParam.GetString(param_type_path)
+			path, err = clientParams.GetString(param_type_path)
 			if err != nil {
-				if s.Logger != nil {
-					s.Logger.Error("failed to get 'path' parameter", "remote_address", conn.RemoteAddr(), "error", err.Error())
+				if logger != nil {
+					logger.Error("failed to get 'path' parameter",
+						"error", err.Error(),
+					)
 				}
 				return nil, err
 			}
 
 			// Get any setup extensions
-			rspParam, err := s.SetupExtensions(reqParam)
+			if s.Config == nil || s.Config.ServerSetupExtensions == nil {
+				if logger != nil {
+					logger.Debug("no setup extensions provided, using default parameters")
+				}
+				return NewParameters(), nil
+			}
+
+			params, err := s.Config.ServerSetupExtensions(clientParams)
 			if err != nil {
-				if s.Logger != nil {
-					s.Logger.Error("failed to get setup extensions", "remote_address", conn.RemoteAddr(), "error", err.Error())
+				if logger != nil {
+					logger.Error("failed to get setup extensions",
+						"error", err.Error(),
+					)
 				}
 				return nil, err
 			}
+			if params == nil {
+				if logger != nil {
+					logger.Debug("server setup extensions returned nil, using default parameters")
+				}
+				return NewParameters(), nil
+			}
 
-			return rspParam, nil
+			return params, nil
 		}
 
-		return s.acceptSession(newSessionContext(ctx, path, s.Logger), conn, params, mux)
+		acceptCtx, cancelAccept := context.WithTimeout(ctx, s.acceptTimeout())
+		defer cancelAccept()
+		return s.acceptSession(acceptCtx, path, conn, extensions, mux)
 	}
 }
 
@@ -250,25 +274,108 @@ func (s *Server) AcceptWebTransport(w http.ResponseWriter, r *http.Request, mux 
 		return nil, err
 	}
 
+	extensions := func(clientParams *Parameters) (*Parameters, error) {
+		if s.Config == nil || s.Config.ServerSetupExtensions == nil {
+			if s.Logger != nil {
+				s.Logger.Debug("no setup extensions provided, using default parameters")
+			}
+			return NewParameters(), nil
+		}
+
+		params, err := s.Config.ServerSetupExtensions(clientParams)
+		if err != nil {
+			if s.Logger != nil {
+				s.Logger.Error("failed to get setup extensions", "remote_address", r.RemoteAddr, "error", err.Error())
+			}
+			return nil, err
+		}
+		if params == nil {
+			if s.Logger != nil {
+				s.Logger.Debug("server setup extensions returned nil, using default parameters")
+			}
+			return NewParameters(), nil
+		}
+
+		return params, nil
+	}
+
 	if s.Logger != nil {
 		s.Logger.Debug("WebTransport session established", "remote_address", r.RemoteAddr)
 	}
 
-	return s.acceptSession(newSessionContext(r.Context(), r.URL.Path, s.Logger), conn, s.SetupExtensions, mux)
+	acceptCtx, cancelAccept := context.WithTimeout(r.Context(), s.acceptTimeout())
+	defer cancelAccept()
+	return s.acceptSession(acceptCtx, r.URL.Path, conn, extensions, mux)
 }
 
-func (s *Server) acceptSession(sessCtx *sessionContext, conn quic.Connection, params func(req *Parameters) (rsp *Parameters, err error), mux *TrackMux) (*Session, error) {
-	sess := newSession(sessCtx, conn, mux)
+func (s *Server) acceptSession(acceptCtx context.Context, path string, conn quic.Connection, extensions func(*Parameters) (*Parameters, error), mux *TrackMux) (*Session, error) {
+	logger := s.Logger
 
-	ctxAccept, cancelAccept := context.WithTimeout(sess.ctx, s.acceptTimeout())
-	defer cancelAccept()
-	err := sess.acceptSessionStream(ctxAccept, params)
+	stream, err := conn.AcceptStream(acceptCtx)
 	if err != nil {
-		if s.Logger != nil {
-			s.Logger.Error("failed to accept session stream", "error", err)
+		if logger != nil {
+			logger.Error("failed to accept a session stream",
+				"error", err,
+			)
+		}
+		return nil, fmt.Errorf("failed to accept a session stream: %w", err)
+	}
+
+	if logger != nil {
+		logger.With("stream_id", stream.StreamID())
+	}
+
+	var stm message.StreamTypeMessage
+	_, err = stm.Decode(stream)
+	if err != nil {
+		if logger != nil {
+			logger.Error("failed to get a STREAM_TYPE message",
+				"error", err,
+			)
+		}
+	}
+	var scm message.SessionClientMessage
+	_, err = scm.Decode(stream)
+	if err != nil {
+		if logger != nil {
+			logger.Error("failed to get a SESSION_CLIENT message",
+				"error", err,
+			)
+		}
+
+		stream.CancelRead(ErrInternalError.StreamErrorCode())
+		stream.CancelWrite(ErrInternalError.StreamErrorCode())
+		return nil, fmt.Errorf("failed to get a SESSION_CLIENT message: %w", err)
+	}
+
+	clientParams := &Parameters{scm.Parameters}
+	serverParams, err := extensions(clientParams.Clone())
+	if err != nil {
+		return nil, err
+	}
+
+	// Set the selected version and parameters
+	version := internal.DefaultServerVersion
+
+	//
+
+	// Send a SESSION_SERVER message
+	_, err = message.SessionServerMessage{
+		SelectedVersion: version,
+		Parameters:      serverParams.paramMap,
+	}.Encode(stream)
+	if err != nil {
+		if logger != nil {
+			logger.Error("failed to send a SESSION_SERVER message", "error", err)
 		}
 		return nil, err
 	}
+
+	sessCtx := newSessionContext(conn.Context(), version, path, clientParams, serverParams, logger, s.Config.Tracer())
+
+	sessstr := newSessionStream(sessCtx, stream)
+
+	sess := newSession(sessCtx, sessstr, conn, mux)
 
 	s.addSession(sess)
 	go func() {

@@ -25,6 +25,8 @@ type Config struct {
 
 func (c *Config) Clone() *Config {
 	return &Config{
+		ClientSetupExtensions: c.ClientSetupExtensions,
+		ServerSetupExtensions: c.ServerSetupExtensions,
 		// MaxSubscribeID: c.MaxSubscribeID,
 		// NewSessionURI:  c.NewSessionURI,
 		// CheckRoot:      c.CheckRoot,

@@ -45,6 +45,23 @@ func (w *webTransportServer) Close() error {
 }
 
 func (w *webTransportServer) Shutdown(ctx context.Context) error {
-	// TODO: Implement Shutdown logic if needed
-	return nil
+	// Implement a proper shutdown logic that passes the context to the server
+	closeCh := make(chan struct{})
+
+	// Close the server in a separate goroutine
+	go func() {
+		err := w.server.Close()
+		if err != nil {
+			// Log the error if needed
+		}
+		close(closeCh)
+	}()
+
+	// Wait for either the context to be done or the close to complete
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-closeCh:
+		return nil
+	}
 }

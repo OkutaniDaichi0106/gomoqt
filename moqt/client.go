@@ -62,7 +62,7 @@ func (c *Client) init() {
 }
 
 func (c *Client) timeout() time.Duration {
-	if c.Config.Timeout != 0 {
+	if c.Config != nil && c.Config.Timeout != 0 {
 		return c.Config.Timeout
 	}
 	return 5 * time.Second // TODO: Consider appropriate timeout
@@ -397,6 +397,7 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) Shutdown(ctx context.Context) error {
+	c.init() // Ensure initialization
 	c.inShutdown.Store(true)
 
 	c.mu.Lock()
@@ -411,16 +412,20 @@ func (c *Client) Shutdown(ctx context.Context) error {
 	if len(c.activeSess) > 0 {
 		select {
 		case <-c.doneChan:
-			return nil
 		case <-ctx.Done():
 			for sess := range c.activeSess {
-				(*sess).Terminate(ErrGoAwayTimeout)
+				go sess.Terminate(ErrGoAwayTimeout)
+				c.removeSession(sess)
 			}
-			return ctx.Err()
+			return ctx.Err() // Return context error
 		}
 	}
 
 	return nil
 }
 
-func (c *Client) goAway(sess *Session) {}
+func (c *Client) goAway(sess *Session) {
+	if sess == nil {
+		return
+	}
+}

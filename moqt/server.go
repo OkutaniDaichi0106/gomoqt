@@ -540,7 +540,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 			return nil
 		case <-ctx.Done():
 			for sess := range s.activeSess {
-				(*sess).Terminate(ErrGoAwayTimeout)
+				go sess.Terminate(ErrGoAwayTimeout)
 				s.removeSession(sess)
 			}
 			return ctx.Err()
@@ -611,7 +611,6 @@ func (s *Server) acceptTimeout() time.Duration {
 
 func (s *Server) goAway(sess *Session) {
 	// TODO: Implement go away
-	// sess.goAway("")
 }
 
 const NextProtoMOQ = "moq-00"

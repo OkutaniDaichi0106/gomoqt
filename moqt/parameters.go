@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"strings"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
@@ -24,18 +25,14 @@ type Parameters struct {
 }
 
 func (p *Parameters) Clone() *Parameters {
-	clone := &Parameters{
-		paramMap: make(message.Parameters, len(p.paramMap)),
+	return &Parameters{
+		paramMap: maps.Clone(p.paramMap),
 	}
-	for key, value := range p.paramMap {
-		clone.paramMap[key] = value
-	}
-	return clone
 }
 
 func (p Parameters) String() string {
 	var sb strings.Builder
-	sb.WriteString("Parameters: {")
+	sb.WriteString("{")
 	for key, value := range p.paramMap {
 		sb.WriteString(" ")
 		sb.WriteString(fmt.Sprintf("%d", key))

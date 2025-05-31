@@ -26,7 +26,7 @@ type SetupRequest struct {
 
 func (sr SetupRequest) String() string {
 	if sr.Parameters == nil {
-		return fmt.Sprintf("SetupRequest: { URI: %s, Parameters: No Parameters }", sr.URI)
+		return fmt.Sprintf("{ uri: %s, parameters: no parameters }", sr.URI)
 	}
-	return fmt.Sprintf("SetupRequest: { URI: %s, Parameters: %s }", sr.URI, sr.Parameters.String())
+	return fmt.Sprintf("{ uri: %s, parameters: %s }", sr.URI, sr.Parameters.String())
 }

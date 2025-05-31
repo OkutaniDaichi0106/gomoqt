@@ -11,13 +11,14 @@ import (
 
 type ReceiveSubscribeStream interface {
 	SubscribeID() SubscribeID
-	SubuscribeConfig() *SubscribeConfig
+	SubscribeConfig() *SubscribeConfig
 	Updated() <-chan struct{}
 	Done() <-chan struct{}
 }
 
 func newReceiveSubscribeStream(trackCtx *trackContext, stream quic.Stream, config *SubscribeConfig) *receiveSubscribeStream {
 	rss := &receiveSubscribeStream{
+		trackCtx:  trackCtx,
 		config:    config,
 		stream:    stream,
 		updatedCh: make(chan struct{}, 1),
@@ -55,7 +56,9 @@ func (rss *receiveSubscribeStream) SubscribeID() SubscribeID {
 	return rss.trackCtx.id
 }
 
-func (rss *receiveSubscribeStream) SubuscribeConfig() *SubscribeConfig {
+func (rss *receiveSubscribeStream) SubscribeConfig() *SubscribeConfig {
+	rss.mu.Lock()
+	defer rss.mu.Unlock()
 	return rss.config
 }
 
@@ -70,6 +73,9 @@ func (rss *receiveSubscribeStream) Done() <-chan struct{} {
 func (rss *receiveSubscribeStream) listenUpdates() {
 	var sum message.SubscribeUpdateMessage
 
+	var err error
+	defer rss.trackCtx.cancel(err)
+
 	for {
 		if rss.trackCtx.Err() != nil {
 			if logger := rss.trackCtx.Logger(); logger != nil {
@@ -80,7 +86,7 @@ func (rss *receiveSubscribeStream) listenUpdates() {
 			return
 		}
 
-		_, err := sum.Decode(rss.stream)
+		_, err = sum.Decode(rss.stream)
 		if err != nil {
 			if logger := rss.trackCtx.Logger(); logger != nil {
 				logger.Error("failed to receive a SUBSCRIBE_UPDATE message",
@@ -93,14 +99,15 @@ func (rss *receiveSubscribeStream) listenUpdates() {
 		if logger := rss.trackCtx.Logger(); logger != nil {
 			logger.Debug("received a SUBSCRIBE_UPDATE message")
 		}
-
 		config := &SubscribeConfig{
 			TrackPriority:    TrackPriority(sum.TrackPriority),
 			MinGroupSequence: GroupSequence(sum.MinGroupSequence),
 			MaxGroupSequence: GroupSequence(sum.MaxGroupSequence),
 		}
 
+		rss.mu.Lock()
 		rss.config = config
+		rss.mu.Unlock()
 
 		select {
 		case rss.updatedCh <- struct{}{}:
@@ -108,7 +115,7 @@ func (rss *receiveSubscribeStream) listenUpdates() {
 		}
 
 		if logger := rss.trackCtx.Logger(); logger != nil {
-			logger.Debug("")
+			logger.Debug("updated subscribe configuration")
 		}
 	}
 }

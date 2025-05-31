@@ -7,114 +7,159 @@ import (
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/moqtrace"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-func newSessionStream(sessCtx *sessionContext, stream quic.Stream) *sessionStream {
+func newSessionStream(sessCtx *sessionContext, stream quic.Stream, tracer *moqtrace.StreamTracer) *sessionStream {
 	sess := &sessionStream{
-		sessCtx: sessCtx,
-		stream:  stream,
+		updatedCh: make(chan struct{}, 1),
+		stream:    stream,
+		tracer:    tracer,
 	}
 
-	// Start listening for updates in a separate goroutine
-	go sess.listenUpdates()
+	sess.listenOnce.Do(func() {
+		sessCtx.wg.Add(1)
+		go func() {
+			defer sessCtx.wg.Done()
+			sess.listenUpdates(sessCtx)
+		}()
+	})
+
+	go func() {
+		<-sessCtx.Done()
+		if sessCtx.Err() != nil {
+			reason := context.Cause(sessCtx)
+			sess.closeWithError(reason)
+			return
+		}
+
+		sess.close()
+	}()
 
 	return sess
 }
 
-// var _ SessionStream = (*sessionStream)(nil)
-
 type sessionStream struct {
-	sessCtx *sessionContext
+	updatedCh chan struct{}
+
+	localBitrate  uint64 // The bitrate set by the local
+	remoteBitrate uint64 // The bitrate set by the remote
 
 	stream quic.Stream
 	mu     sync.Mutex
+
+	listenOnce sync.Once
+
+	closed   bool
+	closeErr error
+
+	tracer *moqtrace.StreamTracer // Tracer for the stream
 }
 
-func (ss *sessionStream) UpdateSession(bitrate uint64) error {
-	_, err := message.SessionUpdateMessage{
+func (ss *sessionStream) updateSession(bitrate uint64) error {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+
+	sum := message.SessionUpdateMessage{
 		Bitrate: bitrate,
-	}.Encode(ss.stream)
+	}
+	_, err := sum.Encode(ss.stream)
 	if err != nil {
 		slog.Error("failed to send a SESSION_UPDATE message", "error", err)
 		return err
 	}
+	ss.tracer.SessionUpdateMessageSent(sum)
 
-	slog.Debug("sent a SESSION_UPDATE message")
+	ss.localBitrate = bitrate
 
 	return nil
 }
 
-func (ss *sessionStream) Close() error {
-	if ss.closedErr() != nil {
-		return ss.closedErr()
+func (ss *sessionStream) SessionUpdated() <-chan struct{} {
+	return ss.updatedCh
+}
+
+func (ss *sessionStream) close() error {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+
+	if ss.closed {
+		return ss.closeErr
 	}
 
-	ss.sessCtx.cancel(nil)
+	ss.closed = true
 
 	return ss.stream.Close()
 }
 
-func (ss *sessionStream) CloseWithError(err error) error {
+func (ss *sessionStream) closeWithError(reason error) error {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
 
-	if ss.closedErr() != nil {
-		return ss.closedErr()
+	if reason == nil {
+		reason = ErrInternalError
 	}
 
-	ss.sessCtx.cancel(err)
-
-	if err == nil {
-		err = ErrInternalError
+	if ss.closed {
+		if ss.closeErr != nil {
+			return ss.closeErr
+		}
+		return nil
 	}
 
-	var annerr TerminateError
-	if !errors.As(err, &annerr) {
-		annerr = ErrInternalError
+	ss.closed = true
+
+	var trmerr TerminateError
+	if !errors.As(reason, &trmerr) {
+		trmerr = ErrInternalError.WithReason(reason.Error())
 	}
 
-	code := quic.StreamErrorCode(annerr.TerminateErrorCode())
+	code := quic.StreamErrorCode(trmerr.TerminateErrorCode())
 
 	ss.stream.CancelRead(code)
 	ss.stream.CancelWrite(code)
 
-	slog.Debug("closed a session stream with an error",
-		slog.Any("stream_id", ss.stream.StreamID()),
-		slog.String("reason", err.Error()),
-	)
+	ss.tracer.ReceiveStreamCancelled(code, trmerr.Error())
+	ss.tracer.SendStreamCancelled(code, trmerr.Error())
 
 	return nil
 }
 
-func (ss *sessionStream) listenUpdates() {
+func (ss *sessionStream) listenUpdates(sessCtx *sessionContext) {
 	var sum message.SessionUpdateMessage
+	var err error
+
+	logger := sessCtx.Logger()
+
 	for {
-		_, err := sum.Decode(ss.stream)
-		if err != nil {
-			slog.Error("failed to decode session update message", "error", err)
+		if ss.closed {
 			return
 		}
 
-		slog.Debug("received a session update message",
-			"stream_id", ss.stream.StreamID(),
-			"bitrate", sum.Bitrate,
-		)
+		_, err = sum.Decode(ss.stream)
+		if err != nil {
+			if logger != nil {
+				logger.Error("failed to decode session update message",
+					"error", err,
+				)
+			}
 
-		// TODO: Handle the session update message
-	}
-}
+			sessCtx.cancel(err)
 
-func (ss *sessionStream) closedErr() error {
-	if ss.sessCtx.Err() != nil {
-		reason := context.Cause(ss.sessCtx)
-		if reason != nil {
-			return reason
+			return
 		}
-		return ErrClosedSession
+		ss.tracer.SessionUpdateMessageReceived(sum)
+
+		// Update the session bitrate
+		ss.mu.Lock()
+		ss.remoteBitrate = sum.Bitrate
+		ss.mu.Unlock()
+
+		// Notify that the session has been updated
+		select {
+		case ss.updatedCh <- struct{}{}:
+		default:
+		}
 	}
-
-	return nil
 }
-
-//

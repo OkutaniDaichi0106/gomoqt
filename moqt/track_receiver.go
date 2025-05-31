@@ -1,6 +1,9 @@
 package moqt
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 func newTrackReceiver(ctx *trackContext, queue *incomingGroupStreamQueue) *trackReceiver {
 	return &trackReceiver{
@@ -22,12 +25,22 @@ func (r *trackReceiver) AcceptGroup(ctx context.Context) (GroupReader, error) {
 }
 
 func (r *trackReceiver) Close() error {
-	defer r.trackCtx.cancel(ErrClosedTrack)
+	r.trackCtx.cancel(ErrClosedTrack)
 	return nil
 }
 
-func (r *trackReceiver) CloseWithError(err error) error {
-	defer r.trackCtx.cancel(ErrClosedTrack)
+func (r *trackReceiver) CloseWithError(reason error) error {
+	if reason == nil {
+		reason = ErrInternalError
+	}
+
+	r.trackCtx.cancel(reason)
+
+	var grperr GroupError
+	if !errors.As(reason, &grperr) {
+		grperr = ErrInternalError.WithReason(reason.Error())
+	}
+	r.groupQueue.clear(grperr)
 
 	return nil
 

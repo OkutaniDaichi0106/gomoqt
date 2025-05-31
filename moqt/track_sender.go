@@ -24,11 +24,11 @@ type trackSender struct {
 }
 
 func (s *trackSender) OpenGroup(seq GroupSequence) (GroupWriter, error) {
-	if s.trackCtx.Err() != nil {
+	if err := s.trackCtx.Err(); err != nil {
 		if reason := context.Cause(s.trackCtx); reason != nil {
 			return nil, reason
 		}
-		return nil, ErrClosedGroup
+		return nil, err
 	}
 
 	grpCtx := newGroupContext(s.trackCtx, seq)
@@ -50,14 +50,14 @@ func (s *trackSender) OpenGroup(seq GroupSequence) (GroupWriter, error) {
 }
 
 func (s *trackSender) Close() error {
-	if s.trackCtx.Err() != nil {
+	if err := s.trackCtx.Err(); err != nil {
 		if reason := context.Cause(s.trackCtx); reason != nil {
 			return reason
 		}
-		return ErrClosedGroup
+		return err
 	}
 
-	s.trackCtx.cancel(ErrClosedGroup)
+	s.trackCtx.cancel(ErrClosedTrack)
 
 	s.groupQueue.clear(nil)
 
@@ -65,11 +65,11 @@ func (s *trackSender) Close() error {
 }
 
 func (s *trackSender) CloseWithError(reason error) error {
-	if s.trackCtx.Err() != nil {
+	if err := s.trackCtx.Err(); err != nil {
 		if reason := context.Cause(s.trackCtx); reason != nil {
 			return reason
 		}
-		return ErrClosedGroup
+		return err
 	}
 
 	s.trackCtx.cancel(reason)

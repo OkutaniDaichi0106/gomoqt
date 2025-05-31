@@ -48,14 +48,14 @@ func TestAnnouncement_String(t *testing.T) {
 
 	announcement := NewAnnouncement(ctx, path)
 
-	expected := "Announcement: { AnnounceStatus: ACTIVE, BroadcastPath: test/path }"
+	expected := "{ AnnounceStatus: ACTIVE, BroadcastPath: test/path }"
 	if got := announcement.String(); got != expected {
 		t.Errorf("String() = %v, want %v", got, expected)
 	}
 
 	// Test with ended announcement
 	announcement.End()
-	expected = "Announcement: { AnnounceStatus: ENDED, BroadcastPath: test/path }"
+	expected = "{ AnnounceStatus: ENDED, BroadcastPath: test/path }"
 	if got := announcement.String(); got != expected {
 		t.Errorf("String() = %v, want %v", got, expected)
 	}

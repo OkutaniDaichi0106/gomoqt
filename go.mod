@@ -17,6 +17,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.23.4 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/quic-go/qpack v0.5.1 // indirect
+	github.com/stretchr/objx v0.5.2 // indirect
 	go.uber.org/automaxprocs v1.6.0 // indirect
 	go.uber.org/mock v0.5.2 // indirect
 	golang.org/x/crypto v0.38.0 // indirect

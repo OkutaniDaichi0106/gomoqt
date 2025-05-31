@@ -21,7 +21,7 @@ const (
 )
 
 func (gs GroupSequence) String() string {
-	return fmt.Sprintf("GroupSequence: %d", gs)
+	return fmt.Sprintf("%d", gs)
 }
 
 func (gs GroupSequence) Next() GroupSequence {

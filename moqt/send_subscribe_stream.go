@@ -7,20 +7,22 @@ import (
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/moqtrace"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
 type SendSubscribeStream interface {
 	SubscribeID() SubscribeID
-	SubuscribeConfig() *SubscribeConfig
+	SubscribeConfig() *SubscribeConfig
 	UpdateSubscribe(*SubscribeConfig) error
 }
 
-func newSendSubscribeStream(trackCtx *trackContext, config *SubscribeConfig, stream quic.Stream) *sendSubscribeStream {
+func newSendSubscribeStream(trackCtx *trackContext, stream quic.Stream, config *SubscribeConfig, streamTracer *moqtrace.StreamTracer) *sendSubscribeStream {
 	substr := &sendSubscribeStream{
 		trackCtx: trackCtx,
 		config:   config,
 		stream:   stream,
+		tracer:   streamTracer,
 	}
 
 	go func() {
@@ -45,13 +47,15 @@ type sendSubscribeStream struct {
 
 	stream quic.Stream
 	mu     sync.Mutex
+
+	tracer *moqtrace.StreamTracer
 }
 
 func (sss *sendSubscribeStream) SubscribeID() SubscribeID {
 	return sss.trackCtx.id
 }
 
-func (sss *sendSubscribeStream) SubuscribeConfig() *SubscribeConfig {
+func (sss *sendSubscribeStream) SubscribeConfig() *SubscribeConfig {
 	return sss.config
 }
 

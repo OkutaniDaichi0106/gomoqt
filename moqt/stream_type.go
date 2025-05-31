@@ -2,7 +2,6 @@ package moqt
 
 import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
 const (
@@ -18,14 +17,3 @@ const (
 	 */
 	stream_type_group message.StreamType = 0x0
 )
-
-func openStream(conn quic.Connection, st message.StreamType) (quic.Stream, error) {
-	stream, err := conn.OpenStream()
-	if err != nil {
-		return nil, err
-	}
-
-	stream.Write([]byte{byte(st)})
-
-	return stream, nil
-}

@@ -13,5 +13,5 @@ type SetupResponse struct {
 }
 
 func (sr SetupResponse) String() string {
-	return fmt.Sprintf("SetupResponse: { SelectedVersion: %d, Parameters: %s }", sr.selectedVersion, sr.Parameters.String())
+	return fmt.Sprintf("{ selected_version: %d, parameters: %s }", sr.selectedVersion, sr.Parameters.String())
 }

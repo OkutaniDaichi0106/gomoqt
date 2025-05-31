@@ -27,6 +27,6 @@ func (config *SubscribeConfig) IsInRange(seq GroupSequence) bool {
 }
 
 func (sc SubscribeConfig) String() string {
-	return fmt.Sprintf("SubscribeConfig: { TrackPriority: %d, MinGroupSequence: %d, MaxGroupSequence: %d }",
+	return fmt.Sprintf("{ track_priority: %d, min_group_sequence: %d, max_group_sequence: %d }",
 		sc.TrackPriority, sc.MinGroupSequence, sc.MaxGroupSequence)
 }

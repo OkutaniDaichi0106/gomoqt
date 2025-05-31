@@ -9,14 +9,13 @@ import (
 type Config struct {
 	ClientSetupExtensions func() *Parameters
 
-	ServerSetupExtensions func(req *Parameters) (rsp *Parameters, err error)
+	ServerSetupExtensions func(clientParams *Parameters) (serverParams *Parameters, err error)
 
-	// Configurations
 	// MaxSubscribeID SubscribeID // TODO:
 
 	// NewSessionURI string // TODO:
 
-	Tracer func() moqtrace.SessionTracer
+	Tracer func() *moqtrace.SessionTracer
 
 	// CheckRoot func(r SetupRequest) bool // TODO:
 

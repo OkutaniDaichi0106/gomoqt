@@ -66,9 +66,16 @@ func (q *groupSequenceHeap) Swap(i, j int) {
 
 func (q *groupSequenceHeap) Pop() any {
 	old := q.queue
-	n := len(old) - 1
-	gb := old[n]
-	q.queue = old[:n]
+	n := len(old)
+	if n == 0 {
+		// Return zero value when popping from empty heap
+		return struct {
+			seq   GroupSequence
+			index int
+		}{}
+	}
+	gb := old[n-1]
+	q.queue = old[:n-1]
 	return gb
 }
 

@@ -54,24 +54,6 @@ var (
 		reason: "moqt: timeout",
 	}
 
-	// ErrPriorityMismatch = defaultSubscribeError{
-	// 	code:   subscribe_priority_mismatch_error,
-	// 	reason: "update failed",
-	// }
-
-	// ErrGroupOrderMismatch = defaultSubscribeError{
-	// 	code:   subscribe_order_mismatch_error,
-	// 	reason: "group order mismatch",
-	// }
-
-	// TODO:
-	// ErrSubscriptionLimitExceeded
-
-	// ErrSubscribeExpired = defaultSubscribeDoneError{
-	// 	code:   subscribe_done_expired,
-	// 	reason: "expired",
-	// }
-
 	NoErrTerminate = defaultTerminateError{
 		code:   terminate_no_error,
 		reason: "moqt: no error",

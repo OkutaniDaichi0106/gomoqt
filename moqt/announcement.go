@@ -32,16 +32,16 @@ type Announcement struct {
 
 func (a *Announcement) String() string {
 	var sb strings.Builder
-	sb.WriteString("Announcement: {")
+	sb.WriteString("{")
 	sb.WriteString(" ")
-	sb.WriteString("AnnounceStatus: ")
+	sb.WriteString("announce_status: ")
 	if a.IsActive() {
-		sb.WriteString("ACTIVE")
+		sb.WriteString("active")
 	} else {
-		sb.WriteString("ENDED")
+		sb.WriteString("ended")
 	}
 	sb.WriteString(", ")
-	sb.WriteString("BroadcastPath: ")
+	sb.WriteString("broadcast_path: ")
 	sb.WriteString(a.path.String())
 	sb.WriteString(" }")
 	return sb.String()

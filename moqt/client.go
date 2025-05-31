@@ -12,6 +12,7 @@ import (
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/moqtrace"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/webtransport"
 )
@@ -53,6 +54,7 @@ func (c *Client) init() {
 	c.initOnce.Do(func() {
 		c.activeSess = make(map[*Session]struct{})
 		c.doneChan = make(chan struct{}, 1)
+
 		if c.Logger != nil {
 			c.Logger.Debug("client initialized")
 		}
@@ -247,30 +249,59 @@ func (c *Client) DialQUIC(ctx context.Context, uri *url.URL, mux *TrackMux) (*Se
 }
 
 func (c *Client) openSession(conn quic.Connection, extensions func() *Parameters, mux *TrackMux) (*Session, error) {
+	//
 	logger := c.Logger
+
+	//
+	var sessTracer *moqtrace.SessionTracer
+	if c.Config != nil && c.Config.Tracer != nil {
+		sessTracer = c.Config.Tracer()
+	} else {
+		sessTracer = moqtrace.DefaultSessionTracer()
+	}
+
 	// Close the session stream channel
 
-	stream, err := openStream(conn, stream_type_session)
+	stream, err := conn.OpenStream()
+	if err != nil {
+		return nil, err
+	}
+
+	var streamTracer *moqtrace.StreamTracer
+	if sessTracer.QUICStreamOpened != nil {
+		streamTracer = sessTracer.QUICStreamOpened(stream.StreamID())
+		moqtrace.InitStreamTracer(streamTracer)
+	} else {
+		streamTracer = moqtrace.DefaultQUICStreamOpened(stream.StreamID())
+	}
+
+	stm := message.StreamTypeMessage{
+		StreamType: stream_type_session,
+	}
+	_, err = stm.Encode(stream)
 	if err != nil {
 		if logger != nil {
-			logger.Error("failed to open a session stream", "error", err)
+			logger.Error("failed to send a STREAM_TYPE message", "error", err)
 		}
 		return nil, err
 	}
+	streamTracer.StreamTypeMessageSent(stm)
 
 	clientParams := extensions()
 
 	// Send a SESSION_CLIENT message
-	_, err = message.SessionClientMessage{
+	scm := message.SessionClientMessage{
 		SupportedVersions: internal.DefaultClientVersions,
 		Parameters:        clientParams.paramMap,
-	}.Encode(stream)
+	}
+	_, err = scm.Encode(stream)
 	if err != nil {
 		if logger != nil {
 			logger.Error("failed to send a SESSION_CLIENT message", "error", err)
 		}
 		return nil, err
 	}
+	streamTracer.SessionClientMessageSent(scm)
 
 	// Receive a set-up response
 	var ssm message.SessionServerMessage
@@ -281,6 +312,7 @@ func (c *Client) openSession(conn quic.Connection, extensions func() *Parameters
 		}
 		return nil, err
 	}
+	streamTracer.SessionServerMessageReceived(ssm)
 
 	version := ssm.SelectedVersion
 	serverParams := &Parameters{ssm.Parameters}
@@ -292,12 +324,13 @@ func (c *Client) openSession(conn quic.Connection, extensions func() *Parameters
 		return nil, err
 	}
 
-	sessCtx := newSessionContext(conn.Context(), version, path, clientParams, serverParams, logger, c.Config.Tracer())
+	sessCtx := newSessionContext(conn.Context(), version, path, clientParams, serverParams, logger, sessTracer)
 
 	// Set the selected version and parameters
 	sessstr := newSessionStream(
 		sessCtx,
 		stream,
+		streamTracer,
 	)
 
 	if logger != nil {

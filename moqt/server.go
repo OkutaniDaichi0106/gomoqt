@@ -13,6 +13,7 @@ import (
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/moqtrace"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/webtransport"
 	"github.com/quic-go/quic-go/http3"
@@ -57,7 +58,7 @@ type Server struct {
 	WebtransportServer webtransport.Server
 
 	mu            sync.RWMutex
-	listeners     map[*quic.EarlyListener]struct{}
+	listeners     map[quic.EarlyListener]struct{}
 	listenerGroup sync.WaitGroup
 	//
 	activeSess map[*Session]struct{}
@@ -77,7 +78,7 @@ type Server struct {
 
 func (s *Server) init() {
 	s.initOnce.Do(func() {
-		s.listeners = make(map[*quic.EarlyListener]struct{})
+		s.listeners = make(map[quic.EarlyListener]struct{})
 		s.doneChan = make(chan struct{})
 		s.activeSess = make(map[*Session]struct{})
 		s.nativeQUICCh = make(chan quic.Connection, 1<<4)
@@ -102,16 +103,18 @@ func (s *Server) ServeQUICListener(ln quic.EarlyListener) error {
 
 	s.init()
 
-	s.addListener(&ln)
-	defer s.removeListener(&ln)
+	s.addListener(ln)
+	defer s.removeListener(ln)
+
+	logger := s.Logger
+	if logger != nil {
+		logger.Debug("listening for QUIC connections")
+	}
+
 	// Create context for listener's Accept operation
 	// This context will be canceled when the server is shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	if s.Logger != nil {
-		s.Logger.Debug("listening for QUIC connections")
-	}
 
 	for {
 		if s.shuttingDown() {
@@ -121,26 +124,26 @@ func (s *Server) ServeQUICListener(ln quic.EarlyListener) error {
 		// Listen for new QUIC connections
 		conn, err := ln.Accept(ctx)
 		if err != nil {
-			if s.Logger != nil {
-				s.Logger.Error("failed to accept QUIC connection",
+			if logger != nil {
+				logger.Error("failed to accept QUIC connection",
 					"error", err.Error(),
 				)
 			}
 			return err
 		}
 
-		if s.Logger != nil {
-			s.Logger.Debug("accepted a new QUIC connection",
+		if logger != nil {
+			logger = logger.With(
 				"remote_address", conn.RemoteAddr(),
 			)
+			logger.Debug("accepted a new QUIC connection")
 		}
 
 		// Handle connection in a goroutine
 		go func(conn quic.Connection) {
 			if err := s.ServeQUICConn(conn); err != nil {
-				if s.Logger != nil {
-					s.Logger.Debug("handling connection failed",
-						"remote_address", conn.RemoteAddr(),
+				if logger != nil {
+					logger.Debug("failed to handle connection",
 						"error", err,
 					)
 				}
@@ -156,14 +159,21 @@ func (s *Server) ServeQUICConn(conn quic.Connection) error {
 
 	s.init()
 
+	logger := s.Logger
+	if logger != nil {
+		logger = logger.With(
+			"remote_address", conn.RemoteAddr(),
+		)
+	}
+
 	switch protocol := conn.ConnectionState().TLS.NegotiatedProtocol; protocol {
 	case http3.NextProtoH3:
 		if s.WebtransportServer == nil {
 			s.WebtransportServer = webtransport.NewDefaultServer(s.Addr)
 		}
 
-		if s.Logger != nil {
-			s.Logger.Debug("handling webtransport session",
+		if logger != nil {
+			logger.Debug("handling webtransport session",
 				"remote_address", conn.RemoteAddr(),
 			)
 		}
@@ -177,8 +187,8 @@ func (s *Server) ServeQUICConn(conn quic.Connection) error {
 		}
 		return nil
 	default:
-		if s.Logger != nil {
-			s.Logger.Error("unsupported negotiated protocol",
+		if logger != nil {
+			logger.Error("unsupported negotiated protocol",
 				"remote_address", conn.RemoteAddr(),
 				"protocol", protocol,
 			)
@@ -262,13 +272,26 @@ func (s *Server) AcceptWebTransport(w http.ResponseWriter, r *http.Request, mux 
 
 	s.init()
 
+	logger := s.Logger
+	if logger != nil {
+		logger = logger.With(
+			"remote_address", r.RemoteAddr,
+		)
+		logger.Debug("accepting webtransport session")
+	}
+
 	if s.WebtransportServer == nil {
 		s.WebtransportServer = webtransport.NewDefaultServer(s.Addr)
+		if logger != nil {
+			logger.Debug("using default WebTransport server")
+		}
 	}
 	conn, err := s.WebtransportServer.Upgrade(w, r)
 	if err != nil {
-		if s.Logger != nil {
-			s.Logger.Error("WebTransport upgrade failed", "remote_address", r.RemoteAddr, "error", err.Error())
+		if logger != nil {
+			logger.Error("failed to upgrade http to webtransport",
+				"error", err.Error(),
+			)
 		}
 		w.WriteHeader(http.StatusInternalServerError)
 		return nil, err
@@ -276,31 +299,33 @@ func (s *Server) AcceptWebTransport(w http.ResponseWriter, r *http.Request, mux 
 
 	extensions := func(clientParams *Parameters) (*Parameters, error) {
 		if s.Config == nil || s.Config.ServerSetupExtensions == nil {
-			if s.Logger != nil {
-				s.Logger.Debug("no setup extensions provided, using default parameters")
+			if logger != nil {
+				logger.Debug("no setup extensions provided, using default parameters")
 			}
 			return NewParameters(), nil
 		}
 
 		params, err := s.Config.ServerSetupExtensions(clientParams)
 		if err != nil {
-			if s.Logger != nil {
-				s.Logger.Error("failed to get setup extensions", "remote_address", r.RemoteAddr, "error", err.Error())
+			if logger != nil {
+				logger.Error("failed to get setup extensions",
+					"error", err.Error(),
+				)
 			}
 			return nil, err
 		}
 		if params == nil {
-			if s.Logger != nil {
-				s.Logger.Debug("server setup extensions returned nil, using default parameters")
+			if logger != nil {
+				logger.Debug("server setup extensions returned nil, using default parameters")
 			}
 			return NewParameters(), nil
 		}
 
-		return params, nil
+		return params.Clone(), nil
 	}
 
-	if s.Logger != nil {
-		s.Logger.Debug("WebTransport session established", "remote_address", r.RemoteAddr)
+	if logger != nil {
+		logger.Debug("WebTransport session established", "remote_address", r.RemoteAddr)
 	}
 
 	acceptCtx, cancelAccept := context.WithTimeout(r.Context(), s.acceptTimeout())
@@ -310,6 +335,14 @@ func (s *Server) AcceptWebTransport(w http.ResponseWriter, r *http.Request, mux 
 
 func (s *Server) acceptSession(acceptCtx context.Context, path string, conn quic.Connection, extensions func(*Parameters) (*Parameters, error), mux *TrackMux) (*Session, error) {
 	logger := s.Logger
+	var sessTracer *moqtrace.SessionTracer
+	if s.Config != nil && s.Config.Tracer != nil {
+		sessTracer = s.Config.Tracer()
+		// This should not be nil, and if it is, panic occurs
+		moqtrace.InitSessionTracer(sessTracer)
+	} else {
+		sessTracer = moqtrace.DefaultSessionTracer()
+	}
 
 	stream, err := conn.AcceptStream(acceptCtx)
 	if err != nil {
@@ -320,10 +353,7 @@ func (s *Server) acceptSession(acceptCtx context.Context, path string, conn quic
 		}
 		return nil, fmt.Errorf("failed to accept a session stream: %w", err)
 	}
-
-	if logger != nil {
-		logger.With("stream_id", stream.StreamID())
-	}
+	streamTracer := sessTracer.QUICStreamAccepted(stream.StreamID())
 
 	var stm message.StreamTypeMessage
 	_, err = stm.Decode(stream)
@@ -334,6 +364,8 @@ func (s *Server) acceptSession(acceptCtx context.Context, path string, conn quic
 			)
 		}
 	}
+	streamTracer.StreamTypeMessageReceived(stm)
+
 	var scm message.SessionClientMessage
 	_, err = scm.Decode(stream)
 	if err != nil {
@@ -347,6 +379,7 @@ func (s *Server) acceptSession(acceptCtx context.Context, path string, conn quic
 		stream.CancelWrite(ErrInternalError.StreamErrorCode())
 		return nil, fmt.Errorf("failed to get a SESSION_CLIENT message: %w", err)
 	}
+	streamTracer.SessionClientMessageReceived(scm)
 
 	clientParams := &Parameters{scm.Parameters}
 	serverParams, err := extensions(clientParams.Clone())
@@ -360,20 +393,22 @@ func (s *Server) acceptSession(acceptCtx context.Context, path string, conn quic
 	//
 
 	// Send a SESSION_SERVER message
-	_, err = message.SessionServerMessage{
+	ssm := message.SessionServerMessage{
 		SelectedVersion: version,
 		Parameters:      serverParams.paramMap,
-	}.Encode(stream)
+	}
+	_, err = ssm.Encode(stream)
 	if err != nil {
 		if logger != nil {
 			logger.Error("failed to send a SESSION_SERVER message", "error", err)
 		}
 		return nil, err
 	}
+	streamTracer.SessionServerMessageSent(ssm)
 
-	sessCtx := newSessionContext(conn.Context(), version, path, clientParams, serverParams, logger, s.Config.Tracer())
+	sessCtx := newSessionContext(conn.Context(), version, path, clientParams, serverParams, logger, sessTracer)
 
-	sessstr := newSessionStream(sessCtx, stream)
+	sessstr := newSessionStream(sessCtx, stream, streamTracer)
 
 	sess := newSession(sessCtx, sessstr, conn, mux)
 
@@ -460,7 +495,7 @@ func (s *Server) Close() error {
 			s.Logger.Info("closing QUIC listeners", "address", s.Addr)
 		}
 		for ln := range s.listeners {
-			(*ln).Close()
+			ln.Close()
 		}
 	}
 
@@ -484,7 +519,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	defer s.mu.Unlock()
 
 	for ln := range s.listeners {
-		(*ln).Close()
+		ln.Close()
 	}
 	s.listeners = nil
 
@@ -515,18 +550,18 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-func (s *Server) addListener(ln *quic.EarlyListener) {
+func (s *Server) addListener(ln quic.EarlyListener) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if s.listeners == nil {
-		s.listeners = make(map[*quic.EarlyListener]struct{})
+		s.listeners = make(map[quic.EarlyListener]struct{})
 	}
 	s.listeners[ln] = struct{}{}
 	s.listenerGroup.Add(1)
 }
 
-func (s *Server) removeListener(ln *quic.EarlyListener) {
+func (s *Server) removeListener(ln quic.EarlyListener) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

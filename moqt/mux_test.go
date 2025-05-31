@@ -49,7 +49,7 @@ func TestMux_ServeTrack(t *testing.T) {
 		BroadcastPath:   BroadcastPath("/test"),
 		TrackName:       "track1",
 		TrackWriter:     &MockTrackWriter{},
-		SubscribeStream: NewMockReceiveSubscribeStream(SubscribeID(1)),
+		SubscribeStream: &MockReceiveSubscribeStream{},
 	}
 
 	mux.ServeTrack(publisher)
@@ -76,7 +76,7 @@ func TestMux_ServeTrack_NotFound(t *testing.T) {
 		BroadcastPath:   BroadcastPath("/nonexistent"),
 		TrackName:       "track1",
 		TrackWriter:     mockWriter,
-		SubscribeStream: NewMockReceiveSubscribeStream(SubscribeID(1)),
+		SubscribeStream: &MockReceiveSubscribeStream{},
 	}
 
 	// Should use NotFoundHandler which closes the track
@@ -137,7 +137,7 @@ func TestMux_ContextCancellation(t *testing.T) {
 		BroadcastPath:   BroadcastPath("/test"),
 		TrackName:       "track1",
 		TrackWriter:     mockWriter,
-		SubscribeStream: NewMockReceiveSubscribeStream(SubscribeID(1)),
+		SubscribeStream: &MockReceiveSubscribeStream{},
 	}
 
 	mux.ServeTrack(publisher)
@@ -180,7 +180,7 @@ func TestMux_ConcurrentAccess(t *testing.T) {
 				BroadcastPath:   BroadcastPath(fmt.Sprintf("/test%d", i)),
 				TrackName:       "track1",
 				TrackWriter:     mockWriter,
-				SubscribeStream: NewMockReceiveSubscribeStream(SubscribeID(1)),
+				SubscribeStream: &MockReceiveSubscribeStream{},
 			}
 			mux.ServeTrack(publisher)
 		}(i)
@@ -204,7 +204,7 @@ func TestDefaultMux(t *testing.T) {
 		BroadcastPath:   BroadcastPath("/default"),
 		TrackName:       "track1",
 		TrackWriter:     mockWriter,
-		SubscribeStream: NewMockReceiveSubscribeStream(SubscribeID(1)),
+		SubscribeStream: &MockReceiveSubscribeStream{},
 	}
 
 	DefaultMux.ServeTrack(publisher)
@@ -234,7 +234,7 @@ func TestMux_HandleFunc(t *testing.T) {
 		BroadcastPath:   BroadcastPath("/func"),
 		TrackName:       "track1",
 		TrackWriter:     mockWriter,
-		SubscribeStream: NewMockReceiveSubscribeStream(SubscribeID(1)),
+		SubscribeStream: &MockReceiveSubscribeStream{},
 	}
 
 	mux.ServeTrack(publisher)
@@ -282,7 +282,7 @@ func TestMux_NestedPaths(t *testing.T) {
 		BroadcastPath:   BroadcastPath("/deep/nested/path"),
 		TrackName:       "track1",
 		TrackWriter:     mockWriter1,
-		SubscribeStream: NewMockReceiveSubscribeStream(SubscribeID(1)),
+		SubscribeStream: &MockReceiveSubscribeStream{},
 	}
 	mux.ServeTrack(publisher1)
 
@@ -306,7 +306,7 @@ func TestMux_NestedPaths(t *testing.T) {
 		BroadcastPath:   BroadcastPath("/deep"),
 		TrackName:       "track1",
 		TrackWriter:     mockWriter2,
-		SubscribeStream: NewMockReceiveSubscribeStream(SubscribeID(1)),
+		SubscribeStream: &MockReceiveSubscribeStream{},
 	}
 	mux.ServeTrack(publisher2)
 
@@ -341,7 +341,7 @@ func TestMux_ContextTimeout(t *testing.T) {
 		BroadcastPath:   BroadcastPath("/timeout"),
 		TrackName:       "track1",
 		TrackWriter:     mockWriter,
-		SubscribeStream: NewMockReceiveSubscribeStream(SubscribeID(1)),
+		SubscribeStream: &MockReceiveSubscribeStream{},
 	}
 
 	mux.ServeTrack(publisher)
@@ -391,7 +391,7 @@ func TestMux_MultipleCancellations(t *testing.T) {
 			BroadcastPath:   BroadcastPath(fmt.Sprintf("/multi%d", i)),
 			TrackName:       "track1",
 			TrackWriter:     mockWriter,
-			SubscribeStream: NewMockReceiveSubscribeStream(SubscribeID(1)),
+			SubscribeStream: &MockReceiveSubscribeStream{},
 		}
 
 		mux.ServeTrack(publisher)

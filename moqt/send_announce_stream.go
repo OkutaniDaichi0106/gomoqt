@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/moqtrace"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
@@ -16,13 +17,14 @@ type AnnouncementWriter interface {
 
 // func (w AnnouncementWriter) SendAnnouncements(announcements []*Announcement) error {}
 
-func newSendAnnounceStream(stream quic.Stream, prefix string) *sendAnnounceStream {
+func newSendAnnounceStream(stream quic.Stream, prefix string, streamTracer *moqtrace.StreamTracer) *sendAnnounceStream {
 	sas := &sendAnnounceStream{
 		prefix:   prefix,
 		stream:   stream,
 		actives:  make(map[string]*Announcement),
 		pendings: make(map[string]message.AnnounceMessage),
 		sendCh:   make(chan struct{}, 1),
+		tracer:   streamTracer,
 	}
 
 	go func() {
@@ -55,6 +57,8 @@ type sendAnnounceStream struct {
 	closeErr error
 
 	sendCh chan struct{}
+
+	tracer *moqtrace.StreamTracer
 }
 
 func (sas *sendAnnounceStream) SendAnnouncements(announcements []*Announcement) error {
@@ -162,6 +166,7 @@ func (sas *sendAnnounceStream) send() error {
 		if err != nil {
 			return err
 		}
+		sas.tracer.AnnounceMessageSent(am)
 	}
 
 	_, err := sas.stream.Write(buf.Bytes())

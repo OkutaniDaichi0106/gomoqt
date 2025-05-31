@@ -114,6 +114,8 @@ var (
 
 	ErrServerClosed = errors.New("moqt: server closed")
 	ErrClientClosed = errors.New("moqt: client closed")
+
+	ErrGoAway = errors.New("moqt: go away")
 )
 
 // type Error interface {

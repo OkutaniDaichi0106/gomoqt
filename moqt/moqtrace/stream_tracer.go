@@ -10,14 +10,14 @@ func InitStreamTracer(tracer *StreamTracer) {
 		panic("StreamTracer must not be nil")
 	}
 
-	if tracer.StreamClosed == nil {
-		tracer.StreamClosed = DefaultStreamClosed
+	if tracer.SendStreamFinished == nil {
+		tracer.SendStreamFinished = DefaultStreamFinished
 	}
-	if tracer.SendStreamCancelled == nil {
-		tracer.SendStreamCancelled = DefaultSendStreamCancelled
+	if tracer.SendStreamReset == nil {
+		tracer.SendStreamReset = DefaultStreamReset
 	}
-	if tracer.ReceiveStreamCancelled == nil {
-		tracer.ReceiveStreamCancelled = DefaultReceiveStreamCancelled
+	if tracer.ReceiveStreamStopped == nil {
+		tracer.ReceiveStreamStopped = DefaultStreamStopped
 	}
 
 	if tracer.StreamTypeMessageSent == nil {
@@ -94,8 +94,9 @@ type StreamTracer struct {
 
 type SendStreamTracer struct {
 	// QUIC
-	StreamClosed        func()                             // FIN
-	SendStreamCancelled func(quic.StreamErrorCode, string) // RESET_STREAM
+	SendStreamFinished func()                             // FIN
+	SendStreamReset    func(quic.StreamErrorCode, string) // RESET_STREAM
+	SendStreamStopped  func(quic.StreamErrorCode, string) // STOP_SENDING
 
 	// MOQ
 	// Stream Type
@@ -124,7 +125,9 @@ type SendStreamTracer struct {
 
 type ReceiveStreamTracer struct {
 	// QUIC
-	ReceiveStreamCancelled func(quic.StreamErrorCode, string) // STOP_SENDING
+	ReceiveStreamFinished func()                             // FIN
+	ReceiveStreamStopped  func(quic.StreamErrorCode, string) // STOP_SENDING
+	ReceiveStreamReset    func(quic.StreamErrorCode, string) // RESET_STREAM
 
 	// MOQ
 	// Stream Type
@@ -153,18 +156,18 @@ type ReceiveStreamTracer struct {
 
 // Default functions for StreamTracer function fields
 
-// DefaultStreamClosed is the default implementation for StreamClosed
-var DefaultStreamClosed = func() {
+// DefaultStreamFinished is the default implementation for StreamClosed
+var DefaultStreamFinished = func() {
 	// Default implementation: no-op
 }
 
-// DefaultSendStreamCancelled is the default implementation for SendStreamCancelled
-var DefaultSendStreamCancelled = func(code quic.StreamErrorCode, reason string) {
+// DefaultStreamReset is the default implementation for SendStreamCancelled
+var DefaultStreamReset = func(code quic.StreamErrorCode, reason string) {
 	// Default implementation: no-op
 }
 
-// DefaultReceiveStreamCancelled is the default implementation for ReceiveStreamCancelled
-var DefaultReceiveStreamCancelled = func(code quic.StreamErrorCode, reason string) {
+// DefaultStreamStopped is the default implementation for ReceiveStreamCancelled
+var DefaultStreamStopped = func(code quic.StreamErrorCode, reason string) {
 	// Default implementation: no-op
 }
 

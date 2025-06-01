@@ -66,8 +66,9 @@ var DefaultQUICStreamOpened = func(streamID quic.StreamID) *StreamTracer {
 	// Return a StreamTracer with default functions
 	return &StreamTracer{
 		SendStreamTracer: SendStreamTracer{
-			StreamClosed:               DefaultStreamClosed,
-			SendStreamCancelled:        DefaultSendStreamCancelled,
+			SendStreamFinished:         DefaultStreamFinished,
+			SendStreamStopped:          DefaultStreamStopped,
+			SendStreamReset:            DefaultStreamReset,
 			StreamTypeMessageSent:      DefaultStreamTypeMessageSent,
 			SessionClientMessageSent:   DefaultSessionClientMessageSent,
 			SessionServerMessageSent:   DefaultSessionServerMessageSent,
@@ -81,7 +82,7 @@ var DefaultQUICStreamOpened = func(streamID quic.StreamID) *StreamTracer {
 			FrameMessageSent:           DefaultFrameMessageSent,
 		},
 		ReceiveStreamTracer: ReceiveStreamTracer{
-			ReceiveStreamCancelled:        DefaultReceiveStreamCancelled,
+			ReceiveStreamStopped:          DefaultStreamStopped,
 			StreamTypeMessageReceived:     DefaultStreamTypeMessageReceived,
 			SessionClientMessageReceived:  DefaultSessionClientMessageReceived,
 			SessionServerMessageReceived:  DefaultSessionServerMessageReceived,
@@ -101,8 +102,9 @@ var DefaultQUICStreamAccepted = func(streamID quic.StreamID) *StreamTracer {
 	// Return a StreamTracer with default functions
 	return &StreamTracer{
 		SendStreamTracer: SendStreamTracer{
-			StreamClosed:               DefaultStreamClosed,
-			SendStreamCancelled:        DefaultSendStreamCancelled,
+			SendStreamFinished:         DefaultStreamFinished,
+			SendStreamStopped:          DefaultStreamStopped,
+			SendStreamReset:            DefaultStreamReset,
 			StreamTypeMessageSent:      DefaultStreamTypeMessageSent,
 			SessionClientMessageSent:   DefaultSessionClientMessageSent,
 			SessionServerMessageSent:   DefaultSessionServerMessageSent,
@@ -116,7 +118,9 @@ var DefaultQUICStreamAccepted = func(streamID quic.StreamID) *StreamTracer {
 			FrameMessageSent:           DefaultFrameMessageSent,
 		},
 		ReceiveStreamTracer: ReceiveStreamTracer{
-			ReceiveStreamCancelled:        DefaultReceiveStreamCancelled,
+			ReceiveStreamFinished:         DefaultStreamFinished,
+			ReceiveStreamStopped:          DefaultStreamStopped,
+			ReceiveStreamReset:            DefaultStreamReset,
 			StreamTypeMessageReceived:     DefaultStreamTypeMessageReceived,
 			SessionClientMessageReceived:  DefaultSessionClientMessageReceived,
 			SessionServerMessageReceived:  DefaultSessionServerMessageReceived,
@@ -134,8 +138,8 @@ var DefaultQUICStreamAccepted = func(streamID quic.StreamID) *StreamTracer {
 var DefaultQUICUniStreamOpened = func(streamID quic.StreamID) *SendStreamTracer {
 	// Return a StreamTracer with default functions
 	return &SendStreamTracer{
-		StreamClosed:               DefaultStreamClosed,
-		SendStreamCancelled:        DefaultSendStreamCancelled,
+		SendStreamFinished:         DefaultStreamFinished,
+		SendStreamReset:            DefaultStreamReset,
 		StreamTypeMessageSent:      DefaultStreamTypeMessageSent,
 		SessionClientMessageSent:   DefaultSessionClientMessageSent,
 		SessionServerMessageSent:   DefaultSessionServerMessageSent,
@@ -153,7 +157,7 @@ var DefaultQUICUniStreamOpened = func(streamID quic.StreamID) *SendStreamTracer 
 var DefaultQUICUniStreamAccepted = func(streamID quic.StreamID) *ReceiveStreamTracer {
 	// Return a StreamTracer with default functions
 	return &ReceiveStreamTracer{
-		ReceiveStreamCancelled:        DefaultReceiveStreamCancelled,
+		ReceiveStreamStopped:          DefaultStreamStopped,
 		StreamTypeMessageReceived:     DefaultStreamTypeMessageReceived,
 		SessionClientMessageReceived:  DefaultSessionClientMessageReceived,
 		SessionServerMessageReceived:  DefaultSessionServerMessageReceived,

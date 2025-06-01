@@ -1,6 +1,6 @@
 package moqtrace
 
-var DefaultSessionTracer = func() *SessionTracer {
+var DefaultTracer = func() *SessionTracer {
 	return &SessionTracer{
 		SessionEstablished: DefaultSessionEstablished,
 		SessionTerminated:  DefaultSessionTerminated,

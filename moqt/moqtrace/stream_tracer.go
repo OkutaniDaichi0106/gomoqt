@@ -88,43 +88,67 @@ func InitStreamTracer(tracer *StreamTracer) {
 }
 
 type StreamTracer struct {
+	SendStreamTracer
+	ReceiveStreamTracer
+}
+
+type SendStreamTracer struct {
 	// QUIC
-	StreamClosed           func()                             // FIN
-	SendStreamCancelled    func(quic.StreamErrorCode, string) // RESET_STREAM
+	StreamClosed        func()                             // FIN
+	SendStreamCancelled func(quic.StreamErrorCode, string) // RESET_STREAM
+
+	// MOQ
+	// Stream Type
+	StreamTypeMessageSent func(message.StreamTypeMessage)
+
+	// Session
+	SessionClientMessageSent func(message.SessionClientMessage)
+	SessionServerMessageSent func(message.SessionServerMessage)
+	SessionUpdateMessageSent func(message.SessionUpdateMessage)
+
+	// Announce
+	AnnouncePleaseMessageSent func(message.AnnouncePleaseMessage)
+	AnnounceMessageSent       func(message.AnnounceMessage)
+
+	// Subscribe
+	SubscribeMessageSent       func(message.SubscribeMessage)
+	SubscribeOkMessageSent     func(message.SubscribeOkMessage)
+	SubscribeUpdateMessageSent func(message.SubscribeUpdateMessage)
+
+	// Group
+	GroupMessageSent func(message.GroupMessage)
+
+	// Frame
+	FrameMessageSent func(frameCount, byteCount uint64)
+}
+
+type ReceiveStreamTracer struct {
+	// QUIC
 	ReceiveStreamCancelled func(quic.StreamErrorCode, string) // STOP_SENDING
 
 	// MOQ
 	// Stream Type
-	StreamTypeMessageSent     func(message.StreamTypeMessage)
 	StreamTypeMessageReceived func(message.StreamTypeMessage)
 
 	// Session
-	SessionClientMessageSent     func(message.SessionClientMessage)
 	SessionClientMessageReceived func(message.SessionClientMessage)
-	SessionServerMessageSent     func(message.SessionServerMessage)
 	SessionServerMessageReceived func(message.SessionServerMessage)
-	SessionUpdateMessageSent     func(message.SessionUpdateMessage)
 	SessionUpdateMessageReceived func(message.SessionUpdateMessage)
 
 	// Announce
-	AnnouncePleaseMessageSent     func(message.AnnouncePleaseMessage)
 	AnnouncePleaseMessageReceived func(message.AnnouncePleaseMessage)
-	AnnounceMessageSent           func(message.AnnounceMessage)
 	AnnounceMessageReceived       func(message.AnnounceMessage)
 
 	// Subscribe
-	SubscribeMessageSent       func(message.SubscribeMessage)
-	SubscribeMessageReceived   func(message.SubscribeMessage)
-	SubscribeOkMessageSent     func(message.SubscribeOkMessage)
-	SubscribeOkMessageReceived func(message.SubscribeOkMessage)
+	SubscribeMessageReceived       func(message.SubscribeMessage)
+	SubscribeOkMessageReceived     func(message.SubscribeOkMessage)
+	SubscribeUpdateMessageReceived func(message.SubscribeUpdateMessage)
 
 	// Group
-	GroupMessageSent     func(message.GroupMessage)
 	GroupMessageReceived func(message.GroupMessage)
 
 	// Frame
-	FrameMessageSent     func(message.FrameMessage)
-	FrameMessageReceived func(message.FrameMessage)
+	FrameMessageReceived func(frameCount, byteCount uint64)
 }
 
 // Default functions for StreamTracer function fields
@@ -224,6 +248,16 @@ var DefaultSubscribeOkMessageReceived = func(msg message.SubscribeOkMessage) {
 	// Default implementation: no-op
 }
 
+// DefaultSubscribeUpdateMessageSent is the default implementation for SubscribeUpdateMessageSent
+var DefaultSubscribeUpdateMessageSent = func(msg message.SubscribeUpdateMessage) {
+	// Default implementation: no-op
+}
+
+// DefaultSubscribeUpdateMessageReceived is the default implementation for SubscribeUpdateMessageReceived
+var DefaultSubscribeUpdateMessageReceived = func(msg message.SubscribeUpdateMessage) {
+	// Default implementation: no-op
+}
+
 // DefaultGroupMessageSent is the default implementation for GroupMessageSent
 var DefaultGroupMessageSent = func(msg message.GroupMessage) {
 	// Default implementation: no-op
@@ -235,11 +269,11 @@ var DefaultGroupMessageReceived = func(msg message.GroupMessage) {
 }
 
 // DefaultFrameMessageSent is the default implementation for FrameMessageSent
-var DefaultFrameMessageSent = func(msg message.FrameMessage) {
+var DefaultFrameMessageSent = func(frameCount, byteCount uint64) {
 	// Default implementation: no-op
 }
 
 // DefaultFrameMessageReceived is the default implementation for FrameMessageReceived
-var DefaultFrameMessageReceived = func(msg message.FrameMessage) {
+var DefaultFrameMessageReceived = func(frameCount, byteCount uint64) {
 	// Default implementation: no-op
 }

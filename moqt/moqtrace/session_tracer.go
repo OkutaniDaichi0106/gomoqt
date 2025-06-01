@@ -27,6 +27,14 @@ func InitSessionTracer(tracer *SessionTracer) {
 	if tracer.QUICStreamAccepted == nil {
 		tracer.QUICStreamAccepted = DefaultQUICStreamAccepted
 	}
+
+	if tracer.QUICUniStreamOpened == nil {
+		tracer.QUICUniStreamOpened = DefaultQUICUniStreamOpened
+	}
+
+	if tracer.QUICUniStreamAccepted == nil {
+		tracer.QUICUniStreamAccepted = DefaultQUICUniStreamAccepted
+	}
 }
 
 type SessionTracer struct {
@@ -36,6 +44,9 @@ type SessionTracer struct {
 	// QUIC
 	QUICStreamOpened   func(quic.StreamID) *StreamTracer
 	QUICStreamAccepted func(quic.StreamID) *StreamTracer
+
+	QUICUniStreamOpened   func(quic.StreamID) *SendStreamTracer
+	QUICUniStreamAccepted func(quic.StreamID) *ReceiveStreamTracer
 }
 
 // Default functions for SessionTracer function fields
@@ -54,29 +65,34 @@ var DefaultSessionTerminated = func(reason error) {
 var DefaultQUICStreamOpened = func(streamID quic.StreamID) *StreamTracer {
 	// Return a StreamTracer with default functions
 	return &StreamTracer{
-		StreamClosed:                  DefaultStreamClosed,
-		SendStreamCancelled:           DefaultSendStreamCancelled,
-		ReceiveStreamCancelled:        DefaultReceiveStreamCancelled,
-		StreamTypeMessageSent:         DefaultStreamTypeMessageSent,
-		StreamTypeMessageReceived:     DefaultStreamTypeMessageReceived,
-		SessionClientMessageSent:      DefaultSessionClientMessageSent,
-		SessionClientMessageReceived:  DefaultSessionClientMessageReceived,
-		SessionServerMessageSent:      DefaultSessionServerMessageSent,
-		SessionServerMessageReceived:  DefaultSessionServerMessageReceived,
-		SessionUpdateMessageSent:      DefaultSessionUpdateMessageSent,
-		SessionUpdateMessageReceived:  DefaultSessionUpdateMessageReceived,
-		AnnouncePleaseMessageSent:     DefaultAnnouncePleaseMessageSent,
-		AnnouncePleaseMessageReceived: DefaultAnnouncePleaseMessageReceived,
-		AnnounceMessageSent:           DefaultAnnounceMessageSent,
-		AnnounceMessageReceived:       DefaultAnnounceMessageReceived,
-		SubscribeMessageSent:          DefaultSubscribeMessageSent,
-		SubscribeMessageReceived:      DefaultSubscribeMessageReceived,
-		SubscribeOkMessageSent:        DefaultSubscribeOkMessageSent,
-		SubscribeOkMessageReceived:    DefaultSubscribeOkMessageReceived,
-		GroupMessageSent:              DefaultGroupMessageSent,
-		GroupMessageReceived:          DefaultGroupMessageReceived,
-		FrameMessageSent:              DefaultFrameMessageSent,
-		FrameMessageReceived:          DefaultFrameMessageReceived,
+		SendStreamTracer: SendStreamTracer{
+			StreamClosed:               DefaultStreamClosed,
+			SendStreamCancelled:        DefaultSendStreamCancelled,
+			StreamTypeMessageSent:      DefaultStreamTypeMessageSent,
+			SessionClientMessageSent:   DefaultSessionClientMessageSent,
+			SessionServerMessageSent:   DefaultSessionServerMessageSent,
+			SessionUpdateMessageSent:   DefaultSessionUpdateMessageSent,
+			AnnouncePleaseMessageSent:  DefaultAnnouncePleaseMessageSent,
+			AnnounceMessageSent:        DefaultAnnounceMessageSent,
+			SubscribeMessageSent:       DefaultSubscribeMessageSent,
+			SubscribeOkMessageSent:     DefaultSubscribeOkMessageSent,
+			SubscribeUpdateMessageSent: DefaultSubscribeUpdateMessageSent,
+			GroupMessageSent:           DefaultGroupMessageSent,
+			FrameMessageSent:           DefaultFrameMessageSent,
+		},
+		ReceiveStreamTracer: ReceiveStreamTracer{
+			ReceiveStreamCancelled:        DefaultReceiveStreamCancelled,
+			StreamTypeMessageReceived:     DefaultStreamTypeMessageReceived,
+			SessionClientMessageReceived:  DefaultSessionClientMessageReceived,
+			SessionServerMessageReceived:  DefaultSessionServerMessageReceived,
+			SessionUpdateMessageReceived:  DefaultSessionUpdateMessageReceived,
+			AnnouncePleaseMessageReceived: DefaultAnnouncePleaseMessageReceived,
+			AnnounceMessageReceived:       DefaultAnnounceMessageReceived,
+			SubscribeMessageReceived:      DefaultSubscribeMessageReceived,
+			SubscribeOkMessageReceived:    DefaultSubscribeOkMessageReceived,
+			GroupMessageReceived:          DefaultGroupMessageReceived,
+			FrameMessageReceived:          DefaultFrameMessageReceived,
+		},
 	}
 }
 
@@ -84,28 +100,69 @@ var DefaultQUICStreamOpened = func(streamID quic.StreamID) *StreamTracer {
 var DefaultQUICStreamAccepted = func(streamID quic.StreamID) *StreamTracer {
 	// Return a StreamTracer with default functions
 	return &StreamTracer{
-		StreamClosed:                  DefaultStreamClosed,
-		SendStreamCancelled:           DefaultSendStreamCancelled,
+		SendStreamTracer: SendStreamTracer{
+			StreamClosed:               DefaultStreamClosed,
+			SendStreamCancelled:        DefaultSendStreamCancelled,
+			StreamTypeMessageSent:      DefaultStreamTypeMessageSent,
+			SessionClientMessageSent:   DefaultSessionClientMessageSent,
+			SessionServerMessageSent:   DefaultSessionServerMessageSent,
+			SessionUpdateMessageSent:   DefaultSessionUpdateMessageSent,
+			AnnouncePleaseMessageSent:  DefaultAnnouncePleaseMessageSent,
+			AnnounceMessageSent:        DefaultAnnounceMessageSent,
+			SubscribeMessageSent:       DefaultSubscribeMessageSent,
+			SubscribeOkMessageSent:     DefaultSubscribeOkMessageSent,
+			SubscribeUpdateMessageSent: DefaultSubscribeUpdateMessageSent,
+			GroupMessageSent:           DefaultGroupMessageSent,
+			FrameMessageSent:           DefaultFrameMessageSent,
+		},
+		ReceiveStreamTracer: ReceiveStreamTracer{
+			ReceiveStreamCancelled:        DefaultReceiveStreamCancelled,
+			StreamTypeMessageReceived:     DefaultStreamTypeMessageReceived,
+			SessionClientMessageReceived:  DefaultSessionClientMessageReceived,
+			SessionServerMessageReceived:  DefaultSessionServerMessageReceived,
+			SessionUpdateMessageReceived:  DefaultSessionUpdateMessageReceived,
+			AnnouncePleaseMessageReceived: DefaultAnnouncePleaseMessageReceived,
+			AnnounceMessageReceived:       DefaultAnnounceMessageReceived,
+			SubscribeMessageReceived:      DefaultSubscribeMessageReceived,
+			SubscribeOkMessageReceived:    DefaultSubscribeOkMessageReceived,
+			GroupMessageReceived:          DefaultGroupMessageReceived,
+			FrameMessageReceived:          DefaultFrameMessageReceived,
+		},
+	}
+}
+
+var DefaultQUICUniStreamOpened = func(streamID quic.StreamID) *SendStreamTracer {
+	// Return a StreamTracer with default functions
+	return &SendStreamTracer{
+		StreamClosed:               DefaultStreamClosed,
+		SendStreamCancelled:        DefaultSendStreamCancelled,
+		StreamTypeMessageSent:      DefaultStreamTypeMessageSent,
+		SessionClientMessageSent:   DefaultSessionClientMessageSent,
+		SessionServerMessageSent:   DefaultSessionServerMessageSent,
+		SessionUpdateMessageSent:   DefaultSessionUpdateMessageSent,
+		AnnouncePleaseMessageSent:  DefaultAnnouncePleaseMessageSent,
+		AnnounceMessageSent:        DefaultAnnounceMessageSent,
+		SubscribeMessageSent:       DefaultSubscribeMessageSent,
+		SubscribeOkMessageSent:     DefaultSubscribeOkMessageSent,
+		SubscribeUpdateMessageSent: DefaultSubscribeUpdateMessageSent,
+		GroupMessageSent:           DefaultGroupMessageSent,
+		FrameMessageSent:           DefaultFrameMessageSent,
+	}
+}
+
+var DefaultQUICUniStreamAccepted = func(streamID quic.StreamID) *ReceiveStreamTracer {
+	// Return a StreamTracer with default functions
+	return &ReceiveStreamTracer{
 		ReceiveStreamCancelled:        DefaultReceiveStreamCancelled,
-		StreamTypeMessageSent:         DefaultStreamTypeMessageSent,
 		StreamTypeMessageReceived:     DefaultStreamTypeMessageReceived,
-		SessionClientMessageSent:      DefaultSessionClientMessageSent,
 		SessionClientMessageReceived:  DefaultSessionClientMessageReceived,
-		SessionServerMessageSent:      DefaultSessionServerMessageSent,
 		SessionServerMessageReceived:  DefaultSessionServerMessageReceived,
-		SessionUpdateMessageSent:      DefaultSessionUpdateMessageSent,
 		SessionUpdateMessageReceived:  DefaultSessionUpdateMessageReceived,
-		AnnouncePleaseMessageSent:     DefaultAnnouncePleaseMessageSent,
 		AnnouncePleaseMessageReceived: DefaultAnnouncePleaseMessageReceived,
-		AnnounceMessageSent:           DefaultAnnounceMessageSent,
 		AnnounceMessageReceived:       DefaultAnnounceMessageReceived,
-		SubscribeMessageSent:          DefaultSubscribeMessageSent,
 		SubscribeMessageReceived:      DefaultSubscribeMessageReceived,
-		SubscribeOkMessageSent:        DefaultSubscribeOkMessageSent,
 		SubscribeOkMessageReceived:    DefaultSubscribeOkMessageReceived,
-		GroupMessageSent:              DefaultGroupMessageSent,
 		GroupMessageReceived:          DefaultGroupMessageReceived,
-		FrameMessageSent:              DefaultFrameMessageSent,
 		FrameMessageReceived:          DefaultFrameMessageReceived,
 	}
 }

@@ -8,8 +8,6 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-type FrameSequence uint64
-
 /*
  * Frame Message {
  *   Message Length (varint),

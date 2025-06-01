@@ -157,7 +157,9 @@ var DefaultQUICUniStreamOpened = func(streamID quic.StreamID) *SendStreamTracer 
 var DefaultQUICUniStreamAccepted = func(streamID quic.StreamID) *ReceiveStreamTracer {
 	// Return a StreamTracer with default functions
 	return &ReceiveStreamTracer{
+		ReceiveStreamFinished:         DefaultStreamFinished,
 		ReceiveStreamStopped:          DefaultStreamStopped,
+		ReceiveStreamReset:            DefaultStreamReset,
 		StreamTypeMessageReceived:     DefaultStreamTypeMessageReceived,
 		SessionClientMessageReceived:  DefaultSessionClientMessageReceived,
 		SessionServerMessageReceived:  DefaultSessionServerMessageReceived,

@@ -30,11 +30,11 @@ type FrameMessage struct {
 	Payload []byte
 }
 
-func (fm FrameMessage) Len() int {
+func (fm *FrameMessage) Len() int {
 	return bytesLen(fm.Payload)
 }
 
-func (fm FrameMessage) Encode(w io.Writer) (int, error) {
+func (fm *FrameMessage) Encode(w io.Writer) (int, error) {
 	b := GetBytes()
 	defer PutBytes(b)
 

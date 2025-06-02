@@ -94,9 +94,9 @@ type StreamTracer struct {
 
 type SendStreamTracer struct {
 	// QUIC
-	SendStreamFinished func()                             // FIN
-	SendStreamReset    func(quic.StreamErrorCode, string) // RESET_STREAM
-	SendStreamStopped  func(quic.StreamErrorCode, string) // STOP_SENDING
+	SendStreamFinished func()                     // FIN
+	SendStreamReset    func(quic.StreamErrorCode) // RESET_STREAM
+	SendStreamStopped  func(quic.StreamErrorCode) // STOP_SENDING
 
 	// MOQ
 	// Stream Type
@@ -125,9 +125,9 @@ type SendStreamTracer struct {
 
 type ReceiveStreamTracer struct {
 	// QUIC
-	ReceiveStreamFinished func()                             // FIN
-	ReceiveStreamStopped  func(quic.StreamErrorCode, string) // STOP_SENDING
-	ReceiveStreamReset    func(quic.StreamErrorCode, string) // RESET_STREAM
+	ReceiveStreamFinished func()                     // FIN
+	ReceiveStreamStopped  func(quic.StreamErrorCode) // STOP_SENDING
+	ReceiveStreamReset    func(quic.StreamErrorCode) // RESET_STREAM
 
 	// MOQ
 	// Stream Type
@@ -162,12 +162,12 @@ var DefaultStreamFinished = func() {
 }
 
 // DefaultStreamReset is the default implementation for SendStreamCancelled
-var DefaultStreamReset = func(code quic.StreamErrorCode, reason string) {
+var DefaultStreamReset = func(code quic.StreamErrorCode) {
 	// Default implementation: no-op
 }
 
 // DefaultStreamStopped is the default implementation for ReceiveStreamCancelled
-var DefaultStreamStopped = func(code quic.StreamErrorCode, reason string) {
+var DefaultStreamStopped = func(code quic.StreamErrorCode) {
 	// Default implementation: no-op
 }
 

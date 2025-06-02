@@ -1,4 +1,4 @@
-package webtransport
+package webtransportgo
 
 import (
 	"context"
@@ -9,9 +9,7 @@ import (
 	"github.com/quic-go/webtransport-go"
 )
 
-var DialWebtransportFunc = defaultDialWTFunc
-
-var defaultDialWTFunc = func(ctx context.Context, addr string, header http.Header) (*http.Response, quic.Connection, error) {
+func Dial(ctx context.Context, addr string, header http.Header) (*http.Response, quic.Connection, error) {
 	var d webtransport.Dialer
 	rsp, wtsess, err := d.Dial(ctx, addr, header)
 	if err != nil {

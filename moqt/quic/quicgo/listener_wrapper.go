@@ -1,21 +1,22 @@
-package quic
+package quicgo
 
 import (
 	"context"
 	"net"
 
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 	quicgo "github.com/quic-go/quic-go"
 )
 
-var _ EarlyListener = (*listener)(nil)
+var _ quic.EarlyListener = (*listener)(nil)
 
-func WrapListener(quicListener *quicgo.EarlyListener) EarlyListener {
+func WrapListener(quicListener *quicgo.EarlyListener) quic.EarlyListener {
 	return &listener{
 		quicListener: quicListener,
 	}
 }
 
-func UnWrapListener(ln EarlyListener) *quicgo.EarlyListener {
+func UnWrapListener(ln quic.EarlyListener) *quicgo.EarlyListener {
 	if l, ok := ln.(*listener); ok {
 		return l.quicListener
 	}
@@ -26,7 +27,7 @@ type listener struct {
 	quicListener *quicgo.EarlyListener
 }
 
-func (l *listener) Accept(ctx context.Context) (Connection, error) {
+func (l *listener) Accept(ctx context.Context) (quic.Connection, error) {
 	conn, err := l.quicListener.Accept(ctx)
 	if err != nil {
 		return nil, err

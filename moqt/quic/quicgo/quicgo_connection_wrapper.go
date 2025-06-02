@@ -1,17 +1,18 @@
-package quic
+package quicgo
 
 import (
 	"context"
 	"errors"
 	"net"
 
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 	quicgo "github.com/quic-go/quic-go"
 )
 
 var _ quicgo.Connection = (*quicgoConnection)(nil)
 
 type quicgoConnection struct {
-	conn Connection
+	conn quic.Connection
 }
 
 func (c *quicgoConnection) OpenStream() (quicgo.Stream, error) {
@@ -64,7 +65,7 @@ func (c *quicgoConnection) AcceptUniStream(ctx context.Context) (quicgo.ReceiveS
 }
 
 func (c *quicgoConnection) CloseWithError(code quicgo.ApplicationErrorCode, msg string) error {
-	return c.conn.CloseWithError(ConnectionErrorCode(code), msg)
+	return c.conn.CloseWithError(quic.ConnectionErrorCode(code), msg)
 }
 
 func (c *quicgoConnection) ConnectionState() quicgo.ConnectionState {

@@ -10,11 +10,4 @@ type Stream interface {
 	SetDeadline(time.Time) error
 }
 
-type StreamID int64
-
-type StreamErrorCode uint32
-
-type StreamError interface {
-	error
-	StreamErrorCode() StreamErrorCode
-}
+type StreamID uint64

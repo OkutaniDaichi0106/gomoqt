@@ -1,4 +1,4 @@
-package webtransport
+package webtransportgo
 
 import (
 	"context"

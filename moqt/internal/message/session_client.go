@@ -3,7 +3,6 @@ package message
 import (
 	"bytes"
 	"io"
-	"log/slog"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/quic-go/quic-go/quicvarint"
@@ -57,7 +56,6 @@ func (scm *SessionClientMessage) Decode(r io.Reader) (int, error) {
 	// Read the payload
 	buf, n, err := ReadBytes(quicvarint.NewReader(r))
 	if err != nil {
-		slog.Error("failed to read payload for SESSION_CLIENT message", "error", err)
 		return n, err
 	}
 
@@ -67,7 +65,6 @@ func (scm *SessionClientMessage) Decode(r io.Reader) (int, error) {
 	// Read version count
 	num, _, err := ReadNumber(mr)
 	if err != nil {
-		slog.Error("failed to read supported version count", "error", err)
 		return n, err
 	}
 
@@ -75,7 +72,6 @@ func (scm *SessionClientMessage) Decode(r io.Reader) (int, error) {
 	for i := uint64(0); i < num; i++ {
 		version, _, err := ReadNumber(mr)
 		if err != nil {
-			slog.Error("failed to read a supported version", "error", err)
 			return n, err
 		}
 		scm.SupportedVersions = append(scm.SupportedVersions, protocol.Version(version))
@@ -84,11 +80,8 @@ func (scm *SessionClientMessage) Decode(r io.Reader) (int, error) {
 	// Read parameters
 	scm.Parameters, _, err = ReadParameters(mr)
 	if err != nil {
-		slog.Error("failed to read parameters", "error", err)
 		return n, err
 	}
-
-	slog.Debug("decoded a SESSION_CLIENT message")
 
 	return n, nil
 }

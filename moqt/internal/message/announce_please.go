@@ -3,7 +3,6 @@ package message
 import (
 	"bytes"
 	"io"
-	"log/slog"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -36,25 +35,16 @@ func (aim AnnouncePleaseMessage) Encode(w io.Writer) (int, error) {
 
 	n, err := w.Write(p)
 	if err != nil {
-		slog.Error("failed to encode an ANNOUNCE_PLEASE message",
-			"error", err,
-		)
 		return n, err
 	}
-
-	slog.Debug("encoded an ANNOUNCE_PLEASE message")
 
 	return n, err
 }
 
 func (aim *AnnouncePleaseMessage) Decode(r io.Reader) (int, error) {
-
 	// Read the payload
 	buf, n, err := ReadBytes(quicvarint.NewReader(r))
 	if err != nil {
-		slog.Error("failed to read payload for ANNOUNCE_PLEASE message",
-			"error", err,
-		)
 		return n, err
 	}
 
@@ -63,13 +53,8 @@ func (aim *AnnouncePleaseMessage) Decode(r io.Reader) (int, error) {
 
 	aim.TrackPrefix, _, err = ReadString(mr)
 	if err != nil {
-		slog.Error("failed to read TrackPrefix for ANNOUNCE_PLEASE message",
-			"error", err,
-		)
 		return n, err
 	}
-
-	slog.Debug("decoded an ANNOUNCE_PLEASE message")
 
 	return n, nil
 }

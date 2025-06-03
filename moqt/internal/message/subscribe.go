@@ -3,7 +3,6 @@ package message
 import (
 	"bytes"
 	"io"
-	"log/slog"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -64,11 +63,8 @@ func (s SubscribeMessage) Encode(w io.Writer) (int, error) {
 
 	n, err := w.Write(p)
 	if err != nil {
-		slog.Error("failed to write a SUBSCRIBE message", "error", err)
 		return n, err
 	}
-
-	slog.Debug("encoded a SUBSCRIBE message", slog.Int("bytes_written", n))
 
 	return n, nil
 }
@@ -77,9 +73,6 @@ func (s *SubscribeMessage) Decode(r io.Reader) (int, error) {
 
 	buf, n, err := ReadBytes(quicvarint.NewReader(r))
 	if err != nil {
-		slog.Error("failed to read payload for SUBSCRIBE message",
-			"error", err,
-		)
 		return n, err
 	}
 
@@ -87,57 +80,38 @@ func (s *SubscribeMessage) Decode(r io.Reader) (int, error) {
 
 	num, _, err := ReadNumber(mr)
 	if err != nil {
-		slog.Error("failed to read subscribe ID for SUBSCRIBE message",
-			"error", err,
-		)
+
 		return n, err
 	}
 	s.SubscribeID = SubscribeID(num)
 
 	s.BroadcastPath, _, err = ReadString(mr)
 	if err != nil {
-		slog.Error("failed to read track path for SUBSCRIBE message",
-			"error", err,
-		)
 		return n, err
 	}
 
 	s.TrackName, _, err = ReadString(mr)
 	if err != nil {
-		slog.Error("failed to read track name for SUBSCRIBE message",
-			"error", err,
-		)
 		return n, err
 	}
 
 	num, _, err = ReadNumber(mr)
 	if err != nil {
-		slog.Error("failed to read track priority for SUBSCRIBE message",
-			"error", err,
-		)
 		return n, err
 	}
 	s.TrackPriority = TrackPriority(num)
 
 	num, _, err = ReadNumber(mr)
 	if err != nil {
-		slog.Error("failed to read min group sequence for SUBSCRIBE message",
-			"error", err,
-		)
 		return n, err
 	}
 	s.MinGroupSequence = GroupSequence(num)
 
 	num, _, err = ReadNumber(mr)
 	if err != nil {
-		slog.Error("failed to read max group sequence for SUBSCRIBE message",
-			"error", err,
-		)
 		return n, err
 	}
 	s.MaxGroupSequence = GroupSequence(num)
-
-	slog.Debug("decoded a SUBSCRIBE message")
 
 	return n, nil
 }

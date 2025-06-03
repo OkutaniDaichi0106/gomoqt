@@ -3,7 +3,6 @@ package message
 import (
 	"bytes"
 	"io"
-	"log/slog"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -33,11 +32,8 @@ func (g GroupMessage) Encode(w io.Writer) (int, error) {
 
 	n, err := w.Write(p)
 	if err != nil {
-		slog.Error("failed to write a GROUP message", "error", err)
 		return n, err
 	}
-
-	slog.Debug("encoded a GROUP message")
 
 	return n, nil
 }
@@ -53,19 +49,15 @@ func (g *GroupMessage) Decode(r io.Reader) (int, error) {
 
 	num, _, err := ReadNumber(mr)
 	if err != nil {
-		slog.Error("failed to read subscribe ID", "error", err)
 		return n, err
 	}
 	g.SubscribeID = SubscribeID(num)
 
 	num, _, err = ReadNumber(mr)
 	if err != nil {
-		slog.Error("failed to read group sequence", "error", err)
 		return n, err
 	}
 	g.GroupSequence = GroupSequence(num)
-
-	slog.Debug("decoded a GROUP message")
 
 	return n, nil
 }

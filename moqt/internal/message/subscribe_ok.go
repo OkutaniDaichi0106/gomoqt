@@ -3,7 +3,6 @@ package message
 import (
 	"bytes"
 	"io"
-	"log/slog"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -30,11 +29,8 @@ func (som SubscribeOkMessage) Encode(w io.Writer) (int, error) {
 
 	n, err := w.Write(p)
 	if err != nil {
-		slog.Error("failed to write a SUBSCRIBE_OK message", "error", err)
 		return n, err
 	}
-
-	slog.Debug("encoded a SUBSCRIBE_OK message", slog.Int("bytes_written", n))
 
 	return n, nil
 }
@@ -42,7 +38,6 @@ func (som SubscribeOkMessage) Encode(w io.Writer) (int, error) {
 func (som *SubscribeOkMessage) Decode(r io.Reader) (int, error) {
 	buf, n, err := ReadBytes(quicvarint.NewReader(r))
 	if err != nil {
-		slog.Error("failed to read payload for SUBSCRIBE_OK message", "error", err)
 		return n, err
 	}
 
@@ -50,12 +45,9 @@ func (som *SubscribeOkMessage) Decode(r io.Reader) (int, error) {
 
 	num, _, err := ReadNumber(mr)
 	if err != nil {
-		slog.Error("failed to read GroupOrder for SUBSCRIBE_OK message", "error", err)
 		return n, err
 	}
 	som.GroupOrder = GroupOrder(num)
-
-	slog.Debug("decoded a SUBSCRIBE_OK message")
 
 	return n, nil
 }

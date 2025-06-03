@@ -3,7 +3,6 @@ package message
 import (
 	"bytes"
 	"io"
-	"log/slog"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -44,13 +43,8 @@ func (su SubscribeUpdateMessage) Encode(w io.Writer) (int, error) {
 
 	n, err := w.Write(p)
 	if err != nil {
-		slog.Error("failed to write a SUBSCRIBE_UPDATE message",
-			"error", err,
-		)
 		return n, err
 	}
-
-	slog.Debug("encoded a SUBSCRIBE_UPDATE message", slog.Int("bytes_written", n))
 
 	return n, nil
 }
@@ -59,7 +53,6 @@ func (sum *SubscribeUpdateMessage) Decode(r io.Reader) (int, error) {
 
 	buf, n, err := ReadBytes(quicvarint.NewReader(r))
 	if err != nil {
-		slog.Error("failed to read payload for SUBSCRIBE_UPDATE message", "error", err)
 		return n, err
 	}
 
@@ -67,26 +60,21 @@ func (sum *SubscribeUpdateMessage) Decode(r io.Reader) (int, error) {
 
 	num, _, err := ReadNumber(mr)
 	if err != nil {
-		slog.Error("failed to read TrackPriority for SUBSCRIBE_UPDATE message", "error", err)
 		return n, err
 	}
 	sum.TrackPriority = TrackPriority(num)
 
 	num, _, err = ReadNumber(mr)
 	if err != nil {
-		slog.Error("failed to read MinGroupSequence for SUBSCRIBE_UPDATE message", "error", err)
 		return n, err
 	}
 	sum.MinGroupSequence = GroupSequence(num)
 
 	num, _, err = ReadNumber(mr)
 	if err != nil {
-		slog.Error("failed to read MaxGroupSequence for SUBSCRIBE_UPDATE message", "error", err)
 		return n, err
 	}
 	sum.MaxGroupSequence = GroupSequence(num)
-
-	slog.Debug("decoded a SUBSCRIBE_UPDATE message")
 
 	return n, nil
 }

@@ -10,9 +10,5 @@ import (
 
 func Dial(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (quic.Connection, error) {
 	conn, err := quicgo.DialAddrEarly(ctx, addr, tlsConfig, (*quicgo.Config)(quicConfig))
-	if err != nil {
-		return nil, err
-	}
-
-	return WrapConnection(conn), nil
+	return WrapConnection(conn), WrapError(err)
 }

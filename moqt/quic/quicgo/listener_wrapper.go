@@ -2,44 +2,39 @@ package quicgo
 
 import (
 	"context"
+	"crypto/tls"
 	"net"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
-	quicgo "github.com/quic-go/quic-go"
+	quicgo_quicgo "github.com/quic-go/quic-go"
 )
 
-var _ quic.EarlyListener = (*listener)(nil)
+func Listen(addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (quic.EarlyListener, error) {
+	ln, err := quicgo_quicgo.ListenAddrEarly(addr, tlsConfig, (*quicgo_quicgo.Config)(quicConfig))
+	return WrapListener(ln), WrapError(err)
+}
 
-func WrapListener(quicListener *quicgo.EarlyListener) quic.EarlyListener {
-	return &listener{
+var _ quic.EarlyListener = (*listenerWrapper)(nil)
+
+func WrapListener(quicListener *quicgo_quicgo.EarlyListener) quic.EarlyListener {
+	return &listenerWrapper{
 		quicListener: quicListener,
 	}
 }
 
-func UnWrapListener(ln quic.EarlyListener) *quicgo.EarlyListener {
-	if l, ok := ln.(*listener); ok {
-		return l.quicListener
-	}
-	return nil
+type listenerWrapper struct {
+	quicListener *quicgo_quicgo.EarlyListener
 }
 
-type listener struct {
-	quicListener *quicgo.EarlyListener
-}
-
-func (l *listener) Accept(ctx context.Context) (quic.Connection, error) {
+func (l *listenerWrapper) Accept(ctx context.Context) (quic.Connection, error) {
 	conn, err := l.quicListener.Accept(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	return WrapConnection(conn), nil
+	return WrapConnection(conn), WrapError(err)
 }
 
-func (l *listener) Addr() net.Addr {
+func (l *listenerWrapper) Addr() net.Addr {
 	return l.quicListener.Addr()
 }
 
-func (l *listener) Close() error {
-	return l.quicListener.Close()
+func (l *listenerWrapper) Close() error {
+	return WrapError(l.quicListener.Close())
 }

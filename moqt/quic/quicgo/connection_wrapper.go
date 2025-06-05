@@ -35,7 +35,14 @@ func (wrapper *connectionWrapper) CloseWithError(code quic.ConnectionErrorCode, 
 	return WrapError(wrapper.conn.CloseWithError(quicgo_quicgo.ApplicationErrorCode(code), msg))
 }
 func (wrapper *connectionWrapper) ConnectionState() quic.ConnectionState {
-	return quic.ConnectionState(wrapper.conn.ConnectionState())
+	state := wrapper.conn.ConnectionState()
+	return quic.ConnectionState{
+		TLS:               state.TLS,
+		SupportsDatagrams: state.SupportsDatagrams,
+		Used0RTT:          state.Used0RTT,
+		Version:           quic.Version(state.Version),
+		GSO:               state.GSO,
+	}
 }
 func (wrapper *connectionWrapper) Context() context.Context {
 	return wrapper.conn.Context()

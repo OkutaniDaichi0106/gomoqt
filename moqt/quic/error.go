@@ -12,7 +12,7 @@ type TransportError struct {
 	Err          error // only set for local errors, sometimes
 }
 
-func (e *TransportError) Error() string        { return e.Err.Error() }
+func (e *TransportError) Error() string        { return "quic: " + e.Err.Error() }
 func (e *TransportError) Is(target error) bool { return target == net.ErrClosed }
 func (e *TransportError) Unwrap() error        { return e.Err }
 
@@ -23,7 +23,7 @@ type ApplicationError struct {
 	Err          error
 }
 
-func (e *ApplicationError) Error() string        { return e.Err.Error() }
+func (e *ApplicationError) Error() string        { return "quic: " + e.Err.Error() }
 func (e *ApplicationError) Is(target error) bool { return target == net.ErrClosed }
 func (e *ApplicationError) Unwrap() error        { return e.Err }
 
@@ -33,7 +33,7 @@ type VersionNegotiationError struct {
 	Err    error
 }
 
-func (e *VersionNegotiationError) Error() string        { return e.Err.Error() }
+func (e *VersionNegotiationError) Error() string        { return "quic: " + e.Err.Error() }
 func (e *VersionNegotiationError) Is(target error) bool { return target == net.ErrClosed }
 
 type StatelessResetError struct {
@@ -41,7 +41,7 @@ type StatelessResetError struct {
 	Err   error
 }
 
-func (e *StatelessResetError) Error() string        { return e.Err.Error() }
+func (e *StatelessResetError) Error() string        { return "quic: " + e.Err.Error() }
 func (e *StatelessResetError) Is(target error) bool { return target == net.ErrClosed }
 func (e *StatelessResetError) Timeout() bool        { return false }
 func (e *StatelessResetError) Temporary() bool      { return true }
@@ -104,7 +104,7 @@ func (e *StreamError) Is(target error) bool {
 	return ok
 }
 
-func (e *StreamError) Error() string { return e.Err.Error() }
+func (e *StreamError) Error() string { return "quic: " + e.Err.Error() }
 
 // DatagramTooLargeError is returned from Connection.SendDatagram if the payload is too large to be sent.
 type DatagramTooLargeError struct {
@@ -117,4 +117,4 @@ func (e *DatagramTooLargeError) Is(target error) bool {
 	return ok
 }
 
-func (e *DatagramTooLargeError) Error() string { return e.Err.Error() }
+func (e *DatagramTooLargeError) Error() string { return "quic: " + e.Err.Error() }

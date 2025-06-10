@@ -5,34 +5,33 @@ import (
 )
 
 func TestNotFound(t *testing.T) {
-	tests := []struct {
-		name string
-		pub  *Publisher
+	tests := map[string]struct {
+		pub *Publisher
 	}{
-		{
-			name: "nil publisher",
-			pub:  nil,
+		"nil publisher": {
+			pub: nil,
 		},
-		{
-			name: "publisher with nil TrackWriter",
+		"publisher with nil TrackWriter": {
 			pub: &Publisher{
 				BroadcastPath: BroadcastPath("/test"),
 				TrackName:     TrackName("test"),
 				TrackWriter:   nil,
 			},
-		},
-		{
-			name: "publisher with mock TrackWriter",
+		}, "publisher with mock TrackWriter": {
 			pub: &Publisher{
 				BroadcastPath: BroadcastPath("/test"),
 				TrackName:     TrackName("test"),
-				TrackWriter:   &MockTrackWriter{},
+				TrackWriter: func() *MockTrackWriter {
+					mock := &MockTrackWriter{}
+					mock.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
+					return mock
+				}(),
 			},
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			// Should not panic
 			NotFound(tt.pub)
 		})
@@ -40,10 +39,13 @@ func TestNotFound(t *testing.T) {
 }
 
 func TestNotFoundHandler(t *testing.T) {
+	mockWriter := &MockTrackWriter{}
+	mockWriter.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
+
 	pub := &Publisher{
 		BroadcastPath: BroadcastPath("/test"),
 		TrackName:     TrackName("test"),
-		TrackWriter:   &MockTrackWriter{},
+		TrackWriter:   mockWriter,
 	}
 
 	// Should not panic
@@ -95,15 +97,4 @@ func TestTrackHandlerFuncServeTrack(t *testing.T) {
 	if callCount != 3 {
 		t.Errorf("expected handler to be called 3 times, got %d", callCount)
 	}
-}
-
-func TestNotFoundWithMockTrackWriter(t *testing.T) {
-	mockWriter := &MockTrackWriter{}
-	pub := &Publisher{
-		BroadcastPath: BroadcastPath("/test"),
-		TrackName:     TrackName("test"),
-		TrackWriter:   mockWriter,
-	}
-
-	NotFound(pub)
 }

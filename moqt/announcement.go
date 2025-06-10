@@ -14,10 +14,6 @@ func NewAnnouncement(ctx context.Context, path BroadcastPath) *Announcement {
 		cancel: cancel,
 	}
 
-	if ctx.Err() != nil {
-
-	}
-
 	return &ann
 }
 
@@ -26,8 +22,6 @@ type Announcement struct {
 	cancel context.CancelFunc
 
 	path BroadcastPath
-
-	info Info
 }
 
 func (a *Announcement) String() string {

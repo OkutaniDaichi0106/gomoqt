@@ -1,9 +1,7 @@
 package moqt
 
 import (
-	"context"
 	"errors"
-	"sync"
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
@@ -11,43 +9,48 @@ import (
 
 var _ GroupWriter = (*sendGroupStream)(nil)
 
-func newSendGroupStream(stream quic.SendStream, groupCtx *groupContext) *sendGroupStream {
+func newSendGroupStream(stream quic.SendStream, sequence GroupSequence) *sendGroupStream {
 	return &sendGroupStream{
-		groupCtx: groupCtx,
+		closedCh: make(chan struct{}, 1),
+		sequence: sequence,
 		stream:   stream,
 	}
 }
 
 type sendGroupStream struct {
-	groupCtx *groupContext
+	closed   bool
+	closeErr *GroupError
+	closedCh chan struct{}
+
+	sequence GroupSequence
 
 	stream quic.SendStream
 
-	mu sync.Mutex
+	frameCount uint64 // Number of frames sent on this stream
 }
 
 func (sgs *sendGroupStream) GroupSequence() GroupSequence {
-	return sgs.groupCtx.seq
+	return sgs.sequence
 }
 
 func (sgs *sendGroupStream) WriteFrame(frame *Frame) error {
-	sgs.mu.Lock()
-	defer sgs.mu.Unlock()
-
-	if err := sgs.closedErr(); err != nil {
-		return err
-	}
-
-	if frame == nil {
-		return errors.New("frame is nil")
+	if frame == nil || frame.message == nil {
+		return errors.New("frame is nil or has no bytes")
 	}
 
 	_, err := frame.message.Encode(sgs.stream)
 	if err != nil {
+		var strErr *quic.StreamError
+		if errors.As(err, &strErr) {
+			return &GroupError{
+				StreamError: strErr,
+			}
+		}
+
 		return err
 	}
 
-	// TODO: Consider waiting briefly before sending if the frame queue is full.
+	sgs.frameCount++
 
 	return nil
 }
@@ -56,55 +59,49 @@ func (sgs *sendGroupStream) SetWriteDeadline(t time.Time) error {
 	return sgs.stream.SetWriteDeadline(t)
 }
 
-func (sgs *sendGroupStream) CloseWithError(err error) error {
-	sgs.mu.Lock()
-	defer sgs.mu.Unlock()
-
-	if err := sgs.closedErr(); err != nil {
-		return err
+func (sgs *sendGroupStream) CloseWithError(code GroupErrorCode) error {
+	if sgs.closed {
+		return sgs.closeErr
 	}
 
-	sgs.groupCtx.cancel(err)
+	sgs.closed = true
 
-	if err == nil {
-		err = ErrInternalError
+	defer close(sgs.closedCh)
+
+	strErrCode := quic.StreamErrorCode(code)
+	sgs.stream.CancelWrite(strErrCode)
+
+	err := &GroupError{
+		StreamError: &quic.StreamError{
+			StreamID:  sgs.stream.StreamID(),
+			ErrorCode: strErrCode,
+		},
 	}
 
-	var grperr GroupError
-	if !errors.As(err, &grperr) {
-		grperr = ErrInternalError
-	}
-
-	sgs.stream.CancelWrite(quic.StreamErrorCode(grperr.GroupErrorCode()))
+	sgs.closeErr = err
 
 	return nil
 }
 
 func (sgs *sendGroupStream) Close() error {
-	sgs.mu.Lock()
-	defer sgs.mu.Unlock()
-
-	if err := sgs.closedErr(); err != nil {
-		return err
+	if sgs.closed {
+		return sgs.closeErr
 	}
 
-	sgs.groupCtx.cancel(ErrClosedGroup)
+	sgs.closed = true
+
+	defer close(sgs.closedCh)
 
 	err := sgs.stream.Close()
 	if err != nil {
-		return err
-	}
-
-	return sgs.stream.Close()
-}
-
-func (sgs *sendGroupStream) closedErr() error {
-	if sgs.groupCtx.Err() != nil {
-		reason := context.Cause(sgs.groupCtx)
-		if reason != nil {
-			return reason
+		var strErr *quic.StreamError
+		if errors.As(err, &strErr) {
+			sgs.closeErr = &GroupError{
+				StreamError: strErr,
+			}
+			return sgs.closeErr
 		}
-		return ErrClosedGroup
+		return err
 	}
 
 	return nil

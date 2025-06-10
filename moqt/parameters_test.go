@@ -1,40 +1,38 @@
-package moqt_test
+package moqt
 
 import (
 	"testing"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewParameters(t *testing.T) {
-	params := moqt.NewParameters()
+	params := NewParameters()
 	assert.NotNil(t, params, "NewParameters should return a non-nil value")
 }
 
 func TestParameters_String(t *testing.T) {
 	tests := map[string]struct {
-		setup    func() *moqt.Parameters
+		setup    func() *Parameters
 		expected string
-	}{
-		"empty parameters": {
-			setup: func() *moqt.Parameters {
-				return moqt.NewParameters()
-			},
-			expected: "Parameters: { }",
+	}{"empty parameters": {
+		setup: func() *Parameters {
+			return NewParameters()
 		},
+		expected: "{ }",
+	},
 		"with one parameter": {
-			setup: func() *moqt.Parameters {
-				p := moqt.NewParameters()
+			setup: func() *Parameters {
+				p := NewParameters()
 				p.SetString(1, "test")
 				return p
 			},
-			expected: "Parameters: { 1: [116 101 115 116], }",
+			expected: "{ 1: [116 101 115 116], }",
 		},
 		"with multiple parameters": {
-			setup: func() *moqt.Parameters {
-				p := moqt.NewParameters()
+			setup: func() *Parameters {
+				p := NewParameters()
 				p.SetString(1, "test1")
 				p.SetString(2, "test2")
 				p.SetUint(3, 42)
@@ -42,17 +40,16 @@ func TestParameters_String(t *testing.T) {
 			},
 			// The order of parameters in the string representation might vary
 			// so we just check that it contains all the expected parts
-			expected: "Parameters: {",
+			expected: "{",
 		},
 	}
-
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			params := tt.setup()
 			result := params.String()
 
 			if name == "with multiple parameters" {
-				assert.Contains(t, result, "Parameters: {")
+				assert.Contains(t, result, "{")
 				assert.Contains(t, result, "1: [116 101 115 116 49]")
 				assert.Contains(t, result, "2: [116 101 115 116 50]")
 				assert.Contains(t, result, "3: [42]")
@@ -65,22 +62,22 @@ func TestParameters_String(t *testing.T) {
 
 func TestParameters_ByteArrayParameter(t *testing.T) {
 	tests := map[string]struct {
-		setup         func() *moqt.Parameters
-		key           moqt.ParameterType
+		setup         func() *Parameters
+		key           ParameterType
 		value         []byte
 		expectedError bool
 	}{
 		"set and get byte array": {
-			setup: func() *moqt.Parameters {
-				return moqt.NewParameters()
+			setup: func() *Parameters {
+				return NewParameters()
 			},
 			key:           1,
 			value:         []byte{1, 2, 3, 4},
 			expectedError: false,
 		},
 		"get non-existent key": {
-			setup: func() *moqt.Parameters {
-				return moqt.NewParameters()
+			setup: func() *Parameters {
+				return NewParameters()
 			},
 			key:           1,
 			value:         nil,
@@ -100,7 +97,7 @@ func TestParameters_ByteArrayParameter(t *testing.T) {
 
 			if tt.expectedError {
 				assert.Error(t, err)
-				assert.Equal(t, moqt.ErrParameterNotFound, err)
+				assert.Equal(t, ErrParameterNotFound, err)
 			} else {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.value, result)
@@ -111,22 +108,22 @@ func TestParameters_ByteArrayParameter(t *testing.T) {
 
 func TestParameters_StringParameter(t *testing.T) {
 	tests := map[string]struct {
-		setup         func() *moqt.Parameters
-		key           moqt.ParameterType
+		setup         func() *Parameters
+		key           ParameterType
 		value         string
 		expectedError bool
 	}{
 		"set and get string": {
-			setup: func() *moqt.Parameters {
-				return moqt.NewParameters()
+			setup: func() *Parameters {
+				return NewParameters()
 			},
 			key:           1,
 			value:         "test string",
 			expectedError: false,
 		},
 		"get non-existent key": {
-			setup: func() *moqt.Parameters {
-				return moqt.NewParameters()
+			setup: func() *Parameters {
+				return NewParameters()
 			},
 			key:           1,
 			value:         "",
@@ -146,7 +143,7 @@ func TestParameters_StringParameter(t *testing.T) {
 
 			if tt.expectedError {
 				assert.Error(t, err)
-				assert.Equal(t, moqt.ErrParameterNotFound, err)
+				assert.Equal(t, ErrParameterNotFound, err)
 			} else {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.value, result)
@@ -157,30 +154,30 @@ func TestParameters_StringParameter(t *testing.T) {
 
 func TestParameters_UintParameter(t *testing.T) {
 	tests := map[string]struct {
-		setup         func() *moqt.Parameters
-		key           moqt.ParameterType
+		setup         func() *Parameters
+		key           ParameterType
 		value         uint64
 		expectedError bool
 	}{
 		"set and get uint": {
-			setup: func() *moqt.Parameters {
-				return moqt.NewParameters()
+			setup: func() *Parameters {
+				return NewParameters()
 			},
 			key:           1,
 			value:         42,
 			expectedError: false,
 		},
 		"set and get large uint": {
-			setup: func() *moqt.Parameters {
-				return moqt.NewParameters()
+			setup: func() *Parameters {
+				return NewParameters()
 			},
 			key:           1,
 			value:         1<<32 - 1, // max uint32
 			expectedError: false,
 		},
 		"get non-existent key": {
-			setup: func() *moqt.Parameters {
-				return moqt.NewParameters()
+			setup: func() *Parameters {
+				return NewParameters()
 			},
 			key:           1,
 			value:         0,
@@ -200,7 +197,7 @@ func TestParameters_UintParameter(t *testing.T) {
 
 			if tt.expectedError {
 				assert.Error(t, err)
-				assert.Equal(t, moqt.ErrParameterNotFound, err)
+				assert.Equal(t, ErrParameterNotFound, err)
 			} else {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.value, result)
@@ -211,30 +208,30 @@ func TestParameters_UintParameter(t *testing.T) {
 
 func TestParameters_BoolParameter(t *testing.T) {
 	tests := map[string]struct {
-		setup         func() *moqt.Parameters
-		key           moqt.ParameterType
+		setup         func() *Parameters
+		key           ParameterType
 		value         bool
 		expectedError bool
 	}{
 		"set and get true": {
-			setup: func() *moqt.Parameters {
-				return moqt.NewParameters()
+			setup: func() *Parameters {
+				return NewParameters()
 			},
 			key:           1,
 			value:         true,
 			expectedError: false,
 		},
 		"set and get false": {
-			setup: func() *moqt.Parameters {
-				return moqt.NewParameters()
+			setup: func() *Parameters {
+				return NewParameters()
 			},
 			key:           1,
 			value:         false,
 			expectedError: false,
 		},
 		"get non-existent key": {
-			setup: func() *moqt.Parameters {
-				return moqt.NewParameters()
+			setup: func() *Parameters {
+				return NewParameters()
 			},
 			key:           1,
 			value:         false,
@@ -254,7 +251,7 @@ func TestParameters_BoolParameter(t *testing.T) {
 
 			if tt.expectedError {
 				assert.Error(t, err)
-				assert.Equal(t, moqt.ErrParameterNotFound, err)
+				assert.Equal(t, ErrParameterNotFound, err)
 			} else {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.value, result)
@@ -265,13 +262,13 @@ func TestParameters_BoolParameter(t *testing.T) {
 
 func TestParameters_Remove(t *testing.T) {
 	tests := map[string]struct {
-		setup    func() *moqt.Parameters
-		key      moqt.ParameterType
+		setup    func() *Parameters
+		key      ParameterType
 		expected bool
 	}{
 		"remove existing key": {
-			setup: func() *moqt.Parameters {
-				p := moqt.NewParameters()
+			setup: func() *Parameters {
+				p := NewParameters()
 				p.SetString(1, "test")
 				return p
 			},
@@ -279,8 +276,8 @@ func TestParameters_Remove(t *testing.T) {
 			expected: true,
 		},
 		"remove non-existent key": {
-			setup: func() *moqt.Parameters {
-				return moqt.NewParameters()
+			setup: func() *Parameters {
+				return NewParameters()
 			},
 			key:      1,
 			expected: false,
@@ -309,34 +306,52 @@ func TestParameters_Remove(t *testing.T) {
 }
 
 func TestParameters_GetBool_InvalidValue(t *testing.T) {
-	params := moqt.NewParameters()
+	tests := map[string]struct {
+		value         uint64
+		expectedError string
+	}{
+		"value 2": {
+			value:         2,
+			expectedError: "invalid value as bool",
+		},
+		"value 255": {
+			value:         255,
+			expectedError: "invalid value as bool",
+		},
+		"value 100": {
+			value:         100,
+			expectedError: "invalid value as bool",
+		},
+	}
 
-	// Set a value that's neither 0 nor 1
-	params.SetUint(1, 2)
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			params := NewParameters()
+			params.SetUint(1, tt.value)
 
-	// Try to get it as bool
-	_, err := params.GetBool(1)
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid value as bool")
+			_, err := params.GetBool(1)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.expectedError)
+		})
+	}
 }
 
 func TestParameters_NilMap(t *testing.T) {
 	// Create a Parameters with nil map
-	var params moqt.Parameters
+	var params Parameters
 
 	// Test all getters with nil map
 	_, err := params.GetByteArray(1)
-	assert.Equal(t, moqt.ErrParameterNotFound, err)
+	assert.Equal(t, ErrParameterNotFound, err)
 
 	_, err = params.GetString(1)
-	assert.Equal(t, moqt.ErrParameterNotFound, err)
+	assert.Equal(t, ErrParameterNotFound, err)
 
 	_, err = params.GetUint(1)
-	assert.Equal(t, moqt.ErrParameterNotFound, err)
+	assert.Equal(t, ErrParameterNotFound, err)
 
 	_, err = params.GetBool(1)
-	assert.Equal(t, moqt.ErrParameterNotFound, err)
+	assert.Equal(t, ErrParameterNotFound, err)
 
 	// Test all setters with nil map (should initialize the map)
 	params.SetByteArray(1, []byte{1, 2, 3})

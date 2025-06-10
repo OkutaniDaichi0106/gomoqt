@@ -8,5 +8,5 @@ type TrackReader interface {
 
 	Close() error
 
-	CloseWithError(error) error
+	CloseWithError(SubscribeErrorCode) error
 }

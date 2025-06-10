@@ -2,67 +2,58 @@ package moqt
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestSubscribeConfig(t *testing.T) {
-	tests := []struct {
-		name             string
+	tests := map[string]struct {
 		trackPriority    TrackPriority
 		minGroupSequence GroupSequence
 		maxGroupSequence GroupSequence
 	}{
-		{
-			name:             "default values",
+		"default values": {
 			trackPriority:    TrackPriority(0),
 			minGroupSequence: GroupSequence(0),
 			maxGroupSequence: GroupSequence(0),
 		},
-		{
-			name:             "specific range",
+		"specific range": {
 			trackPriority:    TrackPriority(128),
 			minGroupSequence: GroupSequence(10),
 			maxGroupSequence: GroupSequence(100),
-		},
-		{
-			name:             "high priority",
+		}, "high priority": {
 			trackPriority:    TrackPriority(255),
 			minGroupSequence: GroupSequence(1),
 			maxGroupSequence: GroupSequence(1000),
 		},
-	}
+		"maximum boundary values": {
+			trackPriority:    TrackPriority(255),
+			minGroupSequence: GroupSequenceFirst,
+			maxGroupSequence: MaxGroupSequence,
+		}}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			config := SubscribeConfig{
 				TrackPriority:    tt.trackPriority,
 				MinGroupSequence: tt.minGroupSequence,
 				MaxGroupSequence: tt.maxGroupSequence,
 			}
 
-			if config.TrackPriority != tt.trackPriority {
-				t.Errorf("TrackPriority = %v, want %v", config.TrackPriority, tt.trackPriority)
-			}
-
-			if config.MinGroupSequence != tt.minGroupSequence {
-				t.Errorf("MinGroupSequence = %v, want %v", config.MinGroupSequence, tt.minGroupSequence)
-			}
-
-			if config.MaxGroupSequence != tt.maxGroupSequence {
-				t.Errorf("MaxGroupSequence = %v, want %v", config.MaxGroupSequence, tt.maxGroupSequence)
-			}
+			assert.Equal(t, tt.trackPriority, config.TrackPriority)
+			assert.Equal(t, tt.minGroupSequence, config.MinGroupSequence)
+			assert.Equal(t, tt.maxGroupSequence, config.MaxGroupSequence)
 		})
 	}
 }
 
-func TestSubscribeConfigIsInRange(t *testing.T) {
-	tests := []struct {
-		name     string
+func TestSubscribeConfig_IsInRange(t *testing.T) {
+	tests := map[string]struct {
 		config   SubscribeConfig
 		seq      GroupSequence
 		expected bool
 	}{
-		{
-			name: "both min and max not specified",
+		"both min and max not specified": {
 			config: SubscribeConfig{
 				MinGroupSequence: GroupSequenceNotSpecified,
 				MaxGroupSequence: GroupSequenceNotSpecified,
@@ -70,8 +61,7 @@ func TestSubscribeConfigIsInRange(t *testing.T) {
 			seq:      GroupSequence(50),
 			expected: true,
 		},
-		{
-			name: "only min not specified",
+		"only min not specified": {
 			config: SubscribeConfig{
 				MinGroupSequence: GroupSequenceNotSpecified,
 				MaxGroupSequence: GroupSequence(100),
@@ -79,8 +69,7 @@ func TestSubscribeConfigIsInRange(t *testing.T) {
 			seq:      GroupSequence(50),
 			expected: true,
 		},
-		{
-			name: "only min not specified - above max",
+		"only min not specified - above max": {
 			config: SubscribeConfig{
 				MinGroupSequence: GroupSequenceNotSpecified,
 				MaxGroupSequence: GroupSequence(100),
@@ -88,17 +77,14 @@ func TestSubscribeConfigIsInRange(t *testing.T) {
 			seq:      GroupSequence(150),
 			expected: false,
 		},
-		{
-			name: "only max not specified",
+		"only max not specified": {
 			config: SubscribeConfig{
 				MinGroupSequence: GroupSequence(10),
 				MaxGroupSequence: GroupSequenceNotSpecified,
 			},
 			seq:      GroupSequence(50),
-			expected: true,
-		},
-		{
-			name: "only max not specified - below min",
+			expected: true},
+		"only max not specified - below min": {
 			config: SubscribeConfig{
 				MinGroupSequence: GroupSequence(10),
 				MaxGroupSequence: GroupSequenceNotSpecified,
@@ -106,8 +92,7 @@ func TestSubscribeConfigIsInRange(t *testing.T) {
 			seq:      GroupSequence(5),
 			expected: false,
 		},
-		{
-			name: "in range",
+		"in range": {
 			config: SubscribeConfig{
 				MinGroupSequence: GroupSequence(10),
 				MaxGroupSequence: GroupSequence(100),
@@ -115,8 +100,7 @@ func TestSubscribeConfigIsInRange(t *testing.T) {
 			seq:      GroupSequence(50),
 			expected: true,
 		},
-		{
-			name: "at min boundary",
+		"at min boundary": {
 			config: SubscribeConfig{
 				MinGroupSequence: GroupSequence(10),
 				MaxGroupSequence: GroupSequence(100),
@@ -124,8 +108,7 @@ func TestSubscribeConfigIsInRange(t *testing.T) {
 			seq:      GroupSequence(10),
 			expected: true,
 		},
-		{
-			name: "at max boundary",
+		"at max boundary": {
 			config: SubscribeConfig{
 				MinGroupSequence: GroupSequence(10),
 				MaxGroupSequence: GroupSequence(100),
@@ -133,8 +116,7 @@ func TestSubscribeConfigIsInRange(t *testing.T) {
 			seq:      GroupSequence(100),
 			expected: true,
 		},
-		{
-			name: "below min",
+		"below min": {
 			config: SubscribeConfig{
 				MinGroupSequence: GroupSequence(10),
 				MaxGroupSequence: GroupSequence(100),
@@ -142,8 +124,7 @@ func TestSubscribeConfigIsInRange(t *testing.T) {
 			seq:      GroupSequence(5),
 			expected: false,
 		},
-		{
-			name: "above max",
+		"above max": {
 			config: SubscribeConfig{
 				MinGroupSequence: GroupSequence(10),
 				MaxGroupSequence: GroupSequence(100),
@@ -151,17 +132,14 @@ func TestSubscribeConfigIsInRange(t *testing.T) {
 			seq:      GroupSequence(150),
 			expected: false,
 		},
-		{
-			name: "single value range",
+		"single value range": {
 			config: SubscribeConfig{
 				MinGroupSequence: GroupSequence(50),
 				MaxGroupSequence: GroupSequence(50),
 			},
 			seq:      GroupSequence(50),
 			expected: true,
-		},
-		{
-			name: "single value range - different value",
+		}, "single value range - different value": {
 			config: SubscribeConfig{
 				MinGroupSequence: GroupSequence(50),
 				MaxGroupSequence: GroupSequence(50),
@@ -169,89 +147,106 @@ func TestSubscribeConfigIsInRange(t *testing.T) {
 			seq:      GroupSequence(51),
 			expected: false,
 		},
+		"max boundary with MaxGroupSequence": {
+			config: SubscribeConfig{
+				MinGroupSequence: GroupSequence(1),
+				MaxGroupSequence: MaxGroupSequence,
+			},
+			seq:      MaxGroupSequence,
+			expected: true,
+		},
+		"max boundary with MaxGroupSequence - above max": {
+			config: SubscribeConfig{
+				MinGroupSequence: GroupSequence(1),
+				MaxGroupSequence: MaxGroupSequence - 1,
+			},
+			seq:      MaxGroupSequence,
+			expected: false,
+		}, "GroupSequenceFirst boundary": {
+			config: SubscribeConfig{
+				MinGroupSequence: GroupSequenceFirst,
+				MaxGroupSequence: GroupSequence(100),
+			},
+			seq:      GroupSequenceFirst,
+			expected: true,
+		},
+		"invalid range - min greater than max": {
+			config: SubscribeConfig{
+				MinGroupSequence: GroupSequence(100),
+				MaxGroupSequence: GroupSequence(50),
+			},
+			seq:      GroupSequence(75),
+			expected: false,
+		},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			result := tt.config.IsInRange(tt.seq)
-			if result != tt.expected {
-				t.Errorf("IsInRange(%v) = %v, want %v", tt.seq, result, tt.expected)
-			}
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-func TestSubscribeConfigString(t *testing.T) {
-	tests := []struct {
-		name     string
+func TestSubscribeConfig_String(t *testing.T) {
+	tests := map[string]struct {
 		config   SubscribeConfig
 		expected string
 	}{
-		{
-			name: "default values",
+		"default values": {
 			config: SubscribeConfig{
 				TrackPriority:    TrackPriority(0),
 				MinGroupSequence: GroupSequence(0),
 				MaxGroupSequence: GroupSequence(0),
 			},
-			expected: "SubscribeConfig: { TrackPriority: 0, MinGroupSequence: 0, MaxGroupSequence: 0 }",
+			expected: "{ track_priority: 0, min_group_sequence: 0, max_group_sequence: 0 }",
 		},
-		{
-			name: "specific values",
+		"specific values": {
 			config: SubscribeConfig{
 				TrackPriority:    TrackPriority(128),
 				MinGroupSequence: GroupSequence(10),
 				MaxGroupSequence: GroupSequence(100),
 			},
-			expected: "SubscribeConfig: { TrackPriority: 128, MinGroupSequence: 10, MaxGroupSequence: 100 }",
-		},
-		{
-			name: "high values",
+			expected: "{ track_priority: 128, min_group_sequence: 10, max_group_sequence: 100 }",
+		}, "high values": {
 			config: SubscribeConfig{
 				TrackPriority:    TrackPriority(255),
 				MinGroupSequence: GroupSequence(1000),
 				MaxGroupSequence: GroupSequence(9999),
 			},
-			expected: "SubscribeConfig: { TrackPriority: 255, MinGroupSequence: 1000, MaxGroupSequence: 9999 }",
+			expected: "{ track_priority: 255, min_group_sequence: 1000, max_group_sequence: 9999 }",
+		}, "maximum boundary values": {
+			config: SubscribeConfig{
+				TrackPriority:    TrackPriority(255),
+				MinGroupSequence: GroupSequenceFirst,
+				MaxGroupSequence: MaxGroupSequence,
+			},
+			expected: "{ track_priority: 255, min_group_sequence: 1, max_group_sequence: 4611686018427387903 }",
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			result := tt.config.String()
-			if result != tt.expected {
-				t.Errorf("String() = %q, want %q", result, tt.expected)
-			}
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-func TestSubscribeConfigZeroValue(t *testing.T) {
+func TestSubscribeConfig_ZeroValue(t *testing.T) {
 	var config SubscribeConfig
 
-	if config.TrackPriority != 0 {
-		t.Errorf("zero value TrackPriority = %v, want 0", config.TrackPriority)
-	}
-
-	if config.MinGroupSequence != 0 {
-		t.Errorf("zero value MinGroupSequence = %v, want 0", config.MinGroupSequence)
-	}
-
-	if config.MaxGroupSequence != 0 {
-		t.Errorf("zero value MaxGroupSequence = %v, want 0", config.MaxGroupSequence)
-	}
+	assert.Equal(t, TrackPriority(0), config.TrackPriority)
+	assert.Equal(t, GroupSequence(0), config.MinGroupSequence)
+	assert.Equal(t, GroupSequence(0), config.MaxGroupSequence)
 
 	// Test that zero values behave correctly with IsInRange
-	// Since both min and max are 0 (not GroupSequenceNotSpecified), it should only accept sequence 0
-	if !config.IsInRange(GroupSequence(0)) {
-		t.Error("zero value config should accept sequence 0")
-	}
-
-	// Note: This behavior depends on whether 0 is considered GroupSequenceNotSpecified
-	// Based on the IsInRange implementation, it seems like GroupSequenceNotSpecified is a specific value
+	// Since both min and max are 0 (GroupSequenceNotSpecified), it should accept any sequence
+	assert.True(t, config.IsInRange(GroupSequence(0)))
+	assert.True(t, config.IsInRange(GroupSequence(50)))
+	assert.True(t, config.IsInRange(MaxGroupSequence))
 }
 
-func TestSubscribeConfigComparison(t *testing.T) {
+func TestSubscribeConfig_Comparison(t *testing.T) {
 	config1 := SubscribeConfig{
 		TrackPriority:    TrackPriority(128),
 		MinGroupSequence: GroupSequence(10),
@@ -270,11 +265,6 @@ func TestSubscribeConfigComparison(t *testing.T) {
 		MaxGroupSequence: GroupSequence(200),
 	}
 
-	if config1 != config2 {
-		t.Error("identical configs should be equal")
-	}
-
-	if config1 == config3 {
-		t.Error("different configs should not be equal")
-	}
+	assert.Equal(t, config1, config2)
+	assert.NotEqual(t, config1, config3)
 }

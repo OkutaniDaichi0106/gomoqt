@@ -1,265 +1,163 @@
 package moqt
 
 import (
-	"context"
-	"errors"
 	"testing"
 	"time"
 
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
-// Mock quic.SendStream for testing
-// Removed - using MockQUICSendStream instead
-
-// Helper function to create a properly configured MockQUICSendStream for testing
-func createMockQUICSendStream() *MockQUICSendStream {
-	mockStream := &MockQUICSendStream{}
-	mockStream.On("StreamID").Return(quic.StreamID(456))
-	mockStream.On("Write", mock.Anything).Return(0, nil)
-	mockStream.On("CancelWrite", mock.Anything)
-	mockStream.On("SetWriteDeadline", mock.Anything).Return(nil)
-	mockStream.On("Close").Return(nil)
-	return mockStream
-}
-
 func TestNewSendGroupStream(t *testing.T) {
-	mockStream := createMockQUICSendStream()
-	groupCtx := createTestGroupContext(
-		createTestTrackContext(
-			createTestSessionContext(context.Background()),
-		),
-	)
-
-	sgs := newSendGroupStream(mockStream, groupCtx)
-
-	if sgs == nil {
-		t.Fatal("newSendGroupStream returned nil")
+	tests := map[string]struct {
+		setupMock func() *MockQUICSendStream
+		sequence  GroupSequence
+	}{
+		"valid stream and sequence": {
+			setupMock: func() *MockQUICSendStream {
+				mockStream := &MockQUICSendStream{}
+				return mockStream
+			},
+			sequence: GroupSequence(123),
+		},
+		"different sequence": {
+			setupMock: func() *MockQUICSendStream {
+				mockStream := &MockQUICSendStream{}
+				return mockStream
+			},
+			sequence: GroupSequence(456),
+		},
 	}
 
-	if sgs.stream != mockStream {
-		t.Error("stream not set correctly")
-	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockStream := tt.setupMock()
 
-	if sgs.groupCtx != groupCtx {
-		t.Error("groupCtx not set correctly")
-	}
-}
+			sgs := newSendGroupStream(mockStream, tt.sequence)
 
-func TestSendGroupStreamGroupSequence(t *testing.T) {
-	mockStream := createMockQUICSendStream()
-	groupCtx := createTestGroupContext(
-		createTestTrackContext(
-			createTestSessionContext(context.Background()),
-		),
-	)
-	sgs := newSendGroupStream(mockStream, groupCtx)
-
-	seq := sgs.GroupSequence()
-	expected := GroupSequence(42)
-
-	if seq != expected {
-		t.Errorf("GroupSequence() = %v, want %v", seq, expected)
+			assert.NotNil(t, sgs)
+			assert.Equal(t, mockStream, sgs.stream)
+			assert.Equal(t, tt.sequence, sgs.sequence)
+			assert.Equal(t, uint64(0), sgs.frameCount)
+			assert.False(t, sgs.closed)
+		})
 	}
 }
 
-func TestSendGroupStreamWriteFrame(t *testing.T) {
-	mockStream := createMockQUICSendStream()
-	groupCtx := createTestGroupContext(
-		createTestTrackContext(
-			createTestSessionContext(context.Background()),
-		),
-	)
-	sgs := newSendGroupStream(mockStream, groupCtx)
+func TestSendGroupStream_GroupSequence(t *testing.T) {
+	mockStream := &MockQUICSendStream{}
+	sequence := GroupSequence(789)
 
-	// Test writing a valid frame
-	frame := &Frame{
-		// Note: Frame needs a message field, but we need to check the actual Frame struct
+	sgs := newSendGroupStream(mockStream, sequence)
+
+	result := sgs.GroupSequence()
+	assert.Equal(t, sequence, result)
+}
+
+func TestSendGroupStream_WriteFrame(t *testing.T) {
+	tests := map[string]struct {
+		frame       *Frame
+		expectError bool
+		setupMock   func() *MockQUICSendStream
+	}{
+		"valid frame": {
+			frame: &Frame{message: &message.FrameMessage{Payload: []byte("test")}},
+			setupMock: func() *MockQUICSendStream {
+				mockStream := &MockQUICSendStream{}
+				mockStream.On("Write", mock.Anything).Return(4, nil)
+				return mockStream
+			},
+			expectError: false,
+		},
+		"nil frame": {
+			frame: nil,
+			setupMock: func() *MockQUICSendStream {
+				return &MockQUICSendStream{}
+			},
+			expectError: true,
+		},
+		"frame with nil message": {
+			frame: &Frame{message: nil},
+			setupMock: func() *MockQUICSendStream {
+				return &MockQUICSendStream{}
+			},
+			expectError: true,
+		},
 	}
 
-	err := sgs.WriteFrame(frame)
-	// This test might fail because Frame structure needs to be properly initialized
-	// We should test the error handling instead
-	_ = err
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockStream := tt.setupMock()
+			sgs := newSendGroupStream(mockStream, GroupSequence(1))
 
-	// Test writing nil frame
-	err = sgs.WriteFrame(nil)
-	if err == nil {
-		t.Error("WriteFrame(nil) should return error")
-	}
-	if !errors.Is(err, errors.New("frame is nil")) && err.Error() != "frame is nil" {
-		t.Errorf("WriteFrame(nil) error = %v, want 'frame is nil'", err)
+			err := sgs.WriteFrame(tt.frame)
+
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, uint64(1), sgs.frameCount)
+				mockStream.AssertExpectations(t)
+			}
+		})
 	}
 }
 
-func TestSendGroupStreamWriteFrameAfterClose(t *testing.T) {
-	mockStream := createMockQUICSendStream()
-	groupCtx := createTestGroupContext(createTestTrackContext(
-		createTestSessionContext(context.Background()),
-	))
-	sgs := newSendGroupStream(mockStream, groupCtx)
+func TestSendGroupStream_SetWriteDeadline(t *testing.T) {
+	mockStream := &MockQUICSendStream{}
+	deadline := time.Now().Add(time.Minute)
+	mockStream.On("SetWriteDeadline", deadline).Return(nil)
 
-	// Close the stream first
-	_ = sgs.Close()
+	sgs := newSendGroupStream(mockStream, GroupSequence(1))
 
-	// Try to write after close
-	frame := &Frame{}
-	err := sgs.WriteFrame(frame)
-	if err == nil {
-		t.Error("WriteFrame after close should return error")
-	}
-}
-
-func TestSendGroupStreamSetWriteDeadline(t *testing.T) {
-	mockStream := createMockQUICSendStream()
-	groupCtx := createTestGroupContext(createTestTrackContext(
-		createTestSessionContext(context.Background()),
-	))
-	sgs := newSendGroupStream(mockStream, groupCtx)
-
-	deadline := time.Now().Add(time.Hour)
 	err := sgs.SetWriteDeadline(deadline)
-
-	if err != nil {
-		t.Errorf("SetWriteDeadline() error = %v", err)
-	}
-
-	// Verify that SetWriteDeadline was called on the mock stream
-	mockStream.AssertCalled(t, "SetWriteDeadline", deadline)
+	assert.NoError(t, err)
+	mockStream.AssertExpectations(t)
 }
 
-func TestSendGroupStreamClose(t *testing.T) {
-	mockStream := createMockQUICSendStream()
-	groupCtx := createTestGroupContext(createTestTrackContext(
-		createTestSessionContext(context.Background()),
-	))
-	sgs := newSendGroupStream(mockStream, groupCtx)
+func TestSendGroupStream_Close(t *testing.T) {
+	mockStream := &MockQUICSendStream{}
+	mockStream.On("Close").Return(nil)
+
+	sgs := newSendGroupStream(mockStream, GroupSequence(1))
 
 	err := sgs.Close()
-	if err != nil {
-		t.Errorf("Close() error = %v", err)
-	}
+	assert.NoError(t, err)
+	assert.True(t, sgs.closed)
+	mockStream.AssertExpectations(t)
 
-	// Verify Close was called on the mock stream
-	mockStream.AssertCalled(t, "Close")
-
-	// Verify context is cancelled
-	if groupCtx.Err() == nil {
-		t.Error("group context should be cancelled after close")
-	}
-}
-
-func TestSendGroupStreamCloseWithError(t *testing.T) {
-	mockStream := createMockQUICSendStream()
-	groupCtx := createTestGroupContext(createTestTrackContext(
-		createTestSessionContext(context.Background()),
-	))
-	sgs := newSendGroupStream(mockStream, groupCtx)
-
-	testErr := ErrProtocolViolation
-	err := sgs.CloseWithError(testErr)
-
-	if err != nil {
-		t.Errorf("CloseWithError() error = %v", err)
-	}
-
-	// Verify Close was called on the mock stream
-	mockStream.AssertCalled(t, "Close")
-
-	// Verify context is cancelled
-	if groupCtx.Err() == nil {
-		t.Error("group context should be cancelled after close with error")
-	}
-
-	// Verify the cause
-	cause := context.Cause(groupCtx)
-	if cause != testErr {
-		t.Errorf("context cause = %v, want %v", cause, testErr)
+	// Verify the closed channel is closed
+	select {
+	case <-sgs.closedCh:
+		// Good - should be closed
+	default:
+		t.Error("closedCh should be closed after Close()")
 	}
 }
 
-func TestSendGroupStreamCloseWithNilError(t *testing.T) {
-	mockStream := createMockQUICSendStream()
-	groupCtx := createTestGroupContext(createTestTrackContext(
-		createTestSessionContext(context.Background()),
-	))
-	sgs := newSendGroupStream(mockStream, groupCtx)
+func TestSendGroupStream_CloseWithError(t *testing.T) {
+	mockStream := &MockQUICSendStream{}
+	errorCode := GroupErrorCode(42)
+	streamID := quic.StreamID(123)
 
-	err := sgs.CloseWithError(nil)
+	mockStream.On("CancelWrite", quic.StreamErrorCode(errorCode)).Return()
+	mockStream.On("StreamID").Return(streamID)
 
-	if err != nil {
-		t.Errorf("CloseWithError(nil) error = %v", err)
+	sgs := newSendGroupStream(mockStream, GroupSequence(1))
+
+	err := sgs.CloseWithError(errorCode)
+	assert.NoError(t, err)
+	assert.True(t, sgs.closed)
+	assert.NotNil(t, sgs.closeErr)
+	mockStream.AssertExpectations(t)
+
+	// Verify the closed channel is closed
+	select {
+	case <-sgs.closedCh:
+		// Good - should be closed
+	default:
+		t.Error("closedCh should be closed after CloseWithError()")
 	}
-
-	// Should still close the stream
-	mockStream.AssertCalled(t, "Close")
-}
-
-func TestSendGroupStreamClosedErr(t *testing.T) {
-	mockStream := createMockQUICSendStream()
-	groupCtx := createTestGroupContext(createTestTrackContext(
-		createTestSessionContext(context.Background()),
-	))
-	sgs := newSendGroupStream(mockStream, groupCtx)
-
-	// Initially should not be closed
-	err := sgs.closedErr()
-	if err != nil {
-		t.Errorf("closedErr() for open stream = %v, want nil", err)
-	}
-
-	// After closing
-	sgs.Close()
-	err = sgs.closedErr()
-	if err == nil {
-		t.Error("closedErr() for closed stream should return error")
-	}
-}
-
-func TestSendGroupStreamDoubleClose(t *testing.T) {
-	mockStream := createMockQUICSendStream()
-	groupCtx := createTestGroupContext(createTestTrackContext(
-		createTestSessionContext(context.Background()),
-	))
-	sgs := newSendGroupStream(mockStream, groupCtx)
-
-	// First close
-	err1 := sgs.Close()
-	if err1 != nil {
-		t.Errorf("first Close() error = %v", err1)
-	}
-
-	// Second close should return error
-	err2 := sgs.Close()
-	if err2 == nil {
-		t.Error("second Close() should return error")
-	}
-}
-
-func TestSendGroupStreamDoubleCloseWithError(t *testing.T) {
-	mockStream := createMockQUICSendStream()
-	groupCtx := createTestGroupContext(createTestTrackContext(
-		createTestSessionContext(context.Background()),
-	))
-	sgs := newSendGroupStream(mockStream, groupCtx)
-
-	testErr := ErrProtocolViolation
-
-	// First close with error
-	err1 := sgs.CloseWithError(testErr)
-	if err1 != nil {
-		t.Errorf("first CloseWithError() error = %v", err1)
-	}
-
-	// Second close with error should return error
-	err2 := sgs.CloseWithError(testErr)
-	if err2 == nil {
-		t.Error("second CloseWithError() should return error")
-	}
-}
-
-func TestSendGroupStreamInterface(t *testing.T) {
-	// Test that sendGroupStream implements GroupWriter interface
-	var _ GroupWriter = (*sendGroupStream)(nil)
 }

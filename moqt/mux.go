@@ -97,13 +97,13 @@ func (mux *TrackMux) Handler(path BroadcastPath) TrackHandler {
 	mux.mu.RLock()
 	defer mux.mu.RUnlock()
 
-	ann, handler := mux.findHandler(path)
+	node := mux.findRoutingNode(path)
 
-	if ann == nil || !ann.IsActive() {
+	if node == nil || !node.announcement.IsActive() {
 		return NotFoundHandler
 	}
 
-	return handler
+	return node.handler
 }
 
 // ServeTrack serves the track at the specified path using the appropriate handler.
@@ -127,10 +127,10 @@ func (mux *TrackMux) ServeTrack(pub *Publisher) {
 	handler.ServeTrack(pub)
 }
 
-func (mux *TrackMux) findHandler(path BroadcastPath) (*Announcement, TrackHandler) {
+func (mux *TrackMux) findRoutingNode(path BroadcastPath) *routingNode {
 	if path == "" {
 		slog.Warn("mux: empty track path for handler lookup")
-		return nil, NotFoundHandler
+		return nil
 	}
 
 	p := newPath(path)
@@ -139,21 +139,21 @@ func (mux *TrackMux) findHandler(path BroadcastPath) (*Announcement, TrackHandle
 	current := &mux.trackTree
 	for _, seg := range p.segments {
 		if current.children == nil {
-			return nil, NotFoundHandler
+			return nil
 		}
 
 		child, ok := current.children[seg]
 		if !ok {
-			return nil, NotFoundHandler
+			return nil
 		}
 
 		current = child
 	}
 
 	if current.handler == nil {
-		return nil, NotFoundHandler
+		return nil
 	}
-	return current.announcement.Fork(), current.handler
+	return current
 }
 
 // ServeAnnouncements serves announcements for tracks matching the given pattern.
@@ -189,14 +189,17 @@ func (mux *TrackMux) ServeAnnouncements(w AnnouncementWriter, prefix string) {
 		current.announcements = mux.findActiveAnnouncements(pattern)
 	}
 	// Start serving announcements
-	err := w.SendAnnouncements(current.announcements)
+	var err error
+	for _, ann := range current.announcements {
+		err = w.SendAnnouncement(ann)
+		if err != nil {
+			return
+		}
+	}
+
 	pos := len(current.announcements)
 
 	mux.mu.Unlock()
-
-	if err != nil {
-		return
-	}
 
 	for {
 		current.mu.Lock()
@@ -207,9 +210,11 @@ func (mux *TrackMux) ServeAnnouncements(w AnnouncementWriter, prefix string) {
 		next := current.announcements[pos:]
 		current.mu.Unlock()
 
-		err = w.SendAnnouncements(next)
-		if err != nil {
-			return
+		for _, ann := range next {
+			err = w.SendAnnouncement(ann)
+			if err != nil {
+				return
+			}
 		}
 		pos = len(current.announcements)
 	}
@@ -371,7 +376,7 @@ type routingNode struct {
 	path         *path
 	handler      TrackHandler
 	announcement *Announcement
-	// info         *Info
+	info         *Info
 
 	children map[string]*routingNode
 }
@@ -454,16 +459,6 @@ func (p *path) depth() int {
 // newPattern creates a pattern from a string.
 // It validates and splits the string into segments for pattern matching.
 func newPattern(str string) *pattern {
-	if str == "" {
-		slog.Warn("mux: creating pattern from empty string")
-		str = "/"
-	}
-
-	if !strings.HasPrefix(str, "/") {
-		slog.Error("mux: pattern must start with '/'", "pattern", str)
-		panic("mux: pattern must start with '/'")
-	}
-
 	return &pattern{
 		str:      str,
 		segments: strings.Split(str, "/"),

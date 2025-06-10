@@ -5,29 +5,25 @@ import (
 )
 
 func TestSubscriber(t *testing.T) {
-	tests := []struct {
-		name            string
+	tests := map[string]struct {
 		broadcastPath   BroadcastPath
 		trackName       TrackName
 		trackReader     TrackReader
 		subscribeStream *sendSubscribeStream
 	}{
-		{
-			name:            "basic subscriber",
+		"basic subscriber": {
 			broadcastPath:   BroadcastPath("/live/stream"),
 			trackName:       TrackName("video"),
 			trackReader:     &MockTrackReader{},
 			subscribeStream: nil, // Can be nil for this test
 		},
-		{
-			name:            "empty paths",
+		"empty paths": {
 			broadcastPath:   BroadcastPath(""),
 			trackName:       TrackName(""),
 			trackReader:     nil,
 			subscribeStream: nil,
 		},
-		{
-			name:            "complex paths",
+		"complex paths": {
 			broadcastPath:   BroadcastPath("/live/stream/user123/session456"),
 			trackName:       TrackName("audio-track-high-quality"),
 			trackReader:     &MockTrackReader{},
@@ -35,8 +31,8 @@ func TestSubscriber(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			subscriber := Subscriber{
 				BroadcastPath:   tt.broadcastPath,
 				TrackName:       tt.trackName,
@@ -63,7 +59,7 @@ func TestSubscriber(t *testing.T) {
 	}
 }
 
-func TestSubscriberZeroValue(t *testing.T) {
+func TestSubscriber_ZeroValue(t *testing.T) {
 	var subscriber Subscriber
 
 	if subscriber.BroadcastPath != "" {
@@ -83,7 +79,7 @@ func TestSubscriberZeroValue(t *testing.T) {
 	}
 }
 
-func TestSubscriberComparison(t *testing.T) {
+func TestSubscriber_Comparison(t *testing.T) {
 	reader1 := &MockTrackReader{}
 	reader2 := &MockTrackReader{}
 
@@ -119,7 +115,7 @@ func TestSubscriberComparison(t *testing.T) {
 	}
 }
 
-func TestSubscriberFieldTypes(t *testing.T) {
+func TestSubscriber_FieldTypes(t *testing.T) {
 	subscriber := Subscriber{
 		BroadcastPath: BroadcastPath("/test"),
 		TrackName:     TrackName("test"),
@@ -132,8 +128,10 @@ func TestSubscriberFieldTypes(t *testing.T) {
 	var _ *sendSubscribeStream = subscriber.SubscribeStream // Can be nil
 }
 
-func TestSubscriberWithMockReader(t *testing.T) {
+func TestSubscriber_WithMockReader(t *testing.T) {
 	reader := &MockTrackReader{}
+	reader.On("Close").Return(nil)
+
 	subscriber := Subscriber{
 		BroadcastPath: BroadcastPath("/test"),
 		TrackName:     TrackName("test"),

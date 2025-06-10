@@ -1,42 +1,36 @@
-package moqt_test
+package moqt
 
 import (
 	"testing"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestSubscribeID_String(t *testing.T) {
-	tests := []struct {
-		name string
-		id   moqt.SubscribeID
+	tests := map[string]struct {
+		id   SubscribeID
 		want string
 	}{
-		{
-			name: "zero id",
+		"zero id": {
 			id:   0,
-			want: "SubscribeID: 0",
+			want: "0",
 		},
-		{
-			name: "small id",
+		"small id": {
 			id:   42,
-			want: "SubscribeID: 42",
+			want: "42",
 		},
-		{
-			name: "large id",
+		"large id": {
 			id:   18446744073709551615, // max uint64
-			want: "SubscribeID: 18446744073709551615",
+			want: "18446744073709551615",
 		},
-		{
-			name: "typical id",
+		"typical id": {
 			id:   12345,
-			want: "SubscribeID: 12345",
+			want: "12345",
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			result := tt.id.String()
 			assert.Equal(t, tt.want, result)
 		})
@@ -45,28 +39,28 @@ func TestSubscribeID_String(t *testing.T) {
 
 func TestSubscribeID_Type(t *testing.T) {
 	// Test that SubscribeID is based on uint64
-	var id moqt.SubscribeID = 100
+	var id SubscribeID = 100
 
 	// Test assignment and comparison
-	assert.Equal(t, moqt.SubscribeID(100), id)
+	assert.Equal(t, SubscribeID(100), id)
 
 	// Test arithmetic operations
 	id++
-	assert.Equal(t, moqt.SubscribeID(101), id)
+	assert.Equal(t, SubscribeID(101), id)
 
 	id--
-	assert.Equal(t, moqt.SubscribeID(100), id)
+	assert.Equal(t, SubscribeID(100), id)
 }
 
 func TestSubscribeID_ZeroValue(t *testing.T) {
 	// Test zero value behavior
-	var id moqt.SubscribeID
-	assert.Equal(t, moqt.SubscribeID(0), id)
-	assert.Equal(t, "SubscribeID: 0", id.String())
+	var id SubscribeID
+	assert.Equal(t, SubscribeID(0), id)
+	assert.Equal(t, "0", id.String())
 }
 
 func TestSubscribeID_MaxValue(t *testing.T) {
 	// Test maximum value
-	var maxID moqt.SubscribeID = ^moqt.SubscribeID(0) // max uint64
-	assert.Equal(t, "SubscribeID: 18446744073709551615", maxID.String())
+	var maxID SubscribeID = ^SubscribeID(0) // max uint64
+	assert.Equal(t, "18446744073709551615", maxID.String())
 }

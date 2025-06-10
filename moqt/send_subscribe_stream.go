@@ -3,11 +3,9 @@ package moqt
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/moqtrace"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
@@ -17,23 +15,18 @@ type SendSubscribeStream interface {
 	UpdateSubscribe(*SubscribeConfig) error
 }
 
-func newSendSubscribeStream(trackCtx *trackContext, stream quic.Stream, config *SubscribeConfig, streamTracer *moqtrace.StreamTracer) *sendSubscribeStream {
+func newSendSubscribeStream(sessCtx context.Context, id SubscribeID, stream quic.Stream, config *SubscribeConfig) *sendSubscribeStream {
+	ctx, cancel := context.WithCancelCause(sessCtx)
 	substr := &sendSubscribeStream{
-		trackCtx: trackCtx,
-		config:   config,
-		stream:   stream,
-		tracer:   streamTracer,
+		ctx:    ctx,
+		cancel: cancel,
+		id:     id,
+		// publishAbortedCh: make(chan *SubscribeError),
+		config: config,
+		stream: stream,
 	}
 
-	go func() {
-		<-trackCtx.Done()
-		reason := context.Cause(trackCtx)
-		if reason == nil {
-			substr.close()
-		} else {
-			substr.closeWithError(reason)
-		}
-	}()
+	// go substr.listenAborted()
 
 	return substr
 }
@@ -41,114 +34,147 @@ func newSendSubscribeStream(trackCtx *trackContext, stream quic.Stream, config *
 var _ SendSubscribeStream = (*sendSubscribeStream)(nil)
 
 type sendSubscribeStream struct {
-	trackCtx *trackContext
+	ctx    context.Context
+	cancel context.CancelCauseFunc
+
+	id SubscribeID
 
 	config *SubscribeConfig
 
 	stream quic.Stream
 	mu     sync.Mutex
 
-	tracer *moqtrace.StreamTracer
+	closeErr error
+	closed   bool
 }
 
 func (sss *sendSubscribeStream) SubscribeID() SubscribeID {
-	return sss.trackCtx.id
+	return sss.id
 }
 
 func (sss *sendSubscribeStream) SubscribeConfig() *SubscribeConfig {
-	return sss.config
-}
-
-func (sss *sendSubscribeStream) UpdateSubscribe(new *SubscribeConfig) error {
 	sss.mu.Lock()
 	defer sss.mu.Unlock()
 
+	return sss.config
+}
+
+func (sss *sendSubscribeStream) UpdateSubscribe(newConfig *SubscribeConfig) error {
+	if newConfig == nil {
+		return errors.New("new subscribe config cannot be nil")
+	}
+
+	sss.mu.Lock()
+	defer sss.mu.Unlock()
+
+	if sss.closed {
+		if sss.closeErr != nil {
+			return sss.closeErr
+		}
+		return errors.New("stream already closed")
+	}
+
 	old := sss.config
 
-	if new.MaxGroupSequence != 0 {
-		if new.MinGroupSequence > new.MaxGroupSequence {
+	if newConfig.MaxGroupSequence != 0 {
+		if newConfig.MinGroupSequence > newConfig.MaxGroupSequence {
 			return ErrInvalidRange
 		}
 	}
 
 	if old.MinGroupSequence != 0 {
-		if new.MinGroupSequence == 0 {
+		if newConfig.MinGroupSequence == 0 {
 			return ErrInvalidRange
 		}
-		if old.MinGroupSequence > new.MinGroupSequence {
+		if old.MinGroupSequence > newConfig.MinGroupSequence {
 			return ErrInvalidRange
 		}
 	}
-
 	if old.MaxGroupSequence != 0 {
-		if new.MaxGroupSequence == 0 {
+		if newConfig.MaxGroupSequence == 0 {
 			return ErrInvalidRange
 		}
-		if old.MaxGroupSequence < new.MaxGroupSequence {
+		if old.MaxGroupSequence < newConfig.MaxGroupSequence {
 			return ErrInvalidRange
 		}
 	}
 
+	// Send the message first before updating config
 	sum := message.SubscribeUpdateMessage{
-		TrackPriority:    message.TrackPriority(new.TrackPriority),
-		MinGroupSequence: message.GroupSequence(new.MinGroupSequence),
-		MaxGroupSequence: message.GroupSequence(new.MaxGroupSequence),
+		TrackPriority:    message.TrackPriority(newConfig.TrackPriority),
+		MinGroupSequence: message.GroupSequence(newConfig.MinGroupSequence),
+		MaxGroupSequence: message.GroupSequence(newConfig.MaxGroupSequence),
 	}
-
 	_, err := sum.Encode(sss.stream)
 	if err != nil {
-		slog.Error("failed to encode a SUBSCRIBE_UPDATE message",
-			"error", err,
-			"stream_id", sss.stream.StreamID(),
-		)
-		return err
+		// Set writeErr and unwritable before closing channel
+		var strErr *quic.StreamError
+		if errors.As(err, &strErr) {
+			sss.closeErr = &SubscribeError{StreamError: strErr}
+		} else {
+			strErrCode := quic.StreamErrorCode(InternalSubscribeErrorCode)
+			sss.stream.CancelWrite(strErrCode)
+			sss.closeErr = &SubscribeError{StreamError: &quic.StreamError{
+				StreamID:  sss.stream.StreamID(),
+				ErrorCode: strErrCode,
+			}}
+		}
+		sss.closed = true
+
+		sss.cancel(sss.closeErr)
+
+		return sss.closeErr
 	}
 
-	slog.Debug("sent a subscribe update message",
-		"stream_id", sss.stream.StreamID(),
-	)
-
-	sss.config = new
+	// Only update config after successful message sending
+	sss.config = newConfig
 
 	return nil
 }
 
-func (ss *sendSubscribeStream) close() error {
-	err := ss.stream.Close()
+func (sss *sendSubscribeStream) close() error {
+	sss.mu.Lock()
+	defer sss.mu.Unlock()
+
+	if sss.closed {
+		return sss.closeErr
+	}
+
+	err := sss.stream.Close()
 	if err != nil {
-		slog.Debug("failed to close a subscrbe send stream",
-			"stream_id", ss.stream.StreamID(),
-			"error", err,
-		)
 		return err
 	}
 
-	slog.Debug("closed a subscribe send stream",
-		"stream_id", ss.stream.StreamID(),
-	)
+	sss.closed = true
+
+	sss.cancel(nil)
 
 	return nil
 }
 
-func (sss *sendSubscribeStream) closeWithError(err error) error {
-	if err == nil {
-		err = ErrInternalError
+func (sss *sendSubscribeStream) closeWithError(code SubscribeErrorCode) error {
+	sss.mu.Lock()
+	defer sss.mu.Unlock()
+
+	if sss.closed {
+		return sss.closeErr
 	}
 
-	var suberr SubscribeError
-	if !errors.As(err, &suberr) {
-		suberr = ErrInternalError
+	strErrCode := quic.StreamErrorCode(code)
+	sss.stream.CancelWrite(strErrCode)
+
+	sss.closed = true
+	err := &SubscribeError{
+		StreamError: &quic.StreamError{
+			StreamID:  sss.stream.StreamID(),
+			ErrorCode: strErrCode,
+		},
 	}
+	sss.closeErr = err
 
-	code := quic.StreamErrorCode(suberr.SubscribeErrorCode())
+	sss.stream.CancelRead(strErrCode)
 
-	sss.stream.CancelRead(code)
-	sss.stream.CancelWrite(code)
-
-	slog.Debug("closed a subscribe receive stream with an error",
-		"stream_id", sss.stream.StreamID(),
-		"reason", err.Error(),
-	)
+	sss.cancel(err)
 
 	return nil
 }

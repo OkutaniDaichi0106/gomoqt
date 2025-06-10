@@ -3,103 +3,155 @@ package moqt
 import (
 	"context"
 	"errors"
-	"strings"
+	"fmt"
+	"io"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/moqtrace"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-func newSession(sessCtx *sessionContext, stream *sessionStream, conn quic.Connection, mux *TrackMux) *Session {
+func newSession(conn quic.Connection, version protocol.Version, path string, clientParams, serverParams *Parameters,
+	stream quic.Stream, mux *TrackMux, logger *slog.Logger) *Session {
 	if mux == nil {
 		mux = DefaultMux
 	}
 
+	sessStream := newSessionStream(conn.Context(), stream)
+
 	sess := &Session{
-		ctx:                      sessCtx,
-		conn:                     conn,
-		mux:                      mux,
-		sessionStream:            stream,
-		receiveGroupStreamQueues: make(map[SubscribeID]*incomingGroupStreamQueue),
-		sendGroupStreamQueues:    make(map[SubscribeID]*outgoingGroupStreamQueue),
+		sessionStream:    sessStream,
+		path:             path,
+		version:          version,
+		clientParameters: clientParams,
+		serverParameters: serverParams,
+		logger:           logger,
+		conn:             conn,
+		mux:              mux,
+		trackReceivers:   make(map[SubscribeID]*trackReceiver),
+		trackSenders:     make(map[SubscribeID]*trackSender),
 	}
 
-	sessCtx.wg.Add(2)
+	sess.wg.Add(3)
+	// Listen for session stream closure
+	go func() {
+		defer sess.wg.Done()
+		<-sess.Context().Done()
+		if !sess.terminating() {
+			sess.Terminate(ProtocolViolationErrorCode, "session stream closed unexpectedly")
+		}
+	}()
+
 	// Listen bidirectional streams
 	go func() {
-		defer sessCtx.wg.Done()
-		sess.handleBiStreams(sessCtx)
+		defer sess.wg.Done()
+		sess.handleBiStreams()
 	}()
 
 	// Listen unidirectional streams
 	go func() {
-		defer sessCtx.wg.Done()
-		sess.handleUniStreams(sessCtx)
+		defer sess.wg.Done()
+		sess.handleUniStreams()
 	}()
 
 	return sess
 }
 
 type Session struct {
-	ctx *sessionContext
+	*sessionStream
 
-	conn quic.Connection
+	wg sync.WaitGroup // WaitGroup for session cleanup
+
+	path string
+
+	// Version of the protocol used in this session
+	version protocol.Version
+
+	// Parameters specified by the client and server
+	clientParameters *Parameters
+
+	// Parameters specified by the server
+	serverParameters *Parameters
+
+	// bitrate atomic.Uint64 // Bitrate in bits per second
+
+	logger *slog.Logger
+
+	conn   quic.Connection
+	connMu sync.Mutex
 
 	mux *TrackMux // TODO
 
 	subscribeIDCounter atomic.Uint64
 
-	sessionStream *sessionStream
+	trackReceivers        map[SubscribeID]*trackReceiver
+	receiveGroupMapLocker sync.RWMutex
 
-	receiveGroupStreamQueues map[SubscribeID]*incomingGroupStreamQueue
-	receiveGroupMapLocker    sync.RWMutex
+	trackSenders       map[SubscribeID]*trackSender
+	sendGroupMapLocker sync.RWMutex
 
-	sendGroupStreamQueues map[SubscribeID]*outgoingGroupStreamQueue
-	sendGroupMapLocker    sync.RWMutex
+	isTerminating atomic.Bool
+	termErr       error
 }
 
-func (s *Session) Terminate(reason error) {
-	var trmerr TerminateError
-	if reason == nil {
-		trmerr = NoErrTerminate
-	} else {
-		if !errors.As(reason, &trmerr) {
-			trmerr = ErrInternalError.WithReason(reason.Error())
-		}
+func (s *Session) terminating() bool {
+	return s.isTerminating.Load()
+}
+
+func (s *Session) Context() context.Context {
+	return s.ctx
+}
+
+func (s *Session) Terminate(code SessionErrorCode, msg string) error {
+	if s.terminating() {
+		return s.termErr
 	}
 
-	s.ctx.cancel(trmerr)
+	s.isTerminating.Store(true)
 
-	code := quic.ConnectionErrorCode(trmerr.TerminateErrorCode())
-
-	err := s.conn.CloseWithError(code, trmerr.Error())
-	if err != nil {
-		if logger := s.ctx.Logger(); logger != nil {
-			logger.Error("failed to close the Connection",
-				"error", err,
-			)
-		}
-	}
-
-	// Wait for finishing handling streams
-	s.ctx.wg.Wait()
-
-	if logger := s.ctx.Logger(); logger != nil {
-		logger.Debug("terminated a session",
-			"reason", trmerr,
+	if s.logger != nil {
+		s.logger.Debug("terminating a session",
+			"code", code,
+			"message", msg,
 		)
 	}
 
-}
-
-func (s *Session) OpenAnnounceStream(prefix string) (AnnouncementReader, error) {
-	if !strings.HasPrefix(prefix, "/") {
-		panic("prefix must start with '/'")
+	s.connMu.Lock()
+	defer s.connMu.Unlock()
+	err := s.conn.CloseWithError(quic.ConnectionErrorCode(code), msg)
+	if err != nil {
+		var appErr *quic.ApplicationError
+		if errors.As(err, &appErr) {
+			reason := &SessionError{
+				ApplicationError: appErr,
+			}
+			s.termErr = reason
+			return reason
+		}
+		s.termErr = err
+		return err
 	}
 
-	return s.openAnnounceStream(prefix)
+	s.termErr = &SessionError{
+		ApplicationError: &quic.ApplicationError{
+			ErrorCode:    quic.ApplicationErrorCode(code),
+			ErrorMessage: msg,
+		},
+	}
+
+	s.cancel(s.termErr)
+
+	// Wait for finishing handling streams
+	s.wg.Wait()
+
+	if s.logger != nil {
+		s.logger.Debug("terminated a session")
+	}
+
+	return nil
 }
 
 func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *SubscribeConfig) (*Subscriber, error) {
@@ -108,147 +160,188 @@ func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *Su
 	}
 	id := s.nextSubscribeID()
 
-	if logger := s.ctx.Logger(); logger != nil {
-		logger.Debug("opening track stream",
+	if s.logger != nil {
+		s.logger.Debug("opening track stream",
 			"subscribe_config", config.String(),
 			"broadcast_path", path,
 			"track_name", name,
 			"subscribe_id", id)
 	}
 
-	trackCtx := newTrackContext(s.ctx, id, path, name)
-
-	substr, err := s.openSubscribeStream(trackCtx, config)
-	if err != nil {
-		return nil, err
-	}
-
-	// Create a receive group stream queue
-	queue := newIncomingGroupStreamQueue(substr.SubscribeConfig)
-
-	//
-	s.receiveGroupMapLocker.Lock()
-	s.receiveGroupStreamQueues[id] = queue
-	s.receiveGroupMapLocker.Unlock()
-
-	return &Subscriber{
-		BroadcastPath:   path,
-		TrackName:       name,
-		SubscribeStream: substr,
-		TrackReader:     newTrackReceiver(trackCtx, queue),
-	}, nil
-}
-
-func (s *Session) Context() context.Context {
-	return s.ctx
-}
-
-func (s *Session) nextSubscribeID() SubscribeID {
-	// Increment and return the previous value atomically
-	id := s.subscribeIDCounter.Add(1)
-	return SubscribeID(id)
-}
-
-// TODO: Implement this method and use it
-func (sess *Session) updateSession(bitrate uint64) error {
-	logger := sess.ctx.Logger()
-	if logger != nil {
-		logger.Debug("updating a session",
-			"bitrate", bitrate,
-		)
-	}
-
-	// Send a SESSION_UPDATE message
-	err := sess.sessionStream.updateSession(bitrate)
-	if err != nil {
-		logger.Error("failed to update a session",
-			"error", err,
-		)
-		return err
-	}
-
-	// Update the bitrate
-	// sess.ctx.bitrate.Store(bitrate)
-	if logger != nil {
-		logger.Debug("session updated successfully",
-			"bitrate", bitrate,
-		)
-	}
-
-	return nil
-}
-
-func (s *Session) openAnnounceStream(prefix string) (*receiveAnnounceStream, error) {
-	sessTracer := s.ctx.Tracer()
-
+	s.connMu.Lock()
 	stream, err := s.conn.OpenStream()
 	if err != nil {
+		var appErr *quic.ApplicationError
+		if errors.As(err, &appErr) {
+			s.connMu.Unlock()
+			return nil, &SessionError{
+				ApplicationError: appErr,
+			}
+		}
+		s.connMu.Unlock()
 		return nil, err
 	}
-	streamTracer := sessTracer.QUICStreamOpened(stream.StreamID())
-
-	st := message.StreamTypeMessage{
-		StreamType: stream_type_announce,
-	}
-	_, err = st.Encode(stream)
-	if err != nil {
-		return nil, err
-	}
-	streamTracer.StreamTypeMessageSent(st)
-
-	apm := message.AnnouncePleaseMessage{
-		TrackPrefix: prefix,
-	}
-	_, err = apm.Encode(stream)
-	if err != nil {
-		return nil, err
-	}
-	streamTracer.AnnouncePleaseMessageSent(apm)
-
-	return newReceiveAnnounceStream(stream, prefix), nil
-}
-
-func (s *Session) openSubscribeStream(trackCtx *trackContext, config *SubscribeConfig) (*sendSubscribeStream, error) {
-	sessTracer := s.ctx.Tracer()
-
-	stream, err := s.conn.OpenStream()
-	if err != nil {
-		return nil, err
-	}
-	streamTracer := sessTracer.QUICStreamOpened(stream.StreamID())
+	s.connMu.Unlock()
 
 	// Send a SUBSCRIBE message
 	sm := message.SubscribeMessage{
-		SubscribeID:      message.SubscribeID(trackCtx.id),
-		BroadcastPath:    string(trackCtx.path),
-		TrackName:        string(trackCtx.name),
+		SubscribeID:      message.SubscribeID(id),
+		BroadcastPath:    string(path),
+		TrackName:        string(name),
 		TrackPriority:    message.TrackPriority(config.TrackPriority),
 		MinGroupSequence: message.GroupSequence(config.MinGroupSequence),
 		MaxGroupSequence: message.GroupSequence(config.MaxGroupSequence),
 	}
 	_, err = sm.Encode(stream)
 	if err != nil {
-		if logger := s.ctx.Logger(); logger != nil {
-			logger.Error("failed to send a SUBSCRIBE message", "error", err)
+		var strErr *quic.StreamError
+		if errors.As(err, &strErr) && strErr.Remote {
+			//
+			stream.CancelRead(strErr.ErrorCode)
+
+			return nil, &SubscribeError{
+				StreamError: strErr,
+			}
 		}
+
+		strErrCode := quic.StreamErrorCode(InternalSubscribeErrorCode)
+		stream.CancelWrite(strErrCode)
+		stream.CancelRead(strErrCode)
+
 		return nil, err
 	}
-	streamTracer.SubscribeMessageSent(sm)
 
-	// Receive an INFO message
 	var subok message.SubscribeOkMessage
 	_, err = subok.Decode(stream)
 	if err != nil {
-		if logger := s.ctx.Logger(); logger != nil {
-			logger.Error("failed to get a Info", "error", err)
+		if errors.Is(err, io.EOF) {
+			return nil, err
 		}
+
+		var strErr *quic.StreamError
+		if errors.As(err, &strErr) {
+			strErrCode := quic.StreamErrorCode(strErr.ErrorCode)
+			stream.CancelWrite(strErrCode)
+
+			return nil, &SubscribeError{
+				StreamError: strErr,
+			}
+		}
+
+		strErrCode := quic.StreamErrorCode(InternalSubscribeErrorCode)
+		stream.CancelWrite(strErrCode)
+		stream.CancelRead(strErrCode)
+
 		return nil, err
 	}
-	streamTracer.SubscribeOkMessageReceived(subok)
 
-	substr := newSendSubscribeStream(trackCtx, stream, config, streamTracer)
+	substr := newSendSubscribeStream(s.ctx, id, stream, config)
 
-	return substr, nil
+	// Create a receive group stream queue
+	trackReceiver := newTrackReceiver(substr)
+	//
+	s.receiveGroupMapLocker.Lock()
+	s.trackReceivers[id] = trackReceiver
+	s.receiveGroupMapLocker.Unlock()
+
+	return &Subscriber{
+		BroadcastPath:   path,
+		TrackName:       name,
+		SubscribeStream: substr,
+		TrackReader:     trackReceiver,
+	}, nil
+}
+
+func (s *Session) nextSubscribeID() SubscribeID {
+	// Increment and return the previous value atomically
+	return SubscribeID(s.subscribeIDCounter.Add(1))
+}
+
+// // TODO: Implement this method and use it
+// func (sess *Session) updateSession(bitrate uint64) error {
+// 	if sess.logger != nil {
+// 		sess.logger.Debug("updating a session",
+// 			"bitrate", bitrate,
+// 		)
+// 	}
+
+// 	// Send a SESSION_UPDATE message
+// 	err := sess.sessionStream.updateSession(bitrate)
+// 	if err != nil {
+// 		sess.logger.Error("failed to update a session",
+// 			"error", err,
+// 		)
+// 		return err
+// 	}
+
+// 	// Update the bitrate
+// 	// sess.ctx.bitrate.Store(bitrate)
+// 	if sess.logger != nil {
+// 		sess.logger.Debug("session updated successfully",
+// 			"bitrate", bitrate,
+// 		)
+// 	}
+
+// 	return nil
+// }
+
+func (sess *Session) OpenAnnounceStream(prefix string) (AnnouncementReader, error) {
+	sess.connMu.Lock()
+	stream, err := sess.conn.OpenStream()
+	if err != nil {
+		var appErr *quic.ApplicationError
+		if errors.As(err, &appErr) {
+			sess.connMu.Unlock()
+			return nil, &SessionError{
+				ApplicationError: appErr,
+			}
+		}
+		sess.connMu.Unlock()
+		return nil, err
+	}
+	sess.connMu.Unlock()
+
+	st := message.StreamTypeMessage{
+		StreamType: stream_type_announce,
+	}
+	_, err = st.Encode(stream)
+	if err != nil {
+		var strErr *quic.StreamError
+		if errors.As(err, &strErr) {
+			strErrCode := quic.StreamErrorCode(InternalAnnounceErrorCode)
+			stream.CancelRead(strErrCode)
+
+			return nil, &AnnounceError{
+				StreamError: strErr,
+			}
+		}
+
+		return nil, err
+	}
+
+	apm := message.AnnouncePleaseMessage{
+		TrackPrefix: prefix,
+	}
+	_, err = apm.Encode(stream)
+	if err != nil {
+		var strErr *quic.StreamError
+		if errors.As(err, &strErr) {
+			strErrCode := quic.StreamErrorCode(InternalAnnounceErrorCode)
+			stream.CancelRead(strErrCode)
+
+			return nil, &AnnounceError{
+				StreamError: strErr,
+			}
+		}
+
+		strErrCode := quic.StreamErrorCode(InternalAnnounceErrorCode)
+		stream.CancelWrite(strErrCode)
+		stream.CancelRead(strErrCode)
+
+		return nil, err
+	}
+
+	return newReceiveAnnounceStream(sess.ctx, stream, prefix), nil
 }
 
 func (sess *Session) goAway(uri string) {
@@ -259,87 +352,76 @@ func (sess *Session) goAway(uri string) {
 // It listens for incoming streams and processes them in separate goroutines.
 // The function handles session streams, announce streams, subscribe streams, and info streams.
 // It also handles errors and terminates the session if an unknown stream type is encountered.
-func (sess *Session) handleBiStreams(ctx context.Context) {
-	sessTracer := sess.ctx.Tracer()
-	logger := sess.ctx.Logger()
-	if logger != nil {
-		logger.Debug("listening for bidirectional streams")
-	}
-
+func (sess *Session) handleBiStreams() {
 	for { // Accept a bidirectional stream
-		stream, err := sess.conn.AcceptStream(ctx)
+		stream, err := sess.conn.AcceptStream(sess.ctx)
 		if err != nil {
-			if logger != nil {
-				logger.Error("failed to accept a bidirectional stream", "error", err)
-			}
 			return
 		}
-		streamTracer := sessTracer.QUICStreamAccepted(stream.StreamID())
 
 		// Handle the stream
-		go sess.processBiStream(stream, streamTracer)
+		go sess.processBiStream(stream)
 	}
 }
 
-func (sess *Session) processBiStream(stream quic.Stream, streamTracer *moqtrace.StreamTracer) {
-	logger := sess.ctx.Logger()
-	// Decode the STREAM_TYPE message and get the stream type ID
+func (sess *Session) processBiStream(stream quic.Stream) {
 	var stm message.StreamTypeMessage
-	_, err := stm.Decode(stream)
+	n, err := stm.Decode(stream)
 	if err != nil {
-		if logger != nil {
-			logger.Error("failed to get a Stream Type ID",
-				"error", err,
-				"stream_id", stream.StreamID(),
-			)
+		if errors.Is(err, io.EOF) || n == 0 {
+
+			sess.Terminate(ProtocolViolationErrorCode, err.Error())
+			return
 		}
 
+		var strErr *quic.StreamError
+		if errors.As(err, &strErr) && strErr.Remote {
+		}
+
+		sess.Terminate(ProtocolViolationErrorCode, err.Error())
 		return
 	}
-	streamTracer.StreamTypeMessageReceived(stm)
 
-	// Handle the stream by the Stream Type ID
 	switch stm.StreamType {
 	case stream_type_announce:
-		// Handle the announce stream
-		if logger != nil {
-			logger.Debug("announce stream was opened")
-		}
-
-		// Decode the ANNOUNCE_PLEASE message
 		var apm message.AnnouncePleaseMessage
 		_, err := apm.Decode(stream)
 		if err != nil {
-			if logger != nil {
-				logger.Error("failed to get an Interest", "error", err)
+			if errors.Is(err, io.EOF) {
+				sess.Terminate(ProtocolViolationErrorCode, err.Error())
+				return
 			}
-			stream.CancelRead(ErrInternalError.StreamErrorCode())
-			stream.CancelWrite(ErrInternalError.StreamErrorCode())
+
+			var strErr *quic.StreamError
+			if errors.As(err, &strErr) && strErr.Remote {
+			}
+
+			sess.Terminate(ProtocolViolationErrorCode, err.Error())
 			return
 		}
-		streamTracer.AnnouncePleaseMessageReceived(apm)
 
 		prefix := apm.TrackPrefix
 
-		annstr := newSendAnnounceStream(stream, prefix, streamTracer)
+		annstr := newSendAnnounceStream(stream, prefix)
 
 		sess.mux.ServeAnnouncements(annstr, prefix)
 	case stream_type_subscribe:
-		if logger != nil {
-			logger.Debug("subscribe stream was opened")
-		}
-
 		var sm message.SubscribeMessage
 		_, err := sm.Decode(stream)
 		if err != nil {
-			if logger != nil {
-				logger.Debug("failed to read a SUBSCRIBE message", "error", err)
+			if errors.Is(err, io.EOF) {
+				sess.Terminate(ProtocolViolationErrorCode, err.Error())
+				return
 			}
-			stream.CancelRead(ErrInternalError.StreamErrorCode())
-			stream.CancelWrite(ErrInternalError.StreamErrorCode())
+
+			var strErr *quic.StreamError
+			if errors.As(err, &strErr) && strErr.Remote {
+			}
+
+			sess.Terminate(ProtocolViolationErrorCode, err.Error())
+
 			return
 		}
-		streamTracer.SubscribeMessageReceived(sm)
 
 		// Create a receiveSubscribeStream
 		id := SubscribeID(sm.SubscribeID)
@@ -351,91 +433,121 @@ func (sess *Session) processBiStream(stream quic.Stream, streamTracer *moqtrace.
 			MaxGroupSequence: GroupSequence(sm.MaxGroupSequence),
 		}
 
-		ann, handler := sess.mux.findHandler(path)
+		node := sess.mux.findRoutingNode(path)
 
-		trackCtx := newTrackContext(sess.ctx, id, path, name)
+		if node == nil || node.handler == nil || node.announcement == nil || !node.announcement.IsActive() || node.info == nil {
+			strErrCode := quic.StreamErrorCode(TrackNotFoundErrorCode)
 
-		substr := newReceiveSubscribeStream(trackCtx, stream, config)
+			stream.CancelWrite(strErrCode)
 
-		if !ann.IsActive() {
-			substr.closeWithError(ErrTrackDoesNotExist)
+			stream.CancelRead(strErrCode)
+
 			return
 		}
 
-		_, err = message.SubscribeOkMessage{
-			GroupOrder: message.GroupOrder(ann.info.GroupOrder),
-		}.Encode(stream)
+		som := message.SubscribeOkMessage{
+			GroupOrder: message.GroupOrder(node.info.GroupOrder),
+		}
+		_, err = som.Encode(stream)
 		if err != nil {
+			var strErr *quic.StreamError
+			if errors.As(err, &strErr) && strErr.Remote {
+				stream.CancelRead(strErr.ErrorCode)
+
+				return
+			}
+
+			code := quic.StreamErrorCode(InternalSubscribeErrorCode)
+			stream.CancelWrite(code)
+			stream.CancelRead(code)
+
 			return
 		}
-		openStreamFunc := func(groupCtx *groupContext) (*sendGroupStream, error) {
+
+		openStreamFunc := func(seq GroupSequence) (*sendGroupStream, error) {
 			stream, err := sess.conn.OpenStream()
 			if err != nil {
+				var appErr *quic.ApplicationError
+				if errors.As(err, &appErr) {
+					return nil, &SessionError{
+						ApplicationError: appErr,
+					}
+				}
+
 				return nil, err
 			}
-			streamTracer := sess.ctx.Tracer().QUICStreamOpened(stream.StreamID())
 
 			stm := message.StreamTypeMessage{
 				StreamType: stream_type_group,
 			}
 			_, err = stm.Encode(stream)
 			if err != nil {
-				return nil, err
+				var strErr *quic.StreamError
+				if errors.As(err, &strErr) {
+					return nil, &GroupError{StreamError: strErr}
+				}
+
+				strErrCode := quic.StreamErrorCode(InternalGroupErrorCode)
+				stream.CancelWrite(strErrCode)
+
+				return nil, GroupError{
+					StreamError: &quic.StreamError{
+						StreamID:  stream.StreamID(),
+						ErrorCode: strErrCode,
+					},
+				}
 			}
-			streamTracer.StreamTypeMessageSent(stm)
 
 			gm := message.GroupMessage{
 				SubscribeID:   sm.SubscribeID,
-				GroupSequence: message.GroupSequence(groupCtx.seq),
+				GroupSequence: message.GroupSequence(seq),
 			}
 			_, err = gm.Encode(stream)
 			if err != nil {
-				return nil, err
-			}
-			streamTracer.GroupMessageSent(gm)
+				var strErr *quic.StreamError
+				if errors.As(err, &strErr) {
+					return nil, &GroupError{StreamError: strErr}
+				}
 
-			return newSendGroupStream(stream, groupCtx), nil
+				strErr = &quic.StreamError{
+					StreamID:  stream.StreamID(),
+					ErrorCode: quic.StreamErrorCode(InternalGroupErrorCode),
+				}
+
+				return nil, GroupError{StreamError: strErr}
+			}
+
+			return newSendGroupStream(stream, seq), nil
 		}
 
-		queue := newOutgoingGroupStreamQueue()
+		substr := newReceiveSubscribeStream(id, stream, config)
+
+		trackSender := newTrackSender(substr, openStreamFunc)
 		sess.sendGroupMapLocker.Lock()
-		sess.sendGroupStreamQueues[id] = queue
+		sess.trackSenders[id] = trackSender
 		sess.sendGroupMapLocker.Unlock()
 
-		pub := &Publisher{
+		node.handler.ServeTrack(&Publisher{
 			BroadcastPath:   path,
 			TrackName:       name,
 			SubscribeStream: substr,
-			TrackWriter:     newTrackSender(trackCtx, queue, openStreamFunc),
-		}
-
-		go handler.ServeTrack(pub)
+			TrackWriter:     trackSender,
+		})
 	default:
-		if logger != nil {
-			logger.Error("An unknown type of stream was opened")
-		}
-
-		// Terminate the session
-		sess.Terminate(ErrProtocolViolation)
+		sess.Terminate(ProtocolViolationErrorCode, fmt.Sprintf("unknown bidirectional stream type: %v", stm.StreamType))
 
 		return
 	}
 }
 
-func (sess *Session) handleUniStreams(ctx context.Context) {
-	for { /*
+func (sess *Session) handleUniStreams() {
+	for {
+		/*
 		 * Accept a unidirectional stream
 		 */
-		stream, err := sess.conn.AcceptUniStream(ctx)
+		stream, err := sess.conn.AcceptUniStream(sess.ctx)
 		if err != nil {
-			if logger := sess.ctx.Logger(); logger != nil {
-				logger.Error("failed to accept a unidirectional stream", "error", err)
-			}
 			return
-		}
-
-		if logger := sess.ctx.Logger(); logger != nil {
-			logger.Debug("some data stream was opened")
 		}
 
 		// Handle the stream
@@ -444,7 +556,9 @@ func (sess *Session) handleUniStreams(ctx context.Context) {
 }
 
 func (sess *Session) processUniStream(stream quic.ReceiveStream) {
-	logger := sess.ctx.Logger()
+	logger := sess.logger.With(
+		"stream_id", stream.StreamID(),
+	)
 	/*
 	 * Get a Stream Type ID
 	 */
@@ -474,52 +588,24 @@ func (sess *Session) processUniStream(stream quic.ReceiveStream) {
 		}
 
 		id := SubscribeID(gm.SubscribeID)
-		sequence := GroupSequence(gm.GroupSequence)
-		rgs := newReceiveGroupStream(id, sequence, stream)
-		queue, ok := sess.receiveGroupStreamQueues[id]
+
+		receiver, ok := sess.trackReceivers[id]
 		if !ok {
-			if logger != nil {
-				logger.Error("failed to get a data receive stream queue", "error", "queue not found")
-			}
-			stream.CancelRead(ErrInternalError.StreamErrorCode())
+			stream.CancelRead(quic.StreamErrorCode(InvalidSubscribeIDErrorCode))
 			return
 		}
 
+		group := newReceiveGroupStream(GroupSequence(gm.GroupSequence), stream)
 		// Enqueue the receiver
-		queue.enqueue(rgs)
-
-		<-rgs.groupCtx.Done()
-		queue.remove(rgs)
+		receiver.enqueueGroup(group)
 	default:
 		if logger != nil {
-			logger.Debug("An unknown type of stream was opened")
+			logger.Debug("An unknown type of unidirectional stream was opened")
 		}
 
 		// Terminate the session
-		sess.Terminate(ErrProtocolViolation)
+		sess.Terminate(ProtocolViolationErrorCode, fmt.Sprintf("unknown unidirectional stream type: %v", stm.StreamType))
 
 		return
 	}
 }
-
-// func (sess *Session) handleSubscribeStreams() {
-// 	ctx := sess.Context()
-// 	var path BroadcastPath
-
-// 	var ann *Announcement
-// 	var handler TrackHandler
-
-// 	for {
-// 		select {
-// 		case <-ctx.Done():
-// 			return
-// 		default:
-// 		}
-
-// 		sub, err := sess.acceptSubscription(ctx)
-// 		if err != nil {
-// 			return
-// 		}
-
-// 	}
-// }

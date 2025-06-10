@@ -5,26 +5,35 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/moqtrace"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
 type AnnouncementWriter interface {
-	SendAnnouncements(announcements []*Announcement) error
+	SendAnnouncement(announcement *Announcement) error
+	Close() error
+	CloseWithError(code AnnounceErrorCode) error
 }
 
 // func (w AnnouncementWriter) SendAnnouncements(announcements []*Announcement) error {}
 
-func newSendAnnounceStream(stream quic.Stream, prefix string, streamTracer *moqtrace.StreamTracer) *sendAnnounceStream {
+func newSendAnnounceStream(stream quic.Stream, prefix string) *sendAnnounceStream {
 	sas := &sendAnnounceStream{
-		prefix:   prefix,
-		stream:   stream,
-		actives:  make(map[string]*Announcement),
-		pendings: make(map[string]message.AnnounceMessage),
-		sendCh:   make(chan struct{}, 1),
-		tracer:   streamTracer,
+		prefix:          prefix,
+		stream:          stream,
+		actives:         make(map[string]*Announcement),
+		pendings:        make(map[string]message.AnnounceMessage),
+		sendCh:          make(chan struct{}, 1),
+		batchTimer:      time.NewTimer(100 * time.Millisecond), // Default batch timeout
+		batchTimeout:    100 * time.Millisecond,
+		processingTasks: make(map[string]*sync.WaitGroup),
+	}
+
+	// Stop the timer initially
+	if !sas.batchTimer.Stop() {
+		<-sas.batchTimer.C
 	}
 
 	go func() {
@@ -48,73 +57,100 @@ type sendAnnounceStream struct {
 
 	mu sync.Mutex
 
-	actives map[string]*Announcement
+	actives    map[string]*Announcement
+	pendings   map[string]message.AnnounceMessage
+	pendingsMu sync.Mutex
 
-	pendings  map[string]message.AnnounceMessage
-	pendingMu sync.Mutex
+	// Batch processing fields
+	batchTimer      *time.Timer
+	batchTimeout    time.Duration
+	processingTasks map[string]*sync.WaitGroup
+	tasksMu         sync.Mutex
 
 	closed   bool
 	closeErr error
 
-	sendCh chan struct{}
-
-	tracer *moqtrace.StreamTracer
+	sendCh chan struct{} // Channel to trigger sending announcements
 }
 
-func (sas *sendAnnounceStream) SendAnnouncements(announcements []*Announcement) error {
-	sas.pendingMu.Lock()
-	defer sas.pendingMu.Unlock()
-
-	// Set active announcement
-	for _, ann := range announcements {
-		suffix, ok := ann.BroadcastPath().GetSuffix(sas.prefix)
-		if !ok {
-			continue
-		}
-
-		if active, ok := sas.actives[suffix]; ok {
-			active.cancel()
-			delete(sas.actives, suffix)
-		}
-
-		sas.actives[suffix] = ann
-
-		err := sas.set(suffix, true)
-		if err != nil {
-			return err
-		}
-
-		go func(ann *Announcement) {
-			<-ann.AwaitEnd()
-
-			err := sas.set(suffix, false)
-			if err != nil {
-				slog.Error("failed to set an ended announcement",
-					"suffix", suffix,
-					"error", err,
-				)
-				return
-			}
-
-			delete(sas.actives, suffix)
-
-			sas.sendCh <- struct{}{}
-		}(ann)
-	}
-
-	return nil
-}
-
-func (sas *sendAnnounceStream) set(suffix string, active bool) error {
-	sas.pendingMu.Lock()
-	defer sas.pendingMu.Unlock()
-
+func (sas *sendAnnounceStream) SendAnnouncement(announcement *Announcement) error {
+	sas.mu.Lock()
 	if sas.closed {
+		sas.mu.Unlock()
 		if sas.closeErr != nil {
 			return sas.closeErr
 		}
 		return errors.New("stream already closed")
 	}
+	sas.mu.Unlock()
+
+	// Get suffix for this announcement
+	suffix, ok := announcement.BroadcastPath().GetSuffix(sas.prefix)
+	if !ok {
+		return errors.New("invalid broadcast path")
+	}
+
+	// Create a WaitGroup for this batch of tasks
+	var taskWg sync.WaitGroup
+
+	sas.tasksMu.Lock()
+	sas.processingTasks[suffix] = &taskWg
+	sas.tasksMu.Unlock()
+
+	taskWg.Add(1)
+
+	go func(announcement *Announcement) {
+		defer taskWg.Done()
+
+		sas.pendingsMu.Lock()
+		if active, ok := sas.actives[suffix]; ok {
+			active.cancel()
+			delete(sas.actives, suffix)
+		}
+
+		sas.actives[suffix] = announcement
+		sas.pendingsMu.Unlock()
+
+		sas.set(suffix, true)
+
+		<-announcement.AwaitEnd()
+
+		taskWg.Add(1)
+		go func() {
+			defer taskWg.Done()
+			sas.set(suffix, false)
+
+			sas.pendingsMu.Lock()
+			delete(sas.actives, suffix)
+			sas.pendingsMu.Unlock()
+		}()
+	}(announcement)
+
+	// Start a goroutine to wait for all tasks for this suffix to complete
+	go func() {
+		taskWg.Wait()
+
+		sas.tasksMu.Lock()
+		delete(sas.processingTasks, suffix)
+		allTasksComplete := (len(sas.processingTasks) == 0)
+		sas.tasksMu.Unlock()
+
+		if allTasksComplete {
+			select {
+			case sas.sendCh <- struct{}{}:
+				// Successfully triggered send
+			default:
+				// Channel is full, send is already pending
+			}
+		}
+	}()
+
+	return nil
+}
+
+func (sas *sendAnnounceStream) set(suffix string, active bool) {
+	sas.pendingsMu.Lock()
+	defer sas.pendingsMu.Unlock()
 
 	_, ok := sas.pendings[suffix]
 
@@ -123,8 +159,6 @@ func (sas *sendAnnounceStream) set(suffix string, active bool) error {
 			AnnounceStatus: message.ACTIVE,
 			TrackSuffix:    suffix,
 		}
-
-		return nil
 	} else {
 		if ok {
 			delete(sas.pendings, suffix)
@@ -135,8 +169,6 @@ func (sas *sendAnnounceStream) set(suffix string, active bool) error {
 			}
 		}
 	}
-
-	return nil
 }
 
 func (sas *sendAnnounceStream) send() error {
@@ -150,31 +182,46 @@ func (sas *sendAnnounceStream) send() error {
 		return errors.New("stream already closed")
 	}
 
+	sas.pendingsMu.Lock()
 	if len(sas.pendings) == 0 {
+		sas.pendingsMu.Unlock()
 		return nil
 	}
 
-	var len int
+	// Calculate total length for buffer allocation
+	var totalLen int
 	for _, am := range sas.pendings {
-		len += am.Len()
+		totalLen += am.Len()
 	}
 
-	buf := bytes.NewBuffer(make([]byte, 0, len))
+	buf := bytes.NewBuffer(make([]byte, 0, totalLen))
 
+	// Encode all pending messages
 	for _, am := range sas.pendings {
-		_, err := am.Encode(buf)
-		if err != nil {
-			return err
-		}
-		sas.tracer.AnnounceMessageSent(am)
+		am.Encode(buf)
 	}
 
+	// Clear pendings after encoding
+	sas.pendings = make(map[string]message.AnnounceMessage)
+	sas.pendingsMu.Unlock()
+
+	// Write to stream
 	_, err := sas.stream.Write(buf.Bytes())
 	if err != nil {
+		var strErr *quic.StreamError
+		if errors.As(err, &strErr) {
+			sas.closed = true
+			sas.closeErr = &AnnounceError{
+				StreamError: strErr,
+			}
+
+			return &AnnounceError{
+				StreamError: strErr,
+			}
+		}
+
 		return err
 	}
-
-	sas.pendings = make(map[string]message.AnnounceMessage)
 
 	return nil
 }
@@ -182,7 +229,6 @@ func (sas *sendAnnounceStream) send() error {
 func (sas *sendAnnounceStream) Close() error {
 	sas.mu.Lock()
 	defer sas.mu.Unlock()
-
 	if sas.closed {
 		if sas.closeErr != nil {
 			return sas.closeErr
@@ -192,10 +238,17 @@ func (sas *sendAnnounceStream) Close() error {
 
 	sas.closed = true
 
+	close(sas.sendCh)
+
+	err := sas.stream.Close()
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func (sas *sendAnnounceStream) CloseWithError(err error) error {
+func (sas *sendAnnounceStream) CloseWithError(code AnnounceErrorCode) error {
 	sas.mu.Lock()
 	defer sas.mu.Unlock()
 
@@ -207,7 +260,19 @@ func (sas *sendAnnounceStream) CloseWithError(err error) error {
 	}
 
 	sas.closed = true
-	sas.closeErr = err
+
+	strErrCode := quic.StreamErrorCode(code)
+	sas.closeErr = &AnnounceError{
+		StreamError: &quic.StreamError{
+			StreamID:  sas.stream.StreamID(),
+			ErrorCode: strErrCode,
+		},
+	}
+
+	close(sas.sendCh)
+
+	sas.stream.CancelWrite(strErrCode)
+	sas.stream.CancelRead(strErrCode)
 
 	return nil
 }

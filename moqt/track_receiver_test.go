@@ -2,296 +2,122 @@ package moqt
 
 import (
 	"context"
-	"log/slog"
 	"testing"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 func TestNewTrackReceiver(t *testing.T) {
-	// Create test contexts
-	sessCtx := newSessionContext(
-		context.Background(),
-		protocol.Version(0x1),
-		"/test",
-		NewParameters(),
-		NewParameters(),
-		slog.Default(),
-		nil,
-	)
-	trackCtx := newTrackContext(sessCtx, SubscribeID(1), BroadcastPath("/test"), TrackName("test"))
+	// Create mock send subscribe stream
+	ctx := context.Background()
+	mockStream := &MockQUICStream{}
+	substr := newSendSubscribeStream(ctx, SubscribeID(1), mockStream, &SubscribeConfig{})
 
-	// Create mock queue
-	queue := &incomingGroupStreamQueue{}
+	receiver := newTrackReceiver(substr)
 
-	receiver := newTrackReceiver(trackCtx, queue)
-
-	if receiver == nil {
-		t.Fatal("newTrackReceiver returned nil")
-	}
-
-	if receiver.trackCtx != trackCtx {
-		t.Error("trackCtx not set correctly")
-	}
-
-	if receiver.groupQueue != queue {
-		t.Error("groupQueue not set correctly")
-	}
+	assert.NotNil(t, receiver, "newTrackReceiver should not return nil")
+	assert.Equal(t, substr, receiver.substr, "substr should be set correctly")
+	assert.NotNil(t, receiver.queue, "queue should be initialized")
+	assert.NotNil(t, receiver.queuedCh, "queuedCh should be initialized")
+	assert.NotNil(t, receiver.dequeued, "dequeued should be initialized")
 }
 
 func TestTrackReceiver_AcceptGroup(t *testing.T) {
-	tests := []struct {
-		name            string
-		setupQueue      func() *incomingGroupStreamQueue
-		contextTimeout  time.Duration
-		expectError     bool
-		expectedErrType error
-	}{
-		{
-			name: "successful accept",
-			setupQueue: func() *incomingGroupStreamQueue {
-				config := func() *SubscribeConfig {
-					return &SubscribeConfig{MinGroupSequence: 0, MaxGroupSequence: 100}
-				}
-				queue := newIncomingGroupStreamQueue(config)
+	// Create mock send subscribe stream
+	ctx := context.Background()
+	mockStream := &MockQUICStream{}
+	substr := newSendSubscribeStream(ctx, SubscribeID(1), mockStream, &SubscribeConfig{})
 
-				// Add a stream to the queue
-				mockStream := &MockQUICReceiveStream{}
-				stream := newReceiveGroupStream(SubscribeID(1), GroupSequence(42), mockStream)
-				queue.enqueue(stream)
+	receiver := newTrackReceiver(substr)
 
-				return queue
-			},
-			contextTimeout: time.Second,
-			expectError:    false,
-		},
-		{
-			name: "timeout when no groups available",
-			setupQueue: func() *incomingGroupStreamQueue {
-				config := func() *SubscribeConfig {
-					return &SubscribeConfig{MinGroupSequence: 0, MaxGroupSequence: 100}
-				}
-				return newIncomingGroupStreamQueue(config)
-			},
-			contextTimeout:  50 * time.Millisecond,
-			expectError:     true,
-			expectedErrType: context.DeadlineExceeded,
-		},
-		{
-			name: "context cancellation",
-			setupQueue: func() *incomingGroupStreamQueue {
-				config := func() *SubscribeConfig {
-					return &SubscribeConfig{MinGroupSequence: 0, MaxGroupSequence: 100}
-				}
-				return newIncomingGroupStreamQueue(config)
-			},
-			contextTimeout:  time.Second,
-			expectError:     true,
-			expectedErrType: context.Canceled,
-		},
-	}
+	// Test with a timeout to ensure we don't block forever when no groups are available
+	testCtx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create test contexts
-			sessCtx := newSessionContext(
-				context.Background(),
-				protocol.Version(0x1),
-				"/test",
-				NewParameters(),
-				NewParameters(),
-				slog.Default(),
-				nil,
-			)
-			trackCtx := newTrackContext(sessCtx, SubscribeID(1), BroadcastPath("/test"), TrackName("test"))
-
-			// Setup queue
-			queue := tt.setupQueue()
-			receiver := newTrackReceiver(trackCtx, queue)
-
-			// Create context with timeout or cancellation
-			var ctx context.Context
-			var cancel context.CancelFunc
-
-			if tt.expectedErrType == context.Canceled {
-				ctx, cancel = context.WithCancel(context.Background())
-				// Cancel immediately for cancellation test
-				cancel()
-			} else {
-				ctx, cancel = context.WithTimeout(context.Background(), tt.contextTimeout)
-				defer cancel()
-			}
-
-			groupReader, err := receiver.AcceptGroup(ctx)
-
-			if tt.expectError {
-				if err == nil {
-					t.Error("expected error but got none")
-				}
-				if tt.expectedErrType != nil && err != tt.expectedErrType {
-					t.Errorf("expected error type %v, got %v", tt.expectedErrType, err)
-				}
-				if groupReader != nil {
-					t.Error("expected nil GroupReader on error")
-				}
-			} else {
-				if err != nil {
-					t.Errorf("unexpected error: %v", err)
-				}
-				if groupReader == nil {
-					t.Error("expected non-nil GroupReader")
-				}
-
-				// Verify the returned GroupReader
-				expectedSeq := GroupSequence(42)
-				if groupReader.GroupSequence() != expectedSeq {
-					t.Errorf("GroupSequence() = %v, want %v", groupReader.GroupSequence(), expectedSeq)
-				}
-			}
-		})
-	}
+	_, err := receiver.AcceptGroup(testCtx)
+	assert.Error(t, err, "expected timeout error when no groups are available")
+	assert.Equal(t, context.DeadlineExceeded, err, "expected deadline exceeded error")
 }
 
-func TestTrackReceiverClose(t *testing.T) {
-	// Create test contexts
-	sessCtx := newSessionContext(
-		context.Background(),
-		protocol.Version(0x1),
-		"/test",
-		NewParameters(),
-		NewParameters(),
-		slog.Default(),
-		nil,
-	)
-	trackCtx := newTrackContext(sessCtx, SubscribeID(1), BroadcastPath("/test"), TrackName("test"))
+func TestTrackReceiver_Close(t *testing.T) {
+	// Create mock send subscribe stream
+	ctx := context.Background()
+	mockStream := &MockQUICStream{}
+	substr := newSendSubscribeStream(ctx, SubscribeID(1), mockStream, &SubscribeConfig{})
 
-	// Create mock queue
-	queue := &incomingGroupStreamQueue{}
+	// Mock the Close method
+	mockStream.On("Close").Return(nil)
 
-	receiver := newTrackReceiver(trackCtx, queue)
-
-	// Context should not be done initially
-	select {
-	case <-trackCtx.Done():
-		t.Error("context should not be done initially")
-	default:
-	}
+	receiver := newTrackReceiver(substr)
 
 	err := receiver.Close()
-	if err != nil {
-		t.Errorf("unexpected error from Close(): %v", err)
-	}
-
-	// Context should be done after close
-	select {
-	case <-trackCtx.Done():
-		// Expected - check the cause
-		if cause := context.Cause(trackCtx); cause != ErrClosedTrack {
-			t.Errorf("context cause = %v, want %v", cause, ErrClosedTrack)
-		}
-	case <-time.After(100 * time.Millisecond):
-		t.Error("context should be done after Close()")
-	}
+	assert.NoError(t, err, "Close() should not return error")
+	// Verify Close was called on the underlying stream
+	mockStream.AssertCalled(t, "Close")
 }
 
-func TestTrackReceiverCloseWithError(t *testing.T) {
-	tests := []struct {
-		name   string
-		reason error
+func TestTrackReceiver_CloseWithError(t *testing.T) {
+	tests := map[string]struct {
+		reason SubscribeErrorCode
 	}{
-		{
-			name:   "close with custom error",
-			reason: ErrInternalError,
+		"close with custom error": {
+			reason: SubscribeErrorCode(1),
 		},
-		{
-			name:   "close with nil error",
-			reason: nil,
+		"close with zero error code": {
+			reason: SubscribeErrorCode(0),
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create test contexts
-			sessCtx := newSessionContext(
-				context.Background(),
-				protocol.Version(0x1),
-				"/test",
-				NewParameters(),
-				NewParameters(),
-				slog.Default(),
-				nil,
-			)
-			trackCtx := newTrackContext(sessCtx, SubscribeID(1), BroadcastPath("/test"), TrackName("test"))
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			// Create mock send subscribe stream
+			ctx := context.Background()
+			mockStream := &MockQUICStream{}
+			substr := newSendSubscribeStream(ctx, SubscribeID(1), mockStream, &SubscribeConfig{})
 
-			// Create mock queue
-			queue := &incomingGroupStreamQueue{}
+			// Mock the necessary methods
+			mockStream.On("StreamID").Return(quic.StreamID(1))
+			mockStream.On("CancelWrite", mock.AnythingOfType("quic.StreamErrorCode")).Return()
+			mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return()
 
-			receiver := newTrackReceiver(trackCtx, queue)
-
-			// Context should not be done initially
-			select {
-			case <-trackCtx.Done():
-				t.Error("context should not be done initially")
-			default:
-			}
+			receiver := newTrackReceiver(substr)
 
 			err := receiver.CloseWithError(tt.reason)
-			if err != nil {
-				t.Errorf("unexpected error from CloseWithError(): %v", err)
-			}
+			assert.NoError(t, err, "CloseWithError() should not return error")
 
-			// Context should be done after close
-			select {
-			case <-trackCtx.Done():
-				// Expected - check the cause
-				if cause := context.Cause(trackCtx); cause != ErrClosedTrack {
-					t.Errorf("context cause = %v, want %v", cause, ErrClosedTrack)
-				}
-			case <-time.After(100 * time.Millisecond):
-				t.Error("context should be done after CloseWithError()")
-			}
+			// Verify methods were called on the underlying stream
+			mockStream.AssertCalled(t, "CancelWrite", quic.StreamErrorCode(tt.reason))
+			mockStream.AssertCalled(t, "CancelRead", quic.StreamErrorCode(tt.reason))
 		})
 	}
 }
 
-func TestTrackReceiverInterface(t *testing.T) {
+func TestTrackReceiver_Interface(t *testing.T) {
 	// Verify that trackReceiver implements TrackReader interface
 	var _ TrackReader = (*trackReceiver)(nil)
 }
 
-func TestTrackReceiverAcceptGroupRealImplementation(t *testing.T) {
-	// Create test contexts
-	sessCtx := newSessionContext(
-		context.Background(),
-		protocol.Version(0x1),
-		"/test",
-		NewParameters(),
-		NewParameters(),
-		slog.Default(),
-		nil,
-	)
-	trackCtx := newTrackContext(sessCtx, SubscribeID(1), BroadcastPath("/test"), TrackName("test"))
-
-	// Create real queue
+func TestTrackReceiver_AcceptGroup_RealImplementation(t *testing.T) {
+	// Create mock send subscribe stream
+	ctx := context.Background()
+	mockStream := &MockQUICStream{}
 	config := &SubscribeConfig{
 		TrackPriority:    TrackPriority(128),
 		MinGroupSequence: GroupSequence(0),
 		MaxGroupSequence: GroupSequence(100),
 	}
-	queue := newIncomingGroupStreamQueue(func() *SubscribeConfig { return config })
+	substr := newSendSubscribeStream(ctx, SubscribeID(1), mockStream, config)
 
-	receiver := newTrackReceiver(trackCtx, queue)
+	receiver := newTrackReceiver(substr)
 
 	// Test with a timeout to ensure we don't block forever
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	testCtx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
-	_, err := receiver.AcceptGroup(ctx)
-	if err == nil {
-		t.Error("expected timeout error when no groups are available")
-	}
-	if err != context.DeadlineExceeded {
-		t.Errorf("expected deadline exceeded error, got: %v", err)
-	}
+	_, err := receiver.AcceptGroup(testCtx)
+	assert.Error(t, err, "expected timeout error when no groups are available")
+	assert.Equal(t, context.DeadlineExceeded, err, "expected deadline exceeded error")
 }

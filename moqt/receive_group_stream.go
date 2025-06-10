@@ -1,6 +1,8 @@
 package moqt
 
 import (
+	"errors"
+	"io"
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
@@ -8,19 +10,24 @@ import (
 
 var _ GroupReader = (*receiveGroupStream)(nil)
 
-func newReceiveGroupStream(id SubscribeID, sequence GroupSequence, stream quic.ReceiveStream) *receiveGroupStream {
+func newReceiveGroupStream(sequence GroupSequence, stream quic.ReceiveStream) *receiveGroupStream {
 	return &receiveGroupStream{
-		id:       id,
 		sequence: sequence,
 		stream:   stream,
+		doneCh:   make(chan struct{}),
 	}
+
 }
 
 type receiveGroupStream struct {
-	groupCtx *groupContext
-	id       SubscribeID
 	sequence GroupSequence
-	stream   quic.ReceiveStream
+
+	stream     quic.ReceiveStream
+	frameCount int64
+
+	doneCh    chan struct{}
+	readErr   error
+	cancelled bool
 }
 
 func (s *receiveGroupStream) GroupSequence() GroupSequence {
@@ -31,29 +38,52 @@ func (s *receiveGroupStream) ReadFrame() (*Frame, error) {
 	frame := NewFrame(nil)
 	_, err := frame.message.Decode(s.stream)
 	if err != nil {
-		if logger := s.groupCtx.Logger(); logger != nil {
-			logger.Error("failed to decode a FRAME message", "error", err)
+		if !s.cancelled {
+			s.cancelled = true
+			close(s.doneCh)
 		}
+
+		if errors.Is(err, io.EOF) {
+			return nil, err
+		}
+
+		var strErr *quic.StreamError
+		if errors.As(err, &strErr) {
+			// Stream was reset
+			s.readErr = &GroupError{
+				StreamError: strErr,
+			}
+
+			return nil, &GroupError{
+				StreamError: strErr,
+			}
+		}
+
 		return nil, err
 	}
+	s.frameCount++
 
 	return frame, nil
 }
 
-func (s *receiveGroupStream) CancelRead(err GroupError) {
-	s.stream.CancelRead(quic.StreamErrorCode(err.GroupErrorCode()))
+func (s *receiveGroupStream) CancelRead(code GroupErrorCode) {
+	strErrCode := quic.StreamErrorCode(code)
+	s.stream.CancelRead(strErrCode)
+
+	if !s.cancelled {
+		s.cancelled = true
+
+		s.readErr = &GroupError{
+			StreamError: &quic.StreamError{
+				StreamID:  s.stream.StreamID(),
+				ErrorCode: quic.StreamErrorCode(code),
+			},
+		}
+
+		close(s.doneCh)
+	}
 }
 
 func (s *receiveGroupStream) SetReadDeadline(t time.Time) error {
-	err := s.stream.SetReadDeadline(t)
-	if err != nil {
-		if logger := s.groupCtx.Logger(); logger != nil {
-			logger.Error("failed to set read deadline",
-				"error", err,
-			)
-		}
-		return err
-	}
-
-	return nil
+	return s.stream.SetReadDeadline(t)
 }

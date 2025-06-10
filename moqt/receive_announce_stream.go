@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
+	"io"
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
@@ -12,21 +12,83 @@ import (
 )
 
 type AnnouncementReader interface {
-	ReceiveAnnouncements(context.Context) ([]*Announcement, error)
+	ReceiveAnnouncement(context.Context) (*Announcement, error)
 	Close() error
-	CloseWithError(error) error
+	CloseWithError(AnnounceErrorCode) error
 }
 
-func newReceiveAnnounceStream(stream quic.Stream, prefix string) *receiveAnnounceStream {
+func newReceiveAnnounceStream(sessCtx context.Context, stream quic.Stream, prefix string) *receiveAnnounceStream {
+	ctx, cancel := context.WithCancelCause(sessCtx)
 	annstr := &receiveAnnounceStream{
+		ctx:           ctx,
+		cancel:        cancel,
 		stream:        stream,
 		prefix:        prefix,
 		announcements: make(map[string]*Announcement),
-		next:          make([]*Announcement, 0),
-		liveCh:        make(chan struct{}, 1),
+		pendings:      make([]*Announcement, 0),
 	}
 
-	go annstr.listenAnnouncements()
+	go func() {
+		var am message.AnnounceMessage
+		var suffix string
+		var err error
+
+		for {
+			if annstr.closed {
+				return
+			}
+
+			_, err = am.Decode(stream)
+			if err != nil {
+				if err == io.EOF {
+					annstr.cancel(nil)
+					return
+				}
+
+				var strErr *quic.StreamError
+				if errors.As(err, &strErr) {
+					err = &AnnounceError{
+						StreamError: strErr,
+					}
+					annstr.cancel(err)
+					return
+				}
+
+				annstr.cancel(err)
+				return
+			}
+
+			suffix = am.TrackSuffix
+
+			old, ok := annstr.announcements[suffix]
+			switch am.AnnounceStatus {
+			case message.ACTIVE:
+				if !ok || (ok && !old.IsActive()) {
+					// Create a new announcement
+					ann := NewAnnouncement(annstr.ctx, BroadcastPath(prefix+suffix))
+					annstr.mu.Lock()
+					annstr.announcements[suffix] = ann
+					annstr.pendings = append(annstr.pendings, ann)
+					annstr.mu.Unlock()
+				} else {
+					// Close the stream with an error
+					annstr.CloseWithError(DuplicatedAnnounceErrorCode)
+					return
+				}
+			case message.ENDED:
+				if ok && old.IsActive() {
+					// End the existing announcement
+					old.End()
+
+					// Remove the announcement from the map
+					delete(annstr.announcements, suffix)
+				} else {
+					annstr.CloseWithError(DuplicatedAnnounceErrorCode)
+					return
+				}
+			}
+		}
+	}()
 
 	return annstr
 }
@@ -34,44 +96,48 @@ func newReceiveAnnounceStream(stream quic.Stream, prefix string) *receiveAnnounc
 var _ AnnouncementReader = (*receiveAnnounceStream)(nil)
 
 type receiveAnnounceStream struct {
-	stream   quic.Stream
-	prefix   string
-	closed   bool
+	stream quic.Stream
+	prefix string
+
+	ctx    context.Context
+	cancel context.CancelCauseFunc
+
 	closeErr error
+	closed   bool
 
 	// Track Suffix -> Announcement
 	announcements map[string]*Announcement
 
-	next []*Announcement
-	mu   sync.Mutex
-
-	liveCh chan struct{}
+	pendings []*Announcement
+	mu       sync.Mutex
 }
 
-func (ras *receiveAnnounceStream) ReceiveAnnouncements(ctx context.Context) ([]*Announcement, error) {
+func (ras *receiveAnnounceStream) ReceiveAnnouncement(ctx context.Context) (*Announcement, error) {
 	for {
 		ras.mu.Lock()
-		if len(ras.next) > 0 {
-			next := ras.next
 
-			// Clear the next list
-			ras.next = ras.next[:0]
+		if ras.closed {
+			ras.mu.Unlock()
+			if ras.closeErr != nil {
+				return nil, ras.closeErr
+			}
+			return nil, fmt.Errorf("receive announce stream is closed: %v", ras.closeErr)
+		}
 
+		if len(ras.pendings) > 0 {
+			next := ras.pendings[0]
+			ras.pendings = ras.pendings[1:]
 			ras.mu.Unlock()
 			return next, nil
 		}
-		if ras.closed {
-			ras.mu.Unlock()
-			return nil, ras.closeErr
-		}
+
 		ras.mu.Unlock()
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-ras.liveCh:
-
+		case <-ras.ctx.Done():
+			return nil, ras.ctx.Err()
 		}
-
 	}
 }
 
@@ -80,119 +146,40 @@ func (ras *receiveAnnounceStream) Close() error {
 	defer ras.mu.Unlock()
 
 	if ras.closed {
-		if ras.closeErr == nil {
-			return fmt.Errorf("stream has already closed due to: %v", ras.closeErr)
-		}
-
-		return errors.New("stream has already closed")
+		return ras.closeErr
 	}
 
-	ras.closed = true
+	ras.cancel(nil)
 
 	err := ras.stream.Close()
 	if err != nil {
 		return err
 	}
 
-	slog.Debug("closed a receive announce stream",
-		slog.Any("stream_id", ras.stream.StreamID()),
-	)
-
 	return nil
 }
 
-func (ras *receiveAnnounceStream) CloseWithError(err error) error {
+func (ras *receiveAnnounceStream) CloseWithError(code AnnounceErrorCode) error {
 	ras.mu.Lock()
 	defer ras.mu.Unlock()
 
 	if ras.closed {
-		if ras.closeErr != nil {
-			return ras.closeErr
-		}
-		return nil
+		return ras.closeErr
 	}
 
-	if err == nil {
-		err = ErrInternalError
+	err := &AnnounceError{
+		StreamError: &quic.StreamError{
+			StreamID:  ras.stream.StreamID(),
+			ErrorCode: quic.StreamErrorCode(code),
+		},
 	}
 
-	ras.closed = true
-	ras.closeErr = err
+	ras.cancel(err)
 
-	var annerr AnnounceError
-	if !errors.As(err, &annerr) {
-		annerr = ErrInternalError
-	}
+	strErrCode := quic.StreamErrorCode(code)
 
-	code := quic.StreamErrorCode(annerr.AnnounceErrorCode())
-
-	ras.stream.CancelRead(code)
-	ras.stream.CancelWrite(code)
-
-	slog.Debug("closed a receive announce stream with an error",
-		slog.Any("stream_id", ras.stream.StreamID()),
-		slog.String("reason", err.Error()),
-	)
+	ras.stream.CancelRead(strErrCode)
+	ras.stream.CancelWrite(strErrCode)
 
 	return nil
-}
-
-func (ras *receiveAnnounceStream) listenAnnouncements() {
-	var am message.AnnounceMessage
-	var suffix string
-	var err error
-
-	for {
-		_, err = am.Decode(ras.stream)
-		if err != nil {
-			slog.Error("failed to decode an ANNOUNCE message", "error", err)
-			ras.CloseWithError(err) // TODO: is this correct?
-			return
-		}
-
-		slog.Debug("received an ANNOUNCE message",
-			"announce_message", am,
-		)
-
-		suffix = am.TrackSuffix
-
-		old, ok := ras.announcements[suffix]
-
-		switch am.AnnounceStatus {
-		case message.ACTIVE:
-			if !ok || (ok && !old.IsActive()) {
-				slog.Debug("active")
-				// Create a new announcement
-
-				ras.next = append(ras.next, NewAnnouncement(context.Background(), BroadcastPath(ras.prefix+suffix)))
-			} else {
-				slog.Error("announcement is already active", "track_path", old.BroadcastPath())
-
-				// Close the stream with an error
-				ras.CloseWithError(ErrProtocolViolation)
-				return
-			}
-		case message.ENDED:
-			if ok && old.IsActive() {
-				// End the existing announcement
-				old.End()
-
-				// Remove the announcement from the map
-				delete(ras.announcements, suffix)
-			} else {
-				slog.Error("announcement is already ended",
-					"track_path", old.BroadcastPath(),
-				)
-
-				ras.CloseWithError(ErrProtocolViolation)
-				return
-			}
-		default:
-			slog.Error("unknown announce status",
-				"status", am.AnnounceStatus,
-			)
-			ras.CloseWithError(ErrProtocolViolation)
-			return
-		}
-	}
 }

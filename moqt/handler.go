@@ -11,7 +11,7 @@ var NotFound = func(pub *Publisher) {
 	if pub.TrackWriter == nil {
 		return
 	}
-	pub.TrackWriter.CloseWithError(ErrTrackDoesNotExist)
+	pub.TrackWriter.CloseWithError(TrackNotFoundErrorCode)
 }
 
 var NotFoundHandler TrackHandler = TrackHandlerFunc(NotFound)

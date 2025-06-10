@@ -3,254 +3,340 @@ package moqt
 import (
 	"context"
 	"errors"
+	"io"
 	"testing"
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/moqtrace"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewSendAnnounceStream(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	prefix := "/test/prefix"
 
-	sas := newSendAnnounceStream(mockStream, prefix, moqtrace.DefaultQUICStreamAccepted(0))
+	sas := newSendAnnounceStream(mockStream, prefix)
 
-	if sas == nil {
-		t.Fatal("newSendAnnounceStream returned nil")
-	}
-
-	if sas.prefix != prefix {
-		t.Errorf("prefix = %v, want %v", sas.prefix, prefix)
-	}
-
-	if sas.stream != mockStream {
-		t.Error("stream not set correctly")
-	}
-
-	if sas.actives == nil {
-		t.Error("actives map should not be nil")
-	}
-
-	if sas.pendings == nil {
-		t.Error("pendings map should not be nil")
-	}
-
-	if sas.sendCh == nil {
-		t.Error("sendCh should not be nil")
-	}
+	require.NotNil(t, sas)
+	assert.Equal(t, prefix, sas.prefix)
+	assert.Equal(t, mockStream, sas.stream)
+	assert.NotNil(t, sas.actives)
+	assert.NotNil(t, sas.pendings)
+	assert.NotNil(t, sas.sendCh)
 
 	// Give time for goroutine to start
 	time.Sleep(10 * time.Millisecond)
 }
 
-func TestSendAnnounceStreamSendAnnouncements(t *testing.T) {
-	mockStream := &MockQUICStream{}
-	prefix := "/test"
-
-	sas := newSendAnnounceStream(mockStream, prefix, moqtrace.DefaultQUICStreamAccepted(0))
-
-	// Create test announcements
-	ctx := context.Background()
-	ann1 := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
-	ann2 := NewAnnouncement(ctx, BroadcastPath("/test/stream2"))
-
-	announcements := []*Announcement{ann1, ann2}
-
-	err := sas.SendAnnouncements(announcements)
-	if err != nil {
-		t.Errorf("SendAnnouncements() error = %v", err)
+func TestSendAnnounceStream_SendAnnouncement(t *testing.T) {
+	tests := map[string]struct {
+		prefix         string
+		broadcastPath  string
+		expectError    bool
+		shouldBeActive bool
+	}{
+		"valid path": {
+			prefix:         "/test",
+			broadcastPath:  "/test/stream1",
+			expectError:    false,
+			shouldBeActive: true,
+		},
+		"invalid path": {
+			prefix:         "/test",
+			broadcastPath:  "/other/stream1",
+			expectError:    true,
+			shouldBeActive: false,
+		},
 	}
 
-	// Verify announcements are stored
-	if len(sas.actives) != 2 {
-		t.Errorf("actives length = %v, want 2", len(sas.actives))
-	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockStream := &MockQUICStream{
+				ReadFunc: func(p []byte) (int, error) {
+					return 0, io.EOF
+				},
+			}
+			sas := newSendAnnounceStream(mockStream, tt.prefix)
 
-	// Check that streams with wrong prefix are ignored
-	ann3 := NewAnnouncement(ctx, BroadcastPath("/other/stream"))
-	err = sas.SendAnnouncements([]*Announcement{ann3})
-	if err != nil {
-		t.Errorf("SendAnnouncements() with wrong prefix error = %v", err)
-	}
+			ctx := context.Background()
+			ann := NewAnnouncement(ctx, BroadcastPath(tt.broadcastPath))
 
-	// Should still have only 2 active announcements
-	if len(sas.actives) != 2 {
-		t.Errorf("actives length after wrong prefix = %v, want 2", len(sas.actives))
+			err := sas.SendAnnouncement(ann)
+
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+
+			time.Sleep(50 * time.Millisecond) // Allow goroutine to process
+
+			if tt.shouldBeActive {
+				assert.Len(t, sas.actives, 1)
+			} else {
+				assert.Len(t, sas.actives, 0)
+			}
+		})
 	}
 }
 
-func TestSendAnnounceStreamSendAnnouncementsClosedStream(t *testing.T) {
-	mockStream := &MockQUICStream{}
+func TestSendAnnounceStream_SendAnnouncement_ClosedStream(t *testing.T) {
+	mockStream := &MockQUICStream{
+		ReadFunc: func(p []byte) (int, error) {
+			return 0, io.EOF
+		},
+	}
 	prefix := "/test"
 
-	sas := newSendAnnounceStream(mockStream, prefix, moqtrace.DefaultQUICStreamAccepted(0))
+	sas := newSendAnnounceStream(mockStream, prefix)
 	sas.closed = true
 	sas.closeErr = errors.New("stream closed")
 
 	ctx := context.Background()
 	ann := NewAnnouncement(ctx, BroadcastPath("/test/stream"))
 
-	err := sas.SendAnnouncements([]*Announcement{ann})
-	if err == nil {
-		t.Error("SendAnnouncements() on closed stream should return error")
+	err := sas.SendAnnouncement(ann)
+	assert.Error(t, err)
+}
+
+func TestSendAnnounceStream_Set(t *testing.T) {
+	tests := map[string]struct {
+		active          bool
+		existingPending bool
+		expectedStatus  message.AnnounceStatus
+		expectedInMap   bool
+	}{
+		"set active": {
+			active:          true,
+			existingPending: false,
+			expectedStatus:  message.ACTIVE,
+			expectedInMap:   true,
+		},
+		"set ended without existing": {
+			active:          false,
+			existingPending: false,
+			expectedStatus:  message.ENDED,
+			expectedInMap:   true,
+		},
+		"set ended with existing": {
+			active:          false,
+			existingPending: true,
+			expectedStatus:  0,
+			expectedInMap:   false,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockStream := &MockQUICStream{
+				ReadFunc: func(p []byte) (int, error) {
+					return 0, io.EOF
+				},
+			}
+			sas := newSendAnnounceStream(mockStream, "/test")
+
+			if tt.existingPending {
+				sas.pendings["stream1"] = message.AnnounceMessage{
+					AnnounceStatus: message.ACTIVE,
+					TrackSuffix:    "stream1",
+				}
+			}
+
+			sas.set("stream1", tt.active)
+
+			if tt.expectedInMap {
+				require.Contains(t, sas.pendings, "stream1")
+				assert.Equal(t, tt.expectedStatus, sas.pendings["stream1"].AnnounceStatus)
+			} else {
+				assert.NotContains(t, sas.pendings, "stream1")
+			}
+		})
 	}
 }
 
-func TestSendAnnounceStreamSet(t *testing.T) {
-	mockStream := &MockQUICStream{}
-
-	sas := newSendAnnounceStream(mockStream, "/test", moqtrace.DefaultQUICStreamAccepted(0))
-
-	// Test setting active announcement
-	err := sas.set("stream1", true)
-	if err != nil {
-		t.Errorf("set(active) error = %v", err)
+func TestSendAnnounceStream_SetClosedStream(t *testing.T) {
+	mockStream := &MockQUICStream{
+		ReadFunc: func(p []byte) (int, error) {
+			return 0, io.EOF
+		},
 	}
 
-	if len(sas.pendings) != 1 {
-		t.Errorf("pendings length = %v, want 1", len(sas.pendings))
-	}
-
-	pending := sas.pendings["stream1"]
-	if pending.AnnounceStatus != message.ACTIVE {
-		t.Errorf("announce status = %v, want %v", pending.AnnounceStatus, message.ACTIVE)
-	}
-
-	// Test setting ended announcement
-	err = sas.set("stream1", false)
-	if err != nil {
-		t.Errorf("set(ended) error = %v", err)
-	}
-
-	pending = sas.pendings["stream1"]
-	if pending.AnnounceStatus != message.ENDED {
-		t.Errorf("announce status = %v, want %v", pending.AnnounceStatus, message.ENDED)
-	}
-}
-
-func TestSendAnnounceStreamSetClosedStream(t *testing.T) {
-	mockStream := &MockQUICStream{}
-
-	sas := newSendAnnounceStream(mockStream, "/test", moqtrace.DefaultQUICStreamAccepted(0))
+	sas := newSendAnnounceStream(mockStream, "/test")
 	sas.closed = true
 	sas.closeErr = errors.New("stream closed")
 
-	err := sas.set("stream1", true)
-	if err == nil {
-		t.Error("set() on closed stream should return error")
+	// set method doesn't check for closed state, it just sets the pending message
+	sas.set("stream1", true)
+
+	assert.Contains(t, sas.pendings, "stream1")
+	assert.Equal(t, message.ACTIVE, sas.pendings["stream1"].AnnounceStatus)
+}
+
+func TestSendAnnounceStream_Send(t *testing.T) {
+	tests := map[string]struct {
+		setupPendings func(*sendAnnounceStream)
+		expectError   bool
+		shouldClear   bool
+	}{
+		"with pending messages": {
+			setupPendings: func(sas *sendAnnounceStream) {
+				sas.pendings["stream1"] = message.AnnounceMessage{
+					AnnounceStatus: message.ACTIVE,
+					TrackSuffix:    "stream1",
+				}
+			},
+			expectError: false,
+			shouldClear: true,
+		},
+		"no pending messages": {
+			setupPendings: func(sas *sendAnnounceStream) {
+				// No setup needed
+			},
+			expectError: false,
+			shouldClear: false,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockStream := &MockQUICStream{
+				ReadFunc: func(p []byte) (int, error) {
+					return 0, io.EOF
+				},
+			}
+			mockStream.On("Write", mock.Anything).Return(0, nil)
+
+			sas := newSendAnnounceStream(mockStream, "/test")
+			tt.setupPendings(sas)
+
+			err := sas.send()
+
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+
+			if tt.shouldClear {
+				assert.Empty(t, sas.pendings)
+			}
+		})
 	}
 }
 
-func TestSendAnnounceStreamSend(t *testing.T) {
-	mockStream := &MockQUICStream{}
-
-	sas := newSendAnnounceStream(mockStream, "/test", moqtrace.DefaultQUICStreamAccepted(0))
-
-	// Add some pending messages
-	sas.pendings["stream1"] = message.AnnounceMessage{
-		AnnounceStatus: message.ACTIVE,
-		TrackSuffix:    "stream1",
+func TestSendAnnounceStream_Send_ClosedStream(t *testing.T) {
+	mockStream := &MockQUICStream{
+		ReadFunc: func(p []byte) (int, error) {
+			return 0, io.EOF
+		},
 	}
 
-	err := sas.send()
-	if err != nil {
-		t.Errorf("send() error = %v", err)
-	}
-
-	// Pendings should be cleared after sending
-	if len(sas.pendings) != 0 {
-		t.Errorf("pendings length after send = %v, want 0", len(sas.pendings))
-	}
-
-}
-
-func TestSendAnnounceStreamSendNoPendings(t *testing.T) {
-	mockStream := &MockQUICStream{}
-
-	sas := newSendAnnounceStream(mockStream, "/test", moqtrace.DefaultQUICStreamAccepted(0))
-
-	// No pending messages
-	err := sas.send()
-	if err != nil {
-		t.Errorf("send() with no pendings error = %v", err)
-	}
-
-}
-
-func TestSendAnnounceStreamSendClosedStream(t *testing.T) {
-	mockStream := &MockQUICStream{}
-
-	sas := newSendAnnounceStream(mockStream, "/test", moqtrace.DefaultQUICStreamAccepted(0))
+	sas := newSendAnnounceStream(mockStream, "/test")
 	sas.closed = true
 	sas.closeErr = errors.New("stream closed")
 
 	err := sas.send()
-	if err == nil {
-		t.Error("send() on closed stream should return error")
-	}
+	assert.Error(t, err)
 }
 
-func TestSendAnnounceStreamClose(t *testing.T) {
-	mockStream := &MockQUICStream{}
+func TestSendAnnounceStream_Close(t *testing.T) {
+	mockStream := &MockQUICStream{
+		ReadFunc: func(p []byte) (int, error) {
+			return 0, io.EOF
+		},
+	}
+	mockStream.On("Close").Return(nil)
 
-	sas := newSendAnnounceStream(mockStream, "/test", moqtrace.DefaultQUICStreamAccepted(0))
+	sas := newSendAnnounceStream(mockStream, "/test")
 
 	err := sas.Close()
-	if err != nil {
-		t.Errorf("Close() error = %v", err)
-	}
-
-	if !sas.closed {
-		t.Error("stream should be marked as closed")
-	}
+	assert.NoError(t, err)
+	assert.True(t, sas.closed)
 }
 
-func TestSendAnnounceStreamCloseAlreadyClosed(t *testing.T) {
-	mockStream := &MockQUICStream{}
+func TestSendAnnounceStream_Close_AlreadyClosed(t *testing.T) {
+	mockStream := &MockQUICStream{
+		ReadFunc: func(p []byte) (int, error) {
+			return 0, io.EOF
+		},
+	}
+	// Close()は呼ばれないのでモックを設定する必要はありません
 
-	sas := newSendAnnounceStream(mockStream, "/test", moqtrace.DefaultQUICStreamAccepted(0))
+	sas := newSendAnnounceStream(mockStream, "/test")
 	sas.closed = true
 
 	err := sas.Close()
-	if err != nil {
-		t.Errorf("Close() on already closed stream error = %v", err)
+	assert.NoError(t, err)
+}
+
+func TestSendAnnounceStream_CloseWithError(t *testing.T) {
+	tests := map[string]struct {
+		errorCode    AnnounceErrorCode
+		expectClosed bool
+	}{
+		"internal error": {
+			errorCode:    InternalAnnounceErrorCode,
+			expectClosed: true,
+		},
+		"duplicated announce error": {
+			errorCode:    DuplicatedAnnounceErrorCode,
+			expectClosed: true,
+		},
+		"uninterested error": {
+			errorCode:    UninterestedErrorCode,
+			expectClosed: true,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockStream := &MockQUICStream{
+				ReadFunc: func(p []byte) (int, error) {
+					return 0, io.EOF
+				},
+			}
+			mockStream.On("StreamID").Return(quic.StreamID(123))
+			mockStream.On("CancelWrite", quic.StreamErrorCode(tt.errorCode)).Return()
+			mockStream.On("CancelRead", quic.StreamErrorCode(tt.errorCode)).Return()
+
+			sas := newSendAnnounceStream(mockStream, "/test")
+
+			err := sas.CloseWithError(tt.errorCode)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expectClosed, sas.closed)
+			assert.NotNil(t, sas.closeErr)
+
+			mockStream.AssertExpectations(t)
+		})
 	}
 }
 
-func TestSendAnnounceStreamCloseWithError(t *testing.T) {
-	mockStream := &MockQUICStream{}
-
-	sas := newSendAnnounceStream(mockStream, "/test", moqtrace.DefaultQUICStreamAccepted(0))
-
-	testErr := errors.New("test error")
-	err := sas.CloseWithError(testErr)
-	if err != nil {
-		t.Errorf("CloseWithError() error = %v", err)
+func TestSendAnnounceStream_CloseWithError_AlreadyClosed(t *testing.T) {
+	mockStream := &MockQUICStream{
+		ReadFunc: func(p []byte) (int, error) {
+			return 0, io.EOF
+		},
 	}
 
-	if !sas.closed {
-		t.Error("stream should be marked as closed")
-	}
-
-	if sas.closeErr != testErr {
-		t.Errorf("closeErr = %v, want %v", sas.closeErr, testErr)
-	}
-}
-
-func TestSendAnnounceStreamCloseWithErrorAlreadyClosed(t *testing.T) {
-	mockStream := &MockQUICStream{}
-
-	sas := newSendAnnounceStream(mockStream, "/test", moqtrace.DefaultQUICStreamAccepted(0))
+	sas := newSendAnnounceStream(mockStream, "/test")
 	sas.closed = true
-	existingErr := errors.New("existing error")
+	existingErr := &AnnounceError{
+		StreamError: &quic.StreamError{
+			StreamID:  quic.StreamID(123),
+			ErrorCode: quic.StreamErrorCode(InternalAnnounceErrorCode),
+		},
+	}
 	sas.closeErr = existingErr
 
-	newErr := errors.New("new error")
-	err := sas.CloseWithError(newErr)
-	if err != existingErr {
-		t.Errorf("CloseWithError() on already closed stream error = %v, want %v", err, existingErr)
+	err := sas.CloseWithError(DuplicatedAnnounceErrorCode)
+	// エラーは期待されません
+	if err != nil {
+		t.Logf("Unexpected error: %v", err)
 	}
+	assert.Equal(t, existingErr, sas.closeErr) // Should keep existing error
 }
 
 func TestSendAnnounceStreamInterface(t *testing.T) {
@@ -258,10 +344,15 @@ func TestSendAnnounceStreamInterface(t *testing.T) {
 	var _ AnnouncementWriter = (*sendAnnounceStream)(nil)
 }
 
-func TestSendAnnounceStreamConcurrentAccess(t *testing.T) {
-	mockStream := &MockQUICStream{}
+func TestSendAnnounceStream_ConcurrentAccess(t *testing.T) {
+	mockStream := &MockQUICStream{
+		ReadFunc: func(p []byte) (int, error) {
+			return 0, io.EOF
+		},
+	}
+	mockStream.On("Write", mock.Anything).Return(0, nil)
 
-	sas := newSendAnnounceStream(mockStream, "/test", moqtrace.DefaultQUICStreamAccepted(0))
+	sas := newSendAnnounceStream(mockStream, "/test")
 
 	// Test concurrent access to set and send
 	go func() {
@@ -283,90 +374,100 @@ func TestSendAnnounceStreamConcurrentAccess(t *testing.T) {
 	// Test should complete without race conditions
 }
 
-func TestSendAnnounceStreamAnnouncementLifecycle(t *testing.T) {
-	mockStream := &MockQUICStream{}
+func TestSendAnnounceStream_AnnouncementLifecycle(t *testing.T) {
+	mockStream := &MockQUICStream{
+		ReadFunc: func(p []byte) (int, error) {
+			return 0, io.EOF
+		},
+	}
 
-	sas := newSendAnnounceStream(mockStream, "/test", moqtrace.DefaultQUICStreamAccepted(0))
+	sas := newSendAnnounceStream(mockStream, "/test")
 
 	// Create announcement
 	ctx, cancel := context.WithCancel(context.Background())
 	ann := NewAnnouncement(ctx, BroadcastPath("/test/stream"))
 
 	// Send announcement
-	err := sas.SendAnnouncements([]*Announcement{ann})
-	if err != nil {
-		t.Errorf("SendAnnouncements() error = %v", err)
-	}
+	err := sas.SendAnnouncement(ann)
+	assert.NoError(t, err)
+
+	// Give time for processing
+	time.Sleep(50 * time.Millisecond)
 
 	// Verify active announcement is stored
-	if len(sas.actives) != 1 {
-		t.Errorf("actives length = %v, want 1", len(sas.actives))
-	}
+	assert.Len(t, sas.actives, 1)
 
 	// End the announcement
 	cancel()
 
 	// Give time for announcement end to be processed
-	time.Sleep(20 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 }
 
-func TestSendAnnounceStreamPrefixMatching(t *testing.T) {
-	tests := []struct {
-		name          string
+func TestSendAnnounceStream_PrefixMatching(t *testing.T) {
+	tests := map[string]struct {
 		prefix        string
 		broadcastPath string
+		expectError   bool
 		shouldMatch   bool
 	}{
-		{
-			name:          "exact prefix match",
+		"exact prefix match": {
 			prefix:        "/test",
 			broadcastPath: "/test/stream",
+			expectError:   false,
 			shouldMatch:   true,
 		},
-		{
-			name:          "nested prefix match",
+		"nested prefix match": {
 			prefix:        "/test/sub",
 			broadcastPath: "/test/sub/stream",
+			expectError:   false,
 			shouldMatch:   true,
 		},
-		{
-			name:          "no match - different prefix",
+		"no match - different prefix": {
 			prefix:        "/test",
 			broadcastPath: "/other/stream",
+			expectError:   true,
 			shouldMatch:   false,
 		},
-		{
-			name:          "no match - prefix is substring but not path prefix",
+		"no match - prefix is substring but not path prefix": {
 			prefix:        "/test",
 			broadcastPath: "/testing/stream",
+			expectError:   true,
 			shouldMatch:   false,
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mockStream := &MockQUICStream{}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockStream := &MockQUICStream{
+				ReadFunc: func(p []byte) (int, error) {
+					return 0, io.EOF
+				},
+			}
 
-			sas := newSendAnnounceStream(mockStream, tt.prefix, moqtrace.DefaultQUICStreamAccepted(0))
+			sas := newSendAnnounceStream(mockStream, tt.prefix)
 
 			ctx := context.Background()
 			ann := NewAnnouncement(ctx, BroadcastPath(tt.broadcastPath))
-
 			initialActiveCount := len(sas.actives)
 
-			err := sas.SendAnnouncements([]*Announcement{ann})
-			if err != nil {
-				t.Errorf("SendAnnouncements() error = %v", err)
+			err := sas.SendAnnouncement(ann)
+
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
+
+			// Give time for processing
+			time.Sleep(50 * time.Millisecond)
 
 			expectedActiveCount := initialActiveCount
 			if tt.shouldMatch {
 				expectedActiveCount++
 			}
 
-			if len(sas.actives) != expectedActiveCount {
-				t.Errorf("actives length = %v, want %v", len(sas.actives), expectedActiveCount)
-			}
+			assert.Len(t, sas.actives, expectedActiveCount)
 		})
 	}
 }

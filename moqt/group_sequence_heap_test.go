@@ -6,26 +6,22 @@ import (
 )
 
 func TestNewGroupSequenceHeap(t *testing.T) {
-	tests := []struct {
-		name  string
+	tests := map[string]struct {
 		order GroupOrder
 	}{
-		{
-			name:  "default order",
+		"default order": {
 			order: GroupOrderDefault,
 		},
-		{
-			name:  "ascending order",
+		"ascending order": {
 			order: GroupOrderAscending,
 		},
-		{
-			name:  "descending order",
+		"descending order": {
 			order: GroupOrderDescending,
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			h := newGroupSequenceHeap(tt.order)
 
 			if h == nil {
@@ -168,50 +164,43 @@ func TestGroupSequenceHeap_Default(t *testing.T) {
 }
 
 func TestGroupSequenceHeap_Less(t *testing.T) {
-	tests := []struct {
-		name  string
+	tests := map[string]struct {
 		order GroupOrder
 		seqi  GroupSequence
 		seqj  GroupSequence
 		want  bool
 	}{
-		{
-			name:  "ascending: i < j",
+		"ascending: i < j": {
 			order: GroupOrderAscending,
 			seqi:  GroupSequence(1),
 			seqj:  GroupSequence(2),
 			want:  true,
 		},
-		{
-			name:  "ascending: i > j",
+		"ascending: i > j": {
 			order: GroupOrderAscending,
 			seqi:  GroupSequence(2),
 			seqj:  GroupSequence(1),
 			want:  false,
 		},
-		{
-			name:  "descending: i > j",
+		"descending: i > j": {
 			order: GroupOrderDescending,
 			seqi:  GroupSequence(2),
 			seqj:  GroupSequence(1),
 			want:  true,
 		},
-		{
-			name:  "descending: i < j",
+		"descending: i < j": {
 			order: GroupOrderDescending,
 			seqi:  GroupSequence(1),
 			seqj:  GroupSequence(2),
 			want:  false,
 		},
-		{
-			name:  "default order",
+		"default order": {
 			order: GroupOrderDefault,
 			seqi:  GroupSequence(1),
 			seqj:  GroupSequence(2),
 			want:  true,
 		},
-		{
-			name:  "invalid order",
+		"invalid order": {
 			order: GroupOrder(99),
 			seqi:  GroupSequence(1),
 			seqj:  GroupSequence(2),
@@ -219,8 +208,8 @@ func TestGroupSequenceHeap_Less(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			h := newGroupSequenceHeap(tt.order)
 
 			// Add two elements to test Less

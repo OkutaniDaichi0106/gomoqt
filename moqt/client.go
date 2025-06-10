@@ -12,9 +12,9 @@ import (
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/moqtrace"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/webtransport"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic/quicgo"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/webtransport/webtransportgo"
 )
 
 type Client struct {
@@ -34,6 +34,9 @@ type Client struct {
 	Config *Config
 
 	/***/
+	DialQUICConn func(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (quic.Connection, error)
+
+	DialWebTransportFunc func(ctx context.Context, addr string, header http.Header) (*http.Response, quic.Connection, error)
 
 	/*
 	 * Logger
@@ -43,7 +46,7 @@ type Client struct {
 	//
 	initOnce sync.Once
 
-	mu         sync.RWMutex
+	sessMu     sync.RWMutex
 	activeSess map[*Session]struct{}
 
 	inShutdown atomic.Bool
@@ -62,8 +65,8 @@ func (c *Client) init() {
 }
 
 func (c *Client) timeout() time.Duration {
-	if c.Config != nil && c.Config.Timeout != 0 {
-		return c.Config.Timeout
+	if c.Config != nil && c.Config.SetupTimeout != 0 {
+		return c.Config.SetupTimeout
 	}
 	return 5 * time.Second // TODO: Consider appropriate timeout
 }
@@ -89,9 +92,9 @@ func (c *Client) Dial(ctx context.Context, urlStr string, mux *TrackMux) (*Sessi
 	// Dial based on the scheme
 	switch parsedURL.Scheme {
 	case "https":
-		return c.DialWebTransport(ctx, parsedURL, mux)
+		return c.DialWebTransport(ctx, parsedURL.Hostname()+":"+parsedURL.Port(), parsedURL.Path, mux)
 	case "moqt":
-		return c.DialQUIC(ctx, parsedURL, mux)
+		return c.DialQUIC(ctx, parsedURL.Hostname()+":"+parsedURL.Port(), parsedURL.Path, mux)
 	default:
 		if c.Logger != nil {
 			c.Logger.Error("unsupported URL scheme",
@@ -103,33 +106,29 @@ func (c *Client) Dial(ctx context.Context, urlStr string, mux *TrackMux) (*Sessi
 	}
 }
 
-func (c *Client) DialWebTransport(ctx context.Context, uri *url.URL, mux *TrackMux) (*Session, error) {
+func (c *Client) DialWebTransport(ctx context.Context, host, path string, mux *TrackMux) (*Session, error) {
 	if c.shuttingDown() {
 		return nil, ErrClientClosed
 	}
 	c.init()
 
-	if uri.Scheme != "https" {
-		if c.Logger != nil {
-			c.Logger.Error("unsupported url scheme",
-				"scheme", uri.Scheme,
-				"url", uri.String(),
-			)
-		}
-		return nil, ErrInvalidScheme
-	}
-
 	var logger *slog.Logger
 	if c.Logger != nil {
 		logger = c.Logger.With(
-			"endpoint", "https://"+uri.Hostname()+":"+uri.Port()+uri.Path,
+			"endpoint", "https://"+host+path,
 		)
 		logger.Info("dialing webtransport")
 	}
 
 	dialCtx, cancelDial := context.WithTimeout(ctx, c.timeout())
 	defer cancelDial()
-	_, conn, err := webtransport.DialWebtransportFunc(dialCtx, uri.String(), http.Header{})
+	var conn quic.Connection
+	var err error
+	if c.DialWebTransportFunc != nil {
+		_, conn, err = c.DialWebTransportFunc(dialCtx, host+path, http.Header{})
+	} else {
+		_, conn, err = webtransportgo.Dial(dialCtx, "https://"+host+path, http.Header{})
+	}
 	if err != nil {
 		if logger != nil {
 			logger.Error("failed to dial webtransport",
@@ -157,7 +156,7 @@ func (c *Client) DialWebTransport(ctx context.Context, uri *url.URL, mux *TrackM
 		return params
 	}
 
-	sess, err := c.openSession(conn, extensions, mux)
+	sess, err := c.openSession(conn, path, extensions, mux)
 	if err != nil {
 		if logger != nil {
 			logger.Error("failed to open session stream",
@@ -171,7 +170,7 @@ func (c *Client) DialWebTransport(ctx context.Context, uri *url.URL, mux *TrackM
 }
 
 // TODO: Expose this method if QUIC is supported
-func (c *Client) DialQUIC(ctx context.Context, uri *url.URL, mux *TrackMux) (*Session, error) {
+func (c *Client) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux) (*Session, error) {
 	if c.shuttingDown() {
 		if c.Logger != nil {
 			c.Logger.Error("client is shutting down")
@@ -181,29 +180,15 @@ func (c *Client) DialQUIC(ctx context.Context, uri *url.URL, mux *TrackMux) (*Se
 
 	c.init()
 
-	path := uri.Path
-
 	var logger *slog.Logger
 	if c.Logger != nil {
 		logger = c.Logger.With(
-			"scheme", uri.Scheme,
-			"host", uri.Hostname(),
-			"port", uri.Port(),
+			"scheme", "moqt",
+			"host", addr,
 			"path", path,
 		)
 
 		logger.Debug("dialing MOQ session")
-	}
-
-	if uri.Scheme != "moqt" {
-		if logger != nil {
-			logger.Error("unsupported url scheme")
-		}
-		return nil, ErrInvalidScheme
-	}
-
-	if quic.DialFunc == nil {
-		panic("no quic.DialFunc provided")
 	}
 
 	// Dial QUIC connection
@@ -213,7 +198,13 @@ func (c *Client) DialQUIC(ctx context.Context, uri *url.URL, mux *TrackMux) (*Se
 
 	dialCtx, cancelDial := context.WithTimeout(ctx, c.timeout())
 	defer cancelDial()
-	conn, err := quic.DialFunc(dialCtx, uri.Hostname()+":"+uri.Port(), c.TLSConfig, c.QUICConfig)
+	var conn quic.Connection
+	var err error
+	if c.DialQUICConn != nil {
+		conn, err = c.DialQUICConn(dialCtx, addr, c.TLSConfig, c.QUICConfig)
+	} else {
+		conn, err = quicgo.Dial(dialCtx, addr, c.TLSConfig, c.QUICConfig)
+	}
 	if err != nil {
 		if logger != nil {
 			logger.Error("failed to dial QUIC connection",
@@ -245,34 +236,18 @@ func (c *Client) DialQUIC(ctx context.Context, uri *url.URL, mux *TrackMux) (*Se
 		return params
 	}
 
-	return c.openSession(conn, extensions, mux)
+	return c.openSession(conn, path, extensions, mux)
 }
 
-func (c *Client) openSession(conn quic.Connection, extensions func() *Parameters, mux *TrackMux) (*Session, error) {
+func (c *Client) openSession(conn quic.Connection, path string, extensions func() *Parameters, mux *TrackMux) (*Session, error) {
 	//
 	logger := c.Logger
-
-	//
-	var sessTracer *moqtrace.SessionTracer
-	if c.Config != nil && c.Config.Tracer != nil {
-		sessTracer = c.Config.Tracer()
-	} else {
-		sessTracer = moqtrace.DefaultSessionTracer()
-	}
 
 	// Close the session stream channel
 
 	stream, err := conn.OpenStream()
 	if err != nil {
 		return nil, err
-	}
-
-	var streamTracer *moqtrace.StreamTracer
-	if sessTracer.QUICStreamOpened != nil {
-		streamTracer = sessTracer.QUICStreamOpened(stream.StreamID())
-		moqtrace.InitStreamTracer(streamTracer)
-	} else {
-		streamTracer = moqtrace.DefaultQUICStreamOpened(stream.StreamID())
 	}
 
 	stm := message.StreamTypeMessage{
@@ -283,9 +258,9 @@ func (c *Client) openSession(conn quic.Connection, extensions func() *Parameters
 		if logger != nil {
 			logger.Error("failed to send a STREAM_TYPE message", "error", err)
 		}
+
 		return nil, err
 	}
-	streamTracer.StreamTypeMessageSent(stm)
 
 	clientParams := extensions()
 
@@ -301,7 +276,6 @@ func (c *Client) openSession(conn quic.Connection, extensions func() *Parameters
 		}
 		return nil, err
 	}
-	streamTracer.SessionClientMessageSent(scm)
 
 	// Receive a set-up response
 	var ssm message.SessionServerMessage
@@ -310,38 +284,21 @@ func (c *Client) openSession(conn quic.Connection, extensions func() *Parameters
 		if logger != nil {
 			logger.Error("failed to receive a SESSION_SERVER message", "error", err)
 		}
+
 		return nil, err
 	}
-	streamTracer.SessionServerMessageReceived(ssm)
 
 	version := ssm.SelectedVersion
 	serverParams := &Parameters{ssm.Parameters}
-	path, err := serverParams.GetString(param_type_path)
-	if err != nil {
-		if logger != nil {
-			logger.Error("failed to get path parameter from server parameters", "error", err)
-		}
-		return nil, err
-	}
-
-	sessCtx := newSessionContext(conn.Context(), version, path, clientParams, serverParams, logger, sessTracer)
 
 	// Set the selected version and parameters
-	sessstr := newSessionStream(
-		sessCtx,
-		stream,
-		streamTracer,
-	)
 
-	if logger != nil {
-		logger.Debug("opened a session stream")
-	}
-
-	sess := newSession(sessCtx, sessstr, conn, mux)
+	sess := newSession(conn, version, path, clientParams, serverParams,
+		stream, mux, logger)
 
 	c.addSession(sess)
 	go func() {
-		<-sessCtx.Done()
+		<-sess.Context().Done()
 		c.removeSession(sess)
 	}()
 
@@ -349,8 +306,8 @@ func (c *Client) openSession(conn quic.Connection, extensions func() *Parameters
 }
 
 func (s *Client) addSession(sess *Session) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.sessMu.Lock()
+	defer s.sessMu.Unlock()
 
 	if sess == nil {
 		return
@@ -359,8 +316,8 @@ func (s *Client) addSession(sess *Session) {
 }
 
 func (s *Client) removeSession(sess *Session) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.sessMu.Lock()
+	defer s.sessMu.Unlock()
 
 	delete(s.activeSess, sess)
 
@@ -381,11 +338,8 @@ func (s *Client) shuttingDown() bool {
 func (c *Client) Close() error {
 	c.inShutdown.Store(true)
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	for sess := range c.activeSess {
-		(*sess).Terminate(NoErrTerminate)
+		sess.Terminate(NoError, NoError.String())
 	}
 
 	// Wait for active connections to complete if any
@@ -400,9 +354,6 @@ func (c *Client) Shutdown(ctx context.Context) error {
 	c.init() // Ensure initialization
 	c.inShutdown.Store(true)
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	// Go away all active sessions
 	for sess := range c.activeSess {
 		c.goAway(sess)
@@ -414,10 +365,10 @@ func (c *Client) Shutdown(ctx context.Context) error {
 		case <-c.doneChan:
 		case <-ctx.Done():
 			for sess := range c.activeSess {
-				go sess.Terminate(ErrGoAwayTimeout)
+				go sess.Terminate(GoAwayTimeoutErrorCode, GoAwayTimeoutErrorCode.String())
 				c.removeSession(sess)
 			}
-			return ctx.Err() // Return context error
+			return ctx.Err()
 		}
 	}
 

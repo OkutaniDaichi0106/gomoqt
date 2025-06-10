@@ -8,6 +8,6 @@ import "time"
 type GroupReader interface {
 	GroupSequence() GroupSequence
 	ReadFrame() (*Frame, error)
-	CancelRead(GroupError)
+	CancelRead(GroupErrorCode)
 	SetReadDeadline(time.Time) error
 }

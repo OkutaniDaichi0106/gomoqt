@@ -11,396 +11,259 @@ import (
 var (
 	ErrInvalidScheme = errors.New("moqt: invalid scheme")
 
+	ErrInvalidRange = errors.New("moqt: invalid range")
+
 	ErrClosedSession = errors.New("moqt: closed session")
 
-	ErrInternalError = internalError{}
-
-	ErrUnauthorizedError = unauthorizedError{}
-
-	ErrTrackDoesNotExist = trackDoesNotExistError{}
-
-	ErrDuplicatedTrack = defaultAnnounceError{
-		reason: "moqt: duplicated track path",
-		code:   announce_duplicated_track_path,
-	}
-
-	ErrMismatchAnnouncement = defaultAnnounceError{
-		reason: "moqt: mismatch announcement",
-		code:   announce_mismatch_announcement,
-	}
-
-	ErrInvalidRange = defaultSubscribeError{
-		code:   subscribe_invalid_range,
-		reason: "moqt: invalid range",
-	}
-
-	ErrDuplicatedSubscribeID = defaultSubscribeError{
-		code:   subscriber_duplicated_id,
-		reason: "moqt: duplicated subscribe id",
-	}
-
-	ErrClosedTrack = defaultSubscribeError{
-		code:   subscribe_closed_track,
-		reason: "moqt: closed track",
-	}
-
-	ErrEndedTrack = defaultSubscribeError{
-		code:   subscribe_ended_track,
-		reason: "moqt: ended track",
-	}
-
-	ErrTimeout = defaultSubscribeError{ //TODO: Use this error
-		code:   subscribe_timeout,
-		reason: "moqt: timeout",
-	}
-
-	NoErrTerminate = defaultTerminateError{
-		code:   terminate_no_error,
-		reason: "moqt: no error",
-	}
-
-	ErrProtocolViolation = defaultTerminateError{
-		code:   terminate_protocol_violation,
-		reason: "moqt: protocol violation",
-	}
-
-	ErrParameterLengthMismatch = defaultTerminateError{
-		code:   terminate_parameter_length_mismatch,
-		reason: "moqt: parameter length mismatch",
-	}
-
-	ErrTooManySubscribes = defaultTerminateError{
-		code:   terminate_too_many_subscribes,
-		reason: "moqt: too many subscribes",
-	}
-
-	ErrGoAwayTimeout = defaultTerminateError{
-		code:   terminate_goaway_timeout,
-		reason: "moqt: goaway timeout",
-	}
-
-	ErrGroupRejected = defaultGroupError{
-		code:   group_send_interrupted,
-		reason: "moqt: send interrupted",
-	}
-
-	ErrGroupOutOfRange = defaultGroupError{
-		code:   group_out_of_range,
-		reason: "moqt: out of range",
-	}
-
-	ErrGroupExpired = defaultGroupError{
-		code:   group_expires,
-		reason: "moqt: expires",
-	}
-
-	ErrClosedGroup = defaultGroupError{
-		code:   group_closed,
-		reason: "moqt: group is closed",
-	}
-
-	// ErrGroupDeliveryTimeout = defaultGroupError{
-	// 	code:   group_delivery_timeout,
-	// 	reason: "delivery timeout",
-	// }
-
-	// ErrDuplicatedGroup = defaultGroupError{
-	// 	code:   group_duplicated_group,
-	// 	reason: "duplicated group",
-	// }
-
-	// Internal Errors with reason
-	ErrUnsubscribedTrack = ErrInternalError.WithReason("moqt: unsubscribed track")
-
 	ErrServerClosed = errors.New("moqt: server closed")
+
 	ErrClientClosed = errors.New("moqt: client closed")
-
-	ErrGoAway = errors.New("moqt: go away")
 )
-
-// type Error interface {
-// 	error
-// 	ErrorCode() ErrorCode
-// }
-
-/*
- * Session Error
- */
-
-// const (
-// 	session_internal_error transport.SessionErrorCode = 0x00
-// )
-
-/*
- * Stream Error
- */
-
-const (
-	stream_internal_error quic.StreamErrorCode = 0x00
-	invalid_stream_type   quic.StreamErrorCode = 0x10 // TODO: See spec
-)
-
-// type defaultStreamError struct {
-// 	code   transport.StreamErrorCode
-// 	reason string
-// }
-
-// func (err defaultStreamError) Error() string {
-// 	return err.reason
-// }
-
-// func (err defaultStreamError) StreamErrorCode() transport.StreamErrorCode {
-// 	return err.code
-// }
 
 /*
  * Announce Errors
  */
 const (
-	announce_internal_error        protocol.AnnounceErrorCode = 0x0
-	announce_duplicated_track_path protocol.AnnounceErrorCode = 0x1
-	announce_mismatch_announcement protocol.AnnounceErrorCode = 0x2
+	InternalAnnounceErrorCode AnnounceErrorCode = 0x0
+
+	// Subscriber
+	DuplicatedAnnounceErrorCode AnnounceErrorCode = 0x1
+	UninterestedErrorCode       AnnounceErrorCode = 0x3
+
+	// Publisher
+	BannedPrefixErrorCode AnnounceErrorCode = 0x4 // TODO: Is this necessary?
 )
 
-type AnnounceError interface {
-	error
-	AnnounceErrorCode() protocol.AnnounceErrorCode
+type AnnounceErrorCode protocol.AnnounceErrorCode
+
+func (code AnnounceErrorCode) String() string {
+	switch code {
+	case InternalAnnounceErrorCode:
+		return "moqt: internal error"
+	case DuplicatedAnnounceErrorCode:
+		return "moqt: duplicated broadcast path"
+	case UninterestedErrorCode:
+		return "moqt: uninterested"
+	default:
+		return "moqt: unknown announce error"
+	}
 }
 
-type defaultAnnounceError struct {
-	reason string
-	code   protocol.AnnounceErrorCode
+type AnnounceError struct{ *quic.StreamError }
+
+func (err AnnounceError) Error() string {
+	return err.AnnounceErrorCode().String()
 }
 
-func (err defaultAnnounceError) Error() string {
-	return err.reason
-}
-
-func (err defaultAnnounceError) AnnounceErrorCode() protocol.AnnounceErrorCode {
-	return err.code
+func (err AnnounceError) AnnounceErrorCode() AnnounceErrorCode {
+	return AnnounceErrorCode(err.ErrorCode)
 }
 
 /*
  * Subscribe Errors
  */
+
 const (
-	subscribe_internal_error       protocol.SubscribeErrorCode = 0x00
-	subscribe_invalid_range        protocol.SubscribeErrorCode = 0x01
-	subscriber_duplicated_id       protocol.SubscribeErrorCode = 0x02
-	subscribe_track_does_not_exist protocol.SubscribeErrorCode = 0x03
-	subscribe_unauthorized         protocol.SubscribeErrorCode = 0x04
-	subscribe_timeout              protocol.SubscribeErrorCode = 0x05
-	subscribe_update_error         protocol.SubscribeErrorCode = 0x06
-	subscribe_closed_track         protocol.SubscribeErrorCode = 0x07
-	subscribe_ended_track          protocol.SubscribeErrorCode = 0x08
-	// subscribe_priority_mismatch_error protocol.SubscribeErrorCode = 0x07
-	// subscribe_order_mismatch_error    protocol.SubscribeErrorCode = 0x08
+	InternalSubscribeErrorCode SubscribeErrorCode = 0x00
+
+	// Error code used internally, basically not used in the application.
+	// These error codes are used before subscribe negotiation is completed,
+
+	//
+	InvalidRangeErrorCode SubscribeErrorCode = 0x01
+	//
+	DuplicateSubscribeIDErrorCode SubscribeErrorCode = 0x02
+	//
+	TrackNotFoundErrorCode SubscribeErrorCode = 0x03
+	//
+	UnauthorizedSubscribeErrorCode SubscribeErrorCode = 0x04 // TODO: Is this necessary?
+	// Subscriber
+	SubscribeTimeoutErrorCode SubscribeErrorCode = 0x05
+	// ClosedTrackErrorCode           SubscribeErrorCode = 0x07 // TODO: Is this necessary?
+
+	// Error code used by the application.
+	// These error codes are used after subscribe negotiation is completed.
 )
 
-type SubscribeError interface {
-	error
-	SubscribeErrorCode() protocol.SubscribeErrorCode
+type SubscribeErrorCode protocol.SubscribeErrorCode
+
+func (code SubscribeErrorCode) String() string {
+	switch code {
+	case InternalSubscribeErrorCode:
+		return "moqt: internal error"
+	case InvalidRangeErrorCode:
+		return "moqt: invalid range"
+	case DuplicateSubscribeIDErrorCode:
+		return "moqt: duplicated id"
+	case TrackNotFoundErrorCode:
+		return "moqt: track does not exist"
+	case UnauthorizedSubscribeErrorCode:
+		return "moqt: unauthorized"
+	case SubscribeTimeoutErrorCode:
+		return "moqt: timeout"
+	default:
+		return "moqt: unknown subscribe error"
+	}
 }
 
-var _ SubscribeError = (*defaultSubscribeError)(nil)
+type SubscribeError struct{ *quic.StreamError }
 
-type defaultSubscribeError struct {
-	code   protocol.SubscribeErrorCode
-	reason string
+func (err SubscribeError) Error() string {
+	return err.SubscribeErrorCode().String()
 }
 
-func (err defaultSubscribeError) Error() string {
-	return err.reason
-}
-
-func (err defaultSubscribeError) SubscribeErrorCode() protocol.SubscribeErrorCode {
-	return err.code
+func (err SubscribeError) SubscribeErrorCode() SubscribeErrorCode {
+	return SubscribeErrorCode(err.ErrorCode)
 }
 
 /*
- * Info Errors
+ * Session Error
  */
 const (
-	info_internal_error       protocol.InfoErrorCode = 0x00
-	info_track_does_not_exist protocol.InfoErrorCode = 0x01
+	NoError SessionErrorCode = 0x0
+
+	InternalSessionErrorCode         SessionErrorCode = 0x1
+	UnauthorizedSessionErrorCode     SessionErrorCode = 0x2
+	ProtocolViolationErrorCode       SessionErrorCode = 0x3
+	ParameterLengthMismatchErrorCode SessionErrorCode = 0x5
+	TooManySubscribeErrorCode        SessionErrorCode = 0x6
+	GoAwayTimeoutErrorCode           SessionErrorCode = 0x10
+	UnsupportedVersionErrorCode      SessionErrorCode = 0x12
+	UnsupportedStreamErrorCode       SessionErrorCode = 0x13
 )
 
-type InfoError interface {
-	error
-	InfoErrorCode() protocol.InfoErrorCode
+type SessionErrorCode protocol.SessionErrorCode
+
+func (code SessionErrorCode) String() string {
+	switch code {
+	case NoError:
+		return "moqt: no error"
+	case InternalSessionErrorCode:
+		return "moqt: internal error"
+	case UnauthorizedSessionErrorCode:
+		return "moqt: unauthorized"
+	case ProtocolViolationErrorCode:
+		return "moqt: protocol violation"
+	case ParameterLengthMismatchErrorCode:
+		return "moqt: parameter length mismatch"
+	case TooManySubscribeErrorCode:
+		return "moqt: too many subscribes"
+	case GoAwayTimeoutErrorCode:
+		return "moqt: goaway timeout"
+	case UnsupportedVersionErrorCode:
+		return "moqt: unsupported version"
+	default:
+		return "moqt: unknown terminate error"
+	}
 }
 
-var _ InfoError = (*defaultInfoError)(nil)
+type SessionError struct{ *quic.ApplicationError }
 
-type defaultInfoError struct {
-	code   protocol.InfoErrorCode
-	reason string
+func (err SessionError) Error() string {
+	var role string
+	if err.Remote {
+		role = "remote"
+	} else {
+		role = "local"
+	}
+	return fmt.Sprintf("%s (%s)", err.SessionErrorCode().String(), role)
 }
 
-func (err defaultInfoError) Error() string {
-	return err.reason
-}
-
-func (err defaultInfoError) InfoErrorCode() protocol.InfoErrorCode {
-	return err.code
-}
-
-/*
- * Terminate Error
- */
-const (
-	terminate_no_error protocol.TerminateErrorCode = 0x0
-
-	terminate_internal_error     protocol.TerminateErrorCode = 0x1
-	terminate_unauthorized       protocol.TerminateErrorCode = 0x2
-	terminate_protocol_violation protocol.TerminateErrorCode = 0x3
-	// terminate_duplicate_track           protocol.TerminateErrorCode = 0x4
-	terminate_parameter_length_mismatch protocol.TerminateErrorCode = 0x5
-	terminate_too_many_subscribes       protocol.TerminateErrorCode = 0x6
-	terminate_goaway_timeout            protocol.TerminateErrorCode = 0x10
-	terminate_handle_timeout            protocol.TerminateErrorCode = 0x11
-)
-
-type TerminateError interface {
-	error
-	TerminateErrorCode() protocol.TerminateErrorCode
-}
-
-var _ TerminateError = (*defaultTerminateError)(nil)
-
-type defaultTerminateError struct {
-	code   protocol.TerminateErrorCode
-	reason string
-}
-
-func (err defaultTerminateError) Error() string {
-	return err.reason
-}
-
-func (err defaultTerminateError) TerminateErrorCode() protocol.TerminateErrorCode {
-	return err.code
+func (err SessionError) SessionErrorCode() SessionErrorCode {
+	return SessionErrorCode(err.ErrorCode)
 }
 
 /*
  * Group Error
  */
-type GroupError interface {
-	error
-	GroupErrorCode() protocol.GroupErrorCode
-}
-
 const (
-	group_internal_error protocol.GroupErrorCode = 0x00
+	InternalGroupErrorCode GroupErrorCode = 0x00
 
-	group_send_interrupted     protocol.GroupErrorCode = 0x01
-	group_out_of_range         protocol.GroupErrorCode = 0x02
-	group_expires              protocol.GroupErrorCode = 0x03
-	group_closed               protocol.GroupErrorCode = 0x04
-	group_track_does_not_exist protocol.GroupErrorCode = 0x05
-
-	// group_duplicated_group protocol.GroupErrorCode = 0x10
+	OutOfRangeErrorCode         GroupErrorCode = 0x02
+	ExpiredGroupErrorCode       GroupErrorCode = 0x03
+	SubscribeCanceledErrorCode  GroupErrorCode = 0x04 // TODO: Is this necessary?
+	PublishAbortedErrorCode     GroupErrorCode = 0x05
+	ClosedSessionGroupErrorCode GroupErrorCode = 0x06
+	InvalidSubscribeIDErrorCode GroupErrorCode = 0x07 // TODO: Is this necessary?
 )
 
-type defaultGroupError struct {
-	code   protocol.GroupErrorCode
-	reason string
+type GroupErrorCode protocol.GroupErrorCode
+
+func (code GroupErrorCode) String() string {
+	switch code {
+	case InternalGroupErrorCode:
+		return "moqt: internal error"
+	case OutOfRangeErrorCode:
+		return "moqt: out of range"
+	case ExpiredGroupErrorCode:
+		return "moqt: group expires"
+	case SubscribeCanceledErrorCode:
+		return "moqt: subscribe canceled"
+	case PublishAbortedErrorCode:
+		return "moqt: publish aborted"
+	case ClosedSessionGroupErrorCode:
+		return "moqt: session closed"
+	default:
+		return "moqt: unknown group error"
+	}
 }
 
-func (err defaultGroupError) Error() string {
-	return err.reason
+type GroupError struct{ *quic.StreamError }
+
+func (err GroupError) Error() string {
+	return err.GroupErrorCode().String()
 }
 
-func (err defaultGroupError) GroupErrorCode() protocol.GroupErrorCode {
-	return err.code
+func (err GroupError) GroupErrorCode() GroupErrorCode {
+	return GroupErrorCode(err.ErrorCode)
 }
 
 /*
  * Internal Error
  */
-var _ quic.StreamError = (*internalError)(nil)
-var _ TerminateError = (*internalError)(nil)
-var _ AnnounceError = (*internalError)(nil)
-var _ SubscribeError = (*internalError)(nil)
-var _ InfoError = (*internalError)(nil)
-var _ GroupError = (*internalError)(nil)
-
-type internalError struct {
-	reason string
+type InternalError struct {
+	Reason string
 }
 
-func (err internalError) Error() string {
-	return fmt.Sprintf("moqt: internal error: %s", err.reason)
+func (err InternalError) Error() string {
+	return fmt.Sprintf("moqt: internal error: %s", err.Reason)
 }
 
-func (internalError) WithReason(reason string) internalError {
-	return internalError{
-		reason: reason,
-	}
+func (InternalError) Is(err error) bool {
+	_, ok := err.(InternalError)
+	return ok
 }
 
-func (internalError) AnnounceErrorCode() protocol.AnnounceErrorCode {
-	return announce_internal_error
+func (err InternalError) AnnounceErrorCode() AnnounceErrorCode {
+	return InternalAnnounceErrorCode
 }
 
-func (internalError) SubscribeErrorCode() protocol.SubscribeErrorCode {
-	return subscribe_internal_error
+func (err InternalError) SubscribeErrorCode() SubscribeErrorCode {
+	return InternalSubscribeErrorCode
 }
 
-func (internalError) TerminateErrorCode() protocol.TerminateErrorCode {
-	return terminate_internal_error
+func (err InternalError) SessionErrorCode() SessionErrorCode {
+	return InternalSessionErrorCode
 }
 
-func (internalError) StreamErrorCode() quic.StreamErrorCode {
-	return stream_internal_error
-}
-
-func (internalError) InfoErrorCode() protocol.InfoErrorCode {
-	return info_internal_error
-}
-
-func (internalError) GroupErrorCode() protocol.GroupErrorCode {
-	return group_internal_error
+func (err InternalError) GroupErrorCode() GroupErrorCode {
+	return InternalGroupErrorCode
 }
 
 /*
 * Unauthorized Error
  */
-var _ SubscribeError = (*unauthorizedError)(nil)
-var _ TerminateError = (*unauthorizedError)(nil)
 
-type unauthorizedError struct{}
+type UnauthorizedError struct{}
 
-func (unauthorizedError) Error() string {
+func (UnauthorizedError) Error() string {
 	return "moqt: unauthorized"
 }
 
-func (unauthorizedError) SubscribeErrorCode() protocol.SubscribeErrorCode {
-	return subscribe_unauthorized
+func (err UnauthorizedError) SubscribeErrorCode() SubscribeErrorCode {
+	return UnauthorizedSubscribeErrorCode
 }
 
-func (unauthorizedError) TerminateErrorCode() protocol.TerminateErrorCode {
-	return terminate_unauthorized
-}
-
-/*
- * Track Does Not Exist Error
- */
-var _ SubscribeError = (*trackDoesNotExistError)(nil)
-var _ InfoError = (*trackDoesNotExistError)(nil)
-
-type trackDoesNotExistError struct{}
-
-func (trackDoesNotExistError) Error() string {
-	return "moqt: track does not exist"
-}
-
-func (trackDoesNotExistError) SubscribeErrorCode() protocol.SubscribeErrorCode {
-	return subscribe_track_does_not_exist
-}
-func (trackDoesNotExistError) InfoErrorCode() protocol.InfoErrorCode {
-	return info_track_does_not_exist
-}
-
-func (trackDoesNotExistError) GroupErrorCode() protocol.GroupErrorCode {
-	return group_track_does_not_exist
+func (err UnauthorizedError) SessionErrorCode() SessionErrorCode {
+	return UnauthorizedSessionErrorCode
 }

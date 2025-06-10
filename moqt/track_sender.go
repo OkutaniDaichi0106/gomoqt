@@ -50,11 +50,12 @@ func (s *trackSender) OpenGroup(seq GroupSequence) (GroupWriter, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	s.queue[group] = struct{}{}
 	go func() {
 		<-group.closedCh
+		s.mu.Lock()
 		delete(s.queue, group)
+		s.mu.Unlock()
 	}()
 
 	return group, nil

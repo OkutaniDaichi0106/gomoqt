@@ -9,303 +9,408 @@ import (
 )
 
 func TestNewAnnouncement(t *testing.T) {
-	ctx := context.Background()
-	path := BroadcastPath("test/path")
-
-	announcement := NewAnnouncement(ctx, path)
-
-	if announcement == nil {
-		t.Fatal("Expected non-nil announcement")
+	tests := map[string]struct {
+		path     BroadcastPath
+		expected string
+	}{
+		"valid path": {
+			path:     BroadcastPath("test/path"),
+			expected: "test/path",
+		},
+		"empty path": {
+			path:     BroadcastPath(""),
+			expected: "",
+		},
+		"path with special characters": {
+			path:     BroadcastPath("test/path with spaces/and-dashes_and.dots"),
+			expected: "test/path with spaces/and-dashes_and.dots",
+		},
 	}
 
-	if announcement.path != path {
-		t.Errorf("Expected path %s, got %s", path, announcement.path)
-	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			announcement := NewAnnouncement(ctx, tt.path)
 
-	if announcement.ctx == nil {
-		t.Error("Expected non-nil context")
-	}
-
-	if announcement.cancel == nil {
-		t.Error("Expected non-nil cancel function")
+			assert.NotNil(t, announcement)
+			assert.Equal(t, tt.path, announcement.path)
+			assert.NotNil(t, announcement.ctx)
+			assert.NotNil(t, announcement.cancel)
+		})
 	}
 }
 
-func TestAnnouncement_TrackPath(t *testing.T) {
-	ctx := context.Background()
-	path := BroadcastPath("test/path")
+func TestAnnouncement_BroadcastPath(t *testing.T) {
+	tests := map[string]struct {
+		path     BroadcastPath
+		expected BroadcastPath
+	}{
+		"standard path": {
+			path:     BroadcastPath("test/path"),
+			expected: BroadcastPath("test/path"),
+		},
+		"empty path": {
+			path:     BroadcastPath(""),
+			expected: BroadcastPath(""),
+		},
+		"complex path": {
+			path:     BroadcastPath("complex/path/with/multiple/segments"),
+			expected: BroadcastPath("complex/path/with/multiple/segments"),
+		},
+	}
 
-	announcement := NewAnnouncement(ctx, path)
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			announcement := NewAnnouncement(ctx, tt.path)
 
-	if got := announcement.BroadcastPath(); got != path {
-		t.Errorf("TrackPath() = %v, want %v", got, path)
+			result := announcement.BroadcastPath()
+			assert.Equal(t, tt.expected, result)
+		})
 	}
 }
 
 func TestAnnouncement_String(t *testing.T) {
-	ctx := context.Background()
-	path := BroadcastPath("test/path")
-
-	announcement := NewAnnouncement(ctx, path)
-
-	expected := "{ AnnounceStatus: ACTIVE, BroadcastPath: test/path }"
-	if got := announcement.String(); got != expected {
-		t.Errorf("String() = %v, want %v", got, expected)
+	tests := map[string]struct {
+		path           BroadcastPath
+		shouldEnd      bool
+		expectedActive string
+		expectedEnded  string
+	}{
+		"standard path": {
+			path:           BroadcastPath("test/path"),
+			shouldEnd:      true,
+			expectedActive: "{ announce_status: active, broadcast_path: test/path }",
+			expectedEnded:  "{ announce_status: ended, broadcast_path: test/path }",
+		},
+		"empty path": {
+			path:           BroadcastPath(""),
+			shouldEnd:      true,
+			expectedActive: "{ announce_status: active, broadcast_path:  }",
+			expectedEnded:  "{ announce_status: ended, broadcast_path:  }",
+		},
+		"special characters": {
+			path:           BroadcastPath("test/path with spaces/and-dashes_and.dots"),
+			shouldEnd:      false,
+			expectedActive: "{ announce_status: active, broadcast_path: test/path with spaces/and-dashes_and.dots }",
+			expectedEnded:  "",
+		},
 	}
 
-	// Test with ended announcement
-	announcement.End()
-	expected = "{ AnnounceStatus: ENDED, BroadcastPath: test/path }"
-	if got := announcement.String(); got != expected {
-		t.Errorf("String() = %v, want %v", got, expected)
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			announcement := NewAnnouncement(ctx, tt.path)
+
+			result := announcement.String()
+			assert.Equal(t, tt.expectedActive, result)
+
+			if tt.shouldEnd {
+				announcement.End()
+				result = announcement.String()
+				assert.Equal(t, tt.expectedEnded, result)
+			}
+		})
 	}
 }
 
 func TestAnnouncement_IsActive(t *testing.T) {
-	ctx := context.Background()
-	path := BroadcastPath("test/path")
-
-	announcement := NewAnnouncement(ctx, path)
-
-	if !announcement.IsActive() {
-		t.Error("Expected announcement to be active")
+	tests := map[string]struct {
+		path              BroadcastPath
+		shouldEnd         bool
+		expectedBeforeEnd bool
+		expectedAfterEnd  bool
+	}{
+		"active announcement": {
+			path:              BroadcastPath("test/path"),
+			shouldEnd:         false,
+			expectedBeforeEnd: true,
+			expectedAfterEnd:  true,
+		},
+		"ended announcement": {
+			path:              BroadcastPath("test/path"),
+			shouldEnd:         true,
+			expectedBeforeEnd: true,
+			expectedAfterEnd:  false,
+		},
+		"empty path active": {
+			path:              BroadcastPath(""),
+			shouldEnd:         false,
+			expectedBeforeEnd: true,
+			expectedAfterEnd:  true,
+		},
 	}
 
-	announcement.End()
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			announcement := NewAnnouncement(ctx, tt.path)
 
-	if announcement.IsActive() {
-		t.Error("Expected announcement to be inactive after End()")
+			assert.Equal(t, tt.expectedBeforeEnd, announcement.IsActive())
+
+			if tt.shouldEnd {
+				announcement.End()
+				assert.Equal(t, tt.expectedAfterEnd, announcement.IsActive())
+			}
+		})
 	}
 }
 
 func TestAnnouncement_End(t *testing.T) {
-	ctx := context.Background()
-	path := BroadcastPath("test/path")
-
-	announcement := NewAnnouncement(ctx, path)
-
-	if !announcement.IsActive() {
-		t.Error("Expected announcement to be active initially")
+	tests := map[string]struct {
+		path             BroadcastPath
+		multipleEndCalls bool
+		expectedAfterEnd bool
+	}{
+		"single end call": {
+			path:             BroadcastPath("test/path"),
+			multipleEndCalls: false,
+			expectedAfterEnd: false,
+		},
+		"multiple end calls": {
+			path:             BroadcastPath("test/path"),
+			multipleEndCalls: true,
+			expectedAfterEnd: false,
+		},
+		"empty path end": {
+			path:             BroadcastPath(""),
+			multipleEndCalls: false,
+			expectedAfterEnd: false,
+		},
 	}
 
-	announcement.End()
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			announcement := NewAnnouncement(ctx, tt.path)
 
-	if announcement.IsActive() {
-		t.Error("Expected announcement to be inactive after End()")
+			assert.True(t, announcement.IsActive())
+
+			announcement.End()
+			if tt.multipleEndCalls {
+				announcement.End()
+				announcement.End()
+			}
+
+			assert.Equal(t, tt.expectedAfterEnd, announcement.IsActive())
+		})
 	}
 }
 
 func TestAnnouncement_AwaitEnd(t *testing.T) {
-	ctx := context.Background()
-	path := BroadcastPath("test/path")
-
-	announcement := NewAnnouncement(ctx, path)
-
-	// Test that AwaitEnd returns a channel that is not closed initially
-	select {
-	case <-announcement.AwaitEnd():
-		t.Error("Expected AwaitEnd() channel to not be closed initially")
-	default:
-		// This is the expected behavior
+	tests := map[string]struct {
+		path        BroadcastPath
+		endDelay    time.Duration
+		timeout     time.Duration
+		expectClose bool
+	}{
+		"end after delay": {
+			path:        BroadcastPath("test/path"),
+			endDelay:    100 * time.Millisecond,
+			timeout:     200 * time.Millisecond,
+			expectClose: true,
+		},
+		"no end call": {
+			path:        BroadcastPath("test/path"),
+			endDelay:    0,
+			timeout:     50 * time.Millisecond,
+			expectClose: false,
+		},
 	}
 
-	// Test that AwaitEnd returns a channel that is closed after End() is called
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		announcement.End()
-	}()
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			announcement := NewAnnouncement(ctx, tt.path)
 
-	select {
-	case <-announcement.AwaitEnd():
-		// This is the expected behavior
-	case <-time.After(200 * time.Millisecond):
-		t.Error("Expected AwaitEnd() channel to be closed after End()")
+			// Test that AwaitEnd returns a channel that is not closed initially
+			select {
+			case <-announcement.AwaitEnd():
+				if !tt.expectClose {
+					t.Error("Expected AwaitEnd() channel to not be closed initially")
+				}
+			default:
+				// This is the expected behavior for non-closed channels
+			}
+
+			if tt.endDelay > 0 {
+				go func() {
+					time.Sleep(tt.endDelay)
+					announcement.End()
+				}()
+
+				select {
+				case <-announcement.AwaitEnd():
+					assert.True(t, tt.expectClose, "Channel closed when not expected")
+				case <-time.After(tt.timeout):
+					assert.False(t, tt.expectClose, "Expected channel to be closed but timeout occurred")
+				}
+			}
+		})
 	}
 }
 
 func TestAnnouncement_WithCancelledContext(t *testing.T) {
-	// Test with a context that gets cancelled externally
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	announcement := NewAnnouncement(ctx, "test/path")
-
-	if !announcement.IsActive() {
-		t.Error("Expected announcement to be active initially")
+	tests := map[string]struct {
+		path              BroadcastPath
+		cancelImmediately bool
+		sleepDuration     time.Duration
+		expectedActive    bool
+	}{
+		"cancel after creation": {
+			path:              BroadcastPath("test/path"),
+			cancelImmediately: false,
+			sleepDuration:     10 * time.Millisecond,
+			expectedActive:    false,
+		},
+		"already cancelled": {
+			path:              BroadcastPath("test/path"),
+			cancelImmediately: true,
+			sleepDuration:     0,
+			expectedActive:    false,
+		},
 	}
 
-	// Cancel the parent context
-	cancel()
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
 
-	// Give a little time for propagation
-	time.Sleep(10 * time.Millisecond)
+			if tt.cancelImmediately {
+				cancel()
+			}
 
-	// The announcement should become inactive since the parent context was cancelled
-	// and context.WithCancel creates a child context that inherits cancellation
-	if announcement.IsActive() {
-		t.Error("Expected announcement to become inactive after parent context cancellation")
+			announcement := NewAnnouncement(ctx, tt.path)
+
+			if !tt.cancelImmediately {
+				assert.True(t, announcement.IsActive())
+				cancel()
+				if tt.sleepDuration > 0 {
+					time.Sleep(tt.sleepDuration)
+				}
+			}
+
+			assert.Equal(t, tt.expectedActive, announcement.IsActive())
+		})
 	}
 }
 
 func TestAnnouncement_Fork(t *testing.T) {
-	ctx := context.Background()
-	path := BroadcastPath("test/path")
+	tests := map[string]struct {
+		path             BroadcastPath
+		endOriginal      bool
+		expectedOriginal bool
+		expectedForked   bool
+	}{
+		"fork active announcement": {
+			path:             BroadcastPath("test/path"),
+			endOriginal:      false,
+			expectedOriginal: true,
+			expectedForked:   true,
+		},
+		"fork then end original": {
+			path:             BroadcastPath("test/path"),
+			endOriginal:      true,
+			expectedOriginal: false,
+			expectedForked:   false,
+		},
+	}
 
-	original := NewAnnouncement(ctx, path)
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			original := NewAnnouncement(ctx, tt.path)
 
-	// Fork the announcement
-	forked := original.Fork()
+			forked := original.Fork()
+			assert.Equal(t, original.path, forked.path)
+			assert.True(t, original.IsActive())
+			assert.True(t, forked.IsActive())
 
-	assert.Equal(t, original.path, forked.path)
+			if tt.endOriginal {
+				original.End()
+			}
 
-	// Verify both are initially active
-	assert.True(t, original.IsActive(), "Expected original announcement to be active")
-	assert.True(t, forked.IsActive(), "Expected forked announcement to be active")
-
-	// End the original announcement
-	original.End()
-
-	// Both original and forked should be inactive, but forked should still be active
-	assert.False(t, original.IsActive(), "Expected original announcement to be inactive after End()")
-	assert.False(t, forked.IsActive(), "Expected forked announcement to be inactive after End()")
+			assert.Equal(t, tt.expectedOriginal, original.IsActive())
+			assert.Equal(t, tt.expectedForked, forked.IsActive())
+		})
+	}
 }
 
 func TestAnnouncement_ForkWithCancelledParent(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	path := BroadcastPath("test/path")
-
-	original := NewAnnouncement(ctx, path)
-
-	// Cancel the original context
-	cancel()
-
-	// Give time for cancellation to propagate
-	time.Sleep(10 * time.Millisecond)
-
-	// Original should become inactive
-	if original.IsActive() {
-		t.Error("Expected original announcement to be inactive after context cancellation")
+	tests := map[string]struct {
+		path                   BroadcastPath
+		sleepDuration          time.Duration
+		expectedOriginalActive bool
+		expectedForkedActive   bool
+	}{
+		"fork from cancelled parent": {
+			path:                   BroadcastPath("test/path"),
+			sleepDuration:          10 * time.Millisecond,
+			expectedOriginalActive: false,
+			expectedForkedActive:   false,
+		},
 	}
 
-	// Fork from the original (which has a cancelled context)
-	forked := original.Fork()
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			original := NewAnnouncement(ctx, tt.path)
 
-	// Forked announcement should also be inactive since it inherits the cancelled context
-	if forked.IsActive() {
-		t.Error("Expected forked announcement to be inactive when forked from cancelled context")
-	}
-}
+			cancel()
+			time.Sleep(tt.sleepDuration)
 
-func TestAnnouncement_MultipleEnd(t *testing.T) {
-	ctx := context.Background()
-	path := BroadcastPath("test/path")
+			assert.Equal(t, tt.expectedOriginalActive, original.IsActive())
 
-	announcement := NewAnnouncement(ctx, path)
-
-	if !announcement.IsActive() {
-		t.Error("Expected announcement to be active initially")
-	}
-
-	// Call End() multiple times
-	announcement.End()
-	announcement.End()
-	announcement.End()
-
-	if announcement.IsActive() {
-		t.Error("Expected announcement to be inactive after multiple End() calls")
+			forked := original.Fork()
+			assert.Equal(t, tt.expectedForkedActive, forked.IsActive())
+		})
 	}
 }
 
 func TestAnnouncement_ConcurrentAwaitEnd(t *testing.T) {
-	ctx := context.Background()
-	path := BroadcastPath("test/path")
+	tests := map[string]struct {
+		path          BroadcastPath
+		numGoroutines int
+		endDelay      time.Duration
+		timeout       time.Duration
+	}{
+		"concurrent await end": {
+			path:          BroadcastPath("test/path"),
+			numGoroutines: 10,
+			endDelay:      50 * time.Millisecond,
+			timeout:       500 * time.Millisecond,
+		},
+	}
 
-	announcement := NewAnnouncement(ctx, path)
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			announcement := NewAnnouncement(ctx, tt.path)
 
-	// Start multiple goroutines waiting for end
-	const numGoroutines = 10
-	results := make(chan bool, numGoroutines)
+			results := make(chan bool, tt.numGoroutines)
 
-	for i := 0; i < numGoroutines; i++ {
-		go func() {
-			select {
-			case <-announcement.AwaitEnd():
-				results <- true
-			case <-time.After(500 * time.Millisecond):
-				results <- false
+			for i := 0; i < tt.numGoroutines; i++ {
+				go func() {
+					select {
+					case <-announcement.AwaitEnd():
+						results <- true
+					case <-time.After(tt.timeout):
+						results <- false
+					}
+				}()
 			}
-		}()
-	}
 
-	// Give goroutines time to start waiting
-	time.Sleep(50 * time.Millisecond)
+			time.Sleep(tt.endDelay)
+			announcement.End()
 
-	// End the announcement
-	announcement.End()
-
-	// All goroutines should receive the signal
-	for i := 0; i < numGoroutines; i++ {
-		select {
-		case result := <-results:
-			if !result {
-				t.Error("Expected all goroutines to receive end signal")
+			for i := 0; i < tt.numGoroutines; i++ {
+				select {
+				case result := <-results:
+					assert.True(t, result, "Expected all goroutines to receive end signal")
+				case <-time.After(200 * time.Millisecond):
+					t.Error("Timeout waiting for goroutine to complete")
+				}
 			}
-		case <-time.After(200 * time.Millisecond):
-			t.Error("Timeout waiting for goroutine to complete")
-		}
-	}
-}
-
-func TestAnnouncement_WithAlreadyCancelledContext(t *testing.T) {
-	// Create a context and cancel it immediately
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	path := BroadcastPath("test/path")
-	announcement := NewAnnouncement(ctx, path)
-
-	// Announcement should be inactive since context is already cancelled
-	if announcement.IsActive() {
-		t.Error("Expected announcement to be inactive when created with already-cancelled context")
-	}
-
-	// AwaitEnd should be immediately available
-	select {
-	case <-announcement.AwaitEnd():
-		// This is expected
-	case <-time.After(10 * time.Millisecond):
-		t.Error("Expected AwaitEnd() to be immediately available for cancelled context")
-	}
-}
-
-func TestAnnouncement_EmptyPath(t *testing.T) {
-	ctx := context.Background()
-	path := BroadcastPath("")
-
-	announcement := NewAnnouncement(ctx, path)
-
-	if announcement == nil {
-		t.Fatal("Expected non-nil announcement even with empty path")
-	}
-
-	if announcement.BroadcastPath() != path {
-		t.Errorf("Expected path %s, got %s", path, announcement.BroadcastPath())
-	}
-
-	expected := "Announcement: { AnnounceStatus: ACTIVE, BroadcastPath:  }"
-	if got := announcement.String(); got != expected {
-		t.Errorf("String() = %v, want %v", got, expected)
-	}
-}
-
-func TestAnnouncement_StringWithSpecialCharacters(t *testing.T) {
-	ctx := context.Background()
-	path := BroadcastPath("test/path with spaces/and-dashes_and.dots")
-
-	announcement := NewAnnouncement(ctx, path)
-
-	expected := "Announcement: { AnnounceStatus: ACTIVE, BroadcastPath: test/path with spaces/and-dashes_and.dots }"
-	if got := announcement.String(); got != expected {
-		t.Errorf("String() = %v, want %v", got, expected)
+		})
 	}
 }

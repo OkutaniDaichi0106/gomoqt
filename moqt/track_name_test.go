@@ -1,111 +1,146 @@
-package moqt_test
+package moqt
 
 import (
 	"testing"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestTrackName_Type(t *testing.T) {
-	// Test basic string operations
-	name := moqt.TrackName("test-track")
-	assert.Equal(t, moqt.TrackName("test-track"), name)
-	assert.Equal(t, "test-track", string(name))
+	tests := map[string]struct {
+		input    string
+		expected string
+	}{
+		"basic string": {
+			input:    "test-track",
+			expected: "test-track",
+		},
+		"empty string": {
+			input:    "",
+			expected: "",
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			trackName := TrackName(tt.input)
+			assert.Equal(t, TrackName(tt.expected), trackName)
+			assert.Equal(t, tt.expected, string(trackName))
+		})
+	}
 }
 
 func TestTrackName_Empty(t *testing.T) {
-	// Test empty track name
-	var name moqt.TrackName
-	assert.Equal(t, moqt.TrackName(""), name)
-	assert.Equal(t, "", string(name))
+	tests := map[string]struct {
+		expected TrackName
+	}{
+		"zero value": {
+			expected: TrackName(""),
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			var trackName TrackName
+			assert.Equal(t, tt.expected, trackName)
+			assert.Equal(t, "", string(trackName))
+		})
+	}
 }
 
 func TestTrackName_StringConversion(t *testing.T) {
-	tests := []struct {
-		name  string
+	tests := map[string]struct {
 		input string
 	}{
-		{
-			name:  "simple name",
+		"simple name": {
 			input: "video",
 		},
-		{
-			name:  "name with dashes",
+		"name with dashes": {
 			input: "audio-high-quality",
 		},
-		{
-			name:  "name with underscores",
+		"name with underscores": {
 			input: "metadata_stream",
 		},
-		{
-			name:  "name with numbers",
+		"name with numbers": {
 			input: "track123",
 		},
-		{
-			name:  "complex name",
+		"complex name": {
 			input: "live-stream/camera-1/video/high",
 		},
-		{
-			name:  "unicode name",
+		"unicode name": {
 			input: "トラック名",
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			trackName := moqt.TrackName(tt.input)
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			trackName := TrackName(tt.input)
 			assert.Equal(t, tt.input, string(trackName))
 		})
 	}
 }
 
 func TestTrackName_Comparison(t *testing.T) {
-	name1 := moqt.TrackName("track-a")
-	name2 := moqt.TrackName("track-a")
-	name3 := moqt.TrackName("track-b")
-
-	// Test equality
-	assert.Equal(t, name1, name2)
-	assert.NotEqual(t, name1, name3)
-
-	// Test with different cases
-	nameLower := moqt.TrackName("track")
-	nameUpper := moqt.TrackName("TRACK")
-	assert.NotEqual(t, nameLower, nameUpper)
+	tests := map[string]struct {
+		name1    TrackName
+		name2    TrackName
+		name3    TrackName
+		expected bool
+	}{
+		"equal names": {
+			name1:    TrackName("track-a"),
+			name2:    TrackName("track-a"),
+			name3:    TrackName("track-b"),
+			expected: true,
+		},
+		"case sensitive": {
+			name1:    TrackName("track"),
+			name2:    TrackName("TRACK"),
+			name3:    TrackName("track"),
+			expected: false,
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			if name == "case sensitive" {
+				// Test case sensitivity - these should be different
+				assert.NotEqual(t, tt.name1, tt.name2)
+				assert.Equal(t, tt.name1, tt.name3)
+			} else {
+				// Test equality
+				assert.Equal(t, tt.name1, tt.name2)
+				assert.NotEqual(t, tt.name1, tt.name3)
+			}
+		})
+	}
 }
 
 func TestTrackName_Length(t *testing.T) {
-	tests := []struct {
-		name   string
+	tests := map[string]struct {
 		input  string
 		length int
 	}{
-		{
-			name:   "empty",
+		"empty": {
 			input:  "",
 			length: 0,
 		},
-		{
-			name:   "single char",
+		"single char": {
 			input:  "a",
 			length: 1,
 		},
-		{
-			name:   "normal length",
+		"normal length": {
 			input:  "video-track",
 			length: 11,
 		},
-		{
-			name:   "long name",
+		"long name": {
 			input:  "very-long-track-name-with-many-components",
 			length: 41,
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			trackName := moqt.TrackName(tt.input)
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			trackName := TrackName(tt.input)
 			assert.Equal(t, tt.length, len(string(trackName)))
 		})
 	}

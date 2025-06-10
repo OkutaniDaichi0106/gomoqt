@@ -1,8 +1,8 @@
 package moqt
 
 import (
-	"context"
 	"errors"
+	"io"
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
@@ -11,14 +11,13 @@ import (
 
 type ReceiveSubscribeStream interface {
 	SubscribeID() SubscribeID
-	SubscribeConfig() *SubscribeConfig
+	SubscribeConfig() (*SubscribeConfig, error)
 	Updated() <-chan struct{}
-	Done() <-chan struct{}
 }
 
-func newReceiveSubscribeStream(trackCtx *trackContext, stream quic.Stream, config *SubscribeConfig) *receiveSubscribeStream {
+func newReceiveSubscribeStream(id SubscribeID, stream quic.Stream, config *SubscribeConfig) *receiveSubscribeStream {
 	rss := &receiveSubscribeStream{
-		trackCtx:  trackCtx,
+		id:        id,
 		config:    config,
 		stream:    stream,
 		updatedCh: make(chan struct{}, 1),
@@ -26,167 +25,198 @@ func newReceiveSubscribeStream(trackCtx *trackContext, stream quic.Stream, confi
 
 	go rss.listenUpdates()
 
-	go func() {
-		<-trackCtx.Done()
-		reason := context.Cause(trackCtx)
-		if reason == nil {
-			rss.close()
-		} else {
-			rss.closeWithError(reason)
-		}
-
-	}()
-
 	return rss
 }
 
 var _ ReceiveSubscribeStream = (*receiveSubscribeStream)(nil)
 
 type receiveSubscribeStream struct {
-	trackCtx *trackContext
+	id SubscribeID
 
 	stream quic.Stream
-	mu     sync.Mutex
 
-	config    *SubscribeConfig
-	updatedCh chan struct{}
+	configMu   sync.Mutex
+	config     *SubscribeConfig
+	updatedCh  chan struct{}
+	listenOnce sync.Once
+
+	subscribeCanceledCh chan *SubscribeError
+
+	unwritable bool
+	writeErr   error
+
+	unreadable bool
+	readErr    error
+
+	closed  bool       // Track if the channel is closed
+	closeMu sync.Mutex // Protect against concurrent close operations
 }
 
 func (rss *receiveSubscribeStream) SubscribeID() SubscribeID {
-	return rss.trackCtx.id
+	return rss.id
 }
 
-func (rss *receiveSubscribeStream) SubscribeConfig() *SubscribeConfig {
-	rss.mu.Lock()
-	defer rss.mu.Unlock()
-	return rss.config
+func (rss *receiveSubscribeStream) SubscribeConfig() (*SubscribeConfig, error) {
+	rss.configMu.Lock()
+	defer rss.configMu.Unlock()
+
+	if rss.unreadable {
+		if rss.readErr != nil {
+			return nil, rss.readErr
+		}
+		return nil, io.EOF
+	}
+
+	return rss.config, nil
 }
 
 func (rss *receiveSubscribeStream) Updated() <-chan struct{} {
 	return rss.updatedCh
 }
 
-func (rss *receiveSubscribeStream) Done() <-chan struct{} {
-	return rss.trackCtx.Done()
+func (rss *receiveSubscribeStream) listenUpdates() {
+	rss.listenOnce.Do(func() {
+		var sum message.SubscribeUpdateMessage
+		var err error
+
+		defer func() {
+			rss.closeMu.Lock()
+			if !rss.closed {
+				close(rss.updatedCh)
+				rss.closed = true
+			}
+			rss.closeMu.Unlock()
+		}()
+
+		for {
+			if rss.unreadable {
+				return
+			}
+
+			_, err = sum.Decode(rss.stream)
+			if err != nil {
+				// Check for EOF
+				if errors.Is(err, io.EOF) {
+					rss.unreadable = true
+
+					return
+				}
+
+				// Check for stream error
+				var strErr *quic.StreamError
+				if errors.As(err, &strErr) {
+					rss.unreadable = true
+					rss.readErr = &SubscribeError{
+						StreamError: strErr,
+					}
+
+				} else {
+					rss.closeWithError(InternalSubscribeErrorCode)
+				}
+
+				select {
+				case rss.subscribeCanceledCh <- &SubscribeError{StreamError: strErr}:
+				default:
+				}
+
+				return
+			}
+
+			rss.configMu.Lock()
+			rss.config = &SubscribeConfig{
+				TrackPriority:    TrackPriority(sum.TrackPriority),
+				MinGroupSequence: GroupSequence(sum.MinGroupSequence),
+				MaxGroupSequence: GroupSequence(sum.MaxGroupSequence),
+			}
+			rss.configMu.Unlock()
+
+			select {
+			case rss.updatedCh <- struct{}{}:
+			default:
+			}
+		}
+	})
 }
 
-func (rss *receiveSubscribeStream) listenUpdates() {
-	var sum message.SubscribeUpdateMessage
+func (rss *receiveSubscribeStream) done() (error, bool) {
+	return rss.writeErr, rss.unreadable && rss.unwritable
+}
 
-	var err error
-	defer rss.trackCtx.cancel(err)
+func (rss *receiveSubscribeStream) cancelWrite(code SubscribeErrorCode) {
+	// Close send side of the stream
+	if !rss.unwritable {
+		strErrCode := quic.StreamErrorCode(code)
+		rss.stream.CancelWrite(strErrCode)
 
-	for {
-		if rss.trackCtx.Err() != nil {
-			if logger := rss.trackCtx.Logger(); logger != nil {
-				logger.Error("cancel listening SUBSCRIBE_UPDATE messages",
-					"reason", context.Cause(rss.trackCtx),
-				)
-			}
-			return
+		rss.unwritable = true
+		rss.writeErr = &SubscribeError{
+			StreamError: &quic.StreamError{
+				StreamID:  rss.stream.StreamID(),
+				ErrorCode: strErrCode,
+			},
 		}
+	}
+}
 
-		_, err = sum.Decode(rss.stream)
-		if err != nil {
-			if logger := rss.trackCtx.Logger(); logger != nil {
-				logger.Error("failed to receive a SUBSCRIBE_UPDATE message",
-					"error", err,
-				)
-			}
-			return
-		}
+func (rss *receiveSubscribeStream) cancelRead(code SubscribeErrorCode) {
+	if !rss.unreadable {
+		strErrCode := quic.StreamErrorCode(code)
+		rss.stream.CancelRead(strErrCode)
 
-		if logger := rss.trackCtx.Logger(); logger != nil {
-			logger.Debug("received a SUBSCRIBE_UPDATE message")
-		}
-		config := &SubscribeConfig{
-			TrackPriority:    TrackPriority(sum.TrackPriority),
-			MinGroupSequence: GroupSequence(sum.MinGroupSequence),
-			MaxGroupSequence: GroupSequence(sum.MaxGroupSequence),
-		}
-
-		rss.mu.Lock()
-		rss.config = config
-		rss.mu.Unlock()
-
-		select {
-		case rss.updatedCh <- struct{}{}:
-		default:
-		}
-
-		if logger := rss.trackCtx.Logger(); logger != nil {
-			logger.Debug("updated subscribe configuration")
+		rss.unreadable = true
+		rss.readErr = &SubscribeError{
+			StreamError: &quic.StreamError{
+				StreamID:  rss.stream.StreamID(),
+				ErrorCode: strErrCode,
+			},
 		}
 	}
 }
 
 func (rss *receiveSubscribeStream) close() error {
-	rss.mu.Lock()
-	defer rss.mu.Unlock()
-
-	if err := rss.closedErr(); err != nil {
+	err, ok := rss.done()
+	if ok {
 		return err
 	}
 
-	err := rss.stream.Close()
-	if err != nil {
-		if logger := rss.trackCtx.Logger(); logger != nil {
-			logger.Error("failed to close a receive subscribe stream",
-				"error", err,
-			)
+	// Close send side of the stream
+	if !rss.unwritable {
+		err = rss.stream.Close()
+		if err != nil {
+			return err
 		}
+
+		rss.unwritable = true
 	}
 
-	if logger := rss.trackCtx.Logger(); logger != nil {
-		logger.Debug("closed a receive subscribe stream")
-	}
+	rss.cancelRead(InternalSubscribeErrorCode)
 
-	close(rss.updatedCh)
+	rss.closeMu.Lock()
+	if !rss.closed {
+		close(rss.updatedCh)
+		rss.closed = true
+	}
+	rss.closeMu.Unlock()
 
 	return nil
 }
 
-func (rss *receiveSubscribeStream) closeWithError(reason error) error {
-	rss.mu.Lock()
-	defer rss.mu.Unlock()
-
-	if err := rss.closedErr(); err != nil {
+func (rss *receiveSubscribeStream) closeWithError(code SubscribeErrorCode) error {
+	err, ok := rss.done()
+	if ok {
 		return err
 	}
 
-	rss.trackCtx.cancel(reason)
+	rss.cancelWrite(code)
 
-	if reason == nil {
-		reason = ErrInternalError
+	rss.cancelRead(code)
+
+	rss.closeMu.Lock()
+	if !rss.closed {
+		close(rss.updatedCh)
+		rss.closed = true
 	}
-
-	var suberr SubscribeError
-	if !errors.As(reason, &suberr) {
-		suberr = ErrInternalError
-	}
-
-	code := quic.StreamErrorCode(suberr.SubscribeErrorCode())
-	rss.stream.CancelRead(code)
-	rss.stream.CancelWrite(code)
-
-	if logger := rss.trackCtx.Logger(); logger != nil {
-		logger.Debug("closed a receive subscribe stream with an error",
-			"reason", reason,
-		)
-	}
-
-	close(rss.updatedCh)
-
-	return nil
-}
-
-func (rss *receiveSubscribeStream) closedErr() error {
-	if err := rss.trackCtx.Err(); err != nil {
-		if reason := context.Cause(rss.trackCtx); reason != nil {
-			return reason
-		}
-		return nil
-	}
+	rss.closeMu.Unlock()
 
 	return nil
 }

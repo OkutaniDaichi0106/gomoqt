@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -13,9 +14,10 @@ import (
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/moqtrace"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic/quicgo"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/webtransport"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/webtransport/webtransportgo"
 	"github.com/quic-go/quic-go/http3"
 )
 
@@ -40,10 +42,7 @@ type Server struct {
 	 */
 	Config *Config
 
-	/*
-	 * Setup Extensions
-	 * This function is called when a session is established
-	 */
+	ListenFunc func(addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (quic.EarlyListener, error)
 
 	/*
 	 * Logger
@@ -56,6 +55,7 @@ type Server struct {
 	 * If not, a default server is used.
 	 */
 	WebtransportServer webtransport.Server
+	serverInUse        webtransport.Server
 
 	mu            sync.RWMutex
 	listeners     map[quic.EarlyListener]struct{}
@@ -82,11 +82,16 @@ func (s *Server) init() {
 		s.doneChan = make(chan struct{})
 		s.activeSess = make(map[*Session]struct{})
 		s.nativeQUICCh = make(chan quic.Connection, 1<<4)
-
 		// Initialize WebtransportServer
 
-		if s.WebtransportServer == nil {
-			s.WebtransportServer = webtransport.NewDefaultServer(s.Addr)
+		if s.WebtransportServer != nil {
+			// If a WebTransport server is already set, use it
+			s.serverInUse = s.WebtransportServer
+		} else {
+			// If not set, create a default WebTransport server
+			defaultServer := webtransportgo.NewDefaultServer(s.Addr)
+			s.WebtransportServer = defaultServer
+			s.serverInUse = defaultServer
 		}
 
 		if s.Logger != nil {
@@ -168,17 +173,13 @@ func (s *Server) ServeQUICConn(conn quic.Connection) error {
 
 	switch protocol := conn.ConnectionState().TLS.NegotiatedProtocol; protocol {
 	case http3.NextProtoH3:
-		if s.WebtransportServer == nil {
-			s.WebtransportServer = webtransport.NewDefaultServer(s.Addr)
-		}
-
 		if logger != nil {
 			logger.Debug("handling webtransport session",
 				"remote_address", conn.RemoteAddr(),
 			)
 		}
 
-		return s.WebtransportServer.ServeQUICConn(conn)
+		return s.serverInUse.ServeQUICConn(conn)
 	case NextProtoMOQ:
 		select {
 		case s.nativeQUICCh <- conn:
@@ -201,6 +202,8 @@ func (s *Server) AcceptQUIC(ctx context.Context, mux *TrackMux) (*Session, error
 	if s.shuttingDown() {
 		return nil, ErrServerClosed
 	}
+	s.init()
+
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -280,13 +283,7 @@ func (s *Server) AcceptWebTransport(w http.ResponseWriter, r *http.Request, mux 
 		logger.Debug("accepting webtransport session")
 	}
 
-	if s.WebtransportServer == nil {
-		s.WebtransportServer = webtransport.NewDefaultServer(s.Addr)
-		if logger != nil {
-			logger.Debug("using default WebTransport server")
-		}
-	}
-	conn, err := s.WebtransportServer.Upgrade(w, r)
+	conn, err := s.serverInUse.Upgrade(w, r)
 	if err != nil {
 		if logger != nil {
 			logger.Error("failed to upgrade http to webtransport",
@@ -328,23 +325,15 @@ func (s *Server) AcceptWebTransport(w http.ResponseWriter, r *http.Request, mux 
 		logger.Debug("WebTransport session established", "remote_address", r.RemoteAddr)
 	}
 
-	acceptCtx, cancelAccept := context.WithTimeout(r.Context(), s.acceptTimeout())
-	defer cancelAccept()
-	return s.acceptSession(acceptCtx, r.URL.Path, conn, extensions, mux)
+	setupCtx, cancelSetup := context.WithTimeout(r.Context(), s.acceptTimeout())
+	defer cancelSetup()
+	return s.acceptSession(setupCtx, r.URL.Path, conn, extensions, mux)
 }
 
-func (s *Server) acceptSession(acceptCtx context.Context, path string, conn quic.Connection, extensions func(*Parameters) (*Parameters, error), mux *TrackMux) (*Session, error) {
+func (s *Server) acceptSession(setupCtx context.Context, path string, conn quic.Connection, extensions func(*Parameters) (*Parameters, error), mux *TrackMux) (*Session, error) {
 	logger := s.Logger
-	var sessTracer *moqtrace.SessionTracer
-	if s.Config != nil && s.Config.Tracer != nil {
-		sessTracer = s.Config.Tracer()
-		// This should not be nil, and if it is, panic occurs
-		moqtrace.InitSessionTracer(sessTracer)
-	} else {
-		sessTracer = moqtrace.DefaultSessionTracer()
-	}
 
-	stream, err := conn.AcceptStream(acceptCtx)
+	stream, err := conn.AcceptStream(setupCtx)
 	if err != nil {
 		if logger != nil {
 			logger.Error("failed to accept a session stream",
@@ -353,7 +342,7 @@ func (s *Server) acceptSession(acceptCtx context.Context, path string, conn quic
 		}
 		return nil, fmt.Errorf("failed to accept a session stream: %w", err)
 	}
-	streamTracer := sessTracer.QUICStreamAccepted(stream.StreamID())
+	// streamTracer := sessTracer.QUICStreamAccepted(stream.StreamID())
 
 	var stm message.StreamTypeMessage
 	_, err = stm.Decode(stream)
@@ -364,22 +353,23 @@ func (s *Server) acceptSession(acceptCtx context.Context, path string, conn quic
 			)
 		}
 	}
-	streamTracer.StreamTypeMessageReceived(stm)
 
 	var scm message.SessionClientMessage
 	_, err = scm.Decode(stream)
 	if err != nil {
-		if logger != nil {
-			logger.Error("failed to get a SESSION_CLIENT message",
-				"error", err,
-			)
+		if err == io.EOF {
+			return nil, err // TODO: Handle EOF properly
 		}
 
-		stream.CancelRead(ErrInternalError.StreamErrorCode())
-		stream.CancelWrite(ErrInternalError.StreamErrorCode())
-		return nil, fmt.Errorf("failed to get a SESSION_CLIENT message: %w", err)
+		var strErr *quic.StreamError
+		if errors.As(err, &strErr) {
+			return nil, err
+		}
+
+		strErrCode := quic.StreamErrorCode(InternalAnnounceErrorCode)
+		stream.CancelRead(strErrCode)
+		stream.CancelWrite(strErrCode)
 	}
-	streamTracer.SessionClientMessageReceived(scm)
 
 	clientParams := &Parameters{scm.Parameters}
 	serverParams, err := extensions(clientParams.Clone())
@@ -389,8 +379,6 @@ func (s *Server) acceptSession(acceptCtx context.Context, path string, conn quic
 
 	// Set the selected version and parameters
 	version := internal.DefaultServerVersion
-
-	//
 
 	// Send a SESSION_SERVER message
 	ssm := message.SessionServerMessage{
@@ -402,19 +390,26 @@ func (s *Server) acceptSession(acceptCtx context.Context, path string, conn quic
 		if logger != nil {
 			logger.Error("failed to send a SESSION_SERVER message", "error", err)
 		}
+
+		var strErr *quic.StreamError
+		if errors.As(err, &strErr) && strErr.Remote {
+			return nil, err
+		}
+
+		var appErr *quic.ApplicationError
+		if errors.As(err, &appErr) {
+			return nil, &SessionError{ApplicationError: appErr}
+		}
+
 		return nil, err
 	}
-	streamTracer.SessionServerMessageSent(ssm)
 
-	sessCtx := newSessionContext(conn.Context(), version, path, clientParams, serverParams, logger, sessTracer)
-
-	sessstr := newSessionStream(sessCtx, stream, streamTracer)
-
-	sess := newSession(sessCtx, sessstr, conn, mux)
+	sess := newSession(conn, version, path, clientParams, serverParams,
+		stream, mux, logger)
 
 	s.addSession(sess)
 	go func() {
-		<-sess.ctx.Done()
+		<-sess.Context().Done()
 		s.removeSession(sess)
 	}()
 
@@ -437,11 +432,13 @@ func (s *Server) ListenAndServe() error {
 		tlsConfig.NextProtos = []string{NextProtoMOQ}
 	}
 
-	if quic.ListenQUICFunc == nil {
-		panic("ListenQUICFunc is nil")
+	var ln quic.EarlyListener
+	var err error
+	if s.ListenFunc != nil {
+		ln, err = s.ListenFunc(s.Addr, tlsConfig, s.QUICConfig)
+	} else {
+		ln, err = quicgo.Listen(s.Addr, tlsConfig, s.QUICConfig)
 	}
-	// Start listener with configured TLS
-	ln, err := quic.ListenQUICFunc(s.Addr, tlsConfig, s.QUICConfig)
 	if err != nil {
 		if s.Logger != nil {
 			s.Logger.Error("failed to start QUIC listener", "address", s.Addr, "error", err.Error())
@@ -452,8 +449,13 @@ func (s *Server) ListenAndServe() error {
 	return s.ServeQUICListener(ln)
 }
 
-func (s *Server) ListenAndServeTLS(certFile, keyFile string) (err error) {
+func (s *Server) ListenAndServeTLS(certFile, keyFile string) error {
+	if s.shuttingDown() {
+		return ErrServerClosed
+	}
 	s.init()
+
+	var err error
 	// Generate TLS configuration
 	certs := make([]tls.Certificate, 1)
 	certs[0], err = tls.LoadX509KeyPair(certFile, keyFile)
@@ -469,8 +471,13 @@ func (s *Server) ListenAndServeTLS(certFile, keyFile string) (err error) {
 		Certificates: certs,
 		NextProtos:   []string{NextProtoMOQ, http3.NextProtoH3},
 	}
-	s.TLSConfig = tlsConfig.Clone()
-	ln, err := quic.ListenQUICFunc(s.Addr, tlsConfig, s.QUICConfig)
+
+	var ln quic.EarlyListener
+	if s.ListenFunc != nil {
+		ln, err = s.ListenFunc(s.Addr, tlsConfig.Clone(), s.QUICConfig)
+	} else {
+		ln, err = quicgo.Listen(s.Addr, tlsConfig.Clone(), s.QUICConfig)
+	}
 	if err != nil {
 		if s.Logger != nil {
 			s.Logger.Error("failed to start QUIC listener for TLS", "address", s.Addr, "error", err.Error())
@@ -482,6 +489,11 @@ func (s *Server) ListenAndServeTLS(certFile, keyFile string) (err error) {
 }
 
 func (s *Server) Close() error {
+	// Check if already shutting down
+	if s.shuttingDown() {
+		return ErrServerClosed
+	}
+
 	s.inShutdown.Store(true)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -499,20 +511,35 @@ func (s *Server) Close() error {
 		}
 	}
 
+	// Terminate all sessions
+	activeSessions := make([]*Session, 0, len(s.activeSess))
 	for sess := range s.activeSess {
-		(*sess).Terminate(NoErrTerminate)
-		s.removeSession(sess)
+		activeSessions = append(activeSessions, sess)
 	}
 
-	// Wait for active connections to complete if any
+	// Terminate sessions outside of the lock to avoid deadlock
+	s.mu.Unlock()
+	for _, sess := range activeSessions {
+		sess.Terminate(NoError, NoError.String())
+	}
+	s.mu.Lock() // Wait for active connections to complete if any
 	if len(s.activeSess) > 0 {
+		s.mu.Unlock()
 		<-s.doneChan
+		s.mu.Lock()
+	} else {
+		// If no sessions, close the done channel immediately
+		close(s.doneChan)
 	}
 
 	return nil
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
+	if s.shuttingDown() {
+		return ErrServerClosed
+	}
+
 	s.inShutdown.Store(true)
 
 	s.mu.Lock()
@@ -540,8 +567,8 @@ func (s *Server) Shutdown(ctx context.Context) error {
 			return nil
 		case <-ctx.Done():
 			for sess := range s.activeSess {
-				go sess.Terminate(ErrGoAwayTimeout)
-				s.removeSession(sess)
+				go sess.Terminate(GoAwayTimeoutErrorCode, GoAwayTimeoutErrorCode.String())
+				// s.removeSession(sess)
 			}
 			return ctx.Err()
 		}
@@ -587,13 +614,14 @@ func (s *Server) removeSession(sess *Session) {
 	defer s.mu.Unlock()
 
 	delete(s.activeSess, sess)
-
 	// Send completion signal if connections reach zero and server is closed
 	if len(s.activeSess) == 0 && s.shuttingDown() {
+		// Close the done channel to signal server is done
 		select {
-		case s.doneChan <- struct{}{}:
+		case <-s.doneChan:
+			// Already closed
 		default:
-			// Channel might already be closed
+			close(s.doneChan)
 		}
 	}
 }
@@ -603,8 +631,8 @@ func (s *Server) shuttingDown() bool {
 }
 
 func (s *Server) acceptTimeout() time.Duration {
-	if s.Config != nil && s.Config.Timeout != 0 {
-		return s.Config.Timeout
+	if s.Config != nil && s.Config.SetupTimeout != 0 {
+		return s.Config.SetupTimeout
 	}
 	return 5 * time.Second
 }

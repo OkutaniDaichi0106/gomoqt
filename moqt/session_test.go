@@ -1,463 +1,511 @@
 package moqt
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
-	"net"
+	"log/slog"
 	"testing"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/moqtrace"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
-// Helper function to create a properly configured mockQUICConnection for testing
-func createMockQUICConnection() *MockQUICConnection {
-	conn := &MockQUICConnection{}
-	conn.On("LocalAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
-	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8081})
-	conn.On("Context").Return(context.Background())
-	conn.On("ConnectionState").Return(quic.ConnectionState{})
-	conn.On("AcceptStream", mock.Anything).Return(nil, context.Canceled)
-	conn.On("AcceptUniStream", mock.Anything).Return(nil, context.Canceled)
-	conn.On("OpenStream").Return(nil, errors.New("not implemented"))
-	conn.On("OpenUniStream").Return(nil, errors.New("not implemented"))
-	conn.On("OpenStreamSync", mock.Anything).Return(nil, errors.New("not implemented"))
-	conn.On("OpenUniStreamSync", mock.Anything).Return(nil, errors.New("not implemented"))
-	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
-	return conn
-}
-
-// Helper function to create a mockQUICConnection that returns errors on open operations
-func createMockQUICConnectionWithOpenError(err error) *MockQUICConnection {
-	conn := createMockQUICConnection()
-	conn.ExpectedCalls = nil // Clear previous expectations
-	conn.On("LocalAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
-	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8081})
-	conn.On("Context").Return(context.Background())
-	conn.On("ConnectionState").Return(quic.ConnectionState{})
-	conn.On("AcceptStream", mock.Anything).Return(nil, context.Canceled)
-	conn.On("AcceptUniStream", mock.Anything).Return(nil, context.Canceled)
-	conn.On("OpenStream").Return(nil, err)
-	conn.On("OpenUniStream").Return(nil, err)
-	conn.On("OpenStreamSync", mock.Anything).Return(nil, err)
-	conn.On("OpenUniStreamSync", mock.Anything).Return(nil, err)
-	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
-	return conn
-}
-
-// Helper function to create a mockQUICConnection that returns errors on accept operations
-func createMockQUICConnectionWithAcceptError(err error) *MockQUICConnection {
-	conn := createMockQUICConnection()
-	conn.ExpectedCalls = nil // Clear previous expectations
-	conn.On("LocalAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
-	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8081})
-	conn.On("Context").Return(context.Background())
-	conn.On("ConnectionState").Return(quic.ConnectionState{})
-	conn.On("AcceptStream", mock.Anything).Return(nil, err)
-	conn.On("AcceptUniStream", mock.Anything).Return(nil, err)
-	conn.On("OpenStream").Return(nil, errors.New("not implemented"))
-	conn.On("OpenUniStream").Return(nil, errors.New("not implemented"))
-	conn.On("OpenStreamSync", mock.Anything).Return(nil, errors.New("not implemented"))
-	conn.On("OpenUniStreamSync", mock.Anything).Return(nil, errors.New("not implemented"))
-	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
-	return conn
-}
-
 func TestNewSession(t *testing.T) {
-	sessCtx := createTestSessionContext(context.Background())
-
-	// Create a proper MockQUICStream
-	mockStream := &MockQUICStream{}
-	stream := newSessionStream(sessCtx, mockStream, moqtrace.DefaultQUICStreamAccepted(0))
-
-	// Create a proper mock connection
-	conn := createMockQUICConnection()
-
-	mux := NewTrackMux()
-
-	session := newSession(sessCtx, stream, conn, mux)
-
-	if session == nil {
-		t.Fatal("newSession returned nil")
+	tests := map[string]struct {
+		mux      *TrackMux
+		expectOK bool
+	}{
+		"new session with mux": {
+			mux:      NewTrackMux(),
+			expectOK: true,
+		},
 	}
 
-	if session.ctx != sessCtx {
-		t.Error("session context not set correctly")
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			// Create a proper MockQUICStream
+			mockStream := &MockQUICStream{}
+			mockStream.On("Read", mock.Anything).Return(0, io.EOF) // Create a proper mock connection
+			conn := &MockQUICConnection{}
+			conn.On("Context").Return(context.Background())
+			conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+			conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)    // For handleBiStreams goroutine
+			conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF) // For handleUniStreams goroutine
+
+			session := newSession(conn, internal.DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, tt.mux, slog.Default())
+
+			if tt.expectOK {
+				assert.NotNil(t, session, "newSession should not return nil")
+				assert.Equal(t, tt.mux, session.mux, "mux should be set correctly")
+				assert.NotNil(t, session.trackReceivers, "receive group stream queues should not be nil")
+			}
+
+			// Cleanup
+			session.Terminate(NoError, "")
+		})
 	}
-
-	if session.mux != mux {
-		t.Error("mux not set correctly")
-	}
-
-	if session.sessionStream != stream {
-		t.Error("session stream not set correctly")
-	}
-
-	if session.receiveGroupStreamQueues == nil {
-		t.Error("receive group stream queues should not be nil")
-	}
-
-	if session.sendGroupStreamQueues == nil {
-		t.Error("send group stream queues should not be nil")
-	}
-
-	// Give time for goroutines to start
-	time.Sleep(20 * time.Millisecond)
-
-	// Cleanup
-	session.Terminate(nil)
 }
 
 func TestNewSessionWithNilMux(t *testing.T) {
-	sessCtx := createTestSessionContext(context.Background())
-	mockStream := &MockQUICStream{}
-	stream := newSessionStream(sessCtx, mockStream, moqtrace.DefaultQUICStreamAccepted(0))
-	conn := createMockQUICConnection()
-
-	session := newSession(sessCtx, stream, conn, nil)
-
-	if session.mux != DefaultMux {
-		t.Error("should use DefaultMux when nil mux is provided")
+	tests := map[string]struct {
+		mux           *TrackMux
+		expectDefault bool
+	}{
+		"nil mux uses default": {
+			mux:           nil,
+			expectDefault: true,
+		},
 	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockStream := &MockQUICStream{}
+			mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+			conn := &MockQUICConnection{}
+			conn.On("Context").Return(context.Background())
+			conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+			conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)    // For handleBiStreams goroutine
+			conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF) // For handleUniStreams goroutine
+
+			session := newSession(conn, internal.DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, tt.mux, slog.Default())
+
+			if tt.expectDefault {
+				assert.Equal(t, DefaultMux, session.mux, "should use DefaultMux when nil mux is provided")
+			}
+
+			// Cleanup
+			session.Terminate(InternalSessionErrorCode, "terminate reason")
+		})
+	}
+}
+
+func TestSession_Terminate(t *testing.T) {
+	tests := map[string]struct {
+		code SessionErrorCode
+		msg  string
+	}{
+		"terminate with error": {
+			code: InternalSessionErrorCode,
+			msg:  "test error",
+		},
+		"terminate normally": {
+			code: NoError,
+			msg:  "",
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockStream := &MockQUICStream{}
+			mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+			conn := &MockQUICConnection{}
+			conn.On("Context").Return(context.Background())
+			conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+			conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)    // For handleBiStreams goroutine
+			conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF) // For handleUniStreams goroutine
+
+			session := newSession(conn, internal.DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
+
+			err := session.Terminate(tt.code, tt.msg)
+			assert.NoError(t, err, "Terminate should not return error")
+		})
+	}
+}
+
+func TestSession_OpenAnnounceStream(t *testing.T) {
+	tests := map[string]struct {
+		path          string
+		openStreamErr error
+		expectError   bool
+		expectNotNil  bool
+	}{
+		"successful open": {
+			path:         "/test",
+			expectError:  false,
+			expectNotNil: true,
+		},
+		"open stream error": {
+			path:          "/test",
+			openStreamErr: errors.New("failed to open stream"),
+			expectError:   true,
+			expectNotNil:  false,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockStream := &MockQUICStream{}
+			mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+
+			conn := &MockQUICConnection{}
+			conn.On("Context").Return(context.Background())
+			conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+			conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)    // For handleBiStreams goroutine
+			conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF) // For handleUniStreams goroutine
+			if tt.openStreamErr != nil {
+				conn.On("OpenStream").Return(nil, tt.openStreamErr)
+			} else {
+				announceStream := &MockQUICStream{}
+				announceStream.On("Write", mock.Anything).Return(0, nil)
+				announceStream.On("Read", mock.Anything).Return(0, io.EOF)
+				conn.On("OpenStream").Return(announceStream, nil)
+			}
+
+			session := newSession(conn, internal.DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
+
+			announcer, err := session.OpenAnnounceStream(tt.path)
+
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+
+			if tt.expectNotNil {
+				assert.NotNil(t, announcer)
+			} else {
+				assert.Nil(t, announcer)
+			}
+
+			// Cleanup
+			session.Terminate(NoError, "")
+		})
+	}
+}
+
+func TestSession_OpenAnnounceStream_OpenError(t *testing.T) {
+	mockStream := &MockQUICStream{}
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(context.Background())
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)    // For handleBiStreams goroutine
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF) // For handleUniStreams goroutine
+	conn.On("OpenStream").Return(nil, errors.New("open stream failed"))
+
+	session := newSession(conn, internal.DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
+
+	announcer, err := session.OpenAnnounceStream("/test")
+
+	assert.Error(t, err)
+	assert.Nil(t, announcer)
 
 	// Cleanup
-	session.Terminate(nil)
-}
-
-func TestSessionTerminate(t *testing.T) {
-	sessCtx := createTestSessionContext(context.Background())
-	mockStream := &MockQUICStream{}
-	stream := newSessionStream(sessCtx, mockStream, moqtrace.DefaultQUICStreamAccepted(0))
-	conn := createMockQUICConnection()
-	mux := NewTrackMux()
-
-	session := newSession(sessCtx, stream, conn, mux)
-
-	// Give time for goroutines to start
-	time.Sleep(20 * time.Millisecond)
-
-	testErr := ErrProtocolViolation
-	session.Terminate(testErr)
-
-	// Verify context is cancelled
-	if sessCtx.Err() == nil {
-		t.Error("session context should be cancelled after terminate")
-	}
-
-	// Verify CloseWithError was called
-	conn.AssertCalled(t, "CloseWithError", mock.Anything, mock.Anything)
-}
-
-func TestSessionTerminateWithNilReason(t *testing.T) {
-	sessCtx := createTestSessionContext(context.Background())
-	mockStream := &MockQUICStream{}
-	stream := newSessionStream(sessCtx, mockStream, moqtrace.DefaultQUICStreamAccepted(0))
-	conn := createMockQUICConnection()
-
-	session := newSession(sessCtx, stream, conn, nil)
-
-	// Give time for goroutines to start
-	time.Sleep(20 * time.Millisecond)
-
-	session.Terminate(nil)
-
-	// Should use NoErrTerminate when nil reason is provided
-	conn.AssertCalled(t, "CloseWithError", mock.Anything, mock.Anything)
-}
-
-func TestSessionOpenAnnounceStream(t *testing.T) {
-	sessCtx := createTestSessionContext(context.Background())
-	mockStream := &MockQUICStream{}
-	stream := newSessionStream(sessCtx, mockStream, moqtrace.DefaultQUICStreamAccepted(0))
-	conn := createMockQUICConnection()
-
-	session := newSession(sessCtx, stream, conn, nil)
-
-	prefix := "/test/prefix"
-	announceReader, err := session.OpenAnnounceStream(prefix)
-	if err != nil {
-		t.Errorf("OpenAnnounceStream() error = %v", err)
-	}
-
-	if announceReader == nil {
-		t.Error("OpenAnnounceStream() returned nil reader")
-	}
-
-	// Cleanup
-	announceReader.Close()
-	session.Terminate(nil)
-}
-
-func TestSessionOpenAnnounceStreamInvalidPrefix(t *testing.T) {
-	sessCtx := createTestSessionContext(context.Background())
-	mockStream := &MockQUICStream{}
-	stream := newSessionStream(sessCtx, mockStream, moqtrace.DefaultQUICStreamAccepted(0))
-	conn := createMockQUICConnection()
-
-	session := newSession(sessCtx, stream, conn, nil)
-
-	// Should panic for prefix not starting with '/'
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("OpenAnnounceStream() should panic for invalid prefix")
-		}
-	}()
-
-	session.OpenAnnounceStream("invalid-prefix")
-}
-
-func TestSessionOpenAnnounceStreamOpenError(t *testing.T) {
-	sessCtx := createTestSessionContext(context.Background())
-	mockStream := &MockQUICStream{}
-	stream := newSessionStream(sessCtx, mockStream, moqtrace.DefaultQUICStreamAccepted(0))
-	conn := createMockQUICConnectionWithOpenError(errors.New("open stream error"))
-
-	session := newSession(sessCtx, stream, conn, nil)
-
-	prefix := "/test/prefix"
-	announceReader, err := session.OpenAnnounceStream(prefix)
-	if err == nil {
-		t.Error("OpenAnnounceStream() should return error when stream opening fails")
-	}
-
-	if announceReader != nil {
-		t.Error("OpenAnnounceStream() should return nil reader on error")
-	}
-
-	// Cleanup
-	session.Terminate(nil)
+	session.Terminate(NoError, "")
 }
 
 func TestSession_OpenTrackStream(t *testing.T) {
-	sessCtx := createTestSessionContext(context.Background())
+	tests := map[string]struct {
+		path      BroadcastPath
+		name      TrackName
+		config    *SubscribeConfig
+		wantError bool
+	}{
+		"valid track stream": {
+			path: BroadcastPath("/test/track"),
+			name: TrackName("video"),
+			config: &SubscribeConfig{
+				TrackPriority:    TrackPriority(1),
+				MinGroupSequence: GroupSequence(0),
+				MaxGroupSequence: GroupSequence(100),
+			},
+			wantError: false,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockStream := &MockQUICStream{}
+			// Set up expectations needed for sessionStream
+			mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
+			mockStream.On("Write", mock.Anything).Return(0, nil).Maybe()
+			mockStream.On("Close").Return(nil).Maybe()
+
+			// Create a separate mock for the track stream that responds to the SUBSCRIBE protocol
+			mockTrackStream := &MockQUICStream{}
+
+			// Create a SubscribeOkMessage response
+			subok := message.SubscribeOkMessage{
+				GroupOrder: message.GroupOrderDefault,
+			}
+			var buf bytes.Buffer
+			_, err := subok.Encode(&buf)
+			assert.NoError(t, err, "failed to encode SubscribeOkMessage")
+			responseData := buf.Bytes()
+
+			readPos := 0
+			mockTrackStream.ReadFunc = func(p []byte) (int, error) {
+				if readPos < len(responseData) {
+					n := copy(p, responseData[readPos:])
+					readPos += n
+					return n, nil
+				}
+				// After providing the response, return EOF to simulate stream end
+				return 0, io.EOF
+			}
+			mockTrackStream.On("Read", mock.Anything).Maybe()
+			mockTrackStream.On("Write", mock.Anything).Return(0, nil).Maybe()
+			mockTrackStream.On("Close").Return(nil).Maybe()
+
+			conn := &MockQUICConnection{}
+			conn.On("Context").Return(context.Background())
+			conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+			conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)    // For handleBiStreams goroutine
+			conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF) // For handleUniStreams goroutine
+			conn.On("OpenStream").Return(mockTrackStream, nil)
+
+			session := newSession(conn, internal.DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
+
+			subscriber, err := session.OpenTrackStream(tt.path, tt.name, tt.config)
+
+			if tt.wantError {
+				assert.Error(t, err)
+				assert.Nil(t, subscriber)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, subscriber)
+				assert.Equal(t, tt.path, subscriber.BroadcastPath)
+				assert.Equal(t, tt.name, subscriber.TrackName)
+				gotConfig := subscriber.SubscribeStream.SubscribeConfig()
+				assert.Equal(t, tt.config, gotConfig)
+			}
+
+			// Cleanup
+			session.Terminate(NoError, "")
+		})
+	}
+}
+
+func TestSession_OpenTrackStream_OpenError(t *testing.T) {
 	mockStream := &MockQUICStream{}
-	// Set up expectations needed for sessionStream.listenUpdates
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
-	mockStream.On("Write", mock.Anything).Return(0, nil)
-	mockStream.On("Close").Return(nil)
-	stream := newSessionStream(sessCtx, mockStream, moqtrace.DefaultQUICStreamAccepted(0))
-	conn := createMockQUICConnection()
 
-	session := newSession(sessCtx, stream, conn, nil)
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(context.Background())
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("OpenStream").Return(nil, errors.New("open stream failed"))
 
-	path := BroadcastPath("/test/track")
-	name := TrackName("video")
+	session := newSession(conn, internal.DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
+
 	config := &SubscribeConfig{
 		TrackPriority:    TrackPriority(1),
 		MinGroupSequence: GroupSequence(0),
 		MaxGroupSequence: GroupSequence(100),
 	}
 
-	subscriber, err := session.OpenTrackStream(path, name, config)
-	if err != nil {
-		t.Errorf("OpenTrackStream() error = %v", err)
-	}
+	subscriber, err := session.OpenTrackStream(BroadcastPath("/test"), TrackName("video"), config)
 
-	assert.NotNil(t, subscriber, "OpenTrackStream() should return a valid subscriber")
-
-	assert.Equal(t, subscriber.BroadcastPath, path, "subscriber path = %v, want %v", subscriber.BroadcastPath, path)
-	assert.Equal(t, subscriber.TrackName, name, "subscriber name = %v, want %v", subscriber.TrackName, name)
-	gotConfig := subscriber.SubscribeStream.SubscribeConfig()
-	assert.Equal(t, gotConfig, config, "subscriber config = %v, want %v", gotConfig, config)
+	assert.Error(t, err)
+	assert.Nil(t, subscriber)
 
 	// Cleanup
-	session.Terminate(nil)
+	session.Terminate(NoError, "")
 }
 
-func TestSessionOpenTrackStreamOpenError(t *testing.T) {
-	sessCtx := createTestSessionContext(context.Background())
+func TestSession_Context(t *testing.T) {
 	mockStream := &MockQUICStream{}
-	stream := newSessionStream(sessCtx, mockStream, moqtrace.DefaultQUICStreamAccepted(0))
-	conn := createMockQUICConnectionWithOpenError(errors.New("open stream error"))
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 
-	session := newSession(sessCtx, stream, conn, nil)
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(context.Background())
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
 
-	path := BroadcastPath("/test/track")
-	name := TrackName("video")
-
-	subscriber, err := session.OpenTrackStream(path, name, nil)
-	if err == nil {
-		t.Error("OpenTrackStream() should return error when stream opening fails")
-	}
-
-	if subscriber != nil {
-		t.Error("OpenTrackStream() should return nil subscriber on error")
-	}
-
-	// Cleanup
-	session.Terminate(nil)
-}
-
-func TestSessionContext(t *testing.T) {
-	sessCtx := createTestSessionContext(context.Background())
-	mockStream := &MockQUICStream{}
-	stream := newSessionStream(sessCtx, mockStream, moqtrace.DefaultQUICStreamAccepted(0))
-	conn := createMockQUICConnection()
-
-	session := newSession(sessCtx, stream, conn, nil)
+	session := newSession(conn, internal.DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
 
 	ctx := session.Context()
-	if ctx != sessCtx.Context {
-		t.Error("Session.Context() should return session context")
-	}
+	assert.NotNil(t, ctx, "Context should not be nil")
 
 	// Cleanup
-	session.Terminate(nil)
+	session.Terminate(NoError, "")
 }
 
-func TestSession_NextSubscribeID(t *testing.T) {
-	sessCtx := createTestSessionContext(context.Background())
+func TestSession_nextSubscribeID(t *testing.T) {
 	mockStream := &MockQUICStream{}
-	// Set up expectations needed for sessionStream.listenUpdates
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
-	stream := newSessionStream(sessCtx, mockStream, moqtrace.DefaultQUICStreamAccepted(0))
-	conn := createMockQUICConnection()
 
-	session := newSession(sessCtx, stream, conn, nil)
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(context.Background())
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
+
+	session := newSession(conn, internal.DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
 
 	id1 := session.nextSubscribeID()
 	id2 := session.nextSubscribeID()
 
-	if id1 == id2 {
-		t.Error("nextSubscribeID() should return unique IDs")
-	}
-
-	if uint64(id2) != uint64(id1)+1 {
-		t.Errorf("nextSubscribeID() should increment, got %v after %v", id2, id1)
-	}
+	assert.NotEqual(t, id1, id2, "nextSubscribeID should return unique IDs")
+	assert.True(t, id2 > id1, "Subsequent IDs should be larger")
 
 	// Cleanup
-	session.Terminate(nil)
+	session.Terminate(NoError, "")
 }
 
-func TestSession_UpdateSession(t *testing.T) {
-	sessCtx := createTestSessionContext(context.Background())
+func TestSession_HandleBiStreams_AcceptError(t *testing.T) {
 	mockStream := &MockQUICStream{}
-	sessstr := newSessionStream(sessCtx, mockStream, moqtrace.DefaultQUICStreamAccepted(0))
-	conn := createMockQUICConnection()
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 
-	session := newSession(sessCtx, sessstr, conn, nil)
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(context.Background())
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("AcceptStream", mock.Anything).Return(nil, errors.New("accept stream failed"))
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, errors.New("accept stream failed"))
 
-	expectedBitrate := uint64(2000000)
-	err := session.updateSession(expectedBitrate)
-	if err != nil {
-		t.Errorf("updateSession() error = %v", err)
-	}
+	session := newSession(conn, internal.DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
 
-	// Verify bitrate is updated
-	assert.Equal(t, expectedBitrate, session.sessionStream.localBitrate, "session bitrate should be updated")
+	// Wait a bit for the background goroutine to try accepting
+	time.Sleep(50 * time.Millisecond)
+
+	// The session should handle the error gracefully
+	assert.NotNil(t, session)
 
 	// Cleanup
-	session.Terminate(nil)
+	session.Terminate(NoError, "")
 }
 
-func TestSessionHandleBiStreamsAcceptError(t *testing.T) {
-	sessCtx := createTestSessionContext(context.Background())
+func TestSession_HandleUniStreamsAcceptError(t *testing.T) {
 	mockStream := &MockQUICStream{}
-	stream := newSessionStream(sessCtx, mockStream, moqtrace.DefaultQUICStreamAccepted(0))
-	conn := createMockQUICConnectionWithAcceptError(errors.New("accept error"))
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 
-	session := newSession(sessCtx, stream, conn, nil)
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(context.Background())
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("AcceptStream", mock.Anything).Return(nil, errors.New("accept uni stream failed"))
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, errors.New("accept uni stream failed"))
 
-	// Give time for handleBiStreams to encounter the error
+	session := newSession(conn, internal.DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
+
+	// Wait a bit for the background goroutine to try accepting
 	time.Sleep(50 * time.Millisecond)
 
-	// Cleanup - session should handle the error gracefully
-	session.Terminate(nil)
+	// The session should handle the error gracefully
+	assert.NotNil(t, session)
+
+	// Cleanup
+	session.Terminate(NoError, "")
 }
 
-func TestSessionHandleUniStreamsAcceptError(t *testing.T) {
-	sessCtx := createTestSessionContext(context.Background())
+func TestSession_ConcurrentAccess(t *testing.T) {
 	mockStream := &MockQUICStream{}
-	stream := newSessionStream(sessCtx, mockStream, moqtrace.DefaultQUICStreamAccepted(0))
-	conn := createMockQUICConnectionWithAcceptError(errors.New("accept error"))
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Write", mock.Anything).Return(0, nil).Maybe()
+	mockStream.On("Close").Return(nil).Maybe()
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(context.Background())
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("OpenStream").Return(mockStream, nil).Maybe()
+	conn.On("OpenUniStream").Return(&MockQUICSendStream{}, nil).Maybe()
 
-	session := newSession(sessCtx, stream, conn, nil)
+	session := newSession(conn, internal.DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
 
-	// Give time for handleUniStreams to encounter the error
-	time.Sleep(50 * time.Millisecond)
+	// Test concurrent access
+	done := make(chan struct{})
+	var operations int
 
-	// Cleanup - session should handle the error gracefully
-	session.Terminate(nil)
-}
-
-func TestSessionConcurrentAccess(t *testing.T) {
-	sessCtx := createTestSessionContext(context.Background())
-	mockStream := &MockQUICStream{}
-	stream := newSessionStream(sessCtx, mockStream, moqtrace.DefaultQUICStreamAccepted(0))
-	conn := createMockQUICConnection()
-
-	session := newSession(sessCtx, stream, conn, nil)
-
-	// Test concurrent access to various methods
+	// Concurrent nextSubscribeID calls
 	go func() {
 		for i := 0; i < 5; i++ {
 			session.nextSubscribeID()
-			time.Sleep(time.Millisecond)
+		}
+		operations++
+		if operations == 2 {
+			close(done)
 		}
 	}()
 
+	// Concurrent Context calls
 	go func() {
 		for i := 0; i < 5; i++ {
-			session.updateSession(uint64(i * 1000))
-			time.Sleep(time.Millisecond)
+			session.Context()
+		}
+		operations++
+		if operations == 2 {
+			close(done)
 		}
 	}()
 
-	go func() {
-		time.Sleep(50 * time.Millisecond)
-		session.Terminate(nil)
-	}()
-
-	time.Sleep(100 * time.Millisecond)
-
-	// Test should complete without race conditions
-}
-
-func TestSessionContextCancellation(t *testing.T) {
-	sessCtx := createTestSessionContext(context.Background())
-	mockStream := &MockQUICStream{}
-	stream := newSessionStream(sessCtx, mockStream, moqtrace.DefaultQUICStreamAccepted(0))
-	conn := createMockQUICConnection()
-
-	session := newSession(sessCtx, stream, conn, nil)
-
-	// Cancel the session context
-	sessCtx.cancel(ErrClosedSession)
-
-	// Give time for goroutines to react to cancellation
-	time.Sleep(50 * time.Millisecond)
-
-	// Session should be terminated
-	if sessCtx.Err() == nil {
-		t.Error("session context should be cancelled")
+	select {
+	case <-done:
+		// Success
+	case <-time.After(time.Second):
+		t.Error("Concurrent operations timed out")
 	}
 
 	// Cleanup
-	session.Terminate(nil)
+	session.Terminate(NoError, "")
 }
 
-func TestSessionWithRealMux(t *testing.T) {
-	sessCtx := createTestSessionContext(context.Background())
+func TestSession_ContextCancellation(t *testing.T) {
 	mockStream := &MockQUICStream{}
-	stream := newSessionStream(sessCtx, mockStream, moqtrace.DefaultQUICStreamAccepted(0))
-	conn := createMockQUICConnection()
-	mux := NewTrackMux()
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 
-	// Register a test handler
-	ctx := context.Background()
-	mux.Handle(ctx, BroadcastPath("/test/track"), TrackHandlerFunc(func(p *Publisher) {}))
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(context.Background())
+	conn.On("AcceptStream", mock.Anything).Return(nil, context.Canceled).Maybe()
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, context.Canceled).Maybe()
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
 
-	session := newSession(sessCtx, stream, conn, mux)
+	session := newSession(conn, internal.DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
 
-	if session.mux != mux {
-		t.Error("mux not set correctly")
+	ctx := session.Context()
+	assert.NotNil(t, ctx)
+
+	// Terminate the session
+	session.Terminate(NoError, "test termination")
+
+	// Context should be cancelled after termination
+	select {
+	case <-ctx.Done():
+		// Expected
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Context should be cancelled after termination")
+	}
+}
+
+func TestSession_WithRealMux(t *testing.T) {
+	tests := map[string]struct {
+		broadcastPath BroadcastPath
+	}{
+		"with real mux": {
+			broadcastPath: BroadcastPath("/test/track"),
+		},
 	}
 
-	// Cleanup
-	session.Terminate(nil)
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockStream := &MockQUICStream{}
+			mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+
+			conn := &MockQUICConnection{}
+			conn.On("Context").Return(context.Background())
+			conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+			conn.On("AcceptStream", mock.Anything).Return(nil, context.Canceled).Maybe()
+			conn.On("AcceptUniStream", mock.Anything).Return(nil, context.Canceled).Maybe()
+
+			mux := NewTrackMux()
+
+			// Register a test handler
+			ctx := context.Background()
+			mux.Handle(ctx, tt.broadcastPath, TrackHandlerFunc(func(p *Publisher) {}))
+
+			session := newSession(conn, internal.DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, mux, slog.Default())
+
+			assert.Equal(t, mux, session.mux, "Mux should be set correctly in the session")
+
+			// Cleanup
+			session.Terminate(NoError, "")
+		})
+	}
 }

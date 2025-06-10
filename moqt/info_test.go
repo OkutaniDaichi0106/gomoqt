@@ -5,30 +5,26 @@ import (
 )
 
 func TestInfo(t *testing.T) {
-	tests := []struct {
-		name          string
+	tests := map[string]struct {
 		trackPriority TrackPriority
 		groupOrder    GroupOrder
 	}{
-		{
-			name:          "default values",
+		"default values": {
 			trackPriority: TrackPriority(0),
 			groupOrder:    GroupOrder(0),
 		},
-		{
-			name:          "high priority",
+		"high priority": {
 			trackPriority: TrackPriority(255),
 			groupOrder:    GroupOrder(1),
 		},
-		{
-			name:          "low priority",
+		"low priority": {
 			trackPriority: TrackPriority(1),
 			groupOrder:    GroupOrder(2),
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			info := Info{
 				TrackPriority: tt.trackPriority,
 				GroupOrder:    tt.groupOrder,

@@ -2,8 +2,6 @@ package moqt
 
 import (
 	"time"
-
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/moqtrace"
 )
 
 type Config struct {
@@ -15,11 +13,9 @@ type Config struct {
 
 	// NewSessionURI string // TODO:
 
-	Tracer func() *moqtrace.SessionTracer
-
 	// CheckRoot func(r SetupRequest) bool // TODO:
 
-	Timeout time.Duration
+	SetupTimeout time.Duration
 }
 
 func (c *Config) Clone() *Config {
@@ -29,7 +25,6 @@ func (c *Config) Clone() *Config {
 		// MaxSubscribeID: c.MaxSubscribeID,
 		// NewSessionURI:  c.NewSessionURI,
 		// CheckRoot:      c.CheckRoot,
-		Tracer:  c.Tracer,
-		Timeout: c.Timeout,
+		SetupTimeout: c.SetupTimeout,
 	}
 }

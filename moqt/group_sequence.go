@@ -17,7 +17,7 @@ const (
 	GroupSequenceLatest       GroupSequence = 0
 	GroupSequenceLargest      GroupSequence = 0
 	GroupSequenceFirst        GroupSequence = 1
-	MaxGroupSequence          GroupSequence = 0xFFFFFFFF
+	MaxGroupSequence          GroupSequence = 0x3FFFFFFFFFFFFFFF // 2^62 - 1, the largest sequence number that can be used in a group
 )
 
 func (gs GroupSequence) String() string {

@@ -8,11 +8,7 @@ import (
 )
 
 func main() {
-	moqt.HandleFunc(context.Background(), "client.echo", func(pub *moqt.Publisher) {
-		if pub.TrackName != "index" {
-			return
-		}
-
+	moqt.HandleFunc(context.Background(), "/client.echo", func(pub *moqt.Publisher) {
 		seq := moqt.GroupSequenceFirst
 		for {
 			gw, err := pub.TrackWriter.OpenGroup(seq)
@@ -41,45 +37,42 @@ func main() {
 		return
 	}
 
-	annstr, err := sess.OpenAnnounceStream("/client")
+	annstr, err := sess.OpenAnnounceStream("")
 	if err != nil {
 		slog.Error("failed to open announce stream", "error", err)
 		return
 	}
 	for {
-		announcements, err := annstr.ReceiveAnnouncements(context.TODO())
+		ann, err := annstr.ReceiveAnnouncement(context.TODO())
 		if err != nil {
 			slog.Error("failed to receive announcements", "error", err)
 			return
 		}
-		for _, ann := range announcements {
-			go func(ann *moqt.Announcement) {
-				sub, err := sess.OpenTrackStream(ann.BroadcastPath(), "index", nil)
+
+		go func(ann *moqt.Announcement) {
+			sub, err := sess.OpenTrackStream(ann.BroadcastPath(), "index", nil)
+			if err != nil {
+				slog.Error("failed to open track stream", "error", err)
+				return
+			}
+
+			for {
+				gr, err := sub.TrackReader.AcceptGroup(context.Background())
 				if err != nil {
-					slog.Error("failed to open track stream", "error", err)
+					slog.Error("failed to accept group", "error", err)
 					return
 				}
 
 				for {
-					gr, err := sub.TrackReader.AcceptGroup(context.Background())
+					f, err := gr.ReadFrame()
 					if err != nil {
-						slog.Error("failed to accept group", "error", err)
+						slog.Error("failed to read frame", "error", err)
 						return
 					}
 
-					for {
-						f, err := gr.ReadFrame()
-						if err != nil {
-							slog.Error("failed to read frame", "error", err)
-							return
-						}
-
-						slog.Info("received frame", "frame", string(f.CopyBytes()))
-					}
+					slog.Info("received frame", "frame", string(f.CopyBytes()))
 				}
-			}(ann)
-
-		}
+			}
+		}(ann)
 	}
-
 }

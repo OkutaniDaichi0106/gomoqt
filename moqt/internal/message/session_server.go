@@ -38,12 +38,7 @@ func (ssm SessionServerMessage) Encode(w io.Writer) (int, error) {
 	p = AppendNumber(p, uint64(ssm.SelectedVersion))
 	p = AppendParameters(p, ssm.Parameters)
 
-	n, err := w.Write(p)
-	if err != nil {
-		return n, err
-	}
-
-	return n, nil
+	return w.Write(p)
 }
 
 func (ssm *SessionServerMessage) Decode(r io.Reader) (int, error) {

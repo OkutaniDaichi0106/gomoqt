@@ -37,16 +37,10 @@ func (am AnnounceMessage) Encode(w io.Writer) (int, error) {
 	p = AppendNumber(p, uint64(am.AnnounceStatus))
 	p = AppendString(p, am.TrackSuffix)
 
-	n, err := w.Write(p)
-	if err != nil {
-		return n, err
-	}
-
-	return n, nil
+	return w.Write(p)
 }
 
 func (am *AnnounceMessage) Decode(r io.Reader) (int, error) {
-
 	buf, n, err := ReadBytes(quicvarint.NewReader(r))
 	if err != nil {
 		return n, err

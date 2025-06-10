@@ -27,12 +27,7 @@ func (som SubscribeOkMessage) Encode(w io.Writer) (int, error) {
 	p = AppendNumber(p, uint64(som.Len()))
 	p = AppendNumber(p, uint64(som.GroupOrder))
 
-	n, err := w.Write(p)
-	if err != nil {
-		return n, err
-	}
-
-	return n, nil
+	return w.Write(p)
 }
 
 func (som *SubscribeOkMessage) Decode(r io.Reader) (int, error) {

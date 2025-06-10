@@ -24,12 +24,7 @@ func (stm StreamTypeMessage) Len() int {
 
 func (stm StreamTypeMessage) Encode(w io.Writer) (int, error) {
 	// Write the Stream Type
-	n, err := w.Write([]byte{byte(stm.StreamType)})
-	if err != nil {
-		return n, err
-	}
-
-	return n, nil
+	return w.Write([]byte{byte(stm.StreamType)})
 }
 
 func (stm *StreamTypeMessage) Decode(r io.Reader) (int, error) {

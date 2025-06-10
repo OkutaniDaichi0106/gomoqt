@@ -22,7 +22,6 @@ func (g GroupMessage) Len() int {
 }
 
 func (g GroupMessage) Encode(w io.Writer) (int, error) {
-
 	p := GetBytes()
 	defer PutBytes(p)
 
@@ -30,12 +29,7 @@ func (g GroupMessage) Encode(w io.Writer) (int, error) {
 	p = AppendNumber(p, uint64(g.SubscribeID))
 	p = AppendNumber(p, uint64(g.GroupSequence))
 
-	n, err := w.Write(p)
-	if err != nil {
-		return n, err
-	}
-
-	return n, nil
+	return w.Write(p)
 }
 
 func (g *GroupMessage) Decode(r io.Reader) (int, error) {

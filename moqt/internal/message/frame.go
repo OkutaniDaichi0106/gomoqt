@@ -39,12 +39,7 @@ func (fm *FrameMessage) Encode(w io.Writer) (int, error) {
 
 	b = AppendBytes(b, fm.Payload)
 
-	n, err := w.Write(b)
-	if err != nil {
-		return n, err
-	}
-
-	return n, nil
+	return w.Write(b)
 }
 
 func (fm *FrameMessage) Decode(r io.Reader) (int, error) {

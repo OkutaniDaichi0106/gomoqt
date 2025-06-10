@@ -33,12 +33,7 @@ func (aim AnnouncePleaseMessage) Encode(w io.Writer) (int, error) {
 
 	p = AppendString(p, aim.TrackPrefix)
 
-	n, err := w.Write(p)
-	if err != nil {
-		return n, err
-	}
-
-	return n, err
+	return w.Write(p)
 }
 
 func (aim *AnnouncePleaseMessage) Decode(r io.Reader) (int, error) {

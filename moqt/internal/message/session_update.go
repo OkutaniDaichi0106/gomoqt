@@ -26,12 +26,7 @@ func (sum SessionUpdateMessage) Encode(w io.Writer) (int, error) {
 
 	p = AppendNumber(p, sum.Bitrate)
 
-	n, err := w.Write(p)
-	if err != nil {
-		return n, err
-	}
-
-	return n, nil
+	return w.Write(p)
 }
 
 func (sum *SessionUpdateMessage) Decode(r io.Reader) (int, error) {

@@ -41,12 +41,7 @@ func (su SubscribeUpdateMessage) Encode(w io.Writer) (int, error) {
 	p = AppendNumber(p, uint64(su.MinGroupSequence))
 	p = AppendNumber(p, uint64(su.MaxGroupSequence))
 
-	n, err := w.Write(p)
-	if err != nil {
-		return n, err
-	}
-
-	return n, nil
+	return w.Write(p)
 }
 
 func (sum *SubscribeUpdateMessage) Decode(r io.Reader) (int, error) {

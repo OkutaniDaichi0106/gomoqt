@@ -1,32 +1,26 @@
 package moqt
 
+import "github.com/stretchr/testify/mock"
+
 var _ AnnouncementWriter = (*MockAnnouncementWriter)(nil)
 
 // MockAnnouncementWriter is a mock implementation of the AnnouncementWriter interface
 // It tracks announcements for verification in tests
 type MockAnnouncementWriter struct {
-	SendAnnouncementsFunc func(announcements []*Announcement) error
-	CloseFunc             func() error
-	CloseWithErrorFunc    func(err error) error
+	mock.Mock
 }
 
-func (m *MockAnnouncementWriter) SendAnnouncements(announcements []*Announcement) error {
-	if m.SendAnnouncementsFunc != nil {
-		return m.SendAnnouncementsFunc(announcements)
-	}
-	return nil
+func (m *MockAnnouncementWriter) SendAnnouncement(announcement *Announcement) error {
+	args := m.Called(announcement)
+	return args.Error(0)
 }
 
 func (m *MockAnnouncementWriter) Close() error {
-	if m.CloseFunc != nil {
-		return m.CloseFunc()
-	}
-	return nil
+	args := m.Called()
+	return args.Error(0)
 }
 
-func (m *MockAnnouncementWriter) CloseWithError(err error) error {
-	if m.CloseWithErrorFunc != nil {
-		return m.CloseWithErrorFunc(err)
-	}
-	return nil
+func (m *MockAnnouncementWriter) CloseWithError(code AnnounceErrorCode) error {
+	args := m.Called(code)
+	return args.Error(0)
 }

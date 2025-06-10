@@ -18,7 +18,7 @@ type MockWebTransportServer struct {
 }
 
 // ServeHTTP mocks the ServeHTTP method
-func (m *MockWebTransportServer) ServeHTTP(w interface{}, r interface{}) error {
+func (m *MockWebTransportServer) ServeHTTP(w http.ResponseWriter, r *http.Request) error {
 	args := m.Called(w, r)
 	return args.Error(0)
 }

@@ -1,7 +1,6 @@
 package moqt
 
 import (
-	"bytes"
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
@@ -13,8 +12,8 @@ var _ quic.Stream = (*MockQUICStream)(nil)
 // MockQUICStream is a mock implementation of quic.Stream using testify/mock
 type MockQUICStream struct {
 	mock.Mock
-	WroteData *bytes.Buffer
-	ReadData  *bytes.Buffer
+	ReadFunc  func(p []byte) (n int, err error)
+	WriteFunc func(p []byte) (n int, err error)
 }
 
 func (m *MockQUICStream) StreamID() quic.StreamID {
@@ -23,21 +22,18 @@ func (m *MockQUICStream) StreamID() quic.StreamID {
 }
 
 func (m *MockQUICStream) Read(p []byte) (n int, err error) {
-	args := m.Called(p)
-	if m.ReadData != nil {
-		return m.ReadData.Read(p)
+	if m.ReadFunc != nil {
+		return m.ReadFunc(p)
 	}
+	args := m.Called(p)
 	return args.Int(0), args.Error(1)
 }
 
 func (m *MockQUICStream) Write(p []byte) (n int, err error) {
-	args := m.Called(p)
-	if m.WroteData != nil {
-		n, err = m.WroteData.Write(p)
-		if err != nil {
-			return n, err
-		}
+	if m.WriteFunc != nil {
+		return m.WriteFunc(p)
 	}
+	args := m.Called(p)
 	return args.Int(0), args.Error(1)
 }
 

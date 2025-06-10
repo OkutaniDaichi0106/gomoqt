@@ -1,34 +1,27 @@
 package moqt
 
+import "github.com/stretchr/testify/mock"
+
 var _ TrackWriter = (*MockTrackWriter)(nil)
 
 // MockTrackWriter is a mock implementation of the TrackWriter interface
 // It provides a simple implementation for testing purposes
 type MockTrackWriter struct {
-	// Add more fields as needed for testing
-	OpenGroupFunc      func(seq GroupSequence) (GroupWriter, error)
-	CloseFunc          func() error
-	CloseWithErrorFunc func(err error) error
+	mock.Mock
 }
 
 func (m *MockTrackWriter) OpenGroup(seq GroupSequence) (GroupWriter, error) {
-	if m.OpenGroupFunc == nil {
-		return nil, nil
+	args := m.Called(seq)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
 	}
-
-	return m.OpenGroupFunc(seq)
+	return args.Get(0).(GroupWriter), args.Error(1)
 }
 
 func (m *MockTrackWriter) Close() error {
-	if m.CloseFunc == nil {
-		return nil
-	}
-	return m.CloseFunc()
+	return m.Called().Error(0)
 }
 
-func (m *MockTrackWriter) CloseWithError(err error) error {
-	if m.CloseWithErrorFunc == nil {
-		return nil
-	}
-	return m.CloseWithErrorFunc(err)
+func (m *MockTrackWriter) CloseWithError(code SubscribeErrorCode) error {
+	return m.Called(code).Error(0)
 }

@@ -9,15 +9,10 @@ import (
 
 var _ quic.ReceiveStream = (*MockQUICReceiveStream)(nil)
 
-func newMockQUICReceiveStream(streamID quic.StreamID) *MockQUICReceiveStream {
-	mockStream := &MockQUICReceiveStream{}
-	mockStream.On("StreamID").Return(streamID)
-	return mockStream
-}
-
 // MockQUICReceiveStream is a mock implementation of quic.ReceiveStream using testify/mock
 type MockQUICReceiveStream struct {
 	mock.Mock
+	ReadFunc func(p []byte) (n int, err error)
 }
 
 func (m *MockQUICReceiveStream) StreamID() quic.StreamID {
@@ -26,6 +21,9 @@ func (m *MockQUICReceiveStream) StreamID() quic.StreamID {
 }
 
 func (m *MockQUICReceiveStream) Read(p []byte) (n int, err error) {
+	if m.ReadFunc != nil {
+		return m.ReadFunc(p)
+	}
 	args := m.Called(p)
 	return args.Int(0), args.Error(1)
 }

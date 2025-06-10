@@ -13,9 +13,18 @@ var _ quic.Connection = (*MockQUICConnection)(nil)
 // MockQUICConnection is a mock implementation of quic.Connection using testify/mock
 type MockQUICConnection struct {
 	mock.Mock
+	AcceptStreamFunc      func(ctx context.Context) (quic.Stream, error)
+	AcceptUniStreamFunc   func(ctx context.Context) (quic.ReceiveStream, error)
+	OpenStreamFunc        func() (quic.Stream, error)
+	OpenUniStreamFunc     func() (quic.SendStream, error)
+	OpenStreamSyncFunc    func(ctx context.Context) (quic.Stream, error)
+	OpenUniStreamSyncFunc func(ctx context.Context) (quic.SendStream, error)
 }
 
 func (m *MockQUICConnection) AcceptStream(ctx context.Context) (quic.Stream, error) {
+	if m.AcceptStreamFunc != nil {
+		return m.AcceptStreamFunc(ctx)
+	}
 	args := m.Called(ctx)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -24,6 +33,9 @@ func (m *MockQUICConnection) AcceptStream(ctx context.Context) (quic.Stream, err
 }
 
 func (m *MockQUICConnection) AcceptUniStream(ctx context.Context) (quic.ReceiveStream, error) {
+	if m.AcceptUniStreamFunc != nil {
+		return m.AcceptUniStreamFunc(ctx)
+	}
 	args := m.Called(ctx)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -32,6 +44,9 @@ func (m *MockQUICConnection) AcceptUniStream(ctx context.Context) (quic.ReceiveS
 }
 
 func (m *MockQUICConnection) OpenStream() (quic.Stream, error) {
+	if m.OpenStreamFunc != nil {
+		return m.OpenStreamFunc()
+	}
 	args := m.Called()
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -40,6 +55,9 @@ func (m *MockQUICConnection) OpenStream() (quic.Stream, error) {
 }
 
 func (m *MockQUICConnection) OpenUniStream() (quic.SendStream, error) {
+	if m.OpenUniStreamFunc != nil {
+		return m.OpenUniStreamFunc()
+	}
 	args := m.Called()
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -48,6 +66,9 @@ func (m *MockQUICConnection) OpenUniStream() (quic.SendStream, error) {
 }
 
 func (m *MockQUICConnection) OpenStreamSync(ctx context.Context) (quic.Stream, error) {
+	if m.OpenStreamSyncFunc != nil {
+		return m.OpenStreamSyncFunc(ctx)
+	}
 	args := m.Called(ctx)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -56,6 +77,9 @@ func (m *MockQUICConnection) OpenStreamSync(ctx context.Context) (quic.Stream, e
 }
 
 func (m *MockQUICConnection) OpenUniStreamSync(ctx context.Context) (quic.SendStream, error) {
+	if m.OpenUniStreamSyncFunc != nil {
+		return m.OpenUniStreamSyncFunc(ctx)
+	}
 	args := m.Called(ctx)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)

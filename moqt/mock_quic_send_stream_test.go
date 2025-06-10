@@ -12,18 +12,12 @@ var _ quic.SendStream = (*MockQUICSendStream)(nil)
 // MockQUICSendStream is a mock implementation of quic.SendStream using testify/mock
 type MockQUICSendStream struct {
 	mock.Mock
-	StreamIDValue quic.StreamID
-	Cancelled     bool
-	CancelCode    quic.StreamErrorCode
-	Deadline      time.Time
-	WriteFunc     func(p []byte) (int, error)
+	WriteFunc func(p []byte) (n int, err error)
 }
 
 func (m *MockQUICSendStream) StreamID() quic.StreamID {
-	if args := m.Called(); args.Get(0) != nil {
-		return args.Get(0).(quic.StreamID)
-	}
-	return m.StreamIDValue
+	args := m.Called()
+	return args.Get(0).(quic.StreamID)
 }
 
 func (m *MockQUICSendStream) Write(p []byte) (n int, err error) {
@@ -36,13 +30,10 @@ func (m *MockQUICSendStream) Write(p []byte) (n int, err error) {
 
 func (m *MockQUICSendStream) CancelWrite(code quic.StreamErrorCode) {
 	m.Called(code)
-	m.Cancelled = true
-	m.CancelCode = code
 }
 
 func (m *MockQUICSendStream) SetWriteDeadline(t time.Time) error {
 	args := m.Called(t)
-	m.Deadline = t
 	return args.Error(0)
 }
 

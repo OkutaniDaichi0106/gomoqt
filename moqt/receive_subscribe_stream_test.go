@@ -183,37 +183,36 @@ func TestReceiveSubscribeStream_SubscribeConfig_UnreadableState(t *testing.T) {
 		setupStream func() *receiveSubscribeStream
 		expectError bool
 		expectedErr error
-	}{
-		"unreadable with read error": {
-			setupStream: func() *receiveSubscribeStream {
-				mockStream := &MockQUICStream{}
-				rss := &receiveSubscribeStream{
-					id:         SubscribeID(123),
-					stream:     mockStream,
-					config:     &SubscribeConfig{TrackPriority: TrackPriority(1)},
-					updatedCh:  make(chan struct{}, 1),
-					unreadable: true,
-					readErr: &SubscribeError{
-						StreamError: &quic.StreamError{
-							StreamID:  quic.StreamID(123),
-							ErrorCode: quic.StreamErrorCode(InternalSubscribeErrorCode),
-						},
+	}{"closed with read error": {
+		setupStream: func() *receiveSubscribeStream {
+			mockStream := &MockQUICStream{}
+			rss := &receiveSubscribeStream{
+				id:        SubscribeID(123),
+				stream:    mockStream,
+				config:    &SubscribeConfig{TrackPriority: TrackPriority(1)},
+				updatedCh: make(chan struct{}, 1),
+				closed:    true,
+				closeErr: &SubscribeError{
+					StreamError: &quic.StreamError{
+						StreamID:  quic.StreamID(123),
+						ErrorCode: quic.StreamErrorCode(InternalSubscribeErrorCode),
 					},
-				}
-				return rss
-			},
-			expectError: true,
+				},
+			}
+			return rss
 		},
-		"unreadable with EOF": {
+		expectError: true,
+	},
+		"closed with EOF": {
 			setupStream: func() *receiveSubscribeStream {
 				mockStream := &MockQUICStream{}
 				rss := &receiveSubscribeStream{
-					id:         SubscribeID(123),
-					stream:     mockStream,
-					config:     &SubscribeConfig{TrackPriority: TrackPriority(1)},
-					updatedCh:  make(chan struct{}, 1),
-					unreadable: true,
-					readErr:    nil,
+					id:        SubscribeID(123),
+					stream:    mockStream,
+					config:    &SubscribeConfig{TrackPriority: TrackPriority(1)},
+					updatedCh: make(chan struct{}, 1),
+					closed:    true,
+					closeErr:  nil,
 				}
 				return rss
 			},
@@ -421,8 +420,7 @@ func TestReceiveSubscribeStream_CloseWithError(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
-			assert.True(t, rss.unreadable, "Stream should be marked as unreadable")
-			assert.True(t, rss.unwritable, "Stream should be marked as unwritable")
+			assert.True(t, rss.closed, "Stream should be marked as closed")
 
 			mockStream.AssertExpectations(t)
 		})
@@ -438,15 +436,13 @@ func TestReceiveSubscribeStream_CloseWithError_AlreadyClosed(t *testing.T) {
 		MinGroupSequence: GroupSequence(0),
 		MaxGroupSequence: GroupSequence(100),
 	}
-
 	// Create stream manually
 	rss := &receiveSubscribeStream{
-		id:         subscribeID,
-		config:     config,
-		stream:     mockStream,
-		updatedCh:  make(chan struct{}, 1),
-		unreadable: true, // Already closed
-		unwritable: true, // Already closed
+		id:        subscribeID,
+		config:    config,
+		stream:    mockStream,
+		updatedCh: make(chan struct{}, 1),
+		closed:    true, // Already closed
 	}
 
 	// Mark listenOnce as done

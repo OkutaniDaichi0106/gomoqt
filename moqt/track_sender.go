@@ -38,7 +38,7 @@ func (s *trackSender) OpenGroup(seq GroupSequence) (GroupWriter, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	err, ok := s.subscribeStream.done()
+	err, ok := s.subscribeStream.isClosed()
 	if ok {
 		if err != nil {
 			return nil, err
@@ -70,11 +70,6 @@ func (s *trackSender) Close() error {
 	}
 	s.queue = nil
 
-	err, ok := s.subscribeStream.done()
-	if ok {
-		return err
-	}
-
 	return s.subscribeStream.close()
 }
 
@@ -86,11 +81,6 @@ func (s *trackSender) CloseWithError(code SubscribeErrorCode) error {
 		stream.CloseWithError(SubscribeCanceledErrorCode)
 	}
 	s.queue = nil
-
-	err, ok := s.subscribeStream.done()
-	if ok {
-		return err
-	}
 
 	return s.subscribeStream.closeWithError(code)
 }

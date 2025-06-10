@@ -152,12 +152,16 @@ func TestTrackSender_Close(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			// Create mock receive subscribe stream
-			mockStream := &MockQUICStream{}
-			mockStream.On("Read", mock.AnythingOfType("[]uint8")).Return(0, io.EOF)
+			mockStream := &MockQUICStream{
+				ReadFunc: func(p []byte) (int, error) {
+					// Block indefinitely to prevent listenUpdates from closing the stream
+					select {}
+				},
+			}
 			mockStream.On("Close").Return(nil)
 			mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return()
+			mockStream.On("CancelWrite", mock.AnythingOfType("quic.StreamErrorCode")).Return()
 			mockStream.On("StreamID").Return(quic.StreamID(1))
-
 			substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{})
 
 			// Close the stream if needed
@@ -236,8 +240,12 @@ func TestTrackSender_CloseWithError(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			// Create mock receive subscribe stream
-			mockStream := &MockQUICStream{}
-			mockStream.On("Read", mock.AnythingOfType("[]uint8")).Return(0, io.EOF)
+			mockStream := &MockQUICStream{
+				ReadFunc: func(p []byte) (int, error) {
+					// Block indefinitely to prevent listenUpdates from closing the stream
+					select {}
+				},
+			}
 			mockStream.On("Close").Return(nil)
 			mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return()
 			mockStream.On("CancelWrite", mock.AnythingOfType("quic.StreamErrorCode")).Return()
@@ -294,10 +302,15 @@ func TestTrackSender_CloseWithError(t *testing.T) {
 
 func TestTrackSender_ConcurrentOperations(t *testing.T) {
 	// Create mock receive subscribe stream
-	mockStream := &MockQUICStream{}
-	mockStream.On("Read", mock.AnythingOfType("[]uint8")).Return(0, io.EOF)
+	mockStream := &MockQUICStream{
+		ReadFunc: func(p []byte) (int, error) {
+			// Block indefinitely to prevent listenUpdates from closing the stream
+			select {}
+		},
+	}
 	mockStream.On("Close").Return(nil)
 	mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return()
+	mockStream.On("CancelWrite", mock.AnythingOfType("quic.StreamErrorCode")).Return()
 	mockStream.On("StreamID").Return(quic.StreamID(1))
 	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{})
 

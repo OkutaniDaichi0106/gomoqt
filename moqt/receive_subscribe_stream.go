@@ -17,10 +17,11 @@ type ReceiveSubscribeStream interface {
 
 func newReceiveSubscribeStream(id SubscribeID, stream quic.Stream, config *SubscribeConfig) *receiveSubscribeStream {
 	rss := &receiveSubscribeStream{
-		id:        id,
-		config:    config,
-		stream:    stream,
-		updatedCh: make(chan struct{}, 1),
+		id:                  id,
+		config:              config,
+		stream:              stream,
+		updatedCh:           make(chan struct{}, 1),
+		subscribeCanceledCh: make(chan *SubscribeError, 1),
 	}
 
 	go rss.listenUpdates()
@@ -42,14 +43,9 @@ type receiveSubscribeStream struct {
 
 	subscribeCanceledCh chan *SubscribeError
 
-	unwritable bool
-	writeErr   error
-
-	unreadable bool
-	readErr    error
-
-	closed  bool       // Track if the channel is closed
-	closeMu sync.Mutex // Protect against concurrent close operations
+	closed   bool // Track if the channel is closed
+	closeErr error
+	closeMu  sync.Mutex // Protect against concurrent close operations
 }
 
 func (rss *receiveSubscribeStream) SubscribeID() SubscribeID {
@@ -60,9 +56,9 @@ func (rss *receiveSubscribeStream) SubscribeConfig() (*SubscribeConfig, error) {
 	rss.configMu.Lock()
 	defer rss.configMu.Unlock()
 
-	if rss.unreadable {
-		if rss.readErr != nil {
-			return nil, rss.readErr
+	if rss.closed {
+		if rss.closeErr != nil {
+			return nil, rss.closeErr
 		}
 		return nil, io.EOF
 	}
@@ -82,14 +78,19 @@ func (rss *receiveSubscribeStream) listenUpdates() {
 		defer func() {
 			rss.closeMu.Lock()
 			if !rss.closed {
-				close(rss.updatedCh)
 				rss.closed = true
+			}
+			// Always close the channel if it hasn't been closed yet
+			select {
+			case <-rss.updatedCh:
+				// Channel is already closed
+			default:
+				close(rss.updatedCh)
 			}
 			rss.closeMu.Unlock()
 		}()
-
 		for {
-			if rss.unreadable {
+			if rss.closed {
 				return
 			}
 
@@ -97,7 +98,7 @@ func (rss *receiveSubscribeStream) listenUpdates() {
 			if err != nil {
 				// Check for EOF
 				if errors.Is(err, io.EOF) {
-					rss.unreadable = true
+					rss.closed = true
 
 					return
 				}
@@ -105,18 +106,32 @@ func (rss *receiveSubscribeStream) listenUpdates() {
 				// Check for stream error
 				var strErr *quic.StreamError
 				if errors.As(err, &strErr) {
-					rss.unreadable = true
-					rss.readErr = &SubscribeError{
+					rss.closed = true
+					rss.closeErr = &SubscribeError{
 						StreamError: strErr,
 					}
 
+					select {
+					case rss.subscribeCanceledCh <- &SubscribeError{StreamError: strErr}:
+					default:
+					}
 				} else {
-					rss.closeWithError(InternalSubscribeErrorCode)
-				}
+					// For other errors, set the error and close
+					rss.closed = true
+					strErrCode := quic.StreamErrorCode(InternalSubscribeErrorCode)
+					rss.stream.CancelWrite(strErrCode)
+					rss.stream.CancelRead(strErrCode)
+					rss.closeErr = &SubscribeError{
+						StreamError: &quic.StreamError{
+							StreamID:  rss.stream.StreamID(),
+							ErrorCode: strErrCode,
+						},
+					}
 
-				select {
-				case rss.subscribeCanceledCh <- &SubscribeError{StreamError: strErr}:
-				default:
+					select {
+					case rss.subscribeCanceledCh <- rss.closeErr.(*SubscribeError):
+					default:
+					}
 				}
 
 				return
@@ -138,85 +153,58 @@ func (rss *receiveSubscribeStream) listenUpdates() {
 	})
 }
 
-func (rss *receiveSubscribeStream) done() (error, bool) {
-	return rss.writeErr, rss.unreadable && rss.unwritable
-}
-
-func (rss *receiveSubscribeStream) cancelWrite(code SubscribeErrorCode) {
-	// Close send side of the stream
-	if !rss.unwritable {
-		strErrCode := quic.StreamErrorCode(code)
-		rss.stream.CancelWrite(strErrCode)
-
-		rss.unwritable = true
-		rss.writeErr = &SubscribeError{
-			StreamError: &quic.StreamError{
-				StreamID:  rss.stream.StreamID(),
-				ErrorCode: strErrCode,
-			},
-		}
-	}
-}
-
-func (rss *receiveSubscribeStream) cancelRead(code SubscribeErrorCode) {
-	if !rss.unreadable {
-		strErrCode := quic.StreamErrorCode(code)
-		rss.stream.CancelRead(strErrCode)
-
-		rss.unreadable = true
-		rss.readErr = &SubscribeError{
-			StreamError: &quic.StreamError{
-				StreamID:  rss.stream.StreamID(),
-				ErrorCode: strErrCode,
-			},
-		}
-	}
-}
-
 func (rss *receiveSubscribeStream) close() error {
-	err, ok := rss.done()
-	if ok {
-		return err
-	}
+	rss.closeMu.Lock()
+	defer rss.closeMu.Unlock()
 
 	// Close send side of the stream
-	if !rss.unwritable {
-		err = rss.stream.Close()
-		if err != nil {
-			return err
-		}
-
-		rss.unwritable = true
+	if rss.closed {
+		return rss.closeErr
 	}
 
-	rss.cancelRead(InternalSubscribeErrorCode)
+	rss.closed = true
 
-	rss.closeMu.Lock()
-	if !rss.closed {
-		close(rss.updatedCh)
-		rss.closed = true
-	}
-	rss.closeMu.Unlock()
+	err := rss.stream.Close()
 
-	return nil
+	strErrCode := quic.StreamErrorCode(InternalSubscribeErrorCode)
+	rss.stream.CancelRead(strErrCode)
+
+	close(rss.updatedCh)
+	rss.closed = true
+
+	return err
 }
 
 func (rss *receiveSubscribeStream) closeWithError(code SubscribeErrorCode) error {
-	err, ok := rss.done()
-	if ok {
-		return err
-	}
-
-	rss.cancelWrite(code)
-
-	rss.cancelRead(code)
-
 	rss.closeMu.Lock()
-	if !rss.closed {
-		close(rss.updatedCh)
-		rss.closed = true
+	defer rss.closeMu.Unlock()
+
+	if rss.closed {
+		return rss.closeErr
 	}
-	rss.closeMu.Unlock()
+
+	rss.closed = true
+
+	strErrCode := quic.StreamErrorCode(code)
+	rss.stream.CancelWrite(strErrCode)
+	rss.stream.CancelRead(strErrCode)
+
+	// Set the close error
+	rss.closeErr = &SubscribeError{
+		StreamError: &quic.StreamError{
+			StreamID:  rss.stream.StreamID(),
+			ErrorCode: strErrCode,
+		},
+	}
+
+	close(rss.updatedCh)
 
 	return nil
+}
+
+func (rss *receiveSubscribeStream) isClosed() (error, bool) {
+	rss.closeMu.Lock()
+	defer rss.closeMu.Unlock()
+
+	return rss.closeErr, rss.closed
 }

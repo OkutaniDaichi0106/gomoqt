@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt"
+	moqt_quic "github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 	"github.com/quic-go/quic-go"
 )
 
@@ -14,21 +15,19 @@ func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})))
 
 	server := moqt.Server{
-		Addr: "localhost:4444",
-		TLSConfig: &tls.Config{
+		Addr: "localhost:4444", TLSConfig: &tls.Config{
 			NextProtos:         []string{"h3", "moq-00"},
 			Certificates:       []tls.Certificate{generateCert()},
 			InsecureSkipVerify: true, // TODO: Not recommended for production
 		},
-		QUICConfig: &quic.Config{
+		QUICConfig: (*moqt_quic.Config)(&quic.Config{
 			Allow0RTT:       true,
 			EnableDatagrams: true,
-		},
+		}),
 	}
-
 	// Serve moq over webtransport
 	http.HandleFunc("/broadcast", func(w http.ResponseWriter, r *http.Request) {
-		sess, err := server.AcceptWebTransport(w, r)
+		_, err := server.AcceptWebTransport(w, r, nil)
 		if err != nil {
 			slog.Error("failed to serve web transport", "error", err)
 		}

@@ -23,3 +23,9 @@ jobs:
 
     - name: Test
       run: go test -v ./...
+
+    - name: Upload coverage report
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        slug: OkutaniDaichi0106/gomoqt

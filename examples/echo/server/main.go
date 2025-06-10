@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt"
-	"github.com/quic-go/quic-go"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
 func main() {
@@ -31,60 +31,58 @@ func main() {
 			slog.Error("failed to serve moq over webtransport", "error", err)
 		}
 
-		anns, err := sess.OpenAnnounceStream("/")
+		anns, err := sess.OpenAnnounceStream("")
 		if err != nil {
 			slog.Error("failed to open announce stream", "error", err)
 		}
 
 		for {
-			announcements, err := anns.ReceiveAnnouncements(context.Background())
+			ann, err := anns.ReceiveAnnouncement(context.Background())
 			if err != nil {
 				slog.Error("failed to receive announcements", "error", err)
 				break
 			}
-			for _, ann := range announcements {
-				path := ann.BroadcastPath()
-				if path.Extension() != ".echo" {
-					continue
-				}
+			path := ann.BroadcastPath()
+			if path.Extension() != ".echo" {
+				continue
+			}
 
-				sub, err := sess.OpenTrackStream(path, "index", nil)
-				if err != nil {
-					slog.Error("failed to open track stream", "error", err)
-					break
-				}
+			sub, err := sess.OpenTrackStream(path, "index", nil)
+			if err != nil {
+				slog.Error("failed to open track stream", "error", err)
+				break
+			}
 
-				moqt.HandleFunc(context.Background(), sub.BroadcastPath, func(pub *moqt.Publisher) {
-					defer sub.TrackReader.Close()
+			moqt.HandleFunc(context.Background(), sub.BroadcastPath, func(pub *moqt.Publisher) {
+				defer sub.TrackReader.Close()
+
+				for {
+					gr, err := sub.TrackReader.AcceptGroup(context.Background())
+					if err != nil {
+						slog.Error("failed to accept group", "error", err)
+						break
+					}
+
+					gw, err := pub.TrackWriter.OpenGroup(gr.GroupSequence())
+					if err != nil {
+						slog.Error("failed to open group", "error", err)
+						break
+					}
 
 					for {
-						gr, err := sub.TrackReader.AcceptGroup(context.Background())
+						f, err := gr.ReadFrame()
 						if err != nil {
-							slog.Error("failed to accept group", "error", err)
+							slog.Error("failed to accept frame", "error", err)
 							break
 						}
-
-						gw, err := pub.TrackWriter.OpenGroup(gr.GroupSequence())
+						err = gw.WriteFrame(f)
 						if err != nil {
-							slog.Error("failed to open group", "error", err)
+							slog.Error("failed to write frame", "error", err)
 							break
-						}
-
-						for {
-							f, err := gr.ReadFrame()
-							if err != nil {
-								slog.Error("failed to accept frame", "error", err)
-								break
-							}
-							err = gw.WriteFrame(f)
-							if err != nil {
-								slog.Error("failed to write frame", "error", err)
-								break
-							}
 						}
 					}
-				})
-			}
+				}
+			})
 		}
 
 	})

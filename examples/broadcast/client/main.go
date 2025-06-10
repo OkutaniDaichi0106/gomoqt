@@ -10,10 +10,9 @@ import (
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})))
-
 	client := moqt.Client{}
 
-	sess, _, err := client.Dial("https://localhost:4444/broadcast", context.Background())
+	sess, err := client.Dial(context.Background(), "https://localhost:4444/broadcast", nil)
 	if err != nil {
 		slog.Error("failed to dial", "error", err)
 		return

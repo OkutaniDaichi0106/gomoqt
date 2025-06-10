@@ -76,7 +76,15 @@ func (c *quicgoConnection) CloseWithError(code quicgo_quicgo.ApplicationErrorCod
 }
 
 func (c *quicgoConnection) ConnectionState() quicgo_quicgo.ConnectionState {
-	return quicgo_quicgo.ConnectionState(c.conn.ConnectionState())
+	state := c.conn.ConnectionState()
+
+	return quicgo_quicgo.ConnectionState{
+		TLS:               state.TLS,
+		SupportsDatagrams: state.SupportsDatagrams,
+		Used0RTT:          state.Used0RTT,
+		Version:           quicgo_quicgo.Version(state.Version),
+		GSO:               state.GSO,
+	}
 }
 
 func (c *quicgoConnection) Context() context.Context {

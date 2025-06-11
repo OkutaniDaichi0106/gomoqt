@@ -35,6 +35,10 @@ type trackSender struct {
 }
 
 func (s *trackSender) OpenGroup(seq GroupSequence) (GroupWriter, error) {
+	if seq == 0 {
+		return nil, errors.New("group sequence must not be zero")
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

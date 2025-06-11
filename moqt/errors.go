@@ -153,7 +153,7 @@ func (code SessionErrorCode) String() string {
 	case UnsupportedVersionErrorCode:
 		return "moqt: unsupported version"
 	default:
-		return "moqt: unknown terminate error"
+		return "moqt: unknown session error"
 	}
 }
 
@@ -203,6 +203,8 @@ func (code GroupErrorCode) String() string {
 		return "moqt: publish aborted"
 	case ClosedSessionGroupErrorCode:
 		return "moqt: session closed"
+	case InvalidSubscribeIDErrorCode:
+		return "moqt: invalid subscribe id"
 	default:
 		return "moqt: unknown group error"
 	}
@@ -251,13 +253,18 @@ func (err InternalError) GroupErrorCode() GroupErrorCode {
 }
 
 /*
-* Unauthorized Error
+ * Unauthorized Error
  */
 
 type UnauthorizedError struct{}
 
 func (UnauthorizedError) Error() string {
 	return "moqt: unauthorized"
+}
+
+func (UnauthorizedError) Is(err error) bool {
+	_, ok := err.(UnauthorizedError)
+	return ok
 }
 
 func (err UnauthorizedError) SubscribeErrorCode() SubscribeErrorCode {

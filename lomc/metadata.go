@@ -21,7 +21,7 @@ type Metadata struct {
 	Value       []byte
 }
 
-func (h Metadata) Encode(io.Writer) error {
+func (h Metadata) Encode(w io.Writer) error {
 	b := make([]byte, 0, 1<<6)
 
 	b = quicvarint.Append(b, uint64(h.ID))
@@ -30,7 +30,8 @@ func (h Metadata) Encode(io.Writer) error {
 
 	b = append(b, h.Value...)
 
-	return nil
+	_, err := w.Write(b)
+	return err
 }
 
 func (h *Metadata) Decode(r io.Reader) error {

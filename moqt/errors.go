@@ -31,7 +31,8 @@ const (
 	UninterestedErrorCode       AnnounceErrorCode = 0x3
 
 	// Publisher
-	BannedPrefixErrorCode AnnounceErrorCode = 0x4 // TODO: Is this necessary?
+	BannedPrefixErrorCode  AnnounceErrorCode = 0x4 // TODO: Is this necessary?
+	InvalidPrefixErrorCode AnnounceErrorCode = 0x5 // TODO: Is this necessary?
 )
 
 type AnnounceErrorCode protocol.AnnounceErrorCode

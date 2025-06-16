@@ -180,11 +180,11 @@ func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *Su
 
 	s.connMu.Lock()
 	stream, err := s.conn.OpenStream()
+	s.connMu.Unlock()
 	if err != nil {
 		s.logger.Error("failed to open bidirectional stream",
 			"error", err,
 		)
-		s.connMu.Unlock()
 		var appErr *quic.ApplicationError
 		if errors.As(err, &appErr) {
 			return nil, &SessionError{
@@ -193,9 +193,32 @@ func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *Su
 		}
 		return nil, err
 	}
-	s.connMu.Unlock()
 
 	streamLogger := s.logger.With("stream_id", stream.StreamID())
+
+	stm := message.StreamTypeMessage{
+		StreamType: stream_type_subscribe,
+	}
+	_, err = stm.Encode(stream)
+	if err != nil {
+		var strErr *quic.StreamError
+		if errors.As(err, &strErr) && strErr.Remote {
+			stream.CancelRead(strErr.ErrorCode)
+			streamLogger.Error("failed to encode stream type message",
+				"error", strErr,
+			)
+			return nil, &SubscribeError{
+				StreamError: strErr,
+			}
+		}
+		strErrCode := quic.StreamErrorCode(InternalSubscribeErrorCode)
+		stream.CancelWrite(strErrCode)
+		stream.CancelRead(strErrCode)
+		streamLogger.Error("failed to encode stream type message",
+			"error", err,
+		)
+		return nil, err
+	}
 
 	// Send a SUBSCRIBE message
 	sm := message.SubscribeMessage{
@@ -493,7 +516,7 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 			// Create a group-specific logger
 			groupLogger := subLogger.With("group_sequence", seq)
 
-			stream, err := sess.conn.OpenStream()
+			stream, err := sess.conn.OpenUniStream()
 			if err != nil {
 				var appErr *quic.ApplicationError
 				if errors.As(err, &appErr) {

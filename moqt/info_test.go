@@ -2,6 +2,8 @@ package moqt
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestInfo(t *testing.T) {
@@ -30,13 +32,8 @@ func TestInfo(t *testing.T) {
 				GroupOrder:    tt.groupOrder,
 			}
 
-			if info.TrackPriority != tt.trackPriority {
-				t.Errorf("TrackPriority = %v, want %v", info.TrackPriority, tt.trackPriority)
-			}
-
-			if info.GroupOrder != tt.groupOrder {
-				t.Errorf("GroupOrder = %v, want %v", info.GroupOrder, tt.groupOrder)
-			}
+			assert.Equal(t, tt.trackPriority, info.TrackPriority)
+			assert.Equal(t, tt.groupOrder, info.GroupOrder)
 		})
 	}
 }
@@ -44,13 +41,8 @@ func TestInfo(t *testing.T) {
 func TestInfoZeroValue(t *testing.T) {
 	var info Info
 
-	if info.TrackPriority != 0 {
-		t.Errorf("zero value TrackPriority = %v, want 0", info.TrackPriority)
-	}
-
-	if info.GroupOrder != 0 {
-		t.Errorf("zero value GroupOrder = %v, want 0", info.GroupOrder)
-	}
+	assert.Equal(t, TrackPriority(0), info.TrackPriority)
+	assert.Equal(t, GroupOrder(0), info.GroupOrder)
 }
 
 func TestInfoComparison(t *testing.T) {
@@ -69,11 +61,6 @@ func TestInfoComparison(t *testing.T) {
 		GroupOrder:    GroupOrder(2),
 	}
 
-	if info1 != info2 {
-		t.Error("identical Info structs should be equal")
-	}
-
-	if info1 == info3 {
-		t.Error("different Info structs should not be equal")
-	}
+	assert.Equal(t, info1, info2, "identical Info structs should be equal")
+	assert.NotEqual(t, info1, info3, "different Info structs should not be equal")
 }

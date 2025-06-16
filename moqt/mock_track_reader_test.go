@@ -12,6 +12,14 @@ type MockTrackReader struct {
 	mock.Mock
 }
 
+func (m *MockTrackReader) ReadInfo() Info {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return Info{}
+	}
+	return args.Get(0).(Info)
+}
+
 func (m *MockTrackReader) AcceptGroup(ctx context.Context) (GroupReader, error) {
 	args := m.Called(ctx)
 	if args.Get(0) == nil {

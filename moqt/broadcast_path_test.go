@@ -95,52 +95,6 @@ func TestBroadcastPath_HasPrefix(t *testing.T) {
 	}
 }
 
-func TestBroadcastPath_HasSuffix(t *testing.T) {
-	tests := map[string]struct {
-		path     BroadcastPath
-		suffix   string
-		expected bool
-	}{
-		"empty path and suffix": {
-			path:     BroadcastPath(""),
-			suffix:   "",
-			expected: false,
-		},
-		"path shorter than suffix": {
-			path:     BroadcastPath("/test"),
-			suffix:   "/test/path",
-			expected: false,
-		},
-		"matching suffix": {
-			path:     BroadcastPath("/segment/test/path"),
-			suffix:   "path",
-			expected: true,
-		},
-		"non-matching suffix": {
-			path:     BroadcastPath("/test/path"),
-			suffix:   "other",
-			expected: false,
-		},
-		"suffix without leading slash": {
-			path:     BroadcastPath("/test/path"),
-			suffix:   "path",
-			expected: true,
-		},
-		"exact match is not a suffix": {
-			path:     BroadcastPath("/test/path"),
-			suffix:   "/test/path",
-			expected: false,
-		},
-	}
-
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			result := tt.path.HasSuffix(tt.suffix)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
 func TestBroadcastPath_Equal(t *testing.T) {
 	tests := map[string]struct {
 		path     BroadcastPath
@@ -337,21 +291,13 @@ func TestBroadcastPath_EdgeCases(t *testing.T) {
 		input       string
 		expected    interface{}
 		description string
-	}{
-		"hasPrefix_exact_match": {
-			method:      "HasPrefix",
-			path:        BroadcastPath("/test/path"),
-			input:       "/test/path/",
-			expected:    false,
-			description: "exact match should return false for HasPrefix",
-		},
-		"hasSuffix_exact_match": {
-			method:      "HasSuffix",
-			path:        BroadcastPath("/test/path"),
-			input:       "/test/path",
-			expected:    false,
-			description: "exact match should return false for HasSuffix",
-		},
+	}{"hasPrefix_exact_match": {
+		method:      "HasPrefix",
+		path:        BroadcastPath("/test/path"),
+		input:       "/test/path/",
+		expected:    false,
+		description: "exact match should return false for HasPrefix",
+	},
 		"hasPrefix_longer_than_path": {
 			method:      "HasPrefix",
 			path:        BroadcastPath("/test"),
@@ -359,26 +305,12 @@ func TestBroadcastPath_EdgeCases(t *testing.T) {
 			expected:    false,
 			description: "prefix longer than path should return false",
 		},
-		"hasSuffix_longer_than_path": {
-			method:      "HasSuffix",
-			path:        BroadcastPath("/test"),
-			input:       "/test/longer/path",
-			expected:    false,
-			description: "suffix longer than path should return false",
-		},
 		"hasPrefix_root_prefix": {
 			method:      "HasPrefix",
 			path:        BroadcastPath("/test/path"),
 			input:       "/",
 			expected:    true,
 			description: "root prefix should match any non-empty path",
-		},
-		"hasSuffix_empty_input": {
-			method:      "HasSuffix",
-			path:        BroadcastPath("/test/path"),
-			input:       "",
-			expected:    false,
-			description: "empty suffix should return false",
 		},
 	}
 
@@ -388,8 +320,6 @@ func TestBroadcastPath_EdgeCases(t *testing.T) {
 			switch tt.method {
 			case "HasPrefix":
 				result = tt.path.HasPrefix(tt.input)
-			case "HasSuffix":
-				result = tt.path.HasSuffix(tt.input)
 			}
 			assert.Equal(t, tt.expected, result, tt.description)
 		})
@@ -398,7 +328,6 @@ func TestBroadcastPath_EdgeCases(t *testing.T) {
 
 func TestBroadcastPath_CaseSensitivity(t *testing.T) {
 	path := BroadcastPath("/Test/Path/Segment")
-
 	tests := map[string]struct {
 		method   string
 		input    string
@@ -409,19 +338,9 @@ func TestBroadcastPath_CaseSensitivity(t *testing.T) {
 			input:    "/test/",
 			expected: false,
 		},
-		"suffix_case_sensitive": {
-			method:   "HasSuffix",
-			input:    "segment",
-			expected: false,
-		},
 		"prefix_exact_case": {
 			method:   "HasPrefix",
 			input:    "/Test/",
-			expected: true,
-		},
-		"suffix_exact_case": {
-			method:   "HasSuffix",
-			input:    "Segment",
 			expected: true,
 		},
 	}
@@ -432,8 +351,6 @@ func TestBroadcastPath_CaseSensitivity(t *testing.T) {
 			switch tt.method {
 			case "HasPrefix":
 				result = path.HasPrefix(tt.input)
-			case "HasSuffix":
-				result = path.HasSuffix(tt.input)
 			}
 			assert.Equal(t, tt.expected, result)
 		})
@@ -444,49 +361,31 @@ func TestBroadcastPath_PathSeparators(t *testing.T) {
 	tests := map[string]struct {
 		path        BroadcastPath
 		prefix      string
-		suffix      string
 		hasPrefix   bool
-		hasSuffix   bool
 		description string
 	}{
 		"multiple_consecutive_slashes": {
 			path:        BroadcastPath("/test//path///segment"),
 			prefix:      "/test/",
-			suffix:      "segment",
 			hasPrefix:   true,
-			hasSuffix:   true,
 			description: "multiple consecutive slashes should be handled",
 		},
 		"trailing_slash": {
 			path:        BroadcastPath("/test/path/"),
 			prefix:      "/test/",
-			suffix:      "path",
 			hasPrefix:   true,
-			hasSuffix:   false,
 			description: "trailing slash affects suffix matching",
-		},
-		"leading_slash_in_suffix": {
-			path:        BroadcastPath("/test/path/segment"),
-			prefix:      "/test/",
-			suffix:      "/segment",
-			hasPrefix:   true,
-			hasSuffix:   false,
-			description: "leading slash in suffix parameter",
 		},
 		"no_separator_in_prefix": {
 			path:        BroadcastPath("/testpath/segment"),
 			prefix:      "/test/",
-			suffix:      "segment",
 			hasPrefix:   false,
-			hasSuffix:   true,
 			description: "prefix without proper separator",
 		},
 		"root_prefix_match": {
 			path:        BroadcastPath("/any/path/segment"),
 			prefix:      "/",
-			suffix:      "segment",
 			hasPrefix:   true,
-			hasSuffix:   true,
 			description: "root prefix should match any path",
 		},
 	}
@@ -494,10 +393,8 @@ func TestBroadcastPath_PathSeparators(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			prefixResult := tt.path.HasPrefix(tt.prefix)
-			suffixResult := tt.path.HasSuffix(tt.suffix)
 
 			assert.Equal(t, tt.hasPrefix, prefixResult, "HasPrefix: "+tt.description)
-			assert.Equal(t, tt.hasSuffix, suffixResult, "HasSuffix: "+tt.description)
 		})
 	}
 }

@@ -15,17 +15,7 @@ func (bc BroadcastPath) HasPrefix(prefix string) bool {
 	if len(bc) < len(prefix) {
 		return false
 	}
-
 	return strings.HasPrefix(string(bc), prefix)
-}
-
-func (bc BroadcastPath) HasSuffix(suffix string) bool {
-	// If path length is shorter than suffix, return false
-	if len(bc) < len(suffix) {
-		return false
-	}
-
-	return strings.HasSuffix(string(bc), suffix)
 }
 
 func (bc BroadcastPath) GetSuffix(prefix string) (string, bool) {

@@ -10,6 +10,10 @@ type MockTrackWriter struct {
 	mock.Mock
 }
 
+func (m *MockTrackWriter) WriteInfo(info Info) {
+	m.Called(info)
+}
+
 func (m *MockTrackWriter) OpenGroup(seq GroupSequence) (GroupWriter, error) {
 	args := m.Called(seq)
 	if args.Get(0) == nil {

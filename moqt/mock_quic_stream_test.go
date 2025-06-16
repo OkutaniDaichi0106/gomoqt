@@ -22,18 +22,18 @@ func (m *MockQUICStream) StreamID() quic.StreamID {
 }
 
 func (m *MockQUICStream) Read(p []byte) (n int, err error) {
+	args := m.Called(p)
 	if m.ReadFunc != nil {
 		return m.ReadFunc(p)
 	}
-	args := m.Called(p)
 	return args.Int(0), args.Error(1)
 }
 
 func (m *MockQUICStream) Write(p []byte) (n int, err error) {
+	args := m.Called(p)
 	if m.WriteFunc != nil {
 		return m.WriteFunc(p)
 	}
-	args := m.Called(p)
 	return args.Int(0), args.Error(1)
 }
 

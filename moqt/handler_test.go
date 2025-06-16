@@ -2,6 +2,8 @@ package moqt
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNotFound(t *testing.T) {
@@ -65,16 +67,10 @@ func TestTrackHandlerFunc(t *testing.T) {
 		BroadcastPath: BroadcastPath("/test"),
 		TrackName:     TrackName("test"),
 	}
-
 	handler.ServeTrack(testPub)
 
-	if !called {
-		t.Error("handler function was not called")
-	}
-
-	if receivedPub != testPub {
-		t.Error("handler did not receive the correct publisher")
-	}
+	assert.True(t, called, "handler function was not called")
+	assert.Equal(t, testPub, receivedPub, "handler did not receive the correct publisher")
 }
 
 func TestTrackHandlerFuncServeTrack(t *testing.T) {
@@ -88,13 +84,10 @@ func TestTrackHandlerFuncServeTrack(t *testing.T) {
 		BroadcastPath: BroadcastPath("/test"),
 		TrackName:     TrackName("test"),
 	}
-
 	// Call multiple times to ensure it works correctly
 	handler.ServeTrack(pub)
 	handler.ServeTrack(pub)
 	handler.ServeTrack(pub)
 
-	if callCount != 3 {
-		t.Errorf("expected handler to be called 3 times, got %d", callCount)
-	}
+	assert.Equal(t, 3, callCount, "expected handler to be called 3 times")
 }

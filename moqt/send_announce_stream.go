@@ -2,6 +2,7 @@ package moqt
 
 import (
 	"errors"
+	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
@@ -26,6 +27,8 @@ func newSendAnnounceStream(stream quic.Stream, prefix string) *sendAnnounceStrea
 var _ AnnouncementWriter = (*sendAnnounceStream)(nil)
 
 type sendAnnounceStream struct {
+	mu sync.RWMutex
+
 	prefix string
 	stream quic.Stream
 
@@ -36,6 +39,9 @@ type sendAnnounceStream struct {
 }
 
 func (sas *sendAnnounceStream) SendAnnouncement(new *Announcement) error {
+	sas.mu.Lock()
+	defer sas.mu.Unlock()
+
 	if sas.closed {
 		if sas.closeErr != nil {
 			return sas.closeErr
@@ -58,13 +64,13 @@ func (sas *sendAnnounceStream) SendAnnouncement(new *Announcement) error {
 
 	sas.actives[suffix] = new
 
-	// Send ACTIVE announcement immediately
+	// Create reusable AnnounceMessage
 	am := message.AnnounceMessage{
 		AnnounceStatus: message.ACTIVE,
 		TrackSuffix:    suffix,
 	}
 
-	// Encode and send directly to stream
+	// Encode and send ACTIVE announcement
 	_, err := am.Encode(sas.stream)
 	if err != nil {
 		var strErr *quic.StreamError
@@ -86,17 +92,22 @@ func (sas *sendAnnounceStream) SendAnnouncement(new *Announcement) error {
 	go func() {
 		<-new.AwaitEnd()
 
-		// Remove from actives
-		delete(sas.actives, suffix)
+		sas.mu.Lock()
+		defer sas.mu.Unlock()
+
+		// Remove from actives only if it's still the same announcement
+		if current, ok := sas.actives[suffix]; ok && current == new {
+			delete(sas.actives, suffix)
+		}
 
 		if sas.closed {
 			return
 		}
 
-		// Send ENDED announcement
+		// Reuse the same AnnounceMessage, just change status
 		am.AnnounceStatus = message.ENDED
 
-		// Encode and send directly to stream
+		// Encode and send ENDED announcement
 		_, err := am.Encode(sas.stream)
 		if err != nil {
 			var strErr *quic.StreamError
@@ -112,18 +123,10 @@ func (sas *sendAnnounceStream) SendAnnouncement(new *Announcement) error {
 	return nil
 }
 
-func (sas *sendAnnounceStream) sendMessage(suffix string, status message.AnnounceStatus) error {
-	if sas.closed {
-		if sas.closeErr != nil {
-			return sas.closeErr
-		}
-		return errors.New("stream already closed")
-	}
-
-	return nil
-}
-
 func (sas *sendAnnounceStream) Close() error {
+	sas.mu.Lock()
+	defer sas.mu.Unlock()
+
 	if sas.closed {
 		return sas.closeErr
 	}
@@ -139,6 +142,9 @@ func (sas *sendAnnounceStream) Close() error {
 }
 
 func (sas *sendAnnounceStream) CloseWithError(code AnnounceErrorCode) error {
+	sas.mu.Lock()
+	defer sas.mu.Unlock()
+
 	if sas.closed {
 		return sas.closeErr
 	}

@@ -580,23 +580,28 @@ func TestReceiveSubscribeStream_UpdateChannelBehavior(t *testing.T) {
 		}
 
 		config := &SubscribeConfig{TrackPriority: TrackPriority(0)}
-		rss := newReceiveSubscribeStream(subscribeID, mockStream, config)
-
-		// Should receive multiple update notifications
+		rss := newReceiveSubscribeStream(subscribeID, mockStream, config) // Should receive multiple update notifications
 		updateCount := 0
-		for {
+		expectedUpdates := 1 // We expect at least 1 update, but may get more
+
+		timeout := time.After(200 * time.Millisecond)
+		for updateCount < expectedUpdates {
 			select {
 			case _, ok := <-rss.Updated():
 				if !ok {
 					// Channel closed
-					assert.GreaterOrEqual(t, updateCount, 1, "Should receive at least one update")
-					return
+					t.Logf("Channel closed after %d updates", updateCount)
+					break
 				}
 				updateCount++
-			case <-time.After(200 * time.Millisecond):
-				t.Error("Timeout waiting for updates")
+				t.Logf("Received update %d", updateCount)
+			case <-timeout:
+				t.Errorf("Timeout waiting for updates, received %d out of at least %d expected", updateCount, expectedUpdates)
 				return
 			}
 		}
+
+		// We received at least the minimum expected updates
+		assert.GreaterOrEqual(t, updateCount, expectedUpdates, "Should receive at least expected number of updates")
 	})
 }

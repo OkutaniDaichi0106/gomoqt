@@ -23,6 +23,8 @@ func newTrackReceiver(substr *sendSubscribeStream) *trackReceiver {
 var _ TrackReader = (*trackReceiver)(nil)
 
 type trackReceiver struct {
+	info Info
+
 	queue    []*receiveGroupStream
 	queuedCh chan struct{}
 	mu       sync.Mutex
@@ -30,6 +32,10 @@ type trackReceiver struct {
 	dequeued map[*receiveGroupStream]struct{}
 
 	substr *sendSubscribeStream
+}
+
+func (r *trackReceiver) ReadInfo() Info {
+	return r.info
 }
 
 func (r *trackReceiver) AcceptGroup(ctx context.Context) (GroupReader, error) {

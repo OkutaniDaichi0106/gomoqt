@@ -2,6 +2,7 @@ package moqt
 
 import (
 	"errors"
+	"log/slog"
 	"sync"
 )
 
@@ -13,12 +14,11 @@ func newTrackSender(substr *receiveSubscribeStream, openGroupFunc func(GroupSequ
 	}
 
 	go func() {
-		suberr := <-substr.subscribeCanceledCh
-		if suberr != nil {
-			track.CloseWithError(suberr.SubscribeErrorCode())
-		} else {
-			track.Close()
+		<-substr.subscribeCanceledCh
+		for stream := range track.queue {
+			stream.CloseWithError(SubscribeCanceledErrorCode)
 		}
+		track.queue = nil
 	}()
 	return track
 }
@@ -28,15 +28,34 @@ var _ TrackWriter = (*trackSender)(nil)
 type trackSender struct {
 	subscribeStream *receiveSubscribeStream
 
+	accepted bool
+	info     Info
+
 	mu    sync.Mutex
 	queue map[*sendGroupStream]struct{}
 
 	openGroupFunc func(GroupSequence) (*sendGroupStream, error)
 }
 
+func (s *trackSender) WriteInfo(info Info) {
+	if s.accepted {
+		slog.Warn("moq: superfluous accept call on moqt.WriteInfo")
+		return
+	}
+
+	s.accepted = true
+	s.info = info
+
+	s.subscribeStream.accept(info)
+}
+
 func (s *trackSender) OpenGroup(seq GroupSequence) (GroupWriter, error) {
 	if seq == 0 {
 		return nil, errors.New("group sequence must not be zero")
+	}
+
+	if !s.accepted {
+		s.WriteInfo(Info{})
 	}
 
 	s.mu.Lock()
@@ -54,6 +73,7 @@ func (s *trackSender) OpenGroup(seq GroupSequence) (GroupWriter, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	s.queue[group] = struct{}{}
 	go func() {
 		<-group.closedCh

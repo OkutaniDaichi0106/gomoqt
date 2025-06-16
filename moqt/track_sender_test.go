@@ -334,15 +334,15 @@ func TestTrackSender_ConcurrentOperations(t *testing.T) {
 	// Open multiple groups concurrently
 	const numGroups = 10
 	errChan := make(chan error, numGroups)
-	for i := 0; i < numGroups; i++ {
+	for i := range numGroups {
 		go func(seq GroupSequence) {
 			_, err := sender.OpenGroup(seq)
 			errChan <- err
-		}(GroupSequence(i))
+		}(GroupSequence(i + 1))
 	}
 
 	// Wait for all operations to complete
-	for i := 0; i < numGroups; i++ {
+	for range numGroups {
 		err := <-errChan
 		assert.NoError(t, err, "Unexpected error opening group")
 	}

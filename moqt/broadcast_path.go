@@ -16,7 +16,7 @@ func (bc BroadcastPath) HasPrefix(prefix string) bool {
 		return false
 	}
 
-	return strings.HasPrefix(string(bc), prefix+"/")
+	return strings.HasPrefix(string(bc), prefix)
 }
 
 func (bc BroadcastPath) HasSuffix(suffix string) bool {
@@ -25,7 +25,7 @@ func (bc BroadcastPath) HasSuffix(suffix string) bool {
 		return false
 	}
 
-	return strings.HasSuffix(string(bc), "/"+suffix)
+	return strings.HasSuffix(string(bc), suffix)
 }
 
 func (bc BroadcastPath) GetSuffix(prefix string) (string, bool) {
@@ -33,7 +33,7 @@ func (bc BroadcastPath) GetSuffix(prefix string) (string, bool) {
 		return "", false
 	}
 
-	return strings.TrimPrefix(string(bc), prefix+"/"), true
+	return strings.TrimPrefix(string(bc), prefix), true
 }
 
 func (bc BroadcastPath) Extension() string {

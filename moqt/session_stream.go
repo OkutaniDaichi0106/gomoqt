@@ -100,13 +100,12 @@ func (ss *sessionStream) close() error {
 	if ss.closed {
 		return nil
 	}
+	ss.closed = true
 
 	err := ss.stream.Close()
 
-	if !ss.closed {
-		close(ss.updatedCh)
-		ss.closed = true
-	}
+	ss.cancel(nil)
+	close(ss.updatedCh)
 
 	return err
 }

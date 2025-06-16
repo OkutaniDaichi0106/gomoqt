@@ -7,5 +7,5 @@ type Subscriber struct {
 
 	TrackReader TrackReader
 
-	SubscribeStream *sendSubscribeStream
+	SubscribeStream SendSubscribeStream
 }

@@ -14,10 +14,6 @@ import (
 func TestNewTrackSender(t *testing.T) {
 	// Create mock receive subscribe stream
 	mockStream := &MockQUICStream{}
-	mockStream.On("Read", mock.AnythingOfType("[]uint8")).Return(0, io.EOF)
-	mockStream.On("Close").Return(nil)
-	mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return()
-	mockStream.On("StreamID").Return(uint64(1))
 	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{})
 
 	// Create mock open group function
@@ -48,18 +44,31 @@ func TestTrackSender_OpenGroup(t *testing.T) {
 			streamClosed: true,
 			seq:          GroupSequence(2),
 			expectError:  true,
-		},
-		"open group error": {
+		}, "open group error": {
 			streamClosed:   false,
-			openGroupError: errors.New("mock error"), seq: GroupSequence(3),
-			expectError: true,
+			openGroupError: errors.New("mock error"),
+			seq:            GroupSequence(3),
+			expectError:    true,
 		},
 	}
 
 	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) { // Create mock receive subscribe stream
-			mockStream := &MockQUICStream{}
-			mockStream.On("Read", mock.AnythingOfType("[]uint8")).Return(0, io.EOF)
+		t.Run(name, func(t *testing.T) {
+			// Create mock receive subscribe stream
+			mockStream := &MockQUICStream{
+				ReadFunc: func(p []byte) (int, error) {
+					// Block to keep the stream alive for testing
+					time.Sleep(50 * time.Millisecond)
+					return 0, io.EOF
+				},
+				WriteFunc: func(p []byte) (int, error) {
+					// Simulate a write operation that returns no error
+					return len(p), nil
+				},
+			}
+
+			mockStream.On("Read", mock.AnythingOfType("[]uint8"))
+			mockStream.On("Write", mock.AnythingOfType("[]uint8"))
 			mockStream.On("Close").Return(nil)
 			mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return()
 			mockStream.On("StreamID").Return(quic.StreamID(1))
@@ -142,8 +151,7 @@ func TestTrackSender_Close(t *testing.T) {
 		"successful close": {
 			streamClosed: false,
 			expectError:  false,
-		},
-		"already closed": {
+		}, "already closed": {
 			streamClosed: true,
 			expectError:  false, // Should handle multiple close calls gracefully
 		},
@@ -157,7 +165,14 @@ func TestTrackSender_Close(t *testing.T) {
 					// Block indefinitely to prevent listenUpdates from closing the stream
 					select {}
 				},
+				WriteFunc: func(p []byte) (int, error) {
+					// Simulate a write operation that returns no error
+					return len(p), nil
+				},
 			}
+
+			mockStream.On("Read", mock.AnythingOfType("[]uint8"))
+			mockStream.On("Write", mock.AnythingOfType("[]uint8"))
 			mockStream.On("Close").Return(nil)
 			mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return()
 			mockStream.On("CancelWrite", mock.AnythingOfType("quic.StreamErrorCode")).Return()
@@ -229,14 +244,12 @@ func TestTrackSender_CloseWithError(t *testing.T) {
 		"close with zero error code": {
 			streamClosed: false,
 			reason:       SubscribeErrorCode(0),
-			expectError:  false,
-		}, "already closed": {
+			expectError:  false}, "already closed": {
 			streamClosed: true,
 			reason:       SubscribeErrorCode(2),
 			expectError:  false, // Should handle multiple close calls gracefully
 		},
 	}
-
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			// Create mock receive subscribe stream
@@ -245,7 +258,14 @@ func TestTrackSender_CloseWithError(t *testing.T) {
 					// Block indefinitely to prevent listenUpdates from closing the stream
 					select {}
 				},
+				WriteFunc: func(p []byte) (int, error) {
+					// Simulate a write operation that returns no error
+					return len(p), nil
+				},
 			}
+
+			mockStream.On("Read", mock.AnythingOfType("[]uint8"))
+			mockStream.On("Write", mock.AnythingOfType("[]uint8"))
 			mockStream.On("Close").Return(nil)
 			mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return()
 			mockStream.On("CancelWrite", mock.AnythingOfType("quic.StreamErrorCode")).Return()
@@ -307,7 +327,14 @@ func TestTrackSender_ConcurrentOperations(t *testing.T) {
 			// Block indefinitely to prevent listenUpdates from closing the stream
 			select {}
 		},
+		WriteFunc: func(p []byte) (int, error) {
+			// Simulate a write operation that returns no error
+			return len(p), nil
+		},
 	}
+
+	mockStream.On("Read", mock.AnythingOfType("[]uint8"))
+	mockStream.On("Write", mock.AnythingOfType("[]uint8"))
 	mockStream.On("Close").Return(nil)
 	mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return()
 	mockStream.On("CancelWrite", mock.AnythingOfType("quic.StreamErrorCode")).Return()

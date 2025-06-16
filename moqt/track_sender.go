@@ -15,6 +15,8 @@ func newTrackSender(substr *receiveSubscribeStream, openGroupFunc func(GroupSequ
 
 	go func() {
 		<-substr.subscribeCanceledCh
+		track.mu.Lock()
+		defer track.mu.Unlock()
 		for stream := range track.queue {
 			stream.CloseWithError(SubscribeCanceledErrorCode)
 		}
@@ -54,12 +56,12 @@ func (s *trackSender) OpenGroup(seq GroupSequence) (GroupWriter, error) {
 		return nil, errors.New("group sequence must not be zero")
 	}
 
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if !s.accepted {
 		s.WriteInfo(Info{})
 	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	err, ok := s.subscribeStream.isClosed()
 	if ok {
@@ -72,6 +74,10 @@ func (s *trackSender) OpenGroup(seq GroupSequence) (GroupWriter, error) {
 	group, err := s.openGroupFunc(seq)
 	if err != nil {
 		return nil, err
+	}
+
+	if s.queue == nil {
+		return nil, errors.New("track sender is closed")
 	}
 
 	s.queue[group] = struct{}{}

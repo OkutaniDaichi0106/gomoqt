@@ -406,7 +406,7 @@ func TestReceiveSubscribeStream_CloseWithError(t *testing.T) {
 				config:              config,
 				stream:              mockStream,
 				updatedCh:           make(chan struct{}, 1),
-				subscribeCanceledCh: make(chan *SubscribeError, 1),
+				subscribeCanceledCh: make(chan struct{}, 1),
 			}
 
 			// Mark listenOnce as done to prevent goroutine from starting

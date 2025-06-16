@@ -3,14 +3,19 @@ package main
 import (
 	"context"
 	"log/slog"
+	"os"
+	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt"
 )
 
 func main() {
-	moqt.HandleFunc(context.Background(), "/client.echo", func(pub *moqt.Publisher) {
+	mux := moqt.NewTrackMux()
+	mux.HandleFunc(context.Background(), "/client.echo", func(pub *moqt.Publisher) {
 		seq := moqt.GroupSequenceFirst
 		for {
+			time.Sleep(1 * time.Second)
+
 			gw, err := pub.TrackWriter.OpenGroup(seq)
 			if err != nil {
 				slog.Error("failed to open group", "error", err)
@@ -29,23 +34,34 @@ func main() {
 		}
 	})
 
-	client := moqt.Client{}
+	client := moqt.Client{
+		Logger: slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+			Level: slog.LevelDebug,
+		})),
+	}
 
-	sess, err := client.Dial(context.Background(), "https://localhost:4444/broadcast", nil)
+	sess, err := client.Dial(context.Background(), "https://localhost:4444/echo", mux)
 	if err != nil {
-		slog.Error("failed to dial", "error", err)
+		slog.Error("failed to dial",
+			"error", err,
+		)
 		return
 	}
 
-	annstr, err := sess.OpenAnnounceStream("")
+	annstr, err := sess.OpenAnnounceStream("/")
 	if err != nil {
-		slog.Error("failed to open announce stream", "error", err)
+		slog.Error("failed to open announce stream",
+			"error", err,
+		)
 		return
 	}
+
 	for {
-		ann, err := annstr.ReceiveAnnouncement(context.TODO())
+		ann, err := annstr.ReceiveAnnouncement(context.Background())
 		if err != nil {
-			slog.Error("failed to receive announcements", "error", err)
+			slog.Error("failed to receive announcements",
+				"error", err,
+			)
 			return
 		}
 

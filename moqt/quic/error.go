@@ -37,8 +37,8 @@ func (e *VersionNegotiationError) Error() string        { return "quic: " + e.Er
 func (e *VersionNegotiationError) Is(target error) bool { return target == net.ErrClosed }
 
 type StatelessResetError struct {
-	Token [16]byte
-	Err   error
+	// Token [16]byte
+	Err error
 }
 
 func (e *StatelessResetError) Error() string        { return "quic: " + e.Err.Error() }

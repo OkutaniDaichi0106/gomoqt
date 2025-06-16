@@ -49,8 +49,7 @@ func WrapError(err error) error {
 		}
 	case *quicgo_quicgo.StatelessResetError:
 		return &quic.StatelessResetError{
-			Token: e.Token,
-			Err:   e,
+			Err: e,
 		}
 
 	case *quicgo_quicgo.IdleTimeoutError:

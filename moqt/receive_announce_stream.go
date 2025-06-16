@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
@@ -26,8 +27,8 @@ func newReceiveAnnounceStream(sessCtx context.Context, stream quic.Stream, prefi
 		prefix:        prefix,
 		announcements: make(map[string]*Announcement),
 		pendings:      make([]*Announcement, 0),
+		notifyCh:      make(chan struct{}, 1),
 	}
-
 	go func() {
 		var am message.AnnounceMessage
 		var suffix string
@@ -40,20 +41,32 @@ func newReceiveAnnounceStream(sessCtx context.Context, stream quic.Stream, prefi
 
 			_, err = am.Decode(stream)
 			if err != nil {
+				annstr.mu.Lock()
+				defer annstr.mu.Unlock()
+
+				if annstr.closed {
+					return
+				}
+
+				annstr.closed = true
+
 				if err == io.EOF {
+					annstr.closeErr = nil
 					annstr.cancel(nil)
 					return
 				}
 
 				var strErr *quic.StreamError
 				if errors.As(err, &strErr) {
-					err = &AnnounceError{
+					annErr := &AnnounceError{
 						StreamError: strErr,
 					}
-					annstr.cancel(err)
+					annstr.closeErr = annErr
+					annstr.cancel(annErr)
 					return
 				}
 
+				annstr.closeErr = err
 				annstr.cancel(err)
 				return
 			}
@@ -69,6 +82,13 @@ func newReceiveAnnounceStream(sessCtx context.Context, stream quic.Stream, prefi
 					annstr.mu.Lock()
 					annstr.announcements[suffix] = ann
 					annstr.pendings = append(annstr.pendings, ann)
+					// Notify that new announcement is available
+					if !annstr.closed {
+						select {
+						case annstr.notifyCh <- struct{}{}:
+						default:
+						}
+					}
 					annstr.mu.Unlock()
 				} else {
 					// Close the stream with an error
@@ -109,6 +129,7 @@ type receiveAnnounceStream struct {
 	announcements map[string]*Announcement
 
 	pendings []*Announcement
+	notifyCh chan struct{} // notify when new announcement is available
 	mu       sync.Mutex
 }
 
@@ -136,7 +157,14 @@ func (ras *receiveAnnounceStream) ReceiveAnnouncement(ctx context.Context) (*Ann
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-ras.ctx.Done():
+			reason := context.Cause(ras.ctx)
+			slog.Error("receive announce stream context done",
+				"reason", reason,
+			)
 			return nil, ras.ctx.Err()
+		case <-ras.notifyCh:
+			// New announcement available, loop to check pendings
+			continue
 		}
 	}
 }
@@ -149,7 +177,16 @@ func (ras *receiveAnnounceStream) Close() error {
 		return ras.closeErr
 	}
 
+	ras.closed = true
 	ras.cancel(nil)
+
+	// Close the notification channel safely
+	func() {
+		defer func() {
+			recover() // Ignore panic if channel is already closed
+		}()
+		close(ras.notifyCh)
+	}()
 
 	err := ras.stream.Close()
 	if err != nil {
@@ -167,14 +204,24 @@ func (ras *receiveAnnounceStream) CloseWithError(code AnnounceErrorCode) error {
 		return ras.closeErr
 	}
 
+	ras.closed = true
+
 	err := &AnnounceError{
 		StreamError: &quic.StreamError{
 			StreamID:  ras.stream.StreamID(),
 			ErrorCode: quic.StreamErrorCode(code),
 		},
 	}
-
+	ras.closeErr = err
 	ras.cancel(err)
+
+	// Close the notification channel safely
+	func() {
+		defer func() {
+			recover() // Ignore panic if channel is already closed
+		}()
+		close(ras.notifyCh)
+	}()
 
 	strErrCode := quic.StreamErrorCode(code)
 

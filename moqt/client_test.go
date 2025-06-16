@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"net/url"
 	"testing"
 	"time"
@@ -96,14 +97,14 @@ func TestClient_ShutdownContextCancel(t *testing.T) {
 		}, OpenStreamFunc: func() (quic.Stream, error) {
 			<-waitCtx.Done() // Simulate waiting for connection context
 			return nil, nil  // Mock OpenStream to return nil
-		},
-		OpenUniStreamFunc: func() (quic.SendStream, error) {
+		}, OpenUniStreamFunc: func() (quic.SendStream, error) {
 			<-waitCtx.Done() // Simulate waiting for connection context
 			return nil, nil  // Mock OpenUniStream to return nil
 		},
 	}
 	mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
 	mockConn.On("Context").Return(context.Background())
+	mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080}).Maybe()
 
 	mockStream := &MockQUICStream{
 		ReadFunc: func(p []byte) (n int, err error) {
@@ -236,6 +237,7 @@ func TestClient_openSession(t *testing.T) {
 			mockConn: func() *MockQUICConnection {
 				conn := &MockQUICConnection{}
 				conn.On("OpenStream").Return(nil, errors.New("openstream fail"))
+				conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080}).Maybe()
 				return conn
 			}, wantErr: true,
 		},
@@ -246,6 +248,7 @@ func TestClient_openSession(t *testing.T) {
 				stream.On("StreamID").Return(quic.StreamID(1))
 				stream.On("Write", mock.Anything).Return(0, errors.New("stm encode fail"))
 				conn.On("OpenStream").Return(stream, nil)
+				conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080}).Maybe()
 				return conn
 			},
 			extension: func() *Parameters { return &Parameters{} },
@@ -259,6 +262,7 @@ func TestClient_openSession(t *testing.T) {
 				stream.On("Write", mock.Anything).Return(1, nil).Once()
 				stream.On("Write", mock.Anything).Return(0, errors.New("scm encode fail")).Once()
 				conn.On("OpenStream").Return(stream, nil)
+				conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080}).Maybe()
 				return conn
 			},
 			extension: func() *Parameters { return &Parameters{} },
@@ -273,11 +277,13 @@ func TestClient_openSession(t *testing.T) {
 				stream.On("Write", mock.Anything).Return(1, nil)
 				stream.On("Read", mock.Anything).Return(0, errors.New("ssm decode fail"))
 				conn.On("OpenStream").Return(stream, nil)
+				conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080}).Maybe()
 				return conn
 			},
 			extension: func() *Parameters { return &Parameters{} },
 			wantErr:   true,
-		}, "path param error": {
+		},
+		"path param error": {
 			mockConn: func() *MockQUICConnection {
 				conn := &MockQUICConnection{}
 				stream := &MockQUICStream{}
@@ -287,17 +293,19 @@ func TestClient_openSession(t *testing.T) {
 				stream.On("Read", mock.Anything).Return(1, nil)
 				stream.On("CancelRead", mock.Anything).Return()
 				conn.On("OpenStream").Return(stream, nil)
+				conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080}).Maybe()
 				return conn
 			},
 			extension: func() *Parameters { return &Parameters{} },
 			wantErr:   true,
 		},
 	}
+
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			c := &Client{}
 			conn := tt.mockConn()
-			_, err := c.openSession(conn, "/path", tt.extension, nil)
+			_, err := c.openSession(conn, "/path", tt.extension, nil, slog.Default())
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {

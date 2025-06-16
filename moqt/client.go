@@ -2,7 +2,9 @@ package moqt
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/hex"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -59,167 +61,200 @@ func (c *Client) init() {
 		c.doneChan = make(chan struct{}, 1)
 
 		if c.Logger != nil {
-			c.Logger.Debug("client initialized")
+			c.Logger.Info("client initialized")
 		}
 	})
 }
 
 func (c *Client) timeout() time.Duration {
+	timeout := 5 * time.Second // default
 	if c.Config != nil && c.Config.SetupTimeout != 0 {
-		return c.Config.SetupTimeout
+		timeout = c.Config.SetupTimeout
 	}
-	return 5 * time.Second // TODO: Consider appropriate timeout
+
+	if c.Logger != nil {
+		c.Logger.Debug("configured setup timeout",
+			"timeout", timeout,
+		)
+	}
+
+	return timeout
 }
 
 func (c *Client) Dial(ctx context.Context, urlStr string, mux *TrackMux) (*Session, error) {
+	sessionID := generateSessionID()
+	var logger *slog.Logger
+	if c.Logger == nil {
+		logger = slog.New(slog.DiscardHandler)
+	} else {
+		logger = c.Logger.With("session_id", sessionID, "url", urlStr)
+	}
+
+	logger.Info("dial started")
+
 	if c.shuttingDown() {
+		logger.Warn("dial rejected: client shutting down")
 		return nil, ErrClientClosed
 	}
 	c.init()
 
-	if c.Logger != nil {
-		c.Logger.Debug("dialing server", "url", urlStr)
-	}
-
 	parsedURL, err := url.Parse(urlStr)
 	if err != nil {
-		if c.Logger != nil {
-			c.Logger.Error("failed to parse URL", "error", err.Error(), "url", urlStr)
-		}
+		logger.Error("URL parsing failed", "error", err)
 		return nil, err
 	}
 
 	// Dial based on the scheme
 	switch parsedURL.Scheme {
 	case "https":
+		logger.Debug("using WebTransport protocol",
+			"scheme", "https",
+			"host", parsedURL.Hostname(),
+			"port", parsedURL.Port(),
+			"path", parsedURL.Path,
+		)
 		return c.DialWebTransport(ctx, parsedURL.Hostname()+":"+parsedURL.Port(), parsedURL.Path, mux)
 	case "moqt":
+		logger.Debug("using QUIC protocol",
+			"scheme", "moqt",
+			"host", parsedURL.Hostname(),
+			"port", parsedURL.Port(),
+			"path", parsedURL.Path,
+		)
 		return c.DialQUIC(ctx, parsedURL.Hostname()+":"+parsedURL.Port(), parsedURL.Path, mux)
 	default:
-		if c.Logger != nil {
-			c.Logger.Error("unsupported URL scheme",
-				"scheme", parsedURL.Scheme,
-				"url", urlStr,
-			)
-		}
+		logger.Error("unsupported URL scheme", "scheme", parsedURL.Scheme)
 		return nil, ErrInvalidScheme
 	}
 }
 
+// generateSessionID creates a unique session identifier for logging
+func generateSessionID() string {
+	bytes := make([]byte, 4)
+	rand.Read(bytes)
+	return hex.EncodeToString(bytes)
+}
+
 func (c *Client) DialWebTransport(ctx context.Context, host, path string, mux *TrackMux) (*Session, error) {
+	sessionID := generateSessionID()
+	endpoint := "https://" + host + path
+
+	var logger *slog.Logger
+	if c.Logger == nil {
+		// Return a logger that discards all output
+		logger = slog.New(slog.DiscardHandler)
+	} else {
+		// Create logger with session context
+		logger = c.Logger.With("session_id", sessionID, "endpoint", endpoint)
+	}
+
+	logger.Info("initiating WebTransport connection")
+
 	if c.shuttingDown() {
+		logger.Warn("WebTransport dial rejected: client shutting down")
 		return nil, ErrClientClosed
 	}
 	c.init()
 
-	var logger *slog.Logger
-	if c.Logger != nil {
-		logger = c.Logger.With(
-			"endpoint", "https://"+host+path,
-		)
-		logger.Info("dialing webtransport")
-	}
-
-	dialCtx, cancelDial := context.WithTimeout(ctx, c.timeout())
+	dialTimeout := c.timeout()
+	dialCtx, cancelDial := context.WithTimeout(ctx, dialTimeout)
 	defer cancelDial()
+
+	logger.Debug("starting WebTransport dial", "timeout", dialTimeout)
+
 	var conn quic.Connection
 	var err error
+
 	if c.DialWebTransportFunc != nil {
+		logger.Debug("using custom WebTransport dial function")
 		_, conn, err = c.DialWebTransportFunc(dialCtx, host+path, http.Header{})
 	} else {
-		_, conn, err = webtransportgo.Dial(dialCtx, "https://"+host+path, http.Header{})
+		logger.Debug("using default WebTransport dial")
+		_, conn, err = webtransportgo.Dial(dialCtx, endpoint, http.Header{})
 	}
+
 	if err != nil {
-		if logger != nil {
-			logger.Error("failed to dial webtransport",
-				"error", err.Error(),
-			)
-		}
+		logger.Error("WebTransport dial failed", "error", err)
 		return nil, err
 	}
 
+	logger.Info("WebTransport connection established")
+
 	extensions := func() *Parameters {
 		if c.Config == nil || c.Config.ClientSetupExtensions == nil {
-			if logger != nil {
-				logger.Debug("no setup extensions provided, using default parameters")
-			}
+			logger.Debug("no setup extensions provided, using default parameters")
 			return NewParameters()
 		}
 
 		params := c.Config.ClientSetupExtensions()
 		if params == nil {
-			if logger != nil {
-				logger.Debug("client setup extensions returned nil, using default parameters")
-			}
+			logger.Debug("client setup extensions returned nil, using default parameters")
 			params = NewParameters()
 		}
+
+		logger.Debug("setup extensions configured")
 		return params
 	}
 
-	sess, err := c.openSession(conn, path, extensions, mux)
+	sess, err := c.openSession(conn, path, extensions, mux, logger)
 	if err != nil {
-		if logger != nil {
-			logger.Error("failed to open session stream",
-				"error", err.Error(),
-			)
-		}
+		logger.Error("session establishment failed", "error", err)
 		return nil, err
 	}
+
+	logger.Info("moq session over webTransport established successfully")
 
 	return sess, nil
 }
 
 // TODO: Expose this method if QUIC is supported
 func (c *Client) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux) (*Session, error) {
+	sessionID := generateSessionID()
+
+	var logger *slog.Logger
+	if c.Logger == nil {
+		logger = slog.New(slog.DiscardHandler)
+	} else {
+		logger = c.Logger.With("session_id", sessionID,
+			"address", addr,
+			"path", path)
+	}
+	logger.Info("initiating QUIC MOQ session")
+
 	if c.shuttingDown() {
-		if c.Logger != nil {
-			c.Logger.Error("client is shutting down")
-		}
+		logger.Warn("QUIC dial rejected: client shutting down")
 		return nil, ErrClientClosed
 	}
 
 	c.init()
 
-	var logger *slog.Logger
-	if c.Logger != nil {
-		logger = c.Logger.With(
-			"scheme", "moqt",
-			"host", addr,
-			"path", path,
-		)
+	logger.Debug("starting QUIC connection establishment")
 
-		logger.Debug("dialing MOQ session")
-	}
-
-	// Dial QUIC connection
-	if logger != nil {
-		logger.Debug("dialing QUIC connection")
-	}
-
-	dialCtx, cancelDial := context.WithTimeout(ctx, c.timeout())
+	dialTimeout := c.timeout()
+	dialCtx, cancelDial := context.WithTimeout(ctx, dialTimeout)
 	defer cancelDial()
+
 	var conn quic.Connection
 	var err error
+
 	if c.DialQUICConn != nil {
+		logger.Debug("using custom QUIC dial function")
 		conn, err = c.DialQUICConn(dialCtx, addr, c.TLSConfig, c.QUICConfig)
 	} else {
+		logger.Debug("using default QUIC dial")
 		conn, err = quicgo.Dial(dialCtx, addr, c.TLSConfig, c.QUICConfig)
 	}
+
 	if err != nil {
-		if logger != nil {
-			logger.Error("failed to dial QUIC connection",
-				"error", err,
-			)
-		}
+		logger.Error("QUIC connection failed", "error", err)
 		return nil, err
 	}
 
-	//
+	logger.Info("QUIC connection established")
+
 	extensions := func() *Parameters {
 		if c.Config == nil || c.Config.ClientSetupExtensions == nil {
-			if logger != nil {
-				logger.Debug("no setup extensions provided, using default parameters")
-			}
+			logger.Debug("no setup extensions provided, using default parameters")
 			params := NewParameters()
 			params.SetString(param_type_path, path)
 			return params
@@ -227,40 +262,51 @@ func (c *Client) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux)
 
 		params := c.Config.ClientSetupExtensions()
 		if params == nil {
-			if logger != nil {
-				logger.Debug("client setup extensions returned nil, using default parameters")
-			}
+			logger.Debug("client setup extensions returned nil, using default parameters")
 			params = NewParameters()
 		}
 		params.SetString(param_type_path, path)
+
+		logger.Debug("setup extensions configured with path parameter")
+
 		return params
 	}
 
-	return c.openSession(conn, path, extensions, mux)
-}
-
-func (c *Client) openSession(conn quic.Connection, path string, extensions func() *Parameters, mux *TrackMux) (*Session, error) {
-	//
-	logger := c.Logger
-
-	// Close the session stream channel
-
-	stream, err := conn.OpenStream()
+	sess, err := c.openSession(conn, path, extensions, mux, logger)
 	if err != nil {
+		logger.Error("QUIC session establishment failed", "error", err)
 		return nil, err
 	}
 
+	logger.Info("QUIC MOQ session established successfully")
+	return sess, nil
+}
+
+func (c *Client) openSession(conn quic.Connection, path string, extensions func() *Parameters, mux *TrackMux, logger *slog.Logger) (*Session, error) {
+	logger.Debug("opening session stream")
+
+	stream, err := conn.OpenStream()
+	if err != nil {
+		logger.Error("failed to open session stream", "error", err)
+		return nil, err
+	}
+
+	logger.Debug("session stream opened", "stream_id", stream.StreamID())
+
+	// Send STREAM_TYPE message
 	stm := message.StreamTypeMessage{
 		StreamType: stream_type_session,
 	}
 	_, err = stm.Encode(stream)
 	if err != nil {
-		if logger != nil {
-			logger.Error("failed to send a STREAM_TYPE message", "error", err)
-		}
-
+		logger.Error("failed to send STREAM_TYPE message",
+			"error", err,
+			"stream_id", stream.StreamID(),
+		)
 		return nil, err
 	}
+
+	logger.Debug("STREAM_TYPE message sent successfully")
 
 	clientParams := extensions()
 
@@ -271,36 +317,60 @@ func (c *Client) openSession(conn quic.Connection, path string, extensions func(
 	}
 	_, err = scm.Encode(stream)
 	if err != nil {
-		if logger != nil {
-			logger.Error("failed to send a SESSION_CLIENT message", "error", err)
-		}
+		logger.Error("failed to send SESSION_CLIENT message",
+			"error", err,
+			"supported_versions", internal.DefaultClientVersions,
+		)
 		return nil, err
 	}
 
-	// Receive a set-up response
-	var ssm message.SessionServerMessage
-	_, err = ssm.Decode(stream)
-	if err != nil {
-		if logger != nil {
-			logger.Error("failed to receive a SESSION_SERVER message", "error", err)
-		}
+	logger.Debug("SESSION_CLIENT message sent successfully",
+		"supported_versions", internal.DefaultClientVersions,
+	)
 
+	// Receive a set-up response
+	logger.Debug("waiting for SESSION_SERVER response")
+
+	var ssm message.SessionServerMessage
+	receiveStart := time.Now()
+	_, err = ssm.Decode(stream)
+	receiveDuration := time.Since(receiveStart)
+
+	if err != nil {
+		logger.Error("failed to receive SESSION_SERVER message",
+			"error", err,
+			"receive_duration", receiveDuration,
+		)
 		return nil, err
 	}
 
 	version := ssm.SelectedVersion
 	serverParams := &Parameters{ssm.Parameters}
 
-	// Set the selected version and parameters
+	logger.Info("SESSION_SERVER message received successfully",
+		"selected_version", version,
+		"receive_duration", receiveDuration,
+	)
 
+	// Create session
 	sess := newSession(conn, version, path, clientParams, serverParams,
 		stream, mux, logger)
 
 	c.addSession(sess)
+
+	logger.Info("session added to client session pool",
+		"active_sessions", len(c.activeSess),
+	)
+
 	go func() {
 		<-sess.Context().Done()
 		c.removeSession(sess)
+		logger.Debug("session removed from client session pool",
+			"active_sessions", len(c.activeSess),
+		)
 	}()
+
+	logger.Info("session establishment completed successfully")
 
 	return sess, nil
 }
@@ -310,19 +380,45 @@ func (s *Client) addSession(sess *Session) {
 	defer s.sessMu.Unlock()
 
 	if sess == nil {
+		if s.Logger != nil {
+			s.Logger.Warn("attempted to add nil session")
+		}
 		return
 	}
+
 	s.activeSess[sess] = struct{}{}
+
+	if s.Logger != nil {
+		s.Logger.Debug("session added successfully",
+			"total_active_sessions", len(s.activeSess),
+		)
+	}
 }
 
 func (s *Client) removeSession(sess *Session) {
 	s.sessMu.Lock()
 	defer s.sessMu.Unlock()
 
+	if sess == nil {
+		if s.Logger != nil {
+			s.Logger.Warn("attempted to remove nil session")
+		}
+		return
+	}
+
 	delete(s.activeSess, sess)
+
+	if s.Logger != nil {
+		s.Logger.Debug("session removed successfully",
+			"remaining_active_sessions", len(s.activeSess),
+		)
+	}
 
 	// Send completion signal if connections reach zero and server is closed
 	if len(s.activeSess) == 0 && s.shuttingDown() {
+		if s.Logger != nil {
+			s.Logger.Info("all sessions closed, sending completion signal")
+		}
 		select {
 		case s.doneChan <- struct{}{}:
 		default:
@@ -336,15 +432,39 @@ func (s *Client) shuttingDown() bool {
 }
 
 func (c *Client) Close() error {
+	start := time.Now()
 	c.inShutdown.Store(true)
 
+	if c.Logger != nil {
+		c.Logger.Info("initiating client shutdown",
+			"active_sessions", len(c.activeSess),
+		)
+	}
+
+	sessionCount := 0
 	for sess := range c.activeSess {
 		sess.Terminate(NoError, NoError.String())
+		sessionCount++
+	}
+
+	if c.Logger != nil {
+		c.Logger.Debug("terminated all active sessions",
+			"terminated_sessions", sessionCount,
+		)
 	}
 
 	// Wait for active connections to complete if any
 	if len(c.activeSess) > 0 {
+		if c.Logger != nil {
+			c.Logger.Debug("waiting for sessions to complete cleanup")
+		}
 		<-c.doneChan
+	}
+
+	if c.Logger != nil {
+		c.Logger.Info("client shutdown completed",
+			"duration", time.Since(start),
+		)
 	}
 
 	return nil
@@ -353,30 +473,54 @@ func (c *Client) Close() error {
 func (c *Client) Shutdown(ctx context.Context) error {
 	c.init() // Ensure initialization
 	c.inShutdown.Store(true)
+	logger := c.Logger
+	if logger != nil {
+		logger.Info("shutting down client gracefully",
+			"active_sessions", len(c.activeSess),
+		)
+	}
 
 	// Go away all active sessions
 	for sess := range c.activeSess {
 		c.goAway(sess)
 	}
 
+	if logger != nil {
+		logger.Debug("sent go-away to all active sessions")
+	}
+
 	// For active connections, wait for completion or context cancellation
 	if len(c.activeSess) > 0 {
+		if logger != nil {
+			logger.Debug("waiting for graceful session termination")
+		}
+
 		select {
 		case <-c.doneChan:
+			if logger != nil {
+				logger.Info("all sessions terminated gracefully")
+			}
 		case <-ctx.Done():
 			for sess := range c.activeSess {
 				go sess.Terminate(GoAwayTimeoutErrorCode, GoAwayTimeoutErrorCode.String())
 				c.removeSession(sess)
 			}
+			if logger != nil {
+				logger.Warn("graceful shutdown timeout, forcing session termination",
+					"context_error", ctx.Err(),
+				)
+			}
 			return ctx.Err()
 		}
+	}
+
+	if logger != nil {
+		logger.Info("graceful client shutdown completed")
 	}
 
 	return nil
 }
 
 func (c *Client) goAway(sess *Session) {
-	if sess == nil {
-		return
-	}
+	// TODO: Implement actual go-away logic
 }

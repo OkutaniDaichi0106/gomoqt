@@ -324,9 +324,7 @@ func TestServer_AcceptSession(t *testing.T) {
 				Parameters:        message.Parameters{},
 			}
 			_, err = scm.Encode(&buf)
-			require.NoError(t, err, "failed to encode SESSION_CLIENT message")
-
-			// Create a mock connection with a session stream
+			require.NoError(t, err, "failed to encode SESSION_CLIENT message") // Create a mock connection with a session stream
 			mockStream := &MockQUICStream{}
 			mockStream.ReadFunc = func(p []byte) (int, error) {
 				if buf.Len() == 0 {
@@ -335,8 +333,12 @@ func TestServer_AcceptSession(t *testing.T) {
 				return buf.Read(p)
 			}
 			mockStream.On("Write", mock.Anything).Return(0, nil)
+			mockStream.On("StreamID").Return(quic.StreamID(1))
 
 			mockConn := &MockQUICConnection{}
+			// Mock RemoteAddr for logging
+			mockAddr := &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 12345}
+			mockConn.On("RemoteAddr").Return(mockAddr)
 			// First call returns the session stream, subsequent calls return EOF to stop goroutines
 			mockConn.On("AcceptStream", mock.Anything).Return(mockStream, nil).Once()
 			mockConn.On("AcceptStream", mock.Anything).Return(nil, io.EOF) // For handleBiStreams goroutine
@@ -388,6 +390,9 @@ func TestServer_AcceptSession_AcceptStreamError(t *testing.T) {
 			}
 
 			mockConn := &MockQUICConnection{}
+			// Mock RemoteAddr for logging
+			mockAddr := &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 12345}
+			mockConn.On("RemoteAddr").Return(mockAddr)
 			mockConn.On("AcceptStream", mock.Anything).Return(nil, tt.expectErr)
 
 			ctx := context.Background()
@@ -561,6 +566,7 @@ func TestServer_SessionManagement(t *testing.T) {
 			mockConn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)          // For handleBiStreams
 			mockConn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)       // For handleUniStreams
 			mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil) // For session.Terminate
+			mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080}).Maybe()
 
 			session := newSession(mockConn, internal.DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, nil)
 

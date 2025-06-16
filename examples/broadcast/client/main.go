@@ -10,39 +10,61 @@ import (
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	client := moqt.Client{}
+	client := moqt.Client{
+		Logger: slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+			Level: slog.LevelDebug,
+		})),
+	}
 
-	sess, err := client.Dial(context.Background(), "https://localhost:4444/broadcast", nil)
+	sess, err := client.Dial(context.Background(), "https://localhost:4469/broadcast", nil)
 	if err != nil {
 		slog.Error("failed to dial", "error", err)
 		return
 	}
 
-	info, stream, err := sess.OpenTrackStream("/chat", nil)
+	//
+	annRecv, err := sess.OpenAnnounceStream("/")
 	if err != nil {
-		slog.Error("failed to open track stream", "error", err)
+		slog.Error("failed to open announce stream", "error", err)
 		return
 	}
-
-	slog.Info("track stream opened", slog.String("info", info.String()))
+	defer annRecv.Close()
 
 	for {
-		r, err := stream.AcceptGroup(context.Background())
+		ann, err := annRecv.ReceiveAnnouncement(context.Background())
 		if err != nil {
-			slog.Error("failed to accept group", "error", err)
+			slog.Error("failed to receive announcement", "error", err)
 			break
 		}
 
-		slog.Info("group accepted", slog.String("group sequence", r.GroupSequence().String()))
+		slog.Info("received announcement", "announcement", ann)
 
-		for {
-			frame, err := r.ReadFrame()
+		go func(ann *moqt.Announcement) {
+			sub, err := sess.OpenTrackStream(ann.BroadcastPath(), "index", nil)
 			if err != nil {
-				slog.Error("failed to accept frame", "error", err)
-				break
+				slog.Error("failed to open track stream", "error", err)
+				return
+			}
+			defer sub.TrackReader.Close()
+
+			for {
+				gr, err := sub.TrackReader.AcceptGroup(context.Background())
+				if err != nil {
+					slog.Error("failed to accept group", "error", err)
+					return
+				}
+
+				for {
+					f, err := gr.ReadFrame()
+					if err != nil {
+						slog.Error("failed to read frame", "error", err)
+						break
+					}
+
+					slog.Info("received frame", "frame", string(f.CopyBytes()))
+				}
 			}
 
-			slog.Info("frame accepted", slog.String("message", string(frame.CopyBytes())))
-		}
+		}(ann)
 	}
 }

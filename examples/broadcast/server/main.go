@@ -1,35 +1,68 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt"
-	moqt_quic "github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
-	"github.com/quic-go/quic-go"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})))
-
 	server := moqt.Server{
-		Addr: "localhost:4444", TLSConfig: &tls.Config{
+		Addr: "localhost:4469", TLSConfig: &tls.Config{
 			NextProtos:         []string{"h3", "moq-00"},
 			Certificates:       []tls.Certificate{generateCert()},
 			InsecureSkipVerify: true, // TODO: Not recommended for production
 		},
-		QUICConfig: (*moqt_quic.Config)(&quic.Config{
+		QUICConfig: (&quic.Config{
 			Allow0RTT:       true,
 			EnableDatagrams: true,
 		}),
+		Logger: slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+			Level: slog.LevelDebug,
+		})),
 	}
+
 	// Serve moq over webtransport
 	http.HandleFunc("/broadcast", func(w http.ResponseWriter, r *http.Request) {
-		_, err := server.AcceptWebTransport(w, r, nil)
+		mux := moqt.NewTrackMux()
+
+		// Register the broadcast handler with the local mux
+		mux.HandleFunc(context.Background(), "/broadcast/main", func(pub *moqt.Publisher) {
+			seq := moqt.GroupSequenceFirst
+			for {
+				time.Sleep(100 * time.Millisecond)
+
+				gw, err := pub.TrackWriter.OpenGroup(seq)
+				if err != nil {
+					slog.Error("failed to open group", "error", err)
+					return
+				}
+
+				err = gw.WriteFrame(moqt.NewFrame([]byte("FRAME " + seq.String())))
+				if err != nil {
+					gw.CloseWithError(moqt.InternalGroupErrorCode) // TODO: Handle error properly
+					slog.Error("failed to write frame", "error", err)
+					return
+				}
+
+				gw.Close()
+
+				seq = seq.Next()
+			}
+		})
+
+		_, err := server.AcceptWebTransport(w, r, mux)
 		if err != nil {
 			slog.Error("failed to serve web transport", "error", err)
+			return
 		}
 	})
 
@@ -40,10 +73,42 @@ func main() {
 }
 
 func generateCert() tls.Certificate {
+	// Find project root by looking for go.mod file
+	projectRoot, err := findProjectRoot()
+	if err != nil {
+		panic(err)
+	}
+
 	// Load certificates from the examples/cert directory (project root)
-	cert, err := tls.LoadX509KeyPair("examples/cert/localhost.pem", "examples/cert/localhost-key.pem")
+	certPath := filepath.Join(projectRoot, "examples", "cert", "localhost.pem")
+	keyPath := filepath.Join(projectRoot, "examples", "cert", "localhost-key.pem")
+
+	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
 	if err != nil {
 		panic(err)
 	}
 	return cert
+}
+
+// findProjectRoot searches for the project root by looking for go.mod file
+func findProjectRoot() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir, nil
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			// Reached filesystem root
+			break
+		}
+		dir = parent
+	}
+
+	return "", os.ErrNotExist
 }

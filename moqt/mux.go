@@ -57,8 +57,7 @@ func (mux *TrackMux) HandleFunc(ctx context.Context, path BroadcastPath, f func(
 // The handler will remain active until the context is canceled.
 func (mux *TrackMux) Handle(ctx context.Context, path BroadcastPath, handler TrackHandler) {
 	if ctx == nil {
-		slog.Error("mux: nil context")
-		return
+		panic("mux: nil context")
 	}
 
 	mux.Announce(NewAnnouncement(ctx, path), handler)
@@ -113,6 +112,7 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 	for writer := range current.writers {
 		err := writer.SendAnnouncement(announcement)
 		if err != nil {
+			writer.CloseWithError(InternalAnnounceErrorCode)
 			failedWriters = append(failedWriters, writer)
 			slog.Error("mux: failed to send announcement", "error", err)
 			continue
@@ -141,15 +141,7 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 		current.mu.Lock()
 		delete(current.announcements, path)
 		current.mu.Unlock()
-
-		slog.Debug("removed track handler",
-			"track_path", path,
-		)
 	}()
-
-	slog.Debug("registered track handler",
-		"track_path", path,
-	)
 }
 
 // Handler returns the handler for the specified track path.
@@ -207,8 +199,6 @@ func (mux *TrackMux) ServeAnnouncements(w AnnouncementWriter, prefix string) {
 
 	segments := strings.Split(prefix, "/")
 
-	slog.Debug("mux: serving announcements for prefix", "prefix", prefix)
-
 	// Register the handler on the routing tree
 	mux.mu.Lock()
 	current := &mux.announcementTree
@@ -228,13 +218,11 @@ func (mux *TrackMux) ServeAnnouncements(w AnnouncementWriter, prefix string) {
 	mux.mu.Unlock()
 
 	current.mu.Lock()
-	slog.Debug("mux: registering announcement writer", "writer", w)
 	current.writers[w] = struct{}{}
 	current.mu.Unlock()
 
 	var announce func(node *announcingNode)
 	announce = func(node *announcingNode) {
-		slog.Debug("mux: announcing to node", "node", node)
 		node.mu.RLock()
 		defer node.mu.RUnlock()
 

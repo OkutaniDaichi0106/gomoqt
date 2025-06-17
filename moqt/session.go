@@ -434,7 +434,7 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 		var apm message.AnnouncePleaseMessage
 		_, err := apm.Decode(stream)
 		if err != nil {
-			streamLogger.Error("failed to decode announce please message",
+			streamLogger.Error("failed to decode ANNOUNCE_PLEASE message",
 				"error", err,
 			)
 			sess.Terminate(ProtocolViolationErrorCode, err.Error())
@@ -452,10 +452,10 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 		var sm message.SubscribeMessage
 		_, err := sm.Decode(stream)
 		if err != nil {
-			streamLogger.Error("failed to decode subscribe message",
+			streamLogger.Error("failed to decode SUBSCRIBE message",
 				"error", err,
 			)
-			sess.Terminate(ProtocolViolationErrorCode, err.Error())
+			sess.Terminate(InternalSessionErrorCode, err.Error())
 			return
 		}
 
@@ -486,33 +486,11 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 			return
 		}
 
-		// som := message.SubscribeOkMessage{
-		// 	GroupOrder: message.GroupOrder(node.info.GroupOrder),
-		// }
-		// _, err = som.Encode(stream)
-		// if err != nil {
-		// 	var strErr *quic.StreamError
-		// 	if errors.As(err, &strErr) && strErr.Remote {
-		// 		stream.CancelRead(strErr.ErrorCode)
-		// 		subLogger.Error("failed to encode SUBSCRIBE_OK message",
-		// 			"error", strErr,
-		// 		)
-		// 		return
-		// 	}
-
-		// 	code := quic.StreamErrorCode(InternalSubscribeErrorCode)
-		// 	stream.CancelWrite(code)
-		// 	stream.CancelRead(code)
-		// 	subLogger.Error("failed to encode SUBSCRIBE_OK message",
-		// 		"error", err,
-		// 	)
-		// 	return
-		// }
 		substr := newReceiveSubscribeStream(id, stream, config)
 
-		subLogger.Debug("accepted subscribe stream")
+		subLogger.Debug("accepted a subscribe stream")
 
-		openStreamFunc := func(seq GroupSequence) (*sendGroupStream, error) {
+		openGroupStreamFunc := func(seq GroupSequence) (*sendGroupStream, error) {
 			// Create a group-specific logger
 			groupLogger := subLogger.With("group_sequence", seq)
 
@@ -520,15 +498,16 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 			if err != nil {
 				var appErr *quic.ApplicationError
 				if errors.As(err, &appErr) {
-					groupLogger.Error("failed to open group stream",
-						"error", appErr,
-					)
-					return nil, &SessionError{
+					sessErr := &SessionError{
 						ApplicationError: appErr,
 					}
+					groupLogger.Error("failed to open a group stream",
+						"error", sessErr,
+					)
+					return nil, sessErr
 				}
 
-				groupLogger.Error("failed to open group stream",
+				groupLogger.Error("failed to open a group stream",
 					"error", err,
 				)
 				return nil, err
@@ -536,7 +515,7 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 
 			// Add stream_id to the logger context
 			streamLogger := groupLogger.With("stream_id", stream.StreamID())
-			streamLogger.Debug("opened group stream")
+			streamLogger.Debug("opened a group stream")
 
 			stm := message.StreamTypeMessage{
 				StreamType: stream_type_group,
@@ -595,7 +574,7 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 			return newSendGroupStream(stream, seq), nil
 		}
 
-		trackSender := newTrackSender(substr, openStreamFunc)
+		trackSender := newTrackSender(substr, openGroupStreamFunc)
 		sess.sendGroupMapLocker.Lock()
 		sess.trackSenders[id] = trackSender
 		sess.sendGroupMapLocker.Unlock()

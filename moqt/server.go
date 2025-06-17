@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -202,57 +201,66 @@ func (s *Server) AcceptQUIC(ctx context.Context, mux *TrackMux) (*Session, error
 	if s.shuttingDown() {
 		return nil, ErrServerClosed
 	}
+
 	s.init()
+
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case conn := <-s.nativeQUICCh:
-		sessionID := generateSessionID()
-
-		var logger *slog.Logger
-		if s.Logger == nil {
-			logger = slog.New(slog.NewTextHandler(io.Discard, nil))
-		} else {
-			logger = s.Logger.With(
-				"session_id", sessionID,
-				"remote_address", conn.RemoteAddr().String(),
-				"protocol", "native_quic",
-			)
+		if s.shuttingDown() {
+			return nil, ErrServerClosed
 		}
 
-		logger.Debug("accepting native QUIC connection")
+		var connLogger *slog.Logger
+		if s.Logger != nil {
+			connLogger = s.Logger.With(
+				"remote_address", conn.RemoteAddr().String(),
+				"alpn", conn.ConnectionState().TLS.NegotiatedProtocol,
+				"quic_version", conn.ConnectionState().Version,
+			)
+		} else {
+			connLogger = slog.New(slog.DiscardHandler)
+		}
+
+		connLogger.Debug("establishing a session over QUIC connection")
 
 		var path string
+
 		// Listen the session stream
 		extensions := func(clientParams *Parameters) (*Parameters, error) {
-			var err error // Get the path parameter
+			var err error
+
+			// Get the path parameter
 			path, err = clientParams.GetString(param_type_path)
 			if err != nil {
-				logger.Error("failed to get 'path' parameter", "error", err)
+				connLogger.Error("failed to get 'path' parameter", "error", err)
 				return nil, err
-			} // Get any setup extensions
+			}
+
+			// Get any setup extensions
 			if s.Config == nil || s.Config.ServerSetupExtensions == nil {
-				logger.Debug("no setup extensions provided, using default parameters")
+				connLogger.Debug("no setup extensions provided, using default parameters")
 				return NewParameters(), nil
 			}
 
 			params, err := s.Config.ServerSetupExtensions(clientParams)
 			if err != nil {
-				logger.Error("failed to get setup extensions", "error", err)
+				connLogger.Error("failed to get setup extensions", "error", err)
 				return nil, err
 			}
+
 			if params == nil {
-				logger.Debug("server setup extensions returned nil, using default parameters")
+				connLogger.Debug("server setup extensions returned nil, using default parameters")
 				return NewParameters(), nil
 			}
 
-			logger.Debug("setup extensions processed successfully")
 			return params, nil
 		}
 
 		acceptCtx, cancelAccept := context.WithTimeout(ctx, s.acceptTimeout())
 		defer cancelAccept()
-		return s.acceptSession(acceptCtx, path, conn, extensions, mux)
+		return s.acceptSession(acceptCtx, path, conn, extensions, mux, connLogger)
 	}
 }
 
@@ -263,121 +271,136 @@ func (s *Server) AcceptWebTransport(w http.ResponseWriter, r *http.Request, mux 
 	if s.shuttingDown() {
 		return nil, ErrServerClosed
 	}
+
 	s.init()
 
-	sessionID := generateSessionID()
-
 	var logger *slog.Logger
-	if s.Logger == nil {
-		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
-	} else {
+	if s.Logger != nil {
+		var protocol string
+		if r.TLS == nil {
+			protocol = "none"
+		} else {
+			protocol = r.TLS.NegotiatedProtocol
+		}
 		logger = s.Logger.With(
-			"session_id", sessionID,
 			"remote_address", r.RemoteAddr,
-			"protocol", "webtransport",
+			"alpn", protocol,
 			"url_path", r.URL.Path,
 		)
+	} else {
+		logger = slog.New(slog.DiscardHandler)
 	}
 
-	logger.Debug("accepting WebTransport session")
 	conn, err := s.serverInUse.Upgrade(w, r)
 	if err != nil {
-		logger.Error("failed to upgrade HTTP to WebTransport", "error", err)
+		logger.Error("failed to upgrade HTTP to WebTransport",
+			"error", err,
+		)
 		w.WriteHeader(http.StatusInternalServerError)
 		return nil, err
 	}
 
-	logger.Debug("WebTransport connection established")
+	connLogger := logger.With(
+		"quic_version", conn.ConnectionState().Version,
+	)
+
+	connLogger.Debug("WebTransport connection established")
 
 	extensions := func(clientParams *Parameters) (*Parameters, error) {
 		if s.Config == nil || s.Config.ServerSetupExtensions == nil {
-			logger.Debug("no setup extensions provided, using default parameters")
-			return NewParameters(), nil
-		}
-		params, err := s.Config.ServerSetupExtensions(clientParams)
-		if err != nil {
-			logger.Error("failed to get setup extensions", "error", err)
-			return nil, err
-		}
-		if params == nil {
-			logger.Debug("server setup extensions returned nil, using default parameters")
+			connLogger.Debug("no setup extensions provided, using default parameters")
 			return NewParameters(), nil
 		}
 
-		logger.Debug("setup extensions processed successfully")
+		params, err := s.Config.ServerSetupExtensions(clientParams)
+		if err != nil {
+			connLogger.Error("failed to get setup extensions",
+				"error", err,
+			)
+			return nil, err
+		}
+
+		if params == nil {
+			connLogger.Debug("server setup extensions returned nil, using default parameters")
+			return NewParameters(), nil
+		}
+
 		return params.Clone(), nil
 	}
 
 	setupCtx, cancelSetup := context.WithTimeout(r.Context(), s.acceptTimeout())
 	defer cancelSetup()
-	return s.acceptSession(setupCtx, r.URL.Path, conn, extensions, mux)
+	return s.acceptSession(setupCtx, r.URL.Path, conn, extensions, mux, connLogger)
 }
 
 func (s *Server) acceptSession(setupCtx context.Context, path string, conn quic.Connection,
-	extensions func(*Parameters) (*Parameters, error), mux *TrackMux) (*Session, error) {
+	extensions func(*Parameters) (*Parameters, error), mux *TrackMux, connLogger *slog.Logger) (*Session, error) {
+
 	sessionID := generateSessionID()
 
-	var logger *slog.Logger
-	if s.Logger == nil {
-		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
-	} else {
-		logger = s.Logger.With(
-			"session_id", sessionID,
-			"remote_address", conn.RemoteAddr().String(),
-			"path", path,
-		)
-	}
+	sessLogger := connLogger.With(
+		"session_id", sessionID,
+		"path", path,
+	)
 
-	logger.Debug("accepting new session")
+	sessLogger.Debug("establishing a session")
+
 	stream, err := conn.AcceptStream(setupCtx)
 	if err != nil {
-		logger.Error("failed to accept session stream", "error", err)
+		sessLogger.Error("failed to accept a session stream",
+			"error", err,
+		)
+
 		return nil, fmt.Errorf("failed to accept a session stream: %w", err)
 	}
 
-	logger.Debug("session stream accepted", "stream_id", stream.StreamID())
 	var stm message.StreamTypeMessage
 	_, err = stm.Decode(stream)
 	if err != nil {
-		logger.Error("failed to decode STREAM_TYPE message", "error", err)
+		sessLogger.Error("failed to receive STREAM_TYPE message",
+			"error", err,
+		)
+
+		var appErr *quic.ApplicationError
+		if errors.As(err, &appErr) {
+			return nil, &SessionError{ApplicationError: appErr}
+		}
+
+		return nil, err
 	}
 
-	logger.Debug("STREAM_TYPE message decoded successfully")
+	streamLogger := sessLogger.With(
+		"stream_id", stream.StreamID(),
+	)
+
+	streamLogger.Debug("accepted a session stream")
+
 	var scm message.SessionClientMessage
 	_, err = scm.Decode(stream)
 	if err != nil {
-		if err == io.EOF {
-			logger.Debug("client closed connection during SESSION_CLIENT message")
-			return nil, err // TODO: Handle EOF properly
+		streamLogger.Error("failed to receive SESSION_CLIENT message",
+			"error", err,
+		)
+
+		var appErr *quic.ApplicationError
+		if errors.As(err, &appErr) {
+			return nil, &SessionError{ApplicationError: appErr}
 		}
 
-		logger.Error("failed to decode SESSION_CLIENT message", "error", err)
-
-		var strErr *quic.StreamError
-		if errors.As(err, &strErr) {
-			return nil, err
-		}
-
-		strErrCode := quic.StreamErrorCode(InternalAnnounceErrorCode)
-		stream.CancelRead(strErrCode)
-		stream.CancelWrite(strErrCode)
 		return nil, err
 	}
-
-	logger.Debug("SESSION_CLIENT message decoded successfully",
-		"supported_versions", scm.SupportedVersions,
-	)
 
 	clientParams := &Parameters{scm.Parameters}
+
 	serverParams, err := extensions(clientParams.Clone())
 	if err != nil {
-		logger.Error("failed to process setup extensions", "error", err)
+		sessLogger.Error("failed to process setup extensions",
+			"error", err,
+		)
 		return nil, err
 	}
 
-	logger.Debug("setup extensions processed successfully")
-
-	// Set the selected version and parameters
+	// Use default server version
 	version := internal.DefaultServerVersion
 
 	// Send a SESSION_SERVER message
@@ -387,43 +410,30 @@ func (s *Server) acceptSession(setupCtx context.Context, path string, conn quic.
 	}
 	_, err = ssm.Encode(stream)
 	if err != nil {
-		logger.Error("failed to send SESSION_SERVER message", "error", err)
-
-		var strErr *quic.StreamError
-		if errors.As(err, &strErr) && strErr.Remote {
-			return nil, err
-		}
+		sessLogger.Error("failed to send SESSION_SERVER message",
+			"error", err,
+		)
 
 		var appErr *quic.ApplicationError
 		if errors.As(err, &appErr) {
 			return nil, &SessionError{ApplicationError: appErr}
 		}
+
 		return nil, err
 	}
 
-	logger.Info("SESSION_SERVER message sent successfully",
-		"selected_version", version,
-	)
-
 	// Create session
 	sess := newSession(conn, version, path, clientParams, serverParams,
-		stream, mux, logger)
+		stream, mux, sessLogger)
 
 	s.addSession(sess)
-
-	logger.Info("session added to server session pool",
-		"active_sessions", len(s.activeSess),
-	)
 
 	go func() {
 		<-sess.Context().Done()
 		s.removeSession(sess)
-		logger.Debug("session removed from server session pool",
-			"active_sessions", len(s.activeSess),
-		)
 	}()
 
-	logger.Info("session establishment completed successfully")
+	sessLogger.Debug("moq: session established")
 
 	return sess, nil
 }

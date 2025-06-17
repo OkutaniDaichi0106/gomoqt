@@ -353,7 +353,7 @@ func TestServer_AcceptSession(t *testing.T) {
 			mux := NewTrackMux()
 
 			server.init()
-			session, err := server.acceptSession(ctx, tt.path, mockConn, extensions, mux)
+			session, err := server.acceptSession(ctx, tt.path, mockConn, extensions, mux, slog.Default())
 			if tt.expectOK {
 				assert.NoError(t, err, "acceptSession() should not return error")
 				assert.NotNil(t, session, "acceptSession() should return session")
@@ -401,7 +401,7 @@ func TestServer_AcceptSession_AcceptStreamError(t *testing.T) {
 			}
 			mux := NewTrackMux()
 
-			session, err := server.acceptSession(ctx, tt.path, mockConn, extensions, mux)
+			session, err := server.acceptSession(ctx, tt.path, mockConn, extensions, mux, slog.Default())
 			assert.Error(t, err, "acceptSession() should return an error")
 			assert.Contains(t, err.Error(), tt.expectErr.Error(), "acceptSession() should return wrapped accept error")
 			assert.Nil(t, session, "acceptSession() should return nil session on error")

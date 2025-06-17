@@ -18,6 +18,7 @@ func newSession(conn quic.Connection, version protocol.Version, path string, cli
 	if mux == nil {
 		mux = DefaultMux
 	}
+
 	if logger == nil {
 		logger = slog.Default()
 	}

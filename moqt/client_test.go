@@ -30,12 +30,12 @@ func TestClient_InitOnce(t *testing.T) {
 
 func TestClient_TimeoutDefault(t *testing.T) {
 	c := &Client{}
-	assert.Equal(t, 5*time.Second, c.timeout())
+	assert.Equal(t, 5*time.Second, c.dialTimeout())
 }
 
 func TestClient_TimeoutCustom(t *testing.T) {
 	c := &Client{Config: &Config{SetupTimeout: 123 * time.Second}}
-	assert.Equal(t, 123*time.Second, c.timeout())
+	assert.Equal(t, 123*time.Second, c.dialTimeout())
 }
 
 func TestClient_AddRemoveSession(t *testing.T) {
@@ -542,14 +542,14 @@ func TestClient_DialQUIC_ShuttingDown(t *testing.T) {
 // Test for Client with custom timeout configuration
 func TestClient_Timeout_WithNilConfig(t *testing.T) {
 	c := &Client{Config: nil}
-	timeout := c.timeout()
+	timeout := c.dialTimeout()
 	assert.Equal(t, 5*time.Second, timeout)
 }
 
 // Test for Client with custom timeout and zero value
 func TestClient_Timeout_ZeroValue(t *testing.T) {
 	c := &Client{Config: &Config{SetupTimeout: 0}}
-	timeout := c.timeout()
+	timeout := c.dialTimeout()
 	assert.Equal(t, 5*time.Second, timeout)
 }
 
@@ -723,7 +723,7 @@ func TestClient_Timeout_Configurations(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			c := &Client{Config: tt.config}
-			timeout := c.timeout()
+			timeout := c.dialTimeout()
 			assert.Equal(t, tt.expectedTimeout, timeout)
 		})
 	}
@@ -889,6 +889,6 @@ func TestClient_ConfigurationInheritance(t *testing.T) {
 	require.Same(t, logger, c.Logger)
 
 	// Test timeout inheritance
-	timeout := c.timeout()
+	timeout := c.dialTimeout()
 	assert.Equal(t, 30*time.Second, timeout)
 }

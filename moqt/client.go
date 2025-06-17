@@ -66,19 +66,12 @@ func (c *Client) init() {
 	})
 }
 
-func (c *Client) timeout() time.Duration {
-	timeout := 5 * time.Second // default
+func (c *Client) dialTimeout() time.Duration {
 	if c.Config != nil && c.Config.SetupTimeout != 0 {
-		timeout = c.Config.SetupTimeout
+		return c.Config.SetupTimeout
 	}
 
-	if c.Logger != nil {
-		c.Logger.Debug("configured setup timeout",
-			"timeout", timeout,
-		)
-	}
-
-	return timeout
+	return 5 * time.Second
 }
 
 func (c *Client) Dial(ctx context.Context, urlStr string, mux *TrackMux) (*Session, error) {
@@ -156,7 +149,7 @@ func (c *Client) DialWebTransport(ctx context.Context, host, path string, mux *T
 	}
 	c.init()
 
-	dialTimeout := c.timeout()
+	dialTimeout := c.dialTimeout()
 	dialCtx, cancelDial := context.WithTimeout(ctx, dialTimeout)
 	defer cancelDial()
 
@@ -230,7 +223,7 @@ func (c *Client) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux)
 
 	logger.Debug("starting QUIC connection establishment")
 
-	dialTimeout := c.timeout()
+	dialTimeout := c.dialTimeout()
 	dialCtx, cancelDial := context.WithTimeout(ctx, dialTimeout)
 	defer cancelDial()
 
@@ -278,20 +271,25 @@ func (c *Client) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux)
 		return nil, err
 	}
 
-	logger.Info("QUIC MOQ session established successfully")
 	return sess, nil
 }
 
-func (c *Client) openSession(conn quic.Connection, path string, extensions func() *Parameters, mux *TrackMux, logger *slog.Logger) (*Session, error) {
-	logger.Debug("opening session stream")
+func (c *Client) openSession(conn quic.Connection, path string, extensions func() *Parameters, mux *TrackMux, connLogger *slog.Logger) (*Session, error) {
+	connLogger.Debug("opening session stream")
+
+	sessionID := generateSessionID()
+
+	sessLogger := connLogger.With(
+		"session_id", sessionID,
+	)
 
 	stream, err := conn.OpenStream()
 	if err != nil {
-		logger.Error("failed to open session stream", "error", err)
+		sessLogger.Error("failed to open session stream", "error", err)
 		return nil, err
 	}
 
-	logger.Debug("session stream opened", "stream_id", stream.StreamID())
+	sessLogger.Debug("session stream opened", "stream_id", stream.StreamID())
 
 	// Send STREAM_TYPE message
 	stm := message.StreamTypeMessage{
@@ -299,14 +297,14 @@ func (c *Client) openSession(conn quic.Connection, path string, extensions func(
 	}
 	_, err = stm.Encode(stream)
 	if err != nil {
-		logger.Error("failed to send STREAM_TYPE message",
+		sessLogger.Error("failed to send STREAM_TYPE message",
 			"error", err,
 			"stream_id", stream.StreamID(),
 		)
 		return nil, err
 	}
 
-	logger.Debug("STREAM_TYPE message sent successfully")
+	sessLogger.Debug("moq: opened session stream")
 
 	clientParams := extensions()
 
@@ -317,60 +315,37 @@ func (c *Client) openSession(conn quic.Connection, path string, extensions func(
 	}
 	_, err = scm.Encode(stream)
 	if err != nil {
-		logger.Error("failed to send SESSION_CLIENT message",
+		sessLogger.Error("failed to send SESSION_CLIENT message",
 			"error", err,
-			"supported_versions", internal.DefaultClientVersions,
 		)
 		return nil, err
 	}
 
-	logger.Debug("SESSION_CLIENT message sent successfully",
-		"supported_versions", internal.DefaultClientVersions,
-	)
-
-	// Receive a set-up response
-	logger.Debug("waiting for SESSION_SERVER response")
-
 	var ssm message.SessionServerMessage
-	receiveStart := time.Now()
 	_, err = ssm.Decode(stream)
-	receiveDuration := time.Since(receiveStart)
-
 	if err != nil {
-		logger.Error("failed to receive SESSION_SERVER message",
+		sessLogger.Error("failed to receive SESSION_SERVER message",
 			"error", err,
-			"receive_duration", receiveDuration,
 		)
 		return nil, err
 	}
 
 	version := ssm.SelectedVersion
-	serverParams := &Parameters{ssm.Parameters}
 
-	logger.Info("SESSION_SERVER message received successfully",
-		"selected_version", version,
-		"receive_duration", receiveDuration,
-	)
+	serverParams := &Parameters{ssm.Parameters}
 
 	// Create session
 	sess := newSession(conn, version, path, clientParams, serverParams,
-		stream, mux, logger)
+		stream, mux, sessLogger)
 
 	c.addSession(sess)
-
-	logger.Info("session added to client session pool",
-		"active_sessions", len(c.activeSess),
-	)
 
 	go func() {
 		<-sess.Context().Done()
 		c.removeSession(sess)
-		logger.Debug("session removed from client session pool",
-			"active_sessions", len(c.activeSess),
-		)
 	}()
 
-	logger.Info("session establishment completed successfully")
+	sessLogger.Info("established a moq session")
 
 	return sess, nil
 }

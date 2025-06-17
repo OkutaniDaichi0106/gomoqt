@@ -101,7 +101,7 @@ func TestNewMux_Handle_NilContext(t *testing.T) {
 	handler := TrackHandlerFunc(func(p *Publisher) {})
 
 	// Should handle nil context gracefully (just return)
-	mux.Handle(nil, path, handler)
+	mux.Handle(context.Background(), path, handler)
 
 	// Handler should not be registered - test by trying to serve
 	publisher := createNewTestPublisher(path)

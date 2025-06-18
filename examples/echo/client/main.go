@@ -23,7 +23,7 @@ func main() {
 
 			err = gw.WriteFrame(moqt.NewFrame([]byte("FRAME " + seq.String())))
 			if err != nil {
-				gw.CloseWithError(moqt.InternalGroupErrorCode)
+				gw.CancelWrite(moqt.InternalGroupErrorCode)
 				slog.Error("failed to write frame", "error", err)
 				return
 			}

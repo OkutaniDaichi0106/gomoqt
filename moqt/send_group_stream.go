@@ -59,7 +59,7 @@ func (sgs *sendGroupStream) SetWriteDeadline(t time.Time) error {
 	return sgs.stream.SetWriteDeadline(t)
 }
 
-func (sgs *sendGroupStream) CloseWithError(code GroupErrorCode) error {
+func (sgs *sendGroupStream) CancelWrite(code GroupErrorCode) error {
 	if sgs.closed {
 		return sgs.closeErr
 	}

@@ -147,7 +147,7 @@ func TestSendGroupStream_CloseWithError(t *testing.T) {
 
 	sgs := newSendGroupStream(mockStream, GroupSequence(1))
 
-	err := sgs.CloseWithError(errorCode)
+	err := sgs.CancelWrite(errorCode)
 	assert.NoError(t, err)
 	assert.True(t, sgs.closed)
 	assert.NotNil(t, sgs.closeErr)

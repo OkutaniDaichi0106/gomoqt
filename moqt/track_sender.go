@@ -18,7 +18,7 @@ func newTrackSender(substr *receiveSubscribeStream, openGroupFunc func(GroupSequ
 		track.mu.Lock()
 		defer track.mu.Unlock()
 		for stream := range track.queue {
-			stream.CloseWithError(SubscribeCanceledErrorCode)
+			stream.CancelWrite(SubscribeCanceledErrorCode)
 		}
 		track.queue = nil
 	}()
@@ -108,7 +108,7 @@ func (s *trackSender) CloseWithError(code SubscribeErrorCode) error {
 	defer s.mu.Unlock()
 
 	for stream := range s.queue {
-		stream.CloseWithError(SubscribeCanceledErrorCode)
+		stream.CancelWrite(SubscribeCanceledErrorCode)
 	}
 	s.queue = nil
 

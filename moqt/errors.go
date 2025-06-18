@@ -255,7 +255,6 @@ func (err InternalError) GroupErrorCode() GroupErrorCode {
 /*
  * Unauthorized Error
  */
-
 type UnauthorizedError struct{}
 
 func (UnauthorizedError) Error() string {

@@ -30,7 +30,7 @@ func TestNewReceiveAnnounceStream(t *testing.T) {
 	require.NotNil(t, ras)
 	assert.Equal(t, prefix, ras.prefix)
 	assert.Equal(t, mockStream, ras.stream)
-	assert.NotNil(t, ras.announcements)
+	assert.NotNil(t, ras.active)
 	assert.NotNil(t, ras.pendings)
 	assert.NotNil(t, ras.notifyCh)
 	assert.NotNil(t, ras.ctx)
@@ -334,17 +334,17 @@ func TestReceiveAnnounceStream_AnnouncementTracking(t *testing.T) {
 
 	// Manually add announcements to test tracking
 	ras.mu.Lock()
-	ras.announcements["stream1"] = ann1
-	ras.announcements["stream2"] = ann2
+	ras.active["stream1"] = ann1
+	ras.active["stream2"] = ann2
 	ras.mu.Unlock()
 
-	assert.Len(t, ras.announcements, 2)
+	assert.Len(t, ras.active, 2)
 
 	// Test ending announcement
 	ann1.End()
 
 	// Announcement should still be in map until processed by background goroutine
-	assert.Len(t, ras.announcements, 2)
+	assert.Len(t, ras.active, 2)
 
 	mockStream.AssertExpectations(t)
 }

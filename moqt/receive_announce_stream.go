@@ -21,14 +21,16 @@ type AnnouncementReader interface {
 func newReceiveAnnounceStream(sessCtx context.Context, stream quic.Stream, prefix string) *receiveAnnounceStream {
 	ctx, cancel := context.WithCancelCause(sessCtx)
 	annstr := &receiveAnnounceStream{
-		ctx:           ctx,
-		cancel:        cancel,
-		stream:        stream,
-		prefix:        prefix,
-		announcements: make(map[string]*Announcement),
-		pendings:      make([]*Announcement, 0),
-		notifyCh:      make(chan struct{}, 1),
+		ctx:      ctx,
+		cancel:   cancel,
+		stream:   stream,
+		prefix:   prefix,
+		active:   make(map[string]*Announcement),
+		pendings: make([]*Announcement, 0),
+		notifyCh: make(chan struct{}, 1),
 	}
+
+	// Receive announcements in a separate goroutine
 	go func() {
 		var am message.AnnounceMessage
 		var suffix string
@@ -73,14 +75,14 @@ func newReceiveAnnounceStream(sessCtx context.Context, stream quic.Stream, prefi
 
 			suffix = am.TrackSuffix
 
-			old, ok := annstr.announcements[suffix]
+			old, ok := annstr.active[suffix]
 			switch am.AnnounceStatus {
 			case message.ACTIVE:
 				if !ok || (ok && !old.IsActive()) {
 					// Create a new announcement
 					ann := NewAnnouncement(annstr.ctx, BroadcastPath(prefix+suffix))
 					annstr.mu.Lock()
-					annstr.announcements[suffix] = ann
+					annstr.active[suffix] = ann
 					annstr.pendings = append(annstr.pendings, ann)
 					// Notify that new announcement is available
 					if !annstr.closed {
@@ -101,7 +103,7 @@ func newReceiveAnnounceStream(sessCtx context.Context, stream quic.Stream, prefi
 					old.End()
 
 					// Remove the announcement from the map
-					delete(annstr.announcements, suffix)
+					delete(annstr.active, suffix)
 				} else {
 					annstr.CloseWithError(DuplicatedAnnounceErrorCode)
 					return
@@ -126,7 +128,7 @@ type receiveAnnounceStream struct {
 	closed   bool
 
 	// Track Suffix -> Announcement
-	announcements map[string]*Announcement
+	active map[string]*Announcement
 
 	pendings []*Announcement
 	notifyCh chan struct{} // notify when new announcement is available
@@ -161,7 +163,7 @@ func (ras *receiveAnnounceStream) ReceiveAnnouncement(ctx context.Context) (*Ann
 			slog.Error("receive announce stream context done",
 				"reason", reason,
 			)
-			return nil, ras.ctx.Err()
+			return nil, reason
 		case <-ras.notifyCh:
 			// New announcement available, loop to check pendings
 			continue

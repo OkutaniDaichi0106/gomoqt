@@ -144,7 +144,7 @@ func (ras *receiveAnnounceStream) ReceiveAnnouncement(ctx context.Context) (*Ann
 			if ras.closeErr != nil {
 				return nil, ras.closeErr
 			}
-			return nil, fmt.Errorf("receive announce stream is closed: %v", ras.closeErr)
+			return nil, fmt.Errorf("receive announce stream is closed")
 		}
 
 		if len(ras.pendings) > 0 {

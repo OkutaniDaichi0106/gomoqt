@@ -7,9 +7,9 @@ import (
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/webtransport"
+	quicgo_webtransportgo "github.com/OkutaniDaichi0106/webtransport-go"
 	quicgo_quicgo "github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
-	quicgo_webtransportgo "github.com/quic-go/webtransport-go"
 )
 
 func NewDefaultServer(addr string) webtransport.Server {

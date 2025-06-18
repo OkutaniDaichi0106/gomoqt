@@ -3,8 +3,8 @@ module github.com/OkutaniDaichi0106/gomoqt
 go 1.24.1
 
 require (
-	github.com/quic-go/quic-go v0.43.0
-	github.com/quic-go/webtransport-go v0.8.0
+	github.com/quic-go/quic-go v0.52.0
+	github.com/OkutaniDaichi0106/webtransport-go v0.8.1
 	github.com/stretchr/testify v1.10.0
 )
 

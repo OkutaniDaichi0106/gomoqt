@@ -6,7 +6,7 @@ import (
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic/quicgo"
-	quicgo_webtransportgo "github.com/quic-go/webtransport-go"
+	quicgo_webtransportgo "github.com/OkutaniDaichi0106/webtransport-go"
 )
 
 func Dial(ctx context.Context, addr string, header http.Header) (*http.Response, quic.Connection, error) {

@@ -6,7 +6,6 @@ require (
 	github.com/quic-go/quic-go v0.43.0
 	github.com/quic-go/webtransport-go v0.8.0
 	github.com/stretchr/testify v1.10.0
-	golang.org/x/term v0.32.0
 )
 
 require (

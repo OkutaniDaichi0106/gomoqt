@@ -56,14 +56,12 @@ type Server struct {
 	WebtransportServer webtransport.Server
 	serverInUse        webtransport.Server
 
-	mu            sync.RWMutex
+	listenerMu    sync.RWMutex
 	listeners     map[quic.EarlyListener]struct{}
 	listenerGroup sync.WaitGroup
-	//
-	activeSess map[*Session]struct{}
-	// onShutdown []func() // TODO: Implement if needed
 
-	// cancelFuncs []context.CancelFunc
+	sessMu     sync.RWMutex
+	activeSess map[*Session]struct{}
 
 	initOnce sync.Once
 
@@ -72,7 +70,6 @@ type Server struct {
 	nativeQUICCh chan quic.Connection
 
 	doneChan chan struct{} // Signal channel (notifies when server is completely closed)
-	// connCount    atomic.Int64  // Active connection counter
 }
 
 func (s *Server) init() {
@@ -89,7 +86,6 @@ func (s *Server) init() {
 		} else {
 			// If not set, create a default WebTransport server
 			defaultServer := webtransportgo.NewDefaultServer(s.Addr)
-			s.WebtransportServer = defaultServer
 			s.serverInUse = defaultServer
 		}
 
@@ -511,20 +507,35 @@ func (s *Server) ListenAndServeTLS(certFile, keyFile string) error {
 }
 
 func (s *Server) Close() error {
-	// Check if already shutting down
 	if s.shuttingDown() {
 		return ErrServerClosed
 	}
 
+	// Set the shutdown flag
 	s.inShutdown.Store(true)
-	s.mu.Lock()
-	defer s.mu.Unlock()
+
+	// Ensure that initOnce is called to initialize the server
+	s.initOnce.Do(func() {})
 
 	if s.Logger != nil {
 		s.Logger.Info("closing server", "address", s.Addr)
 	}
+
+	// Terminate all active sessions
+	s.sessMu.Lock()
+	if len(s.activeSess) > 0 {
+		for sess := range s.activeSess {
+			go sess.Terminate(NoError, NoError.String())
+		}
+
+		s.sessMu.Unlock()
+
+		<-s.doneChan
+	}
+
 	// Close all listeners
-	if s.listeners != nil {
+	s.listenerMu.Lock()
+	if len(s.listeners) > 0 {
 		if s.Logger != nil {
 			s.Logger.Info("closing QUIC listeners", "address", s.Addr)
 		}
@@ -532,27 +543,10 @@ func (s *Server) Close() error {
 			ln.Close()
 		}
 	}
+	s.listenerMu.Unlock()
 
-	// Terminate all sessions
-	activeSessions := make([]*Session, 0, len(s.activeSess))
-	for sess := range s.activeSess {
-		activeSessions = append(activeSessions, sess)
-	}
-
-	// Terminate sessions outside of the lock to avoid deadlock
-	s.mu.Unlock()
-	for _, sess := range activeSessions {
-		sess.Terminate(NoError, NoError.String())
-	}
-	s.mu.Lock() // Wait for active connections to complete if any
-	if len(s.activeSess) > 0 {
-		s.mu.Unlock()
-		<-s.doneChan
-		s.mu.Lock()
-	} else {
-		// If no sessions, close the done channel immediately
-		close(s.doneChan)
-	}
+	// Wait for all listeners to close
+	s.listenerGroup.Wait()
 
 	return nil
 }
@@ -562,46 +556,50 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		return ErrServerClosed
 	}
 
+	// Set the shutdown flag
 	s.inShutdown.Store(true)
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	// Go away all active sessions
+	s.sessMu.Lock()
+	for sess := range s.activeSess {
+		s.goAway(sess)
+	}
+	s.sessMu.Unlock()
 
+	select {
+	case <-s.doneChan:
+		// Already closed
+	case <-ctx.Done():
+		// Context canceled, terminate all sessions forcefully
+		s.sessMu.Lock()
+		if len(s.activeSess) > 0 {
+			for sess := range s.activeSess {
+				go sess.Terminate(GoAwayTimeoutErrorCode, GoAwayTimeoutErrorCode.String())
+			}
+			s.sessMu.Unlock()
+
+			// Wait for all sessions to close
+			<-s.doneChan
+		}
+	}
+
+	// Close all listeners
+	s.listenerMu.Lock()
 	for ln := range s.listeners {
 		ln.Close()
 	}
 	s.listeners = nil
+	s.listenerMu.Unlock()
 
-	// Wait
-	s.mu.Unlock()
+	// Wait for all listeners to close
 	s.listenerGroup.Wait()
-	s.mu.Lock()
-
-	// Go away all active sessions
-	for sess := range s.activeSess {
-		s.goAway(sess)
-	}
-
-	// For active connections, wait for completion or context cancellation
-	if len(s.activeSess) > 0 {
-		select {
-		case <-s.doneChan:
-			return nil
-		case <-ctx.Done():
-			for sess := range s.activeSess {
-				go sess.Terminate(GoAwayTimeoutErrorCode, GoAwayTimeoutErrorCode.String())
-				// s.removeSession(sess)
-			}
-			return ctx.Err()
-		}
-	}
 
 	return nil
 }
 
 func (s *Server) addListener(ln quic.EarlyListener) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.listenerMu.Lock()
+	defer s.listenerMu.Unlock()
 
 	if s.listeners == nil {
 		s.listeners = make(map[quic.EarlyListener]struct{})
@@ -611,19 +609,23 @@ func (s *Server) addListener(ln quic.EarlyListener) {
 }
 
 func (s *Server) removeListener(ln quic.EarlyListener) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.listenerMu.Lock()
 
-	if s.listeners == nil {
-		return
+	_, ok := s.listeners[ln]
+	if ok {
+		delete(s.listeners, ln)
 	}
-	delete(s.listeners, ln)
-	s.listenerGroup.Done()
+
+	s.listenerMu.Unlock()
+
+	if ok {
+		s.listenerGroup.Done()
+	}
 }
 
 func (s *Server) addSession(sess *Session) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.sessMu.Lock()
+	defer s.sessMu.Unlock()
 
 	if sess == nil {
 		return
@@ -632,10 +634,16 @@ func (s *Server) addSession(sess *Session) {
 }
 
 func (s *Server) removeSession(sess *Session) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.sessMu.Lock()
+	defer s.sessMu.Unlock()
+
+	_, ok := s.activeSess[sess]
+	if !ok {
+		return
+	}
 
 	delete(s.activeSess, sess)
+
 	// Send completion signal if connections reach zero and server is closed
 	if len(s.activeSess) == 0 && s.shuttingDown() {
 		// Close the done channel to signal server is done
@@ -662,5 +670,3 @@ func (s *Server) acceptTimeout() time.Duration {
 func (s *Server) goAway(sess *Session) {
 	// TODO: Implement go away
 }
-
-const NextProtoMOQ = "moq-00"

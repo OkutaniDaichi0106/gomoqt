@@ -571,24 +571,24 @@ func TestServer_SessionManagement(t *testing.T) {
 			session := newSession(mockConn, internal.DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, nil)
 
 			// Test adding session
-			server.mu.Lock()
+			server.listenerMu.Lock()
 			server.activeSess[session] = struct{}{}
-			server.mu.Unlock()
+			server.listenerMu.Unlock()
 
-			server.mu.RLock()
+			server.listenerMu.RLock()
 			count := len(server.activeSess)
-			server.mu.RUnlock()
+			server.listenerMu.RUnlock()
 
 			assert.Equal(t, tt.expectInitCount, count, "active session count should match expected")
 
 			// Test removing session
-			server.mu.Lock()
+			server.listenerMu.Lock()
 			delete(server.activeSess, session)
-			server.mu.Unlock()
+			server.listenerMu.Unlock()
 
-			server.mu.RLock()
+			server.listenerMu.RLock()
 			count = len(server.activeSess)
-			server.mu.RUnlock()
+			server.listenerMu.RUnlock()
 
 			assert.Equal(t, tt.expectFinalCount, count, "active session count after removal should match expected")
 
@@ -660,14 +660,14 @@ func TestServer_ListenerManagement(t *testing.T) {
 			mockListener2.On("Close").Return(nil)
 
 			// Add listeners
-			server.mu.Lock()
+			server.listenerMu.Lock()
 			server.listeners[mockListener1] = struct{}{}
 			server.listeners[mockListener2] = struct{}{}
-			server.mu.Unlock()
+			server.listenerMu.Unlock()
 
-			server.mu.RLock()
+			server.listenerMu.RLock()
 			count := len(server.listeners)
-			server.mu.RUnlock()
+			server.listenerMu.RUnlock()
 
 			assert.Equal(t, tt.expectCount, count, "listener count should match expected")
 

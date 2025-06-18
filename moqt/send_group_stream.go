@@ -19,7 +19,7 @@ func newSendGroupStream(stream quic.SendStream, sequence GroupSequence) *sendGro
 
 type sendGroupStream struct {
 	closed   bool
-	closeErr *GroupError
+	closeErr error
 	closedCh chan struct{}
 
 	sequence GroupSequence

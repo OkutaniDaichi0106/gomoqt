@@ -33,7 +33,7 @@ func NewCluster(urlstr string, ctx context.Context) (*Cluster, error) {
 				return
 			}
 
-			cluster.mux.Announce(ann, nil, nil)
+			cluster.mux.Announce(ann, nil)
 		}
 	}()
 

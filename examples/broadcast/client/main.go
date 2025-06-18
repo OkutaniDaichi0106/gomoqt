@@ -2,18 +2,15 @@ package main
 
 import (
 	"context"
+	"io"
 	"log/slog"
-	"os"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt"
 )
 
 func main() {
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	client := moqt.Client{
-		Logger: slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-			Level: slog.LevelDebug,
-		})),
+		Logger: slog.Default(),
 	}
 
 	sess, err := client.Dial(context.Background(), "https://localhost:4469/broadcast", nil)
@@ -40,6 +37,10 @@ func main() {
 		slog.Info("received announcement", "announcement", ann)
 
 		go func(ann *moqt.Announcement) {
+			if !ann.IsActive() {
+				return
+			}
+
 			sub, err := sess.OpenTrackStream(ann.BroadcastPath(), "index", nil)
 			if err != nil {
 				slog.Error("failed to open track stream", "error", err)
@@ -54,15 +55,23 @@ func main() {
 					return
 				}
 
-				for {
-					f, err := gr.ReadFrame()
-					if err != nil {
-						slog.Error("failed to read frame", "error", err)
-						break
-					}
+				go func(gr moqt.GroupReader) {
+					defer gr.CancelRead(moqt.InternalGroupErrorCode)
 
-					slog.Info("received frame", "frame", string(f.CopyBytes()))
-				}
+					for {
+						f, err := gr.ReadFrame()
+						if err != nil {
+							if err == io.EOF {
+								return
+							}
+							slog.Error("failed to read frame", "error", err)
+							break
+						}
+
+						slog.Info("received a frame", "frame", string(f.CopyBytes()))
+					}
+				}(gr)
+
 			}
 
 		}(ann)

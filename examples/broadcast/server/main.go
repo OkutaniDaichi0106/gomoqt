@@ -14,7 +14,6 @@ import (
 )
 
 func main() {
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	server := moqt.Server{
 		Addr: "localhost:4469", TLSConfig: &tls.Config{
 			NextProtos:         []string{"h3", "moq-00"},
@@ -25,17 +24,13 @@ func main() {
 			Allow0RTT:       true,
 			EnableDatagrams: true,
 		}),
-		Logger: slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-			Level: slog.LevelDebug,
-		})),
+		Logger: slog.Default(),
 	}
 
 	// Serve moq over webtransport
 	http.HandleFunc("/broadcast", func(w http.ResponseWriter, r *http.Request) {
-		mux := moqt.NewTrackMux()
-
 		// Register the broadcast handler with the local mux
-		mux.HandleFunc(context.Background(), "/broadcast/main", func(pub *moqt.Publisher) {
+		moqt.HandleFunc(context.Background(), "/server.broadcast", func(pub *moqt.Publisher) {
 			seq := moqt.GroupSequenceFirst
 			for {
 				time.Sleep(100 * time.Millisecond)
@@ -59,7 +54,7 @@ func main() {
 			}
 		})
 
-		_, err := server.AcceptWebTransport(w, r, mux)
+		_, err := server.AcceptWebTransport(w, r, nil)
 		if err != nil {
 			slog.Error("failed to serve web transport", "error", err)
 			return

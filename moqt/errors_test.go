@@ -159,10 +159,6 @@ func TestSessionErrorCode_String(t *testing.T) {
 			code:   UnsupportedVersionErrorCode,
 			expect: "moqt: unsupported version",
 		},
-		"unsupported stream error code": {
-			code:   UnsupportedStreamErrorCode,
-			expect: "moqt: unknown session error", // Not explicitly handled in the String method
-		},
 		"unknown code": {
 			code:   SessionErrorCode(0xFF), // Some arbitrary value not defined
 			expect: "moqt: unknown session error",

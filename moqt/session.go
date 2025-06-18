@@ -492,30 +492,29 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 		subLogger.Debug("accepted a subscribe stream")
 
 		openGroupStreamFunc := func(seq GroupSequence) (*sendGroupStream, error) {
-			// Create a group-specific logger
-			groupLogger := subLogger.With("group_sequence", seq)
 
 			stream, err := sess.conn.OpenUniStream()
 			if err != nil {
+				sess.logger.Error("failed to open an unidirectional stream",
+					"error", err,
+				)
+
 				var appErr *quic.ApplicationError
 				if errors.As(err, &appErr) {
 					sessErr := &SessionError{
 						ApplicationError: appErr,
 					}
-					groupLogger.Error("failed to open a group stream",
-						"error", sessErr,
-					)
 					return nil, sessErr
 				}
 
-				groupLogger.Error("failed to open a group stream",
-					"error", err,
-				)
 				return nil, err
 			}
 
 			// Add stream_id to the logger context
-			streamLogger := groupLogger.With("stream_id", stream.StreamID())
+			streamLogger := subLogger.With(
+				"stream_id", stream.StreamID(),
+				"group_sequence", seq,
+			)
 			streamLogger.Debug("opened a group stream")
 
 			stm := message.StreamTypeMessage{
@@ -523,20 +522,18 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 			}
 			_, err = stm.Encode(stream)
 			if err != nil {
+				streamLogger.Error("failed to send stream type message",
+					"error", err,
+				)
+
 				var strErr *quic.StreamError
 				if errors.As(err, &strErr) {
-					streamLogger.Error("group stream type message encoding failed",
-						"error", strErr,
-					)
 					return nil, &GroupError{StreamError: strErr}
 				}
 
 				strErrCode := quic.StreamErrorCode(InternalGroupErrorCode)
 				stream.CancelWrite(strErrCode)
 
-				streamLogger.Error("group stream type message encoding failed",
-					"error", err,
-				)
 				return nil, GroupError{
 					StreamError: &quic.StreamError{
 						StreamID:  stream.StreamID(),
@@ -551,6 +548,10 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 			}
 			_, err = gm.Encode(stream)
 			if err != nil {
+				streamLogger.Error("failed to send group message",
+					"error", err,
+				)
+
 				var strErr *quic.StreamError
 				if errors.As(err, &strErr) {
 					streamLogger.Error("group message encoding failed",
@@ -559,18 +560,16 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 					return nil, &GroupError{StreamError: strErr}
 				}
 
-				strErr = &quic.StreamError{
-					StreamID:  stream.StreamID(),
-					ErrorCode: quic.StreamErrorCode(InternalGroupErrorCode),
+				strErrCode := quic.StreamErrorCode(InternalGroupErrorCode)
+				stream.CancelWrite(strErrCode)
+
+				return nil, GroupError{
+					StreamError: &quic.StreamError{
+						StreamID:  stream.StreamID(),
+						ErrorCode: strErrCode,
+					},
 				}
-
-				streamLogger.Error("group message encoding failed",
-					"error", err,
-				)
-				return nil, GroupError{StreamError: strErr}
 			}
-
-			streamLogger.Debug("group stream setup completed")
 
 			return newSendGroupStream(stream, seq), nil
 		}
@@ -630,10 +629,6 @@ func (sess *Session) processUniStream(stream quic.ReceiveStream, streamLogger *s
 		)
 		return
 	}
-
-	streamLogger.Debug("decoded stream type message",
-		"stream_type", stm.StreamType,
-	)
 
 	// Handle the stream by the Stream Type ID
 	switch stm.StreamType {

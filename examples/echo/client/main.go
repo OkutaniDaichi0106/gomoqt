@@ -2,19 +2,18 @@ package main
 
 import (
 	"context"
+	"io"
 	"log/slog"
-	"os"
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt"
 )
 
 func main() {
-	mux := moqt.NewTrackMux()
-	mux.HandleFunc(context.Background(), "/client.echo", func(pub *moqt.Publisher) {
+	moqt.HandleFunc(context.Background(), "/client.echo", func(pub *moqt.Publisher) {
 		seq := moqt.GroupSequenceFirst
 		for {
-			time.Sleep(1 * time.Second)
+			time.Sleep(100 * time.Millisecond)
 
 			gw, err := pub.TrackWriter.OpenGroup(seq)
 			if err != nil {
@@ -24,6 +23,7 @@ func main() {
 
 			err = gw.WriteFrame(moqt.NewFrame([]byte("FRAME " + seq.String())))
 			if err != nil {
+				gw.CloseWithError(moqt.InternalGroupErrorCode)
 				slog.Error("failed to write frame", "error", err)
 				return
 			}
@@ -35,12 +35,10 @@ func main() {
 	})
 
 	client := moqt.Client{
-		Logger: slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-			Level: slog.LevelDebug,
-		})),
+		Logger: slog.Default(),
 	}
 
-	sess, err := client.Dial(context.Background(), "https://localhost:4444/echo", mux)
+	sess, err := client.Dial(context.Background(), "https://localhost:4444/echo", nil)
 	if err != nil {
 		slog.Error("failed to dial",
 			"error", err,
@@ -66,6 +64,10 @@ func main() {
 		}
 
 		go func(ann *moqt.Announcement) {
+			if !ann.IsActive() {
+				return
+			}
+
 			sub, err := sess.OpenTrackStream(ann.BroadcastPath(), "index", nil)
 			if err != nil {
 				slog.Error("failed to open track stream", "error", err)
@@ -79,15 +81,23 @@ func main() {
 					return
 				}
 
-				for {
-					f, err := gr.ReadFrame()
-					if err != nil {
-						slog.Error("failed to read frame", "error", err)
-						return
-					}
+				go func(gr moqt.GroupReader) {
+					defer gr.CancelRead(moqt.InternalGroupErrorCode)
 
-					slog.Info("received frame", "frame", string(f.CopyBytes()))
-				}
+					for {
+						f, err := gr.ReadFrame()
+						if err != nil {
+							if err == io.EOF {
+								return
+							}
+							slog.Error("failed to read frame", "error", err)
+							return
+						}
+
+						slog.Info("received a frame", "frame", string(f.CopyBytes()))
+					}
+				}(gr)
+
 			}
 		}(ann)
 	}

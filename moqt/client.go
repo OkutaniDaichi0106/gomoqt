@@ -51,6 +51,7 @@ type Client struct {
 	sessMu     sync.RWMutex
 	activeSess map[*Session]struct{}
 
+	// mu         sync.Mutex
 	inShutdown atomic.Bool
 	doneChan   chan struct{}
 }
@@ -133,15 +134,12 @@ func (c *Client) DialWebTransport(ctx context.Context, host, path string, mux *T
 	endpoint := "https://" + host + path
 
 	var logger *slog.Logger
-	if c.Logger == nil {
-		// Return a logger that discards all output
-		logger = slog.New(slog.DiscardHandler)
-	} else {
-		// Create logger with session context
+	if c.Logger != nil {
 		logger = c.Logger.With("session_id", sessionID, "endpoint", endpoint)
-	}
+	} else {
+		logger = slog.New(slog.DiscardHandler)
 
-	logger.Info("initiating WebTransport connection")
+	}
 
 	if c.shuttingDown() {
 		logger.Warn("WebTransport dial rejected: client shutting down")
@@ -153,16 +151,14 @@ func (c *Client) DialWebTransport(ctx context.Context, host, path string, mux *T
 	dialCtx, cancelDial := context.WithTimeout(ctx, dialTimeout)
 	defer cancelDial()
 
-	logger.Debug("starting WebTransport dial", "timeout", dialTimeout)
+	logger.Debug("dialing WebTransport", "timeout", dialTimeout)
 
 	var conn quic.Connection
 	var err error
 
 	if c.DialWebTransportFunc != nil {
-		logger.Debug("using custom WebTransport dial function")
 		_, conn, err = c.DialWebTransportFunc(dialCtx, host+path, http.Header{})
 	} else {
-		logger.Debug("using default WebTransport dial")
 		_, conn, err = webtransportgo.Dial(dialCtx, endpoint, http.Header{})
 	}
 
@@ -350,109 +346,90 @@ func (c *Client) openSession(conn quic.Connection, path string, extensions func(
 	return sess, nil
 }
 
-func (s *Client) addSession(sess *Session) {
-	s.sessMu.Lock()
-	defer s.sessMu.Unlock()
+func (c *Client) addSession(sess *Session) {
+	c.sessMu.Lock()
+	defer c.sessMu.Unlock()
 
 	if sess == nil {
-		if s.Logger != nil {
-			s.Logger.Warn("attempted to add nil session")
+		if c.Logger != nil {
+			c.Logger.Warn("attempted to add nil session")
 		}
 		return
 	}
 
-	s.activeSess[sess] = struct{}{}
+	c.activeSess[sess] = struct{}{}
 
-	if s.Logger != nil {
-		s.Logger.Debug("session added successfully",
-			"total_active_sessions", len(s.activeSess),
+	if c.Logger != nil {
+		c.Logger.Debug("session added successfully",
+			"total_active_sessions", len(c.activeSess),
 		)
 	}
 }
 
-func (s *Client) removeSession(sess *Session) {
-	s.sessMu.Lock()
-	defer s.sessMu.Unlock()
+func (c *Client) removeSession(sess *Session) {
+	c.sessMu.Lock()
+	defer c.sessMu.Unlock()
 
-	if sess == nil {
-		if s.Logger != nil {
-			s.Logger.Warn("attempted to remove nil session")
-		}
+	_, ok := c.activeSess[sess]
+	if !ok {
 		return
 	}
 
-	delete(s.activeSess, sess)
-
-	if s.Logger != nil {
-		s.Logger.Debug("session removed successfully",
-			"remaining_active_sessions", len(s.activeSess),
-		)
-	}
-
+	delete(c.activeSess, sess)
 	// Send completion signal if connections reach zero and server is closed
-	if len(s.activeSess) == 0 && s.shuttingDown() {
-		if s.Logger != nil {
-			s.Logger.Info("all sessions closed, sending completion signal")
-		}
+	if len(c.activeSess) == 0 && c.shuttingDown() {
 		select {
-		case s.doneChan <- struct{}{}:
+		case <-c.doneChan:
+			// Already closed
 		default:
-			// Channel might already be closed
+			close(c.doneChan)
 		}
 	}
 }
 
-func (s *Client) shuttingDown() bool {
-	return s.inShutdown.Load()
+func (c *Client) shuttingDown() bool {
+	return c.inShutdown.Load()
 }
 
 func (c *Client) Close() error {
-	start := time.Now()
 	c.inShutdown.Store(true)
 
 	if c.Logger != nil {
-		c.Logger.Info("initiating client shutdown",
-			"active_sessions", len(c.activeSess),
-		)
+		c.Logger.Info("initiating client shutdown")
 	}
 
-	sessionCount := 0
+	c.sessMu.Lock()
 	for sess := range c.activeSess {
-		sess.Terminate(NoError, NoError.String())
-		sessionCount++
+		go sess.Terminate(NoError, NoError.String())
 	}
+	c.sessMu.Unlock()
 
 	if c.Logger != nil {
-		c.Logger.Debug("terminated all active sessions",
-			"terminated_sessions", sessionCount,
-		)
+		c.Logger.Debug("terminated all active sessions")
 	}
 
 	// Wait for active connections to complete if any
 	if len(c.activeSess) > 0 {
-		if c.Logger != nil {
-			c.Logger.Debug("waiting for sessions to complete cleanup")
-		}
 		<-c.doneChan
 	}
 
 	if c.Logger != nil {
-		c.Logger.Info("client shutdown completed",
-			"duration", time.Since(start),
-		)
+		c.Logger.Info("client shutdown completed")
 	}
 
 	return nil
 }
 
 func (c *Client) Shutdown(ctx context.Context) error {
-	c.init() // Ensure initialization
+	if c.shuttingDown() {
+		return nil
+	}
+
 	c.inShutdown.Store(true)
+
 	logger := c.Logger
 	if logger != nil {
-		logger.Info("shutting down client gracefully",
-			"active_sessions", len(c.activeSess),
-		)
+		logger.Info("shutting down client gracefully")
 	}
 
 	// Go away all active sessions
@@ -466,26 +443,20 @@ func (c *Client) Shutdown(ctx context.Context) error {
 
 	// For active connections, wait for completion or context cancellation
 	if len(c.activeSess) > 0 {
-		if logger != nil {
-			logger.Debug("waiting for graceful session termination")
-		}
-
 		select {
 		case <-c.doneChan:
-			if logger != nil {
-				logger.Info("all sessions terminated gracefully")
-			}
 		case <-ctx.Done():
-			for sess := range c.activeSess {
-				go sess.Terminate(GoAwayTimeoutErrorCode, GoAwayTimeoutErrorCode.String())
-				c.removeSession(sess)
+			if len(c.activeSess) > 0 {
+				for sess := range c.activeSess {
+					go sess.Terminate(GoAwayTimeoutErrorCode, GoAwayTimeoutErrorCode.String())
+				}
+
+				if logger != nil {
+					logger.Warn("graceful shutdown timeout, forcing session termination",
+						"context_error", ctx.Err(),
+					)
+				}
 			}
-			if logger != nil {
-				logger.Warn("graceful shutdown timeout, forcing session termination",
-					"context_error", ctx.Err(),
-				)
-			}
-			return ctx.Err()
 		}
 	}
 

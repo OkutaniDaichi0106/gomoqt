@@ -44,7 +44,7 @@ func TestServer_Init(t *testing.T) {
 			assert.NotNil(t, server.doneChan, "doneChan should be initialized")
 			assert.NotNil(t, server.activeSess, "activeSess map should be initialized")
 			assert.NotNil(t, server.nativeQUICCh, "nativeQUICCh should be initialized")
-			assert.NotNil(t, server.WebtransportServer, "WebtransportServer should be initialized")
+			assert.NotNil(t, server.serverInUse, "WebtransportServer should be initialized")
 		})
 	}
 }

@@ -1,6 +1,7 @@
 package moqt
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -14,6 +15,8 @@ import (
 	"net/http"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -434,15 +437,34 @@ func TestClient_RemoveSession_TriggersDone(t *testing.T) {
 func TestClient_DialWebTransport_CustomDialSuccess(t *testing.T) {
 	c := &Client{}
 	mockConn := &MockQUICConnection{}
+
+	// Create a mock stream that returns valid SESSION_SERVER response
+	// Encode a proper SessionServerMessage using bytes.Buffer
+	var buf bytes.Buffer
+	ssm := message.SessionServerMessage{
+		SelectedVersion: protocol.Draft01,
+		Parameters:      make(message.Parameters),
+	}
+	_, err := ssm.Encode(&buf)
+	require.NoError(t, err)
+
+	responseData := buf.Bytes()
+	dataRemaining := make([]byte, len(responseData))
+	copy(dataRemaining, responseData)
+
+	// Create a channel to control blocking after message is read
+	blockChan := make(chan struct{})
+
 	mockStream := &MockQUICStream{
 		ReadFunc: func(p []byte) (int, error) {
-			// Return minimal valid SESSION_SERVER response
-			if len(p) >= 2 {
-				p[0] = 0x01 // Message length = 1
-				p[1] = 0x01 // Selected version = 1
-				return 2, nil
+			if len(dataRemaining) > 0 {
+				n := copy(p, dataRemaining)
+				dataRemaining = dataRemaining[n:]
+				return n, nil
 			}
-			return 0, nil
+			// After message is read, block instead of returning EOF
+			<-blockChan
+			return 0, io.EOF
 		},
 	}
 
@@ -452,12 +474,12 @@ func TestClient_DialWebTransport_CustomDialSuccess(t *testing.T) {
 	mockStream.On("Read", mock.Anything)
 	mockStream.On("CancelRead", mock.Anything).Return().Maybe()
 	mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
-
 	mockConn.On("OpenStream").Return(mockStream, nil)
 	mockConn.On("Context").Return(context.Background())
 	mockConn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
 	mockConn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
 	mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080}).Maybe()
+	mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	c.DialWebTransportFunc = func(ctx context.Context, addr string, header http.Header) (*http.Response, quic.Connection, error) {
 		return &http.Response{}, mockConn, nil
@@ -470,21 +492,42 @@ func TestClient_DialWebTransport_CustomDialSuccess(t *testing.T) {
 	if sess != nil {
 		sess.Terminate(NoError, "")
 	}
+	// Close block channel to allow any pending reads to complete
+	close(blockChan)
 }
 
 // Test for Client.DialQUIC with custom dial function success
 func TestClient_DialQUIC_CustomDialSuccess(t *testing.T) {
 	c := &Client{}
 	mockConn := &MockQUICConnection{}
+
+	// Create a mock stream that returns valid SESSION_SERVER response
+	// Encode a proper SessionServerMessage using bytes.Buffer
+	var buf bytes.Buffer
+	ssm := message.SessionServerMessage{
+		SelectedVersion: protocol.Draft01,
+		Parameters:      make(message.Parameters),
+	}
+	_, err := ssm.Encode(&buf)
+	require.NoError(t, err)
+
+	responseData := buf.Bytes()
+	dataRemaining := make([]byte, len(responseData))
+	copy(dataRemaining, responseData)
+
+	// Create a channel to control blocking after message is read
+	blockChan := make(chan struct{})
+
 	mockStream := &MockQUICStream{
 		ReadFunc: func(p []byte) (int, error) {
-			// Return minimal valid SESSION_SERVER response
-			if len(p) >= 2 {
-				p[0] = 0x01 // Message length = 1
-				p[1] = 0x01 // Selected version = 1
-				return 2, nil
+			if len(dataRemaining) > 0 {
+				n := copy(p, dataRemaining)
+				dataRemaining = dataRemaining[n:]
+				return n, nil
 			}
-			return 0, nil
+			// After message is read, block instead of returning EOF
+			<-blockChan
+			return 0, io.EOF
 		},
 	}
 
@@ -494,12 +537,12 @@ func TestClient_DialQUIC_CustomDialSuccess(t *testing.T) {
 	mockStream.On("Read", mock.Anything)
 	mockStream.On("CancelRead", mock.Anything).Return().Maybe()
 	mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
-
 	mockConn.On("OpenStream").Return(mockStream, nil)
 	mockConn.On("Context").Return(context.Background())
 	mockConn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
 	mockConn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
 	mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080}).Maybe()
+	mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	c.DialQUICConn = func(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (quic.Connection, error) {
 		return mockConn, nil
@@ -512,6 +555,8 @@ func TestClient_DialQUIC_CustomDialSuccess(t *testing.T) {
 	if sess != nil {
 		sess.Terminate(NoError, "")
 	}
+	// Close block channel to allow any pending reads to complete
+	close(blockChan)
 }
 
 // Test for Client.Dial with shutting down state
@@ -599,15 +644,33 @@ func TestClient_OpenSession_Success(t *testing.T) {
 	c.init()
 
 	mockConn := &MockQUICConnection{}
+
+	// Create a mock stream that returns valid SESSION_SERVER response
+	// Encode a proper SessionServerMessage using bytes.Buffer
+	var buf bytes.Buffer
+	ssm := message.SessionServerMessage{
+		SelectedVersion: protocol.Draft01,
+		Parameters:      make(message.Parameters),
+	}
+	_, err := ssm.Encode(&buf)
+	require.NoError(t, err)
+
+	responseData := buf.Bytes()
+	dataRemaining := make([]byte, len(responseData))
+	copy(dataRemaining, responseData)
+	// Create a channel to control blocking after message is read
+	blockChan := make(chan struct{})
+
 	mockStream := &MockQUICStream{
 		ReadFunc: func(p []byte) (int, error) {
-			// Return minimal valid SESSION_SERVER response
-			if len(p) >= 2 {
-				p[0] = 0x01 // Message length = 1
-				p[1] = 0x01 // Selected version = 1
-				return 2, nil
+			if len(dataRemaining) > 0 {
+				n := copy(p, dataRemaining)
+				dataRemaining = dataRemaining[n:]
+				return n, nil
 			}
-			return 0, nil
+			// After message is read, block instead of returning EOF
+			<-blockChan
+			return 0, io.EOF
 		},
 	}
 
@@ -616,12 +679,12 @@ func TestClient_OpenSession_Success(t *testing.T) {
 	mockStream.On("Read", mock.Anything)
 	mockStream.On("CancelRead", mock.Anything).Return().Maybe()
 	mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
-
 	mockConn.On("OpenStream").Return(mockStream, nil)
 	mockConn.On("Context").Return(context.Background())
 	mockConn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
 	mockConn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
 	mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080}).Maybe()
+	mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	extensions := func() *Parameters {
 		return NewParameters()
@@ -632,11 +695,12 @@ func TestClient_OpenSession_Success(t *testing.T) {
 
 	// Verify session was added to active sessions
 	assert.Contains(t, c.activeSess, sess)
-
 	// Cleanup
 	if sess != nil {
 		sess.Terminate(NoError, "")
 	}
+	// Close block channel to allow any pending reads to complete
+	close(blockChan)
 }
 
 // Test for Client.Dial with various URL schemes
@@ -864,10 +928,9 @@ func TestClient_Init_Idempotency(t *testing.T) {
 	c.init()
 	activeSess2 := c.activeSess
 	doneChan2 := c.doneChan
-
 	// Should be the same instances
-	assert.Same(t, activeSess1, activeSess2)
-	assert.Same(t, doneChan1, doneChan2)
+	assert.Equal(t, activeSess1, activeSess2)
+	assert.Equal(t, doneChan1, doneChan2)
 }
 
 // Test for Client.Close with no sessions

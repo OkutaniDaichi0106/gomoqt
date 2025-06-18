@@ -45,7 +45,6 @@ func (su SubscribeUpdateMessage) Encode(w io.Writer) (int, error) {
 }
 
 func (sum *SubscribeUpdateMessage) Decode(r io.Reader) (int, error) {
-
 	buf, n, err := ReadBytes(quicvarint.NewReader(r))
 	if err != nil {
 		return n, err

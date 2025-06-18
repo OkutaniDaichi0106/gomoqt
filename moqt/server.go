@@ -514,13 +514,12 @@ func (s *Server) Close() error {
 	// Set the shutdown flag
 	s.inShutdown.Store(true)
 
-	// Ensure that initOnce is called to initialize the server
-	s.initOnce.Do(func() {})
+	// Ensure that the server is initialized
+	s.init()
 
 	if s.Logger != nil {
 		s.Logger.Info("closing server", "address", s.Addr)
 	}
-
 	// Terminate all active sessions
 	s.sessMu.Lock()
 	if len(s.activeSess) > 0 {
@@ -531,9 +530,17 @@ func (s *Server) Close() error {
 		s.sessMu.Unlock()
 
 		<-s.doneChan
-	}
+	} else {
+		s.sessMu.Unlock()
 
-	// Close all listeners
+		// No active sessions, close doneChan immediately
+		select {
+		case <-s.doneChan:
+			// Already closed
+		default:
+			close(s.doneChan)
+		}
+	} // Close all listeners
 	s.listenerMu.Lock()
 	if len(s.listeners) > 0 {
 		if s.Logger != nil {

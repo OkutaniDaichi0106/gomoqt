@@ -2,6 +2,8 @@ package moqt
 
 import "github.com/stretchr/testify/mock"
 
+var _ ReceiveSubscribeStream = (*MockReceiveSubscribeStream)(nil)
+
 // MockReceiveSubscribeStream is a mock implementation of ReceiveSubscribeStream for testing
 type MockReceiveSubscribeStream struct {
 	mock.Mock

@@ -439,7 +439,6 @@ func (c *Client) Shutdown(ctx context.Context) error {
 	if logger != nil {
 		logger.Debug("sent go-away to all active sessions")
 	}
-
 	// For active connections, wait for completion or context cancellation
 	if len(c.activeSess) > 0 {
 		select {
@@ -456,6 +455,7 @@ func (c *Client) Shutdown(ctx context.Context) error {
 					)
 				}
 			}
+			return ctx.Err()
 		}
 	}
 

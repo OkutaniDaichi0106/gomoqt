@@ -100,10 +100,12 @@ func TestNewMux_Handle_NilContext(t *testing.T) {
 
 	handler := TrackHandlerFunc(func(p *Publisher) {})
 
-	// Should handle nil context gracefully (just return)
-	mux.Handle(context.Background(), path, handler)
+	// Should panic with nil context
+	assert.Panics(t, func() {
+		mux.Handle(nil, path, handler)
+	})
 
-	// Handler should not be registered - test by trying to serve
+	// Test that handler wasn't registered after panic
 	publisher := createNewTestPublisher(path)
 
 	// Should get NotFoundHandler behavior (track writer gets closed)

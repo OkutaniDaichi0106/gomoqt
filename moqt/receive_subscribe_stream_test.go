@@ -57,8 +57,9 @@ func TestNewReceiveSubscribeStream(t *testing.T) {
 					return 0, io.EOF
 				},
 			}
+
 			// Mock the Read method calls for the listenUpdates goroutine
-			mockStream.On("Read", mock.AnythingOfType("[]uint8")).Return(0, io.EOF)
+			mockStream.On("Read", mock.AnythingOfType("[]uint8"))
 
 			rss := newReceiveSubscribeStream(tt.subscribeID, mockStream, tt.config)
 

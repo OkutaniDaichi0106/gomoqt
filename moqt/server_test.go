@@ -332,7 +332,8 @@ func TestServer_AcceptSession(t *testing.T) {
 				}
 				return buf.Read(p)
 			}
-			mockStream.On("Write", mock.Anything).Return(0, nil)
+			mockStream.On("Read", mock.AnythingOfType("[]uint8"))
+			mockStream.On("Write", mock.AnythingOfType("[]uint8")).Return(0, nil)
 			mockStream.On("StreamID").Return(quic.StreamID(1))
 
 			mockConn := &MockQUICConnection{}

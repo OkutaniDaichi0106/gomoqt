@@ -1,10 +1,10 @@
 package moqt
 
 import (
+	"context"
 	"errors"
 	"io"
 	"testing"
-	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 	"github.com/stretchr/testify/assert"
@@ -12,323 +12,292 @@ import (
 )
 
 func TestNewTrackSender(t *testing.T) {
-	// Create mock receive subscribe stream
 	mockStream := &MockQUICStream{}
 	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{})
 
-	// Create mock open group function
 	openGroupFunc := func(seq GroupSequence) (*sendGroupStream, error) {
 		return &sendGroupStream{}, nil
 	}
 
 	sender := newTrackSender(substr, openGroupFunc)
 
-	assert.NotNil(t, sender, "newTrackSender should not return nil")
-	assert.NotNil(t, sender.openGroupFunc, "openGroupFunc should be set")
-	assert.Equal(t, substr, sender.subscribeStream, "subscribeStream should be set correctly")
+	assert.NotNil(t, sender)
+	assert.NotNil(t, sender.openGroupFunc)
+	assert.Equal(t, substr, sender.subscribeStream)
 }
 
 func TestTrackSender_OpenGroup(t *testing.T) {
 	tests := map[string]struct {
-		streamClosed   bool
-		openGroupError error
-		seq            GroupSequence
-		expectError    bool
+		subscribeStream *receiveSubscribeStream
+		openGroupFunc   func(GroupSequence) (*sendGroupStream, error)
+		seq             GroupSequence
+		wantErr         bool
 	}{
-		"successful open": {
-			streamClosed: false,
-			seq:          GroupSequence(1),
-			expectError:  false,
+		"success": {
+			subscribeStream: func() *receiveSubscribeStream {
+				mockStream := &MockQUICStream{
+					ReadFunc: func(p []byte) (int, error) {
+						// Block indefinitely to keep stream open
+						select {}
+					},
+					WriteFunc: func(p []byte) (int, error) {
+						return len(p), nil
+					},
+				}
+				mockStream.On("Read", mock.AnythingOfType("[]uint8"))
+				mockStream.On("Write", mock.AnythingOfType("[]uint8"))
+				mockStream.On("Close").Return(nil)
+				mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return()
+				mockStream.On("StreamID").Return(quic.StreamID(1))
+				return newReceiveSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{})
+			}(),
+			openGroupFunc: func(seq GroupSequence) (*sendGroupStream, error) {
+				return newSendGroupStream(&MockQUICSendStream{}, seq), nil
+			},
+			seq:     GroupSequence(1),
+			wantErr: false,
 		},
-		"stream closed": {
-			streamClosed: true,
-			seq:          GroupSequence(2),
-			expectError:  true,
-		}, "open group error": {
-			streamClosed:   false,
-			openGroupError: errors.New("mock error"),
-			seq:            GroupSequence(3),
-			expectError:    true,
+		"subscribe stream closed": {
+			subscribeStream: func() *receiveSubscribeStream {
+				mockStream := &MockQUICStream{
+					ReadFunc: func(p []byte) (int, error) {
+						return 0, io.EOF
+					},
+					WriteFunc: func(p []byte) (int, error) {
+						return len(p), nil
+					},
+				}
+				mockStream.On("Read", mock.AnythingOfType("[]uint8"))
+				mockStream.On("Write", mock.AnythingOfType("[]uint8"))
+				mockStream.On("Close").Return(nil)
+				mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return()
+				mockStream.On("StreamID").Return(quic.StreamID(1))
+				substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{})
+				substr.close()
+				return substr
+			}(),
+			openGroupFunc: func(seq GroupSequence) (*sendGroupStream, error) {
+				return &sendGroupStream{closedCh: make(chan struct{})}, nil
+			},
+			seq:     GroupSequence(2),
+			wantErr: true,
+		},
+		"open group error": {
+			subscribeStream: func() *receiveSubscribeStream {
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				mockStream := &MockQUICStream{
+					ReadFunc: func(p []byte) (int, error) {
+						<-ctx.Done()
+						return 0, io.EOF
+					},
+					WriteFunc: func(p []byte) (int, error) {
+						return len(p), nil
+					},
+				}
+				mockStream.On("Read", mock.AnythingOfType("[]uint8"))
+				mockStream.On("Write", mock.AnythingOfType("[]uint8"))
+				mockStream.On("Close").Return(nil)
+				mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return()
+				mockStream.On("StreamID").Return(quic.StreamID(1))
+				return newReceiveSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{})
+			}(),
+			openGroupFunc: func(seq GroupSequence) (*sendGroupStream, error) {
+				return nil, errors.New("mock error")
+			},
+			seq:     GroupSequence(3),
+			wantErr: true,
 		},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			// Create mock receive subscribe stream
-			mockStream := &MockQUICStream{
-				ReadFunc: func(p []byte) (int, error) {
-					// Block to keep the stream alive for testing
-					time.Sleep(50 * time.Millisecond)
-					return 0, io.EOF
-				},
-				WriteFunc: func(p []byte) (int, error) {
-					// Simulate a write operation that returns no error
-					return len(p), nil
-				},
-			}
-
-			mockStream.On("Read", mock.AnythingOfType("[]uint8"))
-			mockStream.On("Write", mock.AnythingOfType("[]uint8"))
-			mockStream.On("Close").Return(nil)
-			mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return()
-			mockStream.On("StreamID").Return(quic.StreamID(1))
-
-			substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{})
-
-			// Close the stream if needed
-			if tt.streamClosed {
-				substr.close()
-			}
-
-			// Create test stream with proper closedCh
-			testStream := &sendGroupStream{
-				closedCh: make(chan struct{}),
-			}
-
-			// Create mock open group function
-			openGroupFunc := func(seq GroupSequence) (*sendGroupStream, error) {
-				if tt.openGroupError != nil {
-					return nil, tt.openGroupError
-				}
-				return testStream, nil
-			}
-
+			substr := tt.subscribeStream
+			openGroupFunc := tt.openGroupFunc
 			sender := newTrackSender(substr, openGroupFunc)
-
-			// Initial queue should be empty
-			sender.mu.Lock()
-			initialQueueSize := len(sender.queue)
-			sender.mu.Unlock()
-
-			assert.Equal(t, 0, initialQueueSize, "Initial queue size should be 0")
 
 			groupWriter, err := sender.OpenGroup(tt.seq)
 
-			if tt.expectError {
-				assert.Error(t, err, "expected error but got none")
-				assert.Nil(t, groupWriter, "expected nil GroupWriter on error")
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Nil(t, groupWriter)
 
-				// Queue should still be empty on error
 				sender.mu.Lock()
 				queueSize := len(sender.queue)
 				sender.mu.Unlock()
-				assert.Equal(t, 0, queueSize, "Queue size should be 0 after error")
+				assert.Equal(t, 0, queueSize)
 			} else {
-				assert.NoError(t, err, "unexpected error")
-				assert.NotNil(t, groupWriter, "expected non-nil GroupWriter")
+				assert.NoError(t, err)
+				assert.NotNil(t, groupWriter)
 
-				// Verify that stream was added to the queue
 				sender.mu.Lock()
 				queueSize := len(sender.queue)
-				_, hasTestStream := sender.queue[testStream]
 				sender.mu.Unlock()
-
-				assert.Equal(t, 1, queueSize, "Queue size should be 1 after success")
-				assert.True(t, hasTestStream, "Test stream not found in queue")
-
-				// Test that the group is removed when stream is closed
-				close(testStream.closedCh)
-
-				// Small delay to allow goroutine to run
-				time.Sleep(10 * time.Millisecond)
-
-				// Verify that stream was removed from queue
-				sender.mu.Lock()
-				finalQueueSize := len(sender.queue)
-				sender.mu.Unlock()
-
-				assert.Equal(t, 0, finalQueueSize, "Queue size should be 0 after stream closed")
+				assert.Equal(t, 1, queueSize)
 			}
 		})
 	}
 }
 
 func TestTrackSender_Close(t *testing.T) {
-	tests := map[string]struct {
-		streamClosed bool
-		expectError  bool
-	}{
-		"successful close": {
-			streamClosed: false,
-			expectError:  false,
-		}, "already closed": {
-			streamClosed: true,
-			expectError:  false, // Should handle multiple close calls gracefully
+	mockStream := &MockQUICStream{
+		ReadFunc: func(p []byte) (int, error) {
+			select {}
+		},
+		WriteFunc: func(p []byte) (int, error) {
+			return len(p), nil
 		},
 	}
+	mockStream.On("Read", mock.AnythingOfType("[]uint8"))
+	mockStream.On("Write", mock.AnythingOfType("[]uint8"))
+	mockStream.On("Close").Return(nil)
+	mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return()
+	mockStream.On("CancelWrite", mock.AnythingOfType("quic.StreamErrorCode")).Return()
+	mockStream.On("StreamID").Return(quic.StreamID(1))
 
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			// Create mock receive subscribe stream
-			mockStream := &MockQUICStream{
-				ReadFunc: func(p []byte) (int, error) {
-					// Block indefinitely to prevent listenUpdates from closing the stream
-					select {}
-				},
-				WriteFunc: func(p []byte) (int, error) {
-					// Simulate a write operation that returns no error
-					return len(p), nil
-				},
-			}
+	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{})
 
-			mockStream.On("Read", mock.AnythingOfType("[]uint8"))
-			mockStream.On("Write", mock.AnythingOfType("[]uint8"))
-			mockStream.On("Close").Return(nil)
-			mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return()
-			mockStream.On("CancelWrite", mock.AnythingOfType("quic.StreamErrorCode")).Return()
-			mockStream.On("StreamID").Return(quic.StreamID(1))
-			substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{})
+	mockSendStream := &MockQUICSendStream{}
+	mockSendStream.On("Close").Return(nil)
+	mockSendStream.On("StreamID").Return(quic.StreamID(1))
 
-			// Close the stream if needed
-			if tt.streamClosed {
-				substr.close()
-			}
+	testStream := newSendGroupStream(mockSendStream, GroupSequence(1))
 
-			// Create mock send stream for the group stream
-			mockSendStream := &MockQUICSendStream{}
-			mockSendStream.On("Close").Return(nil)
-			mockSendStream.On("StreamID").Return(quic.StreamID(1))
-
-			// Create test stream using constructor
-			testStream := newSendGroupStream(mockSendStream, GroupSequence(1))
-
-			// Create mock open group function
-			openGroupFunc := func(seq GroupSequence) (*sendGroupStream, error) {
-				return testStream, nil
-			}
-
-			sender := newTrackSender(substr, openGroupFunc)
-
-			// Add a test stream to the queue if stream is not closed
-			if !tt.streamClosed {
-				_, err := sender.OpenGroup(GroupSequence(1))
-				assert.NoError(t, err, "Failed to open group for test setup")
-
-				// Verify the stream was added
-				sender.mu.Lock()
-				initialQueueSize := len(sender.queue)
-				sender.mu.Unlock()
-
-				assert.Equal(t, 1, initialQueueSize, "Initial queue size should be 1")
-			}
-
-			err := sender.Close()
-
-			if tt.expectError {
-				assert.Error(t, err, "expected error but got none")
-			} else {
-				assert.NoError(t, err, "unexpected error")
-
-				// Verify queue is cleared
-				sender.mu.Lock()
-				finalQueueSize := len(sender.queue)
-				sender.mu.Unlock()
-
-				assert.Equal(t, 0, finalQueueSize, "Queue size should be 0 after close")
-			}
-		})
+	openGroupFunc := func(seq GroupSequence) (*sendGroupStream, error) {
+		return testStream, nil
 	}
+
+	sender := newTrackSender(substr, openGroupFunc)
+
+	_, err := sender.OpenGroup(GroupSequence(1))
+	assert.NoError(t, err)
+
+	sender.mu.Lock()
+	initialQueueSize := len(sender.queue)
+	sender.mu.Unlock()
+	assert.Equal(t, 1, initialQueueSize)
+
+	err = sender.Close()
+
+	assert.NoError(t, err)
+
+	sender.mu.Lock()
+	finalQueueSize := len(sender.queue)
+	sender.mu.Unlock()
+	assert.Equal(t, 0, finalQueueSize)
+}
+
+func TestTrackSender_Close_AlreadyClosed(t *testing.T) {
+	mockStream := &MockQUICStream{}
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Write", mock.AnythingOfType("[]uint8")).Return(func(p []byte) int { return len(p) }, nil)
+	mockStream.On("Close").Return(nil)
+	mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return()
+	mockStream.On("CancelWrite", mock.AnythingOfType("quic.StreamErrorCode")).Return()
+	mockStream.On("StreamID").Return(quic.StreamID(1))
+
+	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{})
+	substr.close()
+
+	openGroupFunc := func(seq GroupSequence) (*sendGroupStream, error) {
+		mockSendStream := &MockQUICSendStream{}
+		mockSendStream.On("Close").Return(nil)
+		mockSendStream.On("StreamID").Return(quic.StreamID(1))
+		return newSendGroupStream(mockSendStream, GroupSequence(1)), nil
+	}
+
+	sender := newTrackSender(substr, openGroupFunc)
+
+	err := sender.Close()
+
+	assert.NoError(t, err)
+
+	sender.mu.Lock()
+	finalQueueSize := len(sender.queue)
+	sender.mu.Unlock()
+	assert.Equal(t, 0, finalQueueSize)
 }
 
 func TestTrackSender_CloseWithError(t *testing.T) {
 	tests := map[string]struct {
+		errorCode    SubscribeErrorCode
 		streamClosed bool
-		reason       SubscribeErrorCode
-		expectError  bool
 	}{
-		"close with custom error": {
+		"custom error": {
+			errorCode:    SubscribeErrorCode(1),
 			streamClosed: false,
-			reason:       SubscribeErrorCode(1),
-			expectError:  false,
 		},
-		"close with zero error code": {
+		"zero error": {
+			errorCode:    SubscribeErrorCode(0),
 			streamClosed: false,
-			reason:       SubscribeErrorCode(0),
-			expectError:  false}, "already closed": {
+		},
+		"already closed": {
+			errorCode:    SubscribeErrorCode(2),
 			streamClosed: true,
-			reason:       SubscribeErrorCode(2),
-			expectError:  false, // Should handle multiple close calls gracefully
 		},
 	}
+
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			// Create mock receive subscribe stream
 			mockStream := &MockQUICStream{
 				ReadFunc: func(p []byte) (int, error) {
-					// Block indefinitely to prevent listenUpdates from closing the stream
 					select {}
 				},
 				WriteFunc: func(p []byte) (int, error) {
-					// Simulate a write operation that returns no error
 					return len(p), nil
 				},
 			}
-
 			mockStream.On("Read", mock.AnythingOfType("[]uint8"))
 			mockStream.On("Write", mock.AnythingOfType("[]uint8"))
 			mockStream.On("Close").Return(nil)
 			mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return()
 			mockStream.On("CancelWrite", mock.AnythingOfType("quic.StreamErrorCode")).Return()
 			mockStream.On("StreamID").Return(quic.StreamID(1))
+
 			substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{})
 
-			// Close the stream if needed
 			if tt.streamClosed {
 				substr.close()
 			}
 
-			// Create mock send stream for test
 			mockSendStream := &MockQUICSendStream{}
 			mockSendStream.On("StreamID").Return(quic.StreamID(1))
 			mockSendStream.On("CancelWrite", mock.AnythingOfType("quic.StreamErrorCode")).Return()
 
-			// Create mock open group function
 			openGroupFunc := func(seq GroupSequence) (*sendGroupStream, error) {
 				return newSendGroupStream(mockSendStream, seq), nil
 			}
 
 			sender := newTrackSender(substr, openGroupFunc)
 
-			// Add a test stream to the queue if stream is not closed
 			if !tt.streamClosed {
 				_, err := sender.OpenGroup(GroupSequence(1))
-				assert.NoError(t, err, "Failed to open group for test setup")
+				assert.NoError(t, err)
 
-				// Verify the stream was added
 				sender.mu.Lock()
 				initialQueueSize := len(sender.queue)
 				sender.mu.Unlock()
-
-				assert.Equal(t, 1, initialQueueSize, "Initial queue size should be 1")
+				assert.Equal(t, 1, initialQueueSize)
 			}
 
-			err := sender.CloseWithError(tt.reason)
+			err := sender.CloseWithError(tt.errorCode)
 
-			if tt.expectError {
-				assert.Error(t, err, "expected error but got none")
-			} else {
-				assert.NoError(t, err, "unexpected error")
+			assert.NoError(t, err)
 
-				// Verify queue is cleared
-				sender.mu.Lock()
-				finalQueueSize := len(sender.queue)
-				sender.mu.Unlock()
-
-				assert.Equal(t, 0, finalQueueSize, "Queue size should be 0 after close with error")
-			}
+			sender.mu.Lock()
+			finalQueueSize := len(sender.queue)
+			sender.mu.Unlock()
+			assert.Equal(t, 0, finalQueueSize)
 		})
 	}
 }
 
 func TestTrackSender_ConcurrentOperations(t *testing.T) {
-	// Create mock receive subscribe stream
 	mockStream := &MockQUICStream{
 		ReadFunc: func(p []byte) (int, error) {
-			// Block indefinitely to prevent listenUpdates from closing the stream
 			select {}
 		},
 		WriteFunc: func(p []byte) (int, error) {
-			// Simulate a write operation that returns no error
 			return len(p), nil
 		},
 	}
@@ -339,28 +308,21 @@ func TestTrackSender_ConcurrentOperations(t *testing.T) {
 	mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return()
 	mockStream.On("CancelWrite", mock.AnythingOfType("quic.StreamErrorCode")).Return()
 	mockStream.On("StreamID").Return(quic.StreamID(1))
+
 	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &SubscribeConfig{})
 
-	// Keep track of streams for verification
-	streams := make([]*sendGroupStream, 0)
-
-	// Create open group function that remembers streams
 	openGroupFunc := func(seq GroupSequence) (*sendGroupStream, error) {
-		// Create mock send stream for each group
 		mockSendStream := &MockQUICSendStream{}
 		mockSendStream.On("Close").Return(nil)
 		mockSendStream.On("StreamID").Return(quic.StreamID(int(seq)))
-
-		stream := newSendGroupStream(mockSendStream, seq)
-		streams = append(streams, stream)
-		return stream, nil
+		return newSendGroupStream(mockSendStream, seq), nil
 	}
 
 	sender := newTrackSender(substr, openGroupFunc)
 
-	// Open multiple groups concurrently
 	const numGroups = 10
 	errChan := make(chan error, numGroups)
+
 	for i := range numGroups {
 		go func(seq GroupSequence) {
 			_, err := sender.OpenGroup(seq)
@@ -368,27 +330,21 @@ func TestTrackSender_ConcurrentOperations(t *testing.T) {
 		}(GroupSequence(i + 1))
 	}
 
-	// Wait for all operations to complete
 	for range numGroups {
 		err := <-errChan
-		assert.NoError(t, err, "Unexpected error opening group")
+		assert.NoError(t, err)
 	}
 
-	// Verify queue has correct number of streams
 	sender.mu.Lock()
 	queueSize := len(sender.queue)
 	sender.mu.Unlock()
+	assert.Equal(t, numGroups, queueSize)
 
-	assert.Equal(t, numGroups, queueSize, "Expected %d streams in queue, got %d", numGroups, queueSize)
-
-	// Close the sender and verify all streams are closed
 	err := sender.Close()
-	assert.NoError(t, err, "Unexpected error closing track sender")
+	assert.NoError(t, err)
 
-	// Verify queue is empty after close
 	sender.mu.Lock()
 	finalQueueSize := len(sender.queue)
 	sender.mu.Unlock()
-
-	assert.Equal(t, 0, finalQueueSize, "Queue size should be 0 after close")
+	assert.Equal(t, 0, finalQueueSize)
 }

@@ -254,9 +254,8 @@ func (c *Client) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux)
 			logger.Debug("client setup extensions returned nil, using default parameters")
 			params = NewParameters()
 		}
-		params.SetString(param_type_path, path)
 
-		logger.Debug("setup extensions configured with path parameter")
+		params.SetString(param_type_path, path)
 
 		return params
 	}

@@ -222,7 +222,7 @@ func TestTrackSender_OpenGroup_SenderClosed(t *testing.T) {
 	group, err := sender.OpenGroup(GroupSequence(1))
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "track sender is closed")
+	assert.Contains(t, err.Error(), "subscription was canceled")
 	assert.Nil(t, group)
 }
 

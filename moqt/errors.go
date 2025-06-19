@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
@@ -35,7 +34,7 @@ const (
 	InvalidPrefixErrorCode AnnounceErrorCode = 0x5 // TODO: Is this necessary?
 )
 
-type AnnounceErrorCode protocol.AnnounceErrorCode
+type AnnounceErrorCode quic.StreamErrorCode
 
 func (code AnnounceErrorCode) String() string {
 	switch code {
@@ -86,7 +85,7 @@ const (
 	// These error codes are used after subscribe negotiation is completed.
 )
 
-type SubscribeErrorCode protocol.SubscribeErrorCode
+type SubscribeErrorCode quic.StreamErrorCode
 
 func (code SubscribeErrorCode) String() string {
 	switch code {
@@ -132,7 +131,7 @@ const (
 	UnsupportedVersionErrorCode      SessionErrorCode = 0x12
 )
 
-type SessionErrorCode protocol.SessionErrorCode
+type SessionErrorCode quic.ApplicationErrorCode
 
 func (code SessionErrorCode) String() string {
 	switch code {
@@ -187,7 +186,7 @@ const (
 	InvalidSubscribeIDErrorCode GroupErrorCode = 0x07 // TODO: Is this necessary?
 )
 
-type GroupErrorCode protocol.GroupErrorCode
+type GroupErrorCode quic.StreamErrorCode
 
 func (code GroupErrorCode) String() string {
 	switch code {

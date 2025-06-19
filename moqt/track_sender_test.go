@@ -15,16 +15,16 @@ import (
 func TestNewTrackSender(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	// newReceiveSubscribeStream starts a goroutine that reads from the stream
-	mockStream.On("Read", mock.Anything).Return(0, errors.New("EOF")).Maybe()
+	mockStream.On("Read", mock.Anything).Return(0, errors.New("EOF"))
 
 	substr := newReceiveSubscribeStream(1, mockStream, &SubscribeConfig{})
 
 	openGroupFunc := func(seq GroupSequence) (*sendGroupStream, error) {
 		mockSendStream := &MockQUICSendStream{}
 		// Allow various method calls during cleanup
-		mockSendStream.On("CancelWrite", mock.Anything).Return().Maybe()
-		mockSendStream.On("StreamID").Return(quic.StreamID(1)).Maybe()
-		mockSendStream.On("Close").Return(nil).Maybe()
+		mockSendStream.On("CancelWrite", mock.Anything).Return()
+		mockSendStream.On("StreamID").Return(quic.StreamID(1))
+		mockSendStream.On("Close").Return(nil)
 		return newSendGroupStream(mockSendStream, seq), nil
 	}
 
@@ -48,15 +48,15 @@ func TestTrackSender_WriteInfo(t *testing.T) {
 	}
 	// The accept method will write SubscribeOk message to the stream
 	mockStream.On("Read", mock.Anything)
-	mockStream.On("Write", mock.Anything).Return(2, nil).Maybe()
+	mockStream.On("Write", mock.Anything).Return(2, nil)
 
 	substr := newReceiveSubscribeStream(1, mockStream, &SubscribeConfig{})
 	openGroupFunc := func(seq GroupSequence) (*sendGroupStream, error) {
 		mockSendStream := &MockQUICSendStream{}
 		// Allow various method calls during cleanup
-		mockSendStream.On("CancelWrite", mock.Anything).Return().Maybe()
-		mockSendStream.On("StreamID").Return(quic.StreamID(1)).Maybe()
-		mockSendStream.On("Close").Return(nil).Maybe()
+		mockSendStream.On("CancelWrite", mock.Anything).Return()
+		mockSendStream.On("StreamID").Return(quic.StreamID(1))
+		mockSendStream.On("Close").Return(nil)
 		return newSendGroupStream(mockSendStream, seq), nil
 	}
 
@@ -71,15 +71,15 @@ func TestTrackSender_WriteInfo(t *testing.T) {
 func TestTrackSender_WriteInfo_AlreadyAccepted(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	// No Write expectation since WriteInfo should not call accept when already accepted
-	mockStream.On("Read", mock.Anything).Return(0, errors.New("EOF")).Maybe()
+	mockStream.On("Read", mock.Anything).Return(0, errors.New("EOF"))
 
 	substr := newReceiveSubscribeStream(1, mockStream, &SubscribeConfig{})
 	openGroupFunc := func(seq GroupSequence) (*sendGroupStream, error) {
 		mockSendStream := &MockQUICSendStream{}
 		// Allow various method calls during cleanup
-		mockSendStream.On("CancelWrite", mock.Anything).Return().Maybe()
-		mockSendStream.On("StreamID").Return(quic.StreamID(1)).Maybe()
-		mockSendStream.On("Close").Return(nil).Maybe()
+		mockSendStream.On("CancelWrite", mock.Anything).Return()
+		mockSendStream.On("StreamID").Return(quic.StreamID(1))
+		mockSendStream.On("Close").Return(nil)
 		return newSendGroupStream(mockSendStream, seq), nil
 	}
 
@@ -99,15 +99,15 @@ func TestTrackSender_WriteInfo_AlreadyAccepted(t *testing.T) {
 
 func TestTrackSender_OpenGroup_ZeroSequence(t *testing.T) {
 	mockStream := &MockQUICStream{}
-	mockStream.On("Read", mock.Anything).Return(0, errors.New("EOF")).Maybe()
+	mockStream.On("Read", mock.Anything).Return(0, errors.New("EOF"))
 
 	substr := newReceiveSubscribeStream(1, mockStream, &SubscribeConfig{})
 	openGroupFunc := func(seq GroupSequence) (*sendGroupStream, error) {
 		mockSendStream := &MockQUICSendStream{}
 		// Allow various method calls during cleanup
-		mockSendStream.On("CancelWrite", mock.Anything).Return().Maybe()
-		mockSendStream.On("StreamID").Return(quic.StreamID(1)).Maybe()
-		mockSendStream.On("Close").Return(nil).Maybe()
+		mockSendStream.On("CancelWrite", mock.Anything).Return()
+		mockSendStream.On("StreamID").Return(quic.StreamID(1))
+		mockSendStream.On("Close").Return(nil)
 		return newSendGroupStream(mockSendStream, seq), nil
 	}
 
@@ -130,15 +130,15 @@ func TestTrackSender_OpenGroup_AutoAccept(t *testing.T) {
 	}
 	// Auto-accept will trigger a Write call for SubscribeOk message
 	mockStream.On("Read", mock.Anything)
-	mockStream.On("Write", mock.Anything).Return(2, nil).Maybe()
+	mockStream.On("Write", mock.Anything).Return(2, nil)
 
 	substr := newReceiveSubscribeStream(1, mockStream, &SubscribeConfig{})
 	openGroupFunc := func(seq GroupSequence) (*sendGroupStream, error) {
 		mockSendStream := &MockQUICSendStream{}
 		// Allow various method calls during cleanup
-		mockSendStream.On("CancelWrite", mock.Anything).Return().Maybe()
-		mockSendStream.On("StreamID").Return(quic.StreamID(1)).Maybe()
-		mockSendStream.On("Close").Return(nil).Maybe()
+		mockSendStream.On("CancelWrite", mock.Anything).Return()
+		mockSendStream.On("StreamID").Return(quic.StreamID(1))
+		mockSendStream.On("Close").Return(nil)
 		return newSendGroupStream(mockSendStream, seq), nil
 	}
 
@@ -154,15 +154,15 @@ func TestTrackSender_OpenGroup_AutoAccept(t *testing.T) {
 
 func TestTrackSender_OpenGroup_Success(t *testing.T) {
 	mockStream := &MockQUICStream{}
-	mockStream.On("Read", mock.Anything).Return(0, errors.New("EOF")).Maybe()
+	mockStream.On("Read", mock.Anything).Return(0, errors.New("EOF"))
 
 	substr := newReceiveSubscribeStream(1, mockStream, &SubscribeConfig{})
 	openGroupFunc := func(seq GroupSequence) (*sendGroupStream, error) {
 		mockSendStream := &MockQUICSendStream{}
 		// Allow various method calls during cleanup
-		mockSendStream.On("CancelWrite", mock.Anything).Return().Maybe()
-		mockSendStream.On("StreamID").Return(quic.StreamID(1)).Maybe()
-		mockSendStream.On("Close").Return(nil).Maybe()
+		mockSendStream.On("CancelWrite", mock.Anything).Return()
+		mockSendStream.On("StreamID").Return(quic.StreamID(1))
+		mockSendStream.On("Close").Return(nil)
 		return newSendGroupStream(mockSendStream, seq), nil
 	}
 
@@ -184,7 +184,7 @@ func TestTrackSender_OpenGroup_Success(t *testing.T) {
 
 func TestTrackSender_OpenGroup_OpenGroupFuncError(t *testing.T) {
 	mockStream := &MockQUICStream{}
-	mockStream.On("Read", mock.Anything).Return(0, errors.New("EOF")).Maybe()
+	mockStream.On("Read", mock.Anything).Return(0, errors.New("EOF"))
 
 	substr := newReceiveSubscribeStream(1, mockStream, &SubscribeConfig{})
 	openGroupFunc := func(seq GroupSequence) (*sendGroupStream, error) {
@@ -203,15 +203,15 @@ func TestTrackSender_OpenGroup_OpenGroupFuncError(t *testing.T) {
 
 func TestTrackSender_OpenGroup_SenderClosed(t *testing.T) {
 	mockStream := &MockQUICStream{}
-	mockStream.On("Read", mock.Anything).Return(0, errors.New("EOF")).Maybe()
+	mockStream.On("Read", mock.Anything).Return(0, errors.New("EOF"))
 
 	substr := newReceiveSubscribeStream(1, mockStream, &SubscribeConfig{})
 	openGroupFunc := func(seq GroupSequence) (*sendGroupStream, error) {
 		mockSendStream := &MockQUICSendStream{}
 		// Allow various method calls during cleanup
-		mockSendStream.On("CancelWrite", mock.Anything).Return().Maybe()
-		mockSendStream.On("StreamID").Return(quic.StreamID(1)).Maybe()
-		mockSendStream.On("Close").Return(nil).Maybe()
+		mockSendStream.On("CancelWrite", mock.Anything).Return()
+		mockSendStream.On("StreamID").Return(quic.StreamID(1))
+		mockSendStream.On("Close").Return(nil)
 		return newSendGroupStream(mockSendStream, seq), nil
 	}
 
@@ -230,23 +230,23 @@ func TestTrackSender_Close(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	// Block read operations to prevent subscribeCanceledCh from being closed prematurely
 	mockStream.ReadFunc = func(p []byte) (int, error) {
-		time.Sleep(10 * time.Millisecond) // Short block
+		time.Sleep(100 * time.Millisecond) // Short block
 		return 0, nil
 	}
-	mockStream.On("Read", mock.Anything).Return(0, nil).Maybe()
-	mockStream.On("Write", mock.Anything).Return(2, nil).Maybe() // For accept calls
-	mockStream.On("Close").Return(nil).Maybe()                   // For stream close
-	mockStream.On("CancelRead", mock.Anything).Return().Maybe()  // For cancel read during close
-	mockStream.On("StreamID").Return(quic.StreamID(1)).Maybe()   // For stream ID access during close
+	mockStream.On("Read", mock.Anything)
+	mockStream.On("Write", mock.Anything).Return(2, nil) // For accept calls
+	mockStream.On("Close").Return(nil)                   // For stream close
+	mockStream.On("CancelRead", mock.Anything).Return()  // For cancel read during close
+	mockStream.On("StreamID").Return(quic.StreamID(1))   // For stream ID access during close
 
 	substr := newReceiveSubscribeStream(1, mockStream, &SubscribeConfig{})
 
 	openGroupFunc := func(seq GroupSequence) (*sendGroupStream, error) {
 		mockSendStream := &MockQUICSendStream{}
 		// Allow various method calls during cleanup
-		mockSendStream.On("CancelWrite", mock.Anything).Return().Maybe()
-		mockSendStream.On("StreamID").Return(quic.StreamID(1)).Maybe()
-		mockSendStream.On("Close").Return(nil).Maybe()
+		mockSendStream.On("CancelWrite", mock.Anything).Return()
+		mockSendStream.On("StreamID").Return(quic.StreamID(1))
+		mockSendStream.On("Close").Return(nil)
 		return newSendGroupStream(mockSendStream, seq), nil
 	}
 
@@ -287,20 +287,20 @@ func TestTrackSender_CloseWithError(t *testing.T) {
 				time.Sleep(10 * time.Millisecond) // Short block
 				return 0, nil
 			}
-			mockStream.On("Read", mock.Anything).Return(0, nil).Maybe()
-			mockStream.On("Write", mock.Anything).Return(2, nil).Maybe()
-			mockStream.On("Close").Return(nil).Maybe()                   // For stream close
-			mockStream.On("CancelRead", mock.Anything).Return().Maybe()  // For cancel read during close
-			mockStream.On("CancelWrite", mock.Anything).Return().Maybe() // For cancel write during close
-			mockStream.On("StreamID").Return(quic.StreamID(1)).Maybe()   // For stream ID during error
+			mockStream.On("Read", mock.Anything)
+			mockStream.On("Write", mock.Anything).Return(2, nil)
+			mockStream.On("Close").Return(nil)                   // For stream close
+			mockStream.On("CancelRead", mock.Anything).Return()  // For cancel read during close
+			mockStream.On("CancelWrite", mock.Anything).Return() // For cancel write during close
+			mockStream.On("StreamID").Return(quic.StreamID(1))   // For stream ID during error
 
 			substr := newReceiveSubscribeStream(1, mockStream, &SubscribeConfig{})
 			openGroupFunc := func(seq GroupSequence) (*sendGroupStream, error) {
 				mockSendStream := &MockQUICSendStream{}
 				// Allow various method calls during cleanup
-				mockSendStream.On("CancelWrite", mock.Anything).Return().Maybe()
-				mockSendStream.On("StreamID").Return(quic.StreamID(1)).Maybe()
-				mockSendStream.On("Close").Return(nil).Maybe()
+				mockSendStream.On("CancelWrite", mock.Anything).Return()
+				mockSendStream.On("StreamID").Return(quic.StreamID(1))
+				mockSendStream.On("Close").Return(nil)
 				return newSendGroupStream(mockSendStream, seq), nil
 			}
 
@@ -333,15 +333,15 @@ func TestTrackSender_ConcurrentAccess(t *testing.T) {
 	}
 
 	mockStream.On("Read", mock.Anything)
-	mockStream.On("Write", mock.Anything).Return(2, nil).Maybe()
+	mockStream.On("Write", mock.Anything).Return(2, nil)
 
 	substr := newReceiveSubscribeStream(1, mockStream, &SubscribeConfig{})
 	openGroupFunc := func(seq GroupSequence) (*sendGroupStream, error) {
 		mockSendStream := &MockQUICSendStream{}
 		// Allow various method calls during cleanup
-		mockSendStream.On("CancelWrite", mock.Anything).Return().Maybe()
-		mockSendStream.On("StreamID").Return(quic.StreamID(1)).Maybe()
-		mockSendStream.On("Close").Return(nil).Maybe()
+		mockSendStream.On("CancelWrite", mock.Anything).Return()
+		mockSendStream.On("StreamID").Return(quic.StreamID(1))
+		mockSendStream.On("Close").Return(nil)
 		return newSendGroupStream(mockSendStream, seq), nil
 	}
 	sender := newTrackSender(substr, openGroupFunc)
@@ -379,16 +379,16 @@ func TestTrackSender_ConcurrentAccess(t *testing.T) {
 
 func TestTrackSender_GroupCleanup(t *testing.T) {
 	mockStream := &MockQUICStream{}
-	mockStream.On("Read", mock.Anything).Return(0, errors.New("EOF")).Maybe()
-	mockStream.On("Write", mock.Anything).Return(2, nil).Maybe()
+	mockStream.On("Read", mock.Anything).Return(0, errors.New("EOF"))
+	mockStream.On("Write", mock.Anything).Return(2, nil)
 
 	substr := newReceiveSubscribeStream(1, mockStream, &SubscribeConfig{})
 	openGroupFunc := func(seq GroupSequence) (*sendGroupStream, error) {
 		mockSendStream := &MockQUICSendStream{}
 		// Allow various method calls during cleanup
-		mockSendStream.On("CancelWrite", mock.Anything).Return().Maybe()
-		mockSendStream.On("StreamID").Return(quic.StreamID(1)).Maybe()
-		mockSendStream.On("Close").Return(nil).Maybe()
+		mockSendStream.On("CancelWrite", mock.Anything).Return()
+		mockSendStream.On("StreamID").Return(quic.StreamID(1))
+		mockSendStream.On("Close").Return(nil)
 		return newSendGroupStream(mockSendStream, seq), nil
 	}
 
@@ -420,15 +420,15 @@ func TestTrackSender_GroupCleanup(t *testing.T) {
 
 func TestTrackSender_OpenGroup_MinimumValidValue(t *testing.T) {
 	mockStream := &MockQUICStream{}
-	mockStream.On("Read", mock.Anything).Return(0, errors.New("EOF")).Maybe()
+	mockStream.On("Read", mock.Anything).Return(0, errors.New("EOF"))
 
 	substr := newReceiveSubscribeStream(1, mockStream, &SubscribeConfig{})
 	openGroupFunc := func(seq GroupSequence) (*sendGroupStream, error) {
 		mockSendStream := &MockQUICSendStream{}
 		// Allow various method calls during cleanup
-		mockSendStream.On("CancelWrite", mock.Anything).Return().Maybe()
-		mockSendStream.On("StreamID").Return(quic.StreamID(1)).Maybe()
-		mockSendStream.On("Close").Return(nil).Maybe()
+		mockSendStream.On("CancelWrite", mock.Anything).Return()
+		mockSendStream.On("StreamID").Return(quic.StreamID(1))
+		mockSendStream.On("Close").Return(nil)
 		return newSendGroupStream(mockSendStream, seq), nil
 	}
 
@@ -444,15 +444,15 @@ func TestTrackSender_OpenGroup_MinimumValidValue(t *testing.T) {
 
 func TestTrackSender_OpenGroup_LargeValue(t *testing.T) {
 	mockStream := &MockQUICStream{}
-	mockStream.On("Read", mock.Anything).Return(0, errors.New("EOF")).Maybe()
+	mockStream.On("Read", mock.Anything).Return(0, errors.New("EOF"))
 
 	substr := newReceiveSubscribeStream(1, mockStream, &SubscribeConfig{})
 	openGroupFunc := func(seq GroupSequence) (*sendGroupStream, error) {
 		mockSendStream := &MockQUICSendStream{}
 		// Allow various method calls during cleanup
-		mockSendStream.On("CancelWrite", mock.Anything).Return().Maybe()
-		mockSendStream.On("StreamID").Return(quic.StreamID(1)).Maybe()
-		mockSendStream.On("Close").Return(nil).Maybe()
+		mockSendStream.On("CancelWrite", mock.Anything).Return()
+		mockSendStream.On("StreamID").Return(quic.StreamID(1))
+		mockSendStream.On("Close").Return(nil)
 		return newSendGroupStream(mockSendStream, seq), nil
 	}
 

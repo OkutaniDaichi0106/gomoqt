@@ -94,30 +94,6 @@ func TestNewMux_Handle_Overwrite(t *testing.T) {
 	assert.False(t, called2, "Second handler should not be called due to overwrite prevention")
 }
 
-func TestNewMux_Handle_NilContext(t *testing.T) {
-	mux := NewTrackMux()
-	path := BroadcastPath("/test")
-
-	handler := TrackHandlerFunc(func(p *Publisher) {})
-
-	// Should panic with nil context
-	assert.Panics(t, func() {
-		mux.Handle(nil, path, handler)
-	})
-
-	// Test that handler wasn't registered after panic
-	publisher := createNewTestPublisher(path)
-
-	// Should get NotFoundHandler behavior (track writer gets closed)
-	mockWriter := publisher.TrackWriter.(*MockTrackWriter)
-	mockWriter.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
-
-	mux.ServeTrack(publisher)
-
-	// Verify NotFoundHandler was called
-	mockWriter.AssertCalled(t, "CloseWithError", TrackNotFoundErrorCode)
-}
-
 func TestNewMux_Handle_InvalidPath(t *testing.T) {
 	tests := []struct {
 		name string

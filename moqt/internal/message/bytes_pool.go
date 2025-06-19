@@ -9,12 +9,12 @@ var defaultBytesPool = &sync.Pool{
 	},
 }
 
-func GetBytes() []byte {
+func getBytes() []byte {
 	b := defaultBytesPool.Get().(*[]byte)
 	return (*b)[:0]
 }
 
-func PutBytes(b []byte) {
+func putBytes(b []byte) {
 	b = b[:0]
 	defaultBytesPool.Put(&b)
 }

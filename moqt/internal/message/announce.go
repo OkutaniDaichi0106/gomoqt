@@ -30,8 +30,8 @@ func (a AnnounceMessage) Len() int {
 
 func (am AnnounceMessage) Encode(w io.Writer) (int, error) {
 
-	p := GetBytes()
-	defer PutBytes(p)
+	p := getBytes()
+	defer putBytes(p)
 
 	p = AppendNumber(p, uint64(am.Len()))
 	p = AppendNumber(p, uint64(am.AnnounceStatus))

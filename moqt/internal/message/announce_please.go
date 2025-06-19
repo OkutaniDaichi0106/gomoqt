@@ -26,8 +26,8 @@ func (aim AnnouncePleaseMessage) Len() int {
 
 func (aim AnnouncePleaseMessage) Encode(w io.Writer) (int, error) {
 	// Serialize the payload
-	p := GetBytes()
-	defer PutBytes(p)
+	p := getBytes()
+	defer putBytes(p)
 
 	p = AppendNumber(p, uint64(aim.Len()))
 

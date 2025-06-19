@@ -34,8 +34,8 @@ func (scm SessionClientMessage) Len() int {
 
 func (scm SessionClientMessage) Encode(w io.Writer) (int, error) {
 	// Serialize the payload
-	p := GetBytes()
-	defer PutBytes(p)
+	p := getBytes()
+	defer putBytes(p)
 
 	p = AppendNumber(p, uint64(scm.Len()))
 

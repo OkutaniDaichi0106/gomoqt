@@ -49,8 +49,8 @@ func (s SubscribeMessage) Len() int {
 
 func (s SubscribeMessage) Encode(w io.Writer) (int, error) {
 
-	p := GetBytes()
-	defer PutBytes(p)
+	p := getBytes()
+	defer putBytes(p)
 
 	p = AppendNumber(p, uint64(s.Len()))
 

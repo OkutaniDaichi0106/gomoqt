@@ -19,8 +19,8 @@ func (sum SessionUpdateMessage) Len() int {
 }
 
 func (sum SessionUpdateMessage) Encode(w io.Writer) (int, error) {
-	p := GetBytes()
-	defer PutBytes(p)
+	p := getBytes()
+	defer putBytes(p)
 
 	p = AppendNumber(p, uint64(sum.Len()))
 

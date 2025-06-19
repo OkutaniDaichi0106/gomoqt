@@ -33,8 +33,8 @@ func (su SubscribeUpdateMessage) Len() int {
 
 func (su SubscribeUpdateMessage) Encode(w io.Writer) (int, error) {
 
-	p := GetBytes()
-	defer PutBytes(p)
+	p := getBytes()
+	defer putBytes(p)
 
 	p = AppendNumber(p, uint64(su.Len()))
 	p = AppendNumber(p, uint64(su.TrackPriority))

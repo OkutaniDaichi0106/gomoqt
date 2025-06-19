@@ -22,8 +22,8 @@ func (g GroupMessage) Len() int {
 }
 
 func (g GroupMessage) Encode(w io.Writer) (int, error) {
-	p := GetBytes()
-	defer PutBytes(p)
+	p := getBytes()
+	defer putBytes(p)
 
 	p = AppendNumber(p, uint64(g.Len()))
 	p = AppendNumber(p, uint64(g.SubscribeID))

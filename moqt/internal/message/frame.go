@@ -34,8 +34,8 @@ func (fm *FrameMessage) Len() int {
 }
 
 func (fm *FrameMessage) Encode(w io.Writer) (int, error) {
-	b := GetBytes()
-	defer PutBytes(b)
+	b := getBytes()
+	defer putBytes(b)
 
 	b = AppendBytes(b, fm.Payload)
 
@@ -57,7 +57,7 @@ func (fm *FrameMessage) Decode(r io.Reader) (int, error) {
 var framePool = sync.Pool{
 	New: func() any {
 		return &FrameMessage{
-			Payload: GetBytes(),
+			Payload: getBytes(),
 		}
 	},
 }

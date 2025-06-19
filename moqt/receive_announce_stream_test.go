@@ -32,7 +32,7 @@ func TestNewReceiveAnnounceStream(t *testing.T) {
 	assert.Equal(t, mockStream, ras.stream)
 	assert.NotNil(t, ras.active)
 	assert.NotNil(t, ras.pendings)
-	assert.NotNil(t, ras.notifyCh)
+	assert.NotNil(t, ras.announcedCh)
 	assert.NotNil(t, ras.ctx)
 
 	// Clean up

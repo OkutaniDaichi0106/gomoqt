@@ -38,7 +38,7 @@ type receiveSubscribeStream struct {
 
 	acceptOnce sync.Once
 
-	configMu   sync.Mutex
+	mu         sync.Mutex
 	config     *SubscribeConfig
 	updatedCh  chan struct{}
 	listenOnce sync.Once
@@ -47,7 +47,6 @@ type receiveSubscribeStream struct {
 
 	closed   bool // Track if the channel is closed
 	closeErr error
-	closeMu  sync.Mutex // Protect against concurrent close operations
 }
 
 func (rss *receiveSubscribeStream) SubscribeID() SubscribeID {
@@ -55,8 +54,8 @@ func (rss *receiveSubscribeStream) SubscribeID() SubscribeID {
 }
 
 func (rss *receiveSubscribeStream) SubscribeConfig() (*SubscribeConfig, error) {
-	rss.configMu.Lock()
-	defer rss.configMu.Unlock()
+	rss.mu.Lock()
+	defer rss.mu.Unlock()
 
 	if rss.closed {
 		if rss.closeErr != nil {
@@ -85,38 +84,29 @@ func (rss *receiveSubscribeStream) accept(info Info) {
 	})
 }
 
+func (rss *receiveSubscribeStream) canceled() <-chan struct{} {
+	return rss.subscribeCanceledCh
+}
+
 func (rss *receiveSubscribeStream) listenUpdates() {
 	rss.listenOnce.Do(func() {
 		var sum message.SubscribeUpdateMessage
 		var err error
 
-		defer func() {
-			rss.closeMu.Lock()
-			if !rss.closed {
-				rss.closed = true
-			}
-			// Always close the channel if it hasn't been closed yet
-			select {
-			case <-rss.updatedCh:
-				// Channel is already closed
-			default:
-				close(rss.updatedCh)
-			}
-			rss.closeMu.Unlock()
-		}()
-
 		for {
+			rss.mu.Lock()
 			if rss.closed {
-				return
+				rss.mu.Unlock()
+				break
 			}
+			rss.mu.Unlock()
 
 			_, err = sum.Decode(rss.stream)
 			if err != nil {
-				rss.closeMu.Lock()
-				defer rss.closeMu.Unlock()
-
+				rss.mu.Lock()
 				if rss.closed {
-					return
+					rss.mu.Unlock()
+					break
 				}
 
 				rss.closed = true
@@ -132,31 +122,44 @@ func (rss *receiveSubscribeStream) listenUpdates() {
 				}
 
 				close(rss.subscribeCanceledCh)
-
-				return
+				rss.mu.Unlock()
+				break
 			}
 
-			rss.configMu.Lock()
+			rss.mu.Lock()
 			rss.config = &SubscribeConfig{
 				TrackPriority:    TrackPriority(sum.TrackPriority),
 				MinGroupSequence: GroupSequence(sum.MinGroupSequence),
 				MaxGroupSequence: GroupSequence(sum.MaxGroupSequence),
 			}
-			rss.configMu.Unlock()
+			rss.mu.Unlock()
 
 			select {
 			case rss.updatedCh <- struct{}{}:
 			default:
 			}
 		}
+
+		// Cleanup after loop ends
+		rss.mu.Lock()
+		if !rss.closed {
+			rss.closed = true
+		}
+		// Always close the channel if it hasn't been closed yet
+		select {
+		case <-rss.updatedCh:
+			// Channel is already closed
+		default:
+			close(rss.updatedCh)
+		}
+		rss.mu.Unlock()
 	})
 }
 
 func (rss *receiveSubscribeStream) close() error {
-	rss.closeMu.Lock()
-	defer rss.closeMu.Unlock()
+	rss.mu.Lock()
+	defer rss.mu.Unlock()
 
-	// Close send side of the stream
 	if rss.closed {
 		return rss.closeErr
 	}
@@ -174,8 +177,8 @@ func (rss *receiveSubscribeStream) close() error {
 }
 
 func (rss *receiveSubscribeStream) closeWithError(code SubscribeErrorCode) error {
-	rss.closeMu.Lock()
-	defer rss.closeMu.Unlock()
+	rss.mu.Lock()
+	defer rss.mu.Unlock()
 
 	if rss.closed {
 		return rss.closeErr
@@ -201,8 +204,8 @@ func (rss *receiveSubscribeStream) closeWithError(code SubscribeErrorCode) error
 }
 
 func (rss *receiveSubscribeStream) isClosed() (error, bool) {
-	rss.closeMu.Lock()
-	defer rss.closeMu.Unlock()
+	rss.mu.Lock()
+	defer rss.mu.Unlock()
 
 	return rss.closeErr, rss.closed
 }

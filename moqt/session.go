@@ -101,7 +101,7 @@ type Session struct {
 	sendGroupMapLocker sync.RWMutex
 
 	isTerminating atomic.Bool
-	termErr       error
+	sessErr       error
 }
 
 func (s *Session) terminating() bool {
@@ -114,11 +114,8 @@ func (s *Session) Context() context.Context {
 
 func (s *Session) Terminate(code SessionErrorCode, msg string) error {
 	if s.terminating() {
-		s.logger.Debug("termination already in progress",
-			"code", code,
-			"message", msg,
-		)
-		return s.termErr
+		s.logger.Debug("termination already in progress")
+		return s.sessErr
 	}
 
 	s.isTerminating.Store(true)
@@ -126,7 +123,6 @@ func (s *Session) Terminate(code SessionErrorCode, msg string) error {
 	s.logger.Info("terminating session",
 		"code", code,
 		"message", msg,
-		"remote_address", s.conn.RemoteAddr(),
 	)
 
 	s.connMu.Lock()
@@ -138,29 +134,28 @@ func (s *Session) Terminate(code SessionErrorCode, msg string) error {
 			reason := &SessionError{
 				ApplicationError: appErr,
 			}
-			s.termErr = reason
-			s.logger.Error("session termination with application error",
+			s.sessErr = reason
+			s.logger.Error("session already terminated",
 				"error", reason,
 			)
 			return reason
 		}
-		s.termErr = err
+		s.sessErr = err
 		s.logger.Error("session termination failed",
 			"error", err,
 		)
 		return err
 	}
 
-	s.termErr = &SessionError{
+	s.sessErr = &SessionError{
 		ApplicationError: &quic.ApplicationError{
 			ErrorCode:    quic.ApplicationErrorCode(code),
 			ErrorMessage: msg,
 		},
 	}
-	s.cancel(s.termErr)
+	s.cancel(s.sessErr)
 
 	// Wait for finishing handling streams
-	s.logger.Debug("waiting for stream handlers to complete")
 	s.wg.Wait()
 
 	s.logger.Info("session terminated successfully")
@@ -170,7 +165,7 @@ func (s *Session) Terminate(code SessionErrorCode, msg string) error {
 
 func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *SubscribeConfig) (*Subscriber, error) {
 	if s.terminating() {
-		return nil, s.termErr
+		return nil, s.sessErr
 	}
 
 	if config == nil {
@@ -309,7 +304,7 @@ func (s *Session) nextSubscribeID() SubscribeID {
 
 func (sess *Session) OpenAnnounceStream(prefix string) (AnnouncementReader, error) {
 	if sess.terminating() {
-		return nil, sess.termErr
+		return nil, sess.sessErr
 	}
 
 	// Create a logger with consistent context for this announcement

@@ -41,13 +41,17 @@ func main() {
 					return
 				}
 
-				err = gw.WriteFrame(moqt.NewFrame([]byte("FRAME " + seq.String())))
+				frame := moqt.NewFrame([]byte("FRAME " + seq.String()))
+				err = gw.WriteFrame(frame)
 				if err != nil {
 					gw.CancelWrite(moqt.InternalGroupErrorCode) // TODO: Handle error properly
 					slog.Error("failed to write frame", "error", err)
 					return
 				}
 
+				// TODO: Release the frame after writing
+				// This is important to avoid memory leaks
+				frame.Release()
 				gw.Close()
 
 				seq = seq.Next()

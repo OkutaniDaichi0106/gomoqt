@@ -80,7 +80,7 @@ func main() {
 							defer gw.Close()
 
 							for {
-								f, err := gr.ReadFrame()
+								frame, err := gr.ReadFrame()
 								if err != nil {
 									if err == io.EOF {
 										return
@@ -89,11 +89,15 @@ func main() {
 									return
 								}
 
-								err = gw.WriteFrame(f)
+								err = gw.WriteFrame(frame)
 								if err != nil {
 									slog.Error("failed to write frame", "error", err)
 									return
 								}
+
+								// TODO: Release the frame after writing
+								// This is important to avoid memory leaks
+								frame.Release()
 							}
 						}(gr)
 

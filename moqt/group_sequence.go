@@ -30,6 +30,7 @@ func (gs GroupSequence) Next() GroupSequence {
 	}
 
 	if gs == MaxGroupSequence {
+		// WARN: Is this behavior acceptable?
 		return 1
 	}
 

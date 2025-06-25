@@ -15,49 +15,49 @@ import (
 
 func main() {
 	server := moqt.Server{
-		Addr: "localhost:4469", TLSConfig: &tls.Config{
+		Addr: "localhost:4469",
+		TLSConfig: &tls.Config{
 			NextProtos:         []string{"h3", "moq-00"},
 			Certificates:       []tls.Certificate{generateCert()},
 			InsecureSkipVerify: true, // TODO: Not recommended for production
 		},
-		QUICConfig: (&quic.Config{
+		QUICConfig: &quic.Config{
 			Allow0RTT:       true,
 			EnableDatagrams: true,
-		}),
+		},
 		Logger: slog.Default(),
 	}
+	// Register the broadcast handler with the default mux
+	moqt.HandleFunc(context.Background(), "/server.broadcast", func(pub *moqt.Publisher) {
+		seq := moqt.GroupSequenceFirst
+		for {
+			time.Sleep(100 * time.Millisecond)
+
+			gw, err := pub.TrackWriter.OpenGroup(seq)
+			if err != nil {
+				slog.Error("failed to open group", "error", err)
+				return
+			}
+
+			frame := moqt.NewFrame([]byte("FRAME " + seq.String()))
+			err = gw.WriteFrame(frame)
+			if err != nil {
+				gw.CancelWrite(moqt.InternalGroupErrorCode) // TODO: Handle error properly
+				slog.Error("failed to write frame", "error", err)
+				return
+			}
+
+			// TODO: Release the frame after writing
+			// This is important to avoid memory leaks
+			frame.Release()
+			gw.Close()
+
+			seq = seq.Next()
+		}
+	})
 
 	// Serve moq over webtransport
 	http.HandleFunc("/broadcast", func(w http.ResponseWriter, r *http.Request) {
-		// Register the broadcast handler with the local mux
-		moqt.HandleFunc(context.Background(), "/server.broadcast", func(pub *moqt.Publisher) {
-			seq := moqt.GroupSequenceFirst
-			for {
-				time.Sleep(100 * time.Millisecond)
-
-				gw, err := pub.TrackWriter.OpenGroup(seq)
-				if err != nil {
-					slog.Error("failed to open group", "error", err)
-					return
-				}
-
-				frame := moqt.NewFrame([]byte("FRAME " + seq.String()))
-				err = gw.WriteFrame(frame)
-				if err != nil {
-					gw.CancelWrite(moqt.InternalGroupErrorCode) // TODO: Handle error properly
-					slog.Error("failed to write frame", "error", err)
-					return
-				}
-
-				// TODO: Release the frame after writing
-				// This is important to avoid memory leaks
-				frame.Release()
-				gw.Close()
-
-				seq = seq.Next()
-			}
-		})
-
 		_, err := server.AcceptWebTransport(w, r, nil)
 		if err != nil {
 			slog.Error("failed to serve web transport", "error", err)

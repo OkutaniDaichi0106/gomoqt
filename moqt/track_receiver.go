@@ -13,8 +13,10 @@ func newTrackReceiver(substr *sendSubscribeStream) *trackReceiver {
 		dequeued: make(map[*receiveGroupStream]struct{}),
 	}
 
+	// Close the receiver when the subscribe stream context is done.
 	go func() {
 		<-substr.ctx.Done()
+		_ = track.Close()
 	}()
 
 	return track
@@ -28,6 +30,8 @@ type trackReceiver struct {
 	queue    []*receiveGroupStream
 	queuedCh chan struct{}
 	mu       sync.Mutex
+
+	once sync.Once
 
 	dequeued map[*receiveGroupStream]struct{}
 
@@ -79,7 +83,9 @@ func (r *trackReceiver) Close() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	close(r.queuedCh)
+	r.once.Do(func() {
+		close(r.queuedCh)
+	})
 
 	return r.substr.close()
 }
@@ -88,7 +94,9 @@ func (r *trackReceiver) CloseWithError(code SubscribeErrorCode) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	close(r.queuedCh)
+	r.once.Do(func() {
+		close(r.queuedCh)
+	})
 
 	for _, stream := range r.queue {
 		stream.CancelRead(SubscribeCanceledErrorCode)

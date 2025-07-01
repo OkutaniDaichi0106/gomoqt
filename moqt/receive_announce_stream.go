@@ -162,7 +162,7 @@ func (ras *receiveAnnounceStream) listenAnnouncements() {
 			}
 			ras.mu.Unlock()
 
-			_, err = am.Decode(ras.stream)
+			err = am.Decode(ras.stream)
 			if err != nil {
 				ras.mu.Lock()
 				if ras.closed {

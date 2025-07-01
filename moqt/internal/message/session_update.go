@@ -1,7 +1,6 @@
 package message
 
 import (
-	"bytes"
 	"io"
 
 	"github.com/quic-go/quic-go/quicvarint"
@@ -18,31 +17,22 @@ func (sum SessionUpdateMessage) Len() int {
 	return numberLen(sum.Bitrate)
 }
 
-func (sum SessionUpdateMessage) Encode(w io.Writer) (int, error) {
+func (sum SessionUpdateMessage) Encode(w io.Writer) error {
 	p := getBytes()
 	defer putBytes(p)
 
-	p = AppendNumber(p, uint64(sum.Len()))
-
 	p = AppendNumber(p, sum.Bitrate)
 
-	return w.Write(p)
+	_, err := w.Write(p)
+	return err
 }
 
-func (sum *SessionUpdateMessage) Decode(r io.Reader) (int, error) {
-
-	buf, n, err := ReadBytes(quicvarint.NewReader(r))
+func (sum *SessionUpdateMessage) Decode(r io.Reader) error {
+	num, _, err := ReadNumber(quicvarint.NewReader(r))
 	if err != nil {
-		return n, err
-	}
-
-	mr := bytes.NewReader(buf)
-
-	num, _, err := ReadNumber(mr)
-	if err != nil {
-		return n, err
+		return err
 	}
 	sum.Bitrate = num
 
-	return n, nil
+	return nil
 }

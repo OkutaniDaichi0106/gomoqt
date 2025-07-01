@@ -52,7 +52,7 @@ func TestReceiveAnnounceStream_ReceiveAnnouncement(t *testing.T) {
 			receiveAnnounceStream: func() *receiveAnnounceStream {
 				sessCtx := context.Background()
 				buf := bytes.NewBuffer(nil)
-				_, err := message.AnnounceMessage{
+				err := message.AnnounceMessage{
 					TrackSuffix:    "valid_announcement",
 					AnnounceStatus: message.ACTIVE,
 				}.Encode(buf)
@@ -369,7 +369,7 @@ func TestReceiveAnnounceStream_ConcurrentAccess(t *testing.T) {
 	// Create multiple messages
 	buf := bytes.NewBuffer(nil)
 	for i := 0; i < 5; i++ {
-		_, err := message.AnnounceMessage{
+		err := message.AnnounceMessage{
 			TrackSuffix:    fmt.Sprintf("/stream%d", i),
 			AnnounceStatus: message.ACTIVE,
 		}.Encode(buf)
@@ -582,7 +582,7 @@ func TestReceiveAnnounceStream_AnnouncementLifecycle(t *testing.T) {
 			// Prepare message data
 			buf := bytes.NewBuffer(nil)
 			for _, msg := range tt.messages {
-				_, err := msg.Encode(buf)
+				err := msg.Encode(buf)
 				require.NoError(t, err)
 			}
 
@@ -667,7 +667,7 @@ func TestReceiveAnnounceStream_NotifyChannel(t *testing.T) {
 
 	// Create a message
 	buf := bytes.NewBuffer(nil)
-	_, err := message.AnnounceMessage{
+	err := message.AnnounceMessage{
 		TrackSuffix:    "/test_stream",
 		AnnounceStatus: message.ACTIVE}.Encode(buf)
 	require.NoError(t, err)
@@ -756,7 +756,7 @@ func TestReceiveAnnounceStream_BoundaryValues(t *testing.T) {
 
 			// Create message with the test suffix
 			buf := bytes.NewBuffer(nil)
-			_, err := message.AnnounceMessage{
+			err := message.AnnounceMessage{
 				TrackSuffix:    tt.suffix,
 				AnnounceStatus: message.ACTIVE}.Encode(buf)
 			require.NoError(t, err)

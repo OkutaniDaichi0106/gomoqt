@@ -61,7 +61,7 @@ func TestSessionStream_updateSession(t *testing.T) {
 		Bitrate: bitrate,
 	}
 	buf := bytes.NewBuffer(make([]byte, 0, sum.Len()))
-	_, err := sum.Encode(buf)
+	err := sum.Encode(buf)
 	assert.NoError(t, err, "failed to encode SESSION_UPDATE message")
 	expectedData := buf.Bytes()
 
@@ -224,7 +224,7 @@ func TestSessionStream_listenUpdates(t *testing.T) {
 					Bitrate: bitrate,
 				}
 				var buf bytes.Buffer
-				_, err := sessionUpdate.Encode(&buf)
+				err := sessionUpdate.Encode(&buf)
 				if err != nil {
 					panic("failed to encode SessionUpdateMessage: " + err.Error())
 				}
@@ -247,7 +247,7 @@ func TestSessionStream_listenUpdates(t *testing.T) {
 					Bitrate: bitrate,
 				}
 				var buf bytes.Buffer
-				_, err := sessionUpdate.Encode(&buf)
+				err := sessionUpdate.Encode(&buf)
 				if err != nil {
 					panic("failed to encode SessionUpdateMessage: " + err.Error())
 				}

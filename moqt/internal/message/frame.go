@@ -33,25 +33,25 @@ func (fm *FrameMessage) Len() int {
 	return bytesLen(fm.Payload)
 }
 
-func (fm *FrameMessage) Encode(w io.Writer) (int, error) {
+func (fm *FrameMessage) Encode(w io.Writer) error {
 	b := getBytes()
 	defer putBytes(b)
 
 	b = AppendBytes(b, fm.Payload)
 
-	return w.Write(b)
+	_, err := w.Write(b)
+	return err
 }
 
-func (fm *FrameMessage) Decode(r io.Reader) (int, error) {
+func (fm *FrameMessage) Decode(r io.Reader) error {
 	var err error
-	var n int
 
-	fm.Payload, n, err = ReadBytes(quicvarint.NewReader(r))
+	fm.Payload, _, err = ReadBytes(quicvarint.NewReader(r))
 	if err != nil {
-		return n, err
+		return err
 	}
 
-	return n, nil
+	return nil
 }
 
 var framePool = sync.Pool{

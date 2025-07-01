@@ -38,7 +38,7 @@ func (sgs *sendGroupStream) WriteFrame(frame *Frame) error {
 		return errors.New("frame is nil or has no bytes")
 	}
 
-	_, err := frame.message.Encode(sgs.stream)
+	err := frame.message.Encode(sgs.stream)
 	if err != nil {
 		var strErr *quic.StreamError
 		if errors.As(err, &strErr) {

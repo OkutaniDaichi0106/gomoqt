@@ -195,7 +195,7 @@ func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *Su
 	stm := message.StreamTypeMessage{
 		StreamType: stream_type_subscribe,
 	}
-	_, err = stm.Encode(stream)
+	err = stm.Encode(stream)
 	if err != nil {
 		var strErr *quic.StreamError
 		if errors.As(err, &strErr) && strErr.Remote {
@@ -225,7 +225,7 @@ func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *Su
 		MinGroupSequence: message.GroupSequence(config.MinGroupSequence),
 		MaxGroupSequence: message.GroupSequence(config.MaxGroupSequence),
 	}
-	_, err = sm.Encode(stream)
+	err = sm.Encode(stream)
 	if err != nil {
 		var strErr *quic.StreamError
 		if errors.As(err, &strErr) && strErr.Remote {
@@ -249,7 +249,7 @@ func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *Su
 	}
 
 	var subok message.SubscribeOkMessage
-	_, err = subok.Decode(stream)
+	err = subok.Decode(stream)
 	if err != nil {
 		var strErr *quic.StreamError
 		if errors.As(err, &strErr) {
@@ -335,7 +335,7 @@ func (sess *Session) OpenAnnounceStream(prefix string) (AnnouncementReader, erro
 	st := message.StreamTypeMessage{
 		StreamType: stream_type_announce,
 	}
-	_, err = st.Encode(stream)
+	err = st.Encode(stream)
 	if err != nil {
 		var strErr *quic.StreamError
 		if errors.As(err, &strErr) {
@@ -359,7 +359,7 @@ func (sess *Session) OpenAnnounceStream(prefix string) (AnnouncementReader, erro
 	apm := message.AnnouncePleaseMessage{
 		TrackPrefix: prefix,
 	}
-	_, err = apm.Encode(stream)
+	err = apm.Encode(stream)
 	if err != nil {
 		streamLogger.Error("failed to send ANNOUNCE_PLEASE message",
 			"error", err,
@@ -416,7 +416,7 @@ func (sess *Session) handleBiStreams() {
 
 func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logger) {
 	var stm message.StreamTypeMessage
-	_, err := stm.Decode(stream)
+	err := stm.Decode(stream)
 	if err != nil {
 		streamLogger.Error("failed to decode stream type message",
 			"error", err,
@@ -428,7 +428,7 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 	switch stm.StreamType {
 	case stream_type_announce:
 		var apm message.AnnouncePleaseMessage
-		_, err := apm.Decode(stream)
+		err := apm.Decode(stream)
 		if err != nil {
 			streamLogger.Error("failed to decode ANNOUNCE_PLEASE message",
 				"error", err,
@@ -446,7 +446,7 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 		sess.mux.ServeAnnouncements(annstr, prefix)
 	case stream_type_subscribe:
 		var sm message.SubscribeMessage
-		_, err := sm.Decode(stream)
+		err := sm.Decode(stream)
 		if err != nil {
 			streamLogger.Error("failed to decode SUBSCRIBE message",
 				"error", err,
@@ -515,7 +515,7 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 			stm := message.StreamTypeMessage{
 				StreamType: stream_type_group,
 			}
-			_, err = stm.Encode(stream)
+			err = stm.Encode(stream)
 			if err != nil {
 				streamLogger.Error("failed to send stream type message",
 					"error", err,
@@ -541,7 +541,7 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 				SubscribeID:   sm.SubscribeID,
 				GroupSequence: message.GroupSequence(seq),
 			}
-			_, err = gm.Encode(stream)
+			err = gm.Encode(stream)
 			if err != nil {
 				streamLogger.Error("failed to send group message",
 					"error", err,
@@ -617,7 +617,7 @@ func (sess *Session) processUniStream(stream quic.ReceiveStream, streamLogger *s
 	 * Get a Stream Type ID
 	 */
 	var stm message.StreamTypeMessage
-	_, err := stm.Decode(stream)
+	err := stm.Decode(stream)
 	if err != nil {
 		streamLogger.Error("failed to decode stream type message",
 			"error", err,
@@ -629,7 +629,7 @@ func (sess *Session) processUniStream(stream quic.ReceiveStream, streamLogger *s
 	switch stm.StreamType {
 	case stream_type_group:
 		var gm message.GroupMessage
-		_, err := gm.Decode(stream)
+		err := gm.Decode(stream)
 		if err != nil {
 			streamLogger.Error("failed to decode group message",
 				"error", err,

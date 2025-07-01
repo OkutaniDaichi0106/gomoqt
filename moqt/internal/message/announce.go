@@ -1,7 +1,6 @@
 package message
 
 import (
-	"bytes"
 	"io"
 
 	"github.com/quic-go/quic-go/quicvarint"
@@ -28,36 +27,29 @@ func (a AnnounceMessage) Len() int {
 	return l
 }
 
-func (am AnnounceMessage) Encode(w io.Writer) (int, error) {
+func (am AnnounceMessage) Encode(w io.Writer) error {
 
 	p := getBytes()
 	defer putBytes(p)
 
-	p = AppendNumber(p, uint64(am.Len()))
 	p = AppendNumber(p, uint64(am.AnnounceStatus))
 	p = AppendString(p, am.TrackSuffix)
 
-	return w.Write(p)
+	_, err := w.Write(p)
+	return err
 }
 
-func (am *AnnounceMessage) Decode(r io.Reader) (int, error) {
-	buf, n, err := ReadBytes(quicvarint.NewReader(r))
+func (am *AnnounceMessage) Decode(r io.Reader) error {
+	status, _, err := ReadNumber(quicvarint.NewReader(r))
 	if err != nil {
-		return n, err
-	}
-
-	mr := bytes.NewReader(buf)
-
-	status, _, err := ReadNumber(mr)
-	if err != nil {
-		return n, err
+		return err
 	}
 	am.AnnounceStatus = AnnounceStatus(status)
 
-	am.TrackSuffix, _, err = ReadString(mr)
+	am.TrackSuffix, _, err = ReadString(quicvarint.NewReader(r))
 	if err != nil {
-		return n, err
+		return err
 	}
 
-	return n, nil
+	return nil
 }

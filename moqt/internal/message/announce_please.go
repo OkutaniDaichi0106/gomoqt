@@ -1,7 +1,6 @@
 package message
 
 import (
-	"bytes"
 	"io"
 
 	"github.com/quic-go/quic-go/quicvarint"
@@ -24,32 +23,23 @@ func (aim AnnouncePleaseMessage) Len() int {
 	return l
 }
 
-func (aim AnnouncePleaseMessage) Encode(w io.Writer) (int, error) {
+func (aim AnnouncePleaseMessage) Encode(w io.Writer) error {
 	// Serialize the payload
 	p := getBytes()
 	defer putBytes(p)
 
-	p = AppendNumber(p, uint64(aim.Len()))
-
 	p = AppendString(p, aim.TrackPrefix)
 
-	return w.Write(p)
+	_, err := w.Write(p)
+	return err
 }
 
-func (aim *AnnouncePleaseMessage) Decode(r io.Reader) (int, error) {
-	// Read the payload
-	buf, n, err := ReadBytes(quicvarint.NewReader(r))
+func (aim *AnnouncePleaseMessage) Decode(r io.Reader) error {
+	var err error
+	aim.TrackPrefix, _, err = ReadString(quicvarint.NewReader(r))
 	if err != nil {
-		return n, err
+		return err
 	}
 
-	// Decode the payload
-	mr := bytes.NewReader(buf)
-
-	aim.TrackPrefix, _, err = ReadString(mr)
-	if err != nil {
-		return n, err
-	}
-
-	return n, nil
+	return nil
 }

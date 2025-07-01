@@ -32,7 +32,7 @@ func newSessionStream(connCtx context.Context, stream quic.Stream) *sessionStrea
 		var err error
 
 		for {
-			_, err = sum.Decode(sessStr.stream)
+			err = sum.Decode(sessStr.stream)
 			if err != nil {
 				return
 			}
@@ -74,7 +74,7 @@ func (ss *sessionStream) updateSession(bitrate uint64) error {
 	sum := message.SessionUpdateMessage{
 		Bitrate: bitrate,
 	}
-	_, err := sum.Encode(ss.stream)
+	err := sum.Encode(ss.stream)
 	if err != nil {
 		var strErr *quic.StreamError
 		if errors.As(err, &strErr) && strErr.Remote {

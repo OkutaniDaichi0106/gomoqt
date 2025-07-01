@@ -1,7 +1,6 @@
 package message
 
 import (
-	"bytes"
 	"io"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
@@ -32,12 +31,10 @@ func (scm SessionClientMessage) Len() int {
 	return length
 }
 
-func (scm SessionClientMessage) Encode(w io.Writer) (int, error) {
+func (scm SessionClientMessage) Encode(w io.Writer) error {
 	// Serialize the payload
 	p := getBytes()
 	defer putBytes(p)
-
-	p = AppendNumber(p, uint64(scm.Len()))
 
 	// Append the supported versions
 	p = AppendNumber(p, uint64(len(scm.SupportedVersions)))
@@ -48,40 +45,31 @@ func (scm SessionClientMessage) Encode(w io.Writer) (int, error) {
 	// Append the parameters
 	p = AppendParameters(p, scm.Parameters)
 
-	return w.Write(p)
+	_, err := w.Write(p)
+	return err
 }
 
-func (scm *SessionClientMessage) Decode(r io.Reader) (int, error) {
-
-	// Read the payload
-	buf, n, err := ReadBytes(quicvarint.NewReader(r))
-	if err != nil {
-		return n, err
-	}
-
-	// Decode the payload
-	mr := bytes.NewReader(buf)
-
+func (scm *SessionClientMessage) Decode(r io.Reader) error {
 	// Read version count
-	num, _, err := ReadNumber(mr)
+	num, _, err := ReadNumber(quicvarint.NewReader(r))
 	if err != nil {
-		return n, err
+		return err
 	}
 
 	// Read versions
 	for i := uint64(0); i < num; i++ {
-		version, _, err := ReadNumber(mr)
+		version, _, err := ReadNumber(quicvarint.NewReader(r))
 		if err != nil {
-			return n, err
+			return err
 		}
 		scm.SupportedVersions = append(scm.SupportedVersions, protocol.Version(version))
 	}
 
 	// Read parameters
-	scm.Parameters, _, err = ReadParameters(mr)
+	scm.Parameters, _, err = ReadParameters(quicvarint.NewReader(r))
 	if err != nil {
-		return n, err
+		return err
 	}
 
-	return n, nil
+	return nil
 }

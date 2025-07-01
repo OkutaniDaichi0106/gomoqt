@@ -1,7 +1,6 @@
 package message
 
 import (
-	"bytes"
 	"io"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
@@ -28,38 +27,29 @@ func (ssm SessionServerMessage) Len() int {
 	return l
 }
 
-func (ssm SessionServerMessage) Encode(w io.Writer) (int, error) {
+func (ssm SessionServerMessage) Encode(w io.Writer) error {
 
 	p := getBytes()
 	defer putBytes(p)
 
-	p = AppendNumber(p, uint64(ssm.Len()))
-
 	p = AppendNumber(p, uint64(ssm.SelectedVersion))
 	p = AppendParameters(p, ssm.Parameters)
 
-	return w.Write(p)
+	_, err := w.Write(p)
+	return err
 }
 
-func (ssm *SessionServerMessage) Decode(r io.Reader) (int, error) {
-	// Read the payload
-	buf, n, err := ReadBytes(quicvarint.NewReader(r))
+func (ssm *SessionServerMessage) Decode(r io.Reader) error {
+	version, _, err := ReadNumber(quicvarint.NewReader(r))
 	if err != nil {
-		return n, err
-	}
-
-	mr := bytes.NewReader(buf)
-
-	version, _, err := ReadNumber(mr)
-	if err != nil {
-		return n, err
+		return err
 	}
 	ssm.SelectedVersion = protocol.Version(version)
 
-	ssm.Parameters, _, err = ReadParameters(mr)
+	ssm.Parameters, _, err = ReadParameters(quicvarint.NewReader(r))
 	if err != nil {
-		return n, err
+		return err
 	}
 
-	return n, nil
+	return nil
 }

@@ -235,13 +235,12 @@ func TestSession_OpenTrackStream(t *testing.T) {
 			mockStream.On("Close").Return(nil).Maybe() // Create a separate mock for the track stream that responds to the SUBSCRIBE protocol
 			mockTrackStream := &MockQUICStream{}
 			mockTrackStream.On("StreamID").Return(quic.StreamID(2))
-
 			// Create a SubscribeOkMessage response
 			subok := message.SubscribeOkMessage{
 				GroupOrder: message.GroupOrderDefault,
 			}
 			var buf bytes.Buffer
-			_, err := subok.Encode(&buf)
+			err := subok.Encode(&buf)
 			assert.NoError(t, err, "failed to encode SubscribeOkMessage")
 			responseData := buf.Bytes()
 

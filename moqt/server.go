@@ -351,7 +351,7 @@ func (s *Server) acceptSession(setupCtx context.Context, path string, conn quic.
 	}
 
 	var stm message.StreamTypeMessage
-	_, err = stm.Decode(stream)
+	err = stm.Decode(stream)
 	if err != nil {
 		sessLogger.Error("failed to receive STREAM_TYPE message",
 			"error", err,
@@ -372,7 +372,7 @@ func (s *Server) acceptSession(setupCtx context.Context, path string, conn quic.
 	streamLogger.Debug("accepted a session stream")
 
 	var scm message.SessionClientMessage
-	_, err = scm.Decode(stream)
+	err = scm.Decode(stream)
 	if err != nil {
 		streamLogger.Error("failed to receive SESSION_CLIENT message",
 			"error", err,
@@ -404,7 +404,7 @@ func (s *Server) acceptSession(setupCtx context.Context, path string, conn quic.
 		SelectedVersion: version,
 		Parameters:      serverParams.paramMap,
 	}
-	_, err = ssm.Encode(stream)
+	err = ssm.Encode(stream)
 	if err != nil {
 		sessLogger.Error("failed to send SESSION_SERVER message",
 			"error", err,

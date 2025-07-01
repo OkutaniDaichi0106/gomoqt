@@ -23,10 +23,6 @@ func stringArrayLen(arr []string) int {
 }
 
 func parametersLen(p Parameters) int {
-	if p == nil {
-		return 0
-	}
-
 	l := numberLen(uint64(len(p)))
 	for k, v := range p {
 		l += numberLen(k) + bytesLen(v)

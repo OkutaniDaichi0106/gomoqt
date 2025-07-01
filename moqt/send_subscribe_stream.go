@@ -105,7 +105,7 @@ func (sss *sendSubscribeStream) UpdateSubscribe(newConfig *SubscribeConfig) erro
 		MinGroupSequence: message.GroupSequence(newConfig.MinGroupSequence),
 		MaxGroupSequence: message.GroupSequence(newConfig.MaxGroupSequence),
 	}
-	_, err := sum.Encode(sss.stream)
+	err := sum.Encode(sss.stream)
 	if err != nil {
 		// Set writeErr and unwritable before closing channel
 		var strErr *quic.StreamError

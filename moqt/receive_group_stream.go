@@ -36,7 +36,7 @@ func (s *receiveGroupStream) GroupSequence() GroupSequence {
 
 func (s *receiveGroupStream) ReadFrame() (*Frame, error) {
 	frame := NewFrame(nil)
-	_, err := frame.message.Decode(s.stream)
+	err := frame.message.Decode(s.stream)
 	if err != nil {
 		if !s.cancelled {
 			s.cancelled = true

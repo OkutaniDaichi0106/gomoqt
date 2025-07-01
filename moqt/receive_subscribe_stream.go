@@ -76,7 +76,7 @@ func (rss *receiveSubscribeStream) accept(info Info) {
 		sum := message.SubscribeOkMessage{
 			GroupOrder: message.GroupOrder(info.GroupOrder),
 		}
-		_, err := sum.Encode(rss.stream)
+		err := sum.Encode(rss.stream)
 		if err != nil {
 			rss.closeWithError(InternalSubscribeErrorCode)
 			return
@@ -101,7 +101,7 @@ func (rss *receiveSubscribeStream) listenUpdates() {
 			}
 			rss.mu.Unlock()
 
-			_, err = sum.Decode(rss.stream)
+			err = sum.Decode(rss.stream)
 			if err != nil {
 				rss.mu.Lock()
 				if rss.closed {

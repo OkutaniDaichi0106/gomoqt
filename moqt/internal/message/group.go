@@ -1,7 +1,6 @@
 package message
 
 import (
-	"bytes"
 	"io"
 
 	"github.com/quic-go/quic-go/quicvarint"
@@ -21,37 +20,29 @@ func (g GroupMessage) Len() int {
 	return l
 }
 
-func (g GroupMessage) Encode(w io.Writer) (int, error) {
+func (g GroupMessage) Encode(w io.Writer) error {
 	p := getBytes()
 	defer putBytes(p)
 
-	p = AppendNumber(p, uint64(g.Len()))
 	p = AppendNumber(p, uint64(g.SubscribeID))
 	p = AppendNumber(p, uint64(g.GroupSequence))
 
-	return w.Write(p)
+	_, err := w.Write(p)
+	return err
 }
 
-func (g *GroupMessage) Decode(r io.Reader) (int, error) {
-
-	buf, n, err := ReadBytes(quicvarint.NewReader(r))
+func (g *GroupMessage) Decode(r io.Reader) error {
+	num, _, err := ReadNumber(quicvarint.NewReader(r))
 	if err != nil {
-		return n, err
-	}
-
-	mr := bytes.NewReader(buf)
-
-	num, _, err := ReadNumber(mr)
-	if err != nil {
-		return n, err
+		return err
 	}
 	g.SubscribeID = SubscribeID(num)
 
-	num, _, err = ReadNumber(mr)
+	num, _, err = ReadNumber(quicvarint.NewReader(r))
 	if err != nil {
-		return n, err
+		return err
 	}
 	g.GroupSequence = GroupSequence(num)
 
-	return n, nil
+	return nil
 }

@@ -445,7 +445,7 @@ func TestClient_DialWebTransport_CustomDialSuccess(t *testing.T) {
 		SelectedVersion: protocol.Draft01,
 		Parameters:      make(message.Parameters),
 	}
-	_, err := ssm.Encode(&buf)
+	err := ssm.Encode(&buf)
 	require.NoError(t, err)
 
 	responseData := buf.Bytes()
@@ -508,7 +508,7 @@ func TestClient_DialQUIC_CustomDialSuccess(t *testing.T) {
 		SelectedVersion: protocol.Draft01,
 		Parameters:      make(message.Parameters),
 	}
-	_, err := ssm.Encode(&buf)
+	err := ssm.Encode(&buf)
 	require.NoError(t, err)
 
 	responseData := buf.Bytes()
@@ -652,7 +652,7 @@ func TestClient_OpenSession_Success(t *testing.T) {
 		SelectedVersion: protocol.Draft01,
 		Parameters:      make(message.Parameters),
 	}
-	_, err := ssm.Encode(&buf)
+	err := ssm.Encode(&buf)
 	require.NoError(t, err)
 
 	responseData := buf.Bytes()

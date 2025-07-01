@@ -32,10 +32,6 @@ func AppendStringArray(to []byte, arr []string) []byte {
 
 // Append parameters to the byte slice
 func AppendParameters(p []byte, params Parameters) []byte {
-	if params == nil {
-		return p
-	}
-
 	p = AppendNumber(p, uint64(len(params)))
 	for key, value := range params {
 		p = AppendNumber(p, key)

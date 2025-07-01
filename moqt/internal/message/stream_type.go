@@ -22,20 +22,20 @@ func (stm StreamTypeMessage) Len() int {
 	return 1
 }
 
-func (stm StreamTypeMessage) Encode(w io.Writer) (int, error) {
+func (stm StreamTypeMessage) Encode(w io.Writer) error {
 	// Write the Stream Type
-	return w.Write([]byte{byte(stm.StreamType)})
+	_, err := w.Write([]byte{byte(stm.StreamType)})
+	return err
 }
 
-func (stm *StreamTypeMessage) Decode(r io.Reader) (int, error) {
-
+func (stm *StreamTypeMessage) Decode(r io.Reader) error {
 	// Read the Stream Type
 	buf := make([]byte, 1)
-	n, err := r.Read(buf)
+	_, err := r.Read(buf)
 	if err != nil {
-		return n, err
+		return err
 	}
 	stm.StreamType = StreamType(buf[0])
 
-	return n, nil
+	return nil
 }

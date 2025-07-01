@@ -71,7 +71,7 @@ func (sas *sendAnnounceStream) SendAnnouncement(new *Announcement) error {
 	}
 
 	// Encode and send ACTIVE announcement
-	_, err := am.Encode(sas.stream)
+	err := am.Encode(sas.stream)
 	if err != nil {
 		var strErr *quic.StreamError
 		if errors.As(err, &strErr) {
@@ -108,7 +108,7 @@ func (sas *sendAnnounceStream) SendAnnouncement(new *Announcement) error {
 		am.AnnounceStatus = message.ENDED
 
 		// Encode and send ENDED announcement
-		_, err := am.Encode(sas.stream)
+		err := am.Encode(sas.stream)
 		if err != nil {
 			var strErr *quic.StreamError
 			if errors.As(err, &strErr) {

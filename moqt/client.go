@@ -290,7 +290,7 @@ func (c *Client) openSession(conn quic.Connection, path string, extensions func(
 	stm := message.StreamTypeMessage{
 		StreamType: stream_type_session,
 	}
-	_, err = stm.Encode(stream)
+	err = stm.Encode(stream)
 	if err != nil {
 		sessLogger.Error("failed to send STREAM_TYPE message",
 			"error", err,
@@ -308,7 +308,7 @@ func (c *Client) openSession(conn quic.Connection, path string, extensions func(
 		SupportedVersions: internal.DefaultClientVersions,
 		Parameters:        clientParams.paramMap,
 	}
-	_, err = scm.Encode(stream)
+	err = scm.Encode(stream)
 	if err != nil {
 		sessLogger.Error("failed to send SESSION_CLIENT message",
 			"error", err,
@@ -317,7 +317,7 @@ func (c *Client) openSession(conn quic.Connection, path string, extensions func(
 	}
 
 	var ssm message.SessionServerMessage
-	_, err = ssm.Decode(stream)
+	err = ssm.Decode(stream)
 	if err != nil {
 		sessLogger.Error("failed to receive SESSION_SERVER message",
 			"error", err,

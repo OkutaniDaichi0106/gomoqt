@@ -1,7 +1,6 @@
 package message
 
 import (
-	"bytes"
 	"io"
 
 	"github.com/quic-go/quic-go/quicvarint"
@@ -47,12 +46,10 @@ func (s SubscribeMessage) Len() int {
 	return l
 }
 
-func (s SubscribeMessage) Encode(w io.Writer) (int, error) {
+func (s SubscribeMessage) Encode(w io.Writer) error {
 
 	p := getBytes()
 	defer putBytes(p)
-
-	p = AppendNumber(p, uint64(s.Len()))
 
 	p = AppendNumber(p, uint64(s.SubscribeID))
 	p = AppendString(p, s.BroadcastPath)
@@ -61,52 +58,44 @@ func (s SubscribeMessage) Encode(w io.Writer) (int, error) {
 	p = AppendNumber(p, uint64(s.MinGroupSequence))
 	p = AppendNumber(p, uint64(s.MaxGroupSequence))
 
-	return w.Write(p)
+	_, err := w.Write(p)
+	return err
 }
 
-func (s *SubscribeMessage) Decode(r io.Reader) (int, error) {
-
-	buf, n, err := ReadBytes(quicvarint.NewReader(r))
+func (s *SubscribeMessage) Decode(r io.Reader) error {
+	num, _, err := ReadNumber(quicvarint.NewReader(r))
 	if err != nil {
-		return n, err
-	}
-
-	mr := bytes.NewReader(buf)
-
-	num, _, err := ReadNumber(mr)
-	if err != nil {
-
-		return n, err
+		return err
 	}
 	s.SubscribeID = SubscribeID(num)
 
-	s.BroadcastPath, _, err = ReadString(mr)
+	s.BroadcastPath, _, err = ReadString(quicvarint.NewReader(r))
 	if err != nil {
-		return n, err
+		return err
 	}
 
-	s.TrackName, _, err = ReadString(mr)
+	s.TrackName, _, err = ReadString(quicvarint.NewReader(r))
 	if err != nil {
-		return n, err
+		return err
 	}
 
-	num, _, err = ReadNumber(mr)
+	num, _, err = ReadNumber(quicvarint.NewReader(r))
 	if err != nil {
-		return n, err
+		return err
 	}
 	s.TrackPriority = TrackPriority(num)
 
-	num, _, err = ReadNumber(mr)
+	num, _, err = ReadNumber(quicvarint.NewReader(r))
 	if err != nil {
-		return n, err
+		return err
 	}
 	s.MinGroupSequence = GroupSequence(num)
 
-	num, _, err = ReadNumber(mr)
+	num, _, err = ReadNumber(quicvarint.NewReader(r))
 	if err != nil {
-		return n, err
+		return err
 	}
 	s.MaxGroupSequence = GroupSequence(num)
 
-	return n, nil
+	return nil
 }

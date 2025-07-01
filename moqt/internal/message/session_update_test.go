@@ -37,7 +37,7 @@ func TestSessionUpdateMessage_EncodeDecode(t *testing.T) {
 			var buf bytes.Buffer
 
 			// Encode
-			en, err := tc.input.Encode(&buf)
+			err := tc.input.Encode(&buf)
 			if tc.wantErr {
 				require.Error(t, err)
 				return
@@ -46,12 +46,11 @@ func TestSessionUpdateMessage_EncodeDecode(t *testing.T) {
 
 			// Decode
 			var decoded message.SessionUpdateMessage
-			dn, err := decoded.Decode(&buf)
+			err = decoded.Decode(&buf)
 			require.NoError(t, err)
 
 			// Compare fields
 			assert.Equal(t, tc.input, decoded, "decoded message should match input")
-			assert.Equal(t, en, dn, "encoded and decoded message should have the same length")
 		})
 	}
 }

@@ -1,7 +1,6 @@
 package message
 
 import (
-	"bytes"
 	"io"
 
 	"github.com/quic-go/quic-go/quicvarint"
@@ -20,29 +19,22 @@ func (som SubscribeOkMessage) Len() int {
 	return numberLen(uint64(som.GroupOrder))
 }
 
-func (som SubscribeOkMessage) Encode(w io.Writer) (int, error) {
+func (som SubscribeOkMessage) Encode(w io.Writer) error {
 	p := getBytes()
 	defer putBytes(p)
 
-	p = AppendNumber(p, uint64(som.Len()))
 	p = AppendNumber(p, uint64(som.GroupOrder))
 
-	return w.Write(p)
+	_, err := w.Write(p)
+	return err
 }
 
-func (som *SubscribeOkMessage) Decode(r io.Reader) (int, error) {
-	buf, n, err := ReadBytes(quicvarint.NewReader(r))
+func (som *SubscribeOkMessage) Decode(r io.Reader) error {
+	num, _, err := ReadNumber(quicvarint.NewReader(r))
 	if err != nil {
-		return n, err
-	}
-
-	mr := bytes.NewReader(buf)
-
-	num, _, err := ReadNumber(mr)
-	if err != nil {
-		return n, err
+		return err
 	}
 	som.GroupOrder = GroupOrder(num)
 
-	return n, nil
+	return nil
 }

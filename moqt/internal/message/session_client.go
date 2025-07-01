@@ -22,15 +22,6 @@ type SessionClientMessage struct {
 	Parameters        Parameters
 }
 
-func (scm SessionClientMessage) Len() int {
-	length := numberLen(uint64(len(scm.SupportedVersions)))
-	for _, version := range scm.SupportedVersions {
-		length += numberLen(uint64(version))
-	}
-	length += parametersLen(scm.Parameters)
-	return length
-}
-
 func (scm SessionClientMessage) Encode(w io.Writer) error {
 	// Serialize the payload
 	p := getBytes()

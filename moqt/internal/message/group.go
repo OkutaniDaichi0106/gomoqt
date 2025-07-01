@@ -13,13 +13,6 @@ type GroupMessage struct {
 	GroupSequence GroupSequence
 }
 
-func (g GroupMessage) Len() int {
-	l := 0
-	l += numberLen(uint64(g.SubscribeID))
-	l += numberLen(uint64(g.GroupSequence))
-	return l
-}
-
 func (g GroupMessage) Encode(w io.Writer) error {
 	p := getBytes()
 	defer putBytes(p)

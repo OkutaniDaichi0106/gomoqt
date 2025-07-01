@@ -15,14 +15,6 @@ type AnnouncePleaseMessage struct {
 	TrackPrefix string
 }
 
-func (aim AnnouncePleaseMessage) Len() int {
-	// Calculate the length of the payload
-	l := 0
-	l += stringLen(aim.TrackPrefix)
-
-	return l
-}
-
 func (aim AnnouncePleaseMessage) Encode(w io.Writer) error {
 	// Serialize the payload
 	p := getBytes()

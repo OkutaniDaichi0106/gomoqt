@@ -18,10 +18,6 @@ type StreamTypeMessage struct {
 	StreamType StreamType
 }
 
-func (stm StreamTypeMessage) Len() int {
-	return 1
-}
-
 func (stm StreamTypeMessage) Encode(w io.Writer) error {
 	// Write the Stream Type
 	_, err := w.Write([]byte{byte(stm.StreamType)})

@@ -13,10 +13,6 @@ type SessionUpdateMessage struct {
 	Bitrate uint64
 }
 
-func (sum SessionUpdateMessage) Len() int {
-	return numberLen(sum.Bitrate)
-}
-
 func (sum SessionUpdateMessage) Encode(w io.Writer) error {
 	p := getBytes()
 	defer putBytes(p)

@@ -60,7 +60,7 @@ func TestSessionStream_updateSession(t *testing.T) {
 	sum := message.SessionUpdateMessage{
 		Bitrate: bitrate,
 	}
-	buf := bytes.NewBuffer(make([]byte, 0, sum.Len()))
+	buf := bytes.NewBuffer(make([]byte, 0, 1024))
 	err := sum.Encode(buf)
 	assert.NoError(t, err, "failed to encode SESSION_UPDATE message")
 	expectedData := buf.Bytes()

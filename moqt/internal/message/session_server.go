@@ -20,13 +20,6 @@ type SessionServerMessage struct {
 	Parameters Parameters
 }
 
-func (ssm SessionServerMessage) Len() int {
-	l := 0
-	l += numberLen(uint64(ssm.SelectedVersion))
-	l += parametersLen(ssm.Parameters)
-	return l
-}
-
 func (ssm SessionServerMessage) Encode(w io.Writer) error {
 
 	p := getBytes()

@@ -15,10 +15,6 @@ type SubscribeOkMessage struct {
 	GroupOrder GroupOrder
 }
 
-func (som SubscribeOkMessage) Len() int {
-	return numberLen(uint64(som.GroupOrder))
-}
-
 func (som SubscribeOkMessage) Encode(w io.Writer) error {
 	p := getBytes()
 	defer putBytes(p)

@@ -29,10 +29,6 @@ type FrameMessage struct {
 	Payload []byte
 }
 
-func (fm *FrameMessage) Len() int {
-	return bytesLen(fm.Payload)
-}
-
 func (fm *FrameMessage) Encode(w io.Writer) error {
 	b := getBytes()
 	defer putBytes(b)

@@ -21,15 +21,6 @@ type SubscribeUpdateMessage struct {
 	MaxGroupSequence GroupSequence
 }
 
-func (su SubscribeUpdateMessage) Len() int {
-	l := 0
-	l += numberLen(uint64(su.TrackPriority))
-	l += numberLen(uint64(su.MinGroupSequence))
-	l += numberLen(uint64(su.MaxGroupSequence))
-
-	return l
-}
-
 func (su SubscribeUpdateMessage) Encode(w io.Writer) error {
 
 	p := getBytes()

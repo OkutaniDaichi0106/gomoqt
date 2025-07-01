@@ -19,14 +19,6 @@ type AnnounceMessage struct {
 	TrackSuffix    string
 }
 
-func (a AnnounceMessage) Len() int {
-	l := 0
-	l += numberLen(uint64(a.AnnounceStatus))
-	l += stringLen(a.TrackSuffix)
-
-	return l
-}
-
 func (am AnnounceMessage) Encode(w io.Writer) error {
 
 	p := getBytes()

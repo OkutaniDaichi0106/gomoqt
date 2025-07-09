@@ -1,5 +1,5 @@
 import { SubscribeMessage, SubscribeOkMessage, SubscribeUpdateMessage } from "./message";
-import { Writer, Reader } from "./internal/io"
+import { Writer, Reader } from "./io"
 import { Cond } from "./internal/cond";
 import { CancelCauseFunc, Context, withCancelCause } from "./internal/context";
 import { StreamError } from "./io/error";
@@ -52,7 +52,7 @@ export class SendSubscribeStream implements SubscribeController {
 		}
 		this.#update = result!;
 
-		const [_, flushErr] = await this.#writer.flush();
+		const flushErr = await this.#writer.flush();
 		if (flushErr) {
 			throw new Error(`Failed to flush subscribe update: ${flushErr}`);
 		}
@@ -143,7 +143,7 @@ export class ReceiveSubscribeStream implements PublishController {
 
 		this.#ok = result;
 
-		const [_, flushErr] = await this.#writer.flush();
+		const flushErr = await this.#writer.flush();
 		if (flushErr) {
 			throw new Error(`Failed to flush subscribe ok: ${flushErr}`);
 		}

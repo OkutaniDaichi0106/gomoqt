@@ -1,55 +1,43 @@
+import { Mutex } from "./mutex";
+
 export class Queue<T> {
 	#items: T[] = [];
 	#pending?: [() => void, Promise<void>];
-	#closeError?: Error;
+	#mutex: Mutex = new Mutex();
 
-	enqueue(item: T): void {
+	async enqueue(item: T): Promise<void> {
+		const unlock = await this.#mutex.lock();
 		this.#items.push(item);
 		if (this.#pending) {
 			const [resolve] = this.#pending;
 			this.#pending = undefined;
 			resolve();
 		}
+
+		unlock();
 	}
 
-	dequeue(): [T?, Error?] {
+	async dequeue(): Promise<[T?, Error?]> {
+		const unlock = await this.#mutex.lock();
+		let item: T | undefined;
 		while (true) {
-			if (this.#closeError) {
-				return [undefined, this.#closeError];
-			}
+			// If we have items, return the first one
 			if (this.#items.length > 0) {
-				return [this.#items.shift()!, undefined];
-			} else {
-				let resolve: () => void;
-				const chan = new Promise<void>((res) => {
-					resolve = res;
-				});
-				this.#pending = [resolve!, chan];
+				item = this.#items.shift();
+				break;
 			}
-
-			if (this.#pending) {
-				const [, chan] = this.#pending;
-				this.#pending = undefined;
-				chan.then(() => {
-					return this.#items.shift()!;
-				});
-			}
+			
+			// Wait for next item or close
+			let resolve: () => void;
+			const chan = new Promise<void>((res) => {
+				resolve = res;
+			});
+			this.#pending = [resolve!, chan];
+			
+			await chan;
+			// Loop will check for items or close error again
 		}
-	}
-
-	isEmpty(): boolean {
-		return this.#items.length === 0 && this.#pending === undefined;
-	}
-
-	close(error?: Error): void {
-		if (this.#closeError) {
-			return; // Already closed
-		}
-		this.#closeError = error || new Error("Queue closed");
-		if (this.#pending) {
-			const [resolve] = this.#pending;
-			this.#pending = undefined;
-			resolve();
-		}
+		unlock();
+		return [item, undefined];
 	}
 }

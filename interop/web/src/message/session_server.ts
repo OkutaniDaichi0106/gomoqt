@@ -1,5 +1,5 @@
 import { Extensions } from "../internal/extensions";
-import { Reader, Writer } from "../internal/io";
+import { Reader, Writer } from "../io";
 import { Version } from "../internal/version";
 
 export class SessionServerMessage {
@@ -20,7 +20,7 @@ export class SessionServerMessage {
             writer.writeUint8Array(ext[1]); // Write the extension data
         }
 
-        const [_, err] = await writer.flush();
+        const err = await writer.flush();
         if (err) {
             return [undefined, err];
         }

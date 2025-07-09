@@ -1,6 +1,6 @@
 import { Extensions } from "../internal/extensions";
 import { Version } from "../internal/version";
-import { Writer, Reader } from "../internal/io";
+import { Writer, Reader } from "../io";
 
 
 export class SessionClientMessage {
@@ -23,7 +23,7 @@ export class SessionClientMessage {
             writer.writeUint8Array(ext[1]); // Write the extension data
         }
 
-        const [_, err] = await writer.flush();
+        const err = await writer.flush();
         if (err) {
             return [undefined, err];
         }
@@ -33,7 +33,7 @@ export class SessionClientMessage {
     static async decode(reader: Reader): Promise<[SessionClientMessage?, Error?]> {
         let [numVersions, err] = await reader.readVarint();
         if (err) {
-            return [undefined, new Error("Failed to read number of versions for SessionClient")];
+            return [undefined, new Error("Failed to read number of versions for SessionClient: " + err.message)];
         }
         if (numVersions === undefined) {
             return [undefined, new Error("numVersions is undefined")];
@@ -49,7 +49,7 @@ export class SessionClientMessage {
         for (let i = 0; i < Number(numVersions); i++) {
             let [version, err2] = await reader.readVarint();
             if (err2) {
-                return [undefined, new Error(`Failed to read version for SessionClient`)];
+                return [undefined, new Error(`Failed to read version ${i} for SessionClient: ${err2.message}`)];
             }
             if (version === undefined) {
                 return [undefined, new Error("version is undefined")];
@@ -59,7 +59,7 @@ export class SessionClientMessage {
         
         let [numExtensions, err3] = await reader.readVarint();
         if (err3) {
-            return [undefined, new Error("Failed to read number of extensions for SessionClient")];
+            return [undefined, new Error("Failed to read number of extensions for SessionClient: " + err3.message)];
         }
         if (numExtensions === undefined) {
             return [undefined, new Error("numExtensions is undefined")];
@@ -75,7 +75,7 @@ export class SessionClientMessage {
         for (let i = 0; i < Number(numExtensions); i++) {
             let [extId, err4] = await reader.readVarint();
             if (err4) {
-                return [undefined, new Error(`Failed to read extension ID for SessionClient`)];
+                return [undefined, new Error(`Failed to read extension ID ${i} for SessionClient: ${err4.message}`)];
             }
             if (extId === undefined) {
                 return [undefined, new Error("extId is undefined")];
@@ -83,7 +83,7 @@ export class SessionClientMessage {
 
             let [extData, err5] = await reader.readUint8Array();
             if (err5) {
-                return [undefined, new Error(`Failed to read extension data for SessionClient`)];
+                return [undefined, new Error(`Failed to read extension data for ID ${extId} for SessionClient: ${err5.message}`)];
             }
             if (extData === undefined) {
                 return [undefined, new Error("extData is undefined")];

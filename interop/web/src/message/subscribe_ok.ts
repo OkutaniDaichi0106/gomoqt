@@ -1,4 +1,4 @@
-import { Writer, Reader } from "../internal/io";
+import { Writer, Reader } from "../io";
 
 export class SubscribeOkMessage {
     groupOrder: bigint;
@@ -9,7 +9,7 @@ export class SubscribeOkMessage {
 
     static async encode(writer: Writer, groupOrder: bigint): Promise<[SubscribeOkMessage?, Error?]> {
         writer.writeVarint(groupOrder);
-        const [_, err] = await writer.flush();
+        const err = await writer.flush();
         if (err) {
             return [undefined, err];
         }

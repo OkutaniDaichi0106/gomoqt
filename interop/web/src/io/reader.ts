@@ -50,12 +50,17 @@ export class Reader {
             return [undefined, new Error("Varint too large")];
         }
 
-        const bytes = new Uint8Array(this.#pool.acquire(len));
+        const bytes = new Uint8Array(len);
 
         let n: number | undefined;
         [n, err] = await this.copy(bytes);
         if (err) {
             return [undefined, err];
+        }
+
+        // Return only the bytes that were actually read
+        if (n !== undefined && n < len) {
+            return [bytes.subarray(0, n), undefined];
         }
 
         return [bytes, undefined];

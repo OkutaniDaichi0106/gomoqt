@@ -1,0 +1,1 @@
+import * as MOQ from '@okutanidaichi/moqt';

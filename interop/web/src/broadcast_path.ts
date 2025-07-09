@@ -49,6 +49,11 @@ export function getExtension(path: BroadcastPath): string {
         return '';
     }
     
+    // If dot is immediately after the last slash, it's a hidden file, not an extension
+    if (lastDot === lastSlash + 1) {
+        return '';
+    }
+    
     return path.substring(lastDot);
 }
 

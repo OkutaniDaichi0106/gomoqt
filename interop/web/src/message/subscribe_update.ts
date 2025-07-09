@@ -1,4 +1,4 @@
-import { Writer, Reader } from "../internal/io";
+import { Writer, Reader } from "../io";
 
 export class SubscribeUpdateMessage {
     trackPriority: bigint;
@@ -15,7 +15,7 @@ export class SubscribeUpdateMessage {
         writer.writeVarint(trackPriority);
         writer.writeVarint(minGroupSequence);
         writer.writeVarint(maxGroupSequence);
-        const [_, err] = await writer.flush();
+        const err = await writer.flush();
         if (err) {
             return [undefined, err];
         }

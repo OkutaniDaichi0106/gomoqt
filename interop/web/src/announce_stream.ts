@@ -1,4 +1,4 @@
-import { Reader, Writer } from "./internal/io";
+import { Reader, Writer } from "./io";
 import { AnnounceMessage, AnnouncePleaseMessage } from "./message";
 import { CancelCauseFunc, CancelFunc, Context, withCancel, withCancelCause } from "./internal/context";
 import { Cond } from "./internal/cond";

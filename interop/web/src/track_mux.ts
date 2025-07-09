@@ -1,7 +1,7 @@
 import { Announcement, AnnouncementWriter } from "./announce_stream";
 import { BroadcastPath } from "./broadcast_path";
 import { Context } from "./internal/context";
-import { Publisher } from "./publisher";
+import { Publication as Publication } from "./publication";
 import { PublishController } from "./subscribe_stream";
 import { TrackWriter } from "./track";
 import { isValidPrefix, TrackPrefix } from "./track_prefix";
@@ -37,13 +37,13 @@ export class TrackMux {
         this.announce(new Announcement(path, ctx), handler);
     }
 
-    async serveTrack(publisher: Publisher): Promise<void> {
-        const path = publisher.broadcastPath;
+    async serveTrack(publication: Publication): Promise<void> {
+        const path = publication.broadcastPath;
         const handler = this.#handlers.get(path);
         if (handler) {
-            handler.serveTrack(publisher);
+            handler.serveTrack(publication);
         } else {
-            console.warn(`No handler found for track at path: ${path}`);
+            NotFoundHandler.serveTrack(publication);
         }
     }
 
@@ -74,5 +74,11 @@ export class TrackMux {
 
 
 export interface TrackHandler {
-    serveTrack(publisher: Publisher): void;
+    serveTrack(publisher: Publication): void;
 }
+
+const NotFoundHandler: TrackHandler = {
+    serveTrack(publication: Publication): void {
+        publication.controller
+    }
+};

@@ -3,9 +3,9 @@ import { Context } from "./internal/context";
 
 export class TrackWriter {
     #ctx: Context;
-    #openGroupFunc: (ctx: Context, groupId: bigint) => Promise<GroupWriter>;
+    #openGroupFunc: (trackCtx: Context, groupId: bigint) => Promise<[GroupWriter?, Error?]>;
 
-    constructor(trackCtx: Context, openGroupFunc: (ctx: Context, groupId: bigint) => Promise<GroupWriter>) {
+    constructor(trackCtx: Context, openGroupFunc: (trackCtx: Context, groupId: bigint) => Promise<[GroupWriter?, Error?]>) {
         this.#ctx = trackCtx;
         this.#openGroupFunc = openGroupFunc;
     }
@@ -14,7 +14,7 @@ export class TrackWriter {
         return this.#ctx;
     }
 
-    async openGroup(groupId: bigint): Promise<GroupWriter> {
+    async openGroup(groupId: bigint): Promise<[GroupWriter?, Error?]> {
         return this.#openGroupFunc(this.#ctx, groupId);
     }
 }

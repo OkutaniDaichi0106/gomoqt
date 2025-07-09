@@ -4,13 +4,13 @@ import { Writer, Reader } from "./internal/io";
 import { Extensions } from "./internal/extensions";
 import { SessionStream } from "./session_stream";
 import { background, Context, withPromise } from "./internal/context";
-import { AnnouncementReader } from "./announce_stream";
+import { AnnouncementReader, AnnouncementWriter } from "./announce_stream";
 import { TrackPrefix } from "./track_prefix";
 import { ReceiveSubscribeStream, SendSubscribeStream, SubscribeConfig, SubscribeID } from "./subscribe_stream";
-import { Subscriber as Subscription } from "./subscriber";
+import { Subscription as Subscription } from "./subscriber";
 import { BroadcastPath } from "./broadcast_path";
 import { TrackReader, TrackWriter } from "./track";
-import { GroupReader } from "./group_stream";
+import { GroupReader, GroupWriter } from "./group_stream";
 import { Queue } from "./internal/queue";
 import { TrackMux } from "./track_mux";
 
@@ -136,7 +136,6 @@ export class Session {
 		return {
 			broadcastPath: path,
 			trackName: name,
-			subscribeId: req.subscribeId,
 			controller,
 			trackReader: track,
 		};
@@ -169,10 +168,10 @@ export class Session {
 		queue.enqueue(groupReader);
 	}
 
-	async #handleSubscribeStream(writer: Writer, reader: Reader): Promise<void> {
-		const [req, err] = await SubscribeMessage.decode(reader);
-		if (err) {
-			console.error("Failed to decode SubscribeMessage:", err);
+	async #handleSubscribeStream(bi: {writer: Writer, reader: Reader}): Promise<void> {
+		const [req, reqErr] = await SubscribeMessage.decode(bi.reader);
+		if (reqErr) {
+			console.error("Failed to decode SubscribeMessage:", reqErr);
 			return;
 		}
 		if (!req) {
@@ -180,17 +179,36 @@ export class Session {
 			return;
 		}
 
-		
+		const id = req.subscribeId;
 
-		const subscribeStream = new SendSubscribeStream(this.#ctx, writer, reader, req);
-		const subscriber = new Subscriber(subscribeStream);
-		this.#sessionStream.addSubscriber(subscriber);
-		subscribeStream.start();
-		this.#handleAnnounceStream(writer, reader);
+		const controller = new ReceiveSubscribeStream(this.#ctx, bi.writer, bi.reader, req);
+
+		const openFunc = async (trackCtx: Context, groupId: bigint): Promise<[GroupWriter?, Error?]> => {
+			const writer = new Writer(await this.#conn.createUnidirectionalStream());
+			const [req, reqErr] = await GroupMessage.encode(writer, id, groupId);
+			if (reqErr) {
+				return [undefined, reqErr];
+			}
+			if (!req) {
+				return [undefined, new Error("Failed to encode GroupMessage")];
+			}
+
+			const group = new GroupWriter(trackCtx, writer, req);
+			return [group, undefined];
+        };
+
+		const publication = {
+			broadcastPath: req.broadcastPath,
+			trackName: req.trackName,
+			controller,
+			trackWriter: new TrackWriter(controller.context, openFunc),
+		}
+				
+		this.#mux.serveTrack(publication);
 	}
 
-	async #handleAnnounceStream(writer: Writer, reader: Reader): Promise<void> {
-		const [req, err] = await AnnouncePleaseMessage.decode(reader);
+	async #handleAnnounceStream(bi: {writer: Writer, reader: Reader}): Promise<void> {
+		const [req, err] = await AnnouncePleaseMessage.decode(bi.reader);
 		if (err) {
 			console.error("Failed to decode AnnouncePleaseMessage:", err);
 			return;
@@ -200,7 +218,7 @@ export class Session {
 			return;
 		}
 
-		const stream = new AnnouncementReader(this.#ctx, writer, reader, req);
+		const stream = new AnnouncementWriter(this.#ctx, bi.writer, bi.reader, req);
 
 		this.#mux.serveAnnouncement(stream, req.prefix);
 	}

@@ -14,21 +14,19 @@ export interface SubscribeController {
 
 export class SendSubscribeStream implements SubscribeController {
 	#subscribe: SubscribeMessage
-	#okFunc: (info: Info) => Promise<[SubscribeOkMessage?, Error?]>
+	#ok: SubscribeOkMessage
 	#update?: SubscribeUpdateMessage
 	#reader: Reader
 	#writer: Writer
 	#ctx: Context;
 	#cancelFunc: CancelCauseFunc;
 
-	constructor(sessCtx: Context, writer: Writer, reader: Reader, subscribe: SubscribeMessage) {
+	constructor(sessCtx: Context, writer: Writer, reader: Reader, subscribe: SubscribeMessage, ok: SubscribeOkMessage) {
 		[this.#ctx, this.#cancelFunc] = withCancelCause(sessCtx);
 		this.#reader = reader;
 		this.#writer = writer;
 		this.#subscribe = subscribe;
-		this.#okFunc = async (info: Info): Promise<[SubscribeOkMessage?, Error?]> => {
-			return SubscribeOkMessage.encode(writer, info.groupOrder);
-		};
+		this.#ok = ok;
 	}
 
 	get subscribeId(): SubscribeID {
@@ -71,21 +69,31 @@ export interface PublishController {
 	subscribeId: SubscribeID
 	updated(): Promise<void>;
 	subscribeConfig: SubscribeConfig
+	context: Context
+	accept(info: Info): Promise<void>;
+	close(): void;
+	closeWithError(code: number, message: string): void;
 }
 
 export class ReceiveSubscribeStream implements PublishController {
 	#subscribe: SubscribeMessage
-	#ok: SubscribeOkMessage
 	#update?: SubscribeUpdateMessage
 	#cond: Cond = new Cond();
 	#reader: Reader
 	#writer: Writer
+	#acceptFunc: (info: Info) => Promise<[SubscribeOkMessage?, Error?]>
+	#ok?: SubscribeOkMessage
+	#ctx: Context;
+	#cancelFunc: CancelCauseFunc;
 
-	constructor(writer: Writer, reader: Reader, subscribe: SubscribeMessage, ok: SubscribeOkMessage) {
+	constructor(sessCtx: Context, writer: Writer, reader: Reader, subscribe: SubscribeMessage) {
 		this.#reader = reader
 		this.#writer = writer
 		this.#subscribe = subscribe
-		this.#ok = ok
+		this.#acceptFunc = async (info: Info): Promise<[SubscribeOkMessage?, Error?]> => {
+			return await SubscribeOkMessage.encode(this.#writer, info.groupOrder);		
+		}
+		[this.#ctx, this.#cancelFunc] = withCancelCause(sessCtx);
 
 		async () => {
 			for (;;) {
@@ -114,8 +122,50 @@ export class ReceiveSubscribeStream implements PublishController {
 		}
 	}
 
+	get context(): Context {
+		return this.#ctx;
+	}
+
 	async updated(): Promise<void> {
 		return this.#cond.wait();
+	}
+
+	async accept(info: Info): Promise<void> {
+		const [result, err] = await this.#acceptFunc(info);
+		if (err) {
+			throw new Error(`Failed to write subscribe ok: ${err}`);
+		}
+		if (!result) {
+			throw new Error("Failed to encode subscribe ok message");
+		}
+
+		this.#acceptFunc = async () => [result, undefined]; // TODO: No re-accept for updates?
+
+		this.#ok = result;
+
+		const [_, flushErr] = await this.#writer.flush();
+		if (flushErr) {
+			throw new Error(`Failed to flush subscribe ok: ${flushErr}`);
+		}
+	}
+
+	close(): void {
+		if (this.#ctx.err() !== null) {
+			throw this.#ctx.err();
+		}
+		this.#writer.close();
+		this.#cancelFunc(null);
+		this.#cond.broadcast(); // Notify any waiting threads that the stream is closed
+	}
+
+	closeWithError(code: number, message: string): void {
+		if (this.#ctx.err() !== null) {
+			throw this.#ctx.err();
+		}
+		const err = new StreamError(code, message);
+		this.#writer.cancel(err);
+		this.#cancelFunc(err);
+		this.#cond.broadcast(); // Notify any waiting threads that the stream is closed
 	}
 }
 

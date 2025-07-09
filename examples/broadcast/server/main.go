@@ -28,7 +28,7 @@ func main() {
 		Logger: slog.Default(),
 	}
 	// Register the broadcast handler with the default mux
-	moqt.HandleFunc(context.Background(), "/server.broadcast", func(pub *moqt.Publisher) {
+	moqt.HandleFunc(context.Background(), "/server.broadcast", func(pub *moqt.Publication) {
 		seq := moqt.GroupSequenceFirst
 		for {
 			time.Sleep(100 * time.Millisecond)

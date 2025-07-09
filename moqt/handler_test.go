@@ -8,19 +8,19 @@ import (
 
 func TestNotFound(t *testing.T) {
 	tests := map[string]struct {
-		pub *Publisher
+		pub *Publication
 	}{
 		"nil publisher": {
 			pub: nil,
 		},
 		"publisher with nil TrackWriter": {
-			pub: &Publisher{
+			pub: &Publication{
 				BroadcastPath: BroadcastPath("/test"),
 				TrackName:     TrackName("test"),
 				TrackWriter:   nil,
 			},
 		}, "publisher with mock TrackWriter": {
-			pub: &Publisher{
+			pub: &Publication{
 				BroadcastPath: BroadcastPath("/test"),
 				TrackName:     TrackName("test"),
 				TrackWriter: func() *MockTrackWriter {
@@ -44,7 +44,7 @@ func TestNotFoundHandler(t *testing.T) {
 	mockWriter := &MockTrackWriter{}
 	mockWriter.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
 
-	pub := &Publisher{
+	pub := &Publication{
 		BroadcastPath: BroadcastPath("/test"),
 		TrackName:     TrackName("test"),
 		TrackWriter:   mockWriter,
@@ -56,14 +56,14 @@ func TestNotFoundHandler(t *testing.T) {
 
 func TestTrackHandlerFunc(t *testing.T) {
 	called := false
-	var receivedPub *Publisher
+	var receivedPub *Publication
 
-	handler := TrackHandlerFunc(func(pub *Publisher) {
+	handler := TrackHandlerFunc(func(pub *Publication) {
 		called = true
 		receivedPub = pub
 	})
 
-	testPub := &Publisher{
+	testPub := &Publication{
 		BroadcastPath: BroadcastPath("/test"),
 		TrackName:     TrackName("test"),
 	}
@@ -76,11 +76,11 @@ func TestTrackHandlerFunc(t *testing.T) {
 func TestTrackHandlerFuncServeTrack(t *testing.T) {
 	callCount := 0
 
-	handler := TrackHandlerFunc(func(pub *Publisher) {
+	handler := TrackHandlerFunc(func(pub *Publication) {
 		callCount++
 	})
 
-	pub := &Publisher{
+	pub := &Publication{
 		BroadcastPath: BroadcastPath("/test"),
 		TrackName:     TrackName("test"),
 	}

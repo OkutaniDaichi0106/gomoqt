@@ -1,0 +1,31 @@
+{
+  "name": "@okutanidaichi/moqt",
+  "version": "0.0.1",
+  "description": "Media over QUIC package",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OkutaniDaichi0106/gomoqt/web"
+  },
+  "license": "MIT",
+  "author": "Okutani Daichi",
+  "type": "module",
+  "main": "index.js",
+  "browser": {
+    "./index.js": "./browser.js"
+  },
+  "scripts": {
+    "test": "jest"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^24.0.4",
+    "@typescript-eslint/eslint-plugin": "^8.35.1",
+    "@typescript-eslint/parser": "^8.35.1",
+    "eslint": "^9.30.1",
+    "jest": "^30.0.3",
+    "ts-jest": "^29.4.0",
+    "tslint": "^5.20.1",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3"
+  }
+}

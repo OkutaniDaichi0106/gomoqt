@@ -1,25 +1,33 @@
 package moqt
 
 import (
+	"context"
 	"errors"
-	"log/slog"
 	"sync"
 )
 
-func newTrackSender(substr *receiveSubscribeStream, openGroupFunc func(GroupSequence) (*sendGroupStream, error)) *trackSender {
+func newTrackSender(ctx context.Context, openGroupFunc func(ctx context.Context, seq GroupSequence) (*sendGroupStream, error)) *trackSender {
 	track := &trackSender{
-		queue:           make(map[*sendGroupStream]struct{}),
-		subscribeStream: substr,
-		openGroupFunc:   openGroupFunc,
+		ctx:           ctx,
+		queue:         make(map[*sendGroupStream]struct{}),
+		openGroupFunc: openGroupFunc,
 	}
 
 	go func() {
-		<-substr.canceled()
+		<-ctx.Done()
 		track.mu.Lock()
 		defer track.mu.Unlock()
-		for stream := range track.queue {
-			stream.CancelWrite(SubscribeCanceledErrorCode)
+
+		if ctx.Err() != nil {
+			for stream := range track.queue {
+				stream.CancelWrite(SubscribeCanceledErrorCode)
+			}
+		} else {
+			for stream := range track.queue {
+				stream.Close()
+			}
 		}
+
 		track.queue = nil
 	}()
 	return track
@@ -28,27 +36,14 @@ func newTrackSender(substr *receiveSubscribeStream, openGroupFunc func(GroupSequ
 var _ TrackWriter = (*trackSender)(nil)
 
 type trackSender struct {
-	subscribeStream *receiveSubscribeStream
+	ctx context.Context
 
-	accepted bool
-	info     Info
+	acceptFunc func(Info)
 
 	mu    sync.Mutex
 	queue map[*sendGroupStream]struct{}
 
-	openGroupFunc func(GroupSequence) (*sendGroupStream, error)
-}
-
-func (s *trackSender) WriteInfo(info Info) {
-	if s.accepted {
-		slog.Warn("moq: superfluous accept call on moqt.WriteInfo")
-		return
-	}
-
-	s.accepted = true
-	s.info = info
-
-	s.subscribeStream.accept(info)
+	openGroupFunc func(ctx context.Context, seq GroupSequence) (*sendGroupStream, error)
 }
 
 func (s *trackSender) OpenGroup(seq GroupSequence) (GroupWriter, error) {
@@ -56,28 +51,16 @@ func (s *trackSender) OpenGroup(seq GroupSequence) (GroupWriter, error) {
 		return nil, errors.New("group sequence must not be zero")
 	}
 
-	select {
-	case <-s.subscribeStream.subscribeCanceledCh:
-		return nil, errors.New("subscription was canceled")
-	default:
+	if err := s.ctx.Err(); err != nil {
+		return nil, err
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	err, ok := s.subscribeStream.isClosed()
-	if ok {
-		if err != nil {
-			return nil, err
-		}
-		return nil, errors.New("track is closed")
-	}
+	s.acceptFunc(Info{}) // TODO:
 
-	if !s.accepted {
-		s.WriteInfo(Info{})
-	}
-
-	group, err := s.openGroupFunc(seq)
+	group, err := s.openGroupFunc(s.ctx, seq)
 	if err != nil {
 		return nil, err
 	}
@@ -88,35 +71,11 @@ func (s *trackSender) OpenGroup(seq GroupSequence) (GroupWriter, error) {
 
 	s.queue[group] = struct{}{}
 	go func() {
-		<-group.closedCh
+		<-group.ctx.Done()
 		s.mu.Lock()
 		delete(s.queue, group)
 		s.mu.Unlock()
 	}()
 
 	return group, nil
-}
-
-func (s *trackSender) Close() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	for stream := range s.queue {
-		stream.Close()
-	}
-	s.queue = nil
-
-	return s.subscribeStream.close()
-}
-
-func (s *trackSender) CloseWithError(code SubscribeErrorCode) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	for stream := range s.queue {
-		stream.CancelWrite(SubscribeCanceledErrorCode)
-	}
-	s.queue = nil
-
-	return s.subscribeStream.closeWithError(code)
 }

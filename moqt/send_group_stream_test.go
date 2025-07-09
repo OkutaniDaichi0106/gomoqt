@@ -1,6 +1,8 @@
 package moqt
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -34,14 +36,16 @@ func TestNewSendGroupStream(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			mockStream := tt.setupMock()
+			ctx := context.Background()
 
-			sgs := newSendGroupStream(mockStream, tt.sequence)
+			sgs := newSendGroupStream(ctx, mockStream, tt.sequence)
 
 			assert.NotNil(t, sgs)
-			assert.Equal(t, mockStream, sgs.stream)
 			assert.Equal(t, tt.sequence, sgs.sequence)
 			assert.Equal(t, uint64(0), sgs.frameCount)
-			assert.False(t, sgs.closed)
+			assert.NotNil(t, sgs.ctx)
+			assert.NotNil(t, sgs.cancel)
+			assert.Equal(t, mockStream, sgs.stream)
 		})
 	}
 }
@@ -49,8 +53,9 @@ func TestNewSendGroupStream(t *testing.T) {
 func TestSendGroupStream_GroupSequence(t *testing.T) {
 	mockStream := &MockQUICSendStream{}
 	sequence := GroupSequence(789)
+	ctx := context.Background()
 
-	sgs := newSendGroupStream(mockStream, sequence)
+	sgs := newSendGroupStream(ctx, mockStream, sequence)
 
 	result := sgs.GroupSequence()
 	assert.Equal(t, sequence, result)
@@ -90,7 +95,8 @@ func TestSendGroupStream_WriteFrame(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			mockStream := tt.setupMock()
-			sgs := newSendGroupStream(mockStream, GroupSequence(1))
+			ctx := context.Background()
+			sgs := newSendGroupStream(ctx, mockStream, GroupSequence(1))
 
 			err := sgs.WriteFrame(tt.frame)
 
@@ -109,8 +115,9 @@ func TestSendGroupStream_SetWriteDeadline(t *testing.T) {
 	mockStream := &MockQUICSendStream{}
 	deadline := time.Now().Add(time.Minute)
 	mockStream.On("SetWriteDeadline", deadline).Return(nil)
+	ctx := context.Background()
 
-	sgs := newSendGroupStream(mockStream, GroupSequence(1))
+	sgs := newSendGroupStream(ctx, mockStream, GroupSequence(1))
 
 	err := sgs.SetWriteDeadline(deadline)
 	assert.NoError(t, err)
@@ -120,21 +127,16 @@ func TestSendGroupStream_SetWriteDeadline(t *testing.T) {
 func TestSendGroupStream_Close(t *testing.T) {
 	mockStream := &MockQUICSendStream{}
 	mockStream.On("Close").Return(nil)
+	ctx := context.Background()
 
-	sgs := newSendGroupStream(mockStream, GroupSequence(1))
+	sgs := newSendGroupStream(ctx, mockStream, GroupSequence(1))
 
 	err := sgs.Close()
 	assert.NoError(t, err)
-	assert.True(t, sgs.closed)
 	mockStream.AssertExpectations(t)
 
-	// Verify the closed channel is closed
-	select {
-	case <-sgs.closedCh:
-		// Good - should be closed
-	default:
-		t.Error("closedCh should be closed after Close()")
-	}
+	// Verify the context is cancelled after Close()
+	assert.Error(t, sgs.ctx.Err(), "context should be cancelled after Close()")
 }
 
 func TestSendGroupStream_CloseWithError(t *testing.T) {
@@ -144,20 +146,38 @@ func TestSendGroupStream_CloseWithError(t *testing.T) {
 
 	mockStream.On("CancelWrite", quic.StreamErrorCode(errorCode)).Return()
 	mockStream.On("StreamID").Return(streamID)
+	ctx := context.Background()
 
-	sgs := newSendGroupStream(mockStream, GroupSequence(1))
+	sgs := newSendGroupStream(ctx, mockStream, GroupSequence(1))
 
 	err := sgs.CancelWrite(errorCode)
 	assert.NoError(t, err)
-	assert.True(t, sgs.closed)
-	assert.NotNil(t, sgs.closeErr)
 	mockStream.AssertExpectations(t)
 
-	// Verify the closed channel is closed
-	select {
-	case <-sgs.closedCh:
-		// Good - should be closed
-	default:
-		t.Error("closedCh should be closed after CloseWithError()")
-	}
+	// Verify the context is cancelled after CancelWrite()
+	assert.Error(t, sgs.ctx.Err(), "context should be cancelled after CancelWrite()")
+
+	// Verify the cause is a GroupError
+	causeErr := context.Cause(sgs.ctx)
+	assert.NotNil(t, causeErr, "context cause should not be nil")
+
+	var groupErr *GroupError
+	assert.True(t, errors.As(causeErr, &groupErr), "context cause should be a GroupError")
+}
+
+func TestSendGroupStream_ContextCancellation(t *testing.T) {
+	t.Run("operations fail when context is cancelled", func(t *testing.T) {
+		mockStream := &MockQUICSendStream{}
+		ctx, cancel := context.WithCancel(context.Background())
+
+		sgs := newSendGroupStream(ctx, mockStream, GroupSequence(1))
+
+		// Cancel the context
+		cancel()
+
+		// Test that operations fail when context is cancelled
+		frame := &Frame{message: &message.FrameMessage{Payload: []byte("test")}}
+		err := sgs.WriteFrame(frame)
+		assert.Error(t, err)
+	})
 }

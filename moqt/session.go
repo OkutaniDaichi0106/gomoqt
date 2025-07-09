@@ -163,7 +163,7 @@ func (s *Session) Terminate(code SessionErrorCode, msg string) error {
 	return nil
 }
 
-func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *SubscribeConfig) (*Subscriber, error) {
+func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *SubscribeConfig) (*Subscription, error) {
 	if s.terminating() {
 		return nil, s.sessErr
 	}
@@ -282,16 +282,17 @@ func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *Su
 		"subscribe_config", config,
 	)
 	// Create a receive group stream queue
-	trackReceiver := newTrackReceiver(substr)
+	trackReceiver := newTrackReceiver(substr.ctx)
 	s.receiveGroupMapLocker.Lock()
 	s.trackReceivers[id] = trackReceiver
 	s.receiveGroupMapLocker.Unlock()
 
-	return &Subscriber{
-		BroadcastPath:   path,
-		TrackName:       name,
-		SubscribeStream: substr,
-		TrackReader:     trackReceiver,
+	return &Subscription{
+		BroadcastPath: path,
+		TrackName:     name,
+		SubscribeID:   id,
+		TrackReader:   trackReceiver,
+		Controller:    substr,
 	}, nil
 }
 
@@ -482,11 +483,11 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 			return
 		}
 
-		substr := newReceiveSubscribeStream(id, stream, config)
+		substr := newReceiveSubscribeStream(sess.ctx, id, stream, config)
 
 		subLogger.Debug("accepted a subscribe stream")
 
-		openGroupStreamFunc := func(seq GroupSequence) (*sendGroupStream, error) {
+		openGroupStreamFunc := func(trackCtx context.Context, seq GroupSequence) (*sendGroupStream, error) {
 
 			stream, err := sess.conn.OpenUniStream()
 			if err != nil {
@@ -566,21 +567,21 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 				}
 			}
 
-			return newSendGroupStream(stream, seq), nil
+			return newSendGroupStream(trackCtx, stream, seq), nil
 		}
 
-		trackSender := newTrackSender(substr, openGroupStreamFunc)
+		trackSender := newTrackSender(substr.ctx, openGroupStreamFunc)
 		sess.sendGroupMapLocker.Lock()
 		sess.trackSenders[id] = trackSender
 		sess.sendGroupMapLocker.Unlock()
 
 		subLogger.Info("serving track for subscription")
 
-		handler.ServeTrack(&Publisher{
-			BroadcastPath:   path,
-			TrackName:       name,
-			SubscribeStream: substr,
-			TrackWriter:     trackSender,
+		handler.ServeTrack(&Publication{
+			BroadcastPath: path,
+			TrackName:     name,
+			Controller:    substr,
+			TrackWriter:   trackSender,
 		})
 	default:
 		streamLogger.Error("unknown bidirectional stream type",
@@ -652,12 +653,10 @@ func (sess *Session) processUniStream(stream quic.ReceiveStream, streamLogger *s
 			return
 		}
 
-		group := newReceiveGroupStream(GroupSequence(gm.GroupSequence), stream)
-
 		groupLogger.Debug("accepted group stream")
 
 		// Enqueue the receiver
-		receiver.enqueueGroup(group)
+		receiver.enqueueGroup(GroupSequence(gm.GroupSequence), stream)
 	default:
 		streamLogger.Error("unknown unidirectional stream type received",
 			"stream_type", stm.StreamType,

@@ -1,4 +1,4 @@
-package loc
+package lomc
 
 import (
 	"io"

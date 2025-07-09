@@ -11,12 +11,12 @@ import (
 
 var _ moqt.TrackHandler = (*relayHandler)(nil)
 
-func newRelayHandler(sub *moqt.Subscriber) moqt.TrackHandler {
+func newRelayHandler(sub *moqt.Subscription) moqt.TrackHandler {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	h := &relayHandler{
 		ctx:   ctx,
-		dests: make(map[*moqt.Publisher]struct{}),
+		dests: make(map[*moqt.Publication]struct{}),
 	}
 
 	go func() {
@@ -40,10 +40,10 @@ type relayHandler struct {
 	ctx context.Context
 
 	mu    sync.RWMutex
-	dests map[*moqt.Publisher]struct{}
+	dests map[*moqt.Publication]struct{}
 }
 
-func (h *relayHandler) ServeTrack(pub *moqt.Publisher) {
+func (h *relayHandler) ServeTrack(pub *moqt.Publication) {
 	h.mu.Lock()
 	h.dests[pub] = struct{}{}
 	h.mu.Unlock()
@@ -57,7 +57,7 @@ func (h *relayHandler) relayGroup(gr moqt.GroupReader) {
 
 	writers := make(chan moqt.GroupWriter, len(h.dests))
 	go func() {
-		failedPubs := make([]*moqt.Publisher, 0, len(h.dests))
+		failedPubs := make([]*moqt.Publication, 0, len(h.dests))
 
 		h.mu.RLock()
 		defer h.mu.RUnlock()

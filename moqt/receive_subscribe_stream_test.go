@@ -2,6 +2,7 @@ package moqt
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"sync"
@@ -61,7 +62,7 @@ func TestNewReceiveSubscribeStream(t *testing.T) {
 			// Mock the Read method calls for the listenUpdates goroutine
 			mockStream.On("Read", mock.AnythingOfType("[]uint8"))
 
-			rss := newReceiveSubscribeStream(tt.subscribeID, mockStream, tt.config)
+			rss := newReceiveSubscribeStream(context.Background(), tt.subscribeID, mockStream, tt.config)
 
 			assert.NotNil(t, rss, "newReceiveSubscribeStream should not return nil")
 			assert.Equal(t, tt.subscribeID, rss.SubscribeID(), "SubscribeID should match")
@@ -119,7 +120,7 @@ func TestReceiveSubscribeStream_SubscribeID(t *testing.T) {
 				MaxGroupSequence: GroupSequence(100),
 			}
 
-			rss := newReceiveSubscribeStream(tt.subscribeID, mockStream, config)
+			rss := newReceiveSubscribeStream(context.Background(), tt.subscribeID, mockStream, config)
 
 			result := rss.SubscribeID()
 			assert.Equal(t, tt.subscribeID, result, "SubscribeID should match expected value")
@@ -173,7 +174,7 @@ func TestReceiveSubscribeStream_SubscribeConfig(t *testing.T) {
 			// Mock the Read method calls for the listenUpdates goroutine
 			mockStream.On("Read", mock.AnythingOfType("[]uint8")).Return(0, io.EOF)
 
-			rss := newReceiveSubscribeStream(subscribeID, mockStream, tt.config)
+			rss := newReceiveSubscribeStream(context.Background(), subscribeID, mockStream, tt.config)
 
 			resultConfig, err := rss.SubscribeConfig()
 			assert.NoError(t, err, "SubscribeConfig should not return error")
@@ -209,19 +210,22 @@ func TestReceiveSubscribeStream_SubscribeConfig_UnreadableState(t *testing.T) {
 		"closed with read error": {
 			setupStream: func() *receiveSubscribeStream {
 				mockStream := &MockQUICStream{}
+				ctx, cancel := context.WithCancelCause(context.Background())
 				rss := &receiveSubscribeStream{
 					id:        SubscribeID(123),
 					stream:    mockStream,
 					config:    &SubscribeConfig{TrackPriority: TrackPriority(1)},
 					updatedCh: make(chan struct{}, 1),
-					closed:    true,
-					closeErr: &SubscribeError{
-						StreamError: &quic.StreamError{
-							StreamID:  quic.StreamID(123),
-							ErrorCode: quic.StreamErrorCode(InternalSubscribeErrorCode),
-						},
+					ctx:       ctx,
+					cancel:    cancel,
+				}
+				subErr := &SubscribeError{
+					StreamError: &quic.StreamError{
+						StreamID:  quic.StreamID(123),
+						ErrorCode: quic.StreamErrorCode(InternalSubscribeErrorCode),
 					},
 				}
+				cancel(subErr)
 				return rss
 			},
 			expectError: true,
@@ -229,14 +233,16 @@ func TestReceiveSubscribeStream_SubscribeConfig_UnreadableState(t *testing.T) {
 		"closed with EOF": {
 			setupStream: func() *receiveSubscribeStream {
 				mockStream := &MockQUICStream{}
+				ctx, cancel := context.WithCancelCause(context.Background())
 				rss := &receiveSubscribeStream{
 					id:        SubscribeID(123),
 					stream:    mockStream,
 					config:    &SubscribeConfig{TrackPriority: TrackPriority(1)},
 					updatedCh: make(chan struct{}, 1),
-					closed:    true,
-					closeErr:  nil,
+					ctx:       ctx,
+					cancel:    cancel,
 				}
+				cancel(io.EOF)
 				return rss
 			},
 			expectError: true,
@@ -280,7 +286,7 @@ func TestReceiveSubscribeStream_Updated(t *testing.T) {
 		MaxGroupSequence: GroupSequence(100),
 	}
 
-	rss := newReceiveSubscribeStream(subscribeID, mockStream, config)
+	rss := newReceiveSubscribeStream(context.Background(), subscribeID, mockStream, config)
 
 	updatedCh := rss.Updated()
 	assert.NotNil(t, updatedCh, "Updated channel should not be nil")
@@ -313,7 +319,7 @@ func TestReceiveSubscribeStream_ListenUpdates_WithSubscribeUpdateMessage(t *test
 
 	// Encode the message
 	buf := &bytes.Buffer{}
-	_, err := updateMsg.Encode(buf)
+	err := updateMsg.Encode(buf)
 	require.NoError(t, err)
 
 	data := buf.Bytes()
@@ -338,7 +344,7 @@ func TestReceiveSubscribeStream_ListenUpdates_WithSubscribeUpdateMessage(t *test
 		MaxGroupSequence: GroupSequence(100),
 	}
 
-	rss := newReceiveSubscribeStream(subscribeID, mockStream, config)
+	rss := newReceiveSubscribeStream(context.Background(), subscribeID, mockStream, config)
 
 	// Wait for the update to be processed
 	select {
@@ -382,7 +388,7 @@ func TestReceiveSubscribeStream_ListenUpdates_StreamError(t *testing.T) {
 		MaxGroupSequence: GroupSequence(100),
 	}
 
-	rss := newReceiveSubscribeStream(subscribeID, mockStream, config)
+	rss := newReceiveSubscribeStream(context.Background(), subscribeID, mockStream, config)
 
 	// Wait for error to be processed
 	select {
@@ -396,8 +402,9 @@ func TestReceiveSubscribeStream_ListenUpdates_StreamError(t *testing.T) {
 	assert.Error(t, err, "SubscribeConfig should return error after stream error")
 
 	var subscribeErr *SubscribeError
-	assert.True(t, errors.As(err, &subscribeErr), "Error should be SubscribeError")
-	assert.Equal(t, streamError.ErrorCode, subscribeErr.StreamError.ErrorCode, "Error codes should match")
+	if assert.True(t, errors.As(err, &subscribeErr), "Error should be SubscribeError") {
+		assert.Equal(t, streamError.ErrorCode, subscribeErr.StreamError.ErrorCode, "Error codes should match")
+	}
 
 	// Give some time for the goroutine to complete
 	time.Sleep(10 * time.Millisecond)
@@ -445,18 +452,20 @@ func TestReceiveSubscribeStream_CloseWithError(t *testing.T) {
 			}
 
 			// Create stream manually to avoid goroutine interference
+			ctx, cancel := context.WithCancelCause(context.Background())
 			rss := &receiveSubscribeStream{
-				id:                  subscribeID,
-				config:              config,
-				stream:              mockStream,
-				updatedCh:           make(chan struct{}, 1),
-				subscribeCanceledCh: make(chan struct{}, 1),
+				id:        subscribeID,
+				config:    config,
+				stream:    mockStream,
+				updatedCh: make(chan struct{}, 1),
+				ctx:       ctx,
+				cancel:    cancel,
 			}
 
 			// Mark listenOnce as done to prevent goroutine from starting
 			rss.listenOnce.Do(func() {})
 
-			err := rss.closeWithError(tt.errorCode)
+			err := rss.CloseWithError(tt.errorCode)
 
 			if tt.expectErr {
 				assert.Error(t, err)
@@ -464,7 +473,8 @@ func TestReceiveSubscribeStream_CloseWithError(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
-			assert.True(t, rss.closed, "Stream should be marked as closed")
+			// Check that context is cancelled
+			assert.Error(t, rss.ctx.Err(), "Context should be cancelled")
 
 			mockStream.AssertExpectations(t)
 		})
@@ -481,19 +491,23 @@ func TestReceiveSubscribeStream_CloseWithError_AlreadyClosed(t *testing.T) {
 		MaxGroupSequence: GroupSequence(100),
 	}
 	// Create stream manually
+	ctx, cancel := context.WithCancelCause(context.Background())
 	rss := &receiveSubscribeStream{
 		id:        subscribeID,
 		config:    config,
 		stream:    mockStream,
 		updatedCh: make(chan struct{}, 1),
-		closed:    true, // Already closed
+		ctx:       ctx,
+		cancel:    cancel,
 	}
+	// Mark as already closed
+	cancel(errors.New("already closed"))
 
 	// Mark listenOnce as done
 	rss.listenOnce.Do(func() {})
 
-	err := rss.closeWithError(InternalSubscribeErrorCode)
-	assert.NoError(t, err, "closeWithError should not return error when already closed")
+	err := rss.CloseWithError(InternalSubscribeErrorCode)
+	assert.Error(t, err, "CloseWithError should return error when already closed")
 }
 
 func TestReceiveSubscribeStream_ConcurrentAccess(t *testing.T) {
@@ -512,7 +526,7 @@ func TestReceiveSubscribeStream_ConcurrentAccess(t *testing.T) {
 		MaxGroupSequence: GroupSequence(100),
 	}
 
-	rss := newReceiveSubscribeStream(subscribeID, mockStream, config)
+	rss := newReceiveSubscribeStream(context.Background(), subscribeID, mockStream, config)
 
 	// Test concurrent access to SubscribeID (should be safe as it's read-only)
 	var wg sync.WaitGroup
@@ -578,7 +592,7 @@ func TestReceiveSubscribeStream_UpdateChannelBehavior(t *testing.T) {
 		mockStream.On("Read", mock.AnythingOfType("[]uint8")).Return(0, io.EOF)
 		config := &SubscribeConfig{TrackPriority: TrackPriority(1)}
 
-		rss := newReceiveSubscribeStream(subscribeID, mockStream, config)
+		rss := newReceiveSubscribeStream(context.Background(), subscribeID, mockStream, config)
 
 		select {
 		case <-rss.Updated():
@@ -620,7 +634,7 @@ func TestReceiveSubscribeStream_UpdateChannelBehavior(t *testing.T) {
 
 		buf := &bytes.Buffer{}
 		for _, update := range updates {
-			_, err := update.Encode(buf)
+			err := update.Encode(buf)
 			require.NoError(t, err)
 		}
 
@@ -640,7 +654,7 @@ func TestReceiveSubscribeStream_UpdateChannelBehavior(t *testing.T) {
 		mockStream.On("Read", mock.AnythingOfType("[]uint8"))
 
 		config := &SubscribeConfig{TrackPriority: TrackPriority(0)}
-		rss := newReceiveSubscribeStream(subscribeID, mockStream, config) // Should receive multiple update notifications
+		rss := newReceiveSubscribeStream(context.Background(), subscribeID, mockStream, config) // Should receive multiple update notifications
 		updateCount := 0
 		expectedUpdates := 1 // We expect at least 1 update, but may get more
 

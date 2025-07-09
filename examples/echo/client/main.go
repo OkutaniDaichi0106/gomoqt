@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	moqt.HandleFunc(context.Background(), "/client.echo", func(pub *moqt.Publisher) {
+	moqt.HandleFunc(context.Background(), "/client.echo", func(pub *moqt.Publication) {
 		seq := moqt.GroupSequenceFirst
 		for {
 			time.Sleep(100 * time.Millisecond)

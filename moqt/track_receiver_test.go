@@ -7,31 +7,21 @@ import (
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 )
 
 func TestNewTrackReceiver(t *testing.T) {
-	// Create mock send subscribe stream
 	ctx := context.Background()
-	mockStream := &MockQUICStream{}
-	substr := newSendSubscribeStream(ctx, SubscribeID(1), mockStream, &SubscribeConfig{})
-
-	receiver := newTrackReceiver(substr)
+	receiver := newTrackReceiver(ctx)
 
 	assert.NotNil(t, receiver, "newTrackReceiver should not return nil")
-	assert.Equal(t, substr, receiver.substr, "substr should be set correctly")
 	assert.NotNil(t, receiver.queue, "queue should be initialized")
 	assert.NotNil(t, receiver.queuedCh, "queuedCh should be initialized")
 	assert.NotNil(t, receiver.dequeued, "dequeued should be initialized")
 }
 
 func TestTrackReceiver_AcceptGroup(t *testing.T) {
-	// Create mock send subscribe stream
 	ctx := context.Background()
-	mockStream := &MockQUICStream{}
-	substr := newSendSubscribeStream(ctx, SubscribeID(1), mockStream, &SubscribeConfig{})
-
-	receiver := newTrackReceiver(substr)
+	receiver := newTrackReceiver(ctx)
 
 	// Test with a timeout to ensure we don't block forever when no groups are available
 	testCtx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -42,57 +32,43 @@ func TestTrackReceiver_AcceptGroup(t *testing.T) {
 	assert.Equal(t, context.DeadlineExceeded, err, "expected deadline exceeded error")
 }
 
-func TestTrackReceiver_Close(t *testing.T) {
-	// Create mock send subscribe stream
-	ctx := context.Background()
-	mockStream := &MockQUICStream{}
-	substr := newSendSubscribeStream(ctx, SubscribeID(1), mockStream, &SubscribeConfig{})
+func TestTrackReceiver_ContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	receiver := newTrackReceiver(ctx)
 
-	// Mock the Close method
-	mockStream.On("Close").Return(nil)
+	// Cancel the context
+	cancel()
 
-	receiver := newTrackReceiver(substr)
+	// Test that AcceptGroup returns context error when context is cancelled
+	testCtx, testCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer testCancel()
 
-	err := receiver.Close()
-	assert.NoError(t, err, "Close() should not return error")
-	// Verify Close was called on the underlying stream
-	mockStream.AssertCalled(t, "Close")
+	_, err := receiver.AcceptGroup(testCtx)
+	assert.Error(t, err, "expected error when context is cancelled")
+	// Should return context.Canceled or DeadlineExceeded
+	assert.True(t, err == context.Canceled || err == context.DeadlineExceeded, "expected context error")
 }
 
-func TestTrackReceiver_CloseWithError(t *testing.T) {
-	tests := map[string]struct {
-		reason SubscribeErrorCode
-	}{
-		"close with custom error": {
-			reason: SubscribeErrorCode(1),
-		},
-		"close with zero error code": {
-			reason: SubscribeErrorCode(0),
-		},
-	}
+func TestTrackReceiver_EnqueueGroup(t *testing.T) {
+	ctx := context.Background()
+	receiver := newTrackReceiver(ctx)
 
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			// Create mock send subscribe stream
-			ctx := context.Background()
-			mockStream := &MockQUICStream{}
-			substr := newSendSubscribeStream(ctx, SubscribeID(1), mockStream, &SubscribeConfig{})
+	// Mock receive stream
+	mockReceiveStream := &MockQUICReceiveStream{}
+	mockReceiveStream.On("StreamID").Return(quic.StreamID(1))
 
-			// Mock the necessary methods
-			mockStream.On("StreamID").Return(quic.StreamID(1))
-			mockStream.On("CancelWrite", mock.AnythingOfType("quic.StreamErrorCode")).Return()
-			mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return()
+	// Enqueue a group
+	receiver.enqueueGroup(GroupSequence(1), mockReceiveStream)
 
-			receiver := newTrackReceiver(substr)
+	// Test that we can accept the enqueued group
+	testCtx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
 
-			err := receiver.CloseWithError(tt.reason)
-			assert.NoError(t, err, "CloseWithError() should not return error")
+	group, err := receiver.AcceptGroup(testCtx)
+	assert.NoError(t, err, "should be able to accept enqueued group")
+	assert.NotNil(t, group, "accepted group should not be nil")
 
-			// Verify methods were called on the underlying stream
-			mockStream.AssertCalled(t, "CancelWrite", quic.StreamErrorCode(tt.reason))
-			mockStream.AssertCalled(t, "CancelRead", quic.StreamErrorCode(tt.reason))
-		})
-	}
+	mockReceiveStream.AssertExpectations(t)
 }
 
 func TestTrackReceiver_Interface(t *testing.T) {
@@ -101,17 +77,8 @@ func TestTrackReceiver_Interface(t *testing.T) {
 }
 
 func TestTrackReceiver_AcceptGroup_RealImplementation(t *testing.T) {
-	// Create mock send subscribe stream
 	ctx := context.Background()
-	mockStream := &MockQUICStream{}
-	config := &SubscribeConfig{
-		TrackPriority:    TrackPriority(128),
-		MinGroupSequence: GroupSequence(0),
-		MaxGroupSequence: GroupSequence(100),
-	}
-	substr := newSendSubscribeStream(ctx, SubscribeID(1), mockStream, config)
-
-	receiver := newTrackReceiver(substr)
+	receiver := newTrackReceiver(ctx)
 
 	// Test with a timeout to ensure we don't block forever
 	testCtx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)

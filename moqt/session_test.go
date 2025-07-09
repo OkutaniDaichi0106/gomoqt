@@ -278,7 +278,7 @@ func TestSession_OpenTrackStream(t *testing.T) {
 				assert.NotNil(t, subscriber)
 				assert.Equal(t, tt.path, subscriber.BroadcastPath)
 				assert.Equal(t, tt.name, subscriber.TrackName)
-				gotConfig := subscriber.SubscribeStream.SubscribeConfig()
+				gotConfig := subscriber.Controller.SubscribeConfig()
 				assert.Equal(t, tt.config, gotConfig)
 			}
 
@@ -513,7 +513,7 @@ func TestSession_WithRealMux(t *testing.T) {
 
 			// Register a test handler
 			ctx := context.Background()
-			mux.Handle(ctx, tt.broadcastPath, TrackHandlerFunc(func(p *Publisher) {}))
+			mux.Handle(ctx, tt.broadcastPath, TrackHandlerFunc(func(p *Publication) {}))
 
 			session := newSession(conn, internal.DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, mux, slog.Default())
 

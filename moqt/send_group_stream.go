@@ -1,6 +1,7 @@
 package moqt
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -9,18 +10,19 @@ import (
 
 var _ GroupWriter = (*sendGroupStream)(nil)
 
-func newSendGroupStream(stream quic.SendStream, sequence GroupSequence) *sendGroupStream {
+func newSendGroupStream(trackCtx context.Context, stream quic.SendStream, sequence GroupSequence) *sendGroupStream {
+	ctx, cancel := context.WithCancelCause(trackCtx)
 	return &sendGroupStream{
-		closedCh: make(chan struct{}, 1),
+		ctx:      ctx,
+		cancel:   cancel,
 		sequence: sequence,
 		stream:   stream,
 	}
 }
 
 type sendGroupStream struct {
-	closed   bool
-	closeErr error
-	closedCh chan struct{}
+	ctx    context.Context
+	cancel context.CancelCauseFunc
 
 	sequence GroupSequence
 
@@ -38,14 +40,25 @@ func (sgs *sendGroupStream) WriteFrame(frame *Frame) error {
 		return errors.New("frame is nil or has no bytes")
 	}
 
+	if err := sgs.ctx.Err(); err != nil {
+		// If the context is already cancelled, return the error
+		return err
+	}
+
 	err := frame.message.Encode(sgs.stream)
 	if err != nil {
 		var strErr *quic.StreamError
 		if errors.As(err, &strErr) {
-			return &GroupError{
+			grpErr := &GroupError{
 				StreamError: strErr,
 			}
+
+			sgs.cancel(grpErr)
+
+			return grpErr
 		}
+
+		sgs.cancel(err)
 
 		return err
 	}
@@ -60,49 +73,46 @@ func (sgs *sendGroupStream) SetWriteDeadline(t time.Time) error {
 }
 
 func (sgs *sendGroupStream) CancelWrite(code GroupErrorCode) error {
-	if sgs.closed {
-		return sgs.closeErr
+	if err := sgs.ctx.Err(); err != nil {
+		return err
 	}
-
-	sgs.closed = true
-
-	defer close(sgs.closedCh)
 
 	strErrCode := quic.StreamErrorCode(code)
 	sgs.stream.CancelWrite(strErrCode)
 
-	err := &GroupError{
+	grpErr := &GroupError{
 		StreamError: &quic.StreamError{
 			StreamID:  sgs.stream.StreamID(),
 			ErrorCode: strErrCode,
 		},
 	}
 
-	sgs.closeErr = err
+	sgs.cancel(grpErr)
 
 	return nil
 }
 
 func (sgs *sendGroupStream) Close() error {
-	if sgs.closed {
-		return sgs.closeErr
+	if err := sgs.ctx.Err(); err != nil {
+		return err
 	}
-
-	sgs.closed = true
-
-	defer close(sgs.closedCh)
 
 	err := sgs.stream.Close()
 	if err != nil {
 		var strErr *quic.StreamError
 		if errors.As(err, &strErr) {
-			sgs.closeErr = &GroupError{
+			grpErr := &GroupError{
 				StreamError: strErr,
 			}
-			return sgs.closeErr
+			sgs.cancel(grpErr)
+
+			return grpErr
 		}
 		return err
 	}
+
+	// Successfully closed the stream, cancel the context
+	sgs.cancel(nil)
 
 	return nil
 }

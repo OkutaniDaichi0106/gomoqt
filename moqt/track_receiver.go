@@ -3,18 +3,31 @@ package moqt
 import (
 	"context"
 	"sync"
+
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-func newTrackReceiver(substr *sendSubscribeStream) *trackReceiver {
+func newTrackReceiver(ctx context.Context) *trackReceiver {
 	track := &trackReceiver{
-		substr:   substr,
 		queuedCh: make(chan struct{}, 1),
 		queue:    make([]*receiveGroupStream, 0, 1<<4),
 		dequeued: make(map[*receiveGroupStream]struct{}),
 	}
 
 	go func() {
-		<-substr.ctx.Done()
+		<-ctx.Done()
+		track.mu.Lock()
+		defer track.mu.Unlock()
+
+		// Clear the queue and notify all waiting goroutines
+		for _, stream := range track.queue {
+			stream.CancelRead(SubscribeCanceledErrorCode)
+		}
+		for stream := range track.dequeued {
+			stream.CancelRead(SubscribeCanceledErrorCode)
+		}
+		track.queue = nil
+		track.dequeued = nil
 	}()
 
 	return track
@@ -23,19 +36,13 @@ func newTrackReceiver(substr *sendSubscribeStream) *trackReceiver {
 var _ TrackReader = (*trackReceiver)(nil)
 
 type trackReceiver struct {
-	info Info
+	ctx context.Context
 
 	queue    []*receiveGroupStream
 	queuedCh chan struct{}
 	mu       sync.Mutex
 
 	dequeued map[*receiveGroupStream]struct{}
-
-	substr *sendSubscribeStream
-}
-
-func (r *trackReceiver) ReadInfo() Info {
-	return r.info
 }
 
 func (r *trackReceiver) AcceptGroup(ctx context.Context) (GroupReader, error) {
@@ -53,7 +60,7 @@ func (r *trackReceiver) AcceptGroup(ctx context.Context) (GroupReader, error) {
 
 			r.dequeued[next] = struct{}{}
 			go func() {
-				<-next.doneCh
+				<-next.ctx.Done()
 				r.mu.Lock()
 				defer r.mu.Unlock()
 
@@ -68,55 +75,29 @@ func (r *trackReceiver) AcceptGroup(ctx context.Context) (GroupReader, error) {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-r.substr.ctx.Done():
-			return nil, r.substr.ctx.Err()
+		case <-r.ctx.Done():
+			return nil, r.ctx.Err()
 		case <-r.queuedCh:
 		}
 	}
 }
 
-func (r *trackReceiver) Close() error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	close(r.queuedCh)
-
-	return r.substr.close()
-}
-
-func (r *trackReceiver) CloseWithError(code SubscribeErrorCode) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	close(r.queuedCh)
-
-	for _, stream := range r.queue {
-		stream.CancelRead(SubscribeCanceledErrorCode)
-	}
-	r.queue = nil
-
-	for stream := range r.dequeued {
-		stream.CancelRead(SubscribeCanceledErrorCode)
-	}
-	r.dequeued = nil
-
-	return r.substr.closeWithError(code)
-}
-
-func (r *trackReceiver) enqueueGroup(stream *receiveGroupStream) {
+func (r *trackReceiver) enqueueGroup(GroupSequence GroupSequence, stream quic.ReceiveStream) {
 	if stream == nil {
 		return
 	}
 
-	if !r.substr.SubscribeConfig().IsInRange(stream.GroupSequence()) {
-		stream.CancelRead(OutOfRangeErrorCode)
-		return
-	}
+	group := newReceiveGroupStream(r.ctx, GroupSequence, stream)
+
+	// if !r.substr.SubscribeConfig().IsInRange(stream.GroupSequence()) {
+	// 	stream.CancelRead(OutOfRangeErrorCode)
+	// 	return
+	// }
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.queue = append(r.queue, stream)
+	r.queue = append(r.queue, group)
 
 	// Send a notification (non-blocking)
 	select {

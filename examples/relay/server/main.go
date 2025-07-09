@@ -29,7 +29,7 @@ func main() {
 	}
 
 	// Register the relay handler with the default mux
-	moqt.HandleFunc(context.Background(), "/server.relay", func(pub *moqt.Publisher) {
+	moqt.HandleFunc(context.Background(), "/server.relay", func(pub *moqt.Publication) {
 		seq := moqt.GroupSequenceFirst
 		for {
 			time.Sleep(100 * time.Millisecond)

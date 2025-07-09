@@ -1,6 +1,7 @@
 package moqt
 
 import (
+	"context"
 	"errors"
 	"io"
 	"time"
@@ -10,13 +11,14 @@ import (
 
 var _ GroupReader = (*receiveGroupStream)(nil)
 
-func newReceiveGroupStream(sequence GroupSequence, stream quic.ReceiveStream) *receiveGroupStream {
+func newReceiveGroupStream(trackCtx context.Context, sequence GroupSequence, stream quic.ReceiveStream) *receiveGroupStream {
+	ctx, cancel := context.WithCancelCause(trackCtx)
 	return &receiveGroupStream{
 		sequence: sequence,
 		stream:   stream,
-		doneCh:   make(chan struct{}),
+		ctx:      ctx,
+		cancel:   cancel,
 	}
-
 }
 
 type receiveGroupStream struct {
@@ -25,9 +27,8 @@ type receiveGroupStream struct {
 	stream     quic.ReceiveStream
 	frameCount int64
 
-	doneCh    chan struct{}
-	readErr   error
-	cancelled bool
+	ctx    context.Context
+	cancel context.CancelCauseFunc
 }
 
 func (s *receiveGroupStream) GroupSequence() GroupSequence {
@@ -35,28 +36,28 @@ func (s *receiveGroupStream) GroupSequence() GroupSequence {
 }
 
 func (s *receiveGroupStream) ReadFrame() (*Frame, error) {
+	if err := s.ctx.Err(); err != nil {
+		// If the context is already cancelled, return the error
+		return nil, err
+	}
+
 	frame := NewFrame(nil)
 	err := frame.message.Decode(s.stream)
 	if err != nil {
-		if !s.cancelled {
-			s.cancelled = true
-			close(s.doneCh)
-		}
-
 		if errors.Is(err, io.EOF) {
 			return nil, err
 		}
 
 		var strErr *quic.StreamError
 		if errors.As(err, &strErr) {
-			// Stream was reset
-			s.readErr = &GroupError{
+			grpErr := &GroupError{
 				StreamError: strErr,
 			}
 
-			return nil, &GroupError{
-				StreamError: strErr,
-			}
+			//
+			s.cancel(grpErr)
+
+			return nil, grpErr
 		}
 
 		return nil, err
@@ -67,21 +68,22 @@ func (s *receiveGroupStream) ReadFrame() (*Frame, error) {
 }
 
 func (s *receiveGroupStream) CancelRead(code GroupErrorCode) {
+	if s.ctx.Err() != nil {
+		// If the context is already cancelled, do nothing
+		return
+	}
+
 	strErrCode := quic.StreamErrorCode(code)
 	s.stream.CancelRead(strErrCode)
 
-	if !s.cancelled {
-		s.cancelled = true
-
-		s.readErr = &GroupError{
-			StreamError: &quic.StreamError{
-				StreamID:  s.stream.StreamID(),
-				ErrorCode: quic.StreamErrorCode(code),
-			},
-		}
-
-		close(s.doneCh)
+	grpErr := &GroupError{
+		StreamError: &quic.StreamError{
+			StreamID:  s.stream.StreamID(),
+			ErrorCode: strErrCode,
+		},
 	}
+
+	s.cancel(grpErr)
 }
 
 func (s *receiveGroupStream) SetReadDeadline(t time.Time) error {

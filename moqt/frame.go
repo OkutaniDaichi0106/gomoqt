@@ -1,6 +1,10 @@
 package moqt
 
-import "github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+import (
+	"io"
+
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+)
 
 // type FrameSequence uint64
 
@@ -11,6 +15,14 @@ func NewFrame(b []byte) *Frame {
 
 type Frame struct {
 	message *message.FrameMessage
+}
+
+func (f *Frame) Decode(r io.Reader) error {
+	return f.message.Decode(r)
+}
+
+func (f *Frame) Encode(w io.Writer) error {
+	return f.message.Encode(w)
 }
 
 func (f *Frame) CopyBytes() []byte {

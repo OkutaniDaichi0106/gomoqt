@@ -59,7 +59,7 @@ func main() {
 					return
 				}
 
-				mux.HandleFunc(context.Background(), sub.BroadcastPath, func(pub *moqt.Publisher) {
+				mux.HandleFunc(context.Background(), sub.BroadcastPath, func(pub *moqt.Publication) {
 					defer sub.TrackReader.Close()
 
 					for {

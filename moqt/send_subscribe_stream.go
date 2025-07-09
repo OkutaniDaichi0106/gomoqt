@@ -9,12 +9,6 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-type SendSubscribeStream interface {
-	SubscribeID() SubscribeID
-	SubscribeConfig() *SubscribeConfig
-	UpdateSubscribe(*SubscribeConfig) error
-}
-
 func newSendSubscribeStream(sessCtx context.Context, id SubscribeID, stream quic.Stream, config *SubscribeConfig) *sendSubscribeStream {
 	ctx, cancel := context.WithCancelCause(sessCtx)
 	substr := &sendSubscribeStream{
@@ -31,7 +25,7 @@ func newSendSubscribeStream(sessCtx context.Context, id SubscribeID, stream quic
 	return substr
 }
 
-var _ SendSubscribeStream = (*sendSubscribeStream)(nil)
+var _ SubscribeController = (*sendSubscribeStream)(nil)
 
 type sendSubscribeStream struct {
 	ctx    context.Context
@@ -132,7 +126,7 @@ func (sss *sendSubscribeStream) UpdateSubscribe(newConfig *SubscribeConfig) erro
 	return nil
 }
 
-func (sss *sendSubscribeStream) close() error {
+func (sss *sendSubscribeStream) Close() error {
 	sss.mu.Lock()
 	defer sss.mu.Unlock()
 
@@ -152,7 +146,7 @@ func (sss *sendSubscribeStream) close() error {
 	return nil
 }
 
-func (sss *sendSubscribeStream) closeWithError(code SubscribeErrorCode) error {
+func (sss *sendSubscribeStream) CloseWithError(code SubscribeErrorCode) error {
 	sss.mu.Lock()
 	defer sss.mu.Unlock()
 

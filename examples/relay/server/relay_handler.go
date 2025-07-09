@@ -21,7 +21,7 @@ func newRelayHandler(sub *moqt.Subscription) moqt.TrackHandler {
 
 	go func() {
 		defer cancel()
-		defer sub.TrackReader.Close()
+		defer sub.Controller.Close()
 
 		for {
 			gr, err := sub.TrackReader.AcceptGroup(ctx)

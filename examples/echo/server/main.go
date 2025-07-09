@@ -60,7 +60,7 @@ func main() {
 				}
 
 				mux.HandleFunc(context.Background(), sub.BroadcastPath, func(pub *moqt.Publication) {
-					defer sub.TrackReader.Close()
+					defer sub.Controller.Close()
 
 					for {
 						gr, err := sub.TrackReader.AcceptGroup(context.Background())

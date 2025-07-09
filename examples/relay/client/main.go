@@ -46,7 +46,7 @@ func main() {
 				slog.Error("failed to open track stream", "error", err)
 				return
 			}
-			defer sub.TrackReader.Close()
+			defer sub.Controller.Close()
 
 			for {
 				gr, err := sub.TrackReader.AcceptGroup(context.Background())

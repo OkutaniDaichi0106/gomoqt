@@ -290,7 +290,6 @@ func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *Su
 	return &Subscription{
 		BroadcastPath: path,
 		TrackName:     name,
-		SubscribeID:   id,
 		TrackReader:   trackReceiver,
 		Controller:    substr,
 	}, nil

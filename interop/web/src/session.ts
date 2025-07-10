@@ -1,7 +1,5 @@
-import { Version, Versions } from "./internal";
-import { AnnouncePleaseMessage, GroupMessage,
-	 SessionClientMessage, SessionServerMessage,
-	 SubscribeMessage, SubscribeOkMessage } from "./message";
+import { Version, Versions } from "./internal/version";
+import { AnnouncePleaseMessage, GroupMessage, SessionClientMessage, SessionServerMessage, SubscribeMessage, SubscribeOkMessage } from "./message";
 import { Writer, Reader } from "./io";
 import { Extensions } from "./internal/extensions";
 import { SessionStream } from "./session_stream";
@@ -65,8 +63,7 @@ export class Session {
 
 			return;
 		}).then(() => {
-			this.#listenBiStreams();
-			this.#listenUniStreams();
+
 		}).catch((error) => {
 			console.error("Error during session initialization:", error);
 			this.#conn.close(); // TODO: Specify a proper close code and reason
@@ -154,76 +151,6 @@ export class Session {
 			controller,
 			trackReader: track,
 		};
-	}
-
-	async #listenBiStreams(): Promise<void> {
-		const biStreams = this.#conn.incomingBidirectionalStreams.getReader()
-		// Handle incoming streams
-		let num: number | undefined;
-		let err: Error | undefined;
-		while (true) {
-			const {done, value} = await biStreams.read();
-			biStreams.releaseLock(); // Release the lock after reading
-			if (done) {
-				console.error("Bidirectional stream closed");
-				break;
-			}
-			const stream = value as WebTransportBidirectionalStream;
-			const bi = { writer: new Writer(stream.writable), reader: new Reader(stream.readable) };
-			[num, err] = await bi.reader.readUint8();
-			if (err) {
-				console.error("Failed to read from bidirectional stream:", err);
-				continue;
-			}
-			if (!num) {
-				console.error("Received empty stream type");
-				continue;
-			}
-
-			switch (num) {
-				case BiStreamTypes.SubscribeStreamType:
-					await this.#handleSubscribeStream(bi);
-				case BiStreamTypes.AnnounceStreamType:
-					await this.#handleAnnounceStream(bi);
-				default:
-					console.warn(`Unknown bidirectional stream type: ${num}`);
-					break; // Ignore unknown stream types
-			}
-		}
-	}
-
-	async #listenUniStreams(): Promise<void> {
-		const uniStreams = this.#conn.incomingUnidirectionalStreams.getReader();
-		while (true) {
-			const {done, value} = await uniStreams.read();
-			uniStreams.releaseLock(); // Release the lock after reading
-			if (done) {
-				console.error("Unidirectional stream closed");
-				break;
-			}
-			const readable = value as ReadableStream<Uint8Array<ArrayBufferLike>>;
-			const reader = new Reader(readable);
-
-			// Read the first byte to determine the stream type
-			const [num, err] = await reader.readUint8();
-			if (err) {
-				console.error("Failed to read from unidirectional stream:", err);
-				continue;
-			}
-			if (!num) {
-				console.error("Received empty stream type");
-				continue;
-			}
-
-			switch (num) {
-				case UniStreamTypes.GroupStreamType:
-					await this.#handleGroupStream(reader);
-					break;
-				default:
-					console.warn(`Unknown unidirectional stream type: ${num}`);
-					break; // Ignore unknown stream types
-			}
-		}
 	}
 
 	async #handleGroupStream(reader: Reader): Promise<void> {

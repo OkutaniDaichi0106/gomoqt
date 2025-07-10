@@ -6,7 +6,7 @@ let DefaultWebTransportOptions: WebTransportOptions = {
     congestionControl: "low-latency",
     requireUnreliable: true,
 };
-    
+
 export class Client {
     transportOptions: WebTransportOptions;
     sessions: Set<Session> = new Set();

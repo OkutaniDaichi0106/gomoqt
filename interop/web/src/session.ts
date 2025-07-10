@@ -65,8 +65,8 @@ export class Session {
 
 			return;
 		}).then(() => {
-			this.listenBiStreams();
-			this.listenUniStreams();
+			this.#listenBiStreams();
+			this.#listenUniStreams();
 		}).catch((error) => {
 			console.error("Error during session initialization:", error);
 			this.#conn.close(); // TODO: Specify a proper close code and reason
@@ -156,7 +156,7 @@ export class Session {
 		};
 	}
 
-	async listenBiStreams(): Promise<void> {
+	async #listenBiStreams(): Promise<void> {
 		const biStreams = this.#conn.incomingBidirectionalStreams.getReader()
 		// Handle incoming streams
 		let num: number | undefined;
@@ -192,7 +192,7 @@ export class Session {
 		}
 	}
 
-	async listenUniStreams(): Promise<void> {
+	async #listenUniStreams(): Promise<void> {
 		const uniStreams = this.#conn.incomingUnidirectionalStreams.getReader();
 		while (true) {
 			const {done, value} = await uniStreams.read();
@@ -308,7 +308,17 @@ export class Session {
 	}
 
 	close(): void {
-		this.#conn.close();
+		this.#conn.close({
+			closeCode: 0x0, // Normal closure
+			reason: "No Error"
+		});
+	}
+
+	closeWithError(code: number, message: string): void {
+		this.#conn.close({
+			closeCode: code,
+			reason: message,
+		});
 	}
 }
 

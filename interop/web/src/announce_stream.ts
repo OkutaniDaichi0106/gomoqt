@@ -1,4 +1,4 @@
-import { Reader, Writer } from "./internal/io";
+import { Reader, Writer } from "./io";
 import { AnnounceMessage, AnnouncePleaseMessage } from "./message";
 import { CancelCauseFunc, CancelFunc, Context, withCancel, withCancelCause } from "./internal/context";
 import { Cond } from "./internal/cond";
@@ -6,7 +6,14 @@ import { TrackPrefix, isValidPrefix, validateTrackPrefix } from "./track_prefix"
 import { BroadcastPath, validateBroadcastPath } from "./broadcast_path";
 import { StreamError } from "./io/error";
 
-export class AnnouncementWriter {
+export interface AnnouncementWriter {
+    send(announcement: Announcement): Promise<void>;
+    close(): void;
+    closeWithError(code: number, message: string): void;
+    context: Context;
+}
+
+export class SendAnnounceStream implements AnnouncementWriter {
     #writer: Writer;
     #reader: Reader;
     #prefix: TrackPrefix;
@@ -102,7 +109,14 @@ export class AnnouncementWriter {
     }
 }
 
-export class AnnouncementReader {
+export interface AnnouncementReader {
+    receive(): Promise<Announcement>;
+    close(): void;
+    closeWithError(code: number, message: string): void;
+    context: Context;
+}
+
+export class ReceiveAnnounceStream implements AnnouncementReader {
     #writer: Writer;
     #reader: Reader;
     #prefix: string;
@@ -180,6 +194,10 @@ export class AnnouncementReader {
             // Wait for the next announcement
             await this.#cond.wait();
         }
+    }
+
+    get context(): Context {
+        return this.#ctx;
     }
 
     close(): void {

@@ -11,6 +11,9 @@ var NotFound = func(pub *Publication) {
 	if pub.TrackWriter == nil {
 		return
 	}
+	if pub.Controller == nil {
+		return
+	}
 	pub.Controller.CloseWithError(TrackNotFoundErrorCode)
 }
 

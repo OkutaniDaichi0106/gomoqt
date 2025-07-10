@@ -152,14 +152,13 @@ func TestNewMux_ServeTrack_NotFound(t *testing.T) {
 
 	// Create a mock track writer
 	mockWriter := &MockTrackWriter{}
-	// Set up the mock expectation for CloseWithError
-	mockWriter.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
 
 	// Create mock subscribe stream
 	mockSubscribeStream := &MockPublishController{}
 	mockSubscribeStream.On("SubscribeID").Return(SubscribeID(1)).Maybe()
 	mockSubscribeStream.On("SubscribeConfig").Return(&SubscribeConfig{}, nil).Maybe()
 	mockSubscribeStream.On("Updated").Return(make(<-chan struct{})).Maybe()
+	mockSubscribeStream.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
 
 	// Create a publisher for non-existent path
 	publisher := &Publication{
@@ -168,12 +167,12 @@ func TestNewMux_ServeTrack_NotFound(t *testing.T) {
 		TrackWriter:   mockWriter,
 		Controller:    mockSubscribeStream,
 	}
-	// Should use NotFoundHandler which closes the track
+	// Should use NotFoundHandler which closes the controller
 	mux.ServeTrack(publisher)
 
-	// Assert that the publisher's TrackWriter was closed with the expected error
-	mockWriter.AssertCalled(t, "CloseWithError", TrackNotFoundErrorCode)
-	mockWriter.AssertExpectations(t)
+	// Assert that the publisher's Controller was closed with the expected error
+	mockSubscribeStream.AssertCalled(t, "CloseWithError", TrackNotFoundErrorCode)
+	mockSubscribeStream.AssertExpectations(t)
 }
 
 func TestNewMux_ServeTrack_NilPublisher(t *testing.T) {
@@ -426,11 +425,11 @@ func TestNewMux_Handler(t *testing.T) {
 
 	// Test not found case first - verify behavior not identity
 	publisher := createNewTestPublisher(path)
-	mockWriter := publisher.TrackWriter.(*MockTrackWriter)
-	mockWriter.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
+	mockController := publisher.Controller.(*MockPublishController)
+	mockController.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
 
 	mux.ServeTrack(publisher)
-	mockWriter.AssertCalled(t, "CloseWithError", TrackNotFoundErrorCode)
+	mockController.AssertCalled(t, "CloseWithError", TrackNotFoundErrorCode)
 
 	// Register a handler
 	called := false
@@ -510,11 +509,11 @@ func TestNewMux_Announce_InactiveAnnouncement(t *testing.T) {
 
 	// Handler should not be registered - test by verifying NotFoundHandler behavior
 	publisher := createNewTestPublisher(path)
-	mockWriter := publisher.TrackWriter.(*MockTrackWriter)
-	mockWriter.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
+	mockController := publisher.Controller.(*MockPublishController)
+	mockController.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
 
 	mux.ServeTrack(publisher)
-	mockWriter.AssertCalled(t, "CloseWithError", TrackNotFoundErrorCode)
+	mockController.AssertCalled(t, "CloseWithError", TrackNotFoundErrorCode)
 }
 
 func TestNewMux_Announce_DuplicatePath(t *testing.T) {
@@ -571,11 +570,11 @@ func TestNewMux_Clear(t *testing.T) {
 	// Verify all handlers are removed by testing NotFoundHandler behavior
 	for _, path := range paths {
 		publisher := createNewTestPublisher(path)
-		mockWriter := publisher.TrackWriter.(*MockTrackWriter)
-		mockWriter.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
+		mockController := publisher.Controller.(*MockPublishController)
+		mockController.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
 
 		mux.ServeTrack(publisher)
-		mockWriter.AssertCalled(t, "CloseWithError", TrackNotFoundErrorCode)
+		mockController.AssertCalled(t, "CloseWithError", TrackNotFoundErrorCode)
 	}
 }
 
@@ -603,11 +602,11 @@ func TestNewMux_AnnouncementLifecycle(t *testing.T) {
 
 	// Handler should be removed - test by verifying NotFoundHandler behavior
 	publisher2 := createNewTestPublisher(path)
-	mockWriter := publisher2.TrackWriter.(*MockTrackWriter)
-	mockWriter.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
+	mockController := publisher2.Controller.(*MockPublishController)
+	mockController.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
 
 	mux.ServeTrack(publisher2)
-	mockWriter.AssertCalled(t, "CloseWithError", TrackNotFoundErrorCode)
+	mockController.AssertCalled(t, "CloseWithError", TrackNotFoundErrorCode)
 }
 
 func TestNewMux_ConcurrentAccess(t *testing.T) {
@@ -655,6 +654,7 @@ func createNewTestPublisher(path BroadcastPath) *Publication {
 	controller.On("SubscribeID").Return(SubscribeID(1)).Maybe()
 	controller.On("SubscribeConfig").Return(&SubscribeConfig{}, nil).Maybe()
 	controller.On("Updated").Return(make(<-chan struct{})).Maybe()
+	controller.On("CloseWithError", mock.AnythingOfType("SubscribeErrorCode")).Return(nil).Maybe()
 
 	return &Publication{
 		BroadcastPath: path,

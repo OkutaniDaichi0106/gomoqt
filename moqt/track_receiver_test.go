@@ -55,7 +55,8 @@ func TestTrackReceiver_EnqueueGroup(t *testing.T) {
 
 	// Mock receive stream
 	mockReceiveStream := &MockQUICReceiveStream{}
-	mockReceiveStream.On("StreamID").Return(quic.StreamID(1))
+	// StreamID() is not called during enqueue, only when needed
+	mockReceiveStream.On("StreamID").Return(quic.StreamID(1)).Maybe()
 
 	// Enqueue a group
 	receiver.enqueueGroup(GroupSequence(1), mockReceiveStream)

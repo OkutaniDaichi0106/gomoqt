@@ -1,4 +1,4 @@
-import { Writer, Reader } from "../internal/io";
+import { Writer, Reader } from "../io";
 
 export class AnnounceMessage {
     suffix: string;
@@ -12,7 +12,7 @@ export class AnnounceMessage {
     static async encode(writer: Writer, suffix: string, active: boolean): Promise<[AnnounceMessage?, Error?]> {
         writer.writeString(suffix);
         writer.writeBoolean(active);
-        const [_, err] = await writer.flush();
+        const err = await writer.flush();
         if (err) {
             return [undefined, err];
         }

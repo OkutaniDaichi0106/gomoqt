@@ -1,5 +1,5 @@
 import { CancelCauseFunc, Context, withCancelCause } from "./internal/context";
-import { Reader, Writer } from "./internal/io";
+import { Reader, Writer } from "./io";
 import { StreamError } from "./io/error";
 import { SessionUpdateMessage } from "./message";
 import { SessionClientMessage } from "./message/session_client";

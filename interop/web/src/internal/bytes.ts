@@ -12,7 +12,7 @@ export class BytesBuffer {
     constructor(memory: ArrayBufferLike) {
         this.#buf = new Uint8Array(memory);
         this.#off = 0;
-        this.#len = this.#buf.length;
+        this.#len = 0; // Start with an empty buffer for writing
     }
 
     static make(capacity: number): BytesBuffer {

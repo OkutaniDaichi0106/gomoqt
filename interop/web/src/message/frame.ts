@@ -1,4 +1,4 @@
-import { Writer, Reader } from "../internal/io";
+import { Writer, Reader } from "../io";
 
 export class FrameMessage {
     data: Uint8Array;
@@ -9,7 +9,7 @@ export class FrameMessage {
 
     static async encode(writer: Writer, data: Uint8Array): Promise<[FrameMessage?, Error?]> {
         writer.writeUint8Array(data);
-        const [_, err] = await writer.flush();
+        const err = await writer.flush();
         if (err) {
             return [undefined, err];
         }

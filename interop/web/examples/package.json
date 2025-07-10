@@ -1,0 +1,12 @@
+{
+  "name": "moqt-examples",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@okutanidaichi/moqt": "file:.."
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

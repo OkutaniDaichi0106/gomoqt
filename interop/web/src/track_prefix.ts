@@ -15,7 +15,7 @@ export type TrackPrefix = string;
  * @returns true if the path is a valid TrackPrefix
  */
 export function isValidPrefix(path: string): boolean {
-    return path.startsWith('/') && path.endsWith('/') && path.length >= 1;
+    return path.startsWith('/') && path.endsWith('/') && path.length > 1;
 }
 
 /**

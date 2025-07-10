@@ -3,4 +3,4 @@ examples/cert/localhost-key.pem
 hextra-starter-template
 
 .github/prompts
-interop/web/node_modules
+**/node_modules

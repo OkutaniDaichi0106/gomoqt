@@ -28,6 +28,11 @@ func TestNotFound(t *testing.T) {
 					mock.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
 					return mock
 				}(),
+				Controller: func() *MockPublishController {
+					mock := &MockPublishController{}
+					mock.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
+					return mock
+				}(),
 			},
 		},
 	}
@@ -44,10 +49,14 @@ func TestNotFoundHandler(t *testing.T) {
 	mockWriter := &MockTrackWriter{}
 	mockWriter.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
 
+	mockController := &MockPublishController{}
+	mockController.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
+
 	pub := &Publication{
 		BroadcastPath: BroadcastPath("/test"),
 		TrackName:     TrackName("test"),
 		TrackWriter:   mockWriter,
+		Controller:    mockController,
 	}
 
 	// Should not panic

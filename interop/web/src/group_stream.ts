@@ -1,5 +1,5 @@
 import { CancelCauseFunc, Context, withCancelCause } from "./internal/context";
-import { Reader, Writer } from "./internal/io";
+import { Reader, Writer } from "./io";
 import { StreamError } from "./io/error";
 import { GroupMessage } from "./message";
 
@@ -35,7 +35,7 @@ export class GroupWriter {
 
     async write(data: Uint8Array): Promise<Error | undefined> {
         this.#writer.writeUint8Array(data);
-        const [_, err] = await this.#writer.flush();
+        const err = await this.#writer.flush();
         return err;
     }
 

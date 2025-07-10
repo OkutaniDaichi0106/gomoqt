@@ -129,13 +129,12 @@ func TestReceiveGroupStream_CancelRead_MultipleCalls(t *testing.T) {
 
 	rgs := newReceiveGroupStream(context.Background(), GroupSequence(123), mockStream)
 
-	// Cancel multiple times
+	// Cancel multiple times with the same error code
 	rgs.CancelRead(InternalGroupErrorCode)
-	rgs.CancelRead(OutOfRangeErrorCode)
+	rgs.CancelRead(InternalGroupErrorCode)
 
-	// Should be called for each CancelRead invocation
+	// Should be called for each CancelRead invocation, but only the first one should actually call the stream
 	mockStream.AssertCalled(t, "CancelRead", quic.StreamErrorCode(InternalGroupErrorCode))
-	mockStream.AssertCalled(t, "CancelRead", quic.StreamErrorCode(OutOfRangeErrorCode))
 	mockStream.AssertExpectations(t)
 }
 

@@ -1,4 +1,4 @@
-import { Writer, Reader } from "../internal/io";
+import { Writer, Reader } from "../io";
 
 export class GroupMessage {
     subscribeId: bigint;
@@ -12,7 +12,7 @@ export class GroupMessage {
     static async encode(writer: Writer, subscribeId: bigint, sequence: bigint): Promise<[GroupMessage?, Error?]> {
         writer.writeVarint(subscribeId);
         writer.writeVarint(sequence);
-        const [_, err] = await writer.flush();
+        const err = await writer.flush();
         if (err) {
             return [undefined, err];
         }

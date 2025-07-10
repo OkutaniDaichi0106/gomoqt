@@ -757,8 +757,8 @@ func TestClient_Dial_URLSchemes(t *testing.T) {
 				mockStream.On("StreamID").Return(quic.StreamID(1))
 				mockConn.On("OpenStream").Return(mockStream, nil)
 
-				// mockConn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
-				// mockConn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
+				mockConn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
+				mockConn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
 				mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080}).Maybe()
 				return &http.Response{}, mockConn, nil
 			}
@@ -784,8 +784,8 @@ func TestClient_Dial_URLSchemes(t *testing.T) {
 				mockStream.On("Read", mock.AnythingOfType("[]uint8"))
 				mockStream.On("StreamID").Return(quic.StreamID(1))
 				mockConn.On("OpenStream").Return(mockStream, nil)
-				// mockConn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
-				// mockConn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
+				mockConn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
+				mockConn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
 				mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080}).Maybe()
 				return mockConn, nil
 			}

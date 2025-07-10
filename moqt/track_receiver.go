@@ -9,6 +9,7 @@ import (
 
 func newTrackReceiver(ctx context.Context) *trackReceiver {
 	track := &trackReceiver{
+		ctx:      ctx,
 		queuedCh: make(chan struct{}, 1),
 		queue:    make([]*receiveGroupStream, 0, 1<<4),
 		dequeued: make(map[*receiveGroupStream]struct{}),

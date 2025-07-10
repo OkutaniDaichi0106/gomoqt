@@ -1,4 +1,4 @@
-import { Announcement, AnnouncementWriter } from "./announce_stream";
+import { Announcement, AnnouncementWriter, SendAnnounceStream } from "./announce_stream";
 import { BroadcastPath } from "./broadcast_path";
 import { Context } from "./internal/context";
 import { Publication as Publication } from "./publication";

@@ -1,4 +1,4 @@
-import { Writer, Reader } from "../internal/io";
+import { Writer, Reader } from "../io";
 
 export class SessionUpdateMessage {
     bitrate: bigint;
@@ -9,7 +9,7 @@ export class SessionUpdateMessage {
 
     static async encode(writer: Writer, bitrate: bigint): Promise<[SessionUpdateMessage?, Error?]> {
         writer.writeVarint(bitrate);
-        const [_, err] = await writer.flush();
+        const err = await writer.flush();
         if (err) {
             return [undefined, err];
         }

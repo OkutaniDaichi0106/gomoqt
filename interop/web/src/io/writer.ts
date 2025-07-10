@@ -30,6 +30,13 @@ export class Writer {
         };
     }
 
+    writeUint8(value: number): void {
+        if (value < 0 || value > 255) {
+            throw new Error("Uint8 value must be between 0 and 255");
+        }
+        this.#buf.writeUint8(value);
+    }
+
     writeUint8Array(data: Uint8Array): void {
         if (data.length > MAX_BYTES_LENGTH) {
             throw new Error("Bytes length exceeds maximum limit");
@@ -82,18 +89,18 @@ export class Writer {
         this.#buf.writeUint8(value ? 1 : 0);
     }
 
-    async flush(): Promise<[void, Error?]> {
+    async flush(): Promise<Error | undefined> {
         if (this.#buf.size > 0) {
             try {
                 await this.#writer.write(this.#buf.bytes());
             } catch (error) {
-                return [undefined, new Error("Failed to send data to stream")];
+                return new Error("Failed to send data to stream");
             } finally {
                 this.#buf.reset();
             }
         }
 
-        return [undefined, undefined];
+        return undefined;
     }
 
     async close(): Promise<void> {

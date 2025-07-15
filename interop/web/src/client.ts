@@ -1,46 +1,49 @@
 import { Session } from "./session";
 import { MOQOptions } from "./options";
 
-let DefaultWebTransportOptions: WebTransportOptions = {
+const DefaultWebTransportOptions: WebTransportOptions = {
     allowPooling: false,
     congestionControl: "low-latency",
     requireUnreliable: true,
 };
 
-export class Client {
-    transportOptions: WebTransportOptions;
-    sessions: Set<Session> = new Set();
-    closed: boolean = false;
+const DefaultMOQOptions: MOQOptions = {
+    extensions: undefined,
+    reconnect: false,
+    migrate: (url: URL) => false,
+    transport: DefaultWebTransportOptions,
+};
 
-    constructor(transportOptions: WebTransportOptions = DefaultWebTransportOptions) {
-        this.transportOptions = transportOptions;
+export class Client {
+    #sessions: Set<Session> = new Set();
+    readonly options: MOQOptions;
+
+    constructor(options: MOQOptions = DefaultMOQOptions) {
+        this.options = options;
     }
 
-    dial(url: string | URL, options?: MOQOptions): Promise<Session> {
-        return new Promise((resolve, reject) => {
-            const conn = new WebTransport(url, this.transportOptions);
-            conn.ready.then(() => {
-                const session = new Session(conn);
-
-                this.sessions.add(session);
-                resolve(session);
-            }).catch(reject);
-        });
+    async dial(url: string | URL): Promise<Session> {
+        const session = new Session(new WebTransport(url, this.options.transport));
+        await session.ready;
+        this.#sessions.add(session);
+        return session;
     }
 
     close(): void {
-        for (const session of this.sessions) {
+        for (const session of this.#sessions) {
             session.close();
         }
 
-        this.sessions = new Set();
+        this.#sessions = new Set();
     }
 
     abort(): void {
-        for (const session of this.sessions) {
+        for (const session of this.#sessions) {
             session.close();
         }
 
-        this.sessions = new Set();
+        this.#sessions = new Set();
     }
 }
+
+export const MOQ = Client;

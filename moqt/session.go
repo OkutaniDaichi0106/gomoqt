@@ -569,7 +569,10 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 			return newSendGroupStream(trackCtx, stream, seq), nil
 		}
 
-		trackSender := newTrackSender(substr.ctx, openGroupStreamFunc)
+		trackSender := newTrackSender(substr.ctx, openGroupStreamFunc, substr.accept)
+		trackSender.acceptFunc = func(info Info) {
+			substr.WriteInfo(info)
+		}
 		sess.sendGroupMapLocker.Lock()
 		sess.trackSenders[id] = trackSender
 		sess.sendGroupMapLocker.Unlock()

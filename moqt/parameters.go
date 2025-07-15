@@ -155,7 +155,7 @@ const (
 	param_type_path               ParameterType = 0x01
 	param_type_authorization_info ParameterType = 0x02
 	// param_type_delivery_timeout   ParameterType = 0x03
-	param_type_new_session_uri ParameterType = 0x04
+	// param_type_new_session_uri ParameterType = 0x04
 
 	// max_subscribe_id   ParameterType = 0x02
 )

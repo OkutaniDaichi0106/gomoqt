@@ -8,13 +8,14 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"testing"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/webtransport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -44,7 +45,6 @@ func TestServer_Init(t *testing.T) {
 			assert.NotNil(t, server.doneChan, "doneChan should be initialized")
 			assert.NotNil(t, server.activeSess, "activeSess map should be initialized")
 			assert.NotNil(t, server.nativeQUICCh, "nativeQUICCh should be initialized")
-			assert.NotNil(t, server.serverInUse, "WebtransportServer should be initialized")
 		})
 	}
 }
@@ -353,7 +353,7 @@ func TestServer_AcceptSession(t *testing.T) {
 			mux := NewTrackMux()
 
 			server.init()
-			session, err := server.acceptSession(ctx, tt.path, mockConn, extensions, mux, slog.Default())
+			session, err := server.acceptSession(ctx, &tt.path, mockConn, extensions, mux, slog.Default())
 			if tt.expectOK {
 				assert.NoError(t, err, "acceptSession() should not return error")
 				assert.NotNil(t, session, "acceptSession() should return session")
@@ -401,7 +401,7 @@ func TestServer_AcceptSession_AcceptStreamError(t *testing.T) {
 			}
 			mux := NewTrackMux()
 
-			session, err := server.acceptSession(ctx, tt.path, mockConn, extensions, mux, slog.Default())
+			session, err := server.acceptSession(ctx, &tt.path, mockConn, extensions, mux, slog.Default())
 			assert.Error(t, err, "acceptSession() should return an error")
 			assert.Contains(t, err.Error(), tt.expectErr.Error(), "acceptSession() should return wrapped accept error")
 			assert.Nil(t, session, "acceptSession() should return nil session on error")
@@ -507,13 +507,15 @@ func TestServer_WithCustomWebTransportServer(t *testing.T) {
 	tests := map[string]struct {
 		addr         string
 		logger       *slog.Logger
-		customWT     *MockWebTransportServer
+		customWT     func(string, *tls.Config, *quic.Config, func(*http.Request) bool) webtransport.Server
 		expectCustom bool
 	}{
 		"custom webtransport server": {
-			addr:         ":8080",
-			logger:       slog.Default(),
-			customWT:     &MockWebTransportServer{},
+			addr:   ":8080",
+			logger: slog.Default(),
+			customWT: func(string, *tls.Config, *quic.Config, func(*http.Request) bool) webtransport.Server {
+				return &MockWebTransportServer{}
+			},
 			expectCustom: true,
 		},
 	}
@@ -521,15 +523,15 @@ func TestServer_WithCustomWebTransportServer(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			server := &Server{
-				Addr:               tt.addr,
-				Logger:             tt.logger,
-				WebtransportServer: tt.customWT,
+				Addr:                  tt.addr,
+				Logger:                tt.logger,
+				ServeWebtransportFunc: tt.customWT,
 			}
 
 			server.init()
 
 			if tt.expectCustom {
-				assert.Equal(t, tt.customWT, server.WebtransportServer, "should use custom WebTransport server when provided")
+				assert.Equal(t, tt.customWT, server.wtServer, "should use custom WebTransport server when provided")
 			}
 		})
 	}
@@ -568,7 +570,7 @@ func TestServer_SessionManagement(t *testing.T) {
 			mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil) // For session.Terminate
 			mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080}).Maybe()
 
-			session := newSession(mockConn, internal.DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, nil)
+			session := newSession(mockConn, DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, nil)
 
 			// Test adding session
 			server.listenerMu.Lock()

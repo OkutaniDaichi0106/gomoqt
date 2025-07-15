@@ -115,6 +115,10 @@
   "exclude": [
     "node_modules",
     "dist",
-    "examples"
+    "examples",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx"
   ]
 }

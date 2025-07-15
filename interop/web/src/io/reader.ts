@@ -6,87 +6,73 @@ import { StreamError, StreamErrorCode } from "./error";
 let DefaultReadSize: number = 1024; // 1 KB
 
 export class Reader {
-    #byob?: ReadableStreamBYOBReader;
-    #pull?: ReadableStreamDefaultReader<Uint8Array>;
+    // #byob?: ReadableStreamBYOBReader;
+    #pull: ReadableStreamDefaultReader<Uint8Array>;
     #buf: BytesBuffer;
     #pool: BytesPool;
     #closed: Promise<void>;
 
     constructor(readable: ReadableStream<Uint8Array>, pool: BytesPool = DefaultBytesPool) {
         this.#pool = pool;
-        
-        let closed: Promise<void>;
-        try {
-            this.#byob = readable.getReader({ mode: 'byob' });
-            closed = this.#byob.closed;
-        } catch {
-            this.#pull = readable.getReader();
-            closed = this.#pull.closed;
-        }
+        this.#pull = readable.getReader();
+
         this.#buf = new BytesBuffer(pool.acquire(1024));
 
-        this.#closed = new Promise((resolve) => {
-            closed.then(() => {
-                this.#buf.release();
-                resolve();
-            });
-        });
-        
+        this.#closed = this.#pull.closed.then(() => {
+            this.#buf.release();
+            return;
+        })
     }
 
     async readUint8Array(): Promise<[Uint8Array?, Error?]> {
-        let varint: bigint | undefined;
-        let err: Error | undefined;
-        [varint, err] = await this.readVarint();
+        const [varint, err] = await this.readVarint();
         if (err) {
             return [undefined, err];
         }
-        if (!varint) {
-            return [undefined, new Error("Failed to read varint")];
-        }
+
 
         const len = Number(varint);
         if (len > MAX_BYTES_LENGTH) {
             return [undefined, new Error("Varint too large")];
         }
 
-        const bytes = new Uint8Array(len);
+        const bytes = new Uint8Array(this.#pool.acquire(len));
 
-        let n: number | undefined;
-        [n, err] = await this.copy(bytes);
-        if (err) {
-            return [undefined, err];
+
+        const [n, err2] = await this.copy(bytes);
+        if (err2) {
+            return [undefined, err2];
         }
 
         // Return only the bytes that were actually read
-        if (n !== undefined && n < len) {
+        if ( n < len) {
             return [bytes.subarray(0, n), undefined];
         }
 
         return [bytes, undefined];
     }
 
-    async readString(): Promise<[string?, Error?]> {
+    async readString(): Promise<[string, Error?]> {
         const [bytes, err] = await this.readUint8Array();
         if (err) {
-            return [undefined, err];
+            return ["", err];
         }
-        if (!bytes) {
-            return [undefined, err];
+        if (bytes === undefined) {
+            return ["", err];
         }
         const str = new TextDecoder().decode(bytes);
         return [str, undefined];
     }
 
-    async readVarint(): Promise<[bigint?, Error?]> {
+    async readVarint(): Promise<[bigint, Error?]> {
         if (this.#buf.size == 0) {
             const [filled, err] = await this.fill(1);
             if (err) {
-                return [undefined, err];
+                return [0n, err];
             }
 
             if (!filled) {
-                return [undefined, new Error("Failed to read byte")];
+                return [0n, new Error("Failed to read byte")];
             }
 
         }
@@ -97,33 +83,36 @@ export class Reader {
 
         let value: bigint = BigInt(firstByte & 0x3f);
 
-        if (this.#buf.size < len) {
-            const [filled, err] = await this.fill(len-this.#buf.size);
+
+        const remaining = len - 1; // Remaining bytes to read
+        if (this.#buf.size < remaining) {
+            const [filled, err] = await this.fill(remaining - this.#buf.size);
             if (err) {
-                return [undefined, err];
+                return [0n, err];
             }
             if (!filled) {
-                return [undefined, new Error("Failed to read byte")];
+                return [0n, new Error("Failed to read byte")];
             }
         }
 
-        for (let i = 1; i < len; i++) {
+        for (let i = 0; i < remaining; i++) {
             value = value << 8n | BigInt(this.#buf.readUint8());
         }
+
 
         return [value, undefined];
     }
 
-    async readUint8(): Promise<[number?, Error?]> {
+    async readUint8(): Promise<[number, Error?]> {
         let num: number;
         if (this.#buf.size == 0) {
             const [filled, err] = await this.fill(1);
             if (err) {
-                return [undefined, err];
+                return [0, err];
             }
 
             if (!filled) {
-                return [undefined, new Error("Failed to read byte")];
+                return [0, new Error("Failed to read byte")];
             }
         }
 
@@ -131,96 +120,60 @@ export class Reader {
         return [num, undefined];
     }
 
-    async readBoolean(): Promise<[boolean?, Error?]> {
+    async readBoolean(): Promise<[boolean, Error?]> {
         const [num, err] = await this.readUint8();
         if (err) {
-            return [undefined, err];
+            return [false, err];
         }
-        if (!num) {
-            return [undefined, new Error("Failed to read boolean")];
-        }
+
         if (num < 0 || num > 1) {
-            return [undefined, new Error("Invalid boolean value")];
+            return [false, new Error("Invalid boolean value")];
         }
         return [num === 1, undefined];
     }
 
-    async fill(diff: number): Promise<[number?, Error?]> {
+    async fill(diff: number): Promise<[number, Error?]> {
         let totalFilled = 0;
 
-        if (this.#byob) {
-            const remaining = this.#buf.reserve(diff);
-            while (totalFilled < diff) {
-                const {done, value} = await this.#byob.read(remaining);
-                if (done) {
-                    return [undefined, new Error("Stream closed")];
-                }
-                if (value) {
-                    totalFilled += value.length;
-                } else {
-                    break;
-                }
+        while (totalFilled < diff) {
+            const {done, value} = await this.#pull.read();
+            if (done) {
+                return [0, new Error("Stream closed")];
             }
-        } else if (this.#pull) {
-            while (totalFilled < diff) {
-                const {done, value} = await this.#pull.read();
-                if (done) {
-                    return [undefined, new Error("Stream closed")];
-                }
-                if (!value || value.length === 0) {
-                    break; // No more data to read
-                }
+            if (!value || value.length === 0) {
+                break; // No more data to read
+            }
 
-                this.#buf.write(value);
-                totalFilled += value.length;
-            }
-        } else {
-            return Promise.resolve([undefined, new Error("No reader available")]);
-        }
+            this.#buf.write(value);
+            totalFilled += value.length;
+       }
 
         return [totalFilled, undefined];
     }
 
-    async copy(buffer: Uint8Array): Promise<[number?, Error?]> {
+    async copy(buffer: Uint8Array): Promise<[number, Error?]> {
         // Read existing data into the buffer
         let totalFilled = this.#buf.read(buffer);
 
-        if (this.#byob) {
-            while (totalFilled < buffer.length) {
-                const remaining = buffer.subarray(totalFilled);
-                const {done, value} = await this.#byob.read(remaining);
-                if (done) {
-                    return [undefined, new Error("Stream closed")];
-                }
-                if (value) {
-                    totalFilled += value.length;
-                } else {
-                    break;
-                }
+        while (totalFilled < buffer.length) {
+            const {done, value} = await this.#pull.read();
+            if (done) {
+                return [0, new Error("Stream closed")];
             }
-        } else if (this.#pull) {
-            while (totalFilled < buffer.length) {
-                const result = await this.#pull.read();
-                if (result.done) {
-                    return [undefined, new Error("Stream closed")];
-                }
-                if (!result.value || result.value.length === 0) {
-                    break; // No more data to read
-                }
-
-                const needed = buffer.length - totalFilled;
-                const len = Math.min(needed, result.value.length);
-
-                buffer.set(result.value.subarray(0, len), totalFilled);
-                totalFilled += len;
-
-                if (result.value.length > len) {
-                    const leftover = result.value.subarray(len);
-                    this.#buf.write(leftover);
-                }
+            if (!value || value.length === 0) {
+                break; // No more data to read
             }
-        } else {
-            return Promise.resolve([undefined, new Error("No reader available")]);
+
+            const needed = buffer.length - totalFilled;
+            const len = Math.min(needed, value.length);
+
+            buffer.set(value.subarray(0, len), totalFilled);
+            totalFilled += len;
+
+            if (value.length > len) {
+                const leftover = value.subarray(len);
+                this.#buf.write(leftover);
+            }
         }
 
         return [totalFilled, undefined];
@@ -228,12 +181,8 @@ export class Reader {
 
     async cancel(code: StreamErrorCode, message: string): Promise<void> {
         const reason = new StreamError(code, message);
-        if (this.#byob) {
-            this.#byob.cancel(reason)
-        } else if (this.#pull) {
-            this.#pull.cancel(reason)
-        }
 
+        this.#pull.cancel(reason)
         this.#buf.release();
     }
 
@@ -241,4 +190,5 @@ export class Reader {
         return this.#closed;
     }
 }
+
 

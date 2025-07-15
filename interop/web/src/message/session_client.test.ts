@@ -3,113 +3,12 @@ import { Writer, Reader } from '../io';
 import { Version } from '../internal/version';
 import { Extensions } from '../internal/extensions';
 
-// Test-specific memory-based Reader/Writer implementation
-class TestMemoryWriter {
-  private buffer: Uint8Array[] = [];
-
-  writeVarint(num: bigint): void {
-    if (num < 0) {
-      throw new Error("Varint cannot be negative");
-    }
-
-    if (num < 64n) {
-      this.buffer.push(new Uint8Array([Number(num)]));
-    } else if (num < 16384n) {
-      this.buffer.push(new Uint8Array([
-        0x40 | Number(num >> 8n),
-        Number(num & 0xFFn)
-      ]));
-    } else if (num < 1073741824n) {
-      this.buffer.push(new Uint8Array([
-        0x80 | Number(num >> 24n),
-        Number((num >> 16n) & 0xFFn),
-        Number((num >> 8n) & 0xFFn),
-        Number(num & 0xFFn)
-      ]));
-    } else {
-      this.buffer.push(new Uint8Array([
-        0xC0 | Number(num >> 56n),
-        Number((num >> 48n) & 0xFFn),
-        Number((num >> 40n) & 0xFFn),
-        Number((num >> 32n) & 0xFFn),
-        Number((num >> 24n) & 0xFFn),
-        Number((num >> 16n) & 0xFFn),
-        Number((num >> 8n) & 0xFFn),
-        Number(num & 0xFFn)
-      ]));
-    }
-  }
-
-  writeUint8Array(data: Uint8Array): void {
-    this.writeVarint(BigInt(data.length));
-    this.buffer.push(data.slice());
-  }
-
-  toBuffer(): Uint8Array {
-    const totalLength = this.buffer.reduce((sum, chunk) => sum + chunk.length, 0);
-    const result = new Uint8Array(totalLength);
-    let offset = 0;
-    for (const chunk of this.buffer) {
-      result.set(chunk, offset);
-      offset += chunk.length;
-    }
-    return result;
-  }
-}
-
-class TestMemoryReader {
-  private buffer: Uint8Array;
-  private offset: number = 0;
-
-  constructor(buffer: Uint8Array) {
-    this.buffer = buffer;
-  }
-
-  async readVarint(): Promise<[bigint?, Error?]> {
-    if (this.offset >= this.buffer.length) {
-      return [undefined, new Error("End of buffer")];
-    }
-
-    const firstByte = this.buffer[this.offset++];
-    const len = 1 << (firstByte >> 6);
-
-    if (this.offset + len - 1 > this.buffer.length) {
-      return [undefined, new Error("Incomplete varint")];
-    }
-
-    let value: bigint = BigInt(firstByte & 0x3f);
-
-    for (let i = 1; i < len; i++) {
-      value = (value << 8n) | BigInt(this.buffer[this.offset++]);
-    }
-
-    return [value, undefined];
-  }
-
-  async readUint8Array(): Promise<[Uint8Array?, Error?]> {
-    const [len, err] = await this.readVarint();
-    if (err) {
-      return [undefined, err];
-    }
-    if (len === undefined) {
-      return [undefined, new Error("Failed to read length")];
-    }
-
-    const length = Number(len);
-    if (this.offset + length > this.buffer.length) {
-      return [undefined, new Error("Incomplete byte array")];
-    }
-
-    const result = this.buffer.slice(this.offset, this.offset + length);
-    this.offset += length;
-    return [result, undefined];
-  }
-}
-
 // Simple test helper using memory-based reader/writer
 async function testEncodeDecodeMessage(versions: Set<Version>, extensions: Extensions): Promise<[SessionClientMessage?, Error?]> {
-  const writer = new TestMemoryWriter();
-  
+  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+  const writer = new Writer(writable);
+  const reader = new Reader(readable); // Cast to any to satisfy TypeScript
+
   // Encode versions
   writer.writeVarint(BigInt(versions.size));
   for (const version of versions) {
@@ -125,9 +24,8 @@ async function testEncodeDecodeMessage(versions: Set<Version>, extensions: Exten
   
   // Decode
   const buffer = writer.toBuffer();
-  const reader = new TestMemoryReader(buffer);
-  
-  return await SessionClientMessage.decode(reader as any);
+
+  return await SessionClientMessage.decode(reader);
 }
 
 describe('SessionClientMessage', () => {

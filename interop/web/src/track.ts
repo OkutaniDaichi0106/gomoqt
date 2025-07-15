@@ -29,9 +29,9 @@ export class TrackReader {
     }
 
     async acceptGroup(): Promise<[GroupReader?, Error?]> {
-        const error = this.#ctx.err();
-        if (error != null) {
-            return [undefined, error];
+        const ctxErr = this.#ctx.err();
+        if (ctxErr != null) {
+            return [undefined, ctxErr];
         }
 
         return await this.#acceptFunc();

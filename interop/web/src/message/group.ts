@@ -24,16 +24,11 @@ export class GroupMessage {
         if (err) {
             return [undefined, new Error("Failed to read subscribeId for Group")];
         }
-        if (subscribeId === undefined) {
-            return [undefined, new Error("subscribeId is undefined")];
-        }
+
 
         let [sequence, err2] = await reader.readVarint();
         if (err2) {
             return [undefined, new Error("Failed to read sequence for Group")];
-        }
-        if (sequence === undefined) {
-            return [undefined, new Error("sequence is undefined")];
         }
 
         return [new GroupMessage(subscribeId, sequence), undefined];

@@ -33,7 +33,7 @@ export class GroupWriter {
         return this.#group.sequence;
     }
 
-    async write(data: Uint8Array): Promise<Error | undefined> {
+    async writeFrame(data: Uint8Array): Promise<Error | undefined> {
         this.#writer.writeUint8Array(data);
         const err = await this.#writer.flush();
         return err;
@@ -76,7 +76,7 @@ export class GroupReader {
         return this.#group.sequence;
     }
 
-    async read(): Promise<[Uint8Array?, Error?]> {
+    async readFrame(): Promise<[Uint8Array?, Error?]> {
         return this.#reader.readUint8Array();
     }
 

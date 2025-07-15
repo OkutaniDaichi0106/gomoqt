@@ -1,4 +1,4 @@
-import { Announcement, AnnouncementWriter, SendAnnounceStream } from "./announce_stream";
+import { Announcement, AnnouncementWriter } from "./announce_stream";
 import { BroadcastPath } from "./broadcast_path";
 import { Context } from "./internal/context";
 import { Publication as Publication } from "./publication";
@@ -38,8 +38,7 @@ export class TrackMux {
     }
 
     async serveTrack(publication: Publication): Promise<void> {
-        const path = publication.broadcastPath;
-        const handler = this.#handlers.get(path);
+        const handler = this.#handlers.get(publication.broadcastPath);
         if (handler) {
             handler.serveTrack(publication);
         } else {
@@ -79,6 +78,6 @@ export interface TrackHandler {
 
 const NotFoundHandler: TrackHandler = {
     serveTrack(publication: Publication): void {
-        publication.controller
+        publication.controller.closeWithError(0x03, "Track not found");
     }
 };

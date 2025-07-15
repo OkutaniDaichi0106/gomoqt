@@ -1,10 +1,10 @@
-import { Version, Versions } from "./internal/version";
+import { Version, Versions } from "./internal";
 import { AnnouncePleaseMessage, GroupMessage, SessionClientMessage, SessionServerMessage, SubscribeMessage, SubscribeOkMessage } from "./message";
 import { Writer, Reader } from "./io";
 import { Extensions } from "./internal/extensions";
 import { SessionStream } from "./session_stream";
 import { background, Context, withPromise } from "./internal/context";
-import { ReceiveAnnounceStream, SendAnnounceStream } from "./announce_stream";
+import { AnnouncementReader, AnnouncementWriter } from "./announce_stream";
 import { TrackPrefix } from "./track_prefix";
 import { ReceiveSubscribeStream, SendSubscribeStream, SubscribeConfig, SubscribeID } from "./subscribe_stream";
 import { Subscription } from "./subscription";
@@ -35,6 +35,14 @@ export class Session {
 			const writer = new Writer(stream.writable);
 			const reader = new Reader(stream.readable);
 
+			// Send STREAM_TYPE
+			writer.writeUint8(BiStreamTypes.SessionStreamType);
+			const err = await writer.flush();
+			if (err) {
+				console.error("Failed to flush writer:", err);
+				throw err;
+			}
+
 			// Send the session client message
 			const [req, reqErr] = await SessionClientMessage.encode(writer, versions, extensions);
 			if (reqErr) {
@@ -63,9 +71,9 @@ export class Session {
 
 			return;
 		}).then(() => {
-
+			this.#listenBiStreams();
+			this.#listenUniStreams();
 		}).catch((error) => {
-			console.error("Error during session initialization:", error);
 			this.#conn.close(); // TODO: Specify a proper close code and reason
 			throw error;
 		});
@@ -75,7 +83,7 @@ export class Session {
 		this.#sessionStream.update(bitrate);
 	}
 
-	async openAnnounceStream(prefix: TrackPrefix): Promise<ReceiveAnnounceStream> {
+	async openAnnounceStream(prefix: TrackPrefix): Promise<AnnouncementReader> {
 		const stream = await this.#conn.createBidirectionalStream()
 		const writer = new Writer(stream.writable);
 		const reader = new Reader(stream.readable);
@@ -93,10 +101,14 @@ export class Session {
 			throw new Error("Failed to encode AnnouncePleaseMessage");
 		}
 
-		return new ReceiveAnnounceStream(this.#ctx, writer, reader, req);
+		return new AnnouncementReader(this.#ctx, writer, reader, req);
 	}
 
-	async openTrackStream(path: BroadcastPath, name: string, config: SubscribeConfig): Promise<Subscription> {
+	async openTrackStream(path: BroadcastPath, name: string, config: SubscribeConfig = {
+            trackPriority: 0n,
+            minGroupSequence: 0n,
+            maxGroupSequence: 0n,
+        }): Promise<Subscription> {
 		const stream = await this.#conn.createBidirectionalStream()
 		const writer = new Writer(stream.writable);
 		const reader = new Reader(stream.readable);
@@ -133,10 +145,7 @@ export class Session {
 		this.#subscribings.set(req.subscribeId, [trackCtx, queue]);
 
 		const acceptFunc = async (): Promise<[GroupReader?, Error?]> => {
-			const [reader, err] = await queue.dequeue();
-			if (err) {
-				return [undefined, err];
-			}
+			const reader = await queue.dequeue();
 			if (!reader) {
 				return [undefined, new Error("No group message available")];
 			}
@@ -229,9 +238,73 @@ export class Session {
 			return;
 		}
 
-		const stream = new SendAnnounceStream(this.#ctx, bi.writer, bi.reader, req);
+		const stream = new AnnouncementWriter(this.#ctx, bi.writer, bi.reader, req);
 
 		this.#mux.serveAnnouncement(stream, req.prefix);
+	}
+
+	async #listenBiStreams(): Promise<void> {
+		const biStreams = this.#conn.incomingBidirectionalStreams.getReader()
+		// Handle incoming streams
+		let num: number | undefined;
+		let err: Error | undefined;
+		while (true) {
+			const {done, value} = await biStreams.read();
+			// biStreams.releaseLock(); // Release the lock after reading
+			if (done) {
+				console.error("Bidirectional stream closed");
+				break;
+			}
+			const stream = value as WebTransportBidirectionalStream;
+			const bi = { writer: new Writer(stream.writable), reader: new Reader(stream.readable) };
+			[num, err] = await bi.reader.readUint8();
+			if (err) {
+				console.error("Failed to read from bidirectional stream:", err);
+				continue;
+			}
+
+			switch (num) {
+				case BiStreamTypes.SubscribeStreamType:
+					await this.#handleSubscribeStream(bi);
+					break;
+				case BiStreamTypes.AnnounceStreamType:
+					await this.#handleAnnounceStream(bi);
+					break;
+				default:
+					console.warn(`Unknown bidirectional stream type: ${num}`);
+					break; // Ignore unknown stream types
+			}
+		}
+	}
+
+	async #listenUniStreams(): Promise<void> {
+		const uniStreams = this.#conn.incomingUnidirectionalStreams.getReader();
+		while (true) {
+			const {done, value} = await uniStreams.read();
+			// uniStreams.releaseLock(); // Release the lock after reading
+			if (done) {
+				console.error("Unidirectional stream closed");
+				break;
+			}
+			const readable = value as ReadableStream<Uint8Array<ArrayBufferLike>>;
+			const reader = new Reader(readable);
+
+			// Read the first byte to determine the stream type
+			const [num, err] = await reader.readUint8();
+			if (err) {
+				console.error("Failed to read from unidirectional stream:", err);
+				continue;
+			}
+
+			switch (num) {
+				case UniStreamTypes.GroupStreamType:
+					await this.#handleGroupStream(reader);
+					break;
+				default:
+					console.warn(`Unknown unidirectional stream type: ${num}`);
+					break; // Ignore unknown stream types
+			}
+		}
 	}
 
 	close(): void {
@@ -247,13 +320,4 @@ export class Session {
 			reason: message,
 		});
 	}
-}
-
-export function dial(url: string | URL, versions?: Set<Version>, extensions?: Extensions): Promise<Session> {
-	return new Promise((resolve, reject) => {
-		const conn = new WebTransport(url);
-		conn.ready.then(() => {
-			resolve(new Session(conn, versions, extensions));
-		}).catch(reject);
-	});
 }

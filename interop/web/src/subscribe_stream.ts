@@ -150,17 +150,19 @@ export class ReceiveSubscribeStream implements PublishController {
 	}
 
 	close(): void {
-		if (this.#ctx.err() !== null) {
-			throw this.#ctx.err();
+		const ctxErr = this.#ctx.err();
+		if (ctxErr !== undefined) {
+			throw ctxErr;
 		}
 		this.#writer.close();
-		this.#cancelFunc(null);
+		this.#cancelFunc(undefined);
 		this.#cond.broadcast(); // Notify any waiting threads that the stream is closed
 	}
 
 	closeWithError(code: number, message: string): void {
-		if (this.#ctx.err() !== null) {
-			throw this.#ctx.err();
+		const ctxErr = this.#ctx.err();
+		if (ctxErr !== undefined) {
+			throw ctxErr;
 		}
 		const err = new StreamError(code, message);
 		this.#writer.cancel(err);

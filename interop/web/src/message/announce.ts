@@ -20,20 +20,14 @@ export class AnnounceMessage {
     }
 
     static async decode(reader: Reader): Promise<[AnnounceMessage?, Error?]> {
-        let suffix: string | undefined;
-        let err: Error | undefined;
-        [suffix, err] = await reader.readString();
-        if (err) {
-            return [undefined, new Error("Failed to read suffix for Announce")];
-        }
-
-        let active: boolean | undefined;
-        [active, err] = await reader.readBoolean();
+        const [active, err] = await reader.readBoolean();
         if (err) {
             return [undefined, new Error("Failed to read active for Announce")];
         }
-        if (!suffix || !active) {
-            return [undefined, new Error("Suffix or active is undefined")];
+
+        const [suffix, err2] = await reader.readString();
+        if (err2) {
+            return [undefined, new Error("Failed to read suffix for Announce")];
         }
 
         return [new AnnounceMessage(suffix, active), undefined];

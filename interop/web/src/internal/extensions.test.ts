@@ -1,5 +1,4 @@
 import { Extensions } from './extensions';
-import { TextEncoder } from 'util';
 
 describe('Extensions', () => {
     let extensions: Extensions;

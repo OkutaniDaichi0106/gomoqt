@@ -1,0 +1,10 @@
+{
+  "typescript.preferences.includePackageJsonAutoImports": "on",
+  "typescript.suggest.autoImports": true,
+  "typescript.preferences.includeTypeOnlyAutoImports": "auto",
+  "typescript.tsdk": "./node_modules/typescript/lib",
+  "files.associations": {
+    "*.test.ts": "typescript",
+    "*.spec.ts": "typescript"
+  }
+}

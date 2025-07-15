@@ -1,15 +1,29 @@
 {
-  "extends": "./tsconfig.json",
   "compilerOptions": {
-    "types": ["jest", "node"],
-    "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
+    "target": "es2024",
+    "lib": ["dom", "es2024"],
+    "module": "esnext",
     "moduleResolution": "node",
-    "isolatedModules": false
+    "declaration": false,
+    "outDir": "./dist-test",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "allowSyntheticDefaultImports": true,
+    "isolatedModules": false,
+    "noEmit": true,
+    "types": ["jest", "node"],
+    "typeRoots": ["./node_modules/@types", "./src/types"]
   },
   "include": [
     "src/**/*.test.ts",
-    "src/**/*.spec.ts"
+    "src/**/*.spec.ts",
+    "src/**/*.ts"
   ],
-  "exclude": []
+  "exclude": [
+    "node_modules",
+    "dist",
+    "examples"
+  ]
 }

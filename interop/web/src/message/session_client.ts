@@ -35,9 +35,6 @@ export class SessionClientMessage {
         if (err) {
             return [undefined, new Error("Failed to read number of versions for SessionClient: " + err.message)];
         }
-        if (numVersions === undefined) {
-            return [undefined, new Error("numVersions is undefined")];
-        }
         if (numVersions < 0) {
             return [undefined, new Error("Invalid number of versions for SessionClient")];
         }
@@ -51,9 +48,7 @@ export class SessionClientMessage {
             if (err2) {
                 return [undefined, new Error(`Failed to read version ${i} for SessionClient: ${err2.message}`)];
             }
-            if (version === undefined) {
-                return [undefined, new Error("version is undefined")];
-            }
+
             versions.add(version);
         }
         
@@ -76,9 +71,6 @@ export class SessionClientMessage {
             let [extId, err4] = await reader.readVarint();
             if (err4) {
                 return [undefined, new Error(`Failed to read extension ID ${i} for SessionClient: ${err4.message}`)];
-            }
-            if (extId === undefined) {
-                return [undefined, new Error("extId is undefined")];
             }
 
             let [extData, err5] = await reader.readUint8Array();

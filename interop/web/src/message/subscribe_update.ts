@@ -27,24 +27,15 @@ export class SubscribeUpdateMessage {
         if (err) {
             return [undefined, new Error("Failed to read trackPriority for SubscribeUpdateMessage")];
         }
-        if (trackPriority === undefined) {
-            return [undefined, new Error("trackPriority is undefined")];
-        }
 
         let [minGroupSequence, err2] = await reader.readVarint();
         if (err2) {
             return [undefined, new Error("Failed to read minGroupSequence for SubscribeUpdateMessage")];
         }
-        if (minGroupSequence === undefined) {
-            return [undefined, new Error("minGroupSequence is undefined")];
-        }
 
         let [maxGroupSequence, err3] = await reader.readVarint();
         if (err3) {
             return [undefined, new Error("Failed to read maxGroupSequence for SubscribeUpdateMessage")];
-        }
-        if (maxGroupSequence === undefined) {
-            return [undefined, new Error("maxGroupSequence is undefined")];
         }
 
         return [new SubscribeUpdateMessage(trackPriority, minGroupSequence, maxGroupSequence), undefined];

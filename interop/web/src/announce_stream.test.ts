@@ -1,4 +1,4 @@
-import { AnnouncementWriter, AnnouncementReader, Announcement, SendAnnounceStream, ReceiveAnnounceStream } from './announce_stream';
+import { AnnouncementWriter, AnnouncementReader, Announcement } from './announce_stream';
 import { Writer, Reader } from './io';
 import { Context, background, withCancelCause } from './internal';
 import { AnnounceMessage, AnnouncePleaseMessage } from './message';
@@ -47,12 +47,12 @@ describe('AnnouncementWriter', () => {
             prefix: '/test/' as TrackPrefix
         } as AnnouncePleaseMessage;
 
-        writer = new SendAnnounceStream(ctx, mockWriter, mockReader, mockAnnouncePlease);
+        writer = new AnnouncementWriter(ctx, mockWriter, mockReader, mockAnnouncePlease);
     });
 
     describe('constructor', () => {
         it('should initialize with provided parameters', () => {
-            expect(writer).toBeInstanceOf(SendAnnounceStream);
+            expect(writer).toBeInstanceOf(AnnouncementWriter);
             expect(writer.context).toBeDefined();
         });
 
@@ -60,7 +60,7 @@ describe('AnnouncementWriter', () => {
             const invalidPrefix = 'invalid-prefix' as TrackPrefix;
             const invalidRequest = { prefix: invalidPrefix } as AnnouncePleaseMessage;
 
-            expect(() => new SendAnnounceStream(ctx, mockWriter, mockReader, invalidRequest))
+            expect(() => new AnnouncementWriter(ctx, mockWriter, mockReader, invalidRequest))
                 .toThrow();
         });
     });
@@ -117,7 +117,7 @@ describe('AnnouncementWriter', () => {
 
 describe('Announcement', () => {
     let ctx: Context;
-    let cancelFunc: (err: Error | null) => void;
+    let cancelFunc: (err: Error | undefined) => void;
     let announcement: Announcement;
 
     beforeEach(() => {
@@ -215,12 +215,12 @@ describe('AnnouncementReader', () => {
             prefix: '/test/' as TrackPrefix
         } as AnnouncePleaseMessage;
 
-        reader = new ReceiveAnnounceStream(ctx, mockWriter, mockReader, mockAnnouncePlease);
+        reader = new AnnouncementReader(ctx, mockWriter, mockReader, mockAnnouncePlease);
     });
 
     describe('constructor', () => {
         it('should initialize with provided parameters', () => {
-            expect(reader).toBeInstanceOf(ReceiveAnnounceStream);
+            expect(reader).toBeInstanceOf(AnnouncementReader);
         });
     });
 });

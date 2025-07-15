@@ -14,7 +14,6 @@ import (
 	"crypto/tls"
 	"net/http"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
@@ -121,7 +120,7 @@ func TestClient_ShutdownContextCancel(t *testing.T) {
 	mockStream.On("CancelRead", mock.Anything)
 	mockStream.On("CancelWrite", mock.Anything)
 
-	sess := newSession(mockConn, internal.DefaultServerVersion, "/path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
+	sess := newSession(mockConn, DefaultServerVersion, "/path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
 	c.addSession(sess)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -965,7 +964,7 @@ func TestClient_Shutdown_Timeout(t *testing.T) {
 	mockConn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
 	mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080}).Maybe()
 
-	sess := newSession(mockConn, internal.DefaultServerVersion, "/path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
+	sess := newSession(mockConn, DefaultServerVersion, "/path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
 	c.addSession(sess)
 
 	// Create a context that times out quickly

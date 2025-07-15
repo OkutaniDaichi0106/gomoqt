@@ -1,15 +1,15 @@
 export interface Context {
     readonly signal: AbortSignal;
     done(): Promise<void>;
-    err(): Error | null;
+    err(): Error | undefined;
 }
 
 export type CancelFunc = () => void;
-export type CancelCauseFunc = (err: Error | null) => void;
+export type CancelCauseFunc = (err: Error | undefined) => void;
 
 class DefaultContext implements Context {
     #signal: AbortSignal;
-    #err: Error | null = null;
+    #err?: Error;
     #donePromise: Promise<void>;
 
     constructor(signal: AbortSignal) {
@@ -40,7 +40,7 @@ class DefaultContext implements Context {
         return this.#donePromise;
     }
 
-    err(): Error | null {
+    err(): Error | undefined {
         return this.#err;
     }
 }
@@ -56,7 +56,7 @@ function createChildContext(parent: Context, controller: AbortController): Conte
     return new DefaultContext(controller.signal);
 }
 
-let backgroundContext: Context | null = null;
+let backgroundContext: Context | undefined = undefined;
 
 function createBackgroundContext(): Context {
     const controller = new AbortController();
@@ -122,7 +122,7 @@ export function withCancel(parent: Context): [Context, CancelFunc] {
 export function withCancelCause(parent: Context): [Context, CancelCauseFunc] {
     const controller = new AbortController();
     const context = createChildContext(parent, controller);
-    return [context, (err: Error | null) => controller.abort(err)];
+    return [context, (err: Error | undefined) => controller.abort(err)];
 }
 
 export function withTimeout(parent: Context, timeout: number): Context {

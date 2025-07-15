@@ -5,15 +5,9 @@ import { Cond } from "./internal/cond";
 import { TrackPrefix, isValidPrefix, validateTrackPrefix } from "./track_prefix";
 import { BroadcastPath, validateBroadcastPath } from "./broadcast_path";
 import { StreamError } from "./io/error";
+import { Queue } from "./internal";
 
-export interface AnnouncementWriter {
-    send(announcement: Announcement): Promise<void>;
-    close(): void;
-    closeWithError(code: number, message: string): void;
-    context: Context;
-}
-
-export class SendAnnounceStream implements AnnouncementWriter {
+export class AnnouncementWriter {
     #writer: Writer;
     #reader: Reader;
     #prefix: TrackPrefix;
@@ -31,7 +25,7 @@ export class SendAnnounceStream implements AnnouncementWriter {
 
         // Listen for stream closure
         reader.closed().then(() => {
-            this.#cancelFunc(null);
+            this.#cancelFunc(undefined);
         });
     }
 
@@ -88,17 +82,19 @@ export class SendAnnounceStream implements AnnouncementWriter {
     }
 
     close(): void {
-        if (this.#ctx.err() !== null) {
-            throw this.#ctx.err();
+        const ctxErr = this.#ctx.err();
+        if (ctxErr !== undefined) {
+            throw ctxErr;
         }
         this.#writer.close();
         this.#announcements.clear();
-        this.#cancelFunc(null);
+        this.#cancelFunc(undefined);
     }
 
     closeWithError(code: number, message: string): void {
-        if (this.#ctx.err() !== null) {
-            throw this.#ctx.err();
+        const ctxErr = this.#ctx.err();
+        if (ctxErr !== undefined) {
+            throw ctxErr;
         }
         const err = new StreamError(code, message);
         this.#writer.cancel(err);
@@ -109,19 +105,12 @@ export class SendAnnounceStream implements AnnouncementWriter {
     }
 }
 
-export interface AnnouncementReader {
-    receive(): Promise<Announcement>;
-    close(): void;
-    closeWithError(code: number, message: string): void;
-    context: Context;
-}
-
-export class ReceiveAnnounceStream implements AnnouncementReader {
+export class AnnouncementReader {
     #writer: Writer;
     #reader: Reader;
     #prefix: string;
     #announcements: Map<string, Announcement> = new Map();
-    #pending: Announcement[] = [];
+    #queue: Queue<Announcement> = new Queue();
     #ctx: Context;
     #cancelFunc: CancelCauseFunc;
     #cond: Cond = new Cond();
@@ -130,16 +119,19 @@ export class ReceiveAnnounceStream implements AnnouncementReader {
     constructor(sessCtx: Context, writer: Writer, reader: Reader, announcePlease: AnnouncePleaseMessage) {
         this.#writer = writer;
         this.#reader = reader;
-        if (!isValidPrefix(announcePlease.prefix)) {
-            throw new Error(`Invalid prefix: ${announcePlease.prefix}. It must start and end with '/' and be at least 1 character long.`);
+        const prefix = announcePlease.prefix;
+        if (!isValidPrefix(prefix)) {
+            throw new Error(`Invalid prefix: ${prefix}. It must start and end with '/'.`);
         }
-        this.#prefix = announcePlease.prefix;
-        [this.#ctx, this.#cancelFunc] = withCancelCause(sessCtx);
+        this.#prefix = prefix;
+        const [ctx, cancelFunc] = withCancelCause(sessCtx);
+        this.#ctx = ctx;
+        this.#cancelFunc = cancelFunc;
 
         // Listen for incoming announcements
-        async () => {
+        (async () => {
             for (;;) {
-                const [msg, err] = await AnnounceMessage.decode(this.#reader);
+                const [msg, err] = await AnnounceMessage.decode(reader);
                 if (err) {
                     throw new Error(`Failed to read announcement: ${err}`);
                 }
@@ -157,10 +149,10 @@ export class ReceiveAnnounceStream implements AnnouncementReader {
                         this.#announcements.delete(msg.suffix);
                     }
 
-                    const fullPath = this.#prefix + msg.suffix;
-                    const announcement = new Announcement(validateBroadcastPath(fullPath), this.#ctx);
+                    const fullPath = prefix + msg.suffix;
+                    const announcement = new Announcement(validateBroadcastPath(fullPath), ctx);
                     this.#announcements.set(msg.suffix, announcement);
-                    this.#pending.push(announcement);
+                    this.#queue.enqueue(announcement);
                 } else {
                     if (!old) {
                         throw new Error(`Announcement for path ${msg.suffix} does not exist`);
@@ -175,20 +167,20 @@ export class ReceiveAnnounceStream implements AnnouncementReader {
 
                 this.#cond.broadcast();
             }
-        };
+        })();
     }
 
     async receive(): Promise<Announcement> {
         while (true) {
-            if (this.#ctx.err() !== null) {
-                throw this.#ctx.err();
+            const err = this.#ctx.err();
+            if (err !== undefined) {
+                throw err;
             }
 
-            if (this.#pending.length > 0) {
-                const announcement = this.#pending.shift();
-                if (announcement && announcement.isActive()) {
-                    return announcement;
-                }
+            const announcement = await this.#queue.dequeue();
+
+            if (announcement && announcement.isActive()) {
+                return announcement;
             }
 
             // Wait for the next announcement
@@ -203,7 +195,7 @@ export class ReceiveAnnounceStream implements AnnouncementReader {
     close(): void {
         this.#cancelFunc(new Error("ReceiveAnnounceStream closed"));
         this.#announcements.clear();
-        this.#pending = [];
+        this.#queue.close();
     }
 
     closeWithError(code: number, message: string): void {
@@ -213,7 +205,7 @@ export class ReceiveAnnounceStream implements AnnouncementReader {
         }
         this.#writer.cancel(new StreamError(code, message)); // TODO:
         this.#announcements.clear();
-        this.#pending = [];
+        this.#queue.close();
     }
 }
 

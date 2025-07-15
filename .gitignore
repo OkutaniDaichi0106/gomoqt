@@ -1,6 +1,6 @@
-examples/cert/localhost.pem
-examples/cert/localhost-key.pem
+**.pem
 hextra-starter-template
 
 .github/prompts
 **/node_modules
+**/dist/

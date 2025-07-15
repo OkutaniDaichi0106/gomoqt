@@ -2,6 +2,7 @@ package webtransportgo
 
 import (
 	"context"
+	"crypto/tls"
 	"net"
 	"net/http"
 
@@ -12,11 +13,12 @@ import (
 	"github.com/quic-go/quic-go/http3"
 )
 
-func NewDefaultServer(addr string) webtransport.Server {
+func NewDefaultServer(addr string, tslConfig *tls.Config, quicConfig *quic.Config, checkOrigin func(r *http.Request) bool) webtransport.Server {
 	wtserver := &quicgo_webtransportgo.Server{
 		H3: http3.Server{
 			Addr: addr,
 		},
+		CheckOrigin: checkOrigin,
 	}
 
 	return WrapServer(wtserver)

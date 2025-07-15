@@ -21,9 +21,7 @@ export class AnnouncePleaseMessage {
         if (err) {
             return [undefined, new Error("Failed to read prefix for AnnouncePlease")];
         }
-        if (!str) {
-            return [undefined, new Error("Failed to read prefix for AnnouncePlease")];
-        }
+
         return [new AnnouncePleaseMessage(str), undefined];
     }
 }

@@ -14,7 +14,7 @@ describe('Context', () => {
             const ctx = background();
             expect(ctx).toBeDefined();
             expect(ctx.signal).toBeInstanceOf(AbortSignal);
-            expect(ctx.err()).toBeNull();
+            expect(ctx.err()).toBeUndefined();
         });
 
         it('should return the same instance on multiple calls', () => {
@@ -26,7 +26,7 @@ describe('Context', () => {
         it('should not be aborted initially', () => {
             const ctx = background();
             expect(ctx.signal.aborted).toBe(false);
-            expect(ctx.err()).toBeNull();
+            expect(ctx.err()).toBeUndefined();
         });
     });
 
@@ -37,7 +37,7 @@ describe('Context', () => {
             const childCtx = withSignal(parentCtx, controller.signal);
             
             expect(childCtx.signal).toBeDefined();
-            expect(childCtx.err()).toBeNull();
+            expect(childCtx.err()).toBeUndefined();
         });
 
         it('should be cancelled when custom signal is aborted', async () => {
@@ -76,7 +76,7 @@ describe('Context', () => {
             const [childCtx, cancel] = withCancel(parentCtx);
             
             expect(childCtx.signal).toBeDefined();
-            expect(childCtx.err()).toBeNull();
+            expect(childCtx.err()).toBeUndefined();
             expect(typeof cancel).toBe('function');
         });
 
@@ -120,7 +120,7 @@ describe('Context', () => {
             const [childCtx, cancelWithCause] = withCancelCause(parentCtx);
             
             expect(childCtx.signal).toBeDefined();
-            expect(childCtx.err()).toBeNull();
+            expect(childCtx.err()).toBeUndefined();
             expect(typeof cancelWithCause).toBe('function');
         });
 
@@ -168,7 +168,7 @@ describe('Context', () => {
             const childCtx = withTimeout(parentCtx, 1000);
             
             expect(childCtx.signal).toBeDefined();
-            expect(childCtx.err()).toBeNull();
+            expect(childCtx.err()).toBeUndefined();
         });
 
         it('should cancel after timeout', async () => {
@@ -304,7 +304,7 @@ describe('Context', () => {
         it('should return error when cancelled', async () => {
             const [ctx, cancel] = withCancel(background());
             
-            expect(ctx.err()).toBeNull();
+            expect(ctx.err()).toBeUndefined();
             
             cancel();
             

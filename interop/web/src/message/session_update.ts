@@ -17,13 +17,11 @@ export class SessionUpdateMessage {
     }
 
     static async decode(reader: Reader): Promise<[SessionUpdateMessage?, Error?]> {
-        const [varintResult, err] = await reader.readVarint();
+        const [varint, err] = await reader.readVarint();
         if (err) {
             return [undefined, new Error("Failed to read bitrate for SessionUpdateMessage")];
         }
-        if (varintResult === undefined) {
-            return [undefined, new Error("bitrate is undefined")];
-        }
-        return [new SessionUpdateMessage(varintResult), undefined];
+
+        return [new SessionUpdateMessage(varint), undefined];
     }
 }

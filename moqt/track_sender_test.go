@@ -22,8 +22,11 @@ func TestNewTrackSender(t *testing.T) {
 		mockSendStream.On("Close").Return(nil)
 		return newSendGroupStream(ctx, mockSendStream, seq), nil
 	}
+	acceptFunc := func(info Info) {
+		// Mock accept function, can be empty for this test
+	}
 
-	sender := newTrackSender(ctx, openGroupFunc)
+	sender := newTrackSender(ctx, openGroupFunc, acceptFunc)
 
 	require.NotNil(t, sender, "newTrackSender should not return nil")
 	assert.NotNil(t, sender.queue, "queue should be initialized")
@@ -48,8 +51,7 @@ func TestTrackSender_OpenGroup(t *testing.T) {
 		return newSendGroupStream(ctx, mockSendStream, seq), nil
 	}
 
-	sender := newTrackSender(ctx, openGroupFunc)
-	sender.acceptFunc = acceptFunc
+	sender := newTrackSender(ctx, openGroupFunc, acceptFunc)
 
 	// Test opening a group
 	group, err := sender.OpenGroup(GroupSequence(1))
@@ -64,8 +66,11 @@ func TestTrackSender_OpenGroup_ZeroSequence(t *testing.T) {
 	openGroupFunc := func(ctx context.Context, seq GroupSequence) (*sendGroupStream, error) {
 		return nil, nil
 	}
+	acceptFunc := func(info Info) {
+		// Mock accept function, can be empty for this test
+	}
 
-	sender := newTrackSender(ctx, openGroupFunc)
+	sender := newTrackSender(ctx, openGroupFunc, acceptFunc)
 
 	// Test opening a group with zero sequence
 	group, err := sender.OpenGroup(GroupSequence(0))
@@ -81,8 +86,11 @@ func TestTrackSender_OpenGroup_ContextCanceled(t *testing.T) {
 	openGroupFunc := func(ctx context.Context, seq GroupSequence) (*sendGroupStream, error) {
 		return nil, nil
 	}
+	acceptFunc := func(info Info) {
+		// Mock accept function, can be empty for this test
+	}
 
-	sender := newTrackSender(ctx, openGroupFunc)
+	sender := newTrackSender(ctx, openGroupFunc, acceptFunc)
 
 	// Test opening a group with canceled context
 	group, err := sender.OpenGroup(GroupSequence(1))
@@ -98,9 +106,11 @@ func TestTrackSender_OpenGroup_OpenGroupError(t *testing.T) {
 	openGroupFunc := func(ctx context.Context, seq GroupSequence) (*sendGroupStream, error) {
 		return nil, expectedError
 	}
+	acceptFunc := func(info Info) {
+		// Mock accept function, can be empty for this test
+	}
 
-	sender := newTrackSender(ctx, openGroupFunc)
-	sender.acceptFunc = func(Info) {} // Add accept function
+	sender := newTrackSender(ctx, openGroupFunc, acceptFunc)
 
 	// Test opening a group when openGroupFunc returns error
 	group, err := sender.OpenGroup(GroupSequence(1))
@@ -125,8 +135,7 @@ func TestTrackSender_OpenGroup_Success(t *testing.T) {
 		return newSendGroupStream(ctx, mockSendStream, seq), nil
 	}
 
-	sender := newTrackSender(ctx, openGroupFunc)
-	sender.acceptFunc = acceptFunc
+	sender := newTrackSender(ctx, openGroupFunc, acceptFunc)
 
 	// Test successful group opening
 	group, err := sender.OpenGroup(GroupSequence(1))
@@ -146,9 +155,11 @@ func TestTrackSender_ContextCancellation(t *testing.T) {
 		mockSendStream.On("Close").Return(nil)
 		return newSendGroupStream(ctx, mockSendStream, seq), nil
 	}
+	acceptFunc := func(info Info) {
+		// Mock accept function, can be empty for this test
+	}
 
-	sender := newTrackSender(ctx, openGroupFunc)
-	sender.acceptFunc = func(Info) {}
+	sender := newTrackSender(ctx, openGroupFunc, acceptFunc)
 
 	// Open a group
 	group, err := sender.OpenGroup(GroupSequence(1))

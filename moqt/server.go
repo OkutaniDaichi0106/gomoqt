@@ -11,7 +11,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic/quicgo"
@@ -53,8 +52,9 @@ type Server struct {
 	 * If the server is configured with a WebTransport server, it is used to handle WebTransport sessions.
 	 * If not, a default server is used.
 	 */
-	WebtransportServer webtransport.Server
-	serverInUse        webtransport.Server
+	ServeWebtransportFunc func(addr string, tlsConfig *tls.Config, quicConfig *quic.Config,
+		checkOrigin func(*http.Request) bool) webtransport.Server
+	wtServer webtransport.Server
 
 	listenerMu    sync.RWMutex
 	listeners     map[quic.EarlyListener]struct{}
@@ -80,13 +80,11 @@ func (s *Server) init() {
 		s.nativeQUICCh = make(chan quic.Connection, 1<<4)
 		// Initialize WebtransportServer
 
-		if s.WebtransportServer != nil {
-			// If a WebTransport server is already set, use it
-			s.serverInUse = s.WebtransportServer
-		} else {
+		if s.ServeWebtransportFunc == nil {
 			// If not set, create a default WebTransport server
-			defaultServer := webtransportgo.NewDefaultServer(s.Addr)
-			s.serverInUse = defaultServer
+			s.wtServer = webtransportgo.NewDefaultServer(s.Addr, s.TLSConfig, s.QUICConfig, s.Config.CheckHTTPOrigin)
+		} else {
+			s.wtServer = s.ServeWebtransportFunc(s.Addr, s.TLSConfig, s.QUICConfig, s.Config.CheckHTTPOrigin)
 		}
 
 		if s.Logger != nil {
@@ -174,7 +172,7 @@ func (s *Server) ServeQUICConn(conn quic.Connection) error {
 			)
 		}
 
-		return s.serverInUse.ServeQUICConn(conn)
+		return s.wtServer.ServeQUICConn(conn)
 	case NextProtoMOQ:
 		select {
 		case s.nativeQUICCh <- conn:
@@ -221,14 +219,14 @@ func (s *Server) AcceptQUIC(ctx context.Context, mux *TrackMux) (*Session, error
 
 		connLogger.Debug("establishing a session over QUIC connection")
 
-		var path string
+		var path *string
 
 		// Listen the session stream
 		extensions := func(clientParams *Parameters) (*Parameters, error) {
 			var err error
 
 			// Get the path parameter
-			path, err = clientParams.GetString(param_type_path)
+			*path, err = clientParams.GetString(param_type_path)
 			if err != nil {
 				connLogger.Error("failed to get 'path' parameter", "error", err)
 				return nil, err
@@ -287,7 +285,7 @@ func (s *Server) AcceptWebTransport(w http.ResponseWriter, r *http.Request, mux 
 		logger = slog.New(slog.DiscardHandler)
 	}
 
-	conn, err := s.serverInUse.Upgrade(w, r)
+	conn, err := s.wtServer.Upgrade(w, r)
 	if err != nil {
 		logger.Error("failed to upgrade HTTP to WebTransport",
 			"error", err,
@@ -326,10 +324,10 @@ func (s *Server) AcceptWebTransport(w http.ResponseWriter, r *http.Request, mux 
 
 	setupCtx, cancelSetup := context.WithTimeout(r.Context(), s.acceptTimeout())
 	defer cancelSetup()
-	return s.acceptSession(setupCtx, r.URL.Path, conn, extensions, mux, connLogger)
+	return s.acceptSession(setupCtx, &r.URL.Path, conn, extensions, mux, connLogger)
 }
 
-func (s *Server) acceptSession(setupCtx context.Context, path string, conn quic.Connection,
+func (s *Server) acceptSession(setupCtx context.Context, path *string, conn quic.Connection,
 	extensions func(*Parameters) (*Parameters, error), mux *TrackMux, connLogger *slog.Logger) (*Session, error) {
 
 	sessionID := generateSessionID()
@@ -397,7 +395,7 @@ func (s *Server) acceptSession(setupCtx context.Context, path string, conn quic.
 	}
 
 	// Use default server version
-	version := internal.DefaultServerVersion
+	version := DefaultServerVersion
 
 	// Send a SESSION_SERVER message
 	ssm := message.SessionServerMessage{
@@ -419,7 +417,7 @@ func (s *Server) acceptSession(setupCtx context.Context, path string, conn quic.
 	}
 
 	// Create session
-	sess := newSession(conn, version, path, clientParams, serverParams,
+	sess := newSession(conn, version, *path, clientParams, serverParams,
 		stream, mux, sessLogger)
 
 	s.addSession(sess)

@@ -33,32 +33,24 @@ export class SessionServerMessage {
         if (err) {
             return [undefined, new Error("Failed to read version for SessionServer")];
         }
-        if (version === undefined) {
-            return [undefined, new Error("version is undefined")];
-        }
 
-        let [numExtensions, err2] = await reader.readVarint();
+        let [extensionCount, err2] = await reader.readVarint();
         if (err2) {
             return [undefined, new Error("Failed to read number of extensions for SessionServer")];
         }
-        if (numExtensions === undefined) {
-            return [undefined, new Error("numExtensions is undefined")];
-        }
-        if (numExtensions < 0) {
+        if (extensionCount < 0) {
             return [undefined, new Error("Invalid number of extensions for SessionServer")];
         }
-        if (numExtensions > BigInt(Number.MAX_SAFE_INTEGER)) {
+        if (extensionCount > BigInt(Number.MAX_SAFE_INTEGER)) {
             return [undefined, new Error("Number of extensions exceeds maximum safe integer for SessionServer")];
         }
 
+
         const extensions = new Extensions();
-        for (let i = 0; i < Number(numExtensions); i++) {
+        for (let i = 0; i < Number(extensionCount); i++) {
             let [extId, err3] = await reader.readVarint();
             if (err3) {
                 return [undefined, new Error(`Failed to read extension ID for SessionServer`)];
-            }
-            if (extId === undefined) {
-                return [undefined, new Error("extId is undefined")];
             }
 
             let [extData, err4] = await reader.readUint8Array();

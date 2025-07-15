@@ -11,11 +11,20 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "browser": {
-    "./dist/index.js": "./browser.js"
+  "exports": {
+    ".": {
+      "browser": "./dist/browser.js",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "build": "tsc",
+    "build": "npm run build:main && npm run build:browser",
+    "build:main": "tsc",
+    "build:browser": "tsc --project tsconfig.browser.json",
     "test": "jest"
   },
   "devDependencies": {

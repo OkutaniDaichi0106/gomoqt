@@ -12,7 +12,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic/quicgo"
@@ -305,7 +304,7 @@ func (c *Client) openSession(conn quic.Connection, path string, extensions func(
 
 	// Send a SESSION_CLIENT message
 	scm := message.SessionClientMessage{
-		SupportedVersions: internal.DefaultClientVersions,
+		SupportedVersions: DefaultClientVersions,
 		Parameters:        clientParams.paramMap,
 	}
 	err = scm.Encode(stream)

@@ -1,6 +1,7 @@
 package moqt
 
 import (
+	"net/http"
 	"time"
 )
 
@@ -13,7 +14,7 @@ type Config struct {
 
 	// NewSessionURI string // TODO:
 
-	// CheckRoot func(r SetupRequest) bool // TODO:
+	CheckHTTPOrigin func(*http.Request) bool // TODO: Check HTTP header for security
 
 	SetupTimeout time.Duration
 }

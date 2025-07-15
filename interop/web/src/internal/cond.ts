@@ -1,22 +1,19 @@
 export class Cond {
-    #promise: Promise<void>;
-    #resolve!: (value: void | PromiseLike<void>) => void;
+    #waiters: Array<(value: void | PromiseLike<void>) => void> = [];
 
-    constructor() {
-        this.#promise = new Promise<void>((resolve) => {
-            this.#resolve = resolve;
-        });
-    }
+    constructor() {}
 
     broadcast(): void {
-        this.#resolve();
-
-        this.#promise = new Promise<void>((resolve) => {
-            this.#resolve = resolve;
-        });
+        // Resolve all current waiters
+        const waiters = this.#waiters.splice(0);
+        for (const resolve of waiters) {
+            resolve();
+        }
     }
 
     wait(): Promise<void> {
-        return this.#promise;
+        return new Promise<void>((resolve) => {
+            this.#waiters.push(resolve);
+        });
     }
 }

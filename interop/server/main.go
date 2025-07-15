@@ -1,0 +1,175 @@
+package main
+
+import (
+	"context"
+	"crypto/tls"
+	"io"
+	"log/slog"
+	"net/http"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/OkutaniDaichi0106/gomoqt/moqt"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+)
+
+func main() {
+	server := moqt.Server{
+		Addr: "moqt.example.com:9000",
+		TLSConfig: &tls.Config{
+			NextProtos:         []string{"h3", "moq-00"},
+			Certificates:       []tls.Certificate{generateCert()},
+			InsecureSkipVerify: true, // TODO: Not recommended for production
+		},
+		QUICConfig: &quic.Config{
+			Allow0RTT:       true,
+			EnableDatagrams: true,
+		},
+		Config: &moqt.Config{
+			CheckHTTPOrigin: func(r *http.Request) bool {
+				return true // TODO: Implement proper origin check
+			},
+		},
+		Logger: slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+			Level: slog.LevelDebug,
+		})),
+	}
+
+	// Serve moq over webtransport
+	http.HandleFunc("/subscribe", func(w http.ResponseWriter, r *http.Request) {
+		mux := moqt.NewTrackMux()
+		mux.HandleFunc(context.Background(), "/server.broadcast", func(pub *moqt.Publication) {
+			seq := moqt.GroupSequenceFirst
+			for {
+				group, err := pub.TrackWriter.OpenGroup(seq)
+				if err != nil {
+					slog.Error("failed to open group", "error", err)
+					return
+				}
+
+				frame := moqt.NewFrame([]byte("Hello from interop server!"))
+				err = group.WriteFrame(frame)
+				if err != nil {
+					group.CancelWrite(moqt.InternalGroupErrorCode) // TODO: Handle error properly
+					slog.Error("failed to write frame", "error", err)
+					return
+				}
+
+				frame.Release()
+				group.Close()
+
+				seq = seq.Next()
+
+				time.Sleep(1 * time.Second) // Simulate periodic updates
+			}
+		})
+
+		_, err := server.AcceptWebTransport(w, r, mux)
+		if err != nil {
+			slog.Error("failed to serve moq over webtransport", "error", err)
+		}
+	})
+
+	http.HandleFunc("/publish", func(w http.ResponseWriter, r *http.Request) {
+		sess, err := server.AcceptWebTransport(w, r, nil)
+		if err != nil {
+			slog.Error("failed to serve moq over webtransport", "error", err)
+			return
+		}
+
+		anns, err := sess.OpenAnnounceStream("/")
+		if err != nil {
+			slog.Error("failed to open announce stream", "error", err)
+		}
+
+		for {
+			ann, err := anns.ReceiveAnnouncement(context.Background())
+			if err != nil {
+				slog.Error("failed to receive announcements", "error", err)
+				break
+			}
+
+			go func(ann *moqt.Announcement) {
+				if !ann.IsActive() {
+					return
+				}
+
+				sub, err := sess.OpenTrackStream(ann.BroadcastPath(), "index", nil)
+				if err != nil {
+					slog.Error("failed to open track stream", "error", err)
+					return
+				}
+
+				for {
+					gr, err := sub.TrackReader.AcceptGroup(context.Background())
+					if err != nil {
+						slog.Error("failed to accept group", "error", err)
+						return
+					}
+
+					for {
+						frame, err := gr.ReadFrame()
+						if err != nil {
+							if err == io.EOF {
+								break
+							}
+							gr.CancelRead(moqt.InternalGroupErrorCode)
+							slog.Error("failed to accept frame", "error", err)
+							return
+						}
+
+						frame.Release()
+					}
+				}
+			}(ann)
+		}
+
+	})
+
+	err := server.ListenAndServe()
+	if err != nil {
+		slog.Error("failed to listen and serve", "error", err)
+	}
+}
+
+func generateCert() tls.Certificate {
+	// Find project root by looking for go.mod file
+	projectRoot, err := findProjectRoot()
+	if err != nil {
+		panic(err)
+	}
+
+	// Load certificates from the interop/cert directory (project root)
+	certPath := filepath.Join(projectRoot, "interop", "server", "moqt.example.com.pem")
+	keyPath := filepath.Join(projectRoot, "interop", "server", "moqt.example.com-key.pem")
+
+	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+	if err != nil {
+		panic(err)
+	}
+	return cert
+}
+
+// findProjectRoot searches for the project root by looking for go.mod file
+func findProjectRoot() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir, nil
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			// Reached filesystem root
+			break
+		}
+		dir = parent
+	}
+
+	return "", os.ErrNotExist
+}

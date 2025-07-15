@@ -6,11 +6,15 @@ import (
 	"sync"
 )
 
-func newTrackSender(ctx context.Context, openGroupFunc func(ctx context.Context, seq GroupSequence) (*sendGroupStream, error)) *trackSender {
+func newTrackSender(ctx context.Context,
+	openGroupFunc func(ctx context.Context, seq GroupSequence) (*sendGroupStream, error),
+	acceptFunc func(Info),
+) *trackSender {
 	track := &trackSender{
 		ctx:           ctx,
 		queue:         make(map[*sendGroupStream]struct{}),
 		openGroupFunc: openGroupFunc,
+		acceptFunc:    acceptFunc,
 	}
 
 	go func() {

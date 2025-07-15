@@ -21,7 +21,7 @@ export class FrameMessage {
         if (err) {
             return [undefined, new Error("Failed to read data for FrameMessage")];
         }
-        if (!dataResult) {
+        if (dataResult === undefined) {
             return [undefined, new Error("data is undefined")];
         }
         return [new FrameMessage(dataResult), undefined];

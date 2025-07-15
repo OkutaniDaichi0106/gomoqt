@@ -5,7 +5,7 @@ import (
 	"net"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
-	quicgo_webtransportgo "github.com/OkutaniDaichi0106/webtransport-go"
+	quicgo_webtransportgo "github.com/quic-go/webtransport-go"
 )
 
 type sessionWrapper struct {

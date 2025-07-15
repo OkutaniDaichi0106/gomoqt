@@ -3,20 +3,23 @@ package webtransportgo
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"net"
 	"net/http"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/webtransport"
-	quicgo_webtransportgo "github.com/OkutaniDaichi0106/webtransport-go"
 	quicgo_quicgo "github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
+	quicgo_webtransportgo "github.com/quic-go/webtransport-go"
 )
 
-func NewDefaultServer(addr string, tslConfig *tls.Config, quicConfig *quic.Config, checkOrigin func(r *http.Request) bool) webtransport.Server {
+func NewDefaultServer(addr string, tlsConfig *tls.Config, quicConfig *quic.Config, checkOrigin func(r *http.Request) bool) webtransport.Server {
 	wtserver := &quicgo_webtransportgo.Server{
 		H3: http3.Server{
-			Addr: addr,
+			Addr:       addr,
+			TLSConfig:  tlsConfig,
+			QUICConfig: quicConfig,
 		},
 		CheckOrigin: checkOrigin,
 	}
@@ -51,11 +54,11 @@ func (w *serverWrapper) ServeQUICConn(conn quic.Connection) error {
 		return nil
 	}
 	if unwrapper, ok := conn.(interface {
-		Unwrap() quicgo_quicgo.Connection
+		Unwrap() *quicgo_quicgo.Conn
 	}); ok {
-		w.server.ServeQUICConn(unwrapper.Unwrap())
+		return w.server.ServeQUICConn(unwrapper.Unwrap())
 	}
-	return w.server.ServeQUICConn(UnwrapConnection(conn))
+	return errors.New("invalid connection type: expected a wrapped quic-go connection with Unwrap() method")
 }
 
 func (w *serverWrapper) Serve(conn net.PacketConn) error {

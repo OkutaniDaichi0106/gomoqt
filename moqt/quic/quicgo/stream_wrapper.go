@@ -11,7 +11,7 @@ import (
 var _ quic.Stream = (*rawQuicStream)(nil)
 
 type rawQuicStream struct {
-	stream quicgo_quicgo.Stream
+	stream *quicgo_quicgo.Stream
 }
 
 func (wrapper rawQuicStream) StreamID() quic.StreamID {
@@ -62,7 +62,7 @@ func (wrapper rawQuicStream) Context() context.Context {
 var _ quic.ReceiveStream = (*rawQuicReceiveStream)(nil)
 
 type rawQuicReceiveStream struct {
-	stream quicgo_quicgo.ReceiveStream
+	stream *quicgo_quicgo.ReceiveStream
 }
 
 func (wrapper rawQuicReceiveStream) StreamID() quic.StreamID {
@@ -88,7 +88,7 @@ func (wrapper rawQuicReceiveStream) SetReadDeadline(time time.Time) error {
 var _ quic.SendStream = (*rawQuicSendStream)(nil)
 
 type rawQuicSendStream struct {
-	stream quicgo_quicgo.SendStream
+	stream *quicgo_quicgo.SendStream
 }
 
 func (wrapper rawQuicSendStream) StreamID() quic.StreamID {

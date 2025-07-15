@@ -86,17 +86,16 @@ type Session struct {
 	logger *slog.Logger
 
 	conn quic.Connection
-	// connMu sync.Mutex
 
 	mux *TrackMux // TODO
 
 	subscribeIDCounter atomic.Uint64
 
-	trackReceivers        map[SubscribeID]*trackReceiver
-	receiveGroupMapLocker sync.RWMutex
+	trackReceivers    map[SubscribeID]*trackReceiver
+	receiverMapLocker sync.RWMutex
 
-	trackSenders       map[SubscribeID]*trackSender
-	sendGroupMapLocker sync.RWMutex
+	trackSenders    map[SubscribeID]*trackSender
+	senderMapLocker sync.RWMutex
 
 	isTerminating atomic.Bool
 	sessErr       error
@@ -279,9 +278,9 @@ func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *Su
 	)
 	// Create a receive group stream queue
 	trackReceiver := newTrackReceiver(substr.ctx)
-	s.receiveGroupMapLocker.Lock()
+	s.receiverMapLocker.Lock()
 	s.trackReceivers[id] = trackReceiver
-	s.receiveGroupMapLocker.Unlock()
+	s.receiverMapLocker.Unlock()
 
 	return &Subscription{
 		BroadcastPath: path,
@@ -566,9 +565,9 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 		trackSender.acceptFunc = func(info Info) {
 			substr.WriteInfo(info)
 		}
-		sess.sendGroupMapLocker.Lock()
+		sess.senderMapLocker.Lock()
 		sess.trackSenders[id] = trackSender
-		sess.sendGroupMapLocker.Unlock()
+		sess.senderMapLocker.Unlock()
 
 		subLogger.Info("serving track for subscription")
 

@@ -8,7 +8,7 @@ import (
 	quicgo_quicgo "github.com/quic-go/quic-go"
 )
 
-func WrapConnection(conn quicgo_quicgo.Connection) quic.Connection {
+func WrapConnection(conn *quicgo_quicgo.Conn) quic.Connection {
 	if conn == nil {
 		return nil
 	}
@@ -20,7 +20,7 @@ func WrapConnection(conn quicgo_quicgo.Connection) quic.Connection {
 var _ quic.Connection = (*connectionWrapper)(nil)
 
 type connectionWrapper struct {
-	conn quicgo_quicgo.Connection
+	conn *quicgo_quicgo.Conn
 }
 
 func (wrapper *connectionWrapper) AcceptStream(ctx context.Context) (quic.Stream, error) {
@@ -77,6 +77,6 @@ func (wrapper *connectionWrapper) SendDatagram(b []byte) error {
 	return WrapError(wrapper.conn.SendDatagram(b))
 }
 
-func (wrapper connectionWrapper) Unwrap() quicgo_quicgo.Connection {
+func (wrapper connectionWrapper) Unwrap() *quicgo_quicgo.Conn {
 	return wrapper.conn
 }

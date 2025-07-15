@@ -5,13 +5,13 @@ import (
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic/quicgo"
-	quicgo_webtransportgo "github.com/OkutaniDaichi0106/webtransport-go"
+	quicgo_webtransportgo "github.com/quic-go/webtransport-go"
 )
 
 var _ quic.Stream = (*streamWrapper)(nil)
 
 type streamWrapper struct {
-	stream quicgo_webtransportgo.Stream
+	stream *quicgo_webtransportgo.Stream
 }
 
 func (wrapper streamWrapper) StreamID() quic.StreamID {
@@ -56,7 +56,7 @@ func (wrapper streamWrapper) Close() error {
  *
  */
 type receiveStreamWrapper struct {
-	stream quicgo_webtransportgo.ReceiveStream
+	stream *quicgo_webtransportgo.ReceiveStream
 }
 
 func (wrapper receiveStreamWrapper) StreamID() quic.StreamID {
@@ -79,7 +79,7 @@ func (wrapper receiveStreamWrapper) SetReadDeadline(time time.Time) error {
  *
  */
 type sendStreamWrapper struct {
-	stream quicgo_webtransportgo.SendStream
+	stream *quicgo_webtransportgo.SendStream
 }
 
 func (wrapper sendStreamWrapper) StreamID() quic.StreamID {

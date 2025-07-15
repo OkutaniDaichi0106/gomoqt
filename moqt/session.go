@@ -83,12 +83,10 @@ type Session struct {
 	// Parameters specified by the server
 	serverParameters *Parameters
 
-	// bitrate atomic.Uint64 // Bitrate in bits per second
-
 	logger *slog.Logger
 
-	conn   quic.Connection
-	connMu sync.Mutex
+	conn quic.Connection
+	// connMu sync.Mutex
 
 	mux *TrackMux // TODO
 
@@ -125,8 +123,8 @@ func (s *Session) Terminate(code SessionErrorCode, msg string) error {
 		"message", msg,
 	)
 
-	s.connMu.Lock()
-	defer s.connMu.Unlock()
+	// s.connMu.Lock()
+	// defer s.connMu.Unlock()
 	err := s.conn.CloseWithError(quic.ConnectionErrorCode(code), msg)
 	if err != nil {
 		var appErr *quic.ApplicationError
@@ -174,9 +172,7 @@ func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *Su
 
 	id := s.nextSubscribeID()
 
-	s.connMu.Lock()
 	stream, err := s.conn.OpenStream()
-	s.connMu.Unlock()
 	if err != nil {
 		s.logger.Error("failed to open bidirectional stream",
 			"error", err,
@@ -309,13 +305,11 @@ func (sess *Session) OpenAnnounceStream(prefix string) (AnnouncementReader, erro
 
 	// Create a logger with consistent context for this announcement
 
-	sess.connMu.Lock()
 	stream, err := sess.conn.OpenStream()
 	if err != nil {
 		sess.logger.Error("failed to open stream for announce",
 			"error", err,
 		)
-		sess.connMu.Unlock()
 		var appErr *quic.ApplicationError
 		if errors.As(err, &appErr) {
 
@@ -326,7 +320,6 @@ func (sess *Session) OpenAnnounceStream(prefix string) (AnnouncementReader, erro
 
 		return nil, err
 	}
-	sess.connMu.Unlock()
 
 	// Create a stream-specific logger
 	streamLogger := sess.logger.With("stream_id", stream.StreamID())

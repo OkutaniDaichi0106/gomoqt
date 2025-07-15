@@ -56,9 +56,7 @@ function createChildContext(parent: Context, controller: AbortController): Conte
     return new DefaultContext(controller.signal);
 }
 
-let backgroundContext: Context | undefined = undefined;
-
-function createBackgroundContext(): Context {
+const backgroundContext: Context = function(): Context {
     const controller = new AbortController();
     
     // Unified handler for better performance
@@ -80,13 +78,10 @@ function createBackgroundContext(): Context {
     }
 
     return new DefaultContext(controller.signal);
-}
+}();
 
 // Public API functions
 export function background(): Context {
-    if (!backgroundContext) {
-        backgroundContext = createBackgroundContext();
-    }
     return backgroundContext;
 }
 

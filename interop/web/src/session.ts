@@ -11,7 +11,7 @@ import { Subscription } from "./subscription";
 import { BroadcastPath } from "./broadcast_path";
 import { TrackReader, TrackWriter } from "./track";
 import { GroupReader, GroupWriter } from "./group_stream";
-import { TrackMux } from "./track_mux";
+import { DefaultTrackMux, TrackMux } from "./track_mux";
 import { BiStreamTypes, UniStreamTypes } from "./stream_type";
 import { Queue } from "./internal/queue";
 
@@ -23,12 +23,15 @@ export class Session {
 
 	#idCounter: bigint = 0n;
 
-	#mux: TrackMux = new TrackMux();
+	#mux: TrackMux;
 
 	#subscribings: Map<SubscribeID, [Context, Queue<GroupReader>]> = new Map();
 
-	constructor(conn: WebTransport, versions: Set<Version> = new Set([Versions.DEVELOP]), extensions: Extensions = new Extensions()) {
+	constructor(conn: WebTransport, 
+		versions: Set<Version> = new Set([Versions.DEVELOP]), extensions: Extensions = new Extensions(),
+		mux: TrackMux = DefaultTrackMux) {
 		this.#conn = conn;
+		this.#mux = mux;
 		this.ready = conn.ready.then(async () => {
 			const stream = await conn.createBidirectionalStream();
 			const baseCtx = withPromise(background(), conn.closed); // TODO: Handle connection closure properly

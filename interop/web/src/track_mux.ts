@@ -70,7 +70,7 @@ export class TrackMux {
     }
 }
 
-
+export const DefaultTrackMux = new TrackMux();
 
 export interface TrackHandler {
     serveTrack(publisher: Publication): void;

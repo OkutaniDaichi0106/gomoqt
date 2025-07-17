@@ -3,12 +3,13 @@ package message
 import (
 	"io"
 
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-type SubscribeID uint64
-type TrackPriority byte
-type GroupOrder byte
+type SubscribeID = protocol.SubscribeID
+type TrackPriority = protocol.TrackPriority
+type GroupOrder = protocol.GroupOrder
 
 const (
 	GroupOrderDefault    GroupOrder = 0x00

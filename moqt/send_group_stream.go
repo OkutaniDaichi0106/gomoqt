@@ -10,12 +10,14 @@ import (
 
 var _ GroupWriter = (*sendGroupStream)(nil)
 
-func newSendGroupStream(trackCtx context.Context, stream quic.SendStream, sequence GroupSequence) *sendGroupStream {
+func newSendGroupStream(trackCtx context.Context, stream quic.SendStream,
+	sequence GroupSequence, onClose func()) *sendGroupStream {
 	ctx, cancel := context.WithCancelCause(trackCtx)
 	return &sendGroupStream{
 		ctx:      ctx,
 		cancel:   cancel,
 		sequence: sequence,
+		onClose:  onClose,
 		stream:   stream,
 	}
 }
@@ -29,6 +31,8 @@ type sendGroupStream struct {
 	stream quic.SendStream
 
 	frameCount uint64 // Number of frames sent on this stream
+
+	onClose func()
 }
 
 func (sgs *sendGroupStream) GroupSequence() GroupSequence {

@@ -32,7 +32,7 @@ func newSession(conn quic.Connection, version protocol.Version, path string, cli
 		logger:           logger,
 		conn:             conn,
 		mux:              mux,
-		trackReceivers:   make(map[SubscribeID]*trackReceiver),
+		trackReceivers:   make(map[SubscribeID]func(GroupSequence, quic.ReceiveStream)),
 		trackSenders:     make(map[SubscribeID]*trackSender),
 	}
 
@@ -91,7 +91,7 @@ type Session struct {
 
 	subscribeIDCounter atomic.Uint64
 
-	trackReceivers    map[SubscribeID]*trackReceiver
+	trackReceivers    map[SubscribeID]func(GroupSequence, quic.ReceiveStream)
 	receiverMapLocker sync.RWMutex
 
 	trackSenders    map[SubscribeID]*trackSender
@@ -279,7 +279,7 @@ func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *Su
 	// Create a receive group stream queue
 	trackReceiver := newTrackReceiver(substr.ctx)
 	s.receiverMapLocker.Lock()
-	s.trackReceivers[id] = trackReceiver
+	s.trackReceivers[id] = trackReceiver.enqueueGroup
 	s.receiverMapLocker.Unlock()
 
 	return &Subscription{
@@ -372,10 +372,6 @@ func (sess *Session) OpenAnnounceStream(prefix string) (AnnouncementReader, erro
 
 		return nil, err
 	}
-
-	streamLogger.Debug("announce stream opened successfully",
-		"track_prefix", prefix,
-	)
 
 	return newReceiveAnnounceStream(sess.ctx, stream, prefix), nil
 }
@@ -478,93 +474,39 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 
 		subLogger.Debug("accepted a subscribe stream")
 
-		openGroupStreamFunc := func(trackCtx context.Context, seq GroupSequence) (*sendGroupStream, error) {
+		// openGroupStreamFunc := func(trackCtx context.Context, seq GroupSequence) (*sendGroupStream, error) {
 
-			stream, err := sess.conn.OpenUniStream()
-			if err != nil {
-				sess.logger.Error("failed to open an unidirectional stream",
-					"error", err,
-				)
+		// 	// Add stream_id to the logger context
+		// 	streamLogger := subLogger.With(
+		// 		"stream_id", stream.StreamID(),
+		// 		"group_sequence", seq,
+		// 	)
+		// 	streamLogger.Debug("opened a group stream")
 
-				var appErr *quic.ApplicationError
-				if errors.As(err, &appErr) {
-					sessErr := &SessionError{
-						ApplicationError: appErr,
-					}
-					return nil, sessErr
-				}
+		// 	stm := message.StreamTypeMessage{
+		// 		StreamType: stream_type_group,
+		// 	}
+		// 	err = stm.Encode(stream)
 
-				return nil, err
-			}
+		// 	gm := message.GroupMessage{
+		// 		SubscribeID:   sm.SubscribeID,
+		// 		GroupSequence: message.GroupSequence(seq),
+		// 	}
+		// 	err = gm.Encode(stream)
 
-			// Add stream_id to the logger context
-			streamLogger := subLogger.With(
-				"stream_id", stream.StreamID(),
-				"group_sequence", seq,
-			)
-			streamLogger.Debug("opened a group stream")
+		// 	return newSendGroupStream(trackCtx, stream, seq), nil
+		// }
 
-			stm := message.StreamTypeMessage{
-				StreamType: stream_type_group,
-			}
-			err = stm.Encode(stream)
-			if err != nil {
-				streamLogger.Error("failed to send stream type message",
-					"error", err,
-				)
+		removeTrackFunc := func() {
+			sess.senderMapLocker.Lock()
+			defer sess.senderMapLocker.Unlock()
 
-				var strErr *quic.StreamError
-				if errors.As(err, &strErr) {
-					return nil, &GroupError{StreamError: strErr}
-				}
-
-				strErrCode := quic.StreamErrorCode(InternalGroupErrorCode)
-				stream.CancelWrite(strErrCode)
-
-				return nil, GroupError{
-					StreamError: &quic.StreamError{
-						StreamID:  stream.StreamID(),
-						ErrorCode: strErrCode,
-					},
-				}
-			}
-
-			gm := message.GroupMessage{
-				SubscribeID:   sm.SubscribeID,
-				GroupSequence: message.GroupSequence(seq),
-			}
-			err = gm.Encode(stream)
-			if err != nil {
-				streamLogger.Error("failed to send group message",
-					"error", err,
-				)
-
-				var strErr *quic.StreamError
-				if errors.As(err, &strErr) {
-					streamLogger.Error("group message encoding failed",
-						"error", strErr,
-					)
-					return nil, &GroupError{StreamError: strErr}
-				}
-
-				strErrCode := quic.StreamErrorCode(InternalGroupErrorCode)
-				stream.CancelWrite(strErrCode)
-
-				return nil, GroupError{
-					StreamError: &quic.StreamError{
-						StreamID:  stream.StreamID(),
-						ErrorCode: strErrCode,
-					},
-				}
-			}
-
-			return newSendGroupStream(trackCtx, stream, seq), nil
+			delete(sess.trackSenders, id)
 		}
 
-		trackSender := newTrackSender(substr.ctx, openGroupStreamFunc, substr.accept)
-		trackSender.acceptFunc = func(info Info) {
-			substr.WriteInfo(info)
-		}
+		trackSender := newTrackSender(substr.ctx, subLogger,
+			sess.conn.OpenUniStream, substr.WriteInfo, removeTrackFunc)
+
 		sess.senderMapLocker.Lock()
 		sess.trackSenders[id] = trackSender
 		sess.senderMapLocker.Unlock()
@@ -640,7 +582,7 @@ func (sess *Session) processUniStream(stream quic.ReceiveStream, streamLogger *s
 			"group_sequence", gm.GroupSequence,
 		)
 
-		receiver, ok := sess.trackReceivers[id]
+		enqueueFunc, ok := sess.trackReceivers[id]
 		if !ok {
 			groupLogger.Warn("received group for unknown subscription")
 			stream.CancelRead(quic.StreamErrorCode(InvalidSubscribeIDErrorCode))
@@ -650,7 +592,7 @@ func (sess *Session) processUniStream(stream quic.ReceiveStream, streamLogger *s
 		groupLogger.Debug("accepted group stream")
 
 		// Enqueue the receiver
-		receiver.enqueueGroup(GroupSequence(gm.GroupSequence), stream)
+		enqueueFunc(gm.GroupSequence, stream)
 	default:
 		streamLogger.Error("unknown unidirectional stream type received",
 			"stream_type", stm.StreamType,

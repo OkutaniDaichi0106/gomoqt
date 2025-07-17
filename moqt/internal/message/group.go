@@ -3,10 +3,11 @@ package message
 import (
 	"io"
 
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-type GroupSequence uint64
+type GroupSequence = protocol.GroupSequence
 
 type GroupMessage struct {
 	SubscribeID   SubscribeID

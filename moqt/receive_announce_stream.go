@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
@@ -199,6 +200,8 @@ func (ras *receiveAnnounceStream) listenAnnouncements() {
 				ras.cancel(closeErr)
 				return
 			}
+
+			slog.Debug("received announce message", "message", am)
 
 			// suffix = am.TrackSuffix
 

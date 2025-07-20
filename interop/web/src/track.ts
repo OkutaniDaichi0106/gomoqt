@@ -7,6 +7,7 @@ import { Writer } from "./io";
 import { UniStreamTypes } from "./stream_type";
 import { GroupMessage } from "./message";
 import { BroadcastPath } from "./broadcast_path";
+import { PublishAbortedErrorCode, SubscribeErrorCode } from "./error";
 
 export class TrackWriter {
     broadcastPath: BroadcastPath;

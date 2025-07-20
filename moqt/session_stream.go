@@ -1,7 +1,6 @@
 package moqt
 
 import (
-	"context"
 	"errors"
 	"sync"
 
@@ -9,12 +8,8 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-func newSessionStream(connCtx context.Context, stream quic.Stream) *sessionStream {
-	ctx, cancel := context.WithCancelCause(connCtx)
-
+func newSessionStream(stream quic.Stream) *sessionStream {
 	sessStr := &sessionStream{
-		ctx:       ctx,
-		cancel:    cancel,
 		updatedCh: make(chan struct{}, 1),
 		stream:    stream,
 	}
@@ -24,9 +19,9 @@ func newSessionStream(connCtx context.Context, stream quic.Stream) *sessionStrea
 		var err error
 
 		for {
-			err = sum.Decode(sessStr.stream)
+			err = sum.Decode(stream)
 			if err != nil {
-				return
+				break
 			}
 
 			// Update the session bitrate
@@ -41,37 +36,36 @@ func newSessionStream(connCtx context.Context, stream quic.Stream) *sessionStrea
 			}
 		}
 
-		sessStr.close()
+		close(sessStr.updatedCh)
 	}()
 
 	return sessStr
 }
 
 type sessionStream struct {
-	ctx    context.Context
-	cancel context.CancelCauseFunc
-
 	updatedCh chan struct{}
-	closed    bool // Track if the channel is closed
 
 	localBitrate  uint64 // The bitrate set by the local
 	remoteBitrate uint64 // The bitrate set by the remote
 
 	stream quic.Stream
-	mu     sync.Mutex
+
+	mu sync.Mutex
 }
 
 func (ss *sessionStream) updateSession(bitrate uint64) error {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
 
-	sum := message.SessionUpdateMessage{
+	err := message.SessionUpdateMessage{
 		Bitrate: bitrate,
-	}
-	err := sum.Encode(ss.stream)
+	}.Encode(ss.stream)
 	if err != nil {
-		var strErr *quic.StreamError
-		if errors.As(err, &strErr) && strErr.Remote {
+		var appErr *quic.ApplicationError
+		if errors.As(err, &appErr) {
+			return &SessionError{
+				ApplicationError: appErr,
+			}
 		}
 
 		return err
@@ -84,23 +78,4 @@ func (ss *sessionStream) updateSession(bitrate uint64) error {
 
 func (ss *sessionStream) SessionUpdated() <-chan struct{} {
 	return ss.updatedCh
-}
-
-func (ss *sessionStream) close() error {
-	ss.mu.Lock()
-	defer ss.mu.Unlock()
-
-	// If already closed, return early without error
-	if ss.closed {
-		return nil
-	}
-	ss.closed = true
-
-	err := ss.stream.Close()
-
-	ss.cancel(nil)
-
-	close(ss.updatedCh)
-
-	return err
 }

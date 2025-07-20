@@ -58,8 +58,8 @@ func TestNewMux_Handle(t *testing.T) {
 			assert.NotNil(t, foundHandler, tt.description)
 
 			// Test handler execution
-			publisher := createNewTestPublisher(tt.path)
-			foundHandler.ServeTrack(publisher)
+			trackWriter := newTrackWriter(tt.path, TrackName("test_track"), nil, nil, nil)
+			foundHandler.ServeTrack(trackWriter)
 
 			assert.True(t, called, "handler should be called when serving track")
 		})
@@ -80,8 +80,8 @@ func TestNewMux_Handle_Overwrite(t *testing.T) {
 	mux.Handle(ctx, path, handler1)
 
 	// Test first handler
-	publisher := createNewTestPublisher(path)
-	mux.ServeTrack(publisher)
+	trackWriter := newTrackWriter(path, TrackName("test_track1"), nil, nil, nil)
+	mux.ServeTrack(trackWriter)
 	assert.True(t, called1, "First handler should be called")
 	assert.False(t, called2, "Second handler should not be called yet")
 
@@ -90,7 +90,7 @@ func TestNewMux_Handle_Overwrite(t *testing.T) {
 	mux.Handle(ctx, path, handler2)
 
 	// Test that first handler is still active (overwrite is prevented)
-	mux.ServeTrack(publisher)
+	mux.ServeTrack(trackWriter)
 	assert.True(t, called1, "First handler should still be called after attempted overwrite")
 	assert.False(t, called2, "Second handler should not be called due to overwrite prevention")
 }
@@ -130,11 +130,10 @@ func TestNewMux_ServeTrack(t *testing.T) {
 		calledCh <- tw
 	}))
 
-	// Create and serve publisher
-	publisher := createNewTestPublisher(path)
-	publisher.TrackName = trackName
+	// Create and serve track writer
+	trackWriter := newTrackWriter(path, trackName, nil, nil, nil)
 
-	mux.ServeTrack(publisher)
+	mux.ServeTrack(trackWriter)
 
 	// Verify handler was called with correct publisher
 	select {
@@ -161,7 +160,7 @@ func TestNewMux_ServeTrack_NotFound(t *testing.T) {
 		return mockSendStream, nil
 	}
 	closeFunc := func() {}
-	trackWriter := newTrackWriter(substr, openUniStreamFunc, closeFunc)
+	trackWriter := newTrackWriter("/broadcast/test", "test_track", substr, openUniStreamFunc, closeFunc)
 	// Should use NotFoundHandler which closes the controller
 	mux.ServeTrack(trackWriter)
 
@@ -195,7 +194,7 @@ func TestNewMux_ServeTrack_NilSubscribeStream(t *testing.T) {
 		return &MockQUICSendStream{}, nil
 	}
 	closeFunc := func() {}
-	trackWriter := newTrackWriter(nil, openUniStreamFunc, closeFunc)
+	trackWriter := newTrackWriter("/broadcast/test", "test_track", nil, openUniStreamFunc, closeFunc)
 
 	// Should handle nil subscribe stream gracefully without panic
 	assert.NotPanics(t, func() {
@@ -206,11 +205,11 @@ func TestNewMux_ServeTrack_NilSubscribeStream(t *testing.T) {
 func TestNewMux_ServeTrack_InvalidPath(t *testing.T) {
 	mux := NewTrackMux()
 
-	publisher := createNewTestPublisher(BroadcastPath("invalid-path"))
+	trackWriter := newTrackWriter("invalid-path", "test_track", nil, nil, nil)
 
 	// Should panic for invalid path
 	assert.Panics(t, func() {
-		mux.ServeTrack(publisher)
+		mux.ServeTrack(trackWriter)
 	})
 }
 
@@ -411,12 +410,9 @@ func TestNewMux_Handler(t *testing.T) {
 	path := BroadcastPath("/test")
 
 	// Test not found case first - verify behavior not identity
-	publisher := createNewTestPublisher(path)
-	mockController := publisher.Controller.(*MockPublishController)
-	mockController.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
+	trackWriter := newTrackWriter(path, TrackName("test_track"), nil, nil, nil)
 
-	mux.ServeTrack(publisher)
-	mockController.AssertCalled(t, "CloseWithError", TrackNotFoundErrorCode)
+	mux.ServeTrack(trackWriter)
 
 	// Register a handler
 	called := false
@@ -424,8 +420,8 @@ func TestNewMux_Handler(t *testing.T) {
 	mux.Handle(ctx, path, expectedHandler)
 
 	// Test found case - verify behavior not identity
-	publisher2 := createNewTestPublisher(path)
-	mux.ServeTrack(publisher2)
+	trackWriter2 := newTrackWriter(path, TrackName("test_track2"), nil, nil, nil)
+	mux.ServeTrack(trackWriter2)
 	assert.True(t, called, "registered handler should be called")
 }
 
@@ -458,8 +454,8 @@ func TestNewMux_HandleFunc(t *testing.T) {
 	assert.NotNil(t, handler, "handler should be registered")
 
 	// Test that the function is called correctly
-	publisher := createNewTestPublisher(path)
-	handler.ServeTrack(publisher)
+	trackWriter := newTrackWriter(path, TrackName("test_track"), nil, nil, nil)
+	handler.ServeTrack(trackWriter)
 	assert.True(t, called, "function should be called")
 }
 
@@ -476,8 +472,8 @@ func TestNewMux_Announce_Direct(t *testing.T) {
 	mux.Announce(announcement, handler)
 
 	// Verify handler is registered by testing behavior
-	publisher := createNewTestPublisher(path)
-	mux.ServeTrack(publisher)
+	trackWriter := newTrackWriter(path, TrackName("test_track"), nil, nil, nil)
+	mux.ServeTrack(trackWriter)
 	assert.True(t, called, "registered handler should be called")
 }
 
@@ -495,11 +491,9 @@ func TestNewMux_Announce_InactiveAnnouncement(t *testing.T) {
 	mux.Announce(announcement, handler)
 
 	// Handler should not be registered - test by verifying NotFoundHandler behavior
-	publisher := createNewTestPublisher(path)
-	mockController := publisher.Controller.(*MockPublishController)
-	mockController.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
+	trackWriter := newTrackWriter(path, TrackName("test_track"), nil, nil, nil)
 
-	mux.ServeTrack(publisher)
+	mux.ServeTrack(trackWriter)
 	mockController.AssertCalled(t, "CloseWithError", TrackNotFoundErrorCode)
 }
 

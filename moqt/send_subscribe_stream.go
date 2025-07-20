@@ -11,7 +11,27 @@ import (
 )
 
 func newSendSubscribeStream(id SubscribeID, stream quic.Stream, config *TrackConfig) *sendSubscribeStream {
-	ctx, cancel := context.WithCancelCause(stream.Context())
+	ctx, cancel := context.WithCancelCause(context.Background())
+	go func() {
+		streamCtx := stream.Context()
+		<-streamCtx.Done()
+		reason := context.Cause(streamCtx)
+		var (
+			strErr *quic.StreamError
+			appErr *quic.ApplicationError
+		)
+		if errors.As(reason, &strErr) {
+			reason = &SubscribeError{
+				StreamError: strErr,
+			}
+		} else if errors.As(reason, &appErr) {
+			reason = &SessionError{
+				ApplicationError: appErr,
+			}
+		}
+		cancel(reason)
+	}()
+
 	substr := &sendSubscribeStream{
 		ctx:    ctx,
 		cancel: cancel,

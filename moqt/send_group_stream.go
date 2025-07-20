@@ -10,9 +10,28 @@ import (
 
 var _ GroupWriter = (*sendGroupStream)(nil)
 
-func newSendGroupStream(trackCtx context.Context, stream quic.SendStream,
-	sequence GroupSequence, onClose func()) *sendGroupStream {
+func newSendGroupStream(trackCtx context.Context, stream quic.SendStream, sequence GroupSequence,
+	onClose func()) *sendGroupStream {
 	ctx, cancel := context.WithCancelCause(trackCtx)
+	go func() {
+		streamCtx := stream.Context()
+		<-streamCtx.Done()
+		reason := context.Cause(streamCtx)
+		var (
+			strErr *quic.StreamError
+			appErr *quic.ApplicationError
+		)
+		if errors.As(reason, &strErr) {
+			reason = &GroupError{
+				StreamError: strErr,
+			}
+		} else if errors.As(reason, &appErr) {
+			reason = &SessionError{
+				ApplicationError: appErr,
+			}
+		}
+		cancel(reason)
+	}()
 	return &sendGroupStream{
 		ctx:      ctx,
 		cancel:   cancel,

@@ -18,8 +18,29 @@ type AnnouncementReader interface {
 	CloseWithError(AnnounceErrorCode) error
 }
 
-func newReceiveAnnounceStream(sessCtx context.Context, stream quic.Stream, prefix string) *receiveAnnounceStream {
-	ctx, cancel := context.WithCancelCause(sessCtx)
+func newReceiveAnnounceStream(stream quic.Stream, prefix string) *receiveAnnounceStream {
+	ctx, cancel := context.WithCancelCause(context.Background())
+
+	// Propagate the cancellation with AnnounceError
+	go func() {
+		streamCtx := stream.Context()
+		<-streamCtx.Done()
+		reason := context.Cause(streamCtx)
+		var (
+			strErr *quic.StreamError
+			appErr *quic.ApplicationError
+		)
+		if errors.As(reason, &strErr) {
+			reason = &SubscribeError{
+				StreamError: strErr,
+			}
+		} else if errors.As(reason, &appErr) {
+			reason = &SessionError{
+				ApplicationError: appErr,
+			}
+		}
+		cancel(reason)
+	}()
 	annstr := &receiveAnnounceStream{
 		ctx:         ctx,
 		cancel:      cancel,

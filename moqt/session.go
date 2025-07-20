@@ -23,8 +23,42 @@ func newSession(conn quic.Connection, version protocol.Version, path string, cli
 		logger = slog.New(slog.DiscardHandler)
 	}
 
+	// Create a context for the session
+	// This context will be cancelled when the connection is closed
+	sessCtx, sessCancel := context.WithCancelCause(context.Background())
+	go func() {
+		connCtx := conn.Context()
+		<-connCtx.Done()
+		reason := context.Cause(connCtx)
+		var appErr *quic.ApplicationError
+		if errors.As(reason, appErr) {
+			reason = &SessionError{
+				ApplicationError: appErr,
+			}
+		}
+
+		sessCancel(reason)
+	}()
+
+	// Supervise the session stream closure
+	go func() {
+		<-stream.Context().Done()
+		if conn.Context().Err() != nil {
+			return // If the connection is already closed, do nothing
+		}
+
+		// If the stream is closed unexpectedly, terminate the session
+		logger.Warn("session stream closed unexpectedly",
+			"reason", context.Cause(stream.Context()),
+		)
+
+		conn.CloseWithError(quic.ConnectionErrorCode(ProtocolViolationErrorCode), "session stream closed unexpectedly")
+	}()
+
 	sess := &Session{
-		sessionStream:    newSessionStream(conn.Context(), stream),
+		sessionStream:    newSessionStream(stream),
+		ctx:              sessCtx,
+		cancel:           sessCancel,
 		path:             path,
 		version:          version,
 		clientParameters: clientParams,
@@ -66,6 +100,9 @@ func newSession(conn quic.Connection, version protocol.Version, path string, cli
 
 type Session struct {
 	*sessionStream
+
+	ctx    context.Context         // Context for the session
+	cancel context.CancelCauseFunc // Cancel function for the session context
 
 	wg sync.WaitGroup // WaitGroup for session cleanup
 
@@ -119,9 +156,6 @@ func (s *Session) Terminate(code SessionErrorCode, msg string) error {
 		"message", msg,
 	)
 
-	//
-	s.sessionStream.close()
-
 	err := s.conn.CloseWithError(quic.ConnectionErrorCode(code), msg)
 	if err != nil {
 		var appErr *quic.ApplicationError
@@ -141,14 +175,6 @@ func (s *Session) Terminate(code SessionErrorCode, msg string) error {
 		)
 		return err
 	}
-
-	s.sessErr = &SessionError{
-		ApplicationError: &quic.ApplicationError{
-			ErrorCode:    quic.ApplicationErrorCode(code),
-			ErrorMessage: msg,
-		},
-	}
-	s.cancel(s.sessErr)
 
 	// Wait for finishing handling streams
 	s.wg.Wait()
@@ -361,7 +387,7 @@ func (sess *Session) OpenAnnounceStream(prefix string) (AnnouncementReader, erro
 		return nil, err
 	}
 
-	return newReceiveAnnounceStream(sess.ctx, stream, prefix), nil
+	return newReceiveAnnounceStream(stream, prefix), nil
 }
 
 func (sess *Session) goAway(uri string) {

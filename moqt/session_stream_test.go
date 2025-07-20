@@ -29,9 +29,8 @@ func TestNewSessionStream(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			ctx := context.Background()
 			mockStream := tt.setupMock()
-			ss := newSessionStream(ctx, mockStream)
+			ss := newSessionStream(mockStream)
 
 			assert.NotNil(t, ss, "newSessionStream should not return nil")
 			assert.NotNil(t, ss.SessionUpdated(), "SessionUpdated should return a valid channel")
@@ -49,7 +48,6 @@ func TestNewSessionStream(t *testing.T) {
 }
 
 func TestSessionStream_updateSession(t *testing.T) {
-	ctx := context.Background()
 	mockStream := &MockQUICStream{}
 
 	// Setup Read mock - EOF will eventually trigger close from background goroutine
@@ -68,7 +66,7 @@ func TestSessionStream_updateSession(t *testing.T) {
 	// Set up mock expectation for Write method with exact expectedData
 	mockStream.On("Write", expectedData).Return(len(expectedData), nil).Once()
 
-	ss := newSessionStream(ctx, mockStream)
+	ss := newSessionStream(mockStream)
 
 	err = ss.updateSession(bitrate)
 
@@ -81,7 +79,6 @@ func TestSessionStream_updateSession(t *testing.T) {
 }
 
 func TestSessionStream_updateSession_WriteError(t *testing.T) {
-	ctx := context.Background()
 	mockStream := &MockQUICStream{}
 	writeError := errors.New("write error")
 
@@ -89,7 +86,7 @@ func TestSessionStream_updateSession_WriteError(t *testing.T) {
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 	mockStream.On("Write", mock.Anything).Return(0, writeError)
 
-	ss := newSessionStream(ctx, mockStream)
+	ss := newSessionStream(mockStream)
 
 	err := ss.updateSession(uint64(1000000))
 
@@ -102,13 +99,12 @@ func TestSessionStream_updateSession_WriteError(t *testing.T) {
 }
 
 func TestSessionStream_SessionUpdated(t *testing.T) {
-	ctx := context.Background()
 	mockStream := &MockQUICStream{}
 
 	// Setup Read mock - EOF will eventually trigger close from background goroutine
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 
-	ss := newSessionStream(ctx, mockStream)
+	ss := newSessionStream(mockStream)
 
 	ch := ss.SessionUpdated()
 	assert.NotNil(t, ch, "SessionUpdated should return a valid channel")
@@ -120,63 +116,14 @@ func TestSessionStream_SessionUpdated(t *testing.T) {
 	mockStream.AssertExpectations(t)
 }
 
-func TestSessionStream_close(t *testing.T) {
-	ctx := context.Background()
-	mockStream := &MockQUICStream{}
-
-	// Setup Read mock - EOF will eventually trigger close from background goroutine
-	// Use Maybe() since close() might happen before Read is called
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
-	// Setup Close mock for explicit close() call
-	mockStream.On("Close").Return(nil).Once()
-
-	ss := newSessionStream(ctx, mockStream)
-
-	err := ss.close()
-
-	assert.NoError(t, err)
-
-	// Verify underlying stream is closed
-	mockStream.AssertCalled(t, "Close")
-
-	// Give time for background goroutines to complete
-	time.Sleep(50 * time.Millisecond)
-	mockStream.AssertExpectations(t)
-}
-
-func TestSessionStream_close_AlreadyClosed(t *testing.T) {
-	ctx := context.Background()
-	mockStream := &MockQUICStream{}
-
-	// Setup Read mock - EOF will eventually trigger close from background goroutine
-	// Use Maybe() since close() might happen before Read is called
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
-	mockStream.On("Close").Return(nil).Once()
-
-	ss := newSessionStream(ctx, mockStream)
-
-	// Close once
-	err1 := ss.close()
-	assert.NoError(t, err1)
-
-	// Close again should return the previous close error
-	err2 := ss.close()
-	assert.NoError(t, err2, "second close() should return nil since closeErr is nil")
-
-	// Give time for background goroutines to complete
-	time.Sleep(50 * time.Millisecond)
-	mockStream.AssertExpectations(t)
-}
-
 func TestSessionStream_updateSession_ZeroBitrate(t *testing.T) {
-	ctx := context.Background()
 	mockStream := &MockQUICStream{}
 
 	// Setup Read mock - EOF will trigger close from background goroutine
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 	mockStream.On("Write", mock.Anything).Return(2, nil) // 2 bytes for zero bitrate message
 
-	ss := newSessionStream(ctx, mockStream)
+	ss := newSessionStream(mockStream)
 
 	// Give time for background goroutine to start
 	time.Sleep(10 * time.Millisecond)
@@ -190,14 +137,13 @@ func TestSessionStream_updateSession_ZeroBitrate(t *testing.T) {
 }
 
 func TestSessionStream_updateSession_LargeBitrate(t *testing.T) {
-	ctx := context.Background()
 	mockStream := &MockQUICStream{}
 
 	// Setup Read mock - EOF will trigger close from background goroutine
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 	mockStream.On("Write", mock.Anything).Return(10, nil) // 10 bytes for large bitrate message
 
-	ss := newSessionStream(ctx, mockStream)
+	ss := newSessionStream(mockStream)
 
 	// Give time for background goroutine to start
 	time.Sleep(10 * time.Millisecond)
@@ -259,7 +205,6 @@ func TestSessionStream_listenUpdates(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			ctx := context.Background()
 			buf := tt.buffer()
 			mockStream := &MockQUICStream{
 				ReadFunc: func(p []byte) (n int, err error) {
@@ -269,7 +214,7 @@ func TestSessionStream_listenUpdates(t *testing.T) {
 
 			mockStream.On("Read", mock.Anything).Maybe()
 
-			ss := newSessionStream(ctx, mockStream)
+			ss := newSessionStream(mockStream)
 
 			// Give time for listenUpdates to process the message
 			time.Sleep(100 * time.Millisecond)
@@ -291,13 +236,12 @@ func TestSessionStream_listenUpdates(t *testing.T) {
 }
 
 func TestSessionStream_listenUpdates_StreamClosed(t *testing.T) {
-	ctx := context.Background()
 	mockStream := &MockQUICStream{}
 
 	// Set up mock to return EOF immediately
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Once()
 
-	ss := newSessionStream(ctx, mockStream)
+	ss := newSessionStream(mockStream)
 
 	// Give time for listenUpdates to encounter the EOF
 	time.Sleep(50 * time.Millisecond)
@@ -319,8 +263,9 @@ func TestSessionStream_listenUpdates_ContextCancellation(t *testing.T) {
 
 	// Mock Read to potentially be called
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
+	mockStream.On("Context").Return(ctx)
 
-	ss := newSessionStream(ctx, mockStream)
+	ss := newSessionStream(mockStream)
 
 	// Let listenUpdates start
 	time.Sleep(10 * time.Millisecond)
@@ -343,7 +288,6 @@ func TestSessionStream_listenUpdates_ContextCancellation(t *testing.T) {
 }
 
 func TestSessionStream_ConcurrentAccess(t *testing.T) {
-	ctx := context.Background()
 	mockStream := &MockQUICStream{}
 
 	// Setup mocks to allow concurrent operations
@@ -351,7 +295,7 @@ func TestSessionStream_ConcurrentAccess(t *testing.T) {
 	mockStream.On("Write", mock.Anything).Return(8, nil).Maybe()
 	mockStream.On("Close").Return(nil).Maybe()
 
-	ss := newSessionStream(ctx, mockStream)
+	ss := newSessionStream(mockStream)
 
 	// Test concurrent access to various methods
 	done := make(chan struct{})

@@ -17,7 +17,6 @@ import (
 )
 
 func TestNewReceiveAnnounceStream(t *testing.T) {
-	sessCtx := context.Background()
 	mockStream := &MockQUICStream{}
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 	mockStream.On("CancelRead", mock.Anything).Return().Maybe()
@@ -25,7 +24,7 @@ func TestNewReceiveAnnounceStream(t *testing.T) {
 	mockStream.On("StreamID").Return(quic.StreamID(123)).Maybe()
 	prefix := "/test/prefix"
 
-	ras := newReceiveAnnounceStream(sessCtx, mockStream, prefix)
+	ras := newReceiveAnnounceStream(mockStream, prefix)
 
 	require.NotNil(t, ras)
 	assert.Equal(t, prefix, ras.prefix)
@@ -50,7 +49,6 @@ func TestReceiveAnnounceStream_ReceiveAnnouncement(t *testing.T) {
 	}{
 		"success_with_valid_announcement": {
 			receiveAnnounceStream: func() *receiveAnnounceStream {
-				sessCtx := context.Background()
 				buf := bytes.NewBuffer(nil)
 				err := message.AnnounceMessage{
 					TrackSuffix:    "valid_announcement",
@@ -73,7 +71,7 @@ func TestReceiveAnnounceStream_ReceiveAnnouncement(t *testing.T) {
 				mockStream.On("CancelRead", mock.Anything).Return().Maybe()
 				mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
 				mockStream.On("StreamID").Return(quic.StreamID(123)).Maybe()
-				ras := newReceiveAnnounceStream(sessCtx, mockStream, "/test/")
+				ras := newReceiveAnnounceStream(mockStream, "/test/")
 				return ras
 			}(),
 			ctx:     context.Background(),
@@ -82,7 +80,6 @@ func TestReceiveAnnounceStream_ReceiveAnnouncement(t *testing.T) {
 		},
 		"context_cancelled": {
 			receiveAnnounceStream: func() *receiveAnnounceStream {
-				sessCtx := context.Background()
 				mockStream := &MockQUICStream{
 					ReadFunc: func(p []byte) (int, error) {
 						// Block on read to simulate ongoing stream
@@ -93,7 +90,7 @@ func TestReceiveAnnounceStream_ReceiveAnnouncement(t *testing.T) {
 				mockStream.On("CancelRead", mock.Anything).Return().Maybe()
 				mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
 				mockStream.On("StreamID").Return(quic.StreamID(123)).Maybe()
-				return newReceiveAnnounceStream(sessCtx, mockStream, "/test/")
+				return newReceiveAnnounceStream(mockStream, "/test/")
 			}(),
 			ctx: func() context.Context { ctx, cancel := context.WithCancel(context.Background()); cancel(); return ctx }(), wantErr: true,
 			wantErrType: context.Canceled,
@@ -101,7 +98,6 @@ func TestReceiveAnnounceStream_ReceiveAnnouncement(t *testing.T) {
 		},
 		"stream_closed": {
 			receiveAnnounceStream: func() *receiveAnnounceStream {
-				sessCtx := context.Background()
 				mockStream := &MockQUICStream{
 					ReadFunc: func(p []byte) (int, error) {
 						// Block on read to simulate ongoing stream
@@ -113,7 +109,7 @@ func TestReceiveAnnounceStream_ReceiveAnnouncement(t *testing.T) {
 				mockStream.On("CancelRead", mock.Anything).Return().Maybe()
 				mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
 				mockStream.On("StreamID").Return(quic.StreamID(123)).Maybe()
-				ras := newReceiveAnnounceStream(sessCtx, mockStream, "/test/")
+				ras := newReceiveAnnounceStream(mockStream, "/test/")
 				time.Sleep(20 * time.Millisecond) // Allow goroutine to start
 				_ = ras.Close()
 				return ras
@@ -172,7 +168,6 @@ func TestReceiveAnnounceStream_Close(t *testing.T) {
 		wantErr   bool
 	}{"normal_close": {
 		setupFunc: func() *receiveAnnounceStream {
-			sessCtx := context.Background()
 			mockStream := &MockQUICStream{}
 			// Block reads to prevent goroutine from interfering
 			mockStream.On("Read", mock.Anything).Run(func(args mock.Arguments) {
@@ -180,13 +175,12 @@ func TestReceiveAnnounceStream_Close(t *testing.T) {
 			}).Return(0, io.EOF).Maybe()
 			mockStream.On("StreamID").Return(quic.StreamID(123)).Maybe()
 			mockStream.On("Close").Return(nil)
-			return newReceiveAnnounceStream(sessCtx, mockStream, "/test")
+			return newReceiveAnnounceStream(mockStream, "/test")
 		},
 		wantErr: false,
 	},
 		"already_closed": {
 			setupFunc: func() *receiveAnnounceStream {
-				sessCtx := context.Background()
 				mockStream := &MockQUICStream{}
 				// Block reads to prevent goroutine from interfering
 				mockStream.On("Read", mock.Anything).Run(func(args mock.Arguments) {
@@ -196,7 +190,7 @@ func TestReceiveAnnounceStream_Close(t *testing.T) {
 				mockStream.On("Close").Return(nil)
 				mockStream.On("CancelRead", mock.Anything).Return().Maybe()
 				mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
-				ras := newReceiveAnnounceStream(sessCtx, mockStream, "/test")
+				ras := newReceiveAnnounceStream(mockStream, "/test")
 				_ = ras.Close() // Close once
 				return ras
 			},
@@ -242,7 +236,6 @@ func TestReceiveAnnounceStream_CloseWithError(t *testing.T) {
 		wantErr   bool
 	}{"internal_error": {
 		setupFunc: func() *receiveAnnounceStream {
-			sessCtx := context.Background()
 			mockStream := &MockQUICStream{}
 			// Block reads to prevent goroutine from interfering
 			mockStream.On("Read", mock.Anything).Run(func(args mock.Arguments) {
@@ -251,13 +244,12 @@ func TestReceiveAnnounceStream_CloseWithError(t *testing.T) {
 			mockStream.On("CancelRead", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return()
 			mockStream.On("CancelWrite", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return()
 			mockStream.On("StreamID").Return(quic.StreamID(123))
-			return newReceiveAnnounceStream(sessCtx, mockStream, "/test")
+			return newReceiveAnnounceStream(mockStream, "/test")
 		},
 		errorCode: InternalAnnounceErrorCode,
 		wantErr:   false,
 	}, "duplicated_error": {
 		setupFunc: func() *receiveAnnounceStream {
-			sessCtx := context.Background()
 			mockStream := &MockQUICStream{}
 			// Block reads to prevent goroutine from interfering
 			mockStream.On("Read", mock.Anything).Run(func(args mock.Arguments) {
@@ -266,14 +258,13 @@ func TestReceiveAnnounceStream_CloseWithError(t *testing.T) {
 			mockStream.On("CancelRead", quic.StreamErrorCode(DuplicatedAnnounceErrorCode)).Return()
 			mockStream.On("CancelWrite", quic.StreamErrorCode(DuplicatedAnnounceErrorCode)).Return()
 			mockStream.On("StreamID").Return(quic.StreamID(123))
-			return newReceiveAnnounceStream(sessCtx, mockStream, "/test")
+			return newReceiveAnnounceStream(mockStream, "/test")
 		},
 		errorCode: DuplicatedAnnounceErrorCode,
 		wantErr:   false,
 	},
 		"already_closed": {
 			setupFunc: func() *receiveAnnounceStream {
-				sessCtx := context.Background()
 				mockStream := &MockQUICStream{}
 				// Block reads to prevent goroutine from interfering
 				mockStream.On("Read", mock.Anything).Run(func(args mock.Arguments) {
@@ -282,7 +273,7 @@ func TestReceiveAnnounceStream_CloseWithError(t *testing.T) {
 				mockStream.On("CancelRead", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return()
 				mockStream.On("CancelWrite", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return()
 				mockStream.On("StreamID").Return(quic.StreamID(123))
-				ras := newReceiveAnnounceStream(sessCtx, mockStream, "/test")
+				ras := newReceiveAnnounceStream(mockStream, "/test")
 				time.Sleep(10 * time.Millisecond) // Allow goroutine to start
 				_ = ras.CloseWithError(InternalAnnounceErrorCode)
 				return ras
@@ -333,13 +324,12 @@ func TestReceiveAnnounceStream_CloseWithError(t *testing.T) {
 }
 
 func TestReceiveAnnounceStream_AnnouncementTracking(t *testing.T) {
-	sessCtx := context.Background()
 	mockStream := &MockQUICStream{}
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 	mockStream.On("CancelRead", mock.Anything).Return().Maybe()
 	mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
 	mockStream.On("StreamID").Return(quic.StreamID(123)).Maybe()
-	ras := newReceiveAnnounceStream(sessCtx, mockStream, "/test")
+	ras := newReceiveAnnounceStream(mockStream, "/test")
 
 	// Test internal announcement tracking
 	ctx := context.Background()
@@ -364,8 +354,6 @@ func TestReceiveAnnounceStream_AnnouncementTracking(t *testing.T) {
 }
 
 func TestReceiveAnnounceStream_ConcurrentAccess(t *testing.T) {
-	sessCtx := context.Background()
-
 	// Create multiple messages
 	buf := bytes.NewBuffer(nil)
 	for i := 0; i < 5; i++ {
@@ -395,7 +383,7 @@ func TestReceiveAnnounceStream_ConcurrentAccess(t *testing.T) {
 	mockStream.On("Close").Return(nil).Maybe()
 	mockStream.On("StreamID").Return(quic.StreamID(123)).Maybe()
 
-	ras := newReceiveAnnounceStream(sessCtx, mockStream, "/test")
+	ras := newReceiveAnnounceStream(mockStream, "/test")
 
 	// Allow time for message processing
 	time.Sleep(100 * time.Millisecond)
@@ -467,13 +455,12 @@ func TestReceiveAnnounceStream_PrefixHandling(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			sessCtx := context.Background()
 			mockStream := &MockQUICStream{}
 			mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 			mockStream.On("CancelRead", mock.Anything).Return().Maybe()
 			mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
 			mockStream.On("StreamID").Return(quic.StreamID(123)).Maybe()
-			ras := newReceiveAnnounceStream(sessCtx, mockStream, tt.prefix)
+			ras := newReceiveAnnounceStream(mockStream, tt.prefix)
 
 			require.NotNil(t, ras)
 			assert.Equal(t, tt.prefix, ras.prefix)
@@ -495,8 +482,6 @@ func TestReceiveAnnounceStream_PrefixHandling(t *testing.T) {
 }
 
 func TestReceiveAnnounceStream_InvalidMessage(t *testing.T) {
-	sessCtx := context.Background()
-
 	// Create invalid message data
 	invalidData := []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 	buf := bytes.NewBuffer(invalidData)
@@ -514,7 +499,7 @@ func TestReceiveAnnounceStream_InvalidMessage(t *testing.T) {
 	mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
 	mockStream.On("StreamID").Return(quic.StreamID(123)).Maybe()
 
-	ras := newReceiveAnnounceStream(sessCtx, mockStream, "/test")
+	ras := newReceiveAnnounceStream(mockStream, "/test")
 
 	// Give time for processing invalid data
 	time.Sleep(100 * time.Millisecond)
@@ -577,8 +562,6 @@ func TestReceiveAnnounceStream_AnnouncementLifecycle(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			sessCtx := context.Background()
-
 			// Prepare message data
 			buf := bytes.NewBuffer(nil)
 			for _, msg := range tt.messages {
@@ -606,7 +589,7 @@ func TestReceiveAnnounceStream_AnnouncementLifecycle(t *testing.T) {
 			}
 			mockStream.On("StreamID").Return(quic.StreamID(123)).Maybe()
 
-			ras := newReceiveAnnounceStream(sessCtx, mockStream, "/test")
+			ras := newReceiveAnnounceStream(mockStream, "/test")
 
 			// Allow more time for message processing
 			time.Sleep(300 * time.Millisecond)
@@ -663,8 +646,6 @@ func TestReceiveAnnounceStream_AnnouncementLifecycle(t *testing.T) {
 }
 
 func TestReceiveAnnounceStream_NotifyChannel(t *testing.T) {
-	sessCtx := context.Background()
-
 	// Create a message
 	buf := bytes.NewBuffer(nil)
 	err := message.AnnounceMessage{
@@ -686,7 +667,7 @@ func TestReceiveAnnounceStream_NotifyChannel(t *testing.T) {
 	mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
 	mockStream.On("StreamID").Return(quic.StreamID(123)).Maybe()
 
-	ras := newReceiveAnnounceStream(sessCtx, mockStream, "/test")
+	ras := newReceiveAnnounceStream(mockStream, "/test")
 
 	// Allow time for message processing and notification
 	time.Sleep(100 * time.Millisecond)
@@ -752,8 +733,6 @@ func TestReceiveAnnounceStream_BoundaryValues(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			sessCtx := context.Background()
-
 			// Create message with the test suffix
 			buf := bytes.NewBuffer(nil)
 			err := message.AnnounceMessage{
@@ -775,7 +754,7 @@ func TestReceiveAnnounceStream_BoundaryValues(t *testing.T) {
 			mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
 			mockStream.On("StreamID").Return(quic.StreamID(123)).Maybe()
 
-			ras := newReceiveAnnounceStream(sessCtx, mockStream, tt.prefix)
+			ras := newReceiveAnnounceStream(mockStream, tt.prefix)
 
 			// Allow time for processing
 			time.Sleep(50 * time.Millisecond)
@@ -825,7 +804,6 @@ func TestReceiveAnnounceStream_StreamErrors(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			sessCtx := context.Background()
 			testError := tt.setupError()
 
 			mockStream := &MockQUICStream{
@@ -838,7 +816,7 @@ func TestReceiveAnnounceStream_StreamErrors(t *testing.T) {
 			mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
 			mockStream.On("StreamID").Return(quic.StreamID(123)).Maybe()
 
-			ras := newReceiveAnnounceStream(sessCtx, mockStream, "/test")
+			ras := newReceiveAnnounceStream(mockStream, "/test")
 
 			// Allow time for error processing
 			time.Sleep(50 * time.Millisecond)

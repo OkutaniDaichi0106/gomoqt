@@ -9,13 +9,15 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-func newReceiveGroupStream(trackCtx context.Context, sequence GroupSequence, stream quic.ReceiveStream) *GroupReader {
+func newReceiveGroupStream(trackCtx context.Context, sequence GroupSequence, stream quic.ReceiveStream,
+	onClose func()) *GroupReader {
 	ctx, cancel := context.WithCancelCause(trackCtx)
 	return &GroupReader{
 		sequence: sequence,
 		stream:   stream,
 		ctx:      ctx,
 		cancel:   cancel,
+		onClose:  onClose,
 	}
 }
 
@@ -27,6 +29,8 @@ type GroupReader struct {
 
 	ctx    context.Context
 	cancel context.CancelCauseFunc
+
+	onClose func()
 }
 
 func (s *GroupReader) GroupSequence() GroupSequence {

@@ -15,7 +15,7 @@ func TestNewTrackReceiver(t *testing.T) {
 	receiver := newTrackReader("broadcastPath", "trackName", substr, func() {})
 
 	assert.NotNil(t, receiver, "newTrackReceiver should not return nil")
-	assert.NotNil(t, receiver.queue, "queue should be initialized")
+	assert.NotNil(t, receiver.queueing, "queue should be initialized")
 	assert.NotNil(t, receiver.queuedCh, "queuedCh should be initialized")
 	assert.NotNil(t, receiver.dequeued, "dequeued should be initialized")
 }

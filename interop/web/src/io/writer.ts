@@ -90,6 +90,7 @@ export class Writer {
     }
 
     async flush(): Promise<Error | undefined> {
+        console.log(`Flushing buffer of size: ${this.#buf.bytes()}`);
         if (this.#buf.size > 0) {
             try {
                 await this.#writer.write(this.#buf.bytes());

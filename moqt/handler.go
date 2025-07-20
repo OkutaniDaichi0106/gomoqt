@@ -1,26 +1,21 @@
 package moqt
 
 type TrackHandler interface {
-	ServeTrack(*Publication)
+	ServeTrack(*TrackWriter)
 }
 
-var NotFound = func(pub *Publication) {
-	if pub == nil {
+var NotFound = func(tw *TrackWriter) {
+	if tw == nil {
 		return
 	}
-	if pub.TrackWriter == nil {
-		return
-	}
-	if pub.Controller == nil {
-		return
-	}
-	pub.Controller.CloseWithError(TrackNotFoundErrorCode)
+
+	tw.CloseWithError(TrackNotFoundErrorCode)
 }
 
 var NotFoundHandler TrackHandler = TrackHandlerFunc(NotFound)
 
-type TrackHandlerFunc func(*Publication)
+type TrackHandlerFunc func(*TrackWriter)
 
-func (f TrackHandlerFunc) ServeTrack(pub *Publication) {
-	f(pub)
+func (f TrackHandlerFunc) ServeTrack(tw *TrackWriter) {
+	f(tw)
 }

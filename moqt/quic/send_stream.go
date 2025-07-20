@@ -1,6 +1,7 @@
 package quic
 
 import (
+	"context"
 	"io"
 	"time"
 )
@@ -13,4 +14,6 @@ type SendStream interface {
 	CancelWrite(StreamErrorCode)
 
 	SetWriteDeadline(time.Time) error
+
+	Context() context.Context
 }

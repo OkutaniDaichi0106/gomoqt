@@ -10,8 +10,8 @@ export class AnnounceMessage {
     }
 
     static async encode(writer: Writer, suffix: string, active: boolean): Promise<[AnnounceMessage?, Error?]> {
-        writer.writeString(suffix);
         writer.writeBoolean(active);
+        writer.writeString(suffix);
         const err = await writer.flush();
         if (err) {
             return [undefined, err];

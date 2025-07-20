@@ -3,100 +3,71 @@ package moqt
 import (
 	"testing"
 
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestNotFound(t *testing.T) {
 	tests := map[string]struct {
-		pub *Publication
+		trackWriter *TrackWriter
 	}{
-		"nil publisher": {
-			pub: nil,
+		"nil track writer": {
+			trackWriter: nil,
 		},
-		"publisher with nil TrackWriter": {
-			pub: &Publication{
-				BroadcastPath: BroadcastPath("/test"),
-				TrackName:     TrackName("test"),
-				TrackWriter:   nil,
-			},
-		}, "publisher with mock TrackWriter": {
-			pub: &Publication{
-				BroadcastPath: BroadcastPath("/test"),
-				TrackName:     TrackName("test"),
-				TrackWriter: func() *MockTrackWriter {
-					mock := &MockTrackWriter{}
-					mock.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
-					return mock
-				}(),
-				Controller: func() *MockPublishController {
-					mock := &MockPublishController{}
-					mock.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
-					return mock
-				}(),
-			},
+		"track writer with nil TrackWriter": {
+			trackWriter: newTrackWriter(BroadcastPath("/test"), TrackName("test"), nil, nil, nil),
+		}, "track writer with mock TrackWriter": {
+			trackWriter: newTrackWriter(BroadcastPath("/test"), TrackName("test"),
+				newReceiveSubscribeStream(SubscribeID(1), &MockQUICStream{}, &TrackConfig{}),
+				func() (quic.SendStream, error) {
+					return &MockQUICSendStream{}, nil
+				}, func() {}),
 		},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			// Should not panic
-			NotFound(tt.pub)
+			NotFound(tt.trackWriter)
 		})
 	}
 }
 
 func TestNotFoundHandler(t *testing.T) {
-	mockWriter := &MockTrackWriter{}
-	mockWriter.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
-
-	mockController := &MockPublishController{}
-	mockController.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
-
-	pub := &Publication{
-		BroadcastPath: BroadcastPath("/test"),
-		TrackName:     TrackName("test"),
-		TrackWriter:   mockWriter,
-		Controller:    mockController,
-	}
+	trackWriter := newTrackWriter(BroadcastPath("/test"), TrackName("test"), nil, nil, nil)
 
 	// Should not panic
-	NotFoundHandler.ServeTrack(pub)
+	NotFoundHandler.ServeTrack(trackWriter)
 }
 
 func TestTrackHandlerFunc(t *testing.T) {
 	called := false
-	var receivedPub *Publication
+	var receivedTrackWriter *TrackWriter
 
-	handler := TrackHandlerFunc(func(pub *Publication) {
+	handler := TrackHandlerFunc(func(tw *TrackWriter) {
 		called = true
-		receivedPub = pub
+		receivedTrackWriter = tw
 	})
 
-	testPub := &Publication{
-		BroadcastPath: BroadcastPath("/test"),
-		TrackName:     TrackName("test"),
-	}
-	handler.ServeTrack(testPub)
+	testTrackWriter := newTrackWriter(BroadcastPath("/test"), TrackName("test"), nil, nil, nil)
+	handler.ServeTrack(testTrackWriter)
 
 	assert.True(t, called, "handler function was not called")
-	assert.Equal(t, testPub, receivedPub, "handler did not receive the correct publisher")
+	assert.Equal(t, testTrackWriter, receivedTrackWriter, "handler did not receive the correct track writer")
 }
 
 func TestTrackHandlerFuncServeTrack(t *testing.T) {
 	callCount := 0
 
-	handler := TrackHandlerFunc(func(pub *Publication) {
+	handler := TrackHandlerFunc(func(tw *TrackWriter) {
 		callCount++
 	})
 
-	pub := &Publication{
-		BroadcastPath: BroadcastPath("/test"),
-		TrackName:     TrackName("test"),
-	}
+	trackWriter := newTrackWriter(BroadcastPath("/test"), TrackName("test"), nil, nil, nil)
 	// Call multiple times to ensure it works correctly
-	handler.ServeTrack(pub)
-	handler.ServeTrack(pub)
-	handler.ServeTrack(pub)
+	handler.ServeTrack(trackWriter)
+	handler.ServeTrack(trackWriter)
+	handler.ServeTrack(trackWriter)
 
 	assert.Equal(t, 3, callCount, "expected handler to be called 3 times")
 }

@@ -28,12 +28,12 @@ func main() {
 		Logger: slog.Default(),
 	}
 	// Register the broadcast handler with the default mux
-	moqt.HandleFunc(context.Background(), "/server.broadcast", func(pub *moqt.Publication) {
+	moqt.HandleFunc(context.Background(), "/server.broadcast", func(tw *moqt.TrackWriter) {
 		seq := moqt.GroupSequenceFirst
 		for {
 			time.Sleep(100 * time.Millisecond)
 
-			gw, err := pub.TrackWriter.OpenGroup(seq)
+			gw, err := tw.OpenGroup(seq)
 			if err != nil {
 				slog.Error("failed to open group", "error", err)
 				return

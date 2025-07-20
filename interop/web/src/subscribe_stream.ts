@@ -8,7 +8,7 @@ import { Info } from "./info";
 export interface SubscribeController {
 	subscribeId: SubscribeID
 	subscribeConfig: SubscribeConfig
-	update(trackPriority: bigint, min: bigint, max: bigint): Promise<void>
+	update(trackPriority: bigint, min: bigint, max: bigint): Promise<Error | undefined>;
 	context: Context
 }
 
@@ -45,16 +45,16 @@ export class SendSubscribeStream implements SubscribeController {
 		}
 	}
 	
-	async update(trackPriority: bigint, minGroupSequence: bigint, maxGroupSequence: bigint): Promise<void> {
+	async update(trackPriority: bigint, minGroupSequence: bigint, maxGroupSequence: bigint): Promise<Error | undefined> {
 		const [result, err] = await SubscribeUpdateMessage.encode(this.#writer, trackPriority, minGroupSequence, maxGroupSequence);
 		if (err) {
-			throw new Error(`Failed to write subscribe update: ${err}`);
+			return new Error(`Failed to write subscribe update: ${err}`);
 		}
 		this.#update = result!;
 
 		const flushErr = await this.#writer.flush();
 		if (flushErr) {
-			throw new Error(`Failed to flush subscribe update: ${flushErr}`);
+			return new Error(`Failed to flush subscribe update: ${flushErr}`);
 		}
 	}
 
@@ -70,7 +70,7 @@ export interface PublishController {
 	updated(): Promise<void>;
 	subscribeConfig: SubscribeConfig
 	context: Context
-	accept(info: Info): Promise<void>;
+	accept(info: Info): Promise<Error | undefined>;
 	close(): void;
 	closeWithError(code: number, message: string): void;
 }
@@ -81,7 +81,6 @@ export class ReceiveSubscribeStream implements PublishController {
 	#cond: Cond = new Cond();
 	#reader: Reader
 	#writer: Writer
-	#acceptFunc: (info: Info) => Promise<[SubscribeOkMessage?, Error?]>
 	#ok?: SubscribeOkMessage
 	#ctx: Context;
 	#cancelFunc: CancelCauseFunc;
@@ -89,15 +88,12 @@ export class ReceiveSubscribeStream implements PublishController {
 	constructor(sessCtx: Context, writer: Writer, reader: Reader, subscribe: SubscribeMessage) {
 		this.#reader = reader
 		this.#writer = writer
-		this.#subscribe = subscribe
-		this.#acceptFunc = async (info: Info): Promise<[SubscribeOkMessage?, Error?]> => {
-			return await SubscribeOkMessage.encode(this.#writer, info.groupOrder);		
-		}
+		this.#subscribe = subscribe;
 		[this.#ctx, this.#cancelFunc] = withCancelCause(sessCtx);
 
-		async () => {
+		(async () => {
 			for (;;) {
-				const [msg, err] = await SubscribeUpdateMessage.decode(this.#reader)
+				const [msg, err] = await SubscribeUpdateMessage.decode(reader)
 				if (err) {
 					// TODO: handle this situation
 					break
@@ -107,7 +103,7 @@ export class ReceiveSubscribeStream implements PublishController {
 
 				this.#cond.broadcast();
 			}
-		}
+		})();
 	}
 
 	get subscribeId(): SubscribeID {
@@ -130,29 +126,34 @@ export class ReceiveSubscribeStream implements PublishController {
 		return this.#cond.wait();
 	}
 
-	async accept(info: Info): Promise<void> {
-		const [result, err] = await this.#acceptFunc(info);
-		if (err) {
-			throw new Error(`Failed to write subscribe ok: ${err}`);
-		}
-		if (!result) {
-			throw new Error("Failed to encode subscribe ok message");
-		}
+	async accept(info: Info): Promise<Error | undefined> {
+		if (this.#ok) {
+				return undefined; // Already accepted
+			}
 
-		this.#acceptFunc = async () => [result, undefined]; // TODO: No re-accept for updates?
+			const [msg, err] = await SubscribeOkMessage.encode(this.#writer, BigInt(info.groupOrder));
+			if (err) {
+				return new Error(`Failed to write subscribe ok: ${err}`);
+			}
+			if (!msg) {
+				return new Error("Failed to encode subscribe ok message");
+			}
 
-		this.#ok = result;
+			console.log(`Accepted subscribe ok with groupOrder: ${msg.groupOrder}`);
 
-		const flushErr = await this.#writer.flush();
-		if (flushErr) {
-			throw new Error(`Failed to flush subscribe ok: ${flushErr}`);
-		}
+			this.#ok = msg;
+
+			const flushErr = await this.#writer.flush();
+			if (flushErr) {
+				return new Error(`Failed to flush subscribe ok: ${flushErr}`);
+			}
 	}
 
 	close(): void {
 		const ctxErr = this.#ctx.err();
 		if (ctxErr !== undefined) {
-			throw ctxErr;
+			// throw ctxErr;
+			return;
 		}
 		this.#writer.close();
 		this.#cancelFunc(undefined);
@@ -162,7 +163,8 @@ export class ReceiveSubscribeStream implements PublishController {
 	closeWithError(code: number, message: string): void {
 		const ctxErr = this.#ctx.err();
 		if (ctxErr !== undefined) {
-			throw ctxErr;
+			// throw ctxErr;
+			return;
 		}
 		const err = new StreamError(code, message);
 		this.#writer.cancel(err);

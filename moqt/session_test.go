@@ -44,7 +44,7 @@ func TestNewSession(t *testing.T) {
 			if tt.expectOK {
 				assert.NotNil(t, session, "newSession should not return nil")
 				assert.Equal(t, tt.mux, session.mux, "mux should be set correctly")
-				assert.NotNil(t, session.trackReceivers, "receive group stream queues should not be nil")
+				assert.NotNil(t, session.trackReaders, "receive group stream queues should not be nil")
 			}
 
 			// Cleanup
@@ -210,13 +210,13 @@ func TestSession_OpenTrackStream(t *testing.T) {
 	tests := map[string]struct {
 		path      BroadcastPath
 		name      TrackName
-		config    *SubscribeConfig
+		config    *TrackConfig
 		wantError bool
 	}{
 		"valid track stream": {
 			path: BroadcastPath("/test/track"),
 			name: TrackName("video"),
-			config: &SubscribeConfig{
+			config: &TrackConfig{
 				TrackPriority:    TrackPriority(1),
 				MinGroupSequence: GroupSequence(0),
 				MaxGroupSequence: GroupSequence(100),
@@ -267,17 +267,17 @@ func TestSession_OpenTrackStream(t *testing.T) {
 
 			session := newSession(conn, DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
 
-			subscriber, err := session.OpenTrackStream(tt.path, tt.name, tt.config)
+			track, err := session.OpenTrackStream(tt.path, tt.name, tt.config)
 
 			if tt.wantError {
 				assert.Error(t, err)
-				assert.Nil(t, subscriber)
+				assert.Nil(t, track)
 			} else {
 				assert.NoError(t, err)
-				assert.NotNil(t, subscriber)
-				assert.Equal(t, tt.path, subscriber.BroadcastPath)
-				assert.Equal(t, tt.name, subscriber.TrackName)
-				gotConfig := subscriber.Controller.SubscribeConfig()
+				assert.NotNil(t, track)
+				assert.Equal(t, tt.path, track.BroadcastPath)
+				assert.Equal(t, tt.name, track.TrackName)
+				gotConfig := track.TrackConfig()
 				assert.Equal(t, tt.config, gotConfig)
 			}
 
@@ -300,7 +300,7 @@ func TestSession_OpenTrackStream_OpenError(t *testing.T) {
 
 	session := newSession(conn, DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
 
-	config := &SubscribeConfig{
+	config := &TrackConfig{
 		TrackPriority:    TrackPriority(1),
 		MinGroupSequence: GroupSequence(0),
 		MaxGroupSequence: GroupSequence(100),
@@ -512,7 +512,7 @@ func TestSession_WithRealMux(t *testing.T) {
 
 			// Register a test handler
 			ctx := context.Background()
-			mux.Handle(ctx, tt.broadcastPath, TrackHandlerFunc(func(p *Publication) {}))
+			mux.Handle(ctx, tt.broadcastPath, TrackHandlerFunc(func(tw *TrackWriter) {}))
 
 			session := newSession(conn, DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, mux, slog.Default())
 

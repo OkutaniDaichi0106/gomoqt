@@ -1,11 +1,12 @@
 package webtransportgo
 
 import (
+	"context"
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic/quicgo"
-	quicgo_webtransportgo "github.com/quic-go/webtransport-go"
+	quicgo_webtransportgo "github.com/OkutaniDaichi0106/webtransport-go"
 )
 
 var _ quic.Stream = (*streamWrapper)(nil)
@@ -50,6 +51,10 @@ func (wrapper streamWrapper) SetWriteDeadline(time time.Time) error {
 
 func (wrapper streamWrapper) Close() error {
 	return quicgo.WrapError(wrapper.stream.Close())
+}
+
+func (wrapper streamWrapper) Context() context.Context {
+	return wrapper.stream.Context()
 }
 
 /*
@@ -101,4 +106,8 @@ func (wrapper sendStreamWrapper) SetWriteDeadline(time time.Time) error {
 
 func (wrapper sendStreamWrapper) Close() error {
 	return quicgo.WrapError(wrapper.stream.Close())
+}
+
+func (wrapper sendStreamWrapper) Context() context.Context {
+	return wrapper.stream.Context()
 }

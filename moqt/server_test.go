@@ -311,10 +311,7 @@ func TestServer_AcceptSession(t *testing.T) {
 			// Create mock session setup messages
 			var buf bytes.Buffer
 			// First, encode STREAM_TYPE message
-			stm := message.StreamTypeMessage{
-				StreamType: stream_type_session,
-			}
-			err := stm.Encode(&buf)
+			err := message.StreamTypeSession.Encode(&buf)
 			require.NoError(t, err, "failed to encode STREAM_TYPE message")
 
 			// Then, encode SESSION_CLIENT message

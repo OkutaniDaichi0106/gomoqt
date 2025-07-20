@@ -39,6 +39,7 @@ export class AnnouncementWriter {
 
         const suffix = path.substring(this.#prefix.length);
         const old = this.#announcements.get(suffix);
+        console.log(`Sending announcement for path: ${suffix}, active: ${active}`);
         if (active) {
             if (old && old.isActive()) {
                 throw new Error(`Announcement for path ${suffix} already exists`);
@@ -51,6 +52,8 @@ export class AnnouncementWriter {
             if (err) {
                 throw new Error(`Failed to write announcement: ${err}`);
             }
+
+            console.log(`Announcement sent for path: ${suffix}`);
 
             const fork = announcement.fork();
             this.#announcements.set(suffix, fork);

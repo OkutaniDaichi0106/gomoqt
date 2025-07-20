@@ -14,6 +14,7 @@ import { GroupReader, GroupWriter } from "./group_stream";
 import { DefaultTrackMux, TrackMux } from "./track_mux";
 import { BiStreamTypes, UniStreamTypes } from "./stream_type";
 import { Queue } from "./internal/queue";
+import { Info } from "./info";
 
 export class Session {
 	readonly ready: Promise<void>
@@ -191,8 +192,8 @@ export class Session {
 		queue.enqueue(new GroupReader(trackCtx, reader, req));
 	}
 
-	async #handleSubscribeStream(bi: {writer: Writer, reader: Reader}): Promise<void> {
-		const [req, reqErr] = await SubscribeMessage.decode(bi.reader);
+	async #handleSubscribeStream(writer: Writer, reader: Reader): Promise<void> {
+		const [req, reqErr] = await SubscribeMessage.decode(reader);
 		if (reqErr) {
 			console.error("Failed to decode SubscribeMessage:", reqErr);
 			return;
@@ -204,11 +205,20 @@ export class Session {
 
 		const id = req.subscribeId;
 
-		const controller = new ReceiveSubscribeStream(this.#ctx, bi.writer, bi.reader, req);
+		const controller = new ReceiveSubscribeStream(this.#ctx, writer, reader, req);
 
-		const openFunc = async (trackCtx: Context, groupId: bigint): Promise<[GroupWriter?, Error?]> => {
+		const openFunc = async (trackCtx: Context, groupSequence: bigint): Promise<[GroupWriter?, Error?]> => {
 			const writer = new Writer(await this.#conn.createUnidirectionalStream());
-			const [req, reqErr] = await GroupMessage.encode(writer, id, groupId);
+
+			// Send STREAM_TYPE
+			writer.writeUint8(UniStreamTypes.GroupStreamType);
+			const err = await writer.flush();
+			if (err) {
+				return [undefined, err];
+			}
+
+			// Send GROUP message
+			const [req, reqErr] = await GroupMessage.encode(writer, id, groupSequence);
 			if (reqErr) {
 				return [undefined, reqErr];
 			}
@@ -220,18 +230,22 @@ export class Session {
 			return [group, undefined];
         };
 
+		const acceptFunc = async (info: Info): Promise<Error | undefined> => {
+			return await controller.accept(info);
+		}
+
 		const publication = {
 			broadcastPath: req.broadcastPath,
 			trackName: req.trackName,
 			controller,
-			trackWriter: new TrackWriter(controller.context, openFunc),
+			trackWriter: new TrackWriter(controller.context, openFunc, acceptFunc),
 		}
 
 		this.#mux.serveTrack(publication);
 	}
 
-	async #handleAnnounceStream(bi: {writer: Writer, reader: Reader}): Promise<void> {
-		const [req, err] = await AnnouncePleaseMessage.decode(bi.reader);
+	async #handleAnnounceStream(writer: Writer, reader: Reader): Promise<void> {
+		const [req, err] = await AnnouncePleaseMessage.decode(reader);
 		if (err) {
 			console.error("Failed to decode AnnouncePleaseMessage:", err);
 			return;
@@ -241,13 +255,16 @@ export class Session {
 			return;
 		}
 
-		const stream = new AnnouncementWriter(this.#ctx, bi.writer, bi.reader, req);
+		console.log(`Received AnnouncePleaseMessage for prefix: ${req.prefix}`);
+
+		const stream = new AnnouncementWriter(this.#ctx, writer, reader, req);
 
 		this.#mux.serveAnnouncement(stream, req.prefix);
 	}
 
 	async #listenBiStreams(): Promise<void> {
-		const biStreams = this.#conn.incomingBidirectionalStreams.getReader()
+		const biStreams = this.#conn.incomingBidirectionalStreams.getReader();
+
 		// Handle incoming streams
 		let num: number | undefined;
 		let err: Error | undefined;
@@ -259,8 +276,9 @@ export class Session {
 				break;
 			}
 			const stream = value as WebTransportBidirectionalStream;
-			const bi = { writer: new Writer(stream.writable), reader: new Reader(stream.readable) };
-			[num, err] = await bi.reader.readUint8();
+			const writer = new Writer(stream.writable);
+			const reader = new Reader(stream.readable);
+			[num, err] = await reader.readUint8();
 			if (err) {
 				console.error("Failed to read from bidirectional stream:", err);
 				continue;
@@ -268,10 +286,10 @@ export class Session {
 
 			switch (num) {
 				case BiStreamTypes.SubscribeStreamType:
-					await this.#handleSubscribeStream(bi);
+					this.#handleSubscribeStream(writer, reader);
 					break;
 				case BiStreamTypes.AnnounceStreamType:
-					await this.#handleAnnounceStream(bi);
+					this.#handleAnnounceStream(writer, reader);
 					break;
 				default:
 					console.warn(`Unknown bidirectional stream type: ${num}`);

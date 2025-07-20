@@ -4,6 +4,20 @@ import (
 	"io"
 )
 
+const (
+	/*
+	 * Bidirectional Stream Type
+	 */
+	StreamTypeSession   StreamType = 0x0
+	StreamTypeAnnounce  StreamType = 0x1
+	StreamTypeSubscribe StreamType = 0x2
+
+	/*
+	 * Unidirectional Stream Type
+	 */
+	StreamTypeGroup StreamType = 0x0
+)
+
 type StreamType byte
 
 /*
@@ -14,24 +28,20 @@ type StreamType byte
  * }
  */
 
-type StreamTypeMessage struct {
-	StreamType StreamType
-}
-
-func (stm StreamTypeMessage) Encode(w io.Writer) error {
+func (stm StreamType) Encode(w io.Writer) error {
 	// Write the Stream Type
-	_, err := w.Write([]byte{byte(stm.StreamType)})
+	_, err := w.Write([]byte{byte(stm)})
 	return err
 }
 
-func (stm *StreamTypeMessage) Decode(r io.Reader) error {
+func (stm *StreamType) Decode(r io.Reader) error {
 	// Read the Stream Type
 	buf := make([]byte, 1)
 	_, err := r.Read(buf)
 	if err != nil {
 		return err
 	}
-	stm.StreamType = StreamType(buf[0])
+	*stm = StreamType(buf[0])
 
 	return nil
 }

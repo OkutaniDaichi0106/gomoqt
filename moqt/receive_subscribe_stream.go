@@ -9,15 +9,15 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-func newReceiveSubscribeStream(trackCtx context.Context, id SubscribeID, stream quic.Stream, config *SubscribeConfig) *receiveSubscribeStream {
-	ctx, cancel := context.WithCancelCause(trackCtx)
+func newReceiveSubscribeStream(id SubscribeID, stream quic.Stream, config *TrackConfig) *receiveSubscribeStream {
+	ctx, cancel := context.WithCancelCause(stream.Context())
 	rss := &receiveSubscribeStream{
-		id:        id,
-		config:    config,
-		stream:    stream,
-		updatedCh: make(chan struct{}, 1),
-		ctx:       ctx,
-		cancel:    cancel,
+		subscribeID: id,
+		config:      config,
+		stream:      stream,
+		updatedCh:   make(chan struct{}, 1),
+		ctx:         ctx,
+		cancel:      cancel,
 	}
 
 	go rss.listenUpdates()
@@ -25,17 +25,15 @@ func newReceiveSubscribeStream(trackCtx context.Context, id SubscribeID, stream 
 	return rss
 }
 
-var _ PublishController = (*receiveSubscribeStream)(nil)
-
 type receiveSubscribeStream struct {
-	id SubscribeID
+	subscribeID SubscribeID
 
 	stream quic.Stream
 
 	acceptOnce sync.Once
 
 	mu         sync.Mutex
-	config     *SubscribeConfig
+	config     *TrackConfig
 	updatedCh  chan struct{}
 	listenOnce sync.Once
 
@@ -44,56 +42,43 @@ type receiveSubscribeStream struct {
 }
 
 func (rss *receiveSubscribeStream) SubscribeID() SubscribeID {
-	return rss.id
+	return rss.subscribeID
 }
 
-func (rss *receiveSubscribeStream) WriteInfo(info Info) error {
-	rss.mu.Lock()
-	defer rss.mu.Unlock()
-
-	if err := rss.ctx.Err(); err != nil {
-		// Return the cause if available, otherwise return the context error
-		if cause := context.Cause(rss.ctx); cause != nil {
-			return cause
-		}
-		return err
-	}
-
-	rss.accept(info)
-
-	return nil
-}
-
-func (rss *receiveSubscribeStream) SubscribeConfig() (*SubscribeConfig, error) {
-	rss.mu.Lock()
-	defer rss.mu.Unlock()
-
-	if err := rss.ctx.Err(); err != nil {
-		// Return the cause if available, otherwise return the context error
-		if cause := context.Cause(rss.ctx); cause != nil {
-			return nil, cause
-		}
-		return nil, err
-	}
-
-	return rss.config, nil
-}
-
-func (rss *receiveSubscribeStream) Updated() <-chan struct{} {
-	return rss.updatedCh
-}
-
-func (rss *receiveSubscribeStream) accept(info Info) {
+func (rss *receiveSubscribeStream) writeInfo(info Info) error {
+	var err error
 	rss.acceptOnce.Do(func() {
+		rss.mu.Lock()
+		defer rss.mu.Unlock()
+		if err = rss.ctx.Err(); err != nil {
+			// Return the cause if available, otherwise return the context error
+			if cause := context.Cause(rss.ctx); cause != nil {
+				err = cause
+				return
+			}
+		}
 		sum := message.SubscribeOkMessage{
 			GroupOrder: message.GroupOrder(info.GroupOrder),
 		}
 		err := sum.Encode(rss.stream)
 		if err != nil {
-			rss.CloseWithError(InternalSubscribeErrorCode)
+			rss.closeWithError(InternalSubscribeErrorCode)
 			return
 		}
 	})
+
+	return err
+}
+
+func (rss *receiveSubscribeStream) TrackConfig() *TrackConfig {
+	rss.mu.Lock()
+	defer rss.mu.Unlock()
+
+	return rss.config
+}
+
+func (rss *receiveSubscribeStream) Updated() <-chan struct{} {
+	return rss.updatedCh
 }
 
 func (rss *receiveSubscribeStream) listenUpdates() {
@@ -127,7 +112,7 @@ func (rss *receiveSubscribeStream) listenUpdates() {
 			}
 
 			rss.mu.Lock()
-			rss.config = &SubscribeConfig{
+			rss.config = &TrackConfig{
 				TrackPriority:    TrackPriority(sum.TrackPriority),
 				MinGroupSequence: GroupSequence(sum.MinGroupSequence),
 				MaxGroupSequence: GroupSequence(sum.MaxGroupSequence),
@@ -149,11 +134,12 @@ func (rss *receiveSubscribeStream) listenUpdates() {
 		default:
 			close(rss.updatedCh)
 		}
+
 		rss.mu.Unlock()
 	})
 }
 
-func (rss *receiveSubscribeStream) Close() error {
+func (rss *receiveSubscribeStream) close() error {
 	rss.mu.Lock()
 	defer rss.mu.Unlock()
 
@@ -165,17 +151,19 @@ func (rss *receiveSubscribeStream) Close() error {
 		return err
 	}
 
+	// Close the write-side stream
 	err := rss.stream.Close()
-	rss.cancel(err)
+	// Cancel the read-side stream
+	rss.stream.CancelRead(quic.StreamErrorCode(PublishAbortedErrorCode))
 
-	// TODO: Should we cancel the receive stream here?
+	rss.cancel(nil)
 
 	close(rss.updatedCh)
 
 	return err
 }
 
-func (rss *receiveSubscribeStream) CloseWithError(code SubscribeErrorCode) error {
+func (rss *receiveSubscribeStream) closeWithError(code SubscribeErrorCode) error {
 	rss.mu.Lock()
 	defer rss.mu.Unlock()
 
@@ -188,7 +176,9 @@ func (rss *receiveSubscribeStream) CloseWithError(code SubscribeErrorCode) error
 	}
 
 	strErrCode := quic.StreamErrorCode(code)
+	// Cancel the write-side stream
 	rss.stream.CancelWrite(strErrCode)
+	// Cancel the read-side stream
 	rss.stream.CancelRead(strErrCode)
 
 	// Set the close error
@@ -205,10 +195,3 @@ func (rss *receiveSubscribeStream) CloseWithError(code SubscribeErrorCode) error
 
 	return nil
 }
-
-// func (rss *receiveSubscribeStream) isClosed() (error, bool) {
-// 	rss.mu.Lock()
-// 	defer rss.mu.Unlock()
-
-// 	return rss.closeErr, rss.closed
-// }

@@ -53,17 +53,17 @@ func main() {
 					return
 				}
 
-				sub, err := sess.OpenTrackStream(ann.BroadcastPath(), "index", nil)
+				tr, err := sess.OpenTrackStream(ann.BroadcastPath(), "index", nil)
 				if err != nil {
 					slog.Error("failed to open track stream", "error", err)
 					return
 				}
 
-				mux.HandleFunc(context.Background(), sub.BroadcastPath, func(pub *moqt.Publication) {
-					defer sub.Controller.Close()
+				mux.HandleFunc(context.Background(), ann.BroadcastPath(), func(tw *moqt.TrackWriter) {
+					defer tr.Close()
 
 					for {
-						gr, err := sub.TrackReader.AcceptGroup(context.Background())
+						gr, err := tr.AcceptGroup(context.Background())
 						if err != nil {
 							slog.Error("failed to accept group", "error", err)
 							return
@@ -72,7 +72,7 @@ func main() {
 						go func(gr moqt.GroupReader) {
 							defer gr.CancelRead(moqt.InternalGroupErrorCode)
 
-							gw, err := pub.TrackWriter.OpenGroup(gr.GroupSequence())
+							gw, err := tw.OpenGroup(gr.GroupSequence())
 							if err != nil {
 								slog.Error("failed to open group", "error", err)
 								return

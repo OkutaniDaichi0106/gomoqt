@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -44,9 +45,9 @@ func TestNewMux_Handle(t *testing.T) {
 			mux := NewTrackMux()
 
 			called := false
-			handler := TrackHandlerFunc(func(p *Publication) {
+			handler := TrackHandlerFunc(func(tw *TrackWriter) {
 				called = true
-				assert.Equal(t, tt.path, p.BroadcastPath, "handler should receive correct path")
+				assert.Equal(t, tt.path, tw.BroadcastPath, "handler should receive correct path")
 			})
 
 			// Register handler with new API
@@ -72,8 +73,8 @@ func TestNewMux_Handle_Overwrite(t *testing.T) {
 
 	called1, called2 := false, false
 
-	handler1 := TrackHandlerFunc(func(p *Publication) { called1 = true })
-	handler2 := TrackHandlerFunc(func(p *Publication) { called2 = true })
+	handler1 := TrackHandlerFunc(func(tw *TrackWriter) { called1 = true })
+	handler2 := TrackHandlerFunc(func(tw *TrackWriter) { called2 = true })
 
 	// Register first handler
 	mux.Handle(ctx, path, handler1)
@@ -107,7 +108,7 @@ func TestNewMux_Handle_InvalidPath(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
 			mux := NewTrackMux()
-			handler := TrackHandlerFunc(func(p *Publication) {})
+			handler := TrackHandlerFunc(func(tw *TrackWriter) {})
 
 			// Should panic for invalid paths
 			assert.Panics(t, func() {
@@ -124,9 +125,9 @@ func TestNewMux_ServeTrack(t *testing.T) {
 	trackName := TrackName("track1")
 
 	// Track that handler is called with correct parameters
-	calledCh := make(chan *Publication, 1)
-	mux.Handle(ctx, path, TrackHandlerFunc(func(p *Publication) {
-		calledCh <- p
+	calledCh := make(chan *TrackWriter, 1)
+	mux.Handle(ctx, path, TrackHandlerFunc(func(tw *TrackWriter) {
+		calledCh <- tw
 	}))
 
 	// Create and serve publisher
@@ -137,11 +138,10 @@ func TestNewMux_ServeTrack(t *testing.T) {
 
 	// Verify handler was called with correct publisher
 	select {
-	case receivedPublisher := <-calledCh:
-		assert.Equal(t, path, receivedPublisher.BroadcastPath, "handler should receive correct path")
-		assert.Equal(t, trackName, receivedPublisher.TrackName, "handler should receive correct track name")
-		assert.NotNil(t, receivedPublisher.TrackWriter, "handler should receive track writer")
-		assert.NotNil(t, receivedPublisher.Controller, "handler should receive subscribe stream")
+	case receivedTrackWriter := <-calledCh:
+		assert.NotNil(t, receivedTrackWriter, "handler should receive track writer")
+		assert.Equal(t, path, receivedTrackWriter.BroadcastPath, "handler should receive correct path")
+		assert.Equal(t, trackName, receivedTrackWriter.TrackName, "handler should receive correct track name")
 	case <-time.After(5 * time.Second):
 		t.Fatal("Handler should have been called")
 	}
@@ -151,24 +151,19 @@ func TestNewMux_ServeTrack_NotFound(t *testing.T) {
 	mux := NewTrackMux()
 
 	// Create a mock track writer
-	mockWriter := &MockTrackWriter{}
-
-	// Create mock subscribe stream
-	mockSubscribeStream := &MockPublishController{}
-	mockSubscribeStream.On("SubscribeID").Return(SubscribeID(1)).Maybe()
-	mockSubscribeStream.On("SubscribeConfig").Return(&SubscribeConfig{}, nil).Maybe()
-	mockSubscribeStream.On("Updated").Return(make(<-chan struct{})).Maybe()
-	mockSubscribeStream.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
-
-	// Create a publisher for non-existent path
-	publisher := &Publication{
-		BroadcastPath: BroadcastPath("/nonexistent"),
-		TrackName:     TrackName("track1"),
-		TrackWriter:   mockWriter,
-		Controller:    mockSubscribeStream,
+	substr := newReceiveSubscribeStream(SubscribeID(1), &MockQUICStream{}, &TrackConfig{})
+	openUniStreamFunc := func() (quic.SendStream, error) {
+		mockSendStream := &MockQUICSendStream{}
+		mockSendStream.On("CancelWrite", mock.Anything).Return()
+		mockSendStream.On("StreamID").Return(quic.StreamID(1))
+		mockSendStream.On("Close").Return(nil)
+		mockSendStream.On("Write", mock.Anything).Return(0, nil)
+		return mockSendStream, nil
 	}
+	closeFunc := func() {}
+	trackWriter := newTrackWriter(substr, openUniStreamFunc, closeFunc)
 	// Should use NotFoundHandler which closes the controller
-	mux.ServeTrack(publisher)
+	mux.ServeTrack(trackWriter)
 
 	// Assert that the publisher's Controller was closed with the expected error
 	mockSubscribeStream.AssertCalled(t, "CloseWithError", TrackNotFoundErrorCode)
@@ -187,32 +182,24 @@ func TestNewMux_ServeTrack_NilPublisher(t *testing.T) {
 func TestNewMux_ServeTrack_NilTrackWriter(t *testing.T) {
 	mux := NewTrackMux()
 
-	publisher := &Publication{
-		BroadcastPath: BroadcastPath("/test"),
-		TrackName:     TrackName("track1"),
-		TrackWriter:   nil, // nil writer
-		Controller:    &MockPublishController{},
-	}
-
 	// Should handle nil track writer gracefully without panic
 	assert.NotPanics(t, func() {
-		mux.ServeTrack(publisher)
+		mux.ServeTrack(nil)
 	})
 }
 
 func TestNewMux_ServeTrack_NilSubscribeStream(t *testing.T) {
 	mux := NewTrackMux()
 
-	publisher := &Publication{
-		BroadcastPath: BroadcastPath("/test"),
-		TrackName:     TrackName("track1"),
-		TrackWriter:   &MockTrackWriter{},
-		Controller:    nil, // nil stream
+	openUniStreamFunc := func() (quic.SendStream, error) {
+		return &MockQUICSendStream{}, nil
 	}
+	closeFunc := func() {}
+	trackWriter := newTrackWriter(nil, openUniStreamFunc, closeFunc)
 
 	// Should handle nil subscribe stream gracefully without panic
 	assert.NotPanics(t, func() {
-		mux.ServeTrack(publisher)
+		mux.ServeTrack(trackWriter)
 	})
 }
 
@@ -238,7 +225,7 @@ func TestNewMux_ServeAnnouncements(t *testing.T) {
 
 	// Register handlers for paths
 	for _, path := range paths {
-		mux.Handle(context.Background(), path, TrackHandlerFunc(func(p *Publication) {}))
+		mux.Handle(context.Background(), path, TrackHandlerFunc(func(tw *TrackWriter) {}))
 	}
 
 	// Create mock announcement writer
@@ -283,7 +270,7 @@ func TestNewMux_ServeAnnouncements(t *testing.T) {
 
 	// Add a new handler and verify it gets announced
 	newPath := BroadcastPath("/room/person4")
-	mux.Handle(context.Background(), newPath, TrackHandlerFunc(func(p *Publication) {}))
+	mux.Handle(context.Background(), newPath, TrackHandlerFunc(func(tw *TrackWriter) {}))
 
 	// Give time for new announcement to be processed
 	time.Sleep(100 * time.Millisecond)
@@ -318,7 +305,7 @@ func TestNewMux_ServeAnnouncements_NilWriter(t *testing.T) {
 
 	// Register a handler
 	path := BroadcastPath("/test/path")
-	mux.Handle(ctx, path, TrackHandlerFunc(func(p *Publication) {}))
+	mux.Handle(ctx, path, TrackHandlerFunc(func(tw *TrackWriter) {}))
 
 	// Test nil writer case - should return immediately without panic
 	done := make(chan struct{})
@@ -372,7 +359,7 @@ func TestNewMux_ServeAnnouncements_EmptyPrefix(t *testing.T) {
 	}
 
 	for _, path := range paths {
-		mux.Handle(ctx, path, TrackHandlerFunc(func(p *Publication) {}))
+		mux.Handle(ctx, path, TrackHandlerFunc(func(tw *TrackWriter) {}))
 	}
 
 	// Create mock announcement writer
@@ -433,7 +420,7 @@ func TestNewMux_Handler(t *testing.T) {
 
 	// Register a handler
 	called := false
-	expectedHandler := TrackHandlerFunc(func(p *Publication) { called = true })
+	expectedHandler := TrackHandlerFunc(func(tw *TrackWriter) { called = true })
 	mux.Handle(ctx, path, expectedHandler)
 
 	// Test found case - verify behavior not identity
@@ -461,9 +448,9 @@ func TestNewMux_HandleFunc(t *testing.T) {
 	path := BroadcastPath("/test")
 
 	called := false
-	mux.HandleFunc(ctx, path, func(pub *Publication) {
+	mux.HandleFunc(ctx, path, func(tw *TrackWriter) {
 		called = true
-		assert.Equal(t, path, pub.BroadcastPath)
+		assert.Equal(t, path, tw.BroadcastPath)
 	})
 
 	// Test that the function was registered correctly
@@ -483,7 +470,7 @@ func TestNewMux_Announce_Direct(t *testing.T) {
 
 	announcement := NewAnnouncement(ctx, path)
 	called := false
-	handler := TrackHandlerFunc(func(p *Publication) { called = true })
+	handler := TrackHandlerFunc(func(tw *TrackWriter) { called = true })
 
 	// Test direct announce
 	mux.Announce(announcement, handler)
@@ -502,7 +489,7 @@ func TestNewMux_Announce_InactiveAnnouncement(t *testing.T) {
 	announcement := NewAnnouncement(ctx, path)
 	announcement.End() // Make it inactive
 
-	handler := TrackHandlerFunc(func(p *Publication) {})
+	handler := TrackHandlerFunc(func(tw *TrackWriter) {})
 
 	// Test announce with inactive announcement
 	mux.Announce(announcement, handler)
@@ -524,8 +511,8 @@ func TestNewMux_Announce_DuplicatePath(t *testing.T) {
 	announcement1 := NewAnnouncement(ctx, path)
 	announcement2 := NewAnnouncement(ctx, path)
 
-	handler1 := TrackHandlerFunc(func(p *Publication) {})
-	handler2 := TrackHandlerFunc(func(p *Publication) {})
+	handler1 := TrackHandlerFunc(func(tw *TrackWriter) {})
+	handler2 := TrackHandlerFunc(func(tw *TrackWriter) {})
 
 	// Register first handler
 	mux.Announce(announcement1, handler1)
@@ -552,15 +539,15 @@ func TestNewMux_Clear(t *testing.T) {
 	callCounts := make(map[BroadcastPath]bool)
 	for _, path := range paths {
 		path := path // capture loop variable
-		mux.Handle(ctx, path, TrackHandlerFunc(func(p *Publication) {
+		mux.Handle(ctx, path, TrackHandlerFunc(func(tw *TrackWriter) {
 			callCounts[path] = true
 		}))
 	}
 
 	// Verify handlers are registered by testing behavior
 	for _, path := range paths {
-		publisher := createNewTestPublisher(path)
-		mux.ServeTrack(publisher)
+		trackWriter := newTrackWriter(BroadcastPath(path), TrackName("test_track"), nil, nil, nil)
+		mux.ServeTrack(trackWriter)
 		assert.True(t, callCounts[path], "handler should be registered for path %s", path)
 	}
 
@@ -569,11 +556,9 @@ func TestNewMux_Clear(t *testing.T) {
 
 	// Verify all handlers are removed by testing NotFoundHandler behavior
 	for _, path := range paths {
-		publisher := createNewTestPublisher(path)
-		mockController := publisher.Controller.(*MockPublishController)
-		mockController.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
+		trackWriter := newTrackWriter(path, "test_track", nil, nil, nil)
 
-		mux.ServeTrack(publisher)
+		mux.ServeTrack(trackWriter)
 		mockController.AssertCalled(t, "CloseWithError", TrackNotFoundErrorCode)
 	}
 }
@@ -584,14 +569,14 @@ func TestNewMux_AnnouncementLifecycle(t *testing.T) {
 	path := BroadcastPath("/test")
 
 	called := false
-	handler := TrackHandlerFunc(func(p *Publication) { called = true })
+	handler := TrackHandlerFunc(func(tw *TrackWriter) { called = true })
 
 	// Register handler
 	mux.Handle(ctx, path, handler)
 
 	// Verify handler is registered by testing behavior
-	publisher := createNewTestPublisher(path)
-	mux.ServeTrack(publisher)
+	trackWriter := newTrackWriter(path, "test_track", nil, nil, nil)
+	mux.ServeTrack(trackWriter)
 	assert.True(t, called, "handler should be registered")
 
 	// Cancel context to end announcement
@@ -601,11 +586,9 @@ func TestNewMux_AnnouncementLifecycle(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Handler should be removed - test by verifying NotFoundHandler behavior
-	publisher2 := createNewTestPublisher(path)
-	mockController := publisher2.Controller.(*MockPublishController)
-	mockController.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
+	trackWriter2 := newTrackWriter("/broadcast/test", "test_track", nil, nil, nil)
 
-	mux.ServeTrack(publisher2)
+	mux.ServeTrack(trackWriter2)
 	mockController.AssertCalled(t, "CloseWithError", TrackNotFoundErrorCode)
 }
 
@@ -626,7 +609,7 @@ func TestNewMux_ConcurrentAccess(t *testing.T) {
 
 			for j := 0; j < numPaths; j++ {
 				path := BroadcastPath(fmt.Sprintf("/test/%d/%d", id, j))
-				handler := TrackHandlerFunc(func(p *Publication) {})
+				handler := TrackHandlerFunc(func(tw *TrackWriter) {})
 
 				// Register handler
 				mux.Handle(ctx, path, handler)
@@ -635,33 +618,13 @@ func TestNewMux_ConcurrentAccess(t *testing.T) {
 				foundHandler := mux.Handler(path)
 				assert.NotNil(t, foundHandler, "handler should be found")
 
-				// Serve track
-				publisher := createNewTestPublisher(path)
-				mux.ServeTrack(publisher)
+				trackWriter := newTrackWriter(path, "test_track", nil, nil, nil)
+				mux.ServeTrack(trackWriter)
 			}
 		}(i)
 	}
 
 	wg.Wait()
-}
-
-// Helper function for creating test publishers
-func createNewTestPublisher(path BroadcastPath) *Publication {
-	mockWriter := &MockTrackWriter{}
-	controller := &MockPublishController{}
-
-	// Only set up the expectations that are commonly needed
-	controller.On("SubscribeID").Return(SubscribeID(1)).Maybe()
-	controller.On("SubscribeConfig").Return(&SubscribeConfig{}, nil).Maybe()
-	controller.On("Updated").Return(make(<-chan struct{})).Maybe()
-	controller.On("CloseWithError", mock.AnythingOfType("SubscribeErrorCode")).Return(nil).Maybe()
-
-	return &Publication{
-		BroadcastPath: path,
-		TrackName:     TrackName("test"),
-		TrackWriter:   mockWriter,
-		Controller:    controller,
-	}
 }
 
 // Test DefaultMux functionality
@@ -673,7 +636,7 @@ func TestNewMux_DefaultMux(t *testing.T) {
 	path := BroadcastPath("/default/test")
 
 	called := false
-	handler := TrackHandlerFunc(func(p *Publication) {
+	handler := TrackHandlerFunc(func(tw *TrackWriter) {
 		called = true
 	})
 
@@ -683,29 +646,29 @@ func TestNewMux_DefaultMux(t *testing.T) {
 	// Test top-level HandleFunc function
 	path2 := BroadcastPath("/default/test2")
 	called2 := false
-	HandleFunc(ctx, path2, func(pub *Publication) {
+	HandleFunc(ctx, path2, func(tw *TrackWriter) {
 		called2 = true
 	})
 
 	// Test handlers work
-	publisher := createNewTestPublisher(path)
-	DefaultMux.ServeTrack(publisher)
+	trackWriter := newTrackWriter(path, "test_track", nil, nil, nil)
+	DefaultMux.ServeTrack(trackWriter)
 	assert.True(t, called, "handler should be called")
 
-	publisher2 := createNewTestPublisher(path2)
-	DefaultMux.ServeTrack(publisher2)
+	trackWriter2 := newTrackWriter(path2, "test_track2", nil, nil, nil)
+	DefaultMux.ServeTrack(trackWriter2)
 	assert.True(t, called2, "handler2 should be called")
 
 	// Test direct Announce function
 	path3 := BroadcastPath("/default/test3")
 	announcement := NewAnnouncement(ctx, path3)
 	called3 := false
-	handler3 := TrackHandlerFunc(func(p *Publication) { called3 = true })
+	handler3 := TrackHandlerFunc(func(tw *TrackWriter) { called3 = true })
 
 	Announce(announcement, handler3)
 
-	publisher3 := createNewTestPublisher(path3)
-	DefaultMux.ServeTrack(publisher3)
+	trackWriter3 := newTrackWriter(path3, "test_track3", nil, nil, nil)
+	DefaultMux.ServeTrack(trackWriter3)
 	assert.True(t, called3, "handler3 should be called")
 
 	// Clean up
@@ -775,7 +738,7 @@ func TestNewMux_ServeAnnouncements_PrefixFiltering_Complete(t *testing.T) {
 	// Register all handlers
 	allPaths := append(matchingPaths, nonMatchingPaths...)
 	for _, path := range allPaths {
-		mux.Handle(ctx, path, TrackHandlerFunc(func(p *Publication) {}))
+		mux.Handle(ctx, path, TrackHandlerFunc(func(tw *TrackWriter) {}))
 	}
 
 	// Create mock announcement writer
@@ -839,7 +802,7 @@ func TestNewMux_ServeAnnouncements_RootPrefixMatching(t *testing.T) {
 	}
 
 	for _, path := range allPaths {
-		mux.Handle(ctx, path, TrackHandlerFunc(func(p *Publication) {}))
+		mux.Handle(ctx, path, TrackHandlerFunc(func(tw *TrackWriter) {}))
 	}
 
 	// Create mock announcement writer
@@ -896,7 +859,7 @@ func TestNewMux_ServeAnnouncements_NonMatchingPrefix(t *testing.T) {
 	}
 
 	for _, path := range paths {
-		mux.Handle(ctx, path, TrackHandlerFunc(func(p *Publication) {}))
+		mux.Handle(ctx, path, TrackHandlerFunc(func(tw *TrackWriter) {}))
 	}
 
 	// Create mock announcement writer
@@ -932,7 +895,7 @@ func TestNewMux_ServeAnnouncements_BroadcastServerIssue(t *testing.T) {
 	mux := NewTrackMux()
 
 	// Register handler for "/index" like broadcast server does
-	mux.Handle(ctx, BroadcastPath("/index"), TrackHandlerFunc(func(p *Publication) {}))
+	mux.Handle(ctx, BroadcastPath("/index"), TrackHandlerFunc(func(tw *TrackWriter) {}))
 
 	// Create mock announcement writer to capture sent announcements
 	announced := make([]*Announcement, 0)

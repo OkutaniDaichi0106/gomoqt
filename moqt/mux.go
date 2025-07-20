@@ -30,7 +30,7 @@ func Handle(ctx context.Context, path BroadcastPath, handler TrackHandler) {
 	DefaultMux.Handle(ctx, path, handler)
 }
 
-func HandleFunc(ctx context.Context, path BroadcastPath, f func(pub *Publication)) {
+func HandleFunc(ctx context.Context, path BroadcastPath, f func(tw *TrackWriter)) {
 	DefaultMux.HandleFunc(ctx, path, f)
 }
 
@@ -49,7 +49,7 @@ type TrackMux struct {
 	handlerIndex map[BroadcastPath]TrackHandler
 }
 
-func (mux *TrackMux) HandleFunc(ctx context.Context, path BroadcastPath, f func(pub *Publication)) {
+func (mux *TrackMux) HandleFunc(ctx context.Context, path BroadcastPath, f func(tw *TrackWriter)) {
 	mux.Handle(ctx, path, TrackHandlerFunc(f))
 }
 
@@ -165,23 +165,15 @@ func (mux *TrackMux) Handler(path BroadcastPath) TrackHandler {
 
 // ServeTrack serves the track at the specified path using the appropriate handler.
 // It finds the handler for the path and delegates the serving to it.
-func (mux *TrackMux) ServeTrack(pub *Publication) {
-	if pub == nil {
-		slog.Error("mux: nil publisher")
-		return
-	}
-	if pub.TrackWriter == nil {
+func (mux *TrackMux) ServeTrack(tw *TrackWriter) {
+	if tw == nil {
 		slog.Error("mux: nil track writer")
 		return
 	}
-	if pub.Controller == nil {
-		slog.Error("mux: nil controller")
-		return
-	}
 
-	handler := mux.Handler(pub.BroadcastPath)
+	handler := mux.Handler(tw.BroadcastPath)
 
-	handler.ServeTrack(pub)
+	handler.ServeTrack(tw)
 }
 
 // ServeAnnouncements serves announcements for tracks matching the given pattern.

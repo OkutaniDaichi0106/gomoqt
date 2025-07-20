@@ -76,9 +76,9 @@ func (sgs *sendGroupStream) SetWriteDeadline(t time.Time) error {
 	return sgs.stream.SetWriteDeadline(t)
 }
 
-func (sgs *sendGroupStream) CancelWrite(code GroupErrorCode) error {
+func (sgs *sendGroupStream) CancelWrite(code GroupErrorCode) {
 	if err := sgs.ctx.Err(); err != nil {
-		return err
+		return
 	}
 
 	strErrCode := quic.StreamErrorCode(code)
@@ -93,7 +93,7 @@ func (sgs *sendGroupStream) CancelWrite(code GroupErrorCode) error {
 
 	sgs.cancel(grpErr)
 
-	return nil
+	sgs.onClose()
 }
 
 func (sgs *sendGroupStream) Close() error {
@@ -117,6 +117,8 @@ func (sgs *sendGroupStream) Close() error {
 
 	// Successfully closed the stream, cancel the context
 	sgs.cancel(nil)
+
+	sgs.onClose()
 
 	return nil
 }

@@ -18,14 +18,14 @@ class DefaultContext implements Context {
         // Set error from signal reason when signal is aborted
         if (this.#signal.aborted) {
             this.#err = this.#signal.reason || new Error('Context cancelled');
-            // Initialize promise as already rejected for aborted signals
-            this.#donePromise = Promise.reject(this.#err);
+            // Initialize promise as already resolved for aborted signals
+            this.#donePromise = Promise.resolve();
         } else {
             // Initialize promise with abort listener for non-aborted signals
-            this.#donePromise = new Promise((resolve, reject) => {
+            this.#donePromise = new Promise(resolve => {
                 this.#signal.addEventListener('abort', () => {
                     this.#err = this.#signal.reason || new Error('Context cancelled');
-                    reject(this.#err);
+                    resolve();
                 }, { once: true });
             });
         }

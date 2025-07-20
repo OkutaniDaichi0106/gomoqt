@@ -1,5 +1,7 @@
 import { Session } from "./session";
 import { MOQOptions } from "./options";
+import { Extensions } from "./internal";
+import { DefaultTrackMux, TrackMux } from "./track_mux";
 
 const DefaultWebTransportOptions: WebTransportOptions = {
     allowPooling: false,
@@ -17,13 +19,17 @@ const DefaultMOQOptions: MOQOptions = {
 export class Client {
     #sessions: Set<Session> = new Set();
     readonly options: MOQOptions;
+    #mux: TrackMux;
 
-    constructor(options: MOQOptions = DefaultMOQOptions) {
+    constructor(options: MOQOptions = DefaultMOQOptions,
+        mux: TrackMux = new TrackMux()) {
         this.options = options;
+        this.#mux = mux;
     }
 
-    async dial(url: string | URL): Promise<Session> {
-        const session = new Session(new WebTransport(url, this.options.transport));
+    async dial(url: string | URL, mux: TrackMux = DefaultTrackMux): Promise<Session> {
+        const transport = new WebTransport(url, this.options.transport);
+        const session = new Session(transport, undefined, this.options.extensions, mux);
         await session.ready;
         this.#sessions.add(session);
         return session;

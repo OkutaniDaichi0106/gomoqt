@@ -1,13 +1,19 @@
 import { GroupReader, GroupWriter } from "./group_stream";
+import { Info } from "./info";
 import { Context } from "./internal/context";
 
 export class TrackWriter {
     #ctx: Context;
     #openGroupFunc: (trackCtx: Context, groupId: bigint) => Promise<[GroupWriter?, Error?]>;
+    #acceptFunc: (info: Info) => Promise<Error | undefined>;
 
-    constructor(trackCtx: Context, openGroupFunc: (trackCtx: Context, groupId: bigint) => Promise<[GroupWriter?, Error?]>) {
+    constructor(trackCtx: Context,
+        openGroupFunc: (trackCtx: Context, groupId: bigint) => Promise<[GroupWriter?, Error?]>,
+        acceptFunc: (info: Info) => Promise<Error | undefined>
+    ) {
         this.#ctx = trackCtx;
         this.#openGroupFunc = openGroupFunc;
+        this.#acceptFunc = acceptFunc;
     }
 
     get context(): Context {
@@ -15,6 +21,7 @@ export class TrackWriter {
     }
 
     async openGroup(groupId: bigint): Promise<[GroupWriter?, Error?]> {
+        await this.#acceptFunc({groupOrder: 0, trackPriority: 0});
         return this.#openGroupFunc(this.#ctx, groupId);
     }
 }

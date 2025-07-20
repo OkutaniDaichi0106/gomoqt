@@ -286,10 +286,7 @@ func (c *Client) openSession(conn quic.Connection, path string, extensions func(
 	sessLogger.Debug("session stream opened", "stream_id", stream.StreamID())
 
 	// Send STREAM_TYPE message
-	stm := message.StreamTypeMessage{
-		StreamType: stream_type_session,
-	}
-	err = stm.Encode(stream)
+	err = message.StreamTypeSession.Encode(stream)
 	if err != nil {
 		sessLogger.Error("failed to send STREAM_TYPE message",
 			"error", err,

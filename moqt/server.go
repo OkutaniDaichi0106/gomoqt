@@ -348,8 +348,8 @@ func (s *Server) acceptSession(setupCtx context.Context, path *string, conn quic
 		return nil, fmt.Errorf("failed to accept a session stream: %w", err)
 	}
 
-	var stm message.StreamTypeMessage
-	err = stm.Decode(stream)
+	var streamType message.StreamType
+	err = streamType.Decode(stream)
 	if err != nil {
 		sessLogger.Error("failed to receive STREAM_TYPE message",
 			"error", err,

@@ -41,15 +41,15 @@ func main() {
 				return
 			}
 
-			sub, err := sess.OpenTrackStream(ann.BroadcastPath(), "", nil)
+			tr, err := sess.OpenTrackStream(ann.BroadcastPath(), "", nil)
 			if err != nil {
 				slog.Error("failed to open track stream", "error", err)
 				return
 			}
-			defer sub.Controller.Close()
+			defer tr.Close()
 
 			for {
-				gr, err := sub.TrackReader.AcceptGroup(context.Background())
+				gr, err := tr.AcceptGroup(context.Background())
 				if err != nil {
 					slog.Error("failed to accept group", "error", err)
 					return

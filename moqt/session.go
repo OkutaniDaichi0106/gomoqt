@@ -20,7 +20,7 @@ func newSession(conn quic.Connection, version protocol.Version, path string, cli
 	}
 
 	if logger == nil {
-		logger = slog.Default()
+		logger = slog.New(slog.DiscardHandler)
 	}
 
 	sess := &Session{
@@ -32,11 +32,12 @@ func newSession(conn quic.Connection, version protocol.Version, path string, cli
 		logger:           logger,
 		conn:             conn,
 		mux:              mux,
-		trackReceivers:   make(map[SubscribeID]func(GroupSequence, quic.ReceiveStream)),
-		trackSenders:     make(map[SubscribeID]*trackSender),
+		trackReaders:     make(map[SubscribeID]*TrackReader),
+		trackWriters:     make(map[SubscribeID]*TrackWriter),
 	}
 
-	sess.wg.Add(3) // Listen for session stream closure
+	sess.wg.Add(3)
+	// Listen for session stream closure
 	go func() {
 		defer sess.wg.Done()
 		<-sess.Context().Done()
@@ -51,17 +52,13 @@ func newSession(conn quic.Connection, version protocol.Version, path string, cli
 	// Listen bidirectional streams
 	go func() {
 		defer sess.wg.Done()
-		logger.Debug("starting bidirectional stream handler")
 		sess.handleBiStreams()
-		logger.Debug("bidirectional stream handler terminated")
 	}()
 
 	// Listen unidirectional streams
 	go func() {
 		defer sess.wg.Done()
-		logger.Debug("starting unidirectional stream handler")
 		sess.handleUniStreams()
-		logger.Debug("unidirectional stream handler terminated")
 	}()
 
 	return sess
@@ -91,11 +88,11 @@ type Session struct {
 
 	subscribeIDCounter atomic.Uint64
 
-	trackReceivers    map[SubscribeID]func(GroupSequence, quic.ReceiveStream)
-	receiverMapLocker sync.RWMutex
+	trackReaders         map[SubscribeID]*TrackReader
+	trackReaderMapLocker sync.RWMutex
 
-	trackSenders    map[SubscribeID]*trackSender
-	senderMapLocker sync.RWMutex
+	trackWriters         map[SubscribeID]*TrackWriter
+	trackWriterMapLocker sync.RWMutex
 
 	isTerminating atomic.Bool
 	sessErr       error
@@ -160,13 +157,13 @@ func (s *Session) Terminate(code SessionErrorCode, msg string) error {
 	return nil
 }
 
-func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *SubscribeConfig) (*Subscription, error) {
+func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *TrackConfig) (*TrackReader, error) {
 	if s.terminating() {
 		return nil, s.sessErr
 	}
 
 	if config == nil {
-		config = &SubscribeConfig{}
+		config = &TrackConfig{}
 	}
 
 	id := s.nextSubscribeID()
@@ -187,10 +184,7 @@ func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *Su
 
 	streamLogger := s.logger.With("stream_id", stream.StreamID())
 
-	stm := message.StreamTypeMessage{
-		StreamType: stream_type_subscribe,
-	}
-	err = stm.Encode(stream)
+	err = message.StreamTypeSubscribe.Encode(stream)
 	if err != nil {
 		var strErr *quic.StreamError
 		if errors.As(err, &strErr) && strErr.Remote {
@@ -213,12 +207,12 @@ func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *Su
 
 	// Send a SUBSCRIBE message
 	sm := message.SubscribeMessage{
-		SubscribeID:      message.SubscribeID(id),
+		SubscribeID:      id,
 		BroadcastPath:    string(path),
 		TrackName:        string(name),
-		TrackPriority:    message.TrackPriority(config.TrackPriority),
-		MinGroupSequence: message.GroupSequence(config.MinGroupSequence),
-		MaxGroupSequence: message.GroupSequence(config.MaxGroupSequence),
+		TrackPriority:    config.TrackPriority,
+		MinGroupSequence: config.MinGroupSequence,
+		MaxGroupSequence: config.MaxGroupSequence,
 	}
 	err = sm.Encode(stream)
 	if err != nil {
@@ -268,7 +262,7 @@ func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *Su
 		return nil, err
 	}
 
-	substr := newSendSubscribeStream(s.ctx, id, stream, config)
+	substr := newSendSubscribeStream(id, stream, config)
 
 	streamLogger.Debug("subscribe stream opened",
 		"subscribe_id", id,
@@ -276,18 +270,14 @@ func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *Su
 		"track_name", name,
 		"subscribe_config", config,
 	)
-	// Create a receive group stream queue
-	trackReceiver := newTrackReceiver(substr.ctx)
-	s.receiverMapLocker.Lock()
-	s.trackReceivers[id] = trackReceiver.enqueueGroup
-	s.receiverMapLocker.Unlock()
 
-	return &Subscription{
-		BroadcastPath: path,
-		TrackName:     name,
-		TrackReader:   trackReceiver,
-		Controller:    substr,
-	}, nil
+	// Create a receive group stream queue
+	trackReceiver := newTrackReader(path, name, substr, func() {
+		s.removeTrackReader(id)
+	})
+	s.addTrackReader(id, trackReceiver)
+
+	return trackReceiver, nil
 }
 
 func (s *Session) nextSubscribeID() SubscribeID {
@@ -324,10 +314,7 @@ func (sess *Session) OpenAnnounceStream(prefix string) (AnnouncementReader, erro
 	streamLogger := sess.logger.With("stream_id", stream.StreamID())
 	streamLogger.Debug("opened bidirectional stream")
 
-	st := message.StreamTypeMessage{
-		StreamType: stream_type_announce,
-	}
-	err = st.Encode(stream)
+	err = message.StreamTypeAnnounce.Encode(stream)
 	if err != nil {
 		var strErr *quic.StreamError
 		if errors.As(err, &strErr) {
@@ -403,8 +390,8 @@ func (sess *Session) handleBiStreams() {
 }
 
 func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logger) {
-	var stm message.StreamTypeMessage
-	err := stm.Decode(stream)
+	var streamType message.StreamType
+	err := streamType.Decode(stream)
 	if err != nil {
 		streamLogger.Error("failed to decode stream type message",
 			"error", err,
@@ -413,8 +400,8 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 		return
 	}
 
-	switch stm.StreamType {
-	case stream_type_announce:
+	switch streamType {
+	case message.StreamTypeAnnounce:
 		var apm message.AnnouncePleaseMessage
 		err := apm.Decode(stream)
 		if err != nil {
@@ -432,7 +419,7 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 		streamLogger.Debug("accepted announce stream")
 
 		sess.mux.ServeAnnouncements(annstr, prefix)
-	case stream_type_subscribe:
+	case message.StreamTypeSubscribe:
 		var sm message.SubscribeMessage
 		err := sm.Decode(stream)
 		if err != nil {
@@ -444,23 +431,20 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 		}
 
 		// Create a receiveSubscribeStream
-		id := SubscribeID(sm.SubscribeID)
-		path := BroadcastPath(sm.BroadcastPath)
-		name := TrackName(sm.TrackName)
-		config := &SubscribeConfig{
-			TrackPriority:    TrackPriority(sm.TrackPriority),
-			MinGroupSequence: GroupSequence(sm.MinGroupSequence),
-			MaxGroupSequence: GroupSequence(sm.MaxGroupSequence),
+		config := &TrackConfig{
+			TrackPriority:    sm.TrackPriority,
+			MinGroupSequence: sm.MinGroupSequence,
+			MaxGroupSequence: sm.MaxGroupSequence,
 		}
 		// Create a subscription-specific logger
 		subLogger := streamLogger.With(
-			"subscribe_id", id,
-			"broadcast_path", path,
-			"track_name", name,
+			"subscribe_id", sm.SubscribeID,
+			"broadcast_path", sm.BroadcastPath,
+			"track_name", sm.TrackName,
 			"config", config.String(),
 		)
 
-		handler := sess.mux.Handler(path)
+		handler := sess.mux.Handler(BroadcastPath(sm.BroadcastPath))
 		if handler == nil {
 			subLogger.Warn("track not found for subscription")
 
@@ -470,60 +454,22 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 			return
 		}
 
-		substr := newReceiveSubscribeStream(sess.ctx, id, stream, config)
+		substr := newReceiveSubscribeStream(sm.SubscribeID, stream, config)
 
 		subLogger.Debug("accepted a subscribe stream")
 
-		// openGroupStreamFunc := func(trackCtx context.Context, seq GroupSequence) (*sendGroupStream, error) {
-
-		// 	// Add stream_id to the logger context
-		// 	streamLogger := subLogger.With(
-		// 		"stream_id", stream.StreamID(),
-		// 		"group_sequence", seq,
-		// 	)
-		// 	streamLogger.Debug("opened a group stream")
-
-		// 	stm := message.StreamTypeMessage{
-		// 		StreamType: stream_type_group,
-		// 	}
-		// 	err = stm.Encode(stream)
-
-		// 	gm := message.GroupMessage{
-		// 		SubscribeID:   sm.SubscribeID,
-		// 		GroupSequence: message.GroupSequence(seq),
-		// 	}
-		// 	err = gm.Encode(stream)
-
-		// 	return newSendGroupStream(trackCtx, stream, seq), nil
-		// }
-
-		removeTrackFunc := func() {
-			sess.senderMapLocker.Lock()
-			defer sess.senderMapLocker.Unlock()
-
-			delete(sess.trackSenders, id)
-		}
-
-		trackSender := newTrackSender(substr.ctx, subLogger,
-			sess.conn.OpenUniStream, substr.WriteInfo, removeTrackFunc)
-
-		sess.senderMapLocker.Lock()
-		sess.trackSenders[id] = trackSender
-		sess.senderMapLocker.Unlock()
+		trackWriter := newTrackWriter(BroadcastPath(sm.BroadcastPath), TrackName(sm.TrackName),
+			substr, sess.conn.OpenUniStream, func() { sess.removeTrackWriter(sm.SubscribeID) })
+		sess.addTrackWriter(sm.SubscribeID, trackWriter)
 
 		subLogger.Info("serving track for subscription")
 
-		handler.ServeTrack(&Publication{
-			BroadcastPath: path,
-			TrackName:     name,
-			Controller:    substr,
-			TrackWriter:   trackSender,
-		})
+		handler.ServeTrack(trackWriter)
 	default:
 		streamLogger.Error("unknown bidirectional stream type",
-			"stream_type", stm.StreamType,
+			"stream_type", streamType,
 		)
-		sess.Terminate(ProtocolViolationErrorCode, fmt.Sprintf("unknown bidirectional stream type: %v", stm.StreamType))
+		sess.Terminate(ProtocolViolationErrorCode, fmt.Sprintf("unknown bidirectional stream type: %v", streamType))
 		return
 	}
 }
@@ -553,8 +499,8 @@ func (sess *Session) processUniStream(stream quic.ReceiveStream, streamLogger *s
 	/*
 	 * Get a Stream Type ID
 	 */
-	var stm message.StreamTypeMessage
-	err := stm.Decode(stream)
+	var streamType message.StreamType
+	err := streamType.Decode(stream)
 	if err != nil {
 		streamLogger.Error("failed to decode stream type message",
 			"error", err,
@@ -563,8 +509,8 @@ func (sess *Session) processUniStream(stream quic.ReceiveStream, streamLogger *s
 	}
 
 	// Handle the stream by the Stream Type ID
-	switch stm.StreamType {
-	case stream_type_group:
+	switch streamType {
+	case message.StreamTypeGroup:
 		var gm message.GroupMessage
 		err := gm.Decode(stream)
 		if err != nil {
@@ -574,15 +520,13 @@ func (sess *Session) processUniStream(stream quic.ReceiveStream, streamLogger *s
 			return
 		}
 
-		id := SubscribeID(gm.SubscribeID)
-
 		// Create a group-specific logger
 		groupLogger := streamLogger.With(
-			"subscribe_id", id,
+			"subscribe_id", gm.SubscribeID,
 			"group_sequence", gm.GroupSequence,
 		)
 
-		enqueueFunc, ok := sess.trackReceivers[id]
+		track, ok := sess.trackReaders[gm.SubscribeID]
 		if !ok {
 			groupLogger.Warn("received group for unknown subscription")
 			stream.CancelRead(quic.StreamErrorCode(InvalidSubscribeIDErrorCode))
@@ -592,14 +536,50 @@ func (sess *Session) processUniStream(stream quic.ReceiveStream, streamLogger *s
 		groupLogger.Debug("accepted group stream")
 
 		// Enqueue the receiver
-		enqueueFunc(gm.GroupSequence, stream)
+		track.enqueueGroup(gm.GroupSequence, stream)
 	default:
 		streamLogger.Error("unknown unidirectional stream type received",
-			"stream_type", stm.StreamType,
+			"stream_type", streamType,
 		)
 
 		// Terminate the session
-		sess.Terminate(ProtocolViolationErrorCode, fmt.Sprintf("unknown unidirectional stream type: %v", stm.StreamType))
+		sess.Terminate(ProtocolViolationErrorCode, fmt.Sprintf("unknown unidirectional stream type: %v", streamType))
 		return
+	}
+}
+
+func (s *Session) addTrackWriter(id SubscribeID, writer *TrackWriter) {
+	s.trackWriterMapLocker.Lock()
+	defer s.trackWriterMapLocker.Unlock()
+	s.trackWriters[id] = writer
+}
+
+func (s *Session) removeTrackWriter(id SubscribeID) {
+	s.trackWriterMapLocker.Lock()
+	defer s.trackWriterMapLocker.Unlock()
+
+	if writer, ok := s.trackWriters[id]; ok {
+		writer.Close()
+		delete(s.trackWriters, id)
+	}
+}
+
+func (s *Session) addTrackReader(id SubscribeID, reader *TrackReader) {
+	s.trackReaderMapLocker.Lock()
+	defer s.trackReaderMapLocker.Unlock()
+	s.trackReaders[id] = reader
+	s.logger.Debug("added track reader",
+		"subscribe_id", id,
+		"track_name", reader.TrackName,
+	)
+}
+
+func (s *Session) removeTrackReader(id SubscribeID) {
+	s.trackReaderMapLocker.Lock()
+	defer s.trackReaderMapLocker.Unlock()
+
+	if reader, ok := s.trackReaders[id]; ok {
+		reader.Close()
+		delete(s.trackReaders, id)
 	}
 }

@@ -36,36 +36,37 @@ func main() {
 		})),
 	}
 
+	moqt.HandleFunc(context.Background(), "/server.broadcast", func(tw *moqt.TrackWriter) {
+		seq := moqt.GroupSequenceFirst
+		for {
+			group, err := tw.OpenGroup(seq)
+			if err != nil {
+				slog.Error("failed to open group", "error", err)
+				break
+			}
+
+			frame := moqt.NewFrame([]byte("Hello from interop server!"))
+			err = group.WriteFrame(frame)
+			if err != nil {
+				group.CancelWrite(moqt.InternalGroupErrorCode) // TODO: Handle error properly
+				slog.Error("failed to write frame", "error", err)
+				break
+			}
+
+			frame.Release()
+			group.Close()
+
+			seq = seq.Next()
+
+			time.Sleep(1 * time.Second) // Simulate periodic updates
+		}
+
+		tw.Close()
+	})
+
 	// Serve moq over webtransport
 	http.HandleFunc("/subscribe", func(w http.ResponseWriter, r *http.Request) {
-		mux := moqt.NewTrackMux()
-		mux.HandleFunc(context.Background(), "/server.broadcast", func(pub *moqt.Publication) {
-			seq := moqt.GroupSequenceFirst
-			for {
-				group, err := pub.TrackWriter.OpenGroup(seq)
-				if err != nil {
-					slog.Error("failed to open group", "error", err)
-					return
-				}
-
-				frame := moqt.NewFrame([]byte("Hello from interop server!"))
-				err = group.WriteFrame(frame)
-				if err != nil {
-					group.CancelWrite(moqt.InternalGroupErrorCode) // TODO: Handle error properly
-					slog.Error("failed to write frame", "error", err)
-					return
-				}
-
-				frame.Release()
-				group.Close()
-
-				seq = seq.Next()
-
-				time.Sleep(1 * time.Second) // Simulate periodic updates
-			}
-		})
-
-		_, err := server.AcceptWebTransport(w, r, mux)
+		_, err := server.AcceptWebTransport(w, r, nil)
 		if err != nil {
 			slog.Error("failed to serve moq over webtransport", "error", err)
 		}
@@ -95,32 +96,42 @@ func main() {
 					return
 				}
 
-				sub, err := sess.OpenTrackStream(ann.BroadcastPath(), "index", nil)
+				slog.Info("received announcement", "path", ann.BroadcastPath())
+
+				tr, err := sess.OpenTrackStream(ann.BroadcastPath(), "index", nil)
 				if err != nil {
 					slog.Error("failed to open track stream", "error", err)
 					return
 				}
 
 				for {
-					gr, err := sub.TrackReader.AcceptGroup(context.Background())
+					gr, err := tr.AcceptGroup(context.Background())
 					if err != nil {
 						slog.Error("failed to accept group", "error", err)
 						return
 					}
 
-					for {
-						frame, err := gr.ReadFrame()
-						if err != nil {
-							if err == io.EOF {
+					go func(gr moqt.GroupReader) {
+						defer gr.CancelRead(moqt.InternalGroupErrorCode)
+
+						for {
+							frame, err := gr.ReadFrame()
+							if err != nil {
+								if err == io.EOF {
+									return
+								}
+								slog.Error("failed to read frame", "error", err)
 								break
 							}
-							gr.CancelRead(moqt.InternalGroupErrorCode)
-							slog.Error("failed to accept frame", "error", err)
-							return
-						}
 
-						frame.Release()
-					}
+							slog.Info("received a frame", "frame", string(frame.CopyBytes()))
+
+							// TODO: Release the frame after processing
+							// This is important to avoid memory leaks
+							frame.Release()
+						}
+					}(gr)
+
 				}
 			}(ann)
 		}

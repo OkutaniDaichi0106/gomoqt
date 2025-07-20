@@ -1,4 +1,4 @@
 export type Info = {
-	groupOrder: bigint
-	trackPriority: bigint
+	groupOrder: number
+	trackPriority: number
 }

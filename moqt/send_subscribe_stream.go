@@ -3,29 +3,25 @@ package moqt
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-func newSendSubscribeStream(sessCtx context.Context, id SubscribeID, stream quic.Stream, config *SubscribeConfig) *sendSubscribeStream {
-	ctx, cancel := context.WithCancelCause(sessCtx)
+func newSendSubscribeStream(id SubscribeID, stream quic.Stream, config *TrackConfig) *sendSubscribeStream {
+	ctx, cancel := context.WithCancelCause(stream.Context())
 	substr := &sendSubscribeStream{
 		ctx:    ctx,
 		cancel: cancel,
 		id:     id,
-		// publishAbortedCh: make(chan *SubscribeError),
 		config: config,
 		stream: stream,
 	}
 
-	// go substr.listenAborted()
-
 	return substr
 }
-
-var _ SubscribeController = (*sendSubscribeStream)(nil)
 
 type sendSubscribeStream struct {
 	ctx    context.Context
@@ -33,27 +29,24 @@ type sendSubscribeStream struct {
 
 	id SubscribeID
 
-	config *SubscribeConfig
+	config *TrackConfig
 
 	stream quic.Stream
 	mu     sync.Mutex
-
-	closeErr error
-	closed   bool
 }
 
 func (sss *sendSubscribeStream) SubscribeID() SubscribeID {
 	return sss.id
 }
 
-func (sss *sendSubscribeStream) SubscribeConfig() *SubscribeConfig {
+func (sss *sendSubscribeStream) TrackConfig() *TrackConfig {
 	sss.mu.Lock()
 	defer sss.mu.Unlock()
 
 	return sss.config
 }
 
-func (sss *sendSubscribeStream) UpdateSubscribe(newConfig *SubscribeConfig) error {
+func (sss *sendSubscribeStream) UpdateSubscribe(newConfig *TrackConfig) error {
 	if newConfig == nil {
 		return errors.New("new subscribe config cannot be nil")
 	}
@@ -61,11 +54,12 @@ func (sss *sendSubscribeStream) UpdateSubscribe(newConfig *SubscribeConfig) erro
 	sss.mu.Lock()
 	defer sss.mu.Unlock()
 
-	if sss.closed {
-		if sss.closeErr != nil {
-			return sss.closeErr
+	if err := sss.ctx.Err(); err != nil {
+		reason := context.Cause(sss.ctx)
+		if reason != nil {
+			err = reason
 		}
-		return errors.New("stream already closed")
+		return fmt.Errorf("subscribe stream is closed: %w", err)
 	}
 
 	old := sss.config
@@ -104,20 +98,19 @@ func (sss *sendSubscribeStream) UpdateSubscribe(newConfig *SubscribeConfig) erro
 		// Set writeErr and unwritable before closing channel
 		var strErr *quic.StreamError
 		if errors.As(err, &strErr) {
-			sss.closeErr = &SubscribeError{StreamError: strErr}
+			err = &SubscribeError{StreamError: strErr}
 		} else {
 			strErrCode := quic.StreamErrorCode(InternalSubscribeErrorCode)
 			sss.stream.CancelWrite(strErrCode)
-			sss.closeErr = &SubscribeError{StreamError: &quic.StreamError{
+			err = &SubscribeError{StreamError: &quic.StreamError{
 				StreamID:  sss.stream.StreamID(),
 				ErrorCode: strErrCode,
 			}}
 		}
-		sss.closed = true
 
-		sss.cancel(sss.closeErr)
+		sss.cancel(err)
 
-		return sss.closeErr
+		return fmt.Errorf("failed to send subscribe update message: %w", err)
 	}
 
 	// Only update config after successful message sending
@@ -126,12 +119,12 @@ func (sss *sendSubscribeStream) UpdateSubscribe(newConfig *SubscribeConfig) erro
 	return nil
 }
 
-func (sss *sendSubscribeStream) Close() error {
+func (sss *sendSubscribeStream) close() error {
 	sss.mu.Lock()
 	defer sss.mu.Unlock()
 
-	if sss.closed {
-		return sss.closeErr
+	if err := sss.ctx.Err(); err != nil {
+		return nil
 	}
 
 	err := sss.stream.Close()
@@ -139,32 +132,28 @@ func (sss *sendSubscribeStream) Close() error {
 		return err
 	}
 
-	sss.closed = true
-
 	sss.cancel(nil)
 
 	return nil
 }
 
-func (sss *sendSubscribeStream) CloseWithError(code SubscribeErrorCode) error {
+func (sss *sendSubscribeStream) closeWithError(code SubscribeErrorCode) error {
 	sss.mu.Lock()
 	defer sss.mu.Unlock()
 
-	if sss.closed {
-		return sss.closeErr
+	if err := sss.ctx.Err(); err != nil {
+		return nil
 	}
 
 	strErrCode := quic.StreamErrorCode(code)
 	sss.stream.CancelWrite(strErrCode)
 
-	sss.closed = true
 	err := &SubscribeError{
 		StreamError: &quic.StreamError{
 			StreamID:  sss.stream.StreamID(),
 			ErrorCode: strErrCode,
 		},
 	}
-	sss.closeErr = err
 
 	sss.stream.CancelRead(strErrCode)
 

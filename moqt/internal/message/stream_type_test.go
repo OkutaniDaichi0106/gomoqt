@@ -11,23 +11,17 @@ import (
 
 func TestStreamTypeMessage_EncodeDecode(t *testing.T) {
 	tests := map[string]struct {
-		input   message.StreamTypeMessage
+		input   message.StreamType
 		wantErr bool
 	}{
 		"valid message": {
-			input: message.StreamTypeMessage{
-				StreamType: message.StreamType(0),
-			},
+			input: message.StreamType(0),
 		},
 		"max value": {
-			input: message.StreamTypeMessage{
-				StreamType: message.StreamType(^byte(0)),
-			},
+			input: message.StreamType(^byte(0)),
 		},
 		"middle value": {
-			input: message.StreamTypeMessage{
-				StreamType: message.StreamType(uint32(42)),
-			},
+			input: message.StreamType(uint32(42)),
 		},
 	}
 
@@ -44,12 +38,42 @@ func TestStreamTypeMessage_EncodeDecode(t *testing.T) {
 			require.NoError(t, err)
 
 			// Decode
-			var decoded message.StreamTypeMessage
+			var decoded message.StreamType
 			err = decoded.Decode(&buf)
 			require.NoError(t, err)
 
 			// Compare fields
 			assert.Equal(t, tc.input, decoded, "decoded message should match input")
+		})
+	}
+}
+
+func TestStreamType_Constants(t *testing.T) {
+	tests := map[string]struct {
+		streamType message.StreamType
+		expected   message.StreamType
+	}{
+		"session constant": {
+			streamType: message.StreamTypeSession,
+			expected:   message.StreamType(0x0),
+		},
+		"announce constant": {
+			streamType: message.StreamTypeAnnounce,
+			expected:   message.StreamType(0x1),
+		},
+		"subscribe constant": {
+			streamType: message.StreamTypeSubscribe,
+			expected:   message.StreamType(0x2),
+		},
+		"group constant": {
+			streamType: message.StreamTypeGroup,
+			expected:   message.StreamType(0x0),
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.streamType)
 		})
 	}
 }

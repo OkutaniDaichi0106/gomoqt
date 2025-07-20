@@ -152,8 +152,7 @@ func TestSendGroupStream_CloseWithError(t *testing.T) {
 
 	sgs := newSendGroupStream(ctx, mockStream, GroupSequence(1), func() {})
 
-	err := sgs.CancelWrite(errorCode)
-	assert.NoError(t, err)
+	sgs.CancelWrite(errorCode)
 	mockStream.AssertExpectations(t)
 
 	// Verify the context is cancelled after CancelWrite()

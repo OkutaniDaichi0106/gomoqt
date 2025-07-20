@@ -32,7 +32,9 @@ func (m *MockGroupWriter) Close() error {
 	return args.Error(0)
 }
 
-func (m *MockGroupWriter) CancelWrite(code GroupErrorCode) error {
+func (m *MockGroupWriter) CancelWrite(code GroupErrorCode) {
 	args := m.Called(code)
-	return args.Error(0)
+	if args.Get(0) != nil {
+		panic(args.Error(0))
+	}
 }

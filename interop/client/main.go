@@ -5,6 +5,7 @@ import (
 	"flag"
 	"io"
 	"log/slog"
+	"os"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt"
 )
@@ -14,7 +15,9 @@ func main() {
 	flag.Parse()
 
 	client := &moqt.Client{
-		Logger: slog.Default(),
+		Logger: slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+			Level: slog.LevelDebug,
+		})),
 	}
 
 	switch *path {
@@ -61,15 +64,15 @@ func subscribe(client *moqt.Client) error {
 				return
 			}
 
-			sub, err := sess.OpenTrackStream(ann.BroadcastPath(), "index", nil)
+			tr, err := sess.OpenTrackStream(ann.BroadcastPath(), "index", nil)
 			if err != nil {
 				slog.Error("failed to open track stream", "error", err)
 				return
 			}
-			defer sub.Controller.Close()
+			defer tr.Close()
 
 			for {
-				gr, err := sub.TrackReader.AcceptGroup(context.Background())
+				gr, err := tr.AcceptGroup(context.Background())
 				if err != nil {
 					slog.Error("failed to accept group", "error", err)
 					return
@@ -106,10 +109,10 @@ func subscribe(client *moqt.Client) error {
 
 func publish(client *moqt.Client) error {
 	mux := moqt.NewTrackMux()
-	mux.HandleFunc(context.Background(), "/interop.client", func(pub *moqt.Publication) {
+	mux.HandleFunc(context.Background(), "/interop.client", func(tw *moqt.TrackWriter) {
 		seq := moqt.GroupSequenceFirst
 		for {
-			group, err := pub.TrackWriter.OpenGroup(seq)
+			group, err := tw.OpenGroup(seq)
 			if err != nil {
 				slog.Error("failed to open group", "error", err)
 				return

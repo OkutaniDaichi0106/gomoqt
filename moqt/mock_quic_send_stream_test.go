@@ -1,6 +1,7 @@
 package moqt
 
 import (
+	"context"
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
@@ -40,4 +41,9 @@ func (m *MockQUICSendStream) SetWriteDeadline(t time.Time) error {
 func (m *MockQUICSendStream) Close() error {
 	args := m.Called()
 	return args.Error(0)
+}
+
+func (m *MockQUICSendStream) Context() context.Context {
+	args := m.Called()
+	return args.Get(0).(context.Context)
 }

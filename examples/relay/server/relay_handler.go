@@ -11,20 +11,20 @@ import (
 
 var _ moqt.TrackHandler = (*relayHandler)(nil)
 
-func newRelayHandler(sub *moqt.Subscription) moqt.TrackHandler {
+func newRelayHandler(tr *moqt.TrackReader) moqt.TrackHandler {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	h := &relayHandler{
 		ctx:   ctx,
-		dests: make(map[*moqt.Publication]struct{}),
+		dests: make(map[*moqt.TrackWriter]struct{}),
 	}
 
 	go func() {
 		defer cancel()
-		defer sub.Controller.Close()
+		defer tr.Close()
 
 		for {
-			gr, err := sub.TrackReader.AcceptGroup(ctx)
+			gr, err := tr.AcceptGroup(ctx)
 			if err != nil {
 				return
 			}
@@ -40,10 +40,10 @@ type relayHandler struct {
 	ctx context.Context
 
 	mu    sync.RWMutex
-	dests map[*moqt.Publication]struct{}
+	dests map[*moqt.TrackWriter]struct{}
 }
 
-func (h *relayHandler) ServeTrack(pub *moqt.Publication) {
+func (h *relayHandler) ServeTrack(pub *moqt.TrackWriter) {
 	h.mu.Lock()
 	h.dests[pub] = struct{}{}
 	h.mu.Unlock()
@@ -57,15 +57,15 @@ func (h *relayHandler) relayGroup(gr moqt.GroupReader) {
 
 	writers := make(chan moqt.GroupWriter, len(h.dests))
 	go func() {
-		failedPubs := make([]*moqt.Publication, 0, len(h.dests))
+		failedPubs := make([]*moqt.TrackWriter, 0, len(h.dests))
 
 		h.mu.RLock()
 		defer h.mu.RUnlock()
 
-		for pub := range h.dests {
-			gw, err := pub.TrackWriter.OpenGroup(seq)
+		for tw := range h.dests {
+			gw, err := tw.OpenGroup(seq)
 			if err != nil {
-				failedPubs = append(failedPubs, pub)
+				failedPubs = append(failedPubs, tw)
 				continue
 			}
 			writers <- gw

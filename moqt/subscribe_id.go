@@ -1,9 +1,7 @@
 package moqt
 
-import "fmt"
+import (
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
+)
 
-type SubscribeID uint64
-
-func (id SubscribeID) String() string {
-	return fmt.Sprintf("%d", id)
-}
+type SubscribeID = protocol.SubscribeID

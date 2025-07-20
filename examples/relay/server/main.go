@@ -29,12 +29,12 @@ func main() {
 	}
 
 	// Register the relay handler with the default mux
-	moqt.HandleFunc(context.Background(), "/server.relay", func(pub *moqt.Publication) {
+	moqt.HandleFunc(context.Background(), "/server.relay", func(tw *moqt.TrackWriter) {
 		seq := moqt.GroupSequenceFirst
 		for {
 			time.Sleep(100 * time.Millisecond)
 
-			gw, err := pub.TrackWriter.OpenGroup(seq)
+			gw, err := tw.OpenGroup(seq)
 			if err != nil {
 				slog.Error("failed to open group", "error", err)
 				return
@@ -82,13 +82,13 @@ func main() {
 				if !ann.IsActive() {
 					return
 				}
-				sub, err := sess.OpenTrackStream(ann.BroadcastPath(), "index", nil)
+				tr, err := sess.OpenTrackStream(ann.BroadcastPath(), "index", nil)
 				if err != nil {
 					slog.Error("failed to open track stream", "error", err)
 					return
 				}
 
-				moqt.Announce(ann, newRelayHandler(sub))
+				moqt.Announce(ann, newRelayHandler(tr))
 			}(ann)
 		}
 	})

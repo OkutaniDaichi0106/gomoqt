@@ -14,8 +14,8 @@ func newTrackReader(broadcastPath BroadcastPath, trackName TrackName, subscribeS
 		TrackName:           trackName,
 		sendSubscribeStream: subscribeStream,
 		queuedCh:            make(chan struct{}, 1),
-		queue:               make([]*receiveGroupStream, 0, 1<<4),
-		dequeued:            make(map[*receiveGroupStream]struct{}),
+		queue:               make([]*GroupReader, 0, 1<<4),
+		dequeued:            make(map[*GroupReader]struct{}),
 		onCloseTrackFunc:    onCloseTrackFunc,
 	}
 
@@ -28,16 +28,16 @@ type TrackReader struct {
 
 	*sendSubscribeStream
 
-	queue    []*receiveGroupStream
+	queue    []*GroupReader
 	queuedCh chan struct{}
 	mu       sync.Mutex
 
-	dequeued map[*receiveGroupStream]struct{}
+	dequeued map[*GroupReader]struct{}
 
 	onCloseTrackFunc func()
 }
 
-func (r *TrackReader) AcceptGroup(ctx context.Context) (GroupReader, error) {
+func (r *TrackReader) AcceptGroup(ctx context.Context) (*GroupReader, error) {
 	for {
 		r.mu.Lock()
 		if len(r.queue) > 0 {
@@ -145,7 +145,6 @@ func (r *TrackReader) enqueueGroup(GroupSequence GroupSequence, stream quic.Rece
 
 	r.queue = append(r.queue, group)
 
-	// Send a notification (non-blocking)
 	select {
 	case r.queuedCh <- struct{}{}:
 	default:

@@ -9,11 +9,9 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-var _ GroupReader = (*receiveGroupStream)(nil)
-
-func newReceiveGroupStream(trackCtx context.Context, sequence GroupSequence, stream quic.ReceiveStream) *receiveGroupStream {
+func newReceiveGroupStream(trackCtx context.Context, sequence GroupSequence, stream quic.ReceiveStream) *GroupReader {
 	ctx, cancel := context.WithCancelCause(trackCtx)
-	return &receiveGroupStream{
+	return &GroupReader{
 		sequence: sequence,
 		stream:   stream,
 		ctx:      ctx,
@@ -21,7 +19,7 @@ func newReceiveGroupStream(trackCtx context.Context, sequence GroupSequence, str
 	}
 }
 
-type receiveGroupStream struct {
+type GroupReader struct {
 	sequence GroupSequence
 
 	stream     quic.ReceiveStream
@@ -31,16 +29,11 @@ type receiveGroupStream struct {
 	cancel context.CancelCauseFunc
 }
 
-func (s *receiveGroupStream) GroupSequence() GroupSequence {
+func (s *GroupReader) GroupSequence() GroupSequence {
 	return s.sequence
 }
 
-func (s *receiveGroupStream) ReadFrame() (*Frame, error) {
-	if err := s.ctx.Err(); err != nil {
-		// If the context is already cancelled, return the error
-		return nil, err
-	}
-
+func (s *GroupReader) ReadFrame() (*Frame, error) {
 	frame := NewFrame(nil)
 	err := frame.message.Decode(s.stream)
 	if err != nil {
@@ -67,12 +60,7 @@ func (s *receiveGroupStream) ReadFrame() (*Frame, error) {
 	return frame, nil
 }
 
-func (s *receiveGroupStream) CancelRead(code GroupErrorCode) {
-	if s.ctx.Err() != nil {
-		// If the context is already cancelled, do nothing
-		return
-	}
-
+func (s *GroupReader) CancelRead(code GroupErrorCode) {
 	strErrCode := quic.StreamErrorCode(code)
 	s.stream.CancelRead(strErrCode)
 
@@ -86,6 +74,6 @@ func (s *receiveGroupStream) CancelRead(code GroupErrorCode) {
 	s.cancel(grpErr)
 }
 
-func (s *receiveGroupStream) SetReadDeadline(t time.Time) error {
+func (s *GroupReader) SetReadDeadline(t time.Time) error {
 	return s.stream.SetReadDeadline(t)
 }

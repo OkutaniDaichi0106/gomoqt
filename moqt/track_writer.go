@@ -19,7 +19,7 @@ func newTrackWriter(path BroadcastPath, name TrackName,
 		BroadcastPath:          path,
 		TrackName:              name,
 		receiveSubscribeStream: subscribeStream,
-		activeGroups:           make(map[quic.StreamID]*sendGroupStream),
+		activeGroups:           make(map[quic.StreamID]*GroupWriter),
 		openUniStreamFunc:      openUniStreamFunc,
 		onCloseTrackFunc:       onCloseTrackFunc,
 	}
@@ -36,7 +36,7 @@ type TrackWriter struct {
 	accepted atomic.Bool
 
 	groupMapMu   sync.Mutex
-	activeGroups map[quic.StreamID]*sendGroupStream
+	activeGroups map[quic.StreamID]*GroupWriter
 
 	openUniStreamFunc func() (quic.SendStream, error)
 
@@ -79,7 +79,7 @@ func (s *TrackWriter) CloseWithError(code SubscribeErrorCode) {
 	s.onCloseTrackFunc()
 }
 
-func (s *TrackWriter) OpenGroup(seq GroupSequence) (GroupWriter, error) {
+func (s *TrackWriter) OpenGroup(seq GroupSequence) (*GroupWriter, error) {
 	if seq == 0 {
 		return nil, errors.New("group sequence must not be zero")
 	}
@@ -173,7 +173,7 @@ func (s *TrackWriter) TrackConfig() *TrackConfig {
 	return s.receiveSubscribeStream.TrackConfig()
 }
 
-func (s *TrackWriter) addGroup(group *sendGroupStream) {
+func (s *TrackWriter) addGroup(group *GroupWriter) {
 	s.groupMapMu.Lock()
 	defer s.groupMapMu.Unlock()
 

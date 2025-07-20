@@ -8,10 +8,8 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-var _ GroupWriter = (*sendGroupStream)(nil)
-
 func newSendGroupStream(trackCtx context.Context, stream quic.SendStream, sequence GroupSequence,
-	onClose func()) *sendGroupStream {
+	onClose func()) *GroupWriter {
 	ctx, cancel := context.WithCancelCause(trackCtx)
 	go func() {
 		streamCtx := stream.Context()
@@ -32,7 +30,7 @@ func newSendGroupStream(trackCtx context.Context, stream quic.SendStream, sequen
 		}
 		cancel(reason)
 	}()
-	return &sendGroupStream{
+	return &GroupWriter{
 		ctx:      ctx,
 		cancel:   cancel,
 		sequence: sequence,
@@ -41,7 +39,7 @@ func newSendGroupStream(trackCtx context.Context, stream quic.SendStream, sequen
 	}
 }
 
-type sendGroupStream struct {
+type GroupWriter struct {
 	ctx    context.Context
 	cancel context.CancelCauseFunc
 
@@ -54,11 +52,11 @@ type sendGroupStream struct {
 	onClose func()
 }
 
-func (sgs *sendGroupStream) GroupSequence() GroupSequence {
+func (sgs *GroupWriter) GroupSequence() GroupSequence {
 	return sgs.sequence
 }
 
-func (sgs *sendGroupStream) WriteFrame(frame *Frame) error {
+func (sgs *GroupWriter) WriteFrame(frame *Frame) error {
 	if frame == nil || frame.message == nil {
 		return errors.New("frame is nil or has no bytes")
 	}
@@ -91,11 +89,11 @@ func (sgs *sendGroupStream) WriteFrame(frame *Frame) error {
 	return nil
 }
 
-func (sgs *sendGroupStream) SetWriteDeadline(t time.Time) error {
+func (sgs *GroupWriter) SetWriteDeadline(t time.Time) error {
 	return sgs.stream.SetWriteDeadline(t)
 }
 
-func (sgs *sendGroupStream) CancelWrite(code GroupErrorCode) {
+func (sgs *GroupWriter) CancelWrite(code GroupErrorCode) {
 	if err := sgs.ctx.Err(); err != nil {
 		return
 	}
@@ -115,7 +113,7 @@ func (sgs *sendGroupStream) CancelWrite(code GroupErrorCode) {
 	sgs.onClose()
 }
 
-func (sgs *sendGroupStream) Close() error {
+func (sgs *GroupWriter) Close() error {
 	if err := sgs.ctx.Err(); err != nil {
 		return err
 	}

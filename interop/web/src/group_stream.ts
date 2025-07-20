@@ -81,8 +81,9 @@ export class GroupReader {
     }
 
     cancel(code: number): void {
-        this.#reader.cancel(code, "cancelled"); // TODO: Use a more descriptive message
-        this.#cancelFunc(new Error("Stream cancelled")); // Notify the context about cancellation
+        const reason = new StreamError(code, "Stream cancelled");
+        this.#reader.cancel(reason);
+        this.#cancelFunc(reason);
     }
 
     get context(): Context {

@@ -1,18 +1,6 @@
 import { BytesBuffer, MAX_BYTES_LENGTH, MAX_UINT } from "../internal/bytes";
 import { DefaultBytesPool } from "../internal/bytes_pool";
-import { Context, withCancelCause, CancelCauseFunc } from "../internal/context";
-import { StreamError, StreamErrorCode } from "./error";
-
-// export interface Writer {
-//     writeUint8Array(data: Uint8Array): void;
-//     writeString(str: string): void;
-//     writeVarint(num: bigint): void;
-//     writeBoolean(value: boolean): void;
-//     flush(): Promise<[void, Error?]>;
-//     close(): Promise<void>;
-//     cancel(code: StreamErrorCode, message: string): Promise<void>;
-//     context: Context;
-// }
+import { StreamError } from "./error";
 
 export class Writer {
     #writer: WritableStreamDefaultWriter<Uint8Array>;

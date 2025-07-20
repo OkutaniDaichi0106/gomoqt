@@ -40,10 +40,13 @@ export class TrackWriter {
 
     async openGroup(groupId: bigint): Promise<[GroupWriter?, Error?]> {
         if (!this.#accepted) {
-            this.#subscribeStream.accept({
+            const err = await this.#subscribeStream.accept({
                 groupOrder: 0,
                 trackPriority: 0
             })
+            if (err) {
+                return [undefined, err];
+            }
             this.#accepted = true;
         }
 
@@ -72,10 +75,26 @@ export class TrackWriter {
         return [group, undefined];
     }
 
+    async writeInfo(info: Info): Promise<Error | undefined> {
+        if (this.#accepted) {
+            return undefined; // Already accepted, no need to write info again
+        }
+
+        const err = await this.#subscribeStream.accept(info);
+        if (err) {
+            return err;
+        }
+
+        this.#accepted = true;
+    }
+
     closeWithError(code: SubscribeErrorCode, message: string): void {
+        // Cancel all groups with the error first
         for (const group of this.#groups) {
             group.cancel(PublishAbortedErrorCode, message);
         }
+
+        // Then close the subscribe stream with the error
         this.#subscribeStream.closeWithError(code, message);
     }
 

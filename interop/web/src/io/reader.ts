@@ -1,6 +1,5 @@
 import { BytesBuffer, MAX_BYTES_LENGTH } from "../internal/bytes";
 import { BytesPool, DefaultBytesPool } from "../internal/bytes_pool";
-import { CancelCauseFunc, Context, withCancelCause } from "../internal/context";
 import { StreamError, StreamErrorCode } from "./error";
 
 let DefaultReadSize: number = 1024; // 1 KB
@@ -179,9 +178,7 @@ export class Reader {
         return [totalFilled, undefined];
     }
 
-    async cancel(code: StreamErrorCode, message: string): Promise<void> {
-        const reason = new StreamError(code, message);
-
+    async cancel(reason: StreamError): Promise<void> {
         this.#pull.cancel(reason)
         this.#buf.release();
     }

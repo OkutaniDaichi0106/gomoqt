@@ -51,11 +51,11 @@ func (h *relayHandler) ServeTrack(pub *moqt.TrackWriter) {
 	<-h.ctx.Done()
 }
 
-func (h *relayHandler) relayGroup(gr moqt.GroupReader) {
+func (h *relayHandler) relayGroup(gr *moqt.GroupReader) {
 
 	seq := gr.GroupSequence()
 
-	writers := make(chan moqt.GroupWriter, len(h.dests))
+	writers := make(chan *moqt.GroupWriter, len(h.dests))
 	go func() {
 		failedPubs := make([]*moqt.TrackWriter, 0, len(h.dests))
 

@@ -55,7 +55,7 @@ func main() {
 					return
 				}
 
-				go func(gr moqt.GroupReader) {
+				go func(gr *moqt.GroupReader) {
 					for {
 						frame, err := gr.ReadFrame()
 						if err != nil {

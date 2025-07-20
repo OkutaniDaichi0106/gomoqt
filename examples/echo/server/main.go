@@ -69,7 +69,7 @@ func main() {
 							return
 						}
 
-						go func(gr moqt.GroupReader) {
+						go func(gr *moqt.GroupReader) {
 							defer gr.CancelRead(moqt.InternalGroupErrorCode)
 
 							gw, err := tw.OpenGroup(gr.GroupSequence())

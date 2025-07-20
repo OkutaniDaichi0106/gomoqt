@@ -78,7 +78,7 @@ func subscribe(client *moqt.Client) error {
 					return
 				}
 
-				go func(gr moqt.GroupReader) {
+				go func(gr *moqt.GroupReader) {
 					defer gr.CancelRead(moqt.InternalGroupErrorCode)
 
 					for {

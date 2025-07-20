@@ -5,17 +5,9 @@ import { CancelCauseFunc, Context, withCancelCause } from "./internal/context";
 import { StreamError } from "./io/error";
 import { Info } from "./info";
 
-export interface SubscribeController {
-	subscribeId: SubscribeID
-	subscribeConfig: SubscribeConfig
-	update(trackPriority: bigint, min: bigint, max: bigint): Promise<Error | undefined>;
-	context: Context
-}
-
-export class SendSubscribeStream implements SubscribeController {
-	#subscribe: SubscribeMessage
-	#ok: SubscribeOkMessage
-	#update?: SubscribeUpdateMessage
+export class SendSubscribeStream {
+	#config: TrackConfig;
+	#id: SubscribeID;
 	#reader: Reader
 	#writer: Writer
 	#ctx: Context;
@@ -25,32 +17,28 @@ export class SendSubscribeStream implements SubscribeController {
 		[this.#ctx, this.#cancelFunc] = withCancelCause(sessCtx);
 		this.#reader = reader;
 		this.#writer = writer;
-		this.#subscribe = subscribe;
-		this.#ok = ok;
+		this.#config = subscribe;
+		this.#id = subscribe.subscribeId;
 	}
 
 	get subscribeId(): SubscribeID {
-		return this.#subscribe.subscribeId;
+		return this.#id;
 	}
 
 	get context(): Context {
 		return this.#ctx;
 	}
 
-	get subscribeConfig(): SubscribeConfig {
-		if (this.#update) {
-			return this.#update;
-		} else {
-			return this.#subscribe;
-		}
+	get trackConfig(): TrackConfig {
+		return this.#config;
 	}
-	
+
 	async update(trackPriority: bigint, minGroupSequence: bigint, maxGroupSequence: bigint): Promise<Error | undefined> {
 		const [result, err] = await SubscribeUpdateMessage.encode(this.#writer, trackPriority, minGroupSequence, maxGroupSequence);
 		if (err) {
 			return new Error(`Failed to write subscribe update: ${err}`);
 		}
-		this.#update = result!;
+		this.#config = result!;
 
 		const flushErr = await this.#writer.flush();
 		if (flushErr) {
@@ -65,17 +53,7 @@ export class SendSubscribeStream implements SubscribeController {
 	}
 }
 
-export interface PublishController {
-	subscribeId: SubscribeID
-	updated(): Promise<void>;
-	subscribeConfig: SubscribeConfig
-	context: Context
-	accept(info: Info): Promise<Error | undefined>;
-	close(): void;
-	closeWithError(code: number, message: string): void;
-}
-
-export class ReceiveSubscribeStream implements PublishController {
+export class ReceiveSubscribeStream {
 	#subscribe: SubscribeMessage
 	#update?: SubscribeUpdateMessage
 	#cond: Cond = new Cond();
@@ -110,7 +88,7 @@ export class ReceiveSubscribeStream implements PublishController {
 		return this.#subscribe.subscribeId;
 	}
 
-	get subscribeConfig(): SubscribeConfig {
+	get trackConfig(): TrackConfig {
 		if (this.#update) {
 			return this.#update;
 		} else {
@@ -173,7 +151,7 @@ export class ReceiveSubscribeStream implements PublishController {
 	}
 }
 
-export type SubscribeConfig = {
+export type TrackConfig = {
 	trackPriority: bigint;
     minGroupSequence: bigint;
     maxGroupSequence: bigint;

@@ -69,4 +69,8 @@ export class Queue<T> {
 			unlock();
 		});
 	}
+
+	isClosed(): boolean {
+		return this.#closed;
+	}
 }

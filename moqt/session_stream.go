@@ -18,16 +18,8 @@ func newSessionStream(connCtx context.Context, stream quic.Stream) *sessionStrea
 		updatedCh: make(chan struct{}, 1),
 		stream:    stream,
 	}
-	go func() {
-		defer func() {
-			sessStr.mu.Lock()
-			if !sessStr.closed {
-				close(sessStr.updatedCh)
-				sessStr.closed = true
-			}
-			sessStr.mu.Unlock()
-		}()
 
+	go func() {
 		var sum message.SessionUpdateMessage
 		var err error
 
@@ -48,6 +40,8 @@ func newSessionStream(connCtx context.Context, stream quic.Stream) *sessionStrea
 			default:
 			}
 		}
+
+		sessStr.close()
 	}()
 
 	return sessStr
@@ -105,6 +99,7 @@ func (ss *sessionStream) close() error {
 	err := ss.stream.Close()
 
 	ss.cancel(nil)
+
 	close(ss.updatedCh)
 
 	return err

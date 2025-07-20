@@ -74,10 +74,11 @@ func (r *TrackReader) AcceptGroup(ctx context.Context) (GroupReader, error) {
 	}
 }
 
-func (r *TrackReader) Close() {
+func (r *TrackReader) Close() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	// Cancel all active groups first
 	for _, stream := range r.queue {
 		stream.CancelRead(SubscribeCanceledErrorCode)
 	}
@@ -85,13 +86,16 @@ func (r *TrackReader) Close() {
 		stream.CancelRead(SubscribeCanceledErrorCode)
 	}
 
-	if r.onCloseTrackFunc != nil {
-		r.onCloseTrackFunc()
-	}
+	// Then close the subscribe stream
+	err := r.sendSubscribeStream.close()
+
+	r.onCloseTrackFunc()
 
 	r.queue = nil
 	r.dequeued = nil
 	r.queuedCh = nil
+
+	return err
 }
 
 func (r *TrackReader) CloseWithError(code SubscribeErrorCode) {
@@ -105,9 +109,7 @@ func (r *TrackReader) CloseWithError(code SubscribeErrorCode) {
 		stream.CancelRead(SubscribeCanceledErrorCode)
 	}
 
-	if r.onCloseTrackFunc != nil {
-		r.onCloseTrackFunc()
-	}
+	r.onCloseTrackFunc()
 
 	r.queue = nil
 	r.dequeued = nil

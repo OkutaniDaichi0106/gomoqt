@@ -12,10 +12,8 @@ export * from './group_stream';
 export * from './session_stream';
 export * from './stream_type';
 export * from './subscribe_stream';
-export * from './subscription';
 export * from './track';
 export * from './track_mux';
-export * from './publication';
 
 // Browser-specific exports or polyfills can be added here
 // For example, if there are Node.js-specific features that need browser alternatives

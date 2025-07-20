@@ -1,7 +1,7 @@
 import type { Component } from 'solid-js';
 import { createSignal, onMount, onCleanup } from 'solid-js';
 import styles from '../App.module.css';
-import { DefaultTrackMux, MOQ, Publication, Session } from '@okutanidaichi/moqt';
+import { DefaultTrackMux, MOQ, TrackWriter } from '@okutanidaichi/moqt';
 import { background } from '@okutanidaichi/moqt/internal';
 
 const Home: Component = () => {
@@ -26,25 +26,30 @@ const Home: Component = () => {
         throw new Error('WebTransport is not supported in this browser');
       }
 
-      DefaultTrackMux.handleTrack(background(), "/interop.client", {serveTrack: async (pub: Publication)=>{
+      DefaultTrackMux.handleTrack(background(), "/interop.client", {serveTrack: async (trackWriter: TrackWriter)=>{
         const encoder = new TextEncoder()
         let sequence = 1n
         for (let i = 0; i < 10; i++) {
-          const [group, err] = await pub.trackWriter.openGroup(sequence)
+          const [group, err] = await trackWriter.openGroup(sequence)
           if (err || !group) {
-            pub.controller.closeWithError(0, "unexpected error")
+            console.log("Failed to open group")
+            trackWriter.closeWithError(0, "unexpected error")
             return
           }
 
           const err2 = await group.writeFrame(encoder.encode("Hello from interop web client!"))
           if (err2) {
-            pub.controller.closeWithError(0, "unexpected error")
+            console.log("Failed to write frame")
+            trackWriter.closeWithError(0, "unexpected error")
             return
           }
 
+          group.close()
+
           sequence++
+          await new Promise(resolve => setTimeout(resolve, 1000))
         }
-        pub.controller.close()
+        trackWriter.close()
       }})
 
       const moq = new MOQ()
@@ -103,9 +108,9 @@ const Home: Component = () => {
 
         console.log("Announcement received:", announcement)
 
-        const subscription = await session.openTrackStream(announcement.broadcastPath, "")
+        const trackReader = await session.openTrackStream(announcement.broadcastPath, "")
         for (;;) {
-            const [group, err] = await subscription.trackReader.acceptGroup()
+            const [group, err] = await trackReader.acceptGroup()
             if (err || !group) {
                 continue;
             }

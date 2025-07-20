@@ -119,8 +119,9 @@ func (s *Session) Terminate(code SessionErrorCode, msg string) error {
 		"message", msg,
 	)
 
-	// s.connMu.Lock()
-	// defer s.connMu.Unlock()
+	//
+	s.sessionStream.close()
+
 	err := s.conn.CloseWithError(quic.ConnectionErrorCode(code), msg)
 	if err != nil {
 		var appErr *quic.ApplicationError

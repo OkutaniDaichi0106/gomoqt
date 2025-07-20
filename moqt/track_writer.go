@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
@@ -32,9 +33,9 @@ type TrackWriter struct {
 
 	*receiveSubscribeStream
 
-	accepted bool
+	accepted atomic.Bool
 
-	mu           sync.Mutex
+	groupMapMu   sync.Mutex
 	activeGroups map[quic.StreamID]*sendGroupStream
 
 	openUniStreamFunc func() (quic.SendStream, error)
@@ -42,34 +43,40 @@ type TrackWriter struct {
 	onCloseTrackFunc func()
 }
 
-func (s *TrackWriter) Close() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (s *TrackWriter) Close() error {
+	s.groupMapMu.Lock()
 
+	// Cancel all active groups first
 	for _, group := range s.activeGroups {
 		group.CancelWrite(PublishAbortedErrorCode)
 	}
 	s.activeGroups = nil
 
-	s.receiveSubscribeStream.close()
+	s.groupMapMu.Unlock()
 
-	if s.onCloseTrackFunc != nil {
-		s.onCloseTrackFunc()
-	}
+	// Then close the subscribe stream
+	err := s.receiveSubscribeStream.close()
+
+	s.onCloseTrackFunc()
+
+	return err
 }
 
 func (s *TrackWriter) CloseWithError(code SubscribeErrorCode) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.groupMapMu.Lock()
+
+	// Cancel all active groups first
 	for _, group := range s.activeGroups {
 		group.CancelWrite(SubscribeCanceledErrorCode)
 	}
 	s.activeGroups = nil
 
+	s.groupMapMu.Unlock()
+
+	// Then close the subscribe stream with the error code
 	s.receiveSubscribeStream.closeWithError(code)
-	if s.onCloseTrackFunc != nil {
-		s.onCloseTrackFunc()
-	}
+
+	s.onCloseTrackFunc()
 }
 
 func (s *TrackWriter) OpenGroup(seq GroupSequence) (GroupWriter, error) {
@@ -81,16 +88,13 @@ func (s *TrackWriter) OpenGroup(seq GroupSequence) (GroupWriter, error) {
 		return nil, err
 	}
 
-	s.mu.Lock()
-
-	if !s.accepted {
+	if !s.accepted.Load() {
 		err := s.receiveSubscribeStream.writeInfo(Info{})
 		if err != nil {
-			s.mu.Unlock()
 			return nil, err
 		}
 
-		s.accepted = true
+		s.accepted.Store(true)
 	}
 
 	stream, err := s.openUniStreamFunc()
@@ -100,14 +104,10 @@ func (s *TrackWriter) OpenGroup(seq GroupSequence) (GroupWriter, error) {
 			sessErr := &SessionError{
 				ApplicationError: appErr,
 			}
-			s.mu.Unlock()
 			return nil, sessErr
 		}
-		s.mu.Unlock()
 		return nil, err
 	}
-
-	s.mu.Unlock()
 
 	err = message.StreamTypeGroup.Encode(stream)
 	if err != nil {
@@ -154,11 +154,13 @@ func (s *TrackWriter) OpenGroup(seq GroupSequence) (GroupWriter, error) {
 }
 
 func (s *TrackWriter) WriteInfo(info Info) error {
-	if !s.accepted {
+	if !s.accepted.Load() {
 		err := s.receiveSubscribeStream.writeInfo(info)
 		if err != nil {
 			return err
 		}
+
+		s.accepted.Store(true)
 	}
 
 	return nil
@@ -172,15 +174,15 @@ func (s *TrackWriter) TrackConfig() *TrackConfig {
 }
 
 func (s *TrackWriter) addGroup(group *sendGroupStream) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.groupMapMu.Lock()
+	defer s.groupMapMu.Unlock()
 
 	s.activeGroups[group.stream.StreamID()] = group
 }
 
 func (s *TrackWriter) removeGroup(id quic.StreamID) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.groupMapMu.Lock()
+	defer s.groupMapMu.Unlock()
 
 	delete(s.activeGroups, id)
 }

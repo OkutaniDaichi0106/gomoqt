@@ -183,9 +183,9 @@ func TestTrackSender_ContextCancellation(t *testing.T) {
 
 	// Verify that the groupsMap is cleaned up when calling Close
 	sender.Close()
-	sender.mu.Lock()
+	sender.groupMapMu.Lock()
 	groupsMapIsNil := sender.activeGroups == nil
-	sender.mu.Unlock()
+	sender.groupMapMu.Unlock()
 	assert.True(t, groupsMapIsNil, "groupsMap should be nil after Close()")
 }
 
@@ -215,9 +215,9 @@ func TestTrackSender_Close(t *testing.T) {
 	assert.NotNil(t, group)
 
 	// Verify that activeGroups has an entry
-	sender.mu.Lock()
+	sender.groupMapMu.Lock()
 	hasEntry := len(sender.activeGroups) > 0
-	sender.mu.Unlock()
+	sender.groupMapMu.Unlock()
 	assert.True(t, hasEntry, "activeGroups should have an entry")
 
 	// Close the sender
@@ -227,8 +227,8 @@ func TestTrackSender_Close(t *testing.T) {
 	assert.True(t, onCloseTrackCalled, "onCloseTrack should be called")
 
 	// Verify that activeGroups is nil
-	sender.mu.Lock()
+	sender.groupMapMu.Lock()
 	activeGroupsIsNil := sender.activeGroups == nil
-	sender.mu.Unlock()
+	sender.groupMapMu.Unlock()
 	assert.True(t, activeGroupsIsNil, "activeGroups should be nil after Close()")
 }

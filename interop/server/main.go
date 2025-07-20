@@ -121,7 +121,8 @@ func main() {
 									return
 								}
 								slog.Error("failed to read frame", "error", err)
-								break
+								slog.Error("AAAAAAAAA")
+								return
 							}
 
 							slog.Info("received a frame", "frame", string(frame.CopyBytes()))

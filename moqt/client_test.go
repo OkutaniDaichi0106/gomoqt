@@ -765,19 +765,15 @@ func TestClient_Dial_URLSchemes(t *testing.T) {
 			c.DialQUICConn = func(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (quic.Connection, error) {
 				mockConn := &MockQUICConnection{}
 				mockConn.On("Context").Return(context.Background())
+				buffer := bytes.NewBuffer(nil)
+				message.SessionServerMessage{
+					SelectedVersion: protocol.Develop,
+				}.Encode(buffer)
 				mockStream := &MockQUICStream{
 					WriteFunc: func(p []byte) (int, error) {
 						return len(p), nil // Mock successful write
 					},
-					ReadFunc: func(p []byte) (int, error) {
-						// Return minimal valid SESSION_SERVER response
-						if len(p) >= 2 {
-							p[0] = 0x01 // Message length = 1
-							p[1] = 0x01 // Selected version = 1
-							return 2, nil
-						}
-						return 0, nil
-					},
+					ReadFunc: buffer.Read,
 				}
 				mockStream.On("Write", mock.AnythingOfType("[]uint8"))
 				mockStream.On("Read", mock.AnythingOfType("[]uint8"))

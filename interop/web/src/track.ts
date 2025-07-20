@@ -14,6 +14,7 @@ export class TrackWriter {
     #subscribeStream: ReceiveSubscribeStream;
     #openUniStreamFunc: () => Promise<[Writer?, Error?]>;
     #accepted: boolean = false;
+    #groups: GroupWriter[] = [];
 
     constructor(broadcastPath: BroadcastPath, trackName: string,
         subscribeStream: ReceiveSubscribeStream,
@@ -64,14 +65,24 @@ export class TrackWriter {
             return [undefined, new Error("Failed to encode group message")];
         }
 
-        return [new GroupWriter(this.context, writer, msg), undefined];
+        const group = new GroupWriter(this.context, writer, msg)
+
+        this.#groups.push(group);
+
+        return [group, undefined];
     }
 
-    closeWithError(code: number, message: string): void {
+    closeWithError(code: SubscribeErrorCode, message: string): void {
+        for (const group of this.#groups) {
+            group.cancel(PublishAbortedErrorCode, message);
+        }
         this.#subscribeStream.closeWithError(code, message);
     }
 
     close(): void {
+        for (const group of this.#groups) {
+            group.close();
+        }
         this.#subscribeStream.close();
     }
 }

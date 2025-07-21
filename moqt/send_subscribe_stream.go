@@ -76,12 +76,9 @@ func (sss *sendSubscribeStream) UpdateSubscribe(newConfig *TrackConfig) error {
 	sss.mu.Lock()
 	defer sss.mu.Unlock()
 
-	if err := sss.ctx.Err(); err != nil {
+	if sss.ctx.Err() != nil {
 		reason := context.Cause(sss.ctx)
-		if reason != nil {
-			err = reason
-		}
-		return fmt.Errorf("subscribe stream is closed: %w", err)
+		return fmt.Errorf("subscribe stream is closed: %w", reason)
 	}
 
 	old := sss.config

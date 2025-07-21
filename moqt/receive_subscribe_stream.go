@@ -52,7 +52,7 @@ type receiveSubscribeStream struct {
 
 	acceptOnce sync.Once
 
-	mu         sync.Mutex
+	configMu   sync.Mutex
 	config     *TrackConfig
 	updatedCh  chan struct{}
 	listenOnce sync.Once
@@ -68,19 +68,16 @@ func (rss *receiveSubscribeStream) SubscribeID() SubscribeID {
 func (rss *receiveSubscribeStream) writeInfo(info Info) error {
 	var err error
 	rss.acceptOnce.Do(func() {
-		rss.mu.Lock()
-		defer rss.mu.Unlock()
-		if err = rss.ctx.Err(); err != nil {
-			// Return the cause if available, otherwise return the context error
-			if cause := context.Cause(rss.ctx); cause != nil {
-				err = cause
-				return
-			}
+		rss.configMu.Lock()
+		defer rss.configMu.Unlock()
+		if rss.ctx.Err() != nil {
+			err = context.Cause(rss.ctx)
+			return
 		}
 		sum := message.SubscribeOkMessage{
 			GroupOrder: message.GroupOrder(info.GroupOrder),
 		}
-		err := sum.Encode(rss.stream)
+		err = sum.Encode(rss.stream)
 		if err != nil {
 			rss.closeWithError(InternalSubscribeErrorCode)
 			return
@@ -91,8 +88,8 @@ func (rss *receiveSubscribeStream) writeInfo(info Info) error {
 }
 
 func (rss *receiveSubscribeStream) TrackConfig() *TrackConfig {
-	rss.mu.Lock()
-	defer rss.mu.Unlock()
+	rss.configMu.Lock()
+	defer rss.configMu.Unlock()
 
 	return rss.config
 }
@@ -107,16 +104,15 @@ func (rss *receiveSubscribeStream) listenUpdates() {
 		var err error
 
 		for {
-			rss.mu.Lock()
+			rss.configMu.Lock()
 			if rss.ctx.Err() != nil {
-				rss.mu.Unlock()
+				rss.configMu.Unlock()
 				break
 			}
-			rss.mu.Unlock()
+			rss.configMu.Unlock()
 
 			err = sum.Decode(rss.stream)
 			if err != nil {
-				rss.mu.Lock()
 				// Check for stream error
 				var strErr *quic.StreamError
 				if errors.As(err, &strErr) {
@@ -127,48 +123,43 @@ func (rss *receiveSubscribeStream) listenUpdates() {
 				} else {
 					rss.cancel(err)
 				}
-				rss.mu.Unlock()
 				break
 			}
 
-			rss.mu.Lock()
+			rss.configMu.Lock()
 			rss.config = &TrackConfig{
-				TrackPriority:    TrackPriority(sum.TrackPriority),
-				MinGroupSequence: GroupSequence(sum.MinGroupSequence),
-				MaxGroupSequence: GroupSequence(sum.MaxGroupSequence),
+				TrackPriority:    sum.TrackPriority,
+				MinGroupSequence: sum.MinGroupSequence,
+				MaxGroupSequence: sum.MaxGroupSequence,
 			}
-			rss.mu.Unlock()
 
 			select {
 			case rss.updatedCh <- struct{}{}:
 			default:
 			}
+			rss.configMu.Unlock()
 		}
 
-		// Cleanup after loop ends
-		rss.mu.Lock()
-		// Always close the channel if it hasn't been closed yet
-		select {
-		case <-rss.updatedCh:
-			// Channel is already closed
-		default:
-			close(rss.updatedCh)
-		}
+		// // Cleanup after loop ends
+		// rss.configMu.Lock()
+		// // Always close the channel if it hasn't been closed yet
+		// select {
+		// case <-rss.updatedCh:
+		// 	// Channel is already closed
+		// default:
+		// 	close(rss.updatedCh)
+		// }
 
-		rss.mu.Unlock()
+		// rss.configMu.Unlock()
 	})
 }
 
 func (rss *receiveSubscribeStream) close() error {
-	rss.mu.Lock()
-	defer rss.mu.Unlock()
+	rss.configMu.Lock()
+	defer rss.configMu.Unlock()
 
-	if err := rss.ctx.Err(); err != nil {
-		// Return the cause if available, otherwise return the context error
-		if cause := context.Cause(rss.ctx); cause != nil {
-			return cause
-		}
-		return err
+	if rss.ctx.Err() != nil {
+		return context.Cause(rss.ctx)
 	}
 
 	// Close the write-side stream
@@ -184,15 +175,11 @@ func (rss *receiveSubscribeStream) close() error {
 }
 
 func (rss *receiveSubscribeStream) closeWithError(code SubscribeErrorCode) error {
-	rss.mu.Lock()
-	defer rss.mu.Unlock()
+	rss.configMu.Lock()
+	defer rss.configMu.Unlock()
 
-	if err := rss.ctx.Err(); err != nil {
-		// Return the cause if available, otherwise return the context error
-		if cause := context.Cause(rss.ctx); cause != nil {
-			return cause
-		}
-		return err
+	if rss.ctx.Err() != nil {
+		return context.Cause(rss.ctx)
 	}
 
 	strErrCode := quic.StreamErrorCode(code)

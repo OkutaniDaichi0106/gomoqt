@@ -26,8 +26,9 @@ const (
 	InternalAnnounceErrorCode AnnounceErrorCode = 0x0
 
 	// Subscriber
-	DuplicatedAnnounceErrorCode AnnounceErrorCode = 0x1
-	UninterestedErrorCode       AnnounceErrorCode = 0x3
+	DuplicatedAnnounceErrorCode    AnnounceErrorCode = 0x1
+	InvalidAnnounceStatusErrorCode AnnounceErrorCode = 0x2 // TODO: Is this necessary?
+	UninterestedErrorCode          AnnounceErrorCode = 0x3
 
 	// Publisher
 	BannedPrefixErrorCode  AnnounceErrorCode = 0x4 // TODO: Is this necessary?

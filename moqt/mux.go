@@ -98,7 +98,6 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 			child = newAnnouncingNode()
 			current.children[seg] = child
 		}
-		// current = child をロック中に行う
 		current = child
 		current.mu.Unlock()
 	}

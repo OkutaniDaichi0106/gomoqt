@@ -51,8 +51,8 @@ func TestReceiveAnnounceStream_ReceiveAnnouncement(t *testing.T) {
 			receiveAnnounceStream: func() *AnnouncementReader {
 				buf := bytes.NewBuffer(nil)
 				err := message.AnnounceMessage{
-					TrackSuffix:    "valid_announcement",
-					AnnounceStatus: message.ACTIVE,
+					TrackSuffix: "valid_announcement",
+					Active:      message.ACTIVE,
 				}.Encode(buf)
 				require.NoError(t, err)
 
@@ -337,10 +337,10 @@ func TestReceiveAnnounceStream_AnnouncementTracking(t *testing.T) {
 	ann2 := NewAnnouncement(ctx, BroadcastPath("/test/stream2"))
 
 	// Manually add announcements to test tracking
-	ras.mu.Lock()
+	ras.pendingMu.Lock()
 	ras.active["stream1"] = ann1
 	ras.active["stream2"] = ann2
-	ras.mu.Unlock()
+	ras.pendingMu.Unlock()
 
 	assert.Len(t, ras.active, 2)
 
@@ -358,8 +358,8 @@ func TestReceiveAnnounceStream_ConcurrentAccess(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
 	for i := 0; i < 5; i++ {
 		err := message.AnnounceMessage{
-			TrackSuffix:    fmt.Sprintf("/stream%d", i),
-			AnnounceStatus: message.ACTIVE,
+			TrackSuffix: fmt.Sprintf("/stream%d", i),
+			Active:      message.ACTIVE,
 		}.Encode(buf)
 		require.NoError(t, err)
 	}
@@ -468,9 +468,9 @@ func TestReceiveAnnounceStream_PrefixHandling(t *testing.T) {
 			// Test path construction by manually adding announcement
 			ctx := context.Background()
 			ann := NewAnnouncement(ctx, BroadcastPath(tt.expectedPath))
-			ras.mu.Lock()
+			ras.pendingMu.Lock()
 			ras.pendings = append(ras.pendings, ann)
-			ras.mu.Unlock()
+			ras.pendingMu.Unlock()
 
 			announcement, err := ras.ReceiveAnnouncement(ctx)
 			require.NoError(t, err)
@@ -525,8 +525,8 @@ func TestReceiveAnnounceStream_AnnouncementLifecycle(t *testing.T) {
 		wantErr      bool
 	}{"active_then_ended": {
 		messages: []message.AnnounceMessage{
-			{TrackSuffix: "/stream1", AnnounceStatus: message.ACTIVE},
-			{TrackSuffix: "/stream1", AnnounceStatus: message.ENDED},
+			{TrackSuffix: "/stream1", Active: message.ACTIVE},
+			{TrackSuffix: "/stream1", Active: message.ENDED},
 		},
 		expectActive: []string{"/stream1"},
 		expectEnded:  []string{},
@@ -534,8 +534,8 @@ func TestReceiveAnnounceStream_AnnouncementLifecycle(t *testing.T) {
 	},
 		"multiple_active_streams": {
 			messages: []message.AnnounceMessage{
-				{TrackSuffix: "/stream1", AnnounceStatus: message.ACTIVE},
-				{TrackSuffix: "/stream2", AnnounceStatus: message.ACTIVE},
+				{TrackSuffix: "/stream1", Active: message.ACTIVE},
+				{TrackSuffix: "/stream2", Active: message.ACTIVE},
 			},
 			expectActive: []string{"/stream1", "/stream2"},
 			expectEnded:  []string{},
@@ -543,8 +543,8 @@ func TestReceiveAnnounceStream_AnnouncementLifecycle(t *testing.T) {
 		},
 		"duplicate_active_error": {
 			messages: []message.AnnounceMessage{
-				{TrackSuffix: "/stream1", AnnounceStatus: message.ACTIVE},
-				{TrackSuffix: "/stream1", AnnounceStatus: message.ACTIVE}, // Duplicate
+				{TrackSuffix: "/stream1", Active: message.ACTIVE},
+				{TrackSuffix: "/stream1", Active: message.ACTIVE}, // Duplicate
 			},
 			expectActive: []string{"/stream1"},
 			expectEnded:  []string{},
@@ -552,7 +552,7 @@ func TestReceiveAnnounceStream_AnnouncementLifecycle(t *testing.T) {
 		},
 		"end_non_existent_stream": {
 			messages: []message.AnnounceMessage{
-				{TrackSuffix: "/stream1", AnnounceStatus: message.ENDED}, // End without ACTIVE
+				{TrackSuffix: "/stream1", Active: message.ENDED}, // End without ACTIVE
 			},
 			expectActive: []string{},
 			expectEnded:  []string{},
@@ -649,8 +649,8 @@ func TestReceiveAnnounceStream_NotifyChannel(t *testing.T) {
 	// Create a message
 	buf := bytes.NewBuffer(nil)
 	err := message.AnnounceMessage{
-		TrackSuffix:    "/test_stream",
-		AnnounceStatus: message.ACTIVE}.Encode(buf)
+		TrackSuffix: "/test_stream",
+		Active:      message.ACTIVE}.Encode(buf)
 	require.NoError(t, err)
 
 	mockStream := &MockQUICStream{
@@ -736,8 +736,8 @@ func TestReceiveAnnounceStream_BoundaryValues(t *testing.T) {
 			// Create message with the test suffix
 			buf := bytes.NewBuffer(nil)
 			err := message.AnnounceMessage{
-				TrackSuffix:    tt.suffix,
-				AnnounceStatus: message.ACTIVE}.Encode(buf)
+				TrackSuffix: tt.suffix,
+				Active:      message.ACTIVE}.Encode(buf)
 			require.NoError(t, err)
 
 			mockStream := &MockQUICStream{

@@ -3,8 +3,6 @@ package moqt
 import (
 	"context"
 	"errors"
-	"fmt"
-	"io"
 	"log/slog"
 	"sync"
 
@@ -41,6 +39,7 @@ func newReceiveAnnounceStream(stream quic.Stream, prefix string) *AnnouncementRe
 		}
 		cancel(reason)
 	}()
+
 	annstr := &AnnouncementReader{
 		ctx:         ctx,
 		cancel:      cancel,
@@ -64,46 +63,48 @@ type AnnouncementReader struct {
 	ctx    context.Context
 	cancel context.CancelCauseFunc
 
-	closeErr error
-	closed   bool
+	closed bool
 
 	// Track Suffix -> Announcement
 	active map[string]*Announcement
 
 	pendings    []*Announcement
 	announcedCh chan struct{} // notify when new announcement is available
-	mu          sync.Mutex
+	pendingMu   sync.Mutex
 
 	listenOnce sync.Once
 }
 
 func (ras *AnnouncementReader) ReceiveAnnouncement(ctx context.Context) (*Announcement, error) {
 	for {
-		ras.mu.Lock()
+		ras.pendingMu.Lock()
+
+		annStrCtx := ras.ctx
 
 		if ras.closed {
-			ras.mu.Unlock()
-			if ras.closeErr != nil {
-				return nil, ras.closeErr
-			}
-			return nil, fmt.Errorf("receive announce stream is closed")
+			ras.pendingMu.Unlock()
+			return nil, context.Cause(annStrCtx)
 		}
 
 		if len(ras.pendings) > 0 {
 			next := ras.pendings[0]
 			ras.pendings = ras.pendings[1:]
-			ras.mu.Unlock()
+
+			ras.pendingMu.Unlock()
+
 			return next, nil
 		}
 
-		ras.mu.Unlock()
+		announceCh := ras.announcedCh
+		ras.pendingMu.Unlock()
+
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-ras.ctx.Done():
-			reason := context.Cause(ras.ctx)
+		case <-annStrCtx.Done():
+			reason := context.Cause(annStrCtx)
 			return nil, reason
-		case <-ras.announcedCh:
+		case <-announceCh:
 			// New announcement available, loop to check pendings
 			continue
 		}
@@ -111,23 +112,18 @@ func (ras *AnnouncementReader) ReceiveAnnouncement(ctx context.Context) (*Announ
 }
 
 func (ras *AnnouncementReader) Close() error {
-	ras.mu.Lock()
+	ras.pendingMu.Lock()
 
 	if ras.closed {
-		ras.mu.Unlock()
-		return ras.closeErr
+		ras.pendingMu.Unlock()
+		return context.Cause(ras.ctx)
 	}
-
 	ras.closed = true
 
-	// Close the notification channel safely
-	select {
-	case <-ras.announcedCh:
-	default:
-		close(ras.announcedCh)
-	}
+	close(ras.announcedCh)
+	ras.announcedCh = nil
 
-	ras.mu.Unlock()
+	ras.pendingMu.Unlock()
 
 	ras.cancel(nil)
 
@@ -135,34 +131,30 @@ func (ras *AnnouncementReader) Close() error {
 }
 
 func (ras *AnnouncementReader) CloseWithError(code AnnounceErrorCode) error {
-	ras.mu.Lock()
+	ras.pendingMu.Lock()
 
 	if ras.closed {
-		ras.mu.Unlock()
-		return ras.closeErr
+		ras.pendingMu.Unlock()
+		return context.Cause(ras.ctx)
 	}
-
 	ras.closed = true
 
-	err := &AnnounceError{
-		StreamError: &quic.StreamError{
-			StreamID:  ras.stream.StreamID(),
-			ErrorCode: quic.StreamErrorCode(code),
-		},
-	}
-	ras.closeErr = err
+	close(ras.announcedCh)
+	ras.announcedCh = nil
 
-	select {
-	case <-ras.announcedCh:
-	default:
-		close(ras.announcedCh)
-	}
+	ras.pendingMu.Unlock()
 
 	strErrCode := quic.StreamErrorCode(code)
 	ras.stream.CancelRead(strErrCode)
 	ras.stream.CancelWrite(strErrCode)
 
-	ras.mu.Unlock()
+	err := &AnnounceError{
+		StreamError: &quic.StreamError{
+			StreamID:  ras.stream.StreamID(),
+			ErrorCode: strErrCode,
+		},
+	}
+
 	ras.cancel(err)
 
 	return nil
@@ -174,57 +166,37 @@ func (ras *AnnouncementReader) listenAnnouncements() {
 		// var suffix string
 		var err error
 		for {
-			// Check if closed under lock
-			ras.mu.Lock()
+			// Check if announcement is already closed before decoding
+			ras.pendingMu.Lock()
 			if ras.closed {
-				ras.mu.Unlock()
+				ras.pendingMu.Unlock()
 				return
 			}
-			ras.mu.Unlock()
+			ras.pendingMu.Unlock()
 
 			err = am.Decode(ras.stream)
 			if err != nil {
-				ras.mu.Lock()
-				if ras.closed {
-					ras.mu.Unlock()
-					return
-				}
-
-				ras.closed = true
-
-				if err == io.EOF {
-					ras.closeErr = io.EOF
-				} else {
-					var strErr *quic.StreamError
-					if errors.As(err, &strErr) {
-						ras.closeErr = &AnnounceError{
-							StreamError: strErr,
-						}
-					} else {
-						ras.closeErr = err
+				var strErr *quic.StreamError
+				if errors.As(err, &strErr) {
+					annErr := &AnnounceError{
+						StreamError: strErr,
 					}
+					ras.cancel(annErr)
+				} else {
+					ras.cancel(err)
 				}
-
-				closeErr := ras.closeErr
-
-				// Close the notification channel safely
-				select {
-				case <-ras.announcedCh:
-				default:
-					close(ras.announcedCh)
-				}
-
-				ras.mu.Unlock()
-
-				ras.cancel(closeErr)
 				return
 			}
 
 			slog.Debug("received announce message", "message", am)
 
-			// suffix = am.TrackSuffix
+			// Check if announcement is already closed during decoding
+			ras.pendingMu.Lock()
+			if ras.closed {
+				ras.pendingMu.Unlock()
+				return
+			}
 
-			ras.mu.Lock()
 			old, ok := ras.active[am.TrackSuffix]
 
 			switch am.AnnounceStatus {
@@ -234,17 +206,19 @@ func (ras *AnnouncementReader) listenAnnouncements() {
 					ann := NewAnnouncement(ras.ctx, BroadcastPath(ras.prefix+am.TrackSuffix))
 					ras.active[am.TrackSuffix] = ann
 					ras.pendings = append(ras.pendings, ann)
+
 					// Notify that new announcement is available
-					if !ras.closed {
-						select {
-						case ras.announcedCh <- struct{}{}:
-						default:
-						}
+					select {
+					case ras.announcedCh <- struct{}{}:
+					default:
 					}
-					ras.mu.Unlock()
+
+					ras.pendingMu.Unlock()
+
+					continue
 				} else {
 					// Release lock before calling CloseWithError to avoid deadlock
-					ras.mu.Unlock()
+					ras.pendingMu.Unlock()
 					// Close the stream with an error
 					ras.CloseWithError(DuplicatedAnnounceErrorCode)
 					return
@@ -256,15 +230,19 @@ func (ras *AnnouncementReader) listenAnnouncements() {
 
 					// Remove the announcement from the map
 					delete(ras.active, am.TrackSuffix)
-					ras.mu.Unlock()
+					ras.pendingMu.Unlock()
+					continue
 				} else {
 					// Release lock before calling CloseWithError to avoid deadlock
-					ras.mu.Unlock()
+					ras.pendingMu.Unlock()
 					ras.CloseWithError(DuplicatedAnnounceErrorCode)
 					return
 				}
 			default:
-				ras.mu.Unlock()
+				ras.pendingMu.Unlock()
+				// Unsupported status, close with error
+				ras.CloseWithError(InvalidAnnounceStatusErrorCode)
+				return
 			}
 		}
 	})

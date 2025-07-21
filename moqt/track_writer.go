@@ -1,8 +1,8 @@
 package moqt
 
 import (
+	"context"
 	"errors"
-	"log/slog"
 	"sync"
 	"sync/atomic"
 
@@ -84,8 +84,8 @@ func (s *TrackWriter) OpenGroup(seq GroupSequence) (*GroupWriter, error) {
 		return nil, errors.New("group sequence must not be zero")
 	}
 
-	if err := s.ctx.Err(); err != nil {
-		return nil, err
+	if s.ctx.Err() != nil {
+		return nil, context.Cause(s.ctx)
 	}
 
 	if !s.accepted.Load() {
@@ -148,8 +148,6 @@ func (s *TrackWriter) OpenGroup(seq GroupSequence) (*GroupWriter, error) {
 		s.removeGroup(group)
 	})
 	s.addGroup(group)
-
-	slog.Debug("track writer opened group")
 
 	return group, nil
 }

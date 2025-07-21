@@ -61,9 +61,9 @@ func (sgs *GroupWriter) WriteFrame(frame *Frame) error {
 		return errors.New("frame is nil or has no bytes")
 	}
 
-	if err := sgs.ctx.Err(); err != nil {
+	if sgs.ctx.Err() != nil {
 		// If the context is already cancelled, return the error
-		return err
+		return context.Cause(sgs.ctx)
 	}
 
 	err := frame.message.Encode(sgs.stream)
@@ -94,7 +94,9 @@ func (sgs *GroupWriter) SetWriteDeadline(t time.Time) error {
 }
 
 func (sgs *GroupWriter) CancelWrite(code GroupErrorCode) {
-	if err := sgs.ctx.Err(); err != nil {
+	if sgs.ctx.Err() != nil {
+		// If the context is already cancelled, local cancelled the stream or the remote side closed the stream
+		// so we don't need to cancel it again
 		return
 	}
 
@@ -114,8 +116,8 @@ func (sgs *GroupWriter) CancelWrite(code GroupErrorCode) {
 }
 
 func (sgs *GroupWriter) Close() error {
-	if err := sgs.ctx.Err(); err != nil {
-		return err
+	if sgs.ctx.Err() != nil {
+		return context.Cause(sgs.ctx)
 	}
 
 	err := sgs.stream.Close()

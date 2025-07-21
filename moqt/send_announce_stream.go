@@ -8,12 +8,6 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-// type AnnouncementWriter interface {
-// 	SendAnnouncement(announcement *Announcement) error
-// 	Close() error
-// 	CloseWithError(code AnnounceErrorCode) error
-// }
-
 func newSendAnnounceStream(stream quic.Stream, prefix string) *AnnouncementWriter {
 	sas := &AnnouncementWriter{
 		prefix:  prefix,

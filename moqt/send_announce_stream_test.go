@@ -57,7 +57,7 @@ func createTestAnnouncement(ctx context.Context, path BroadcastPath) *Announceme
 }
 
 // verifyAnnouncementState verifies the expected state of announcements in SendAnnounceStream
-func verifyAnnouncementState(t *testing.T, sas *sendAnnounceStream, expectedCount int, expectedPaths []string) {
+func verifyAnnouncementState(t *testing.T, sas *AnnouncementWriter, expectedCount int, expectedPaths []string) {
 	t.Helper()
 
 	assert.Len(t, sas.actives, expectedCount, "Expected %d active announcements, got %d", expectedCount, len(sas.actives))
@@ -95,7 +95,7 @@ func createMultipleAnnouncements(ctx context.Context, prefix string, count int) 
 }
 
 // assertStreamState verifies the state of a SendAnnounceStream
-func assertStreamState(t *testing.T, sas *sendAnnounceStream, expectClosed bool, expectError bool) {
+func assertStreamState(t *testing.T, sas *AnnouncementWriter, expectClosed bool, expectError bool) {
 	t.Helper()
 
 	assert.Equal(t, expectClosed, sas.closed, "Stream closed state mismatch")
@@ -351,7 +351,7 @@ func TestSendAnnounceStream_CloseWithError_AlreadyClosed(t *testing.T) {
 
 func TestSendAnnounceStreamInterface(t *testing.T) {
 	// Test that sendAnnounceStream implements AnnouncementWriter interface
-	var _ AnnouncementWriter = (*sendAnnounceStream)(nil)
+	var _ AnnouncementWriter = (*AnnouncementWriter)(nil)
 }
 
 func TestSendAnnounceStream_ConcurrentAccess(t *testing.T) {

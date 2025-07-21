@@ -12,13 +12,13 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-type AnnouncementReader interface {
-	ReceiveAnnouncement(context.Context) (*Announcement, error)
-	Close() error
-	CloseWithError(AnnounceErrorCode) error
-}
+// type AnnouncementReader interface {
+// 	ReceiveAnnouncement(context.Context) (*Announcement, error)
+// 	Close() error
+// 	CloseWithError(AnnounceErrorCode) error
+// }
 
-func newReceiveAnnounceStream(stream quic.Stream, prefix string) *receiveAnnounceStream {
+func newReceiveAnnounceStream(stream quic.Stream, prefix string) *AnnouncementReader {
 	ctx, cancel := context.WithCancelCause(context.Background())
 
 	// Propagate the cancellation with AnnounceError
@@ -41,7 +41,7 @@ func newReceiveAnnounceStream(stream quic.Stream, prefix string) *receiveAnnounc
 		}
 		cancel(reason)
 	}()
-	annstr := &receiveAnnounceStream{
+	annstr := &AnnouncementReader{
 		ctx:         ctx,
 		cancel:      cancel,
 		stream:      stream,
@@ -57,9 +57,7 @@ func newReceiveAnnounceStream(stream quic.Stream, prefix string) *receiveAnnounc
 	return annstr
 }
 
-var _ AnnouncementReader = (*receiveAnnounceStream)(nil)
-
-type receiveAnnounceStream struct {
+type AnnouncementReader struct {
 	stream quic.Stream
 	prefix string
 
@@ -79,7 +77,7 @@ type receiveAnnounceStream struct {
 	listenOnce sync.Once
 }
 
-func (ras *receiveAnnounceStream) ReceiveAnnouncement(ctx context.Context) (*Announcement, error) {
+func (ras *AnnouncementReader) ReceiveAnnouncement(ctx context.Context) (*Announcement, error) {
 	for {
 		ras.mu.Lock()
 
@@ -112,7 +110,7 @@ func (ras *receiveAnnounceStream) ReceiveAnnouncement(ctx context.Context) (*Ann
 	}
 }
 
-func (ras *receiveAnnounceStream) Close() error {
+func (ras *AnnouncementReader) Close() error {
 	ras.mu.Lock()
 
 	if ras.closed {
@@ -136,7 +134,7 @@ func (ras *receiveAnnounceStream) Close() error {
 	return ras.stream.Close()
 }
 
-func (ras *receiveAnnounceStream) CloseWithError(code AnnounceErrorCode) error {
+func (ras *AnnouncementReader) CloseWithError(code AnnounceErrorCode) error {
 	ras.mu.Lock()
 
 	if ras.closed {
@@ -170,7 +168,7 @@ func (ras *receiveAnnounceStream) CloseWithError(code AnnounceErrorCode) error {
 	return nil
 }
 
-func (ras *receiveAnnounceStream) listenAnnouncements() {
+func (ras *AnnouncementReader) listenAnnouncements() {
 	ras.listenOnce.Do(func() {
 		var am message.AnnounceMessage
 		// var suffix string

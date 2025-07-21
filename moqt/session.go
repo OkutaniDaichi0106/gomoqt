@@ -305,7 +305,7 @@ func (s *Session) nextSubscribeID() SubscribeID {
 	return id
 }
 
-func (sess *Session) OpenAnnounceStream(prefix string) (AnnouncementReader, error) {
+func (sess *Session) OpenAnnounceStream(prefix string) (*AnnouncementReader, error) {
 	if sess.terminating() {
 		return nil, sess.sessErr
 	}

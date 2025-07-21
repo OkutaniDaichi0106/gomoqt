@@ -8,14 +8,14 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-type AnnouncementWriter interface {
-	SendAnnouncement(announcement *Announcement) error
-	Close() error
-	CloseWithError(code AnnounceErrorCode) error
-}
+// type AnnouncementWriter interface {
+// 	SendAnnouncement(announcement *Announcement) error
+// 	Close() error
+// 	CloseWithError(code AnnounceErrorCode) error
+// }
 
-func newSendAnnounceStream(stream quic.Stream, prefix string) *sendAnnounceStream {
-	sas := &sendAnnounceStream{
+func newSendAnnounceStream(stream quic.Stream, prefix string) *AnnouncementWriter {
+	sas := &AnnouncementWriter{
 		prefix:  prefix,
 		stream:  stream,
 		actives: make(map[string]*Announcement),
@@ -24,9 +24,7 @@ func newSendAnnounceStream(stream quic.Stream, prefix string) *sendAnnounceStrea
 	return sas
 }
 
-var _ AnnouncementWriter = (*sendAnnounceStream)(nil)
-
-type sendAnnounceStream struct {
+type AnnouncementWriter struct {
 	mu sync.RWMutex
 
 	prefix string
@@ -38,7 +36,7 @@ type sendAnnounceStream struct {
 	closeErr error
 }
 
-func (sas *sendAnnounceStream) SendAnnouncement(new *Announcement) error {
+func (sas *AnnouncementWriter) SendAnnouncement(new *Announcement) error {
 	sas.mu.Lock()
 	defer sas.mu.Unlock()
 
@@ -123,7 +121,7 @@ func (sas *sendAnnounceStream) SendAnnouncement(new *Announcement) error {
 	return nil
 }
 
-func (sas *sendAnnounceStream) Close() error {
+func (sas *AnnouncementWriter) Close() error {
 	sas.mu.Lock()
 	defer sas.mu.Unlock()
 
@@ -141,7 +139,7 @@ func (sas *sendAnnounceStream) Close() error {
 	return nil
 }
 
-func (sas *sendAnnounceStream) CloseWithError(code AnnounceErrorCode) error {
+func (sas *AnnouncementWriter) CloseWithError(code AnnounceErrorCode) error {
 	sas.mu.Lock()
 	defer sas.mu.Unlock()
 

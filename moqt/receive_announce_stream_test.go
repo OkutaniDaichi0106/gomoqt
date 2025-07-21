@@ -41,14 +41,14 @@ func TestNewReceiveAnnounceStream(t *testing.T) {
 
 func TestReceiveAnnounceStream_ReceiveAnnouncement(t *testing.T) {
 	tests := map[string]struct {
-		receiveAnnounceStream *receiveAnnounceStream
+		receiveAnnounceStream *AnnouncementReader
 		ctx                   context.Context
 		wantErr               bool
 		wantErrType           error
 		wantAnn               bool
 	}{
 		"success_with_valid_announcement": {
-			receiveAnnounceStream: func() *receiveAnnounceStream {
+			receiveAnnounceStream: func() *AnnouncementReader {
 				buf := bytes.NewBuffer(nil)
 				err := message.AnnounceMessage{
 					TrackSuffix:    "valid_announcement",
@@ -79,7 +79,7 @@ func TestReceiveAnnounceStream_ReceiveAnnouncement(t *testing.T) {
 			wantAnn: true,
 		},
 		"context_cancelled": {
-			receiveAnnounceStream: func() *receiveAnnounceStream {
+			receiveAnnounceStream: func() *AnnouncementReader {
 				mockStream := &MockQUICStream{
 					ReadFunc: func(p []byte) (int, error) {
 						// Block on read to simulate ongoing stream
@@ -97,7 +97,7 @@ func TestReceiveAnnounceStream_ReceiveAnnouncement(t *testing.T) {
 			wantAnn:     false,
 		},
 		"stream_closed": {
-			receiveAnnounceStream: func() *receiveAnnounceStream {
+			receiveAnnounceStream: func() *AnnouncementReader {
 				mockStream := &MockQUICStream{
 					ReadFunc: func(p []byte) (int, error) {
 						// Block on read to simulate ongoing stream
@@ -164,10 +164,10 @@ func TestReceiveAnnounceStream_ReceiveAnnouncement(t *testing.T) {
 
 func TestReceiveAnnounceStream_Close(t *testing.T) {
 	tests := map[string]struct {
-		setupFunc func() *receiveAnnounceStream
+		setupFunc func() *AnnouncementReader
 		wantErr   bool
 	}{"normal_close": {
-		setupFunc: func() *receiveAnnounceStream {
+		setupFunc: func() *AnnouncementReader {
 			mockStream := &MockQUICStream{}
 			// Block reads to prevent goroutine from interfering
 			mockStream.On("Read", mock.Anything).Run(func(args mock.Arguments) {
@@ -180,7 +180,7 @@ func TestReceiveAnnounceStream_Close(t *testing.T) {
 		wantErr: false,
 	},
 		"already_closed": {
-			setupFunc: func() *receiveAnnounceStream {
+			setupFunc: func() *AnnouncementReader {
 				mockStream := &MockQUICStream{}
 				// Block reads to prevent goroutine from interfering
 				mockStream.On("Read", mock.Anything).Run(func(args mock.Arguments) {
@@ -231,11 +231,11 @@ func TestReceiveAnnounceStream_Close(t *testing.T) {
 
 func TestReceiveAnnounceStream_CloseWithError(t *testing.T) {
 	tests := map[string]struct {
-		setupFunc func() *receiveAnnounceStream
+		setupFunc func() *AnnouncementReader
 		errorCode AnnounceErrorCode
 		wantErr   bool
 	}{"internal_error": {
-		setupFunc: func() *receiveAnnounceStream {
+		setupFunc: func() *AnnouncementReader {
 			mockStream := &MockQUICStream{}
 			// Block reads to prevent goroutine from interfering
 			mockStream.On("Read", mock.Anything).Run(func(args mock.Arguments) {
@@ -249,7 +249,7 @@ func TestReceiveAnnounceStream_CloseWithError(t *testing.T) {
 		errorCode: InternalAnnounceErrorCode,
 		wantErr:   false,
 	}, "duplicated_error": {
-		setupFunc: func() *receiveAnnounceStream {
+		setupFunc: func() *AnnouncementReader {
 			mockStream := &MockQUICStream{}
 			// Block reads to prevent goroutine from interfering
 			mockStream.On("Read", mock.Anything).Run(func(args mock.Arguments) {
@@ -264,7 +264,7 @@ func TestReceiveAnnounceStream_CloseWithError(t *testing.T) {
 		wantErr:   false,
 	},
 		"already_closed": {
-			setupFunc: func() *receiveAnnounceStream {
+			setupFunc: func() *AnnouncementReader {
 				mockStream := &MockQUICStream{}
 				// Block reads to prevent goroutine from interfering
 				mockStream.On("Read", mock.Anything).Run(func(args mock.Arguments) {

@@ -42,11 +42,11 @@ func Announce(announcement *Announcement, handler TrackHandler) {
 // It maintains separate trees for track routing and announcements, allowing efficient
 // lookup of handlers and distribution of announcements to interested subscribers.
 type TrackMux struct {
-	mu sync.RWMutex
-
-	announcementTree announcingNode
-
+	handlerMu    sync.RWMutex
 	handlerIndex map[BroadcastPath]TrackHandler
+
+	treeMu           sync.RWMutex
+	announcementTree announcingNode
 }
 
 func (mux *TrackMux) HandleFunc(ctx context.Context, path BroadcastPath, f func(tw *TrackWriter)) {
@@ -57,7 +57,7 @@ func (mux *TrackMux) HandleFunc(ctx context.Context, path BroadcastPath, f func(
 // The handler will remain active until the context is canceled.
 func (mux *TrackMux) Handle(ctx context.Context, path BroadcastPath, handler TrackHandler) {
 	if ctx == nil {
-		panic("mux: nil context")
+		panic("[TrackMux] nil context")
 	}
 
 	mux.Announce(NewAnnouncement(ctx, path), handler)
@@ -67,46 +67,48 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 	path := announcement.BroadcastPath()
 
 	if !isValidPath(path) {
-		panic("mux: invalid track path: " + path)
+		panic("[TrackMux] invalid track path: " + path)
 	}
 
 	if !announcement.IsActive() {
-		slog.Warn("mux: announcement is not active")
+		slog.Warn("[TrackMux] announcement is not active")
 		return
 	}
 
-	mux.mu.Lock()
-	defer mux.mu.Unlock()
-
-	_, ok := mux.handlerIndex[path]
-	if ok {
-		slog.Warn("mux: handler already registered for path", "path", path)
+	// Protect handlerIndex registration and duplicate check with handlerMu
+	mux.handlerMu.Lock()
+	if _, ok := mux.handlerIndex[path]; ok {
+		mux.handlerMu.Unlock()
+		slog.Warn("[TrackMux] handler already registered for path", "path", path)
 		return
 	}
-
 	mux.handlerIndex[path] = handler
+	mux.handlerMu.Unlock()
 
+	// Protect announcementTree structure modification with per-node lock
 	segments := strings.Split(string(path), "/")
-
 	current := &mux.announcementTree
 	for _, seg := range segments[1 : len(segments)-1] {
+		current.mu.Lock()
 		if current.children == nil {
 			current.children = make(map[string]*announcingNode)
 		}
-		if child, ok := current.children[seg]; ok {
-			current = child
-		} else {
-			child := newAnnouncingNode()
+		child, ok := current.children[seg]
+		if !ok {
+			child = newAnnouncingNode()
 			current.children[seg] = child
-			current = child
 		}
+		// current = child をロック中に行う
+		current = child
+		current.mu.Unlock()
 	}
+
 	current.mu.Lock()
 	current.announcements[path] = announcement
 	current.mu.Unlock()
 
 	// Collect failed writers and clean them up with proper locking
-	var failedWriters []AnnouncementWriter
+	var failedWriters []*AnnouncementWriter
 
 	current.mu.RLock()
 	for writer := range current.writers {
@@ -133,9 +135,9 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 		<-announcement.AwaitEnd()
 
 		// Remove the handler
-		mux.mu.Lock()
+		mux.handlerMu.Lock()
 		delete(mux.handlerIndex, path)
-		mux.mu.Unlock()
+		mux.handlerMu.Unlock()
 
 		// Remove the announcement
 		current.mu.Lock()
@@ -151,15 +153,13 @@ func (mux *TrackMux) Handler(path BroadcastPath) TrackHandler {
 		panic("mux: invalid track path: " + path)
 	}
 
-	mux.mu.RLock()
-	defer mux.mu.RUnlock()
-
+	mux.handlerMu.RLock()
 	handler, ok := mux.handlerIndex[path]
+	mux.handlerMu.RUnlock()
 	if handler == nil || !ok {
 		slog.Warn("mux: no handler found for path", "path", path)
 		return NotFoundHandler
 	}
-
 	return handler
 }
 
@@ -178,7 +178,8 @@ func (mux *TrackMux) ServeTrack(tw *TrackWriter) {
 
 // ServeAnnouncements serves announcements for tracks matching the given pattern.
 // It registers the AnnouncementWriter and sends announcements for matching tracks.
-func (mux *TrackMux) ServeAnnouncements(w AnnouncementWriter, prefix string) {
+
+func (mux *TrackMux) ServeAnnouncements(w *AnnouncementWriter, prefix string) {
 	if w == nil {
 		slog.Error("mux: nil announcement writer")
 		return
@@ -191,65 +192,45 @@ func (mux *TrackMux) ServeAnnouncements(w AnnouncementWriter, prefix string) {
 
 	segments := strings.Split(prefix, "/")
 
-	// Register the handler on the routing tree
-	mux.mu.Lock()
+	// Register the handler on the routing tree (protect children with per-node lock)
 	current := &mux.announcementTree
 	for _, seg := range segments[1 : len(segments)-1] {
+		current.mu.Lock()
 		if current.children == nil {
 			current.children = make(map[string]*announcingNode)
 		}
-
-		if child, ok := current.children[seg]; ok {
-			current = child
-		} else {
-			child := newAnnouncingNode()
+		child, ok := current.children[seg]
+		if !ok {
+			child = newAnnouncingNode()
 			current.children[seg] = child
-			current = child
 		}
+		next := child
+		current.mu.Unlock()
+		current = next
 	}
-	mux.mu.Unlock()
 
 	current.mu.Lock()
 	current.writers[w] = struct{}{}
 	current.mu.Unlock()
 
-	var announce func(node *announcingNode)
-	announce = func(node *announcingNode) {
-		node.mu.RLock()
-		defer node.mu.RUnlock()
-
-		// Send announcements for this node
-		for _, announcement := range node.announcements {
-			err := w.SendAnnouncement(announcement)
-			if err != nil {
-				slog.Error("mux: failed to send announcement", "error", err)
-				return
-			}
-		}
-
-		// Recursively announce to child nodes
-		for _, child := range node.children {
-			announce(child)
-		}
-	}
-
-	announce(current)
+	current.announce(w)
 }
 
 func (mux *TrackMux) Clear() {
-	mux.mu.Lock()
-	defer mux.mu.Unlock()
-
+	mux.treeMu.Lock()
 	mux.announcementTree = *newAnnouncingNode()
+	mux.treeMu.Unlock()
 
+	mux.handlerMu.Lock()
 	mux.handlerIndex = make(map[BroadcastPath]TrackHandler)
+	mux.handlerMu.Unlock()
 }
 
 // newAnnouncingNode creates and initializes a new routing tree node.
 func newAnnouncingNode() *announcingNode {
 	return &announcingNode{
 		announcements: make(map[BroadcastPath]*Announcement),
-		writers:       make(map[AnnouncementWriter]struct{}),
+		writers:       make(map[*AnnouncementWriter]struct{}),
 		children:      make(map[string]*announcingNode),
 	}
 }
@@ -258,9 +239,37 @@ type announcingNode struct {
 	mu sync.RWMutex
 
 	announcements map[BroadcastPath]*Announcement
-	writers       map[AnnouncementWriter]struct{}
+	writers       map[*AnnouncementWriter]struct{}
 
 	children map[string]*announcingNode
+}
+
+func (node *announcingNode) announce(w *AnnouncementWriter) {
+	node.mu.RLock()
+	// Take a snapshot of announcements and children
+	announcements := make([]*Announcement, 0, len(node.announcements))
+	for _, a := range node.announcements {
+		announcements = append(announcements, a)
+	}
+	children := make([]*announcingNode, 0, len(node.children))
+	for _, c := range node.children {
+		children = append(children, c)
+	}
+	node.mu.RUnlock()
+
+	// Send announcements for this node
+	for _, announcement := range announcements {
+		err := w.SendAnnouncement(announcement)
+		if err != nil {
+			slog.Error("mux: failed to send announcement", "error", err)
+			return
+		}
+	}
+
+	// Recursively announce to child nodes
+	for _, child := range children {
+		child.announce(w)
+	}
 }
 
 func isValidPath(path BroadcastPath) bool {

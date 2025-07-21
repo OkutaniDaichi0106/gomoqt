@@ -23,8 +23,8 @@ default: help
 help:
 	@echo "Available commands:"
 	@echo "  just dev-setup       Set up the development environment"
-	@echo "  just run-echo-server Start the echo server"
-	@echo "  just run-echo-client Start the echo client"
+	@echo "  just interop-server Start the interop server"
+	@echo "  just interop-client Start the interop client"
 	@echo "  just fmt             Format Go source code"
 	@echo "  just lint            Run linter"
 	@echo "  just test            Run tests"
@@ -68,9 +68,9 @@ interop-server:
 	cd ./interop/server && go run main.go
 
 # Run interop client:
-interop-client path:
+interop-client:
 	@echo "Starting interop client..."
-	cd ./interop/client && go run main.go -path "{{path}}"
+	cd ./interop/client && go run main.go
 
 # Run interop web:
 interop-web:

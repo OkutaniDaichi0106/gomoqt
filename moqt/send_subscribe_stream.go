@@ -47,6 +47,8 @@ type sendSubscribeStream struct {
 	ctx    context.Context
 	cancel context.CancelCauseFunc
 
+	closed bool
+
 	id SubscribeID
 
 	config *TrackConfig
@@ -143,30 +145,36 @@ func (sss *sendSubscribeStream) close() error {
 	sss.mu.Lock()
 	defer sss.mu.Unlock()
 
-	if err := sss.ctx.Err(); err != nil {
+	if sss.closed {
 		return nil
 	}
+	sss.closed = true
 
+	// Close the write side of the stream
 	err := sss.stream.Close()
-	if err != nil {
-		return err
-	}
+	// Cancel the read side of the stream
+	strErrCode := quic.StreamErrorCode(SubscribeCanceledErrorCode)
+	sss.stream.CancelRead(strErrCode)
 
 	sss.cancel(nil)
 
-	return nil
+	return err
 }
 
 func (sss *sendSubscribeStream) closeWithError(code SubscribeErrorCode) error {
 	sss.mu.Lock()
 	defer sss.mu.Unlock()
 
-	if err := sss.ctx.Err(); err != nil {
+	if sss.closed {
 		return nil
 	}
+	sss.closed = true
 
 	strErrCode := quic.StreamErrorCode(code)
+	// Cancel the write side of the stream
 	sss.stream.CancelWrite(strErrCode)
+	// Cancel the read side of the stream
+	sss.stream.CancelRead(strErrCode)
 
 	err := &SubscribeError{
 		StreamError: &quic.StreamError{
@@ -174,8 +182,6 @@ func (sss *sendSubscribeStream) closeWithError(code SubscribeErrorCode) error {
 			ErrorCode: strErrCode,
 		},
 	}
-
-	sss.stream.CancelRead(strErrCode)
 
 	sss.cancel(err)
 

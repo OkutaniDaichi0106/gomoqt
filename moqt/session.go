@@ -31,7 +31,7 @@ func newSession(conn quic.Connection, version protocol.Version, path string, cli
 		<-connCtx.Done()
 		reason := context.Cause(connCtx)
 		var appErr *quic.ApplicationError
-		if errors.As(reason, appErr) {
+		if errors.As(reason, &appErr) {
 			reason = &SessionError{
 				ApplicationError: appErr,
 			}
@@ -594,19 +594,13 @@ func (s *Session) removeTrackWriter(id SubscribeID) {
 func (s *Session) addTrackReader(id SubscribeID, reader *TrackReader) {
 	s.trackReaderMapLocker.Lock()
 	defer s.trackReaderMapLocker.Unlock()
+
 	s.trackReaders[id] = reader
-	s.logger.Debug("added track reader",
-		"subscribe_id", id,
-		"track_name", reader.TrackName,
-	)
 }
 
 func (s *Session) removeTrackReader(id SubscribeID) {
 	s.trackReaderMapLocker.Lock()
 	defer s.trackReaderMapLocker.Unlock()
 
-	if reader, ok := s.trackReaders[id]; ok {
-		reader.Close()
-		delete(s.trackReaders, id)
-	}
+	delete(s.trackReaders, id)
 }

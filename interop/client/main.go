@@ -2,121 +2,24 @@ package main
 
 import (
 	"context"
-	"flag"
 	"io"
 	"log/slog"
-	"os"
+	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt"
 )
 
 func main() {
-	path := flag.String("path", "", "operation path (e.g., /subscribe, /publish)")
-	flag.Parse()
-
-	client := &moqt.Client{
-		Logger: slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-			Level: slog.LevelDebug,
-		})),
-	}
-
-	switch *path {
-	case "/subscribe":
-		if err := subscribe(client); err != nil {
-			slog.Error("subscribe failed", "error", err)
-		}
-	case "/publish":
-		if err := publish(client); err != nil {
-			slog.Error("publish failed", "error", err)
-		}
-	default:
-		slog.Error("invalid path specified", "path", *path)
-		flag.Usage()
-	}
-}
-
-func subscribe(client *moqt.Client) error {
-	sess, err := client.Dial(context.Background(), "https://moqt.example.com:9000/subscribe", nil)
-	if err != nil {
-		slog.Error("failed to dial", "error", err)
-		return err
-	}
-
-	//
-	anns, err := sess.OpenAnnounceStream("/")
-	if err != nil {
-		slog.Error("failed to open announce stream", "error", err)
-		return err
-	}
-	defer anns.Close()
-
-	for {
-		ann, err := anns.ReceiveAnnouncement(context.Background())
-		if err != nil {
-			slog.Error("failed to receive announcement", "error", err)
-			break
-		}
-
-		slog.Info("received announcement", "announcement", ann)
-
-		go func(ann *moqt.Announcement) {
-			if !ann.IsActive() {
-				return
-			}
-
-			tr, err := sess.OpenTrackStream(ann.BroadcastPath(), "index", nil)
-			if err != nil {
-				slog.Error("failed to open track stream", "error", err)
-				return
-			}
-			defer tr.Close()
-
-			for {
-				gr, err := tr.AcceptGroup(context.Background())
-				if err != nil {
-					slog.Error("failed to accept group", "error", err)
-					return
-				}
-
-				go func(gr *moqt.GroupReader) {
-					defer gr.CancelRead(moqt.InternalGroupErrorCode)
-
-					for {
-						frame, err := gr.ReadFrame()
-						if err != nil {
-							if err == io.EOF {
-								return
-							}
-							slog.Error("failed to read frame", "error", err)
-							break
-						}
-
-						slog.Info("received a frame", "frame", string(frame.CopyBytes()))
-
-						// TODO: Release the frame after processing
-						// This is important to avoid memory leaks
-						frame.Release()
-					}
-				}(gr)
-
-			}
-
-		}(ann)
-	}
-
-	return nil
-}
-
-func publish(client *moqt.Client) error {
-	mux := moqt.NewTrackMux()
-	mux.HandleFunc(context.Background(), "/interop.client", func(tw *moqt.TrackWriter) {
+	moqt.HandleFunc(context.Background(), "/interop.client", func(tw *moqt.TrackWriter) {
 		seq := moqt.GroupSequenceFirst
-		for {
+		for range 10 {
 			group, err := tw.OpenGroup(seq)
 			if err != nil {
 				slog.Error("failed to open group", "error", err)
 				return
 			}
+
+			slog.Info("Opened group successfully", "group_sequence", group.GroupSequence())
 
 			frame := moqt.NewFrame([]byte("Hello from client"))
 			err = group.WriteFrame(frame)
@@ -125,16 +28,95 @@ func publish(client *moqt.Client) error {
 				return
 			}
 
+			slog.Info("Sent frame successfully", "frame", string(frame.CopyBytes()))
+
 			frame.Release()
 			group.Close()
 
+			slog.Info("Closed group successfully", "group_sequence", seq)
+
 			seq = seq.Next()
+
+			time.Sleep(1 * time.Second)
 		}
 	})
-	_, err := client.Dial(context.Background(), "https://moqt.example.com:9000/publish", mux)
+
+	client := &moqt.Client{
+		Logger: slog.Default(),
+	}
+
+	sess, err := client.Dial(context.Background(), "https://moqt.example.com:9000/interop", nil)
 	if err != nil {
 		slog.Error("failed to dial", "error", err)
-		return err
+		return
 	}
-	return nil
+
+	slog.Info("Connected to the server successfully")
+
+	//
+	anns, err := sess.OpenAnnounceStream("/")
+	if err != nil {
+		slog.Error("failed to open announce stream", "error", err)
+		return
+	}
+	defer anns.Close()
+
+	slog.Info("Opened announce stream successfully")
+
+	ann, err := anns.ReceiveAnnouncement(context.Background())
+	if err != nil {
+		slog.Error("failed to receive announcement", "error", err)
+		return
+	}
+
+	slog.Info("Received announcement", "announcement", ann)
+
+	if !ann.IsActive() {
+		slog.Info("Announcement is not active", "announcement", ann)
+		return
+	}
+
+	tr, err := sess.OpenTrackStream(ann.BroadcastPath(), "", nil)
+	if err != nil {
+		slog.Error("failed to open track stream", "error", err)
+		return
+	}
+
+	slog.Info("Opened track stream successfully", "path", ann.BroadcastPath())
+
+	for range 10 {
+		gr, err := tr.AcceptGroup(context.Background())
+		if err != nil {
+			slog.Error("failed to accept group", "error", err)
+			return
+		}
+
+		slog.Info("Accepted a group", "group_sequence", gr.GroupSequence())
+
+		go func(gr *moqt.GroupReader) {
+			for {
+				frame, err := gr.ReadFrame()
+				if err != nil {
+					if err == io.EOF {
+						return
+					}
+					slog.Error("failed to read frame", "error", err)
+					break
+				}
+
+				slog.Info("Received a frame", "frame", string(frame.CopyBytes()))
+
+				// TODO: Release the frame after processing
+				// This is important to avoid memory leaks
+				frame.Release()
+			}
+		}(gr)
+	}
+
+	tr.Close()
+
+	sess.Terminate(moqt.NoError, moqt.NoError.String())
+
+	slog.Info("Closed track stream successfully")
+
 }

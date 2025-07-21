@@ -63,39 +63,19 @@ dev-setup:
 	# (Add commands for generating certificates if necessary)
 
 # Run interop server:
-run-interop-server:
+interop-server:
 	@echo "Starting interop server..."
 	cd ./interop/server && go run main.go
 
 # Run interop client:
-run-interop-client:
+interop-client path:
 	@echo "Starting interop client..."
-	cd ./interop/client && go run main.go
+	cd ./interop/client && go run main.go -path "{{path}}"
 
 # Run interop web:
-run-interop-web:
+interop-web:
 	@echo "Starting interop web client..."
 	cd ./interop/web/examples && npm run dev
-
-# New command: run-broadcast-server
-run-broadcast-server:
-	@echo "Starting broadcast server..."
-	cd ./examples/broadcast/server && go run main.go
-
-# New command: run-broadcast-client
-run-broadcast-client:
-	@echo "Starting broadcast client..."
-	cd ./examples/broadcast/client && go run main.go
-
-# New command: run-echo-server
-run-echo-server:
-	@echo "Starting echo server..."
-	cd ./examples/echo/server && go run main.go
-
-# New command: run-echo-client
-run-echo-client:
-	@echo "Starting echo client..."
-	cd ./examples/echo/client && go run main.go
 
 # New command: fmt
 fmt:

@@ -84,11 +84,11 @@ func main() {
 
 	slog.Info("Opened track stream successfully", "path", ann.BroadcastPath())
 
-	for range 10 {
+	for {
 		gr, err := tr.AcceptGroup(context.Background())
 		if err != nil {
 			slog.Error("failed to accept group", "error", err)
-			return
+			break
 		}
 
 		slog.Info("Accepted a group", "group_sequence", gr.GroupSequence())
@@ -113,10 +113,5 @@ func main() {
 		}(gr)
 	}
 
-	tr.Close()
-
 	sess.Terminate(moqt.NoError, moqt.NoError.String())
-
-	slog.Info("Closed track stream successfully")
-
 }

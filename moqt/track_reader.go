@@ -64,7 +64,7 @@ func (r *TrackReader) AcceptGroup(ctx context.Context) (*GroupReader, error) {
 
 		if r.closed {
 			r.trackMu.Unlock()
-			return nil, errors.New("track reader is closed")
+			return nil, errors.New("track reader is closed by local")
 		}
 
 		trackCtx := r.ctx
@@ -75,7 +75,7 @@ func (r *TrackReader) AcceptGroup(ctx context.Context) (*GroupReader, error) {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-trackCtx.Done():
-			return nil, trackCtx.Err()
+			return nil, context.Cause(trackCtx)
 		case <-queueCh:
 		}
 	}

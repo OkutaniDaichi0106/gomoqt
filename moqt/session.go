@@ -42,14 +42,16 @@ func newSession(conn quic.Connection, version protocol.Version, path string, cli
 
 	// Supervise the session stream closure
 	go func() {
-		<-stream.Context().Done()
-		if conn.Context().Err() != nil {
+		streamCtx := stream.Context()
+		connCtx := conn.Context()
+		<-streamCtx.Done()
+		if connCtx.Err() != nil {
 			return // If the connection is already closed, do nothing
 		}
 
 		// If the stream is closed unexpectedly, terminate the session
 		logger.Warn("session stream closed unexpectedly",
-			"reason", context.Cause(stream.Context()),
+			"reason", context.Cause(streamCtx),
 		)
 
 		conn.CloseWithError(quic.ConnectionErrorCode(ProtocolViolationErrorCode), "session stream closed unexpectedly")
@@ -70,18 +72,7 @@ func newSession(conn quic.Connection, version protocol.Version, path string, cli
 		trackWriters:     make(map[SubscribeID]*TrackWriter),
 	}
 
-	sess.wg.Add(3)
-	// Listen for session stream closure
-	go func() {
-		defer sess.wg.Done()
-		<-sess.Context().Done()
-		if !sess.terminating() {
-			logger.Warn("session stream closed unexpectedly",
-				"reason", context.Cause(sess.Context()),
-			)
-			sess.Terminate(ProtocolViolationErrorCode, "session stream closed unexpectedly")
-		}
-	}()
+	sess.wg.Add(2)
 
 	// Listen bidirectional streams
 	go func() {

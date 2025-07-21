@@ -60,7 +60,7 @@ func main() {
 
 			seq = seq.Next()
 
-			time.Sleep(1 * time.Second) // Simulate periodic updates
+			time.Sleep(100 * time.Millisecond)
 		}
 
 		tw.Close()
@@ -96,7 +96,7 @@ func main() {
 			return
 		}
 
-		for range 10 {
+		for {
 			gr, err := tr.AcceptGroup(context.Background())
 			if err != nil {
 				slog.Error("failed to accept group", "error", err)
@@ -121,9 +121,7 @@ func main() {
 					frame.Release()
 				}
 			}(gr)
-
 		}
-
 	})
 
 	err := server.ListenAndServe()

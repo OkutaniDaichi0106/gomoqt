@@ -1,7 +1,6 @@
 package moqt
 
 import (
-	"context"
 	"errors"
 	"io"
 	"time"
@@ -9,14 +8,11 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-func newReceiveGroupStream(trackCtx context.Context, sequence GroupSequence, stream quic.ReceiveStream,
+func newReceiveGroupStream(sequence GroupSequence, stream quic.ReceiveStream,
 	onClose func()) *GroupReader {
-	ctx, cancel := context.WithCancelCause(trackCtx)
 	return &GroupReader{
 		sequence: sequence,
 		stream:   stream,
-		ctx:      ctx,
-		cancel:   cancel,
 		onClose:  onClose,
 	}
 }
@@ -26,9 +22,6 @@ type GroupReader struct {
 
 	stream     quic.ReceiveStream
 	frameCount int64
-
-	ctx    context.Context
-	cancel context.CancelCauseFunc
 
 	onClose func()
 }
@@ -51,9 +44,6 @@ func (s *GroupReader) ReadFrame() (*Frame, error) {
 				StreamError: strErr,
 			}
 
-			//
-			s.cancel(grpErr)
-
 			return nil, grpErr
 		}
 
@@ -67,15 +57,6 @@ func (s *GroupReader) ReadFrame() (*Frame, error) {
 func (s *GroupReader) CancelRead(code GroupErrorCode) {
 	strErrCode := quic.StreamErrorCode(code)
 	s.stream.CancelRead(strErrCode)
-
-	grpErr := &GroupError{
-		StreamError: &quic.StreamError{
-			StreamID:  s.stream.StreamID(),
-			ErrorCode: strErrCode,
-		},
-	}
-
-	s.cancel(grpErr)
 }
 
 func (s *GroupReader) SetReadDeadline(t time.Time) error {

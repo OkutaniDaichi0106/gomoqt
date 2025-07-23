@@ -8,31 +8,10 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-func newSendGroupStream(trackCtx context.Context, stream quic.SendStream, sequence GroupSequence,
+func newSendGroupStream(stream quic.SendStream, sequence GroupSequence,
 	onClose func()) *GroupWriter {
-	ctx, cancel := context.WithCancelCause(trackCtx)
-	go func() {
-		streamCtx := stream.Context()
-		<-streamCtx.Done()
-		reason := context.Cause(streamCtx)
-		var (
-			strErr *quic.StreamError
-			appErr *quic.ApplicationError
-		)
-		if errors.As(reason, &strErr) {
-			reason = &GroupError{
-				StreamError: strErr,
-			}
-		} else if errors.As(reason, &appErr) {
-			reason = &SessionError{
-				ApplicationError: appErr,
-			}
-		}
-		cancel(reason)
-	}()
+
 	return &GroupWriter{
-		ctx:      ctx,
-		cancel:   cancel,
 		sequence: sequence,
 		onClose:  onClose,
 		stream:   stream,
@@ -40,9 +19,6 @@ func newSendGroupStream(trackCtx context.Context, stream quic.SendStream, sequen
 }
 
 type GroupWriter struct {
-	ctx    context.Context
-	cancel context.CancelCauseFunc
-
 	sequence GroupSequence
 
 	stream quic.SendStream
@@ -61,9 +37,17 @@ func (sgs *GroupWriter) WriteFrame(frame *Frame) error {
 		return errors.New("frame is nil or has no bytes")
 	}
 
-	if sgs.ctx.Err() != nil {
+	if ctx := sgs.stream.Context(); ctx.Err() != nil {
 		// If the context is already cancelled, return the error
-		return context.Cause(sgs.ctx)
+		reason := context.Cause(ctx)
+		var strErr *quic.StreamError
+		if errors.As(reason, &strErr) {
+			return &GroupError{
+				StreamError: strErr,
+			}
+		}
+
+		return reason
 	}
 
 	err := frame.message.Encode(sgs.stream)
@@ -74,12 +58,8 @@ func (sgs *GroupWriter) WriteFrame(frame *Frame) error {
 				StreamError: strErr,
 			}
 
-			sgs.cancel(grpErr)
-
 			return grpErr
 		}
-
-		sgs.cancel(err)
 
 		return err
 	}
@@ -94,32 +74,13 @@ func (sgs *GroupWriter) SetWriteDeadline(t time.Time) error {
 }
 
 func (sgs *GroupWriter) CancelWrite(code GroupErrorCode) {
-	if sgs.ctx.Err() != nil {
-		// If the context is already cancelled, local cancelled the stream or the remote side closed the stream
-		// so we don't need to cancel it again
-		return
-	}
-
 	strErrCode := quic.StreamErrorCode(code)
 	sgs.stream.CancelWrite(strErrCode)
-
-	grpErr := &GroupError{
-		StreamError: &quic.StreamError{
-			StreamID:  sgs.stream.StreamID(),
-			ErrorCode: strErrCode,
-		},
-	}
-
-	sgs.cancel(grpErr)
 
 	sgs.onClose()
 }
 
 func (sgs *GroupWriter) Close() error {
-	if sgs.ctx.Err() != nil {
-		return context.Cause(sgs.ctx)
-	}
-
 	err := sgs.stream.Close()
 	if err != nil {
 		var strErr *quic.StreamError
@@ -127,15 +88,11 @@ func (sgs *GroupWriter) Close() error {
 			grpErr := &GroupError{
 				StreamError: strErr,
 			}
-			sgs.cancel(grpErr)
 
 			return grpErr
 		}
 		return err
 	}
-
-	// Successfully closed the stream, cancel the context
-	sgs.cancel(nil)
 
 	sgs.onClose()
 

@@ -1,6 +1,7 @@
 package moqt
 
 import (
+	"context"
 	"errors"
 	"sync"
 
@@ -25,20 +26,25 @@ type AnnouncementWriter struct {
 	stream quic.Stream
 
 	actives map[string]*Announcement
-
-	closed   bool
-	closeErr error
 }
 
 func (sas *AnnouncementWriter) SendAnnouncement(new *Announcement) error {
 	sas.mu.Lock()
 	defer sas.mu.Unlock()
 
-	if sas.closed {
-		if sas.closeErr != nil {
-			return sas.closeErr
+	if sas.stream.Context().Err() != nil {
+		reason := context.Cause(sas.stream.Context())
+		var strErr *quic.StreamError
+		if errors.As(reason, &strErr) {
+			return &AnnounceError{
+				StreamError: strErr,
+			}
 		}
-		return errors.New("stream already closed")
+		return reason
+	}
+
+	if !new.IsActive() {
+		return errors.New("announcement must be active")
 	}
 
 	// Get suffix for this announcement
@@ -67,11 +73,6 @@ func (sas *AnnouncementWriter) SendAnnouncement(new *Announcement) error {
 	if err != nil {
 		var strErr *quic.StreamError
 		if errors.As(err, &strErr) {
-			sas.closed = true
-			sas.closeErr = &AnnounceError{
-				StreamError: strErr,
-			}
-
 			return &AnnounceError{
 				StreamError: strErr,
 			}
@@ -92,7 +93,7 @@ func (sas *AnnouncementWriter) SendAnnouncement(new *Announcement) error {
 			delete(sas.actives, suffix)
 		}
 
-		if sas.closed {
+		if sas.stream.Context().Err() != nil {
 			return
 		}
 
@@ -102,13 +103,7 @@ func (sas *AnnouncementWriter) SendAnnouncement(new *Announcement) error {
 		// Encode and send ENDED announcement
 		err := am.Encode(sas.stream)
 		if err != nil {
-			var strErr *quic.StreamError
-			if errors.As(err, &strErr) {
-				sas.closed = true
-				sas.closeErr = &AnnounceError{
-					StreamError: strErr,
-				}
-			}
+			return
 		}
 	}()
 
@@ -119,38 +114,15 @@ func (sas *AnnouncementWriter) Close() error {
 	sas.mu.Lock()
 	defer sas.mu.Unlock()
 
-	if sas.closed {
-		return sas.closeErr
-	}
-
-	sas.closed = true
-
-	err := sas.stream.Close()
-	if err != nil {
-		return err
-	}
-
-	return nil
+	sas.stream.CancelRead(quic.StreamErrorCode(InternalAnnounceErrorCode)) // TODO: Use a specific error code if needed
+	return sas.stream.Close()
 }
 
 func (sas *AnnouncementWriter) CloseWithError(code AnnounceErrorCode) error {
 	sas.mu.Lock()
 	defer sas.mu.Unlock()
 
-	if sas.closed {
-		return sas.closeErr
-	}
-
-	sas.closed = true
-
 	strErrCode := quic.StreamErrorCode(code)
-	sas.closeErr = &AnnounceError{
-		StreamError: &quic.StreamError{
-			StreamID:  sas.stream.StreamID(),
-			ErrorCode: strErrCode,
-		},
-	}
-
 	sas.stream.CancelWrite(strErrCode)
 	sas.stream.CancelRead(strErrCode)
 

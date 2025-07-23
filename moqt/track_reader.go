@@ -54,7 +54,7 @@ func (r *TrackReader) AcceptGroup(ctx context.Context) (*GroupReader, error) {
 			r.trackMu.Unlock()
 
 			var group *GroupReader
-			group = newReceiveGroupStream(r.ctx, next.sequence, next.stream,
+			group = newReceiveGroupStream(next.sequence, next.stream,
 				func() { r.removeGroup(group) })
 
 			r.addGroup(group)
@@ -62,12 +62,23 @@ func (r *TrackReader) AcceptGroup(ctx context.Context) (*GroupReader, error) {
 			return group, nil
 		}
 
-		if r.closed {
+		trackCtx := r.Context()
+
+		if trackCtx.Err() != nil {
 			r.trackMu.Unlock()
-			return nil, errors.New("track reader is closed by local")
+			reason := context.Cause(trackCtx)
+			var strErr *quic.StreamError
+			if errors.As(reason, &strErr) {
+				return nil, &SubscribeError{StreamError: strErr}
+			}
+
+			var appErr *quic.ApplicationError
+			if errors.As(reason, &appErr) {
+				return nil, &SessionError{ApplicationError: appErr}
+			}
+			return nil, reason
 		}
 
-		trackCtx := r.ctx
 		queueCh := r.queuedCh
 		r.trackMu.Unlock()
 
@@ -75,7 +86,21 @@ func (r *TrackReader) AcceptGroup(ctx context.Context) (*GroupReader, error) {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-trackCtx.Done():
-			return nil, context.Cause(trackCtx)
+			reason := context.Cause(trackCtx)
+			var strErr *quic.StreamError
+			if errors.As(reason, &strErr) {
+				return nil, &SubscribeError{
+					StreamError: strErr,
+				}
+			}
+
+			var appErr *quic.ApplicationError
+			if errors.As(reason, &appErr) {
+				return nil, &SessionError{
+					ApplicationError: appErr,
+				}
+			}
+			return nil, reason
 		case <-queueCh:
 		}
 	}
@@ -86,8 +111,9 @@ func (r *TrackReader) Close() error {
 	defer r.trackMu.Unlock()
 
 	// Cancel all pending groups first
+	errCode := quic.StreamErrorCode(SubscribeCanceledErrorCode)
 	for _, entry := range r.queueing {
-		entry.stream.CancelRead(quic.StreamErrorCode(SubscribeCanceledErrorCode))
+		entry.stream.CancelRead(errCode)
 	}
 	r.queueing = nil
 
@@ -97,13 +123,10 @@ func (r *TrackReader) Close() error {
 	}
 	r.dequeued = nil
 
-	if r.closed {
-		return nil
+	if r.queuedCh != nil {
+		close(r.queuedCh)
+		r.queuedCh = nil
 	}
-	r.closed = true
-
-	close(r.queuedCh)
-	r.queuedCh = nil
 
 	r.onCloseTrackFunc()
 
@@ -115,8 +138,9 @@ func (r *TrackReader) CloseWithError(code SubscribeErrorCode) error {
 	defer r.trackMu.Unlock()
 
 	// Cancel all pending groups first
+	errCode := quic.StreamErrorCode(code)
 	for _, entry := range r.queueing {
-		entry.stream.CancelRead(quic.StreamErrorCode(SubscribeCanceledErrorCode))
+		entry.stream.CancelRead(errCode)
 	}
 	r.queueing = nil
 
@@ -126,13 +150,10 @@ func (r *TrackReader) CloseWithError(code SubscribeErrorCode) error {
 	}
 	r.dequeued = nil
 
-	if r.closed {
-		return nil
+	if r.queuedCh != nil {
+		close(r.queuedCh)
+		r.queuedCh = nil
 	}
-	r.closed = true
-
-	close(r.queuedCh)
-	r.queuedCh = nil
 
 	r.onCloseTrackFunc()
 
@@ -159,7 +180,7 @@ func (r *TrackReader) enqueueGroup(sequence GroupSequence, stream quic.ReceiveSt
 	r.trackMu.Lock()
 	defer r.trackMu.Unlock()
 
-	if r.closed || r.queueing == nil {
+	if r.Context().Err() != nil || r.queueing == nil {
 		stream.CancelRead(quic.StreamErrorCode(SubscribeCanceledErrorCode))
 		return
 	}

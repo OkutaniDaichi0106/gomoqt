@@ -10,12 +10,6 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-// type AnnouncementReader interface {
-// 	ReceiveAnnouncement(context.Context) (*Announcement, error)
-// 	Close() error
-// 	CloseWithError(AnnounceErrorCode) error
-// }
-
 func newReceiveAnnounceStream(stream quic.Stream, prefix string) *AnnouncementReader {
 	ctx, cancel := context.WithCancelCause(context.Background())
 

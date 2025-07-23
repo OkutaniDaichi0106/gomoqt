@@ -37,7 +37,7 @@ func main() {
 
 			seq = seq.Next()
 
-			time.Sleep(1 * time.Second)
+			time.Sleep(100 * time.Millisecond)
 		}
 	})
 

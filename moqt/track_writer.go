@@ -67,7 +67,7 @@ func (s *TrackWriter) CloseWithError(code SubscribeErrorCode) {
 
 	// Cancel all active groups first
 	for group := range s.activeGroups {
-		group.CancelWrite(SubscribeCanceledErrorCode)
+		group.CancelWrite(PublishAbortedErrorCode)
 	}
 	s.activeGroups = nil
 
@@ -144,7 +144,7 @@ func (s *TrackWriter) OpenGroup(seq GroupSequence) (*GroupWriter, error) {
 	}
 
 	var group *GroupWriter
-	group = newSendGroupStream(s.ctx, stream, seq, func() {
+	group = newSendGroupStream(stream, seq, func() {
 		s.removeGroup(group)
 	})
 	s.addGroup(group)

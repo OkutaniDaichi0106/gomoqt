@@ -34,7 +34,7 @@ func main() {
 		Logger: slog.Default(),
 	}
 
-	moqt.HandleFunc(context.Background(), "/server.broadcast", func(tw *moqt.TrackWriter) {
+	moqt.HandleFunc(context.Background(), "/server.interop", func(tw *moqt.TrackWriter) {
 		seq := moqt.GroupSequenceFirst
 		for range 10 {
 			group, err := tw.OpenGroup(seq)
@@ -103,6 +103,8 @@ func main() {
 				return
 			}
 
+			slog.Info("Accepted group", "group_sequence", gr.GroupSequence())
+
 			go func(gr *moqt.GroupReader) {
 				for {
 					frame, err := gr.ReadFrame()
@@ -114,7 +116,7 @@ func main() {
 						return
 					}
 
-					slog.Info("received a frame", "frame", string(frame.CopyBytes()))
+					slog.Info("Received a frame", "frame", string(frame.CopyBytes()))
 
 					// TODO: Release the frame after processing
 					// This is important to avoid memory leaks

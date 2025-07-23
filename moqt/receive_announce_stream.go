@@ -116,7 +116,7 @@ func (ras *AnnouncementReader) Close() error {
 
 	if ras.closed {
 		ras.pendingMu.Unlock()
-		return context.Cause(ras.ctx)
+		return nil
 	}
 	ras.closed = true
 
@@ -135,7 +135,7 @@ func (ras *AnnouncementReader) CloseWithError(code AnnounceErrorCode) error {
 
 	if ras.closed {
 		ras.pendingMu.Unlock()
-		return context.Cause(ras.ctx)
+		return nil
 	}
 	ras.closed = true
 

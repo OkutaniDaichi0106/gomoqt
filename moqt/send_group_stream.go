@@ -8,7 +8,7 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-func newSendGroupStream(trackCtx context.Context, stream quic.SendStream, sequence GroupSequence,
+func newGroupWriter(trackCtx context.Context, stream quic.SendStream, sequence GroupSequence,
 	onClose func()) *GroupWriter {
 	ctx, cancel := context.WithCancelCause(trackCtx)
 	go func() {

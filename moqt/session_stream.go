@@ -1,7 +1,6 @@
 package moqt
 
 import (
-	"errors"
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
@@ -61,13 +60,6 @@ func (ss *sessionStream) updateSession(bitrate uint64) error {
 		Bitrate: bitrate,
 	}.Encode(ss.stream)
 	if err != nil {
-		var appErr *quic.ApplicationError
-		if errors.As(err, &appErr) {
-			return &SessionError{
-				ApplicationError: appErr,
-			}
-		}
-
 		return err
 	}
 

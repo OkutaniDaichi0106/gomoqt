@@ -39,7 +39,7 @@ func TestNewSendGroupStream(t *testing.T) {
 			ctx := context.Background()
 			onClose := func() {}
 
-			sgs := newSendGroupStream(ctx, mockStream, tt.sequence, onClose)
+			sgs := newGroupWriter(ctx, mockStream, tt.sequence, onClose)
 
 			assert.NotNil(t, sgs)
 			assert.Equal(t, tt.sequence, sgs.sequence)
@@ -57,7 +57,7 @@ func TestSendGroupStream_GroupSequence(t *testing.T) {
 	sequence := GroupSequence(789)
 	ctx := context.Background()
 
-	sgs := newSendGroupStream(ctx, mockStream, sequence, func() {})
+	sgs := newGroupWriter(ctx, mockStream, sequence, func() {})
 
 	result := sgs.GroupSequence()
 	assert.Equal(t, sequence, result)
@@ -98,7 +98,7 @@ func TestSendGroupStream_WriteFrame(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			mockStream := tt.setupMock()
 			ctx := context.Background()
-			sgs := newSendGroupStream(ctx, mockStream, GroupSequence(1), func() {})
+			sgs := newGroupWriter(ctx, mockStream, GroupSequence(1), func() {})
 
 			err := sgs.WriteFrame(tt.frame)
 
@@ -119,7 +119,7 @@ func TestSendGroupStream_SetWriteDeadline(t *testing.T) {
 	mockStream.On("SetWriteDeadline", deadline).Return(nil)
 	ctx := context.Background()
 
-	sgs := newSendGroupStream(ctx, mockStream, GroupSequence(1), func() {})
+	sgs := newGroupWriter(ctx, mockStream, GroupSequence(1), func() {})
 
 	err := sgs.SetWriteDeadline(deadline)
 	assert.NoError(t, err)
@@ -131,7 +131,7 @@ func TestSendGroupStream_Close(t *testing.T) {
 	mockStream.On("Close").Return(nil)
 	ctx := context.Background()
 
-	sgs := newSendGroupStream(ctx, mockStream, GroupSequence(1), func() {})
+	sgs := newGroupWriter(ctx, mockStream, GroupSequence(1), func() {})
 
 	err := sgs.Close()
 	assert.NoError(t, err)
@@ -150,7 +150,7 @@ func TestSendGroupStream_CloseWithError(t *testing.T) {
 	mockStream.On("StreamID").Return(streamID)
 	ctx := context.Background()
 
-	sgs := newSendGroupStream(ctx, mockStream, GroupSequence(1), func() {})
+	sgs := newGroupWriter(ctx, mockStream, GroupSequence(1), func() {})
 
 	sgs.CancelWrite(errorCode)
 	mockStream.AssertExpectations(t)
@@ -171,7 +171,7 @@ func TestSendGroupStream_ContextCancellation(t *testing.T) {
 		mockStream := &MockQUICSendStream{}
 		ctx, cancel := context.WithCancel(context.Background())
 
-		sgs := newSendGroupStream(ctx, mockStream, GroupSequence(1), func() {})
+		sgs := newGroupWriter(ctx, mockStream, GroupSequence(1), func() {})
 
 		// Cancel the context
 		cancel()
@@ -195,7 +195,7 @@ func TestSendGroupStream_CloseWithStreamError(t *testing.T) {
 		mockStream.On("Close").Return(streamErr)
 		ctx := context.Background()
 
-		sgs := newSendGroupStream(ctx, mockStream, GroupSequence(1), func() {})
+		sgs := newGroupWriter(ctx, mockStream, GroupSequence(1), func() {})
 
 		err := sgs.Close()
 		assert.Error(t, err)
@@ -217,7 +217,7 @@ func TestSendGroupStream_CloseWithStreamError(t *testing.T) {
 		mockStream.On("Close").Return(otherErr)
 		ctx := context.Background()
 
-		sgs := newSendGroupStream(ctx, mockStream, GroupSequence(1), func() {})
+		sgs := newGroupWriter(ctx, mockStream, GroupSequence(1), func() {})
 
 		err := sgs.Close()
 		assert.Error(t, err)
@@ -231,7 +231,7 @@ func TestSendGroupStream_CloseWithStreamError(t *testing.T) {
 		mockStream := &MockQUICSendStream{}
 		ctx, cancel := context.WithCancel(context.Background())
 
-		sgs := newSendGroupStream(ctx, mockStream, GroupSequence(1), func() {})
+		sgs := newGroupWriter(ctx, mockStream, GroupSequence(1), func() {})
 
 		// Cancel the context first
 		cancel()

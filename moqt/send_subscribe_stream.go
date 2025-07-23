@@ -11,30 +11,7 @@ import (
 )
 
 func newSendSubscribeStream(id SubscribeID, stream quic.Stream, config *TrackConfig) *sendSubscribeStream {
-	ctx, cancel := context.WithCancelCause(context.Background())
-	go func() {
-		streamCtx := stream.Context()
-		<-streamCtx.Done()
-		reason := context.Cause(streamCtx)
-		var (
-			strErr *quic.StreamError
-			appErr *quic.ApplicationError
-		)
-		if errors.As(reason, &strErr) {
-			reason = &SubscribeError{
-				StreamError: strErr,
-			}
-		} else if errors.As(reason, &appErr) {
-			reason = &SessionError{
-				ApplicationError: appErr,
-			}
-		}
-		cancel(reason)
-	}()
-
 	substr := &sendSubscribeStream{
-		ctx:    ctx,
-		cancel: cancel,
 		id:     id,
 		config: config,
 		stream: stream,
@@ -44,9 +21,6 @@ func newSendSubscribeStream(id SubscribeID, stream quic.Stream, config *TrackCon
 }
 
 type sendSubscribeStream struct {
-	ctx    context.Context
-	cancel context.CancelCauseFunc
-
 	closed bool
 
 	id SubscribeID
@@ -76,8 +50,8 @@ func (sss *sendSubscribeStream) UpdateSubscribe(newConfig *TrackConfig) error {
 	sss.mu.Lock()
 	defer sss.mu.Unlock()
 
-	if sss.ctx.Err() != nil {
-		reason := context.Cause(sss.ctx)
+	if ctx := sss.stream.Context(); ctx.Err() != nil {
+		reason := context.Cause(ctx)
 		return fmt.Errorf("subscribe stream is closed: %w", reason)
 	}
 
@@ -127,7 +101,7 @@ func (sss *sendSubscribeStream) UpdateSubscribe(newConfig *TrackConfig) error {
 			}}
 		}
 
-		sss.cancel(err)
+		// sss.cancel(err)
 
 		return fmt.Errorf("failed to send subscribe update message: %w", err)
 	}
@@ -153,8 +127,6 @@ func (sss *sendSubscribeStream) close() error {
 	strErrCode := quic.StreamErrorCode(SubscribeCanceledErrorCode)
 	sss.stream.CancelRead(strErrCode)
 
-	sss.cancel(nil)
-
 	return err
 }
 
@@ -173,14 +145,12 @@ func (sss *sendSubscribeStream) closeWithError(code SubscribeErrorCode) error {
 	// Cancel the read side of the stream
 	sss.stream.CancelRead(strErrCode)
 
-	err := &SubscribeError{
-		StreamError: &quic.StreamError{
-			StreamID:  sss.stream.StreamID(),
-			ErrorCode: strErrCode,
-		},
-	}
-
-	sss.cancel(err)
+	// err := &SubscribeError{
+	// 	StreamError: &quic.StreamError{
+	// 		StreamID:  sss.stream.StreamID(),
+	// 		ErrorCode: strErrCode,
+	// 	},
+	// }
 
 	return nil
 }

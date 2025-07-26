@@ -1,3 +1,4 @@
 {
-    "CodeGPT.apiKey": "CodeGPT Plus Beta"
+    "CodeGPT.apiKey": "CodeGPT Plus Beta",
+    "typescript.experimental.useTsgo": true
 }

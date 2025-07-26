@@ -54,21 +54,17 @@ export class TrackMux {
 
         console.log(`Serving announcement for prefix: ${prefix}`);
 
-        // Notify all existing announcements that match the prefix
-        for (const [path, announcement] of this.#announcements.entries()) {
-            console.log(`Checking announcement for path: ${path}`);
-            if (path.startsWith(prefix)) {
-                console.log(`Sending existing announcement for path: ${path}`);
-                // Notify all announcers for this prefix
-                writer.send(announcement);
-            }
-        }
+        const init = Array.from(this.#announcements.values())
+        .filter(announcement => announcement.broadcastPath.startsWith(prefix));
 
-        // Register the announcer for this prefix
+        await writer.init(init);
+
+        // Initialize the announcers map for this prefix if it doesn't exist
         if (!this.#announcers.has(prefix)) {
             this.#announcers.set(prefix, new Set());
         }
 
+        // Register the writer as an announcer for this prefix
         const announcers = this.#announcers.get(prefix)!;
         announcers.add(writer);
 

@@ -77,6 +77,13 @@ export class Writer {
         this.#buf.writeUint8(value ? 1 : 0);
     }
 
+    writeStringArray(arr: string[]): void {
+        this.writeVarint(BigInt(arr.length));
+        for (const str of arr) {
+            this.writeString(str);
+        }
+    }
+
     async flush(): Promise<Error | undefined> {
         console.log(`Flushing buffer of size: ${this.#buf.bytes()}`);
         if (this.#buf.size > 0) {

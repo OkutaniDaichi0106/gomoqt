@@ -131,6 +131,29 @@ export class Reader {
         return [num === 1, undefined];
     }
 
+    async readStringArray(): Promise<[string[], Error?]> {
+        const [varint, err] = await this.readVarint();
+        if (err) {
+            return [[], err];
+        }
+
+        const count = Number(varint);
+        if (count > MAX_BYTES_LENGTH) {
+            return [[], new Error("Varint too large")];
+        }
+
+        const strings: string[] = [];
+        for (let i = 0; i < count; i++) {
+            const [str, err2] = await this.readString();
+            if (err2) {
+                return [[], err2];
+            }
+            strings.push(str);
+        }
+
+        return [strings, undefined];
+    }
+
     async fill(diff: number): Promise<[number, Error?]> {
         let totalFilled = 0;
 

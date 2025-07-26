@@ -1,5 +1,5 @@
 import { Version, Versions } from "./internal";
-import { AnnouncePleaseMessage, GroupMessage, SessionClientMessage, SessionServerMessage, SubscribeMessage, SubscribeOkMessage } from "./message";
+import { AnnouncePleaseMessage, AnnounceInitMessage, GroupMessage, SessionClientMessage, SessionServerMessage, SubscribeMessage, SubscribeOkMessage } from "./message";
 import { Writer, Reader } from "./io";
 import { Extensions } from "./internal/extensions";
 import { SessionStream } from "./session_stream";
@@ -91,12 +91,15 @@ export class Session {
 		const stream = await this.#conn.createBidirectionalStream()
 		const writer = new Writer(stream.writable);
 		const reader = new Reader(stream.readable);
+
 		// Send STREAM_TYPE
 		writer.writeUint8(BiStreamTypes.AnnounceStreamType);
 		const err = await writer.flush();
 		if (err) {
 			throw err;
 		}
+
+		// Send AnnouncePleaseMessage
 		const [req, reqErr] = await AnnouncePleaseMessage.encode(writer, prefix)
 		if (reqErr) {
 			throw reqErr;
@@ -105,7 +108,17 @@ export class Session {
 			throw new Error("Failed to encode AnnouncePleaseMessage");
 		}
 
-		return new AnnouncementReader(this.#ctx, writer, reader, req);
+		// Receive AnnounceInitMessage
+		const [rsp, rspErr] = await AnnounceInitMessage.decode(reader);
+		if (rspErr) {
+			throw rspErr;
+		}
+		if (!rsp) {
+			throw new Error("Failed to decode AnnounceInitMessage");
+		}
+
+
+		return new AnnouncementReader(this.#ctx, writer, reader, req, rsp);
 	}
 
 	async openTrackStream(path: BroadcastPath, name: string, config: TrackConfig = {

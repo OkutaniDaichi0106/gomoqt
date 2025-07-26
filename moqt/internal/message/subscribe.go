@@ -1,6 +1,7 @@
 package message
 
 import (
+	"bytes"
 	"io"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
@@ -36,56 +37,95 @@ type SubscribeMessage struct {
 	MaxGroupSequence GroupSequence
 }
 
+func (s SubscribeMessage) Len() int {
+	var l int
+
+	l += VarintLen(uint64(s.SubscribeID))
+	l += StringLen(s.BroadcastPath)
+	l += StringLen(s.TrackName)
+	l += VarintLen(uint64(s.TrackPriority))
+	l += VarintLen(uint64(s.MinGroupSequence))
+	l += VarintLen(uint64(s.MaxGroupSequence))
+
+	return l
+}
+
 func (s SubscribeMessage) Encode(w io.Writer) error {
+	msgLen := s.Len()
+	b := pool.Get(msgLen)
 
-	p := getBytes()
-	defer putBytes(p)
+	b = quicvarint.Append(b, uint64(msgLen))
+	b = quicvarint.Append(b, uint64(s.SubscribeID))
+	b = quicvarint.Append(b, uint64(len(s.BroadcastPath)))
+	b = append(b, s.BroadcastPath...)
+	b = quicvarint.Append(b, uint64(len(s.TrackName)))
+	b = append(b, s.TrackName...)
+	b = quicvarint.Append(b, uint64(s.TrackPriority))
+	b = quicvarint.Append(b, uint64(s.MinGroupSequence))
+	b = quicvarint.Append(b, uint64(s.MaxGroupSequence))
 
-	p = AppendNumber(p, uint64(s.SubscribeID))
-	p = AppendString(p, s.BroadcastPath)
-	p = AppendString(p, s.TrackName)
-	p = AppendNumber(p, uint64(s.TrackPriority))
-	p = AppendNumber(p, uint64(s.MinGroupSequence))
-	p = AppendNumber(p, uint64(s.MaxGroupSequence))
-
-	_, err := w.Write(p)
+	_, err := w.Write(b)
+	pool.Put(b)
 	return err
 }
 
-func (s *SubscribeMessage) Decode(r io.Reader) error {
-	num, _, err := ReadNumber(quicvarint.NewReader(r))
+func (s *SubscribeMessage) Decode(src io.Reader) error {
+	num, err := ReadVarint(src)
 	if err != nil {
+		return err
+	}
+
+	b := pool.Get(int(num))[:num]
+	_, err = io.ReadFull(src, b)
+	if err != nil {
+		pool.Put(b)
+		return err
+	}
+
+	r := bytes.NewReader(b)
+
+	num, err = ReadVarint(r)
+	if err != nil {
+		pool.Put(b)
 		return err
 	}
 	s.SubscribeID = SubscribeID(num)
 
-	s.BroadcastPath, _, err = ReadString(quicvarint.NewReader(r))
+	str, err := ReadString(r)
 	if err != nil {
+		pool.Put(b)
 		return err
 	}
+	s.BroadcastPath = str
 
-	s.TrackName, _, err = ReadString(quicvarint.NewReader(r))
+	str, err = ReadString(r)
 	if err != nil {
+		pool.Put(b)
 		return err
 	}
+	s.TrackName = str
 
-	num, _, err = ReadNumber(quicvarint.NewReader(r))
+	num, err = ReadVarint(r)
 	if err != nil {
+		pool.Put(b)
 		return err
 	}
 	s.TrackPriority = TrackPriority(num)
 
-	num, _, err = ReadNumber(quicvarint.NewReader(r))
+	num, err = ReadVarint(r)
 	if err != nil {
+		pool.Put(b)
 		return err
 	}
 	s.MinGroupSequence = GroupSequence(num)
 
-	num, _, err = ReadNumber(quicvarint.NewReader(r))
+	num, err = ReadVarint(r)
 	if err != nil {
+		pool.Put(b)
 		return err
 	}
 	s.MaxGroupSequence = GroupSequence(num)
 
+	pool.Put(b)
 	return nil
 }

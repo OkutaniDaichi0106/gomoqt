@@ -62,8 +62,15 @@ func TestSessionClientMessage_EncodeDecode(t *testing.T) {
 			err = decoded.Decode(&buf)
 			require.NoError(t, err)
 
-			// Compare fields
-			assert.Equal(t, tc.input, decoded, "decoded message should match input")
+			// Compare SupportedVersions
+			assert.Equal(t, tc.input.SupportedVersions, decoded.SupportedVersions, "SupportedVersions should match")
+
+			// Compare Parameters (nil and empty map are treated as equivalent)
+			if len(tc.input.Parameters) == 0 && len(decoded.Parameters) == 0 {
+				// Both are empty, treat as equal
+				return
+			}
+			assert.Equal(t, tc.input.Parameters, decoded.Parameters, "Parameters should match")
 		})
 	}
 }

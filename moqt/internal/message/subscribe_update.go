@@ -1,6 +1,7 @@
 package message
 
 import (
+	"bytes"
 	"io"
 
 	"github.com/quic-go/quic-go/quicvarint"
@@ -21,37 +22,69 @@ type SubscribeUpdateMessage struct {
 	MaxGroupSequence GroupSequence
 }
 
+func (su SubscribeUpdateMessage) Len() int {
+	var l int
+
+	l += VarintLen(uint64(su.TrackPriority))
+	l += VarintLen(uint64(su.MinGroupSequence))
+	l += VarintLen(uint64(su.MaxGroupSequence))
+
+	return l
+}
+
 func (su SubscribeUpdateMessage) Encode(w io.Writer) error {
+	msgLen := su.Len()
+	p := pool.Get(msgLen)
 
-	p := getBytes()
-	defer putBytes(p)
-
-	p = AppendNumber(p, uint64(su.TrackPriority))
-	p = AppendNumber(p, uint64(su.MinGroupSequence))
-	p = AppendNumber(p, uint64(su.MaxGroupSequence))
+	p = quicvarint.Append(p, uint64(msgLen))
+	p = quicvarint.Append(p, uint64(su.TrackPriority))
+	p = quicvarint.Append(p, uint64(su.MinGroupSequence))
+	p = quicvarint.Append(p, uint64(su.MaxGroupSequence))
 
 	_, err := w.Write(p)
+
+	pool.Put(p)
+
 	return err
 }
 
-func (sum *SubscribeUpdateMessage) Decode(r io.Reader) error {
-	num, _, err := ReadNumber(quicvarint.NewReader(r))
+func (sum *SubscribeUpdateMessage) Decode(src io.Reader) error {
+	num, err := ReadVarint(src)
 	if err != nil {
+		return err
+	}
+
+	b := pool.Get(int(num))[:num]
+	_, err = io.ReadFull(src, b)
+	if err != nil {
+		pool.Put(b)
+		return err
+	}
+
+	r := bytes.NewReader(b)
+
+	num, err = ReadVarint(r)
+	if err != nil {
+		pool.Put(b)
 		return err
 	}
 	sum.TrackPriority = TrackPriority(num)
 
-	num, _, err = ReadNumber(quicvarint.NewReader(r))
+	num, err = ReadVarint(r)
 	if err != nil {
+		pool.Put(b)
 		return err
 	}
 	sum.MinGroupSequence = GroupSequence(num)
 
-	num, _, err = ReadNumber(quicvarint.NewReader(r))
+	num, err = ReadVarint(r)
 	if err != nil {
+		pool.Put(b)
 		return err
 	}
 	sum.MaxGroupSequence = GroupSequence(num)
+
+	pool.Put(b)
 
 	return nil
 }

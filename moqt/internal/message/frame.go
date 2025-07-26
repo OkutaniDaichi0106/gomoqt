@@ -1,8 +1,8 @@
 package message
 
 import (
+	"bytes"
 	"io"
-	"sync"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -15,50 +15,68 @@ import (
  */
 
 func NewFrameMessage(payload []byte) *FrameMessage {
-	fm := framePool.Get().(*FrameMessage)
-	if cap(fm.Payload) < len(payload) {
-		fm.Payload = make([]byte, len(payload))
-	} else {
-		fm.Payload = fm.Payload[:len(payload)]
+	p := FramePool.Get(len(payload))
+	copy(p, payload)
+	return &FrameMessage{
+		Payload: p,
 	}
-	copy(fm.Payload, payload)
-	return fm
 }
 
 type FrameMessage struct {
 	Payload []byte
 }
 
-func (fm *FrameMessage) Encode(w io.Writer) error {
-	b := getBytes()
-	defer putBytes(b)
+func (fm FrameMessage) Len() int {
+	var l int
 
-	b = AppendBytes(b, fm.Payload)
+	l += quicvarint.Len(uint64(len(fm.Payload)))
+	l += len(fm.Payload)
 
-	_, err := w.Write(b)
-	return err
+	return l
 }
 
-func (fm *FrameMessage) Decode(r io.Reader) error {
-	var err error
+func (fm *FrameMessage) Encode(w io.Writer) error {
+	msgLen := fm.Len()
+	b := pool.Get(msgLen + quicvarint.Len(uint64(msgLen)))
 
-	fm.Payload, _, err = ReadBytes(quicvarint.NewReader(r))
+	b = quicvarint.Append(b, uint64(msgLen))
+	b = quicvarint.Append(b, uint64(len(fm.Payload)))
+	b = append(b, fm.Payload...)
+
+	_, err := w.Write(b)
+	if err != nil {
+		pool.Put(b)
+		return err
+	}
+
+	pool.Put(b)
+	return nil
+}
+
+func (fm *FrameMessage) Decode(src io.Reader) error {
+	num, err := ReadVarint(src)
 	if err != nil {
 		return err
 	}
 
+	b := pool.Get(int(num))[:num]
+	_, err = io.ReadFull(src, b)
+	if err != nil {
+		pool.Put(b)
+		return err
+	}
+
+	message := bytes.NewReader(b)
+
+	fm.Payload, err = ReadBytes(message)
+	if err != nil {
+		pool.Put(b)
+		return err
+	}
+
+	pool.Put(b)
 	return nil
 }
-
-var framePool = sync.Pool{
-	New: func() any {
-		return &FrameMessage{
-			Payload: getBytes(),
-		}
-	},
-}
-
-var DefaultFrameSize = 2048
 
 // CopyBytes method returns a copy of the internal slice.
 func (f *FrameMessage) CopyBytes() []byte {
@@ -73,5 +91,7 @@ func (f FrameMessage) Size() int {
 
 func (f *FrameMessage) Release() {
 	f.Payload = f.Payload[:0]
-	framePool.Put(f)
+	FramePool.Put(f.Payload)
 }
+
+var FramePool = NewPool(256, 1024, 8*1024)

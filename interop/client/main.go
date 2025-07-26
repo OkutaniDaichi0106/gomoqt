@@ -42,7 +42,9 @@ func main() {
 	})
 
 	client := &moqt.Client{
-		Logger: slog.Default(),
+		Logger: slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{
+			Level: slog.LevelDebug,
+		})),
 	}
 
 	sess, err := client.Dial(context.Background(), "https://moqt.example.com:9000/interop", nil)

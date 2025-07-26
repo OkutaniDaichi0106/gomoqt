@@ -31,7 +31,9 @@ func main() {
 				return true // TODO: Implement proper origin check
 			},
 		},
-		Logger: slog.Default(),
+		Logger: slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+			Level: slog.LevelDebug,
+		})),
 	}
 
 	moqt.HandleFunc(context.Background(), "/server.interop", func(tw *moqt.TrackWriter) {
@@ -76,6 +78,7 @@ func main() {
 		anns, err := sess.OpenAnnounceStream("/")
 		if err != nil {
 			slog.Error("failed to open announce stream", "error", err)
+			return
 		}
 
 		ann, err := anns.ReceiveAnnouncement(context.Background())

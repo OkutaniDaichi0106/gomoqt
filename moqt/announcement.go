@@ -22,6 +22,8 @@ type Announcement struct {
 	cancel context.CancelFunc
 
 	path BroadcastPath
+
+	onEndFuncs []func()
 }
 
 func (a *Announcement) String() string {
@@ -49,12 +51,23 @@ func (a *Announcement) AwaitEnd() <-chan struct{} {
 	return a.ctx.Done()
 }
 
+func (a *Announcement) OnEnd(f func()) {
+	if a.ctx.Err() != nil {
+		f()
+		return
+	}
+	a.onEndFuncs = append(a.onEndFuncs, f)
+}
+
 func (a *Announcement) IsActive() bool {
 	return a.ctx.Err() == nil
 }
 
 func (a *Announcement) End() {
 	a.cancel()
+	for _, f := range a.onEndFuncs {
+		f()
+	}
 }
 
 func (a *Announcement) Fork() *Announcement {

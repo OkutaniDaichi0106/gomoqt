@@ -32,7 +32,7 @@ func TestNewReceiveAnnounceStream(t *testing.T) {
 	assert.NotNil(t, ras.active)
 	assert.NotNil(t, ras.pendings)
 	assert.NotNil(t, ras.announcedCh)
-	assert.NotNil(t, ras.ctx)
+	assert.NotNil(t, ras.streamCtx)
 
 	// Clean up
 	time.Sleep(10 * time.Millisecond) // Allow goroutine to start and finish
@@ -213,7 +213,7 @@ func TestReceiveAnnounceStream_Close(t *testing.T) {
 
 			// Verify stream is closed
 			select {
-			case <-ras.ctx.Done():
+			case <-ras.streamCtx.Done():
 				// Stream is closed as expected
 			default:
 				t.Error("Expected stream to be closed")
@@ -298,7 +298,7 @@ func TestReceiveAnnounceStream_CloseWithError(t *testing.T) {
 
 			// Verify stream is closed
 			select {
-			case <-ras.ctx.Done():
+			case <-ras.streamCtx.Done():
 				// Stream is closed as expected
 			default:
 				t.Error("Expected stream to be closed")
@@ -506,9 +506,9 @@ func TestReceiveAnnounceStream_InvalidMessage(t *testing.T) {
 
 	// Stream should be closed due to invalid message
 	select {
-	case <-ras.ctx.Done():
+	case <-ras.streamCtx.Done():
 		// Stream is closed as expected due to decode error
-		cause := context.Cause(ras.ctx)
+		cause := context.Cause(ras.streamCtx)
 		assert.Error(t, cause)
 	default:
 		t.Error("Expected stream to be closed due to invalid message")
@@ -597,7 +597,7 @@ func TestReceiveAnnounceStream_AnnouncementLifecycle(t *testing.T) {
 			if tt.wantErr {
 				// Verify stream was closed due to error
 				select {
-				case <-ras.ctx.Done():
+				case <-ras.streamCtx.Done():
 					// Stream closed as expected
 				default:
 					t.Error("Expected stream to be closed due to error")
@@ -823,8 +823,8 @@ func TestReceiveAnnounceStream_StreamErrors(t *testing.T) {
 
 			// Verify stream was closed due to error
 			select {
-			case <-ras.ctx.Done():
-				cause := context.Cause(ras.ctx)
+			case <-ras.streamCtx.Done():
+				cause := context.Cause(ras.streamCtx)
 				if tt.wantErr {
 					assert.Error(t, cause)
 					// Check error type

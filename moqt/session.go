@@ -23,23 +23,6 @@ func newSession(conn quic.Connection, version protocol.Version, path string, cli
 		logger = slog.New(slog.DiscardHandler)
 	}
 
-	// Create a context for the session
-	// This context will be cancelled when the connection is closed
-	sessCtx, sessCancel := context.WithCancelCause(context.Background())
-	go func() {
-		connCtx := conn.Context()
-		<-connCtx.Done()
-		reason := context.Cause(connCtx)
-		var appErr *quic.ApplicationError
-		if errors.As(reason, &appErr) {
-			reason = &SessionError{
-				ApplicationError: appErr,
-			}
-		}
-
-		sessCancel(reason)
-	}()
-
 	// Supervise the session stream closure
 	go func() {
 		streamCtx := stream.Context()
@@ -59,8 +42,7 @@ func newSession(conn quic.Connection, version protocol.Version, path string, cli
 
 	sess := &Session{
 		sessionStream:    newSessionStream(stream),
-		ctx:              sessCtx,
-		cancel:           sessCancel,
+		ctx:              conn.Context(),
 		path:             path,
 		version:          version,
 		clientParameters: clientParams,
@@ -92,8 +74,7 @@ func newSession(conn quic.Connection, version protocol.Version, path string, cli
 type Session struct {
 	*sessionStream
 
-	ctx    context.Context         // Context for the session
-	cancel context.CancelCauseFunc // Cancel function for the session context
+	ctx context.Context // Context for the session
 
 	wg sync.WaitGroup // WaitGroup for session cleanup
 
@@ -353,10 +334,9 @@ func (sess *Session) OpenAnnounceStream(prefix string) (*AnnouncementReader, err
 		return nil, err
 	}
 
-	apm := message.AnnouncePleaseMessage{
+	err = message.AnnouncePleaseMessage{
 		TrackPrefix: prefix,
-	}
-	err = apm.Encode(stream)
+	}.Encode(stream)
 	if err != nil {
 		streamLogger.Error("failed to send ANNOUNCE_PLEASE message",
 			"error", err,
@@ -378,7 +358,32 @@ func (sess *Session) OpenAnnounceStream(prefix string) (*AnnouncementReader, err
 		return nil, err
 	}
 
-	return newReceiveAnnounceStream(stream, prefix), nil
+	var aim message.AnnounceInitMessage
+	err = aim.Decode(stream)
+	if err != nil {
+		streamLogger.Error("failed to read ANNOUNCE_INIT message",
+			"error", err,
+		)
+		var strErr *quic.StreamError
+		if errors.As(err, &strErr) {
+			strErrCode := quic.StreamErrorCode(InternalAnnounceErrorCode)
+			stream.CancelRead(strErrCode)
+
+			return nil, &AnnounceError{
+				StreamError: strErr,
+			}
+		}
+
+		return nil, err
+	}
+
+	slog.Debug("received announce init message", "message", aim)
+	init := make(map[string]*Announcement, len(aim.Suffixes))
+	for _, suffix := range aim.Suffixes {
+		init[suffix] = NewAnnouncement(stream.Context(), BroadcastPath(prefix+suffix))
+	}
+
+	return newReceiveAnnounceStream(stream, prefix, init), nil
 }
 
 func (sess *Session) goAway(uri string) {

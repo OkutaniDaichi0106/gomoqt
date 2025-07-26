@@ -1,6 +1,7 @@
 package message
 
 import (
+	"bytes"
 	"io"
 
 	"github.com/quic-go/quic-go/quicvarint"
@@ -19,29 +20,61 @@ type AnnounceMessage struct {
 	TrackSuffix    string
 }
 
+func (am AnnounceMessage) Len() int {
+	var l int
+
+	l += VarintLen(uint64(am.AnnounceStatus))
+	l += StringLen(am.TrackSuffix)
+
+	return l
+}
+
 func (am AnnounceMessage) Encode(w io.Writer) error {
+	msgLen := am.Len()
 
-	p := getBytes()
-	defer putBytes(p)
+	b := pool.Get(msgLen)
 
-	p = AppendNumber(p, uint64(am.AnnounceStatus))
-	p = AppendString(p, am.TrackSuffix)
+	b = quicvarint.Append(b, uint64(msgLen))
+	b = quicvarint.Append(b, uint64(am.AnnounceStatus))
+	b = quicvarint.Append(b, uint64(len(am.TrackSuffix)))
+	b = append(b, am.TrackSuffix...)
 
-	_, err := w.Write(p)
+	_, err := w.Write(b)
+
+	pool.Put(b)
 	return err
 }
 
-func (am *AnnounceMessage) Decode(r io.Reader) error {
-	status, _, err := ReadNumber(quicvarint.NewReader(r))
+func (am *AnnounceMessage) Decode(src io.Reader) error {
+	num, err := ReadVarint(src)
 	if err != nil {
 		return err
 	}
-	am.AnnounceStatus = AnnounceStatus(status)
 
-	am.TrackSuffix, _, err = ReadString(quicvarint.NewReader(r))
+	b := pool.Get(int(num))[:num]
+	_, err = io.ReadFull(src, b)
 	if err != nil {
+		pool.Put(b)
 		return err
 	}
+
+	r := bytes.NewReader(b)
+
+	num, err = ReadVarint(r)
+	if err != nil {
+		pool.Put(b)
+		return err
+	}
+	am.AnnounceStatus = AnnounceStatus(num)
+
+	str, err := ReadString(r)
+	if err != nil {
+		pool.Put(b)
+		return err
+	}
+	am.TrackSuffix = str
+
+	pool.Put(b)
 
 	return nil
 }

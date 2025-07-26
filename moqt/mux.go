@@ -130,9 +130,7 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 		current.mu.Unlock()
 	}
 
-	go func() {
-		<-announcement.AwaitEnd()
-
+	announcement.OnEnd(func() {
 		// Remove the handler
 		mux.handlerMu.Lock()
 		delete(mux.handlerIndex, path)
@@ -142,7 +140,8 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 		current.mu.Lock()
 		delete(current.announcements, path)
 		current.mu.Unlock()
-	}()
+	})
+
 }
 
 // Handler returns the handler for the specified track path.
@@ -208,11 +207,18 @@ func (mux *TrackMux) ServeAnnouncements(w *AnnouncementWriter, prefix string) {
 		current = next
 	}
 
-	current.mu.Lock()
-	current.writers[w] = struct{}{}
-	current.mu.Unlock()
+	// Find existing announcements and initialize the writer
+	announcements := make([]*Announcement, 0, len(current.announcements))
+	announcements = current.appendAnnouncements(announcements)
+	err := w.init(announcements)
+	if err != nil {
+		slog.Error("mux: failed to initialize announcement writer", "error", err)
+		w.CloseWithError(InternalAnnounceErrorCode)
+		return
+	}
 
-	current.announce(w)
+	// Register the writer in the current node
+	current.writers[w] = struct{}{}
 }
 
 func (mux *TrackMux) Clear() {
@@ -243,12 +249,12 @@ type announcingNode struct {
 	children map[string]*announcingNode
 }
 
-func (node *announcingNode) announce(w *AnnouncementWriter) {
+func (node *announcingNode) appendAnnouncements(anns []*Announcement) []*Announcement {
 	node.mu.RLock()
 	// Take a snapshot of announcements and children
-	announcements := make([]*Announcement, 0, len(node.announcements))
 	for _, a := range node.announcements {
-		announcements = append(announcements, a)
+		slog.Info("found announcement", "suffix", a.BroadcastPath())
+		anns = append(anns, a)
 	}
 	children := make([]*announcingNode, 0, len(node.children))
 	for _, c := range node.children {
@@ -256,19 +262,12 @@ func (node *announcingNode) announce(w *AnnouncementWriter) {
 	}
 	node.mu.RUnlock()
 
-	// Send announcements for this node
-	for _, announcement := range announcements {
-		err := w.SendAnnouncement(announcement)
-		if err != nil {
-			slog.Error("mux: failed to send announcement", "error", err)
-			return
-		}
-	}
-
 	// Recursively announce to child nodes
 	for _, child := range children {
-		child.announce(w)
+		anns = child.appendAnnouncements(anns)
 	}
+
+	return anns
 }
 
 func isValidPath(path BroadcastPath) bool {

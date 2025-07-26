@@ -10,39 +10,21 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-func newReceiveAnnounceStream(stream quic.Stream, prefix string) *AnnouncementReader {
-	ctx, cancel := context.WithCancelCause(context.Background())
-
-	// Propagate the cancellation with AnnounceError
-	go func() {
-		streamCtx := stream.Context()
-		<-streamCtx.Done()
-		reason := context.Cause(streamCtx)
-		var (
-			strErr *quic.StreamError
-			appErr *quic.ApplicationError
-		)
-		if errors.As(reason, &strErr) {
-			reason = &SubscribeError{
-				StreamError: strErr,
-			}
-		} else if errors.As(reason, &appErr) {
-			reason = &SessionError{
-				ApplicationError: appErr,
-			}
-		}
-		cancel(reason)
-	}()
-
+func newReceiveAnnounceStream(stream quic.Stream, prefix string, init map[string]*Announcement) *AnnouncementReader {
 	annstr := &AnnouncementReader{
-		ctx:         ctx,
-		cancel:      cancel,
+		streamCtx:   stream.Context(),
 		stream:      stream,
 		prefix:      prefix,
-		active:      make(map[string]*Announcement),
+		active:      init,
 		pendings:    make([]*Announcement, 0),
 		announcedCh: make(chan struct{}, 1),
 	}
+
+	for _, ann := range init {
+		annstr.pendings = append(annstr.pendings, ann)
+	}
+
+	slog.Info("announcement reader initialized", "prefix", prefix, "active", len(init))
 
 	// Receive announcements in a separate goroutine
 	go annstr.listenAnnouncements()
@@ -54,10 +36,7 @@ type AnnouncementReader struct {
 	stream quic.Stream
 	prefix string
 
-	ctx    context.Context
-	cancel context.CancelCauseFunc
-
-	closed bool
+	streamCtx context.Context
 
 	// Track Suffix -> Announcement
 	active map[string]*Announcement
@@ -73,14 +52,28 @@ func (ras *AnnouncementReader) ReceiveAnnouncement(ctx context.Context) (*Announ
 	for {
 		ras.pendingMu.Lock()
 
-		annStrCtx := ras.ctx
+		slog.Info("waiting for announcement", "prefix", ras.prefix)
 
-		if ras.closed {
+		streamCtx := ras.streamCtx
+
+		if streamCtx.Err() != nil {
 			ras.pendingMu.Unlock()
-			return nil, context.Cause(annStrCtx)
+
+			reason := context.Cause(streamCtx)
+			var strErr *quic.StreamError
+			if errors.As(reason, &strErr) {
+				return nil, &AnnounceError{
+					StreamError: strErr,
+				}
+			}
+
+			return nil, reason
 		}
 
+		slog.Info("pending announcements available", "count", len(ras.pendings))
+
 		if len(ras.pendings) > 0 {
+			slog.Info("pending announcements available", "count", len(ras.pendings))
 			next := ras.pendings[0]
 			ras.pendings = ras.pendings[1:]
 
@@ -95,8 +88,8 @@ func (ras *AnnouncementReader) ReceiveAnnouncement(ctx context.Context) (*Announ
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-annStrCtx.Done():
-			reason := context.Cause(annStrCtx)
+		case <-streamCtx.Done():
+			reason := context.Cause(streamCtx)
 			return nil, reason
 		case <-announceCh:
 			// New announcement available, loop to check pendings
@@ -108,18 +101,15 @@ func (ras *AnnouncementReader) ReceiveAnnouncement(ctx context.Context) (*Announ
 func (ras *AnnouncementReader) Close() error {
 	ras.pendingMu.Lock()
 
-	if ras.closed {
+	if ras.streamCtx.Err() != nil {
 		ras.pendingMu.Unlock()
 		return nil
 	}
-	ras.closed = true
 
 	close(ras.announcedCh)
 	ras.announcedCh = nil
 
 	ras.pendingMu.Unlock()
-
-	ras.cancel(nil)
 
 	return ras.stream.Close()
 }
@@ -127,11 +117,10 @@ func (ras *AnnouncementReader) Close() error {
 func (ras *AnnouncementReader) CloseWithError(code AnnounceErrorCode) error {
 	ras.pendingMu.Lock()
 
-	if ras.closed {
+	if ras.streamCtx.Err() != nil {
 		ras.pendingMu.Unlock()
 		return nil
 	}
-	ras.closed = true
 
 	close(ras.announcedCh)
 	ras.announcedCh = nil
@@ -142,62 +131,40 @@ func (ras *AnnouncementReader) CloseWithError(code AnnounceErrorCode) error {
 	ras.stream.CancelRead(strErrCode)
 	ras.stream.CancelWrite(strErrCode)
 
-	err := &AnnounceError{
-		StreamError: &quic.StreamError{
-			StreamID:  ras.stream.StreamID(),
-			ErrorCode: strErrCode,
-		},
-	}
-
-	ras.cancel(err)
-
 	return nil
 }
 
 func (ras *AnnouncementReader) listenAnnouncements() {
 	ras.listenOnce.Do(func() {
 		var am message.AnnounceMessage
-		// var suffix string
 		var err error
+		ctx := ras.streamCtx
 		for {
 			// Check if announcement is already closed before decoding
-			ras.pendingMu.Lock()
-			if ras.closed {
-				ras.pendingMu.Unlock()
+			if ctx.Err() != nil {
 				return
 			}
-			ras.pendingMu.Unlock()
 
 			err = am.Decode(ras.stream)
 			if err != nil {
-				var strErr *quic.StreamError
-				if errors.As(err, &strErr) {
-					annErr := &AnnounceError{
-						StreamError: strErr,
-					}
-					ras.cancel(annErr)
-				} else {
-					ras.cancel(err)
-				}
 				return
 			}
 
 			slog.Debug("received announce message", "message", am)
 
 			// Check if announcement is already closed during decoding
-			ras.pendingMu.Lock()
-			if ras.closed {
-				ras.pendingMu.Unlock()
+			if ctx.Err() != nil {
 				return
 			}
 
+			ras.pendingMu.Lock()
 			old, ok := ras.active[am.TrackSuffix]
 
 			switch am.AnnounceStatus {
 			case message.ACTIVE:
 				if !ok || (ok && !old.IsActive()) {
 					// Create a new announcement
-					ann := NewAnnouncement(ras.ctx, BroadcastPath(ras.prefix+am.TrackSuffix))
+					ann := NewAnnouncement(ras.streamCtx, BroadcastPath(ras.prefix+am.TrackSuffix))
 					ras.active[am.TrackSuffix] = ann
 					ras.pendings = append(ras.pendings, ann)
 

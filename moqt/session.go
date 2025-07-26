@@ -377,13 +377,7 @@ func (sess *Session) OpenAnnounceStream(prefix string) (*AnnouncementReader, err
 		return nil, err
 	}
 
-	slog.Debug("received announce init message", "message", aim)
-	init := make(map[string]*Announcement, len(aim.Suffixes))
-	for _, suffix := range aim.Suffixes {
-		init[suffix] = NewAnnouncement(stream.Context(), BroadcastPath(prefix+suffix))
-	}
-
-	return newReceiveAnnounceStream(stream, prefix, init), nil
+	return newReceiveAnnounceStream(stream, prefix, aim.Suffixes), nil
 }
 
 func (sess *Session) goAway(uri string) {

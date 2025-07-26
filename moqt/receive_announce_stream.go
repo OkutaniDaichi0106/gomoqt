@@ -10,21 +10,21 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-func newReceiveAnnounceStream(stream quic.Stream, prefix string, init map[string]*Announcement) *AnnouncementReader {
+func newReceiveAnnounceStream(stream quic.Stream, prefix string, suffixes []string) *AnnouncementReader {
 	annstr := &AnnouncementReader{
 		streamCtx:   stream.Context(),
 		stream:      stream,
 		prefix:      prefix,
-		active:      init,
+		active:      make(map[string]*Announcement),
 		pendings:    make([]*Announcement, 0),
 		announcedCh: make(chan struct{}, 1),
 	}
 
-	for _, ann := range init {
+	for _, suffix := range suffixes {
+		ann := NewAnnouncement(stream.Context(), BroadcastPath(prefix+suffix))
+		annstr.active[suffix] = ann
 		annstr.pendings = append(annstr.pendings, ann)
 	}
-
-	slog.Info("announcement reader initialized", "prefix", prefix, "active", len(init))
 
 	// Receive announcements in a separate goroutine
 	go annstr.listenAnnouncements()

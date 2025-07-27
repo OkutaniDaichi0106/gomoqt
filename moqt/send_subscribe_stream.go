@@ -3,7 +3,6 @@ package moqt
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
@@ -12,6 +11,7 @@ import (
 
 func newSendSubscribeStream(id SubscribeID, stream quic.Stream, config *TrackConfig) *sendSubscribeStream {
 	substr := &sendSubscribeStream{
+		ctx:    context.WithValue(stream.Context(), &biStreamTypeCtxKey, message.StreamTypeSubscribe),
 		id:     id,
 		config: config,
 		stream: stream,
@@ -21,14 +21,15 @@ func newSendSubscribeStream(id SubscribeID, stream quic.Stream, config *TrackCon
 }
 
 type sendSubscribeStream struct {
-	// closed bool
-
-	id SubscribeID
+	ctx context.Context
 
 	config *TrackConfig
 
 	stream quic.Stream
-	mu     sync.Mutex
+
+	mu sync.Mutex
+
+	id SubscribeID
 }
 
 func (sss *sendSubscribeStream) SubscribeID() SubscribeID {
@@ -44,14 +45,14 @@ func (sss *sendSubscribeStream) TrackConfig() *TrackConfig {
 
 func (sss *sendSubscribeStream) UpdateSubscribe(newConfig *TrackConfig) error {
 	if newConfig == nil {
-		return errors.New("new subscribe config cannot be nil")
+		return errors.New("new track config cannot be nil")
 	}
 
 	sss.mu.Lock()
 	defer sss.mu.Unlock()
 
-	if sss.stream.Context().Err() != nil {
-		return context.Cause(sss.stream.Context())
+	if sss.ctx.Err() != nil {
+		return Cause(sss.ctx)
 	}
 
 	old := sss.config
@@ -87,20 +88,7 @@ func (sss *sendSubscribeStream) UpdateSubscribe(newConfig *TrackConfig) error {
 	}
 	err := sum.Encode(sss.stream)
 	if err != nil {
-		// Set writeErr and unwritable before closing channel
-		var strErr *quic.StreamError
-		if errors.As(err, &strErr) {
-			err = &SubscribeError{StreamError: strErr}
-		} else {
-			strErrCode := quic.StreamErrorCode(InternalSubscribeErrorCode)
-			sss.stream.CancelWrite(strErrCode)
-			err = &SubscribeError{StreamError: &quic.StreamError{
-				StreamID:  sss.stream.StreamID(),
-				ErrorCode: strErrCode,
-			}}
-		}
-
-		return fmt.Errorf("failed to send subscribe update message: %w", err)
+		return err
 	}
 
 	// Only update config after successful message sending
@@ -110,7 +98,7 @@ func (sss *sendSubscribeStream) UpdateSubscribe(newConfig *TrackConfig) error {
 }
 
 func (sss *sendSubscribeStream) Context() context.Context {
-	return sss.stream.Context()
+	return sss.ctx
 }
 
 func (sss *sendSubscribeStream) close() error {

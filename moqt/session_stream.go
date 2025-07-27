@@ -1,7 +1,7 @@
 package moqt
 
 import (
-	"errors"
+	"context"
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
@@ -10,6 +10,7 @@ import (
 
 func newSessionStream(stream quic.Stream) *sessionStream {
 	sessStr := &sessionStream{
+		ctx:       context.WithValue(stream.Context(), &biStreamTypeCtxKey, message.StreamTypeSession),
 		updatedCh: make(chan struct{}, 1),
 		stream:    stream,
 	}
@@ -27,22 +28,32 @@ func newSessionStream(stream quic.Stream) *sessionStream {
 			// Update the session bitrate
 			sessStr.mu.Lock()
 			sessStr.remoteBitrate = sum.Bitrate
-			sessStr.mu.Unlock()
 
 			// Notify that the session has been updated
 			select {
 			case sessStr.updatedCh <- struct{}{}:
 			default:
 			}
+
+			sessStr.mu.Unlock()
+
 		}
 
-		close(sessStr.updatedCh)
+		sessStr.mu.Lock()
+
+		if sessStr.updatedCh != nil {
+			close(sessStr.updatedCh)
+			sessStr.updatedCh = nil
+		}
+
+		sessStr.mu.Unlock()
 	}()
 
 	return sessStr
 }
 
 type sessionStream struct {
+	ctx       context.Context
 	updatedCh chan struct{}
 
 	localBitrate  uint64 // The bitrate set by the local
@@ -61,14 +72,7 @@ func (ss *sessionStream) updateSession(bitrate uint64) error {
 		Bitrate: bitrate,
 	}.Encode(ss.stream)
 	if err != nil {
-		var appErr *quic.ApplicationError
-		if errors.As(err, &appErr) {
-			return &SessionError{
-				ApplicationError: appErr,
-			}
-		}
-
-		return err
+		return Cause(ss.ctx)
 	}
 
 	ss.localBitrate = bitrate

@@ -5,22 +5,25 @@ import (
 	"errors"
 	"time"
 
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-func newSendGroupStream(stream quic.SendStream, sequence GroupSequence,
+func newGroupWriter(stream quic.SendStream, sequence GroupSequence,
 	onClose func()) *GroupWriter {
 
 	return &GroupWriter{
 		sequence: sequence,
 		onClose:  onClose,
 		stream:   stream,
+		ctx:      context.WithValue(stream.Context(), &uniStreamTypeCtxKey, message.StreamTypeGroup),
 	}
 }
 
 type GroupWriter struct {
 	sequence GroupSequence
 
+	ctx    context.Context
 	stream quic.SendStream
 
 	frameCount uint64 // Number of frames sent on this stream
@@ -37,31 +40,13 @@ func (sgs *GroupWriter) WriteFrame(frame *Frame) error {
 		return errors.New("frame is nil or has no bytes")
 	}
 
-	if ctx := sgs.stream.Context(); ctx.Err() != nil {
-		// If the context is already cancelled, return the error
-		reason := context.Cause(ctx)
-		var strErr *quic.StreamError
-		if errors.As(reason, &strErr) {
-			return &GroupError{
-				StreamError: strErr,
-			}
-		}
-
-		return reason
+	if sgs.ctx.Err() != nil {
+		return Cause(sgs.ctx)
 	}
 
 	err := frame.message.Encode(sgs.stream)
 	if err != nil {
-		var strErr *quic.StreamError
-		if errors.As(err, &strErr) {
-			grpErr := &GroupError{
-				StreamError: strErr,
-			}
-
-			return grpErr
-		}
-
-		return err
+		return Cause(sgs.ctx)
 	}
 
 	sgs.frameCount++
@@ -74,8 +59,7 @@ func (sgs *GroupWriter) SetWriteDeadline(t time.Time) error {
 }
 
 func (sgs *GroupWriter) CancelWrite(code GroupErrorCode) {
-	strErrCode := quic.StreamErrorCode(code)
-	sgs.stream.CancelWrite(strErrCode)
+	sgs.stream.CancelWrite(quic.StreamErrorCode(code))
 
 	sgs.onClose()
 }
@@ -83,18 +67,14 @@ func (sgs *GroupWriter) CancelWrite(code GroupErrorCode) {
 func (sgs *GroupWriter) Close() error {
 	err := sgs.stream.Close()
 	if err != nil {
-		var strErr *quic.StreamError
-		if errors.As(err, &strErr) {
-			grpErr := &GroupError{
-				StreamError: strErr,
-			}
-
-			return grpErr
-		}
-		return err
+		return Cause(sgs.ctx)
 	}
 
 	sgs.onClose()
 
 	return nil
+}
+
+func (s *GroupWriter) Context() context.Context {
+	return s.ctx
 }

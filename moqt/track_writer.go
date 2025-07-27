@@ -144,9 +144,7 @@ func (s *TrackWriter) OpenGroup(seq GroupSequence) (*GroupWriter, error) {
 	}
 
 	var group *GroupWriter
-	group = newSendGroupStream(stream, seq, func() {
-		s.removeGroup(group)
-	})
+	group = newGroupWriter(stream, seq, func() { s.removeGroup(group) })
 	s.addGroup(group)
 
 	return group, nil

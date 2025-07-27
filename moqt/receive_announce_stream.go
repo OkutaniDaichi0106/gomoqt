@@ -11,8 +11,8 @@ import (
 )
 
 func newReceiveAnnounceStream(stream quic.Stream, prefix string, suffixes []string) *AnnouncementReader {
-	annstr := &AnnouncementReader{
-		streamCtx:   stream.Context(),
+	ar := &AnnouncementReader{
+		ctx:         context.WithValue(stream.Context(), &biStreamTypeCtxKey, message.StreamTypeAnnounce),
 		stream:      stream,
 		prefix:      prefix,
 		active:      make(map[string]*Announcement),
@@ -22,21 +22,92 @@ func newReceiveAnnounceStream(stream quic.Stream, prefix string, suffixes []stri
 
 	for _, suffix := range suffixes {
 		ann := NewAnnouncement(stream.Context(), BroadcastPath(prefix+suffix))
-		annstr.active[suffix] = ann
-		annstr.pendings = append(annstr.pendings, ann)
+		ar.active[suffix] = ann
+		ar.pendings = append(ar.pendings, ann)
 	}
 
 	// Receive announcements in a separate goroutine
-	go annstr.listenAnnouncements()
+	go func() {
+		var am message.AnnounceMessage
+		var err error
+		ctx := ar.ctx
+		for {
+			// Check if announcement is already closed before decoding
+			if ctx.Err() != nil {
+				return
+			}
 
-	return annstr
+			err = am.Decode(ar.stream)
+			if err != nil {
+				return
+			}
+
+			slog.Debug("received announce message", "message", am)
+
+			// Check if announcement is already closed during decoding
+			if ctx.Err() != nil {
+				return
+			}
+
+			ar.pendingMu.Lock()
+			old, ok := ar.active[am.TrackSuffix]
+
+			switch am.AnnounceStatus {
+			case message.ACTIVE:
+				if !ok || (ok && !old.IsActive()) {
+					// Create a new announcement
+					ann := NewAnnouncement(ar.ctx, BroadcastPath(ar.prefix+am.TrackSuffix))
+					ar.active[am.TrackSuffix] = ann
+					ar.pendings = append(ar.pendings, ann)
+
+					// Notify that new announcement is available
+					select {
+					case ar.announcedCh <- struct{}{}:
+					default:
+					}
+
+					ar.pendingMu.Unlock()
+
+					continue
+				} else {
+					// Release lock before calling CloseWithError to avoid deadlock
+					ar.pendingMu.Unlock()
+					// Close the stream with an error
+					ar.CloseWithError(DuplicatedAnnounceErrorCode)
+					return
+				}
+			case message.ENDED:
+				if ok && old.IsActive() {
+					// End the existing announcement
+					old.End()
+
+					// Remove the announcement from the map
+					delete(ar.active, am.TrackSuffix)
+					ar.pendingMu.Unlock()
+					continue
+				} else {
+					// Release lock before calling CloseWithError to avoid deadlock
+					ar.pendingMu.Unlock()
+					ar.CloseWithError(DuplicatedAnnounceErrorCode)
+					return
+				}
+			default:
+				ar.pendingMu.Unlock()
+				// Unsupported status, close with error
+				ar.CloseWithError(InvalidAnnounceStatusErrorCode)
+				return
+			}
+		}
+	}()
+
+	return ar
 }
 
 type AnnouncementReader struct {
 	stream quic.Stream
 	prefix string
 
-	streamCtx context.Context
+	ctx context.Context
 
 	// Track Suffix -> Announcement
 	active map[string]*Announcement
@@ -44,8 +115,6 @@ type AnnouncementReader struct {
 	pendings    []*Announcement
 	announcedCh chan struct{} // notify when new announcement is available
 	pendingMu   sync.Mutex
-
-	listenOnce sync.Once
 }
 
 func (ras *AnnouncementReader) ReceiveAnnouncement(ctx context.Context) (*Announcement, error) {
@@ -54,7 +123,7 @@ func (ras *AnnouncementReader) ReceiveAnnouncement(ctx context.Context) (*Announ
 
 		slog.Info("waiting for announcement", "prefix", ras.prefix)
 
-		streamCtx := ras.streamCtx
+		streamCtx := ras.ctx
 
 		if streamCtx.Err() != nil {
 			ras.pendingMu.Unlock()
@@ -101,7 +170,7 @@ func (ras *AnnouncementReader) ReceiveAnnouncement(ctx context.Context) (*Announ
 func (ras *AnnouncementReader) Close() error {
 	ras.pendingMu.Lock()
 
-	if ras.streamCtx.Err() != nil {
+	if ras.ctx.Err() != nil {
 		ras.pendingMu.Unlock()
 		return nil
 	}
@@ -117,7 +186,7 @@ func (ras *AnnouncementReader) Close() error {
 func (ras *AnnouncementReader) CloseWithError(code AnnounceErrorCode) error {
 	ras.pendingMu.Lock()
 
-	if ras.streamCtx.Err() != nil {
+	if ras.ctx.Err() != nil {
 		ras.pendingMu.Unlock()
 		return nil
 	}
@@ -132,79 +201,4 @@ func (ras *AnnouncementReader) CloseWithError(code AnnounceErrorCode) error {
 	ras.stream.CancelWrite(strErrCode)
 
 	return nil
-}
-
-func (ras *AnnouncementReader) listenAnnouncements() {
-	ras.listenOnce.Do(func() {
-		var am message.AnnounceMessage
-		var err error
-		ctx := ras.streamCtx
-		for {
-			// Check if announcement is already closed before decoding
-			if ctx.Err() != nil {
-				return
-			}
-
-			err = am.Decode(ras.stream)
-			if err != nil {
-				return
-			}
-
-			slog.Debug("received announce message", "message", am)
-
-			// Check if announcement is already closed during decoding
-			if ctx.Err() != nil {
-				return
-			}
-
-			ras.pendingMu.Lock()
-			old, ok := ras.active[am.TrackSuffix]
-
-			switch am.AnnounceStatus {
-			case message.ACTIVE:
-				if !ok || (ok && !old.IsActive()) {
-					// Create a new announcement
-					ann := NewAnnouncement(ras.streamCtx, BroadcastPath(ras.prefix+am.TrackSuffix))
-					ras.active[am.TrackSuffix] = ann
-					ras.pendings = append(ras.pendings, ann)
-
-					// Notify that new announcement is available
-					select {
-					case ras.announcedCh <- struct{}{}:
-					default:
-					}
-
-					ras.pendingMu.Unlock()
-
-					continue
-				} else {
-					// Release lock before calling CloseWithError to avoid deadlock
-					ras.pendingMu.Unlock()
-					// Close the stream with an error
-					ras.CloseWithError(DuplicatedAnnounceErrorCode)
-					return
-				}
-			case message.ENDED:
-				if ok && old.IsActive() {
-					// End the existing announcement
-					old.End()
-
-					// Remove the announcement from the map
-					delete(ras.active, am.TrackSuffix)
-					ras.pendingMu.Unlock()
-					continue
-				} else {
-					// Release lock before calling CloseWithError to avoid deadlock
-					ras.pendingMu.Unlock()
-					ras.CloseWithError(DuplicatedAnnounceErrorCode)
-					return
-				}
-			default:
-				ras.pendingMu.Unlock()
-				// Unsupported status, close with error
-				ras.CloseWithError(InvalidAnnounceStatusErrorCode)
-				return
-			}
-		}
-	})
 }

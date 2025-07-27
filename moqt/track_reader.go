@@ -54,7 +54,7 @@ func (r *TrackReader) AcceptGroup(ctx context.Context) (*GroupReader, error) {
 			r.trackMu.Unlock()
 
 			var group *GroupReader
-			group = newReceiveGroupStream(next.sequence, next.stream,
+			group = newGroupReader(next.sequence, next.stream,
 				func() { r.removeGroup(group) })
 
 			r.addGroup(group)

@@ -111,7 +111,7 @@ func TestNewSendAnnounceStream(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	prefix := "/test/prefix"
 
-	sas := newSendAnnounceStream(mockStream, prefix)
+	sas := newAnnouncementWriter(mockStream, prefix)
 
 	require.NotNil(t, sas)
 	assert.Equal(t, prefix, sas.prefix)
@@ -152,7 +152,7 @@ func TestSendAnnounceStream_SendAnnouncement(t *testing.T) {
 				mockStream.On("Write", mock.Anything).Return(0, nil)
 			}
 
-			sas := newSendAnnounceStream(mockStream, tt.prefix)
+			sas := newAnnouncementWriter(mockStream, tt.prefix)
 
 			ctx := context.Background()
 			ann := NewAnnouncement(ctx, BroadcastPath(tt.broadcastPath))
@@ -188,7 +188,7 @@ func TestSendAnnounceStream_SendAnnouncement_ClosedStream(t *testing.T) {
 	}
 	prefix := "/test"
 
-	sas := newSendAnnounceStream(mockStream, prefix)
+	sas := newAnnouncementWriter(mockStream, prefix)
 	sas.closed = true
 	sas.closeErr = errors.New("stream closed")
 
@@ -231,7 +231,7 @@ func TestSendAnnounceStream_SendAnnouncement_WriteError(t *testing.T) {
 			writeError := tt.setupError()
 			mockStream.On("Write", mock.Anything).Return(0, writeError)
 
-			sas := newSendAnnounceStream(mockStream, "/test")
+			sas := newAnnouncementWriter(mockStream, "/test")
 
 			ctx := context.Background()
 			ann := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
@@ -261,7 +261,7 @@ func TestSendAnnounceStream_Close(t *testing.T) {
 	}
 	mockStream.On("Close").Return(nil)
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 
 	err := sas.Close()
 	assert.NoError(t, err)
@@ -277,7 +277,7 @@ func TestSendAnnounceStream_Close_AlreadyClosed(t *testing.T) {
 		},
 	}
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 	sas.closed = true
 
 	err := sas.Close()
@@ -314,7 +314,7 @@ func TestSendAnnounceStream_CloseWithError(t *testing.T) {
 			mockStream.On("CancelWrite", quic.StreamErrorCode(tt.errorCode)).Return()
 			mockStream.On("CancelRead", quic.StreamErrorCode(tt.errorCode)).Return()
 
-			sas := newSendAnnounceStream(mockStream, "/test")
+			sas := newAnnouncementWriter(mockStream, "/test")
 
 			err := sas.CloseWithError(tt.errorCode)
 			assert.NoError(t, err)
@@ -333,7 +333,7 @@ func TestSendAnnounceStream_CloseWithError_AlreadyClosed(t *testing.T) {
 		},
 	}
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 	sas.closed = true
 	existingErr := &AnnounceError{
 		StreamError: &quic.StreamError{
@@ -362,7 +362,7 @@ func TestSendAnnounceStream_ConcurrentAccess(t *testing.T) {
 	}
 	mockStream.On("Write", mock.Anything).Return(0, nil)
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 
 	// Test concurrent access to SendAnnouncement
 	go func() {
@@ -392,7 +392,7 @@ func TestSendAnnounceStream_SendAnnouncement_MultipleAnnouncements(t *testing.T)
 	mockStream := &MockQUICStream{}
 	mockStream.On("Write", mock.Anything).Return(0, nil)
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 
 	ctx := context.Background()
 	ann1 := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
@@ -417,7 +417,7 @@ func TestSendAnnounceStream_SendAnnouncement_ReplaceExisting(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Write", mock.Anything).Return(0, nil)
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 
 	ctx := context.Background()
 	ann1 := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
@@ -439,7 +439,7 @@ func TestSendAnnounceStream_SendAnnouncement_ReplaceExisting_Debug(t *testing.T)
 	mockStream := &MockQUICStream{}
 	mockStream.On("Write", mock.Anything).Return(0, nil)
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 
 	ctx := context.Background()
 	ann1 := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
@@ -485,7 +485,7 @@ func TestSendAnnounceStream_SendAnnouncement_SameInstance(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Write", mock.Anything).Return(0, nil).Times(2) // Two calls expected
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 
 	ctx := context.Background()
 	ann := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
@@ -508,7 +508,7 @@ func TestSendAnnounceStream_AnnouncementEnd_BackgroundProcessing(t *testing.T) {
 	// Expect Write calls for both ACTIVE and ENDED messages
 	mockStream.On("Write", mock.Anything).Return(0, nil).Times(2)
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 
 	ctx := context.Background()
 	ann := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
@@ -533,7 +533,7 @@ func TestSendAnnounceStream_AnnouncementEnd_ClosedStream(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Write", mock.Anything).Return(0, nil).Once() // Only ACTIVE message
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 
 	ctx := context.Background()
 	ann := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
@@ -566,7 +566,7 @@ func TestSendAnnounceStream_AnnouncementEnd_WriteError(t *testing.T) {
 	}
 	mockStream.On("Write", mock.Anything).Return(0, writeError).Once()
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 
 	ctx := context.Background()
 	ann := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
@@ -622,7 +622,7 @@ func TestSendAnnounceStream_BoundaryValues(t *testing.T) {
 			// Always expect Write calls since GetSuffix might succeed
 			mockStream.On("Write", mock.Anything).Return(0, nil).Maybe()
 
-			sas := newSendAnnounceStream(mockStream, tt.prefix)
+			sas := newAnnouncementWriter(mockStream, tt.prefix)
 
 			ctx := context.Background()
 			ann := NewAnnouncement(ctx, BroadcastPath(tt.broadcastPath))
@@ -645,7 +645,7 @@ func TestSendAnnounceStream_Close_StreamError(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Close").Return(closeError)
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 
 	err := sas.Close()
 	assert.Error(t, err)
@@ -661,7 +661,7 @@ func TestSendAnnounceStream_CloseWithError_StreamIDAccess(t *testing.T) {
 	mockStream.On("CancelWrite", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return()
 	mockStream.On("CancelRead", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return()
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 
 	err := sas.CloseWithError(InternalAnnounceErrorCode)
 	assert.NoError(t, err)
@@ -714,7 +714,7 @@ func TestSendAnnounceStream_SendAnnouncement_InvalidPath_EdgeCases(t *testing.T)
 			mockStream := &MockQUICStream{}
 			// No Write expectations since these should all fail
 
-			sas := newSendAnnounceStream(mockStream, tt.prefix)
+			sas := newAnnouncementWriter(mockStream, tt.prefix)
 
 			ctx := context.Background()
 			ann := NewAnnouncement(ctx, BroadcastPath(tt.broadcastPath))
@@ -740,7 +740,7 @@ func TestSendAnnounceStream_Concurrency_SafeAccess(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Write", mock.Anything).Return(0, nil)
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 
 	// Test concurrent access to the same suffix
 	done := make(chan bool, 2)
@@ -790,7 +790,7 @@ func TestSendAnnounceStream_Concurrency_SafeAccess(t *testing.T) {
 func TestSendAnnounceStream_StateConsistency(t *testing.T) {
 	mockStream := &MockQUICStream{}
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 
 	// Test initial state
 	assert.False(t, sas.closed)
@@ -803,7 +803,7 @@ func TestSendAnnounceStream_StateConsistency(t *testing.T) {
 
 func TestSendAnnounceStream_SendAnnouncement_NilAnnouncement(t *testing.T) {
 	mockStream := &MockQUICStream{}
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 
 	// Test with nil announcement - should cause panic or error
 	defer func() {
@@ -823,7 +823,7 @@ func TestSendAnnounceStream_MultipleClose(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Close").Return(nil).Once()
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 
 	// First close should succeed
 	err1 := sas.Close()
@@ -847,7 +847,7 @@ func TestSendAnnounceStream_CloseWithError_Multiple(t *testing.T) {
 	mockStream.On("CancelWrite", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Once()
 	mockStream.On("CancelRead", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Once()
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 
 	// First CloseWithError should succeed
 	err1 := sas.CloseWithError(InternalAnnounceErrorCode)
@@ -873,7 +873,7 @@ func TestSendAnnounceStream_InterfaceCompliance(t *testing.T) {
 	mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
 	mockStream.On("CancelRead", mock.Anything).Return().Maybe()
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 
 	// Test all interface methods are callable
 	var writer AnnouncementWriter = sas
@@ -898,7 +898,7 @@ func TestSendAnnounceStream_Performance_ManyAnnouncements(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Write", mock.Anything).Return(0, nil)
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 
 	ctx := context.Background()
 	const numAnnouncements = 1000
@@ -927,7 +927,7 @@ func TestSendAnnounceStream_Performance_LargeNumberOfAnnouncements(t *testing.T)
 	mockStream := &MockQUICStream{}
 	mockStream.On("Write", mock.Anything).Return(0, nil)
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 	ctx := context.Background()
 
 	const numAnnouncements = 1000
@@ -955,7 +955,7 @@ func TestSendAnnounceStream_Cleanup_ResourceLeaks(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Write", mock.Anything).Return(0, nil)
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 	ctx := context.Background()
 
 	// Create and end many announcements to test cleanup
@@ -982,7 +982,7 @@ func TestSendAnnounceStream_Cleanup_PartialCleanup(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Write", mock.Anything).Return(0, nil)
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 	ctx := context.Background()
 
 	// Create multiple announcements
@@ -1009,7 +1009,7 @@ func TestSendAnnounceStream_Memory_AnnouncementLifecycle(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Write", mock.Anything).Return(0, nil)
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 
 	// Test announcement lifecycle management
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1037,7 +1037,7 @@ func BenchmarkSendAnnounceStream_ConcurrentAccess(b *testing.B) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Write", mock.Anything).Return(0, nil)
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 	ctx := context.Background()
 
 	b.ResetTimer()
@@ -1061,7 +1061,7 @@ func TestSendAnnounceStream_AnnouncementLifecycle_CompleteFlow(t *testing.T) {
 	// Expected sequence: ACTIVE message, then ENDED message
 	mockStream.On("Write", mock.Anything).Return(0, nil).Times(2)
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 	ctx := context.Background()
 
 	// Create and send announcement
@@ -1090,7 +1090,7 @@ func TestSendAnnounceStream_MultipleLifecycles_Interleaved(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Write", mock.Anything).Return(0, nil)
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 	ctx := context.Background()
 
 	// Create multiple announcements with different lifecycles
@@ -1159,7 +1159,7 @@ func TestSendAnnounceStream_WriteError_Types(t *testing.T) {
 			mockStream.ExpectedCalls = nil
 			mockStream.On("Write", mock.Anything).Return(0, tt.createError())
 
-			sas := newSendAnnounceStream(mockStream, "/test")
+			sas := newAnnouncementWriter(mockStream, "/test")
 			ctx := context.Background()
 			ann := createTestAnnouncement(ctx, BroadcastPath("/test/stream1"))
 
@@ -1177,7 +1177,7 @@ func TestSendAnnounceStream_BackgroundProcessing_EdgeCases(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Write", mock.Anything).Return(0, nil)
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 	ctx := context.Background()
 
 	// Test rapid succession of announcement creation and ending
@@ -1254,7 +1254,7 @@ func TestSendAnnounceStream_PathValidation_Comprehensive(t *testing.T) {
 				mockStream.On("Write", mock.Anything).Return(0, nil)
 			}
 
-			sas := newSendAnnounceStream(mockStream, tt.prefix)
+			sas := newAnnouncementWriter(mockStream, tt.prefix)
 			ctx := context.Background()
 			ann := createTestAnnouncement(ctx, BroadcastPath(tt.broadcastPath))
 
@@ -1281,7 +1281,7 @@ func TestSendAnnounceStream_StreamState_Transitions(t *testing.T) {
 	mockStream.On("CancelWrite", mock.Anything).Return()
 	mockStream.On("CancelRead", mock.Anything).Return()
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 
 	// Initial state
 	assertStreamState(t, sas, false, false)
@@ -1333,7 +1333,7 @@ func TestSendAnnounceStream_ErrorPropagation(t *testing.T) {
 			writeError := tt.setupError()
 			mockStream.On("Write", mock.Anything).Return(0, writeError)
 
-			sas := newSendAnnounceStream(mockStream, "/test")
+			sas := newAnnouncementWriter(mockStream, "/test")
 			ctx := context.Background()
 			ann := createTestAnnouncement(ctx, BroadcastPath("/test/stream1"))
 
@@ -1354,7 +1354,7 @@ func TestSendAnnounceStream_MultipleAnnouncements_LifecycleManagement(t *testing
 	mockStream := &MockQUICStream{}
 	mockStream.On("Write", mock.Anything).Return(0, nil)
 
-	sas := newSendAnnounceStream(mockStream, "/test")
+	sas := newAnnouncementWriter(mockStream, "/test")
 	ctx := context.Background()
 
 	// Create and send multiple announcements

@@ -3,20 +3,19 @@ package moqt
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-func newSendAnnounceStream(stream quic.Stream, prefix string) *AnnouncementWriter {
+func newAnnouncementWriter(stream quic.Stream, prefix prefix) *AnnouncementWriter {
 	sas := &AnnouncementWriter{
-		prefix:    prefix,
-		stream:    stream,
-		streamCtx: stream.Context(),
-		actives:   make(map[string]*Announcement),
-		initCh:    make(chan struct{}, 1), // Buffered to avoid blocking on init
+		prefix:  prefix,
+		stream:  stream,
+		ctx:     context.WithValue(stream.Context(), &biStreamTypeCtxKey, message.StreamTypeAnnounce),
+		actives: make(map[suffix]*Announcement),
+		initCh:  make(chan struct{}, 1), // Buffered to avoid blocking on init
 	}
 
 	return sas
@@ -25,14 +24,14 @@ func newSendAnnounceStream(stream quic.Stream, prefix string) *AnnouncementWrite
 type AnnouncementWriter struct {
 	mu sync.RWMutex
 
-	prefix    string
-	stream    quic.Stream
-	streamCtx context.Context
+	prefix prefix
+	stream quic.Stream
+	ctx    context.Context
 
-	actives map[string]*Announcement
+	actives map[suffix]*Announcement
 
-	initOnce sync.Once
 	initCh   chan struct{}
+	initOnce sync.Once
 }
 
 func (sas *AnnouncementWriter) init(init []*Announcement) error {
@@ -41,20 +40,12 @@ func (sas *AnnouncementWriter) init(init []*Announcement) error {
 		sas.mu.Lock()
 		defer sas.mu.Unlock()
 
-		if sas.streamCtx.Err() != nil {
-			reason := context.Cause(sas.streamCtx)
-			var strErr *quic.StreamError
-			if errors.As(reason, &strErr) {
-				err = &AnnounceError{
-					StreamError: strErr,
-				}
-				return
-			}
-			err = reason
+		if sas.ctx.Err() != nil {
+			err = Cause(sas.ctx)
 			return
 		}
 
-		suffixes := make([]string, 0, len(init))
+		suffixes := make([]suffix, 0, len(init))
 		for _, new := range init {
 			if !new.IsActive() {
 				continue // Skip non-active announcements
@@ -68,7 +59,7 @@ func (sas *AnnouncementWriter) init(init []*Announcement) error {
 			// Cancel previous announcement if exists
 			if old, ok := sas.actives[suffix]; ok {
 				if old == new {
-					return // Already active, no need to re-announce
+					continue // Already active, no need to re-announce
 				}
 				old.End()
 			}
@@ -87,9 +78,10 @@ func (sas *AnnouncementWriter) init(init []*Announcement) error {
 					delete(sas.actives, suffix)
 				}
 
-				if sas.stream.Context().Err() != nil {
+				if sas.ctx.Err() != nil {
 					return
 				}
+
 				// Encode and send ENDED announcement
 				err := message.AnnounceMessage{
 					AnnounceStatus: message.ENDED,
@@ -104,9 +96,7 @@ func (sas *AnnouncementWriter) init(init []*Announcement) error {
 		err = message.AnnounceInitMessage{
 			Suffixes: suffixes,
 		}.Encode(sas.stream)
-
 		if err != nil {
-			slog.Error("failed to send ANNOUNCE_INIT message", "error", err)
 			var strErr *quic.StreamError
 			if errors.As(err, &strErr) {
 				err = &AnnounceError{
@@ -128,15 +118,8 @@ func (sas *AnnouncementWriter) SendAnnouncement(new *Announcement) error {
 	sas.mu.Lock()
 	defer sas.mu.Unlock()
 
-	if sas.streamCtx.Err() != nil {
-		reason := context.Cause(sas.streamCtx)
-		var strErr *quic.StreamError
-		if errors.As(reason, &strErr) {
-			return &AnnounceError{
-				StreamError: strErr,
-			}
-		}
-		return reason
+	if sas.ctx.Err() != nil {
+		return Cause(sas.ctx)
 	}
 
 	if sas.initCh != nil {
@@ -227,4 +210,8 @@ func (sas *AnnouncementWriter) CloseWithError(code AnnounceErrorCode) error {
 	sas.stream.CancelRead(strErrCode)
 
 	return nil
+}
+
+func (sas *AnnouncementWriter) Context() context.Context {
+	return sas.ctx
 }

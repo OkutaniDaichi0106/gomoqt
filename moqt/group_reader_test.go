@@ -2,7 +2,6 @@ package moqt
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"io"
 	"testing"
@@ -36,13 +35,12 @@ func TestNewReceiveGroupStream(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			mockStream := &MockQUICReceiveStream{}
 
-			rgs := newReceiveGroupStream(context.Background(), tt.sequence, mockStream)
+			rgs := newGroupReader(tt.sequence, mockStream, func() {})
 
 			assert.NotNil(t, rgs)
 			assert.Equal(t, tt.sequence, rgs.sequence)
 			assert.Equal(t, mockStream, rgs.stream)
 			assert.Equal(t, int64(0), rgs.frameCount)
-			assert.NotNil(t, rgs.ctx)
 		})
 	}
 }
@@ -71,7 +69,7 @@ func TestReceiveGroupStream_GroupSequence(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			mockStream := &MockQUICReceiveStream{}
-			rgs := newReceiveGroupStream(context.Background(), tt.sequence, mockStream)
+			rgs := newGroupReader(tt.sequence, mockStream, func() {})
 
 			result := rgs.GroupSequence()
 			assert.Equal(t, tt.sequence, result)
@@ -84,7 +82,7 @@ func TestReceiveGroupStream_ReadFrame_EOF(t *testing.T) {
 	buf := bytes.NewBuffer(nil) // Empty buffer will return EOF
 	mockStream.ReadFunc = buf.Read
 
-	rgs := newReceiveGroupStream(context.Background(), GroupSequence(123), mockStream)
+	rgs := newGroupReader(GroupSequence(123), mockStream, func() {})
 
 	frame, err := rgs.ReadFrame()
 	assert.Error(t, err)
@@ -113,7 +111,7 @@ func TestReceiveGroupStream_CancelRead(t *testing.T) {
 			mockStream.On("StreamID").Return(quic.StreamID(123))
 			mockStream.On("CancelRead", quic.StreamErrorCode(tt.errorCode)).Return()
 
-			rgs := newReceiveGroupStream(context.Background(), GroupSequence(123), mockStream)
+			rgs := newGroupReader(GroupSequence(123), mockStream, func() {})
 
 			rgs.CancelRead(tt.errorCode)
 
@@ -127,7 +125,7 @@ func TestReceiveGroupStream_CancelRead_MultipleCalls(t *testing.T) {
 	mockStream.On("StreamID").Return(quic.StreamID(123))
 	mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return()
 
-	rgs := newReceiveGroupStream(context.Background(), GroupSequence(123), mockStream)
+	rgs := newGroupReader(GroupSequence(123), mockStream, func() {})
 
 	// Cancel multiple times with the same error code
 	rgs.CancelRead(InternalGroupErrorCode)
@@ -185,7 +183,7 @@ func TestReceiveGroupStream_SetReadDeadline(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			mockStream := tt.setupMock()
-			rgs := newReceiveGroupStream(context.Background(), GroupSequence(123), mockStream)
+			rgs := newGroupReader(123, mockStream, func() {})
 
 			err := rgs.SetReadDeadline(tt.deadline)
 
@@ -201,20 +199,17 @@ func TestReceiveGroupStream_SetReadDeadline(t *testing.T) {
 }
 
 func TestReceiveGroupStream_ReadFrame_StreamError(t *testing.T) {
-	mockStream := &MockQUICReceiveStream{}
+	mockStream := &MockQUICReceiveStream{
+		ReadFunc: func(p []byte) (int, error) {
+			return 0, &quic.StreamError{
+				StreamID:  quic.StreamID(123),
+				ErrorCode: quic.StreamErrorCode(1),
+			}
+		},
+	}
 	mockStream.On("StreamID").Return(quic.StreamID(123))
 
-	// Simulate a stream error
-	streamErr := &quic.StreamError{
-		StreamID:  quic.StreamID(123),
-		ErrorCode: quic.StreamErrorCode(1),
-	}
-
-	mockStream.ReadFunc = func(p []byte) (int, error) {
-		return 0, streamErr
-	}
-
-	rgs := newReceiveGroupStream(context.Background(), GroupSequence(123), mockStream)
+	rgs := newGroupReader(123, mockStream, func() {})
 
 	frame, err := rgs.ReadFrame()
 	assert.Error(t, err)

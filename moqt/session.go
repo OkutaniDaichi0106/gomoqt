@@ -377,7 +377,7 @@ func (sess *Session) OpenAnnounceStream(prefix string) (*AnnouncementReader, err
 		return nil, err
 	}
 
-	return newReceiveAnnounceStream(stream, prefix, aim.Suffixes), nil
+	return newAnnouncementReader(stream, prefix, aim.Suffixes), nil
 }
 
 func (sess *Session) goAway(uri string) {
@@ -431,7 +431,7 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 
 		prefix := apm.TrackPrefix
 
-		annstr := newSendAnnounceStream(stream, prefix)
+		annstr := newAnnouncementWriter(stream, prefix)
 
 		streamLogger.Debug("accepted announce stream")
 

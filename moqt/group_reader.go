@@ -8,7 +8,7 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-func newReceiveGroupStream(sequence GroupSequence, stream quic.ReceiveStream,
+func newGroupReader(sequence GroupSequence, stream quic.ReceiveStream,
 	onClose func()) *GroupReader {
 	return &GroupReader{
 		sequence: sequence,

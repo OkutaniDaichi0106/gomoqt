@@ -2,7 +2,6 @@ package moqt
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"sync"
 
@@ -10,17 +9,17 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-func newReceiveAnnounceStream(stream quic.Stream, prefix string, suffixes []string) *AnnouncementReader {
+func newAnnouncementReader(stream quic.Stream, prefix prefix, initSuffixes []suffix) *AnnouncementReader {
 	ar := &AnnouncementReader{
 		ctx:         context.WithValue(stream.Context(), &biStreamTypeCtxKey, message.StreamTypeAnnounce),
 		stream:      stream,
 		prefix:      prefix,
-		active:      make(map[string]*Announcement),
+		active:      make(map[suffix]*Announcement),
 		pendings:    make([]*Announcement, 0),
 		announcedCh: make(chan struct{}, 1),
 	}
 
-	for _, suffix := range suffixes {
+	for _, suffix := range initSuffixes {
 		ann := NewAnnouncement(stream.Context(), BroadcastPath(prefix+suffix))
 		ar.active[suffix] = ann
 		ar.pendings = append(ar.pendings, ann)
@@ -30,13 +29,8 @@ func newReceiveAnnounceStream(stream quic.Stream, prefix string, suffixes []stri
 	go func() {
 		var am message.AnnounceMessage
 		var err error
-		ctx := ar.ctx
-		for {
-			// Check if announcement is already closed before decoding
-			if ctx.Err() != nil {
-				return
-			}
 
+		for {
 			err = am.Decode(ar.stream)
 			if err != nil {
 				return
@@ -45,11 +39,12 @@ func newReceiveAnnounceStream(stream quic.Stream, prefix string, suffixes []stri
 			slog.Debug("received announce message", "message", am)
 
 			// Check if announcement is already closed during decoding
-			if ctx.Err() != nil {
+			if ar.ctx.Err() != nil {
 				return
 			}
 
-			ar.pendingMu.Lock()
+			ar.announcementsMu.Lock()
+
 			old, ok := ar.active[am.TrackSuffix]
 
 			switch am.AnnounceStatus {
@@ -66,14 +61,16 @@ func newReceiveAnnounceStream(stream quic.Stream, prefix string, suffixes []stri
 					default:
 					}
 
-					ar.pendingMu.Unlock()
+					ar.announcementsMu.Unlock()
 
 					continue
 				} else {
 					// Release lock before calling CloseWithError to avoid deadlock
-					ar.pendingMu.Unlock()
+					ar.announcementsMu.Unlock()
+
 					// Close the stream with an error
 					ar.CloseWithError(DuplicatedAnnounceErrorCode)
+
 					return
 				}
 			case message.ENDED:
@@ -83,16 +80,18 @@ func newReceiveAnnounceStream(stream quic.Stream, prefix string, suffixes []stri
 
 					// Remove the announcement from the map
 					delete(ar.active, am.TrackSuffix)
-					ar.pendingMu.Unlock()
+
+					ar.announcementsMu.Unlock()
 					continue
 				} else {
 					// Release lock before calling CloseWithError to avoid deadlock
-					ar.pendingMu.Unlock()
+					ar.announcementsMu.Unlock()
 					ar.CloseWithError(DuplicatedAnnounceErrorCode)
 					return
 				}
 			default:
-				ar.pendingMu.Unlock()
+				ar.announcementsMu.Unlock()
+
 				// Unsupported status, close with error
 				ar.CloseWithError(InvalidAnnounceStatusErrorCode)
 				return
@@ -105,38 +104,28 @@ func newReceiveAnnounceStream(stream quic.Stream, prefix string, suffixes []stri
 
 type AnnouncementReader struct {
 	stream quic.Stream
-	prefix string
+	prefix prefix
 
 	ctx context.Context
 
 	// Track Suffix -> Announcement
-	active map[string]*Announcement
+	announcementsMu sync.Mutex
+
+	active map[suffix]*Announcement
 
 	pendings    []*Announcement
 	announcedCh chan struct{} // notify when new announcement is available
-	pendingMu   sync.Mutex
 }
 
 func (ras *AnnouncementReader) ReceiveAnnouncement(ctx context.Context) (*Announcement, error) {
 	for {
-		ras.pendingMu.Lock()
+		ras.announcementsMu.Lock()
 
 		slog.Info("waiting for announcement", "prefix", ras.prefix)
 
-		streamCtx := ras.ctx
-
-		if streamCtx.Err() != nil {
-			ras.pendingMu.Unlock()
-
-			reason := context.Cause(streamCtx)
-			var strErr *quic.StreamError
-			if errors.As(reason, &strErr) {
-				return nil, &AnnounceError{
-					StreamError: strErr,
-				}
-			}
-
-			return nil, reason
+		if ras.ctx.Err() != nil {
+			ras.announcementsMu.Unlock()
+			return nil, Cause(ras.ctx)
 		}
 
 		slog.Info("pending announcements available", "count", len(ras.pendings))
@@ -146,20 +135,20 @@ func (ras *AnnouncementReader) ReceiveAnnouncement(ctx context.Context) (*Announ
 			next := ras.pendings[0]
 			ras.pendings = ras.pendings[1:]
 
-			ras.pendingMu.Unlock()
+			ras.announcementsMu.Unlock()
 
 			return next, nil
 		}
 
 		announceCh := ras.announcedCh
-		ras.pendingMu.Unlock()
+
+		ras.announcementsMu.Unlock()
 
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-streamCtx.Done():
-			reason := context.Cause(streamCtx)
-			return nil, reason
+		case <-ras.ctx.Done():
+			return nil, Cause(ras.ctx)
 		case <-announceCh:
 			// New announcement available, loop to check pendings
 			continue
@@ -168,33 +157,31 @@ func (ras *AnnouncementReader) ReceiveAnnouncement(ctx context.Context) (*Announ
 }
 
 func (ras *AnnouncementReader) Close() error {
-	ras.pendingMu.Lock()
+	ras.announcementsMu.Lock()
+	defer ras.announcementsMu.Unlock()
 
 	if ras.ctx.Err() != nil {
-		ras.pendingMu.Unlock()
 		return nil
 	}
 
-	close(ras.announcedCh)
-	ras.announcedCh = nil
-
-	ras.pendingMu.Unlock()
+	if ras.announcedCh != nil {
+		close(ras.announcedCh)
+		ras.announcedCh = nil
+	}
 
 	return ras.stream.Close()
 }
 
 func (ras *AnnouncementReader) CloseWithError(code AnnounceErrorCode) error {
-	ras.pendingMu.Lock()
+	ras.announcementsMu.Lock()
+	defer ras.announcementsMu.Unlock()
 
 	if ras.ctx.Err() != nil {
-		ras.pendingMu.Unlock()
 		return nil
 	}
 
 	close(ras.announcedCh)
 	ras.announcedCh = nil
-
-	ras.pendingMu.Unlock()
 
 	strErrCode := quic.StreamErrorCode(code)
 	ras.stream.CancelRead(strErrCode)
@@ -202,3 +189,6 @@ func (ras *AnnouncementReader) CloseWithError(code AnnounceErrorCode) error {
 
 	return nil
 }
+
+type suffix = string
+type prefix = string

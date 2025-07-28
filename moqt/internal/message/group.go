@@ -27,14 +27,13 @@ func (g GroupMessage) Len() int {
 func (g GroupMessage) Encode(w io.Writer) error {
 	msgLen := g.Len()
 	b := pool.Get(msgLen + quicvarint.Len(uint64(msgLen)))
+	defer pool.Put(b)
 
 	b = quicvarint.Append(b, uint64(msgLen))
 	b = quicvarint.Append(b, uint64(g.SubscribeID))
 	b = quicvarint.Append(b, uint64(g.GroupSequence))
 
 	_, err := w.Write(b)
-
-	pool.Put(b)
 
 	return err
 }
@@ -46,9 +45,10 @@ func (g *GroupMessage) Decode(src io.Reader) error {
 	}
 
 	b := pool.Get(int(num))[:num]
+	defer pool.Put(b)
+
 	_, err = io.ReadFull(src, b)
 	if err != nil {
-		pool.Put(b)
 		return err
 	}
 
@@ -56,19 +56,15 @@ func (g *GroupMessage) Decode(src io.Reader) error {
 
 	num, err = ReadVarint(r)
 	if err != nil {
-		pool.Put(b)
 		return err
 	}
 	g.SubscribeID = SubscribeID(num)
 
 	num, err = ReadVarint(r)
 	if err != nil {
-		pool.Put(b)
 		return err
 	}
 	g.GroupSequence = GroupSequence(num)
-
-	pool.Put(b)
 
 	return nil
 }

@@ -50,7 +50,7 @@ func main() {
 
 			// TODO: Release the frame after writing
 			// This is important to avoid memory leaks
-			frame.Release()
+
 			gw.Close()
 
 			seq = seq.Next()

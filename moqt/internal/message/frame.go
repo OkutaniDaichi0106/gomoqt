@@ -1,55 +1,34 @@
 package message
 
 import (
-	"bytes"
 	"io"
-
-	"github.com/quic-go/quic-go/quicvarint"
 )
 
 /*
  * Frame Message {
- *   Message Length (varint),
  *   Payload ([]byte),
  * }
  */
-
-func NewFrameMessage(payload []byte) *FrameMessage {
-	p := FramePool.Get(len(payload))
-	copy(p, payload)
-	return &FrameMessage{
-		Payload: p,
-	}
-}
 
 type FrameMessage struct {
 	Payload []byte
 }
 
 func (fm FrameMessage) Len() int {
-	var l int
-
-	l += quicvarint.Len(uint64(len(fm.Payload)))
-	l += len(fm.Payload)
-
-	return l
+	return len(fm.Payload)
 }
 
-func (fm *FrameMessage) Encode(w io.Writer) error {
-	msgLen := fm.Len()
-	b := pool.Get(msgLen + quicvarint.Len(uint64(msgLen)))
-
-	b = quicvarint.Append(b, uint64(msgLen))
-	b = quicvarint.Append(b, uint64(len(fm.Payload)))
-	b = append(b, fm.Payload...)
-
-	_, err := w.Write(b)
+func (fm FrameMessage) Encode(w io.Writer) error {
+	err := WriteVarint(w, uint64(len(fm.Payload)))
 	if err != nil {
-		pool.Put(b)
 		return err
 	}
 
-	pool.Put(b)
+	_, err = w.Write(fm.Payload)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -59,39 +38,20 @@ func (fm *FrameMessage) Decode(src io.Reader) error {
 		return err
 	}
 
-	b := pool.Get(int(num))[:num]
-	_, err = io.ReadFull(src, b)
-	if err != nil {
-		pool.Put(b)
-		return err
+	// If payload length is zero, reset the slice to zero length
+	if num == 0 {
+		fm.Payload = fm.Payload[:0]
+		return nil
 	}
 
-	message := bytes.NewReader(b)
-
-	fm.Payload, err = ReadBytes(message)
-	if err != nil {
-		pool.Put(b)
-		return err
+	// Ensure the payload slice has enough capacity
+	if cap(fm.Payload) < int(num) {
+		fm.Payload = make([]byte, num)
+	} else {
+		fm.Payload = fm.Payload[:num]
 	}
 
-	pool.Put(b)
-	return nil
-}
+	_, err = io.ReadFull(src, fm.Payload)
 
-// CopyBytes method returns a copy of the internal slice.
-func (f *FrameMessage) CopyBytes() []byte {
-	b := make([]byte, len(f.Payload))
-	copy(b, f.Payload)
-	return b
+	return err
 }
-
-func (f FrameMessage) Size() int {
-	return len(f.Payload)
-}
-
-func (f *FrameMessage) Release() {
-	f.Payload = f.Payload[:0]
-	FramePool.Put(f.Payload)
-}
-
-var FramePool = NewPool(256, 1024, 8*1024)

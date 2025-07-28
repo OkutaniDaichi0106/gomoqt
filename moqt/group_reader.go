@@ -30,12 +30,11 @@ func (s *GroupReader) GroupSequence() GroupSequence {
 	return s.sequence
 }
 
-func (s *GroupReader) ReadFrame() (*Frame, error) {
-	frame := NewFrame(nil)
+func (s *GroupReader) ReadFrame(frame *Frame) error {
 	err := frame.message.Decode(s.stream)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
-			return nil, err
+			return err
 		}
 
 		var strErr *quic.StreamError
@@ -44,14 +43,15 @@ func (s *GroupReader) ReadFrame() (*Frame, error) {
 				StreamError: strErr,
 			}
 
-			return nil, grpErr
+			return grpErr
 		}
 
-		return nil, err
+		return err
 	}
+
 	s.frameCount++
 
-	return frame, nil
+	return nil
 }
 
 func (s *GroupReader) CancelRead(code GroupErrorCode) {

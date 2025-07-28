@@ -40,10 +40,6 @@ func (sgs *GroupWriter) WriteFrame(frame *Frame) error {
 		return errors.New("frame is nil or has no bytes")
 	}
 
-	if sgs.ctx.Err() != nil {
-		return Cause(sgs.ctx)
-	}
-
 	err := frame.message.Encode(sgs.stream)
 	if err != nil {
 		return Cause(sgs.ctx)

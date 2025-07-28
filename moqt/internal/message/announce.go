@@ -33,6 +33,7 @@ func (am AnnounceMessage) Encode(w io.Writer) error {
 	msgLen := am.Len()
 
 	b := pool.Get(msgLen)
+	defer pool.Put(b)
 
 	b = quicvarint.Append(b, uint64(msgLen))
 	b = quicvarint.Append(b, uint64(am.AnnounceStatus))
@@ -41,7 +42,6 @@ func (am AnnounceMessage) Encode(w io.Writer) error {
 
 	_, err := w.Write(b)
 
-	pool.Put(b)
 	return err
 }
 
@@ -52,9 +52,10 @@ func (am *AnnounceMessage) Decode(src io.Reader) error {
 	}
 
 	b := pool.Get(int(num))[:num]
+	defer pool.Put(b)
+
 	_, err = io.ReadFull(src, b)
 	if err != nil {
-		pool.Put(b)
 		return err
 	}
 
@@ -62,19 +63,15 @@ func (am *AnnounceMessage) Decode(src io.Reader) error {
 
 	num, err = ReadVarint(r)
 	if err != nil {
-		pool.Put(b)
 		return err
 	}
 	am.AnnounceStatus = AnnounceStatus(num)
 
 	str, err := ReadString(r)
 	if err != nil {
-		pool.Put(b)
 		return err
 	}
 	am.TrackSuffix = str
-
-	pool.Put(b)
 
 	return nil
 }

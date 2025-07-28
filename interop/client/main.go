@@ -28,9 +28,8 @@ func main() {
 				return
 			}
 
-			slog.Info("Sent frame successfully", "frame", string(frame.CopyBytes()))
+			slog.Info("Sent frame successfully", "frame", string(frame.Bytes()))
 
-			frame.Release()
 			group.Close()
 
 			slog.Info("Closed group successfully", "group_sequence", seq)
@@ -96,8 +95,9 @@ func main() {
 		slog.Info("Accepted a group", "group_sequence", gr.GroupSequence())
 
 		go func(gr *moqt.GroupReader) {
+			frame := moqt.NewFrame(nil)
 			for {
-				frame, err := gr.ReadFrame()
+				err := gr.ReadFrame(frame)
 				if err != nil {
 					if err == io.EOF {
 						return
@@ -106,11 +106,7 @@ func main() {
 					break
 				}
 
-				slog.Info("Received a frame", "frame", string(frame.CopyBytes()))
-
-				// TODO: Release the frame after processing
-				// This is important to avoid memory leaks
-				frame.Release()
+				slog.Info("Received a frame", "frame", string(frame.Bytes()))
 			}
 		}(gr)
 	}

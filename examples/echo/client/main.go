@@ -82,10 +82,9 @@ func main() {
 				}
 
 				go func(gr *moqt.GroupReader) {
-					defer gr.CancelRead(moqt.InternalGroupErrorCode)
-
+					frame := moqt.NewFrame(nil)
 					for {
-						frame, err := gr.ReadFrame()
+						err := gr.ReadFrame(frame)
 						if err != nil {
 							if err == io.EOF {
 								return
@@ -94,11 +93,10 @@ func main() {
 							return
 						}
 
-						slog.Info("received a frame", "frame", string(frame.CopyBytes()))
+						slog.Info("received a frame", "frame", string(frame.Bytes()))
 
 						// TODO: Release the frame after reading
 						// This is important to avoid memory leaks
-						frame.Release()
 					}
 				}(gr)
 

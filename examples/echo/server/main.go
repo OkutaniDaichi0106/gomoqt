@@ -70,8 +70,6 @@ func main() {
 						}
 
 						go func(gr *moqt.GroupReader) {
-							defer gr.CancelRead(moqt.InternalGroupErrorCode)
-
 							gw, err := tw.OpenGroup(gr.GroupSequence())
 							if err != nil {
 								slog.Error("failed to open group", "error", err)
@@ -80,7 +78,8 @@ func main() {
 							defer gw.Close()
 
 							for {
-								frame, err := gr.ReadFrame()
+								frame := moqt.NewFrame(nil)
+								err := gr.ReadFrame(frame)
 								if err != nil {
 									if err == io.EOF {
 										return
@@ -97,7 +96,6 @@ func main() {
 
 								// TODO: Release the frame after writing
 								// This is important to avoid memory leaks
-								frame.Release()
 							}
 						}(gr)
 

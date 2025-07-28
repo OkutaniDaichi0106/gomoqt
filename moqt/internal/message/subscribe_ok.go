@@ -23,13 +23,12 @@ func (som SubscribeOkMessage) Len() int {
 func (som SubscribeOkMessage) Encode(w io.Writer) error {
 	msgLen := som.Len()
 	b := pool.Get(msgLen)
+	defer pool.Put(b)
 
 	b = quicvarint.Append(b, uint64(msgLen))
 	b = quicvarint.Append(b, uint64(som.GroupOrder))
 
 	_, err := w.Write(b)
-
-	pool.Put(b)
 
 	return err
 }
@@ -41,9 +40,9 @@ func (som *SubscribeOkMessage) Decode(src io.Reader) error {
 	}
 
 	b := pool.Get(int(num))[:num]
+	defer pool.Put(b)
 	_, err = io.ReadFull(src, b)
 	if err != nil {
-		pool.Put(b)
 		return err
 	}
 
@@ -51,12 +50,9 @@ func (som *SubscribeOkMessage) Decode(src io.Reader) error {
 
 	num, err = ReadVarint(r)
 	if err != nil {
-		pool.Put(b)
 		return err
 	}
 	som.GroupOrder = GroupOrder(num)
-
-	pool.Put(b)
 
 	return nil
 }

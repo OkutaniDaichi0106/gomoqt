@@ -33,6 +33,7 @@ func (ssm SessionServerMessage) Len() int {
 func (ssm SessionServerMessage) Encode(w io.Writer) error {
 	msgLen := ssm.Len()
 	b := pool.Get(msgLen)
+	defer pool.Put(b)
 
 	b = quicvarint.Append(b, uint64(msgLen))
 	b = quicvarint.Append(b, uint64(ssm.SelectedVersion))
@@ -46,7 +47,6 @@ func (ssm SessionServerMessage) Encode(w io.Writer) error {
 	}
 
 	_, err := w.Write(b)
-	pool.Put(b)
 	return err
 }
 
@@ -57,9 +57,10 @@ func (ssm *SessionServerMessage) Decode(src io.Reader) error {
 	}
 
 	b := pool.Get(int(num))[:num]
+	defer pool.Put(b)
+
 	_, err = io.ReadFull(src, b)
 	if err != nil {
-		pool.Put(b)
 		return err
 	}
 
@@ -67,36 +68,15 @@ func (ssm *SessionServerMessage) Decode(src io.Reader) error {
 
 	num, err = ReadVarint(r)
 	if err != nil {
-		pool.Put(b)
 		return err
 	}
 
 	ssm.SelectedVersion = protocol.Version(num)
 
-	count, err := ReadVarint(r)
+	ssm.Parameters, err = ReadParameters(r)
 	if err != nil {
-		pool.Put(b)
 		return err
 	}
-
-	ssm.Parameters = make(Parameters, count)
-	for range count {
-		key, err := ReadVarint(r)
-		if err != nil {
-			pool.Put(b)
-			return err
-		}
-
-		value, err := ReadBytes(r)
-		if err != nil {
-			pool.Put(b)
-			return err
-		}
-
-		ssm.Parameters[key] = value
-	}
-
-	pool.Put(b)
 
 	return nil
 }

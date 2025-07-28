@@ -53,6 +53,7 @@ func (s SubscribeMessage) Len() int {
 func (s SubscribeMessage) Encode(w io.Writer) error {
 	msgLen := s.Len()
 	b := pool.Get(msgLen)
+	defer pool.Put(b)
 
 	b = quicvarint.Append(b, uint64(msgLen))
 	b = quicvarint.Append(b, uint64(s.SubscribeID))
@@ -65,7 +66,6 @@ func (s SubscribeMessage) Encode(w io.Writer) error {
 	b = quicvarint.Append(b, uint64(s.MaxGroupSequence))
 
 	_, err := w.Write(b)
-	pool.Put(b)
 	return err
 }
 
@@ -76,9 +76,10 @@ func (s *SubscribeMessage) Decode(src io.Reader) error {
 	}
 
 	b := pool.Get(int(num))[:num]
+	defer pool.Put(b)
+
 	_, err = io.ReadFull(src, b)
 	if err != nil {
-		pool.Put(b)
 		return err
 	}
 
@@ -86,46 +87,39 @@ func (s *SubscribeMessage) Decode(src io.Reader) error {
 
 	num, err = ReadVarint(r)
 	if err != nil {
-		pool.Put(b)
 		return err
 	}
 	s.SubscribeID = SubscribeID(num)
 
 	str, err := ReadString(r)
 	if err != nil {
-		pool.Put(b)
 		return err
 	}
 	s.BroadcastPath = str
 
 	str, err = ReadString(r)
 	if err != nil {
-		pool.Put(b)
 		return err
 	}
 	s.TrackName = str
 
 	num, err = ReadVarint(r)
 	if err != nil {
-		pool.Put(b)
 		return err
 	}
 	s.TrackPriority = TrackPriority(num)
 
 	num, err = ReadVarint(r)
 	if err != nil {
-		pool.Put(b)
 		return err
 	}
 	s.MinGroupSequence = GroupSequence(num)
 
 	num, err = ReadVarint(r)
 	if err != nil {
-		pool.Put(b)
 		return err
 	}
 	s.MaxGroupSequence = GroupSequence(num)
 
-	pool.Put(b)
 	return nil
 }

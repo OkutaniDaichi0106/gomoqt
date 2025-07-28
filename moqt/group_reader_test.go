@@ -84,7 +84,8 @@ func TestReceiveGroupStream_ReadFrame_EOF(t *testing.T) {
 
 	rgs := newGroupReader(GroupSequence(123), mockStream, func() {})
 
-	frame, err := rgs.ReadFrame()
+	frame := NewFrame(nil)
+	err := rgs.ReadFrame(frame)
 	assert.Error(t, err)
 	assert.Equal(t, io.EOF, err)
 	assert.Nil(t, frame)
@@ -211,7 +212,8 @@ func TestReceiveGroupStream_ReadFrame_StreamError(t *testing.T) {
 
 	rgs := newGroupReader(123, mockStream, func() {})
 
-	frame, err := rgs.ReadFrame()
+	frame := NewFrame(nil)
+	err := rgs.ReadFrame(frame)
 	assert.Error(t, err)
 	assert.Nil(t, frame)
 

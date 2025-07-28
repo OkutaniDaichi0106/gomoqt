@@ -35,6 +35,7 @@ func (su SubscribeUpdateMessage) Len() int {
 func (su SubscribeUpdateMessage) Encode(w io.Writer) error {
 	msgLen := su.Len()
 	p := pool.Get(msgLen)
+	defer pool.Put(p)
 
 	p = quicvarint.Append(p, uint64(msgLen))
 	p = quicvarint.Append(p, uint64(su.TrackPriority))
@@ -42,8 +43,6 @@ func (su SubscribeUpdateMessage) Encode(w io.Writer) error {
 	p = quicvarint.Append(p, uint64(su.MaxGroupSequence))
 
 	_, err := w.Write(p)
-
-	pool.Put(p)
 
 	return err
 }
@@ -55,9 +54,10 @@ func (sum *SubscribeUpdateMessage) Decode(src io.Reader) error {
 	}
 
 	b := pool.Get(int(num))[:num]
+	defer pool.Put(b)
+
 	_, err = io.ReadFull(src, b)
 	if err != nil {
-		pool.Put(b)
 		return err
 	}
 
@@ -65,26 +65,21 @@ func (sum *SubscribeUpdateMessage) Decode(src io.Reader) error {
 
 	num, err = ReadVarint(r)
 	if err != nil {
-		pool.Put(b)
 		return err
 	}
 	sum.TrackPriority = TrackPriority(num)
 
 	num, err = ReadVarint(r)
 	if err != nil {
-		pool.Put(b)
 		return err
 	}
 	sum.MinGroupSequence = GroupSequence(num)
 
 	num, err = ReadVarint(r)
 	if err != nil {
-		pool.Put(b)
 		return err
 	}
 	sum.MaxGroupSequence = GroupSequence(num)
-
-	pool.Put(b)
 
 	return nil
 }

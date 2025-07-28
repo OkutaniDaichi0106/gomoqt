@@ -79,8 +79,9 @@ func (h *relayHandler) relayGroup(gr *moqt.GroupReader) {
 	}()
 
 	// Relay frames
+	frame := moqt.NewFrame(nil)
 	for {
-		frame, err := gr.ReadFrame()
+		err := gr.ReadFrame(frame)
 		if err != nil {
 			if err == io.EOF {
 				for gw := range writers {

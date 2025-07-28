@@ -26,15 +26,14 @@ func (aim AnnouncePleaseMessage) Len() int {
 
 func (aim AnnouncePleaseMessage) Encode(w io.Writer) error {
 	msgLen := aim.Len()
-	b := pool.Get(msgLen + quicvarint.Len(uint64(msgLen)))
+	b := pool.Get(msgLen)
+	defer pool.Put(b)
 
 	b = quicvarint.Append(b, uint64(msgLen))
 	b = quicvarint.Append(b, uint64(len(aim.TrackPrefix)))
 	b = append(b, aim.TrackPrefix...)
 
 	_, err := w.Write(b)
-
-	pool.Put(b)
 
 	return err
 }
@@ -46,9 +45,10 @@ func (aim *AnnouncePleaseMessage) Decode(src io.Reader) error {
 	}
 
 	b := pool.Get(int(num))[:num]
+	defer pool.Put(b)
+
 	_, err = io.ReadFull(src, b)
 	if err != nil {
-		pool.Put(b)
 		return err
 	}
 
@@ -56,12 +56,9 @@ func (aim *AnnouncePleaseMessage) Decode(src io.Reader) error {
 
 	str, err := ReadString(r)
 	if err != nil {
-		pool.Put(b)
 		return err
 	}
 	aim.TrackPrefix = str
-
-	pool.Put(b)
 
 	return nil
 }

@@ -3,7 +3,7 @@ import { Info } from "./info";
 import { Queue } from "./internal";
 import { Context } from "./internal/context";
 import { ReceiveSubscribeStream, SendSubscribeStream, TrackConfig } from "./subscribe_stream";
-import { Writer } from "./io";
+import { Writer, Reader } from "./io";
 import { UniStreamTypes } from "./stream_type";
 import { GroupMessage } from "./message";
 import { BroadcastPath } from "./broadcast_path";
@@ -109,10 +109,10 @@ export class TrackWriter {
 
 export class TrackReader {
     #subscribeStream: SendSubscribeStream;
-    #queue: Queue<GroupReader>;
+    #queue: Queue<[Reader, GroupMessage]>;
     #onCloseFunc: () => void;
 
-    constructor(subscribeStream: SendSubscribeStream, queue: Queue<GroupReader>,
+    constructor(subscribeStream: SendSubscribeStream, queue: Queue<[Reader, GroupMessage]>,
         onCloseFunc: () => void,
     ) {
         this.#subscribeStream = subscribeStream;
@@ -126,10 +126,13 @@ export class TrackReader {
             return [undefined, ctxErr];
         }
 
-        const group = await this.#queue.dequeue();
-        if (group === undefined) {
+        const item = await this.#queue.dequeue();
+        if (item === undefined) {
             return [undefined, new Error("No group available")];
         }
+
+        const [reader, msg] = item;
+        const group = new GroupReader(this.context, reader, msg);
 
         return [group, undefined];
     }

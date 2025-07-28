@@ -2,7 +2,6 @@ package moqt
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
@@ -37,7 +36,7 @@ func (sgs *GroupWriter) GroupSequence() GroupSequence {
 
 func (sgs *GroupWriter) WriteFrame(frame *Frame) error {
 	if frame == nil || frame.message == nil {
-		return errors.New("frame is nil or has no bytes")
+		return nil
 	}
 
 	err := frame.message.Encode(sgs.stream)

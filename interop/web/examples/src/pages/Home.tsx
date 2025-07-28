@@ -9,7 +9,7 @@ const Home: Component = () => {
   const [isPublishConnected, setIsPublishConnected] = createSignal(false);
   const [publishCount, setPublishCount] = createSignal(0);
   const [publishConnectionStatus, setPublishConnectionStatus] = createSignal('Disconnected');
-  const [publishMessage, setPublishMessage] = createSignal('Hello from web client');
+  const [publishMessage, setPublishMessage] = createSignal('Hello from interop web client');
 
   // Subscribe state
   const [isSubscribeConnected, setIsSubscribeConnected] = createSignal(false);

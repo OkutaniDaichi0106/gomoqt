@@ -5,6 +5,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
@@ -31,6 +32,15 @@ func (s *GroupReader) GroupSequence() GroupSequence {
 }
 
 func (s *GroupReader) ReadFrame(frame *Frame) error {
+	if frame == nil {
+		return errors.New("frame cannot be nil")
+	}
+
+	// Set the internal message if not already set
+	if frame.message == nil {
+		frame.message = &message.FrameMessage{}
+	}
+
 	err := frame.message.Decode(s.stream)
 	if err != nil {
 		if errors.Is(err, io.EOF) {

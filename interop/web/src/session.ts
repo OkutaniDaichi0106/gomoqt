@@ -157,11 +157,11 @@ export class Session {
 
 		const subscribeStream = new SendSubscribeStream(this.#ctx, writer, reader, req, rsp);
 
-		const queue = new Queue<GroupReader>();
+		const queue = new Queue<[Reader, GroupMessage]>();
 
 		// Add the enqueue function to the map
 		this.#enqueueFuncs.set(req.subscribeId, (stream, msg) => {
-			queue.enqueue(new GroupReader(subscribeStream.context, stream, msg));
+			queue.enqueue([stream, msg]);
 		});
 
 		const track = new TrackReader(subscribeStream, queue,

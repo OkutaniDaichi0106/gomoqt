@@ -21,7 +21,7 @@ func main() {
 
 			slog.Info("Opened group successfully", "group_sequence", group.GroupSequence())
 
-			frame := moqt.NewFrame([]byte("Hello from client"))
+			frame := moqt.NewFrame([]byte("Hello from interop client in Go!"))
 			err = group.WriteFrame(frame)
 			if err != nil {
 				slog.Error("failed to write frame", "error", err)

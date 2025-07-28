@@ -47,7 +47,7 @@ func main() {
 
 			slog.Info("Opened group successfully", "group_sequence", group.GroupSequence())
 
-			frame := moqt.NewFrame([]byte("Hello from interop server!"))
+			frame := moqt.NewFrame([]byte("Hello from interop server in Go!"))
 			err = group.WriteFrame(frame)
 			if err != nil {
 				group.CancelWrite(moqt.InternalGroupErrorCode) // TODO: Handle error properly

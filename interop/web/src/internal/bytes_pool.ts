@@ -10,112 +10,79 @@ export let DefaultBytesPoolOptions: Required<BytesPoolOptions> = {
 };
 
 export class BytesPool {
-    #pool: Map<number, WeakRef<ArrayBufferLike>[]>; // Size-based buckets with WeakRef management
-    #cleanupRegistry: FinalizationRegistry<{ size: number; index: number }>;
-    #maxPerBucket: number; // Maximum arrays per bucket
-    #maxTotalBytes: number; // Optional total byte limit
-    #currentBytes: number; // Current total bytes in pool
+    #min: number;
+    #middle: number;
+    #max: number;
+    #buckets: Array<ArrayBufferLike[]>; // 0:min, 1:middle, 2:max
+    #maxPerBucket: number;
+    #maxTotalBytes: number;
+    #currentBytes: number;
 
-    constructor(options: BytesPoolOptions = DefaultBytesPoolOptions) {
-        this.#pool = new Map();
+    constructor(min: number, middle: number, max: number, options: BytesPoolOptions = DefaultBytesPoolOptions) {
+        if (!(min > 0 && middle > 0 && max > 0)) {
+            throw new Error("min, middle, max must be greater than 0");
+        }
+        if (!(min < middle && middle < max)) {
+            throw new Error("min, middle, max must be in ascending order");
+        }
+        this.#min = min;
+        this.#middle = middle;
+        this.#max = max;
+        this.#buckets = [[], [], []];
         this.#maxPerBucket = options.maxPerBucket ?? DefaultBytesPoolOptions.maxPerBucket;
         this.#maxTotalBytes = options.maxTotalBytes ?? DefaultBytesPoolOptions.maxTotalBytes;
         this.#currentBytes = 0;
-
-        // Automatically remove from pool when GC'd
-        this.#cleanupRegistry = new FinalizationRegistry((heldValue) => {
-            const { size, index } = heldValue;
-            const refs = this.#pool.get(size);
-            if (refs && refs[index]) {
-                // Update byte count when automatically cleaned up
-                this.#currentBytes -= size;
-                refs.splice(index, 1);
-                if (refs.length === 0) {
-                    this.#pool.delete(size);
-                }
-            }
-        });
     }
 
     acquire(capacity: number): ArrayBufferLike {
-        // Find appropriate size bucket
-        for (const [size, refs] of this.#pool.entries()) {
-            if (size >= capacity) {
-                // Look for a living WeakRef
-                for (let i = refs.length - 1; i >= 0; i--) {
-                    const bytes = refs[i].deref();
-                    if (bytes) {
-                        refs.splice(i, 1);
-                        if (refs.length === 0) {
-                            this.#pool.delete(size);
-                        }
-                        // Update current byte count when retrieving from pool
-                        this.#currentBytes -= size;
-                        return bytes;
-                    } else {
-                        // Already GC'd, remove the dead reference
-                        refs.splice(i, 1);
-                    }
-                }
-                if (refs.length === 0) {
-                    this.#pool.delete(size);
-                }
-            }
+        let idx: number;
+        let size: number;
+        if (capacity <= this.#min) {
+            idx = 0; size = this.#min;
+        } else if (capacity <= this.#middle) {
+            idx = 1; size = this.#middle;
+        } else if (capacity <= this.#max) {
+            idx = 2; size = this.#max;
+        } else {
+            return new ArrayBuffer(capacity);
         }
-
-        // No suitable size in pool, create new
-        return new ArrayBuffer(capacity);
+        const bucket = this.#buckets[idx];
+        if (bucket.length > 0) {
+            this.#currentBytes -= size;
+            return bucket.pop()!;
+        }
+        return new ArrayBuffer(size);
     }
 
     release(bytes: ArrayBufferLike): void {
         const size = bytes.byteLength;
-
-        // Check total byte limit if specified
-        if (this.#maxTotalBytes && this.#currentBytes + size > this.#maxTotalBytes) {
-            // Don't add to pool if it would exceed byte limit
-            return;
+        let idx = 0;
+        if (size === this.#min) {
+            // No action needed, already idx = 0
+        }else if (size === this.#middle){ 
+            idx = 1;
+        }else if (size === this.#max) {
+            idx = 2;
+        }else return; // Non-matching sizes are GC'd
+        if (this.#maxTotalBytes && this.#currentBytes + size > this.#maxTotalBytes) return;
+        const bucket = this.#buckets[idx];
+        if (bucket.length >= this.#maxPerBucket) {
+            bucket.shift();
+            this.#currentBytes -= size;
         }
-
-        // Check bucket size limit
-        const refs = this.#pool.get(size) || [];
-        if (refs.length >= this.#maxPerBucket) {
-            // If bucket is full, evict oldest entry from this bucket
-            const evicted = refs.shift();
-            if (evicted) {
-                this.#currentBytes -= size;
-            }
-        }
-
-        // Add to pool with WeakRef
-        const index = refs.length;
-        const weakRef = new WeakRef(bytes);
-        refs.push(weakRef);
-        this.#pool.set(size, refs);
+        bucket.push(bytes);
         this.#currentBytes += size;
-
-        // Register for automatic cleanup when GC'd
-        this.#cleanupRegistry.register(bytes, { size, index });
     }
 
     // Explicit cleanup (optional)
-    cleanup(): number {
-        let removedCount = 0;
-
-        for (const [size, refs] of this.#pool.entries()) {
-            for (let i = refs.length - 1; i >= 0; i--) {
-                if (!refs[i].deref()) {
-                    refs.splice(i, 1);
-                    removedCount++;
-                }
-            }
-            if (refs.length === 0) {
-                this.#pool.delete(size);
-            }
+    cleanup(): void {
+        for (let i = 0; i < this.#buckets.length; i++) {
+            this.#buckets[i].length = 0;
         }
 
-        return removedCount;
+        return;
     }
 }
 
-// Global default pool instance (similar to Go's package-level variables)
-export const DefaultBytesPool = new BytesPool();
+// Global default pool instance
+export const DefaultBytesPool = new BytesPool(64, 256, 1024);

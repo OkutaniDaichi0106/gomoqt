@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 // DefaultMux is the default trackMux used by the top-level functions.
@@ -60,7 +61,27 @@ func (mux *TrackMux) Handle(ctx context.Context, path BroadcastPath, handler Tra
 		panic("[TrackMux] nil context")
 	}
 
+	if !isValidPath(path) {
+		panic("[TrackMux] invalid track path: " + path)
+	}
+
 	mux.Announce(NewAnnouncement(ctx, path), handler)
+}
+
+func (mux *TrackMux) addHandler(path BroadcastPath, handler TrackHandler) bool {
+	mux.handlerMu.Lock()
+	defer mux.handlerMu.Unlock()
+	if _, ok := mux.handlerIndex[path]; ok {
+		return false
+	}
+	mux.handlerIndex[path] = handler
+	return true
+}
+
+func (mux *TrackMux) removeHandler(path BroadcastPath) {
+	mux.handlerMu.Lock()
+	defer mux.handlerMu.Unlock()
+	delete(mux.handlerIndex, path)
 }
 
 func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) {
@@ -71,77 +92,55 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 	}
 
 	if !announcement.IsActive() {
-		slog.Warn("[TrackMux] announcement is not active")
+		slog.Warn("[TrackMux] announcement is not active",
+			"path", path,
+		)
 		return
 	}
 
-	// Protect handlerIndex registration and duplicate check with handlerMu
-	mux.handlerMu.Lock()
-	if _, ok := mux.handlerIndex[path]; ok {
-		mux.handlerMu.Unlock()
+	// Add the handler to the mux if it is not already registered
+	if !mux.addHandler(path, handler) {
 		slog.Warn("[TrackMux] handler already registered for path", "path", path)
 		return
 	}
-	mux.handlerIndex[path] = handler
-	mux.handlerMu.Unlock()
 
-	// Protect announcementTree structure modification with per-node lock
 	segments := strings.Split(string(path), "/")
-	current := &mux.announcementTree
-	for _, seg := range segments[1 : len(segments)-1] {
-		current.mu.Lock()
-		if current.children == nil {
-			current.children = make(map[string]*announcingNode)
-		}
-		child, ok := current.children[seg]
-		if !ok {
-			child = newAnnouncingNode()
-			current.children[seg] = child
-		}
-		current = child
-		current.mu.Unlock()
-	}
+	segments = segments[1 : len(segments)-1]
+	node := mux.announcementTree.findNode(segments, countAnnouncement)
 
-	current.mu.Lock()
-	current.announcements[path] = announcement
-	current.mu.Unlock()
+	lastPart := segments[len(segments)-1]
+	node.addAnnouncement(lastPart, announcement)
 
 	// Collect failed writers and clean them up with proper locking
 	var failedWriters []*AnnouncementWriter
-
-	current.mu.RLock()
-	for writer := range current.writers {
+	node.mu.RLock()
+	for writer := range node.writers {
 		err := writer.SendAnnouncement(announcement)
 		if err != nil {
 			writer.CloseWithError(InternalAnnounceErrorCode)
 			failedWriters = append(failedWriters, writer)
-			slog.Error("mux: failed to send announcement", "error", err)
+			slog.Error("[TrackMux] failed to send announcement", "error", err)
 			continue
 		}
 	}
-	current.mu.RUnlock()
+	node.mu.RUnlock()
 
 	// Delete failed writers from the current node
 	if len(failedWriters) > 0 {
-		current.mu.Lock()
+		node.mu.Lock()
 		for _, writer := range failedWriters {
-			delete(current.writers, writer)
+			delete(node.writers, writer)
 		}
-		current.mu.Unlock()
+		node.mu.Unlock()
 	}
 
 	announcement.OnEnd(func() {
 		// Remove the handler
-		mux.handlerMu.Lock()
-		delete(mux.handlerIndex, path)
-		mux.handlerMu.Unlock()
+		mux.removeHandler(path)
 
 		// Remove the announcement
-		current.mu.Lock()
-		delete(current.announcements, path)
-		current.mu.Unlock()
+		node.removeAnnouncement(lastPart, announcement)
 	})
-
 }
 
 // Handler returns the handler for the specified track path.
@@ -176,7 +175,6 @@ func (mux *TrackMux) ServeTrack(tw *TrackWriter) {
 
 // ServeAnnouncements serves announcements for tracks matching the given pattern.
 // It registers the AnnouncementWriter and sends announcements for matching tracks.
-
 func (mux *TrackMux) ServeAnnouncements(w *AnnouncementWriter, prefix string) {
 	if w == nil {
 		slog.Error("mux: nil announcement writer")
@@ -208,7 +206,7 @@ func (mux *TrackMux) ServeAnnouncements(w *AnnouncementWriter, prefix string) {
 	}
 
 	// Find existing announcements and initialize the writer
-	announcements := make([]*Announcement, 0, len(current.announcements))
+	announcements := make([]*Announcement, 0, current.announcementsCount.Load())
 	announcements = current.appendAnnouncements(announcements)
 	err := w.init(announcements)
 	if err != nil {
@@ -234,26 +232,69 @@ func (mux *TrackMux) Clear() {
 // newAnnouncingNode creates and initializes a new routing tree node.
 func newAnnouncingNode() *announcingNode {
 	return &announcingNode{
-		announcements: make(map[BroadcastPath]*Announcement),
+		announcements: make(map[segment]*Announcement),
 		writers:       make(map[*AnnouncementWriter]struct{}),
 		children:      make(map[string]*announcingNode),
 	}
 }
 
+type segment = string
+
 type announcingNode struct {
 	mu sync.RWMutex
 
-	announcements map[BroadcastPath]*Announcement
+	announcements map[segment]*Announcement
 	writers       map[*AnnouncementWriter]struct{}
 
-	children map[string]*announcingNode
+	announcementsCount atomic.Uint64
+	children           map[string]*announcingNode
+}
+
+func (node *announcingNode) findNode(segments []string, op func(*announcingNode)) *announcingNode {
+	current := node
+
+	for _, seg := range segments {
+		if op != nil {
+			op(current)
+		}
+
+		current.mu.Lock()
+		if current.children == nil {
+			current.children = make(map[string]*announcingNode)
+		}
+		child, ok := current.children[seg]
+		if !ok {
+			child = newAnnouncingNode()
+			current.children[seg] = child
+		}
+		current.mu.Unlock()
+
+		current = child
+	}
+
+	return current
+}
+
+func (node *announcingNode) addAnnouncement(segment segment, announcement *Announcement) {
+	node.mu.Lock()
+	defer node.mu.Unlock()
+
+	node.announcements[segment] = announcement
+}
+
+func (node *announcingNode) removeAnnouncement(segment segment, announcement *Announcement) {
+	node.mu.Lock()
+	defer node.mu.Unlock()
+
+	if node.announcements[segment] == announcement {
+		delete(node.announcements, segment)
+	}
 }
 
 func (node *announcingNode) appendAnnouncements(anns []*Announcement) []*Announcement {
 	node.mu.RLock()
 	// Take a snapshot of announcements and children
 	for _, a := range node.announcements {
-		slog.Info("found announcement", "suffix", a.BroadcastPath())
 		anns = append(anns, a)
 	}
 	children := make([]*announcingNode, 0, len(node.children))
@@ -268,6 +309,14 @@ func (node *announcingNode) appendAnnouncements(anns []*Announcement) []*Announc
 	}
 
 	return anns
+}
+
+func countAnnouncement(node *announcingNode) {
+	if node == nil {
+		return
+	}
+
+	node.announcementsCount.Add(1)
 }
 
 func isValidPath(path BroadcastPath) bool {

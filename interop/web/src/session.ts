@@ -164,7 +164,7 @@ export class Session {
 			queue.enqueue([stream, msg]);
 		});
 
-		const track = new TrackReader(subscribeStream, queue,
+		const track = new TrackReader(subscribeStream, queue.dequeue,
 			() => {this.#enqueueFuncs.delete(req.subscribeId);});
 
 		return track;

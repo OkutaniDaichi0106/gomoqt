@@ -3,6 +3,7 @@ package moqt
 import (
 	"context"
 	"strings"
+	"sync"
 )
 
 func NewAnnouncement(ctx context.Context, path BroadcastPath) *Announcement {
@@ -18,6 +19,7 @@ func NewAnnouncement(ctx context.Context, path BroadcastPath) *Announcement {
 }
 
 type Announcement struct {
+	mu     sync.Mutex
 	ctx    context.Context
 	cancel context.CancelFunc
 
@@ -52,6 +54,8 @@ func (a *Announcement) AwaitEnd() <-chan struct{} {
 }
 
 func (a *Announcement) OnEnd(f func()) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if a.ctx.Err() != nil {
 		f()
 		return
@@ -65,6 +69,8 @@ func (a *Announcement) IsActive() bool {
 
 func (a *Announcement) End() {
 	a.cancel()
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	for _, f := range a.onEndFuncs {
 		f()
 	}

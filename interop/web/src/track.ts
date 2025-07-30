@@ -109,14 +109,14 @@ export class TrackWriter {
 
 export class TrackReader {
     #subscribeStream: SendSubscribeStream;
-    #queue: Queue<[Reader, GroupMessage]>;
+    #acceptFunc: () => Promise<[Reader, GroupMessage] | undefined>;
     #onCloseFunc: () => void;
 
-    constructor(subscribeStream: SendSubscribeStream, queue: Queue<[Reader, GroupMessage]>,
+    constructor(subscribeStream: SendSubscribeStream, acceptFunc: () => Promise<[Reader, GroupMessage] | undefined>,
         onCloseFunc: () => void,
     ) {
         this.#subscribeStream = subscribeStream;
-        this.#queue = queue;
+        this.#acceptFunc = acceptFunc;
         this.#onCloseFunc = onCloseFunc;
     }
 
@@ -126,7 +126,7 @@ export class TrackReader {
             return [undefined, ctxErr];
         }
 
-        const item = await this.#queue.dequeue();
+        const item = await this.#acceptFunc();
         if (item === undefined) {
             return [undefined, new Error("No group available")];
         }

@@ -33,7 +33,7 @@ func TestNewFrame(t *testing.T) {
 			frame := NewFrame(tt.data)
 			assert.NotNil(t, frame)
 
-			copiedBytes := frame.CopyBytes()
+			copiedBytes := frame.Bytes()
 			if tt.expected == nil {
 				assert.Empty(t, copiedBytes)
 			} else {
@@ -42,7 +42,7 @@ func TestNewFrame(t *testing.T) {
 				// Verify it's a copy, not the same slice
 				if len(copiedBytes) > 0 {
 					copiedBytes[0] = 'X'
-					originalCopy := frame.CopyBytes()
+					originalCopy := frame.Bytes()
 					assert.NotEqual(t, copiedBytes[0], originalCopy[0])
 				}
 			}
@@ -71,7 +71,7 @@ func TestFrame_CopyBytes(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			frame := NewFrame(tt.data)
-			copiedBytes := frame.CopyBytes()
+			copiedBytes := frame.Bytes()
 
 			if tt.data == nil {
 				assert.Empty(t, copiedBytes)
@@ -108,40 +108,8 @@ func TestFrame_Size(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			frame := NewFrame(tt.data)
-			size := frame.Size()
+			size := frame.Len()
 			assert.Equal(t, tt.want, size)
-		})
-	}
-}
-
-func TestFrame_Release(t *testing.T) {
-	tests := map[string]struct {
-		data []byte
-	}{
-		"normal data": {
-			data: []byte("test data"),
-		},
-		"empty data": {
-			data: []byte{},
-		},
-		"nil data": {
-			data: nil,
-		},
-	}
-
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			frame := NewFrame(tt.data)
-
-			// Test that Release doesn't panic
-			assert.NotPanics(t, func() {
-				frame.Release()
-			})
-
-			// Test multiple releases don't panic
-			assert.NotPanics(t, func() {
-				frame.Release()
-			})
 		})
 	}
 }

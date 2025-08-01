@@ -2,7 +2,6 @@ package moqt
 
 import (
 	"context"
-	"errors"
 	"io"
 	"sync"
 	"testing"
@@ -31,7 +30,7 @@ func TestNewSendSubscribeStream(t *testing.T) {
 	assert.Equal(t, id, sss.id, "id should be set correctly")
 	assert.Equal(t, config, sss.config, "config should be set correctly")
 	assert.Equal(t, mockStream, sss.stream, "stream should be set correctly")
-	assert.False(t, sss.closed, "stream should not be closed initially")
+	assert.False(t, sss.ctx.Err() != nil, "stream should not be closed initially")
 }
 
 func TestSendSubscribeStream_SubscribeID(t *testing.T) {
@@ -185,7 +184,7 @@ func TestSendSubscribeStream_Close(t *testing.T) {
 
 	err := sss.close()
 	assert.NoError(t, err, "Close() should not return error")
-	assert.True(t, sss.closed, "stream should be marked as closed")
+	assert.True(t, sss.ctx.Err() != nil, "stream should be marked as closed")
 
 	// Verify Close was called on the underlying stream
 	mockStream.AssertCalled(t, "Close")
@@ -211,8 +210,8 @@ func TestSendSubscribeStream_CloseWithError(t *testing.T) {
 	testErrCode := InternalSubscribeErrorCode
 	err := sss.closeWithError(testErrCode)
 	assert.NoError(t, err, "CloseWithError() should not return error")
-	assert.True(t, sss.closed, "stream should be marked as closed")
-	assert.NotNil(t, sss.closeErr, "closeErr should be set")
+	assert.True(t, sss.ctx.Err() != nil, "stream should be marked as closed")
+	assert.ErrorAs(t, Cause(sss.ctx), &SubscribeError{}, "closeErr should be a SubscribeError")
 
 	// Verify CancelWrite and CancelRead were called on the underlying stream
 	mockStream.AssertCalled(t, "CancelWrite", quic.StreamErrorCode(testErrCode))
@@ -239,7 +238,7 @@ func TestSendSubscribeStream_CloseWithError_NilError(t *testing.T) {
 	testErrCode := SubscribeErrorCode(0) // Using zero error code
 	err := sss.closeWithError(testErrCode)
 	assert.NoError(t, err, "CloseWithError() should not return error")
-	assert.True(t, sss.closed, "stream should be marked as closed")
+	assert.True(t, sss.ctx.Err() != nil, "stream should be marked as closed")
 
 	// Should still cancel the stream operations
 	mockStream.AssertCalled(t, "CancelWrite", quic.StreamErrorCode(testErrCode))
@@ -358,8 +357,9 @@ func TestSendSubscribeStream_UpdateSubscribeWriteError(t *testing.T) {
 
 	err := sss.UpdateSubscribe(newConfig)
 	assert.Error(t, err, "UpdateSubscribe() should return error when Write fails")
-	assert.True(t, sss.closed, "stream should be marked as closed after write error")
-	assert.NotNil(t, sss.closeErr, "closeErr should be set")
+	assert.True(t, sss.ctx.Err() != nil, "stream should be marked as closed after write error")
+	assert.Error(t, context.Cause(sss.ctx), "closeErr should be set")
+	assert.ErrorAs(t, Cause(sss.ctx), &SubscribeError{}, "closeErr should be a SubscribeError")
 
 	mockStream.AssertExpectations(t)
 }
@@ -409,7 +409,7 @@ func TestSendSubscribeStream_CloseAlreadyClosed(t *testing.T) {
 	// Close once
 	err1 := sss.close()
 	assert.NoError(t, err1, "first Close() should succeed")
-	assert.True(t, sss.closed, "stream should be marked as closed")
+	assert.True(t, sss.ctx.Err() != nil, "stream should be marked as closed")
 
 	// Close again
 	err2 := sss.close()
@@ -418,8 +418,7 @@ func TestSendSubscribeStream_CloseAlreadyClosed(t *testing.T) {
 	mockStream.AssertExpectations(t)
 }
 
-func TestSendSubscribeStream_CloseWithErrorAlreadyClosed(t *testing.T) {
-	id := SubscribeID(111)
+func TestSendSubscribeStream_CloseWithError_MultipleClose(t *testing.T) {
 
 	mockStream := &MockQUICStream{
 		ReadFunc: func(p []byte) (int, error) {
@@ -431,21 +430,16 @@ func TestSendSubscribeStream_CloseWithErrorAlreadyClosed(t *testing.T) {
 	mockStream.On("CancelWrite", mock.AnythingOfType("quic.StreamErrorCode")).Return().Once()
 	mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return().Once()
 
-	sss := newSendSubscribeStream(id, mockStream, &TrackConfig{})
+	sss := newSendSubscribeStream(SubscribeID(111), mockStream, &TrackConfig{})
 	// Close with error once
 	testErrCode := InternalSubscribeErrorCode
 	err1 := sss.closeWithError(testErrCode)
 	assert.NoError(t, err1, "first CloseWithError() should succeed")
-	assert.True(t, sss.closed, "stream should be marked as closed") // Close with error again
+	assert.True(t, sss.ctx.Err() != nil, "stream should be marked as closed") // Close with error again
 	err2 := sss.closeWithError(testErrCode)
 
 	assert.Error(t, err2, "second CloseWithError() should return the existing error")
-	var subErr *SubscribeError
-	if errors.As(err2, &subErr) {
-		assert.Equal(t, testErrCode, subErr.SubscribeErrorCode(), "error code should match")
-	} else {
-		t.Errorf("expected SubscribeError, got %T", err2)
-	}
+	assert.ErrorAs(t, Cause(sss.ctx), &SubscribeError{}, "closeErr should be a SubscribeError")
 
 	mockStream.AssertExpectations(t)
 }

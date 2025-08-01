@@ -2,6 +2,7 @@ package moqt
 
 import (
 	"context"
+	"runtime"
 	"strings"
 	"sync"
 )
@@ -71,9 +72,33 @@ func (a *Announcement) End() {
 	a.cancel()
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	for _, f := range a.onEndFuncs {
-		f()
+
+	workerCount := runtime.NumCPU()
+	if workerCount > len(a.onEndFuncs) {
+		workerCount = len(a.onEndFuncs)
 	}
+	if workerCount == 0 {
+		workerCount = 1
+	}
+
+	jobs := make(chan func())
+
+	var wg sync.WaitGroup
+
+	for range workerCount {
+		go func() {
+			for f := range jobs {
+				f()
+				wg.Done()
+			}
+		}()
+	}
+	for _, f := range a.onEndFuncs {
+		wg.Add(1)
+		jobs <- f
+	}
+	close(jobs)
+	wg.Wait()
 }
 
 func (a *Announcement) Fork() *Announcement {

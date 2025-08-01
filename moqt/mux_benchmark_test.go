@@ -22,7 +22,6 @@ func BenchmarkTrackMux_NewTrackMux(b *testing.B) {
 	}
 }
 
-// BenchmarkTrackMux_Handle benchmarks handler registration
 func BenchmarkTrackMux_Handle(b *testing.B) {
 	sizes := []int{100, 1000, 10000}
 
@@ -126,15 +125,15 @@ func BenchmarkTrackMux_ServeAnnouncements(b *testing.B) {
 				mux.Handle(ctx, path, handler)
 			}
 
-			// Create mock announcement writer
-			mockWriter := &MockAnnouncementWriter{}
-			mockWriter.On("SendAnnouncement", mock.Anything).Return(nil)
+			// Create announcement writer
+			mockStream := &MockQUICStream{}
+			announceWriter := newAnnouncementWriter(mockStream, "/room/")
 
 			b.ReportAllocs()
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				mux.ServeAnnouncements(mockWriter, "/room/")
+				mux.ServeAnnouncements(announceWriter, "/room/")
 			}
 		})
 	}
@@ -467,8 +466,8 @@ func BenchmarkTrackMux_AnnouncementTree(b *testing.B) {
 				mux.Handle(ctx, path, handler)
 			}
 
-			mockWriter := &MockAnnouncementWriter{}
-			mockWriter.On("SendAnnouncement", mock.Anything).Return(nil)
+			mockStream := &MockQUICStream{}
+			mockWriter := newAnnouncementWriter(mockStream, "/level1/")
 
 			b.ReportAllocs()
 			b.ResetTimer()
@@ -549,111 +548,6 @@ func BenchmarkTrackMux_GCPressure(b *testing.B) {
 				mux.Clear()
 			}
 		}
-	})
-}
-
-// BenchmarkTrackMux_RealWorldScenarios benchmarks realistic usage patterns
-func BenchmarkTrackMux_RealWorldScenarios(b *testing.B) {
-	b.Run("broadcast-server", func(b *testing.B) {
-		mux := NewTrackMux()
-		ctx := context.Background()
-		handler := TrackHandlerFunc(func(tw *TrackWriter) {
-			// Simulate some work
-			for i := 0; i < 10; i++ {
-				_ = fmt.Sprintf("processing-%d", i)
-			}
-		})
-
-		// Simulate broadcast server with multiple rooms
-		const numRooms = 100
-		const usersPerRoom = 50
-
-		// Pre-register room handlers
-		for room := 0; room < numRooms; room++ {
-			for user := 0; user < usersPerRoom; user++ {
-				path := BroadcastPath(fmt.Sprintf("/room/%d/user/%d", room, user))
-				mux.Handle(ctx, path, handler)
-			}
-		}
-
-		b.ReportAllocs()
-		b.ResetTimer()
-
-		b.RunParallel(func(pb *testing.PB) {
-			i := 0
-			for pb.Next() {
-				// Simulate mixed operations
-				switch i % 100 {
-				case 0, 1, 2: // 3% - new user joins
-					room := i % numRooms
-					newUser := usersPerRoom + (i / 100)
-					path := BroadcastPath(fmt.Sprintf("/room/%d/user/%d", room, newUser))
-					mux.Handle(ctx, path, handler)
-				case 3, 4: // 2% - announcement subscription
-					room := i % numRooms
-					mockWriter := &MockAnnouncementWriter{}
-					mockWriter.On("SendAnnouncement", mock.Anything).Return(nil)
-					prefix := fmt.Sprintf("/room/%d/", room)
-					mux.ServeAnnouncements(mockWriter, prefix)
-				default: // 95% - track serving
-					room := i % numRooms
-					user := i % usersPerRoom
-					path := BroadcastPath(fmt.Sprintf("/room/%d/user/%d", room, user))
-					trackWriter := newTrackWriter(path, TrackName(fmt.Sprintf("track-%d", i)), nil, func() (quic.SendStream, error) {
-						mockSendStream := &MockQUICSendStream{}
-						mockSendStream.On("CancelWrite", mock.Anything).Return()
-						mockSendStream.On("StreamID").Return(quic.StreamID(1))
-						mockSendStream.On("Close").Return(nil)
-						mockSendStream.On("Write", mock.Anything).Return(0, nil)
-						return mockSendStream, nil
-					}, func() {})
-					mux.ServeTrack(trackWriter)
-				}
-				i++
-			}
-		})
-	})
-
-	b.Run("live-streaming", func(b *testing.B) {
-		mux := NewTrackMux()
-		ctx := context.Background()
-		handler := TrackHandlerFunc(func(tw *TrackWriter) {
-			// Simulate stream processing
-		})
-
-		// Simulate live streaming with multiple quality levels
-		const numStreams = 200
-		qualities := []string{"low", "medium", "high", "4k"}
-
-		// Pre-register stream handlers
-		for stream := 0; stream < numStreams; stream++ {
-			for _, quality := range qualities {
-				path := BroadcastPath(fmt.Sprintf("/stream/%d/quality/%s", stream, quality))
-				mux.Handle(ctx, path, handler)
-			}
-		}
-
-		b.ReportAllocs()
-		b.ResetTimer()
-
-		b.RunParallel(func(pb *testing.PB) {
-			i := 0
-			for pb.Next() {
-				stream := i % numStreams
-				quality := qualities[i%len(qualities)]
-				path := BroadcastPath(fmt.Sprintf("/stream/%d/quality/%s", stream, quality))
-				trackWriter := newTrackWriter(path, TrackName(fmt.Sprintf("track-%d", i)), nil, func() (quic.SendStream, error) {
-					mockSendStream := &MockQUICSendStream{}
-					mockSendStream.On("CancelWrite", mock.Anything).Return()
-					mockSendStream.On("StreamID").Return(quic.StreamID(1))
-					mockSendStream.On("Close").Return(nil)
-					mockSendStream.On("Write", mock.Anything).Return(0, nil)
-					return mockSendStream, nil
-				}, func() {})
-				mux.ServeTrack(trackWriter)
-				i++
-			}
-		})
 	})
 }
 

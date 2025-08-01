@@ -9,11 +9,11 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-func newSendSubscribeStream(id SubscribeID, stream quic.Stream, config *TrackConfig) *sendSubscribeStream {
+func newSendSubscribeStream(id SubscribeID, stream quic.Stream, initConfig *TrackConfig) *sendSubscribeStream {
 	substr := &sendSubscribeStream{
 		ctx:    context.WithValue(stream.Context(), &biStreamTypeCtxKey, message.StreamTypeSubscribe),
 		id:     id,
-		config: config,
+		config: initConfig,
 		stream: stream,
 	}
 

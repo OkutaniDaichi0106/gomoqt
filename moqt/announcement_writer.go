@@ -10,6 +10,10 @@ import (
 )
 
 func newAnnouncementWriter(stream quic.Stream, prefix prefix) *AnnouncementWriter {
+	if !isValidPrefix(prefix) {
+		panic("invalid prefix for AnnouncementWriter")
+	}
+
 	sas := &AnnouncementWriter{
 		prefix:  prefix,
 		stream:  stream,
@@ -74,6 +78,10 @@ func (sas *AnnouncementWriter) init(init []*Announcement) error {
 				defer sas.mu.Unlock()
 
 				// Remove from actives only if it's still the same announcement
+				if sas.actives == nil {
+					return // Already closed
+				}
+
 				if current, ok := sas.actives[suffix]; ok && current == new {
 					delete(sas.actives, suffix)
 				}
@@ -107,8 +115,8 @@ func (sas *AnnouncementWriter) init(init []*Announcement) error {
 			return
 		}
 
-		initCh := sas.initCh
-		close(initCh)
+		close(sas.initCh)
+		sas.initCh = nil
 	})
 
 	return err
@@ -124,7 +132,6 @@ func (sas *AnnouncementWriter) SendAnnouncement(new *Announcement) error {
 
 	if sas.initCh != nil {
 		<-sas.initCh
-		sas.initCh = nil
 	}
 
 	if !new.IsActive() {
@@ -197,6 +204,13 @@ func (sas *AnnouncementWriter) Close() error {
 	sas.mu.Lock()
 	defer sas.mu.Unlock()
 
+	sas.actives = nil
+
+	if sas.initCh != nil {
+		close(sas.initCh)
+		sas.initCh = nil
+	}
+
 	sas.stream.CancelRead(quic.StreamErrorCode(InternalAnnounceErrorCode)) // TODO: Use a specific error code if needed
 	return sas.stream.Close()
 }
@@ -204,6 +218,13 @@ func (sas *AnnouncementWriter) Close() error {
 func (sas *AnnouncementWriter) CloseWithError(code AnnounceErrorCode) error {
 	sas.mu.Lock()
 	defer sas.mu.Unlock()
+
+	sas.actives = nil
+
+	if sas.initCh != nil {
+		close(sas.initCh)
+		sas.initCh = nil
+	}
 
 	strErrCode := quic.StreamErrorCode(code)
 	sas.stream.CancelWrite(strErrCode)

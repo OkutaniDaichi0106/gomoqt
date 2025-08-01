@@ -3,7 +3,6 @@ package moqt
 import (
 	"bytes"
 	"context"
-	"errors"
 	"io"
 	"sync"
 	"testing"
@@ -318,6 +317,7 @@ func TestReceiveSubscribeStream_CloseWithError(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			subscribeID := SubscribeID(123)
+			ctx, cancel := context.WithCancelCause(context.Background())
 			mockStream := &MockQUICStream{
 				ReadFunc: func(p []byte) (int, error) {
 					// Block to prevent automatic closure
@@ -325,7 +325,13 @@ func TestReceiveSubscribeStream_CloseWithError(t *testing.T) {
 				},
 			}
 			mockStream.On("StreamID").Return(quic.StreamID(123))
-			mockStream.On("CancelWrite", quic.StreamErrorCode(tt.errorCode)).Return()
+			mockStream.On("Context").Return(ctx)
+			mockStream.On("CancelWrite", quic.StreamErrorCode(tt.errorCode)).Run(func(args mock.Arguments) {
+				cancel(&quic.StreamError{
+					StreamID:  mockStream.StreamID(),
+					ErrorCode: args[0].(quic.StreamErrorCode),
+				})
+			}).Return()
 			mockStream.On("CancelRead", quic.StreamErrorCode(tt.errorCode)).Return()
 
 			config := &TrackConfig{
@@ -334,19 +340,7 @@ func TestReceiveSubscribeStream_CloseWithError(t *testing.T) {
 				MaxGroupSequence: GroupSequence(100),
 			}
 
-			// Create stream manually to avoid goroutine interference
-			ctx, cancel := context.WithCancelCause(context.Background())
-			rss := &receiveSubscribeStream{
-				subscribeID: subscribeID,
-				config:      config,
-				stream:      mockStream,
-				updatedCh:   make(chan struct{}, 1),
-				ctx:         ctx,
-				cancel:      cancel,
-			}
-
-			// Mark listenOnce as done to prevent goroutine from starting
-			rss.listenOnce.Do(func() {})
+			rss := newReceiveSubscribeStream(subscribeID, mockStream, config)
 
 			err := rss.closeWithError(tt.errorCode)
 
@@ -364,9 +358,18 @@ func TestReceiveSubscribeStream_CloseWithError(t *testing.T) {
 	}
 }
 
-func TestReceiveSubscribeStream_CloseWithError_AlreadyClosed(t *testing.T) {
-	subscribeID := SubscribeID(123)
+func TestReceiveSubscribeStream_CloseWithError_MultipleClose(t *testing.T) {
+	ctx, cancel := context.WithCancelCause(context.Background())
 	mockStream := &MockQUICStream{}
+	mockStream.On("StreamID").Return(quic.StreamID(123))
+	mockStream.On("Context").Return(ctx)
+	mockStream.On("CancelWrite", mock.Anything).Run(func(args mock.Arguments) {
+		cancel(&quic.StreamError{
+			StreamID:  mockStream.StreamID(),
+			ErrorCode: args[0].(quic.StreamErrorCode),
+		})
+	}).Return()
+	mockStream.On("CancelRead", mock.Anything).Return()
 
 	config := &TrackConfig{
 		TrackPriority:    TrackPriority(1),
@@ -374,23 +377,12 @@ func TestReceiveSubscribeStream_CloseWithError_AlreadyClosed(t *testing.T) {
 		MaxGroupSequence: GroupSequence(100),
 	}
 	// Create stream manually
-	ctx, cancel := context.WithCancelCause(context.Background())
-	rss := &receiveSubscribeStream{
-		subscribeID: subscribeID,
-		config:      config,
-		stream:      mockStream,
-		updatedCh:   make(chan struct{}, 1),
-		ctx:         ctx,
-		cancel:      cancel,
-	}
-	// Mark as already closed
-	cancel(errors.New("already closed"))
-
-	// Mark listenOnce as done
-	rss.listenOnce.Do(func() {})
+	rss := newReceiveSubscribeStream(123, mockStream, config)
 
 	err := rss.closeWithError(InternalSubscribeErrorCode)
-	assert.Error(t, err, "CloseWithError should return error when already closed")
+	assert.NoError(t, err, "CloseWithError should return error when already closed")
+	assert.Error(t, rss.ctx.Err(), "Context should be cancelled after first closeWithError")
+	assert.ErrorAs(t, Cause(rss.ctx), &SubscribeError{}, "closeErr should be a SubscribeError")
 }
 
 func TestReceiveSubscribeStream_ConcurrentAccess(t *testing.T) {

@@ -212,7 +212,7 @@ func TestSessionStream_listenUpdates(t *testing.T) {
 				},
 			}
 
-			mockStream.On("Read", mock.Anything).Maybe()
+			mockStream.On("Read", mock.Anything)
 
 			ss := newSessionStream(mockStream)
 
@@ -262,7 +262,7 @@ func TestSessionStream_listenUpdates_ContextCancellation(t *testing.T) {
 	mockStream := &MockQUICStream{}
 
 	// Mock Read to potentially be called
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 	mockStream.On("Context").Return(ctx)
 
 	ss := newSessionStream(mockStream)
@@ -292,8 +292,8 @@ func TestSessionStream_ConcurrentAccess(t *testing.T) {
 
 	// Setup mocks to allow concurrent operations
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
-	mockStream.On("Write", mock.Anything).Return(8, nil).Maybe()
-	mockStream.On("Close").Return(nil).Maybe()
+	mockStream.On("Write", mock.Anything).Return(8, nil)
+	mockStream.On("Close").Return(nil)
 
 	ss := newSessionStream(mockStream)
 

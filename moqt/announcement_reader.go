@@ -10,6 +10,10 @@ import (
 )
 
 func newAnnouncementReader(stream quic.Stream, prefix prefix, initSuffixes []suffix) *AnnouncementReader {
+	if !isValidPrefix(prefix) {
+		panic("invalid prefix for AnnouncementReader")
+	}
+
 	ar := &AnnouncementReader{
 		ctx:         context.WithValue(stream.Context(), &biStreamTypeCtxKey, message.StreamTypeAnnounce),
 		stream:      stream,
@@ -121,17 +125,12 @@ func (ras *AnnouncementReader) ReceiveAnnouncement(ctx context.Context) (*Announ
 	for {
 		ras.announcementsMu.Lock()
 
-		slog.Info("waiting for announcement", "prefix", ras.prefix)
-
 		if ras.ctx.Err() != nil {
 			ras.announcementsMu.Unlock()
 			return nil, Cause(ras.ctx)
 		}
 
-		slog.Info("pending announcements available", "count", len(ras.pendings))
-
 		if len(ras.pendings) > 0 {
-			slog.Info("pending announcements available", "count", len(ras.pendings))
 			next := ras.pendings[0]
 			ras.pendings = ras.pendings[1:]
 
@@ -188,6 +187,10 @@ func (ras *AnnouncementReader) CloseWithError(code AnnounceErrorCode) error {
 	ras.stream.CancelWrite(strErrCode)
 
 	return nil
+}
+
+func (ras *AnnouncementReader) Context() context.Context {
+	return ras.ctx
 }
 
 type suffix = string

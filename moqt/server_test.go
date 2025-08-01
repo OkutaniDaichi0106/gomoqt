@@ -565,7 +565,7 @@ func TestServer_SessionManagement(t *testing.T) {
 			mockConn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)          // For handleBiStreams
 			mockConn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)       // For handleUniStreams
 			mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil) // For session.Terminate
-			mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080}).Maybe()
+			mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
 			session := newSession(mockConn, DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, nil)
 

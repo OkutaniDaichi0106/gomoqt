@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // DefaultMux is the default trackMux used by the top-level functions.
@@ -105,34 +106,46 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 	}
 
 	segments := strings.Split(string(path), "/")
-	segments = segments[1 : len(segments)-1]
-	node := mux.announcementTree.findNode(segments, countAnnouncement)
+	node := mux.announcementTree.findNode(segments[1:len(segments)-1], countAnnouncement)
 
 	lastPart := segments[len(segments)-1]
 	node.addAnnouncement(lastPart, announcement)
 
-	// Collect failed writers and clean them up with proper locking
-	var failedWriters []*AnnouncementWriter
+	// Send announcement to all registered channels with retry mechanism
 	node.mu.RLock()
-	for writer := range node.writers {
-		err := writer.SendAnnouncement(announcement)
-		if err != nil {
-			writer.CloseWithError(InternalAnnounceErrorCode)
-			failedWriters = append(failedWriters, writer)
-			slog.Error("[TrackMux] failed to send announcement", "error", err)
-			continue
+	for ch := range node.channels {
+		select {
+		case ch <- announcement:
+			// Successfully sent to channel
+		default:
+			// Channel is busy, start retry goroutine
+			go func(channel chan *Announcement) {
+				for {
+					select {
+					case channel <- announcement:
+						// Successfully sent to channel
+						return
+					case <-time.After(100 * time.Millisecond):
+						// Timeout, retry
+						continue
+					case <-announcement.AwaitEnd():
+						// Announcement ended, no need to send
+						return
+					}
+				}
+			}(ch)
 		}
 	}
 	node.mu.RUnlock()
 
-	// Delete failed writers from the current node
-	if len(failedWriters) > 0 {
-		node.mu.Lock()
-		for _, writer := range failedWriters {
-			delete(node.writers, writer)
-		}
-		node.mu.Unlock()
-	}
+	// // Delete failed writers from the current node
+	// if len(failedWriters) > 0 {
+	// 	node.mu.Lock()
+	// 	for _, writer := range failedWriters {
+	// 		delete(node.writers, writer)
+	// 	}
+	// 	node.mu.Unlock()
+	// }
 
 	announcement.OnEnd(func() {
 		// Remove the handler
@@ -175,14 +188,14 @@ func (mux *TrackMux) ServeTrack(tw *TrackWriter) {
 
 // ServeAnnouncements serves announcements for tracks matching the given pattern.
 // It registers the AnnouncementWriter and sends announcements for matching tracks.
-func (mux *TrackMux) ServeAnnouncements(w *AnnouncementWriter, prefix string) {
-	if w == nil {
+func (mux *TrackMux) ServeAnnouncements(aw *AnnouncementWriter, prefix string) {
+	if aw == nil {
 		slog.Error("mux: nil announcement writer")
 		return
 	}
 
 	if !isValidPrefix(prefix) {
-		w.CloseWithError(InvalidPrefixErrorCode)
+		aw.CloseWithError(InvalidPrefixErrorCode)
 		return
 	}
 
@@ -205,18 +218,61 @@ func (mux *TrackMux) ServeAnnouncements(w *AnnouncementWriter, prefix string) {
 		current = next
 	}
 
-	// Find existing announcements and initialize the writer
-	announcements := make([]*Announcement, 0, current.announcementsCount.Load())
-	announcements = current.appendAnnouncements(announcements)
-	err := w.init(announcements)
-	if err != nil {
-		slog.Error("mux: failed to initialize announcement writer", "error", err)
-		w.CloseWithError(InternalAnnounceErrorCode)
+	// Use unbuffered channel with retry mechanism for memory efficiency
+	ch := make(chan *Announcement)
+	current.mu.Lock()
+	current.channels[ch] = struct{}{}
+	current.mu.Unlock()
+
+	// Cleanup channel when done
+	defer func() {
+		current.mu.Lock()
+		delete(current.channels, ch)
+		current.mu.Unlock()
+		close(ch)
+	}()
+
+	// Get existing announcements in a separate goroutine to avoid blocking new announcements
+	var initErr error
+	initDone := make(chan struct{})
+
+	go func() {
+		defer close(initDone)
+		announcements := current.appendAnnouncements(nil)
+		initErr = aw.init(announcements)
+	}()
+
+	// Wait for initialization to complete or context cancellation
+	select {
+	case <-initDone:
+		if initErr != nil {
+			slog.Error("[TrackMux] failed to initialize announcement writer", "error", initErr)
+			aw.CloseWithError(InternalAnnounceErrorCode)
+			return
+		}
+	case <-aw.Context().Done():
+		// Writer context cancelled during initialization
 		return
 	}
 
-	// Register the writer in the current node
-	current.writers[w] = struct{}{}
+	// Process announcements from channel
+	for {
+		select {
+		case ann, ok := <-ch:
+			if !ok {
+				return // Channel closed
+			}
+			err := aw.SendAnnouncement(ann)
+			if err != nil {
+				slog.Error("[TrackMux] failed to send announcement", "error", err)
+				aw.CloseWithError(InternalAnnounceErrorCode)
+				return
+			}
+		case <-aw.Context().Done():
+			// Writer context cancelled
+			return
+		}
+	}
 }
 
 func (mux *TrackMux) Clear() {
@@ -233,8 +289,8 @@ func (mux *TrackMux) Clear() {
 func newAnnouncingNode() *announcingNode {
 	return &announcingNode{
 		announcements: make(map[segment]*Announcement),
-		writers:       make(map[*AnnouncementWriter]struct{}),
 		children:      make(map[string]*announcingNode),
+		channels:      make(map[chan *Announcement]struct{}),
 	}
 }
 
@@ -244,7 +300,8 @@ type announcingNode struct {
 	mu sync.RWMutex
 
 	announcements map[segment]*Announcement
-	writers       map[*AnnouncementWriter]struct{}
+
+	channels map[chan *Announcement]struct{}
 
 	announcementsCount atomic.Uint64
 	children           map[string]*announcingNode
@@ -292,6 +349,10 @@ func (node *announcingNode) removeAnnouncement(segment segment, announcement *An
 }
 
 func (node *announcingNode) appendAnnouncements(anns []*Announcement) []*Announcement {
+	if anns == nil {
+		anns = make([]*Announcement, 0, node.announcementsCount.Load())
+	}
+
 	node.mu.RLock()
 	// Take a snapshot of announcements and children
 	for _, a := range node.announcements {

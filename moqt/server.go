@@ -77,14 +77,21 @@ func (s *Server) init() {
 		s.listeners = make(map[quic.EarlyListener]struct{})
 		s.doneChan = make(chan struct{})
 		s.activeSess = make(map[*Session]struct{})
-		s.nativeQUICCh = make(chan quic.Connection, 1<<4)
+		if s.Config != nil && s.Config.EnableNativeQUIC {
+			s.nativeQUICCh = make(chan quic.Connection, 1<<4)
+		}
 		// Initialize WebtransportServer
+
+		var checkOrigin func(*http.Request) bool
+		if s.Config != nil && s.Config.CheckHTTPOrigin != nil {
+			checkOrigin = s.Config.CheckHTTPOrigin
+		}
 
 		if s.ServeWebtransportFunc == nil {
 			// If not set, create a default WebTransport server
-			s.wtServer = webtransportgo.NewDefaultServer(s.Addr, s.TLSConfig, s.QUICConfig, s.Config.CheckHTTPOrigin)
+			s.wtServer = webtransportgo.NewDefaultServer(s.Addr, s.TLSConfig, s.QUICConfig, checkOrigin)
 		} else {
-			s.wtServer = s.ServeWebtransportFunc(s.Addr, s.TLSConfig, s.QUICConfig, s.Config.CheckHTTPOrigin)
+			s.wtServer = s.ServeWebtransportFunc(s.Addr, s.TLSConfig, s.QUICConfig, checkOrigin)
 		}
 
 		if s.Logger != nil {
@@ -191,12 +198,16 @@ func (s *Server) ServeQUICConn(conn quic.Connection) error {
 	}
 }
 
-func (s *Server) AcceptQUIC(ctx context.Context, mux *TrackMux) (*Session, error) {
+func (s *Server) AcceptQUIC(ctx context.Context, path string, mux *TrackMux) (*Session, error) {
 	if s.shuttingDown() {
 		return nil, ErrServerClosed
 	}
 
 	s.init()
+
+	if s.nativeQUICCh == nil {
+		return nil, fmt.Errorf("native QUIC support is not enabled")
+	}
 
 	select {
 	case <-ctx.Done():
@@ -219,14 +230,12 @@ func (s *Server) AcceptQUIC(ctx context.Context, mux *TrackMux) (*Session, error
 
 		connLogger.Debug("establishing a session over QUIC connection")
 
-		var path *string
-
 		// Listen the session stream
 		extensions := func(clientParams *Parameters) (*Parameters, error) {
 			var err error
 
 			// Get the path parameter
-			*path, err = clientParams.GetString(param_type_path)
+			_, err = clientParams.GetString(param_type_path)
 			if err != nil {
 				connLogger.Error("failed to get 'path' parameter", "error", err)
 				return nil, err
@@ -254,7 +263,17 @@ func (s *Server) AcceptQUIC(ctx context.Context, mux *TrackMux) (*Session, error
 
 		acceptCtx, cancelAccept := context.WithTimeout(ctx, s.acceptTimeout())
 		defer cancelAccept()
-		return s.acceptSession(acceptCtx, path, conn, extensions, mux, connLogger)
+		sessStream, err := acceptSessionStream(acceptCtx, conn, extensions, mux, connLogger)
+		if err != nil {
+			connLogger.Error("failed to accept session stream", "error", err)
+			return nil, err
+		}
+
+		var sess *Session
+		sess = newSession(conn, sessStream, mux, connLogger, func() { s.removeSession(sess) })
+		s.addSession(sess)
+
+		return sess, nil
 	}
 }
 
@@ -322,24 +341,38 @@ func (s *Server) AcceptWebTransport(w http.ResponseWriter, r *http.Request, mux 
 		return params.Clone(), nil
 	}
 
-	setupCtx, cancelSetup := context.WithTimeout(r.Context(), s.acceptTimeout())
-	defer cancelSetup()
-	return s.acceptSession(setupCtx, &r.URL.Path, conn, extensions, mux, connLogger)
+	acceptCtx, cancelAccept := context.WithTimeout(r.Context(), s.acceptTimeout())
+	defer cancelAccept()
+	sessStr, err := acceptSessionStream(acceptCtx, conn, extensions, mux, connLogger)
+	if err != nil {
+		connLogger.Error("failed to accept session stream",
+			"error", err,
+		)
+		return nil, err
+	}
+
+	// Set the path for the session
+	sessStr.path = r.URL.Path
+
+	var sess *Session
+	sess = newSession(conn, sessStr, mux, connLogger, func() { s.removeSession(sess) })
+	s.addSession(sess)
+
+	return sess, nil
 }
 
-func (s *Server) acceptSession(setupCtx context.Context, path *string, conn quic.Connection,
-	extensions func(*Parameters) (*Parameters, error), mux *TrackMux, connLogger *slog.Logger) (*Session, error) {
+func acceptSessionStream(acceptCtx context.Context, conn quic.Connection,
+	extensions func(*Parameters) (*Parameters, error), mux *TrackMux, connLogger *slog.Logger) (*sessionStream, error) {
 
 	sessionID := generateSessionID()
 
 	sessLogger := connLogger.With(
 		"session_id", sessionID,
-		"path", path,
 	)
 
 	sessLogger.Debug("establishing a session")
 
-	stream, err := conn.AcceptStream(setupCtx)
+	stream, err := conn.AcceptStream(acceptCtx)
 	if err != nil {
 		sessLogger.Error("failed to accept a session stream",
 			"error", err,
@@ -385,6 +418,7 @@ func (s *Server) acceptSession(setupCtx context.Context, path *string, conn quic
 	}
 
 	clientParams := &Parameters{scm.Parameters}
+	path, _ := clientParams.GetString(param_type_path)
 
 	serverParams, err := extensions(clientParams.Clone())
 	if err != nil {
@@ -394,7 +428,6 @@ func (s *Server) acceptSession(setupCtx context.Context, path *string, conn quic
 		return nil, err
 	}
 
-	// Use default server version
 	version := DefaultServerVersion
 
 	// Send a SESSION_SERVER message
@@ -416,20 +449,7 @@ func (s *Server) acceptSession(setupCtx context.Context, path *string, conn quic
 		return nil, err
 	}
 
-	// Create session
-	sess := newSession(conn, version, *path, clientParams, serverParams,
-		stream, mux, sessLogger)
-
-	s.addSession(sess)
-
-	go func() {
-		<-sess.Context().Done()
-		s.removeSession(sess)
-	}()
-
-	sessLogger.Debug("moq: session established")
-
-	return sess, nil
+	return newSessionStream(stream, version, path, clientParams, serverParams), nil
 }
 
 func (s *Server) ListenAndServe() error {

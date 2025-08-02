@@ -121,7 +121,8 @@ func TestClient_ShutdownContextCancel(t *testing.T) {
 	mockStream.On("CancelWrite", mock.Anything)
 	mockStream.On("Context").Return(context.Background())
 
-	sess := newSession(mockConn, DefaultServerVersion, "/path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
+	sessStream := newSessionStream(mockStream, DefaultServerVersion, "path", NewParameters(), NewParameters())
+	sess := newSession(mockConn, sessStream, nil, slog.Default(), nil)
 	c.addSession(sess)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -338,7 +339,7 @@ func TestClient_openSession(t *testing.T) {
 			c := &Client{}
 			c.init() // Initialize the client properly
 			conn := tt.mockConn()
-			_, err := c.openSession(conn, "/path", tt.extension, nil, slog.Default())
+			_, err := openSessionStream(conn, "/path", tt.extension, nil, slog.Default())
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
@@ -644,7 +645,7 @@ func TestClient_OpenSession_NilExtensions(t *testing.T) {
 
 	// Expect panic when extensions is nil
 	assert.Panics(t, func() {
-		c.openSession(mockConn, "/test", nil, nil, slog.Default())
+		openSessionStream(mockConn, "/test", nil, nil, slog.Default())
 	})
 }
 
@@ -700,16 +701,13 @@ func TestClient_OpenSession_Success(t *testing.T) {
 	extensions := func() *Parameters {
 		return NewParameters()
 	}
-	sess, err := c.openSession(mockConn, "/test", extensions, nil, slog.Default())
+	sessStream, err := openSessionStream(mockConn, "/test", extensions, nil, slog.Default())
 	require.NoError(t, err)
-	require.NotNil(t, sess)
+	require.NotNil(t, sessStream)
 
-	// Verify session was added to active sessions
-	assert.Contains(t, c.activeSess, sess)
-	// Cleanup
-	if sess != nil {
-		sess.Terminate(NoError, "")
-	}
+	// Verify sessionStream was created successfully
+	assert.NotNil(t, sessStream, "sessionStream should be created")
+	// Cleanup - no Terminate method on sessionStream
 	// Close block channel to allow any pending reads to complete
 	close(blockChan)
 }
@@ -975,7 +973,8 @@ func TestClient_Shutdown_Timeout(t *testing.T) {
 	mockConn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
 	mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-	sess := newSession(mockConn, DefaultServerVersion, "/path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
+	sessStream := newSessionStream(mockStream, DefaultServerVersion, "path", NewParameters(), NewParameters())
+	sess := newSession(mockConn, sessStream, nil, slog.Default(), nil)
 	c.addSession(sess)
 
 	// Create a context that times out quickly

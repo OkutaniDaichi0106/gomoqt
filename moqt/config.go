@@ -17,6 +17,8 @@ type Config struct {
 	CheckHTTPOrigin func(*http.Request) bool // TODO: Check HTTP header for security
 
 	SetupTimeout time.Duration
+
+	EnableNativeQUIC bool // Enable native QUIC support, default is false
 }
 
 func (c *Config) Clone() *Config {

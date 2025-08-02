@@ -184,13 +184,17 @@ func (c *Client) DialWebTransport(ctx context.Context, host, path string, mux *T
 		return params
 	}
 
-	sess, err := c.openSession(conn, path, extensions, mux, logger)
+	sessStream, err := openSessionStream(conn, path, extensions, mux, logger)
 	if err != nil {
 		logger.Error("session establishment failed", "error", err)
 		return nil, err
 	}
 
-	logger.Info("moq session over webTransport established successfully")
+	var sess *Session
+	sess = newSession(conn, sessStream, mux, logger, func() { c.removeSession(sess) })
+	c.addSession(sess)
+
+	logger.Info("moq: established a new session over WebTransport successfully")
 
 	return sess, nil
 }
@@ -259,16 +263,23 @@ func (c *Client) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux)
 		return params
 	}
 
-	sess, err := c.openSession(conn, path, extensions, mux, logger)
+	sessStream, err := openSessionStream(conn, path, extensions, mux, logger)
 	if err != nil {
-		logger.Error("QUIC session establishment failed", "error", err)
+		logger.Error("failed to open session stream", "error", err)
 		return nil, err
 	}
+
+	var sess *Session
+	sess = newSession(conn, sessStream, mux, logger, func() { c.removeSession(sess) })
+	c.addSession(sess)
+
+	logger.Info("moq session over QUIC established successfully")
 
 	return sess, nil
 }
 
-func (c *Client) openSession(conn quic.Connection, path string, extensions func() *Parameters, mux *TrackMux, connLogger *slog.Logger) (*Session, error) {
+func openSessionStream(conn quic.Connection, path string, extensions func() *Parameters, mux *TrackMux, logger *slog.Logger) (*sessionStream, error) {
+	connLogger := logger.With("transport", "quic", "path", path)
 	connLogger.Debug("opening session stream")
 
 	sessionID := generateSessionID()
@@ -325,20 +336,7 @@ func (c *Client) openSession(conn quic.Connection, path string, extensions func(
 
 	serverParams := &Parameters{ssm.Parameters}
 
-	// Create session
-	sess := newSession(conn, version, path, clientParams, serverParams,
-		stream, mux, sessLogger)
-
-	c.addSession(sess)
-
-	go func() {
-		<-sess.Context().Done()
-		c.removeSession(sess)
-	}()
-
-	sessLogger.Info("established a moq session")
-
-	return sess, nil
+	return newSessionStream(stream, version, path, clientParams, serverParams), nil
 }
 
 func (c *Client) addSession(sess *Session) {

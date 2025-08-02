@@ -5,14 +5,19 @@ import (
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-func newSessionStream(stream quic.Stream) *sessionStream {
+func newSessionStream(stream quic.Stream, version protocol.Version, path string, clientParams, serverParams *Parameters) *sessionStream {
 	sessStr := &sessionStream{
-		ctx:       context.WithValue(stream.Context(), &biStreamTypeCtxKey, message.StreamTypeSession),
-		updatedCh: make(chan struct{}, 1),
-		stream:    stream,
+		ctx:              context.WithValue(stream.Context(), &biStreamTypeCtxKey, message.StreamTypeSession),
+		updatedCh:        make(chan struct{}, 1),
+		stream:           stream,
+		version:          version,
+		path:             path,
+		clientParameters: clientParams,
+		serverParameters: serverParams,
 	}
 
 	go func() {
@@ -62,6 +67,17 @@ type sessionStream struct {
 	stream quic.Stream
 
 	mu sync.Mutex
+
+	path string
+
+	// Version of the protocol used in this session
+	version protocol.Version
+
+	// Parameters specified by the client and server
+	clientParameters *Parameters
+
+	// Parameters specified by the server
+	serverParameters *Parameters
 }
 
 func (ss *sessionStream) updateSession(bitrate uint64) error {
@@ -82,4 +98,8 @@ func (ss *sessionStream) updateSession(bitrate uint64) error {
 
 func (ss *sessionStream) SessionUpdated() <-chan struct{} {
 	return ss.updatedCh
+}
+
+func (ss *sessionStream) Context() context.Context {
+	return ss.ctx
 }

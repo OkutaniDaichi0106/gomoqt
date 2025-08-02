@@ -9,12 +9,10 @@ import (
 	"sync/atomic"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 )
 
-func newSession(conn quic.Connection, version protocol.Version, path string, clientParams, serverParams *Parameters,
-	stream quic.Stream, mux *TrackMux, logger *slog.Logger) *Session {
+func newSession(conn quic.Connection, sessStream *sessionStream, mux *TrackMux, logger *slog.Logger, onClose func()) *Session {
 	if mux == nil {
 		mux = DefaultMux
 	}
@@ -25,7 +23,7 @@ func newSession(conn quic.Connection, version protocol.Version, path string, cli
 
 	// Supervise the session stream closure
 	go func() {
-		streamCtx := stream.Context()
+		streamCtx := sessStream.Context()
 		connCtx := conn.Context()
 		<-streamCtx.Done()
 		if connCtx.Err() != nil {
@@ -41,17 +39,14 @@ func newSession(conn quic.Connection, version protocol.Version, path string, cli
 	}()
 
 	sess := &Session{
-		sessionStream:    newSessionStream(stream),
-		ctx:              conn.Context(),
-		path:             path,
-		version:          version,
-		clientParameters: clientParams,
-		serverParameters: serverParams,
-		logger:           logger,
-		conn:             conn,
-		mux:              mux,
-		trackReaders:     make(map[SubscribeID]*TrackReader),
-		trackWriters:     make(map[SubscribeID]*TrackWriter),
+		sessionStream: sessStream,
+		ctx:           conn.Context(),
+		logger:        logger,
+		conn:          conn,
+		mux:           mux,
+		trackReaders:  make(map[SubscribeID]*TrackReader),
+		trackWriters:  make(map[SubscribeID]*TrackWriter),
+		onClose:       onClose,
 	}
 
 	sess.wg.Add(2)
@@ -78,17 +73,6 @@ type Session struct {
 
 	wg sync.WaitGroup // WaitGroup for session cleanup
 
-	path string
-
-	// Version of the protocol used in this session
-	version protocol.Version
-
-	// Parameters specified by the client and server
-	clientParameters *Parameters
-
-	// Parameters specified by the server
-	serverParameters *Parameters
-
 	logger *slog.Logger
 
 	conn quic.Connection
@@ -105,6 +89,8 @@ type Session struct {
 
 	isTerminating atomic.Bool
 	sessErr       error
+
+	onClose func() // Function to call when the session is closed
 }
 
 func (s *Session) terminating() bool {
@@ -120,13 +106,16 @@ func (s *Session) Terminate(code SessionErrorCode, msg string) error {
 		s.logger.Debug("termination already in progress")
 		return s.sessErr
 	}
-
 	s.isTerminating.Store(true)
 
 	s.logger.Info("terminating session",
 		"code", code,
 		"message", msg,
 	)
+
+	if s.onClose != nil {
+		s.onClose()
+	}
 
 	err := s.conn.CloseWithError(quic.ConnectionErrorCode(code), msg)
 	if err != nil {

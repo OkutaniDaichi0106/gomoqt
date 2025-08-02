@@ -5,12 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestNewTrackReceiver(t *testing.T) {
 	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
 	substr := newSendSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{})
 	receiver := newTrackReader("broadcastPath", "trackName", substr, func() {})
 
@@ -22,6 +22,7 @@ func TestNewTrackReceiver(t *testing.T) {
 
 func TestTrackReceiver_AcceptGroup(t *testing.T) {
 	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
 	substr := newSendSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{})
 	receiver := newTrackReader("broadcastPath", "trackName", substr, func() {})
 
@@ -55,13 +56,14 @@ func TestTrackReceiver_ContextCancellation(t *testing.T) {
 }
 
 func TestTrackReceiver_EnqueueGroup(t *testing.T) {
-	substr := newSendSubscribeStream(SubscribeID(1), &MockQUICStream{}, &TrackConfig{})
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	substr := newSendSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{})
 	receiver := newTrackReader("broadcastPath", "trackName", substr, func() {})
 
 	// Mock receive stream
 	mockReceiveStream := &MockQUICReceiveStream{}
-	// StreamID() is not called during enqueue, only when needed
-	mockReceiveStream.On("StreamID").Return(quic.StreamID(1))
+	// StreamID() is not called during enqueue or accept
 
 	// Enqueue a group
 	receiver.enqueueGroup(GroupSequence(1), mockReceiveStream)
@@ -78,7 +80,9 @@ func TestTrackReceiver_EnqueueGroup(t *testing.T) {
 }
 
 func TestTrackReceiver_AcceptGroup_RealImplementation(t *testing.T) {
-	substr := newSendSubscribeStream(SubscribeID(1), &MockQUICStream{}, &TrackConfig{})
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	substr := newSendSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{})
 	receiver := newTrackReader("broadcastPath", "trackName", substr, func() {})
 
 	// Test with a timeout to ensure we don't block forever

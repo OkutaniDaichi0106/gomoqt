@@ -9,6 +9,11 @@ import (
 )
 
 func newReceiveSubscribeStream(id SubscribeID, stream quic.Stream, config *TrackConfig) *receiveSubscribeStream {
+	// Ensure config is not nil
+	if config == nil {
+		config = &TrackConfig{}
+	}
+
 	rss := &receiveSubscribeStream{
 		subscribeID: id,
 		config:      config,
@@ -108,6 +113,11 @@ func (rss *receiveSubscribeStream) TrackConfig() *TrackConfig {
 	rss.configMu.Lock()
 	defer rss.configMu.Unlock()
 
+	// Ensure config is never nil
+	if rss.config == nil {
+		rss.config = &TrackConfig{}
+	}
+
 	return rss.config
 }
 
@@ -137,6 +147,10 @@ func (rss *receiveSubscribeStream) close() error {
 }
 
 func (rss *receiveSubscribeStream) closeWithError(code SubscribeErrorCode) error {
+	if rss == nil {
+		panic("receiveSubscribeStream: cannot call closeWithError on nil stream")
+	}
+
 	rss.configMu.Lock()
 	defer rss.configMu.Unlock()
 

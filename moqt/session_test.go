@@ -31,6 +31,7 @@ func TestNewSession(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			// Create a proper MockQUICStream
 			mockStream := &MockQUICStream{}
+			mockStream.On("Context").Return(context.Background())
 			mockStream.On("Read", mock.Anything).Return(0, io.EOF) // Create a proper mock connection
 			conn := &MockQUICConnection{}
 			conn.On("Context").Return(context.Background())
@@ -39,7 +40,8 @@ func TestNewSession(t *testing.T) {
 			conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF) // For handleUniStreams goroutine
 			conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-			session := newSession(conn, DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, tt.mux, slog.Default())
+			sessStream := newSessionStream(mockStream, DefaultServerVersion, "test/path", NewParameters(), NewParameters())
+			session := newSession(conn, sessStream, tt.mux, slog.Default(), nil)
 
 			if tt.expectOK {
 				assert.NotNil(t, session, "newSession should not return nil")
@@ -67,6 +69,7 @@ func TestNewSessionWithNilMux(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			mockStream := &MockQUICStream{}
+			mockStream.On("Context").Return(context.Background())
 			mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 			conn := &MockQUICConnection{}
 			conn.On("Context").Return(context.Background())
@@ -75,7 +78,8 @@ func TestNewSessionWithNilMux(t *testing.T) {
 			conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF) // For handleUniStreams goroutine
 			conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-			session := newSession(conn, DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, tt.mux, slog.Default())
+			sessStream := newSessionStream(mockStream, DefaultServerVersion, "test/path", NewParameters(), NewParameters())
+			session := newSession(conn, sessStream, tt.mux, slog.Default(), nil)
 
 			if tt.expectDefault {
 				assert.Equal(t, DefaultMux, session.mux, "should use DefaultMux when nil mux is provided")
@@ -105,6 +109,7 @@ func TestSession_Terminate(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			mockStream := &MockQUICStream{}
+			mockStream.On("Context").Return(context.Background())
 			mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 			conn := &MockQUICConnection{}
 			conn.On("Context").Return(context.Background())
@@ -113,7 +118,8 @@ func TestSession_Terminate(t *testing.T) {
 			conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF) // For handleUniStreams goroutine
 			conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-			session := newSession(conn, DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
+			sessStream := newSessionStream(mockStream, DefaultServerVersion, "test/path", NewParameters(), NewParameters())
+			session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 			err := session.Terminate(tt.code, tt.msg)
 			assert.NoError(t, err, "Terminate should not return error")
@@ -129,12 +135,12 @@ func TestSession_OpenAnnounceStream(t *testing.T) {
 		expectNotNil  bool
 	}{
 		"successful open": {
-			path:         "/test",
+			path:         "/test/",
 			expectError:  false,
 			expectNotNil: true,
 		},
 		"open stream error": {
-			path:          "/test",
+			path:          "/test/",
 			openStreamErr: errors.New("failed to open stream"),
 			expectError:   true,
 			expectNotNil:  false,
@@ -143,6 +149,7 @@ func TestSession_OpenAnnounceStream(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			mockStream := &MockQUICStream{}
+			mockStream.On("Context").Return(context.Background())
 			mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 
 			conn := &MockQUICConnection{}
@@ -155,13 +162,25 @@ func TestSession_OpenAnnounceStream(t *testing.T) {
 				conn.On("OpenStream").Return(nil, tt.openStreamErr)
 			} else {
 				announceStream := &MockQUICStream{}
+				announceStream.On("Context").Return(context.Background())
 				announceStream.On("StreamID").Return(quic.StreamID(1))
 				announceStream.On("Write", mock.Anything).Return(0, nil)
-				announceStream.On("Read", mock.Anything).Return(0, io.EOF)
+
+				// Create a proper ANNOUNCE_INIT message response
+				aim := message.AnnounceInitMessage{
+					Suffixes: []string{"suffix1", "suffix2"},
+				}
+				var buf bytes.Buffer
+				aim.Encode(&buf)
+
+				announceStream.ReadFunc = buf.Read
+				announceStream.On("Read", mock.Anything)
+
 				conn.On("OpenStream").Return(announceStream, nil)
 			}
 
-			session := newSession(conn, DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
+			sessStream := newSessionStream(mockStream, DefaultServerVersion, "test/path", NewParameters(), NewParameters())
+			session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 			announcer, err := session.OpenAnnounceStream(tt.path)
 
@@ -185,6 +204,7 @@ func TestSession_OpenAnnounceStream(t *testing.T) {
 
 func TestSession_OpenAnnounceStream_OpenError(t *testing.T) {
 	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 
 	conn := &MockQUICConnection{}
@@ -195,7 +215,8 @@ func TestSession_OpenAnnounceStream_OpenError(t *testing.T) {
 	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 	conn.On("OpenStream").Return(nil, errors.New("open stream failed"))
 
-	session := newSession(conn, DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
+	sessStream := newSessionStream(mockStream, DefaultServerVersion, "test/path", NewParameters(), NewParameters())
+	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 	announcer, err := session.OpenAnnounceStream("/test")
 
@@ -231,7 +252,8 @@ func TestSession_OpenTrackStream(t *testing.T) {
 			// Set up expectations needed for sessionStream
 			mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 			mockStream.On("Write", mock.Anything).Return(0, nil)
-			mockStream.On("Close").Return(nil) // Create a separate mock for the track stream that responds to the SUBSCRIBE protocol
+			mockStream.On("Close").Return(nil)
+			mockStream.On("Context").Return(context.Background()) // Create a separate mock for the track stream that responds to the SUBSCRIBE protocol
 			mockTrackStream := &MockQUICStream{}
 			mockTrackStream.On("StreamID").Return(quic.StreamID(2))
 			// Create a SubscribeOkMessage response
@@ -256,6 +278,7 @@ func TestSession_OpenTrackStream(t *testing.T) {
 			mockTrackStream.On("Read", mock.Anything)
 			mockTrackStream.On("Write", mock.Anything).Return(0, nil)
 			mockTrackStream.On("Close").Return(nil)
+			mockTrackStream.On("Context").Return(context.Background())
 
 			conn := &MockQUICConnection{}
 			conn.On("Context").Return(context.Background())
@@ -265,7 +288,8 @@ func TestSession_OpenTrackStream(t *testing.T) {
 			conn.On("OpenStream").Return(mockTrackStream, nil)
 			conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-			session := newSession(conn, DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
+			sessStream := newSessionStream(mockStream, DefaultServerVersion, "test/path", NewParameters(), NewParameters())
+			session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 			track, err := session.OpenTrackStream(tt.path, tt.name, tt.config)
 
@@ -290,6 +314,7 @@ func TestSession_OpenTrackStream(t *testing.T) {
 func TestSession_OpenTrackStream_OpenError(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Context").Return(context.Background())
 	conn := &MockQUICConnection{}
 	conn.On("Context").Return(context.Background())
 	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
@@ -298,7 +323,8 @@ func TestSession_OpenTrackStream_OpenError(t *testing.T) {
 	conn.On("OpenStream").Return(nil, errors.New("open stream failed"))
 	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-	session := newSession(conn, DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
+	sessStream := newSessionStream(mockStream, DefaultServerVersion, "test/path", NewParameters(), NewParameters())
+	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 	config := &TrackConfig{
 		TrackPriority:    TrackPriority(1),
@@ -318,6 +344,7 @@ func TestSession_OpenTrackStream_OpenError(t *testing.T) {
 func TestSession_Context(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Context").Return(context.Background())
 
 	conn := &MockQUICConnection{}
 	conn.On("Context").Return(context.Background())
@@ -326,7 +353,8 @@ func TestSession_Context(t *testing.T) {
 	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
 	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-	session := newSession(conn, DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
+	sessStream := newSessionStream(mockStream, DefaultServerVersion, "test/path", NewParameters(), NewParameters())
+	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 	ctx := session.Context()
 	assert.NotNil(t, ctx, "Context should not be nil")
@@ -338,6 +366,7 @@ func TestSession_Context(t *testing.T) {
 func TestSession_nextSubscribeID(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Context").Return(context.Background())
 
 	conn := &MockQUICConnection{}
 	conn.On("Context").Return(context.Background())
@@ -346,7 +375,8 @@ func TestSession_nextSubscribeID(t *testing.T) {
 	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
 	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-	session := newSession(conn, DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
+	sessStream := newSessionStream(mockStream, DefaultServerVersion, "test/path", NewParameters(), NewParameters())
+	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 	id1 := session.nextSubscribeID()
 	id2 := session.nextSubscribeID()
@@ -361,6 +391,7 @@ func TestSession_nextSubscribeID(t *testing.T) {
 func TestSession_HandleBiStreams_AcceptError(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Context").Return(context.Background())
 
 	conn := &MockQUICConnection{}
 	conn.On("Context").Return(context.Background())
@@ -369,7 +400,8 @@ func TestSession_HandleBiStreams_AcceptError(t *testing.T) {
 	conn.On("AcceptUniStream", mock.Anything).Return(nil, errors.New("accept stream failed"))
 	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-	session := newSession(conn, DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
+	sessStream := newSessionStream(mockStream, DefaultServerVersion, "test/path", NewParameters(), NewParameters())
+	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 	// Wait a bit for the background goroutine to try accepting
 	time.Sleep(50 * time.Millisecond)
@@ -384,6 +416,7 @@ func TestSession_HandleBiStreams_AcceptError(t *testing.T) {
 func TestSession_HandleUniStreamsAcceptError(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Context").Return(context.Background())
 
 	conn := &MockQUICConnection{}
 	conn.On("Context").Return(context.Background())
@@ -392,7 +425,8 @@ func TestSession_HandleUniStreamsAcceptError(t *testing.T) {
 	conn.On("AcceptUniStream", mock.Anything).Return(nil, errors.New("accept uni stream failed"))
 	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-	session := newSession(conn, DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
+	sessStream := newSessionStream(mockStream, DefaultServerVersion, "test/path", NewParameters(), NewParameters())
+	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 	// Wait a bit for the background goroutine to try accepting
 	time.Sleep(50 * time.Millisecond)
@@ -407,6 +441,7 @@ func TestSession_HandleUniStreamsAcceptError(t *testing.T) {
 func TestSession_ConcurrentAccess(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Context").Return(context.Background())
 	mockStream.On("Write", mock.Anything).Return(0, nil)
 	mockStream.On("Close").Return(nil)
 	conn := &MockQUICConnection{}
@@ -420,7 +455,8 @@ func TestSession_ConcurrentAccess(t *testing.T) {
 	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-	session := newSession(conn, DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
+	sessStream := newSessionStream(mockStream, DefaultServerVersion, "test/path", NewParameters(), NewParameters())
+	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 	// Test concurrent access
 	done := make(chan struct{})
@@ -462,15 +498,23 @@ func TestSession_ConcurrentAccess(t *testing.T) {
 func TestSession_ContextCancellation(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Context").Return(context.Background())
+
+	// Create a cancellable context for the connection
+	connCtx, connCancel := context.WithCancel(context.Background())
 
 	conn := &MockQUICConnection{}
-	conn.On("Context").Return(context.Background())
+	conn.On("Context").Return(connCtx)
 	conn.On("AcceptStream", mock.Anything).Return(nil, context.Canceled)
 	conn.On("AcceptUniStream", mock.Anything).Return(nil, context.Canceled)
-	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		// Cancel the connection context when CloseWithError is called
+		connCancel()
+	}).Return(nil)
 	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-	session := newSession(conn, DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
+	sessStream := newSessionStream(mockStream, DefaultServerVersion, "test/path", NewParameters(), NewParameters())
+	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 	ctx := session.Context()
 	assert.NotNil(t, ctx)
@@ -500,6 +544,7 @@ func TestSession_WithRealMux(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			mockStream := &MockQUICStream{}
 			mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+			mockStream.On("Context").Return(context.Background())
 
 			conn := &MockQUICConnection{}
 			conn.On("Context").Return(context.Background())
@@ -514,7 +559,8 @@ func TestSession_WithRealMux(t *testing.T) {
 			ctx := context.Background()
 			mux.Handle(ctx, tt.broadcastPath, TrackHandlerFunc(func(tw *TrackWriter) {}))
 
-			session := newSession(conn, DefaultServerVersion, "path", NewParameters(), NewParameters(), mockStream, mux, slog.Default())
+			sessStream := newSessionStream(mockStream, DefaultServerVersion, "test/path", NewParameters(), NewParameters())
+			session := newSession(conn, sessStream, mux, slog.Default(), nil)
 
 			assert.Equal(t, mux, session.mux, "Mux should be set correctly in the session")
 

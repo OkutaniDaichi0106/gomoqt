@@ -88,7 +88,8 @@ func TestReceiveGroupStream_ReadFrame_EOF(t *testing.T) {
 	err := rgs.ReadFrame(frame)
 	assert.Error(t, err)
 	assert.Equal(t, io.EOF, err)
-	assert.Nil(t, frame)
+	// Note: frame is modified even on error, so we don't assert it's nil
+	assert.NotNil(t, frame) // Frame is modified with internal message
 }
 
 func TestReceiveGroupStream_CancelRead(t *testing.T) {
@@ -109,7 +110,6 @@ func TestReceiveGroupStream_CancelRead(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			mockStream := &MockQUICReceiveStream{}
-			mockStream.On("StreamID").Return(quic.StreamID(123))
 			mockStream.On("CancelRead", quic.StreamErrorCode(tt.errorCode)).Return()
 
 			rgs := newGroupReader(GroupSequence(123), mockStream, func() {})
@@ -123,8 +123,7 @@ func TestReceiveGroupStream_CancelRead(t *testing.T) {
 
 func TestReceiveGroupStream_CancelRead_MultipleCalls(t *testing.T) {
 	mockStream := &MockQUICReceiveStream{}
-	mockStream.On("StreamID").Return(quic.StreamID(123))
-	mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return()
+	mockStream.On("CancelRead", quic.StreamErrorCode(InternalGroupErrorCode)).Return()
 
 	rgs := newGroupReader(GroupSequence(123), mockStream, func() {})
 
@@ -132,7 +131,7 @@ func TestReceiveGroupStream_CancelRead_MultipleCalls(t *testing.T) {
 	rgs.CancelRead(InternalGroupErrorCode)
 	rgs.CancelRead(InternalGroupErrorCode)
 
-	// Should be called for each CancelRead invocation, but only the first one should actually call the stream
+	// Should be called for each CancelRead invocation
 	mockStream.AssertCalled(t, "CancelRead", quic.StreamErrorCode(InternalGroupErrorCode))
 	mockStream.AssertExpectations(t)
 }
@@ -215,7 +214,8 @@ func TestReceiveGroupStream_ReadFrame_StreamError(t *testing.T) {
 	frame := NewFrame(nil)
 	err := rgs.ReadFrame(frame)
 	assert.Error(t, err)
-	assert.Nil(t, frame)
+	// Note: frame is modified even on error, so we don't assert it's nil
+	assert.NotNil(t, frame) // Frame is modified with internal message
 
 	// Should be a GroupError
 	var groupErr *GroupError

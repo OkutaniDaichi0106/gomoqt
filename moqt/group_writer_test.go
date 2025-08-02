@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-func TestNewSendGroupStream(t *testing.T) {
+func TestNewGroupWriter(t *testing.T) {
 	tests := map[string]struct {
 		setupMock func() *MockQUICSendStream
 		sequence  GroupSequence
@@ -52,7 +52,7 @@ func TestNewSendGroupStream(t *testing.T) {
 	}
 }
 
-func TestSendGroupStream_GroupSequence(t *testing.T) {
+func TestGroupWriter_GroupSequence(t *testing.T) {
 	mockStream := &MockQUICSendStream{}
 	mockStream.On("Context").Return(context.Background())
 	sequence := GroupSequence(789)
@@ -62,7 +62,7 @@ func TestSendGroupStream_GroupSequence(t *testing.T) {
 	assert.Equal(t, sequence, result)
 }
 
-func TestSendGroupStream_WriteFrame(t *testing.T) {
+func TestGroupWriter_WriteFrame(t *testing.T) {
 	tests := map[string]struct {
 		frame      *Frame
 		mockStream *MockQUICSendStream
@@ -112,7 +112,7 @@ func TestSendGroupStream_WriteFrame(t *testing.T) {
 	}
 }
 
-func TestSendGroupStream_SetWriteDeadline(t *testing.T) {
+func TestGroupWriter_SetWriteDeadline(t *testing.T) {
 	mockStream := &MockQUICSendStream{}
 	mockStream.On("Context").Return(context.Background())
 	deadline := time.Now().Add(time.Minute)
@@ -124,7 +124,7 @@ func TestSendGroupStream_SetWriteDeadline(t *testing.T) {
 	mockStream.AssertExpectations(t)
 }
 
-func TestSendGroupStream_Close(t *testing.T) {
+func TestGroupWriter_Close(t *testing.T) {
 	mockStream := &MockQUICSendStream{}
 	mockStream.On("Context").Return(context.Background())
 	mockStream.On("Close").Return(nil)
@@ -136,7 +136,7 @@ func TestSendGroupStream_Close(t *testing.T) {
 	mockStream.AssertExpectations(t)
 }
 
-func TestSendGroupStream_CloseWithError(t *testing.T) {
+func TestGroupWriter_CloseWithError(t *testing.T) {
 	mockStream := &MockQUICSendStream{}
 	mockStream.On("Context").Return(context.Background())
 
@@ -149,7 +149,7 @@ func TestSendGroupStream_CloseWithError(t *testing.T) {
 	mockStream.AssertExpectations(t)
 }
 
-func TestSendGroupStream_ContextCancellation(t *testing.T) {
+func TestGroupWriter_ContextCancellation(t *testing.T) {
 	t.Run("operations continue when context is cancelled", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		mockStream := &MockQUICSendStream{}
@@ -170,7 +170,7 @@ func TestSendGroupStream_ContextCancellation(t *testing.T) {
 	})
 }
 
-func TestSendGroupStream_CloseWithStreamError(t *testing.T) {
+func TestGroupWriter_CloseWithStreamError(t *testing.T) {
 	t.Run("close returns stream error", func(t *testing.T) {
 		mockStream := &MockQUICSendStream{}
 		mockStream.On("Context").Return(context.Background())

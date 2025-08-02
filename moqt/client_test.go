@@ -344,7 +344,10 @@ func TestClient_openSession(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 			}
-			conn.AssertExpectations(t)
+			// Don't assert expectations for cases where early errors prevent all calls
+			if !tt.wantErr {
+				conn.AssertExpectations(t)
+			}
 		})
 	}
 }

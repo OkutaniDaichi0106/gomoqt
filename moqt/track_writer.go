@@ -55,7 +55,10 @@ func (s *TrackWriter) Close() error {
 	s.groupMapMu.Unlock()
 
 	// Then close the subscribe stream
-	err := s.receiveSubscribeStream.close()
+	var err error
+	if s.receiveSubscribeStream != nil {
+		err = s.receiveSubscribeStream.close()
+	}
 
 	s.onCloseTrackFunc()
 
@@ -74,7 +77,9 @@ func (s *TrackWriter) CloseWithError(code SubscribeErrorCode) {
 	s.groupMapMu.Unlock()
 
 	// Then close the subscribe stream with the error code
-	s.receiveSubscribeStream.closeWithError(code)
+	if s.receiveSubscribeStream != nil {
+		s.receiveSubscribeStream.closeWithError(code)
+	}
 
 	s.onCloseTrackFunc()
 }

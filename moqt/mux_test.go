@@ -3,6 +3,7 @@ package moqt
 import (
 	"context"
 	"fmt"
+	"io"
 	"sync"
 	"testing"
 	"time"
@@ -161,7 +162,10 @@ func TestNewMux_ServeTrack_NotFound(t *testing.T) {
 
 	// Create a mock stream for the subscribe stream
 	mockStream := &MockQUICStream{}
-	mockStream.On("CloseWithError", TrackNotFoundErrorCode).Return(nil)
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF) // Background goroutine will try to read
+	mockStream.On("CancelWrite", mock.Anything).Return()
+	mockStream.On("CancelRead", mock.Anything).Return()
 
 	// Create a mock track writer
 	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{})
@@ -179,8 +183,8 @@ func TestNewMux_ServeTrack_NotFound(t *testing.T) {
 	// Should use NotFoundHandler which closes the controller
 	mux.ServeTrack(trackWriter)
 
-	// Assert that the subscribe stream was closed with the expected error
-	mockStream.AssertCalled(t, "CloseWithError", TrackNotFoundErrorCode)
+	// Verify that CancelWrite was called with the error code for TrackNotFoundErrorCode
+	mockStream.AssertCalled(t, "CancelWrite", quic.StreamErrorCode(TrackNotFoundErrorCode))
 	mockStream.AssertExpectations(t)
 }
 

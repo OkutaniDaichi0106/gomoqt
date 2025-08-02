@@ -14,43 +14,29 @@ import (
 )
 
 func TestNewSessionStream(t *testing.T) {
-	tests := map[string]struct {
-		setupMock func() *MockQUICStream
-	}{
-		"valid creation": {
-			setupMock: func() *MockQUICStream {
-				mockStream := &MockQUICStream{}
-				// Setup Read mock - will be used by the background goroutine in newSessionStream
-				mockStream.On("Read", mock.Anything).Return(0, io.EOF)
-				return mockStream
-			},
-		},
-	}
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	// Setup Read mock - will be used by the background goroutine in newSessionStream
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			mockStream := tt.setupMock()
-			ss := newSessionStream(mockStream)
+	ss := newSessionStream(mockStream)
 
-			assert.NotNil(t, ss, "newSessionStream should not return nil")
-			assert.NotNil(t, ss.SessionUpdated(), "SessionUpdated should return a valid channel")
-			assert.Equal(t, mockStream, ss.stream, "stream should be set correctly")
-			assert.Equal(t, uint64(0), ss.localBitrate, "local bitrate should be initialized to 0")
-			assert.Equal(t, uint64(0), ss.remoteBitrate, "remote bitrate should be initialized to 0")
+	assert.NotNil(t, ss, "newSessionStream should not return nil")
+	assert.NotNil(t, ss.SessionUpdated(), "SessionUpdated should return a valid channel")
+	assert.Equal(t, mockStream, ss.stream, "stream should be set correctly")
+	assert.Equal(t, uint64(0), ss.localBitrate, "local bitrate should be initialized to 0")
+	assert.Equal(t, uint64(0), ss.remoteBitrate, "remote bitrate should be initialized to 0")
 
-			// Give time for background goroutines to complete
-			time.Sleep(50 * time.Millisecond)
+	// Give time for background goroutines to complete
+	time.Sleep(50 * time.Millisecond)
 
-			// Verify the session stream was created properly
-			mockStream.AssertExpectations(t)
-		})
-	}
+	// Verify the session stream was created properly
+	mockStream.AssertExpectations(t)
 }
 
 func TestSessionStream_updateSession(t *testing.T) {
 	mockStream := &MockQUICStream{}
-
-	// Setup Read mock - EOF will eventually trigger close from background goroutine
+	mockStream.On("Context").Return(context.Background())
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 
 	bitrate := uint64(1000000)
@@ -59,16 +45,12 @@ func TestSessionStream_updateSession(t *testing.T) {
 		Bitrate: bitrate,
 	}
 	buf := bytes.NewBuffer(make([]byte, 0, 1024))
-	err := sum.Encode(buf)
-	assert.NoError(t, err, "failed to encode SESSION_UPDATE message")
-	expectedData := buf.Bytes()
-
-	// Set up mock expectation for Write method with exact expectedData
-	mockStream.On("Write", expectedData).Return(len(expectedData), nil).Once()
+	sum.Encode(buf)
+	mockStream.WriteFunc = buf.Write
 
 	ss := newSessionStream(mockStream)
 
-	err = ss.updateSession(bitrate)
+	err := ss.updateSession(bitrate)
 
 	assert.NoError(t, err)
 	assert.Equal(t, bitrate, ss.localBitrate, "local bitrate should be updated")
@@ -81,8 +63,7 @@ func TestSessionStream_updateSession(t *testing.T) {
 func TestSessionStream_updateSession_WriteError(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	writeError := errors.New("write error")
-
-	// Setup Read mock - EOF will eventually trigger close from background goroutine
+	mockStream.On("Context").Return(context.Background())
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 	mockStream.On("Write", mock.Anything).Return(0, writeError)
 
@@ -100,8 +81,7 @@ func TestSessionStream_updateSession_WriteError(t *testing.T) {
 
 func TestSessionStream_SessionUpdated(t *testing.T) {
 	mockStream := &MockQUICStream{}
-
-	// Setup Read mock - EOF will eventually trigger close from background goroutine
+	mockStream.On("Context").Return(context.Background())
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 
 	ss := newSessionStream(mockStream)

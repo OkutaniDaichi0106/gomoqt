@@ -1,23 +1,18 @@
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { SessionStream } from './session_stream';
 import { Context, background, withCancelCause } from './internal/context';
 import { Writer, Reader } from './io';
 import { StreamError } from './io/error';
-import { SessionUpdateMessage } from './message';
+import { SessionUpdateMessage } from './message/session_update';
 import { SessionClientMessage } from './message/session_client';
 import { SessionServerMessage } from './message/session_server';
 import { Extensions } from './internal/extensions';
 import { Version } from './internal/version';
 
-// Mock dependencies
-jest.mock('./io');
-jest.mock('./message');
-jest.mock('./message/session_client');
-jest.mock('./message/session_server');
-
 describe('SessionStream', () => {
     let ctx: Context;
-    let mockWriter: jest.Mocked<Writer>;
-    let mockReader: jest.Mocked<Reader>;
+    let mockWriter: Writer;
+    let mockReader: Reader;
     let mockClient: SessionClientMessage;
     let mockServer: SessionServerMessage;
     let sessionStream: SessionStream;
@@ -31,29 +26,30 @@ describe('SessionStream', () => {
             writeString: jest.fn(),
             writeUint8Array: jest.fn(),
             writeUint8: jest.fn(),
-            flush: jest.fn().mockResolvedValue(undefined),
-            close: jest.fn().mockResolvedValue(undefined),
-            cancel: jest.fn().mockResolvedValue(undefined),
-            closed: jest.fn().mockResolvedValue(undefined)
+            flush: jest.fn(),
+            close: jest.fn(),
+            cancel: jest.fn(),
+            closed: jest.fn()
         } as any;
 
         mockReader = {
             readBoolean: jest.fn(),
             readVarint: jest.fn(),
             readString: jest.fn(),
+            readStringArray: jest.fn(),
             readUint8Array: jest.fn(),
             readUint8: jest.fn(),
             copy: jest.fn(),
             fill: jest.fn(),
-            cancel: jest.fn().mockResolvedValue(undefined),
-            closed: jest.fn().mockResolvedValue(undefined)
+            cancel: jest.fn(),
+            closed: jest.fn()
         } as any;
 
-        const versions = new Set<Version>([1n]);
+        const versions = new Set<Version>([0xffffff00n]);
         const extensions = new Extensions();
 
         mockClient = new SessionClientMessage(versions, extensions);
-        mockServer = new SessionServerMessage(1n, extensions);
+        mockServer = new SessionServerMessage(0xffffff00n, extensions);
     });
 
     describe('constructor', () => {
@@ -75,51 +71,45 @@ describe('SessionStream', () => {
     describe('update', () => {
         beforeEach(() => {
             sessionStream = new SessionStream(ctx, mockWriter, mockReader, mockClient, mockServer);
+            // Mock the static encode method
+            jest.spyOn(SessionUpdateMessage, 'encode').mockImplementation(async (writer: Writer, bitrate: bigint) => {
+                return [new SessionUpdateMessage(bitrate), undefined];
+            });
+        });
+
+        afterEach(() => {
+            jest.restoreAllMocks();
         });
 
         it('should encode and send session update message', async () => {
             const bitrate = 1000n;
-            const mockUpdateMessage = {} as SessionUpdateMessage;
-            
-            // Mock SessionUpdateMessage.encode to return success
-            (SessionUpdateMessage.encode as jest.Mock) = jest.fn().mockResolvedValue([mockUpdateMessage, undefined]);
 
             await sessionStream.update(bitrate);
 
             expect(SessionUpdateMessage.encode).toHaveBeenCalledWith(mockWriter, bitrate);
-            expect(sessionStream.clientInfo).toBe(mockUpdateMessage);
+            expect(sessionStream.clientInfo).toBeDefined();
+            expect(sessionStream.clientInfo.bitrate).toBe(bitrate);
         });
 
         it('should throw error when encoding fails', async () => {
             const bitrate = 1000n;
             const error = new Error('Encoding failed');
             
-            // Mock SessionUpdateMessage.encode to return error
-            (SessionUpdateMessage.encode as jest.Mock) = jest.fn().mockResolvedValue([undefined, error]);
+            // Mock encode to return error
+            jest.spyOn(SessionUpdateMessage, 'encode').mockResolvedValue([undefined, error]);
 
             await expect(sessionStream.update(bitrate)).rejects.toThrow('Failed to encode session update message: Error: Encoding failed');
         });
     });
 
     describe('close', () => {
-        let cancelFunc: jest.Mock;
-
         beforeEach(() => {
-            // Mock withCancelCause
-            cancelFunc = jest.fn();
-            jest.doMock('./internal/context', () => ({
-                ...jest.requireActual('./internal/context'),
-                withCancelCause: jest.fn().mockReturnValue([ctx, cancelFunc])
-            }));
-            
             sessionStream = new SessionStream(ctx, mockWriter, mockReader, mockClient, mockServer);
         });
 
         it('should cancel context with close error', () => {
-            sessionStream.close();
-
-            // Note: We can't easily test the private cancelFunc, but we can verify the method exists
-            expect(sessionStream.close).toBeDefined();
+            // The close method should cancel the internal context
+            expect(() => sessionStream.close()).not.toThrow();
         });
     });
 
@@ -154,17 +144,23 @@ describe('SessionStream', () => {
     describe('integration', () => {
         beforeEach(() => {
             sessionStream = new SessionStream(ctx, mockWriter, mockReader, mockClient, mockServer);
+            // Mock the static encode method
+            jest.spyOn(SessionUpdateMessage, 'encode').mockImplementation(async (writer: Writer, bitrate: bigint) => {
+                return [new SessionUpdateMessage(bitrate), undefined];
+            });
+        });
+
+        afterEach(() => {
+            jest.restoreAllMocks();
         });
 
         it('should handle complete session lifecycle', async () => {
             const bitrate = 2000n;
-            const mockUpdateMessage = {} as SessionUpdateMessage;
-            
-            (SessionUpdateMessage.encode as jest.Mock) = jest.fn().mockResolvedValue([mockUpdateMessage, undefined]);
 
             // Update session
             await sessionStream.update(bitrate);
-            expect(sessionStream.clientInfo).toBe(mockUpdateMessage);
+            expect(sessionStream.clientInfo).toBeDefined();
+            expect(sessionStream.clientInfo.bitrate).toBe(bitrate);
 
             // Close session
             expect(() => sessionStream.close()).not.toThrow();

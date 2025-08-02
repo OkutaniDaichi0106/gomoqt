@@ -112,7 +112,8 @@ export class TrackReader {
     #acceptFunc: () => Promise<[Reader, GroupMessage] | undefined>;
     #onCloseFunc: () => void;
 
-    constructor(subscribeStream: SendSubscribeStream, acceptFunc: () => Promise<[Reader, GroupMessage] | undefined>,
+    constructor(subscribeStream: SendSubscribeStream,
+        acceptFunc: () => Promise<[Reader, GroupMessage] | undefined>,
         onCloseFunc: () => void,
     ) {
         this.#subscribeStream = subscribeStream;

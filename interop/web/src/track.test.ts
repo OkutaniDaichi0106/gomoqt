@@ -1,125 +1,255 @@
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { TrackReader, TrackWriter } from './track';
 import { GroupReader, GroupWriter } from './group_stream';
 import { Context, withCancelCause, background } from './internal/context';
+import { ReceiveSubscribeStream, SendSubscribeStream, TrackConfig } from './subscribe_stream';
+import { Writer, Reader } from './io';
+import { BroadcastPath } from './broadcast_path';
+import { Info } from './info';
+import { GroupMessage } from './message';
+
+// Mock the GroupMessage module
+jest.mock('./message', () => ({
+    GroupMessage: {
+        encode: jest.fn()
+    }
+}));
 
 describe('TrackWriter', () => {
-    let ctx: Context;
-    let mockOpenGroupFunc: (trackCtx: Context, groupId: bigint) => Promise<[GroupWriter?, Error?]>;
+    let mockSubscribeStream: any;
+    let mockOpenUniStreamFunc: any;
     let trackWriter: TrackWriter;
+    let mockWriter: any;
+    let mockContext: Context;
 
     beforeEach(() => {
-        ctx = background();
-        mockOpenGroupFunc = jest.fn();
-        trackWriter = new TrackWriter(ctx, mockOpenGroupFunc);
+        mockContext = background();
+        mockWriter = {
+            writeUint8: jest.fn(),
+            flush: jest.fn(),
+            close: jest.fn(),
+            cancel: jest.fn(),
+            closed: jest.fn()
+        };
+
+        mockSubscribeStream = {
+            context: mockContext,
+            subscribeId: 123n,
+            trackConfig: {} as TrackConfig,
+            accept: jest.fn(),
+            closeWithError: jest.fn(),
+            close: jest.fn()
+        };
+
+        mockOpenUniStreamFunc = jest.fn();
+        
+        trackWriter = new TrackWriter(
+            '/test/path' as BroadcastPath,
+            'test-track',
+            mockSubscribeStream,
+            mockOpenUniStreamFunc
+        );
     });
 
     describe('constructor', () => {
-        it('should initialize with provided context and open group function', () => {
-            expect(trackWriter.context).toBe(ctx);
-        });
-    });
-
-    describe('context getter', () => {
-        it('should return the context', () => {
-            expect(trackWriter.context).toBe(ctx);
+        it('should initialize with provided parameters', () => {
+            expect(trackWriter.broadcastPath).toBe('/test/path');
+            expect(trackWriter.trackName).toBe('test-track');
+            expect(trackWriter.context).toBe(mockContext);
+            expect(trackWriter.subscribeId).toBe(123n);
         });
     });
 
     describe('openGroup', () => {
-        it('should call openGroupFunc with context and groupId', async () => {
-            const groupId = 123n;
-            const mockGroupWriter = {} as GroupWriter;
-            mockOpenGroupFunc = jest.fn().mockResolvedValue([mockGroupWriter, undefined]);
-            trackWriter = new TrackWriter(ctx, mockOpenGroupFunc);
+        beforeEach(() => {
+            // Reset all mocks
+            jest.clearAllMocks();
+            // Setup default successful returns
+            mockSubscribeStream.accept.mockResolvedValue(undefined);
+            mockOpenUniStreamFunc.mockResolvedValue([mockWriter, undefined]);
+            (GroupMessage.encode as jest.Mock).mockImplementation(() => Promise.resolve([{}, undefined]));
+        });
 
+        it('should accept subscription and open group successfully', async () => {
+            const groupId = 456n;
+            
             const [groupWriter, error] = await trackWriter.openGroup(groupId);
 
-            expect(mockOpenGroupFunc).toHaveBeenCalledWith(ctx, groupId);
-            expect(groupWriter).toBe(mockGroupWriter);
+            expect(mockSubscribeStream.accept).toHaveBeenCalledWith({
+                groupOrder: 0,
+                trackPriority: 0
+            });
+            expect(mockOpenUniStreamFunc).toHaveBeenCalled();
+            expect(mockWriter.writeUint8).toHaveBeenCalled();
+            expect(GroupMessage.encode).toHaveBeenCalledWith(mockWriter, 123n, groupId);
+            expect(groupWriter).toBeInstanceOf(GroupWriter);
             expect(error).toBeUndefined();
         });
 
-        it('should return error from openGroupFunc', async () => {
-            const groupId = 123n;
-            const mockError = new Error('Failed to open group');
-            mockOpenGroupFunc = jest.fn().mockResolvedValue([undefined, mockError]);
-            trackWriter = new TrackWriter(ctx, mockOpenGroupFunc);
+        it('should return error if subscription accept fails', async () => {
+            const acceptError = new Error('Accept failed');
+            mockSubscribeStream.accept.mockResolvedValue(acceptError);
 
-            const [groupWriter, error] = await trackWriter.openGroup(groupId);
+            const [groupWriter, error] = await trackWriter.openGroup(456n);
 
-            expect(mockOpenGroupFunc).toHaveBeenCalledWith(ctx, groupId);
             expect(groupWriter).toBeUndefined();
-            expect(error).toBe(mockError);
+            expect(error).toBe(acceptError);
+        });
+
+        it('should return error if openUniStreamFunc fails', async () => {
+            const streamError = new Error('Stream failed');
+            mockOpenUniStreamFunc.mockResolvedValue([undefined, streamError]);
+
+            const [groupWriter, error] = await trackWriter.openGroup(456n);
+
+            expect(groupWriter).toBeUndefined();
+            expect(error).toBe(streamError);
+        });
+
+        it('should skip accept if already accepted', async () => {
+            // First call should accept
+            await trackWriter.openGroup(456n);
+            expect(mockSubscribeStream.accept).toHaveBeenCalledTimes(1);
+
+            // Second call should not accept again
+            mockSubscribeStream.accept.mockClear();
+            await trackWriter.openGroup(789n);
+            expect(mockSubscribeStream.accept).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('writeInfo', () => {
+        beforeEach(() => {
+            mockSubscribeStream.accept.mockResolvedValue(undefined);
+        });
+
+        it('should accept subscription with provided info', async () => {
+            const info: Info = { groupOrder: 100, trackPriority: 50 };
+            
+            const error = await trackWriter.writeInfo(info);
+
+            expect(mockSubscribeStream.accept).toHaveBeenCalledWith(info);
+            expect(error).toBeUndefined();
+        });
+
+        it('should return error if accept fails', async () => {
+            const acceptError = new Error('Accept failed');
+            mockSubscribeStream.accept.mockResolvedValue(acceptError);
+            const info: Info = { groupOrder: 100, trackPriority: 50 };
+
+            const error = await trackWriter.writeInfo(info);
+
+            expect(error).toBe(acceptError);
+        });
+
+        it('should not accept again if already accepted', async () => {
+            const info: Info = { groupOrder: 100, trackPriority: 50 };
+            
+            // First call should accept
+            await trackWriter.writeInfo(info);
+            expect(mockSubscribeStream.accept).toHaveBeenCalledWith(info);
+
+            // Second call should return early
+            mockSubscribeStream.accept.mockClear();
+            const error = await trackWriter.writeInfo(info);
+            expect(mockSubscribeStream.accept).not.toHaveBeenCalled();
+            expect(error).toBeUndefined();
         });
     });
 });
 
 describe('TrackReader', () => {
-    let ctx: Context;
-    let cancelFunc: (err: Error | null) => void;
-    let mockAcceptFunc: () => Promise<[GroupReader?, Error?]>;
+    let mockSubscribeStream: any;
+    let mockAcceptFunc: any;
+    let mockOnCloseFunc: any;
     let trackReader: TrackReader;
+    let mockContext: Context;
+    let mockReader: any;
+    let mockGroupMessage: GroupMessage;
 
     beforeEach(() => {
-        [ctx, cancelFunc] = withCancelCause(background());
+        mockContext = background();
+        mockReader = {
+            cancel: jest.fn(),
+            closed: jest.fn()
+        };
+        
+        mockGroupMessage = {} as GroupMessage;
+
+        mockSubscribeStream = {
+            context: mockContext,
+            trackConfig: {} as TrackConfig,
+            update: jest.fn(),
+            cancel: jest.fn()
+        };
+
         mockAcceptFunc = jest.fn();
-        trackReader = new TrackReader(ctx, mockAcceptFunc);
-    });
-
-    afterEach(() => {
-        cancelFunc(new Error('Test cleanup'));
-    });
-
-    describe('constructor', () => {
-        it('should initialize with provided context and accept function', () => {
-            expect(trackReader.context).toBe(ctx);
-        });
-    });
-
-    describe('context getter', () => {
-        it('should return the context', () => {
-            expect(trackReader.context).toBe(ctx);
-        });
+        mockOnCloseFunc = jest.fn();
+        
+        trackReader = new TrackReader(mockSubscribeStream, mockAcceptFunc, mockOnCloseFunc);
     });
 
     describe('acceptGroup', () => {
-        it('should call acceptFunc when context has no error', async () => {
-            const mockGroupReader = {} as GroupReader;
-            mockAcceptFunc = jest.fn().mockResolvedValue([mockGroupReader, undefined]);
-            trackReader = new TrackReader(ctx, mockAcceptFunc);
+        it('should accept group successfully when context is valid', async () => {
+            mockAcceptFunc.mockResolvedValue([mockReader, mockGroupMessage]);
 
             const [groupReader, error] = await trackReader.acceptGroup();
 
             expect(mockAcceptFunc).toHaveBeenCalled();
-            expect(groupReader).toBe(mockGroupReader);
+            expect(groupReader).toBeInstanceOf(GroupReader);
             expect(error).toBeUndefined();
-        });
-
-        it('should return error from acceptFunc', async () => {
-            const mockError = new Error('Failed to accept group');
-            mockAcceptFunc = jest.fn().mockResolvedValue([undefined, mockError]);
-            trackReader = new TrackReader(ctx, mockAcceptFunc);
-
-            const [groupReader, error] = await trackReader.acceptGroup();
-
-            expect(mockAcceptFunc).toHaveBeenCalled();
-            expect(groupReader).toBeUndefined();
-            expect(error).toBe(mockError);
         });
 
         it('should return context error when context is cancelled', async () => {
             const contextError = new Error('Context cancelled');
-            cancelFunc(contextError); // Cancel the context
+            const [ctx, cancelFunc] = withCancelCause(background());
+            mockSubscribeStream.context = ctx;
+            trackReader = new TrackReader(mockSubscribeStream, mockAcceptFunc, mockOnCloseFunc);
 
-            // Wait a bit for the context to be cancelled
+            cancelFunc(contextError);
             await new Promise(resolve => setTimeout(resolve, 10));
 
             const [groupReader, error] = await trackReader.acceptGroup();
 
             expect(mockAcceptFunc).not.toHaveBeenCalled();
             expect(groupReader).toBeUndefined();
-            expect(error).toBeDefined();
-            expect(error?.message).toContain('cancelled');
+            expect(error).toBe(contextError);
+        });
+
+        it('should return error when no group is available', async () => {
+            mockAcceptFunc.mockResolvedValue(undefined);
+
+            const [groupReader, error] = await trackReader.acceptGroup();
+
+            expect(groupReader).toBeUndefined();
+            expect(error).toBeInstanceOf(Error);
+            expect(error?.message).toBe('No group available');
+        });
+    });
+
+    describe('update', () => {
+        it('should call subscribeStream update', async () => {
+            const trackPriority = 100n;
+            const minGroupSequence = 1n;
+            const maxGroupSequence = 10n;
+            mockSubscribeStream.update.mockResolvedValue(undefined);
+
+            const error = await trackReader.update(trackPriority, minGroupSequence, maxGroupSequence);
+
+            expect(mockSubscribeStream.update).toHaveBeenCalledWith(trackPriority, minGroupSequence, maxGroupSequence);
+            expect(error).toBeUndefined();
+        });
+    });
+
+    describe('cancel', () => {
+        it('should cancel subscribeStream and call onCloseFunc', () => {
+            const code = 1;
+            const message = 'Test cancellation';
+
+            trackReader.cancel(code, message);
+
+            expect(mockSubscribeStream.cancel).toHaveBeenCalledWith(code, message);
+            expect(mockOnCloseFunc).toHaveBeenCalled();
         });
     });
 });

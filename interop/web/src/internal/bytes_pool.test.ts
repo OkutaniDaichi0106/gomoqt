@@ -1,16 +1,17 @@
 
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { BytesPool } from './bytes_pool';
 
 describe('BytesPool', () => {
   it('should acquire and release bytes', () => {
-    const pool = new BytesPool();
+    const pool = new BytesPool(1, 10, 100);
     const bytes = pool.acquire(10);
     expect(bytes.byteLength).toBe(10);
     pool.release(bytes);
   });
 
   it('should reuse bytes from the pool', () => {
-    const pool = new BytesPool();
+    const pool = new BytesPool(1, 10, 100);
     const bytes1 = pool.acquire(10);
     pool.release(bytes1);
     const bytes2 = pool.acquire(10);
@@ -18,7 +19,7 @@ describe('BytesPool', () => {
   });
 
   it('should not reuse bytes if capacity is too small', () => {
-    const pool = new BytesPool();
+    const pool = new BytesPool(1, 10, 100);
     const bytes1 = pool.acquire(10);
     pool.release(bytes1);
     const bytes2 = pool.acquire(20);
@@ -26,7 +27,7 @@ describe('BytesPool', () => {
   });
 
   it('should clean up old bytes', (done) => {
-    const pool = new BytesPool({ maxPerBucket: 10, maxTotalBytes: 10 });
+    const pool = new BytesPool(1, 10, 100, { maxPerBucket: 10, maxTotalBytes: 10 });
     const bytes1 = pool.acquire(10);
     pool.release(bytes1);
     setTimeout(() => {
@@ -40,7 +41,7 @@ describe('BytesPool', () => {
 
 describe('BytesPool', () => {
   it('should acquire and release bytes', () => {
-    const pool = new BytesPool();
+    const pool = new BytesPool(1, 10, 100);
     const bytes = pool.acquire(10);
     expect(bytes.byteLength).toBe(10);
     pool.release(bytes);

@@ -7,6 +7,10 @@ export class FrameMessage {
         this.data = data;
     }
 
+    length(): number {
+        return this.data.length;
+    }
+
     static async encode(writer: Writer, data: Uint8Array): Promise<[FrameMessage?, Error?]> {
         writer.writeUint8Array(data);
         const err = await writer.flush();

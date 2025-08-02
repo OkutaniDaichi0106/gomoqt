@@ -1,15 +1,16 @@
-import 'jest';
+// Global Jest types for testing environment
+// This file provides Jest globals when @types/jest is included but tests are excluded from main tsconfig
 
 declare global {
-  const jest: typeof import('jest');
-  const describe: typeof import('@jest/globals').describe;
-  const it: typeof import('@jest/globals').it;
-  const test: typeof import('@jest/globals').test;
-  const expect: typeof import('@jest/globals').expect;
-  const beforeEach: typeof import('@jest/globals').beforeEach;
-  const afterEach: typeof import('@jest/globals').afterEach;
-  const beforeAll: typeof import('@jest/globals').beforeAll;
-  const afterAll: typeof import('@jest/globals').afterAll;
+  var describe: jest.Describe;
+  var it: jest.It;
+  var test: jest.It;
+  var expect: jest.Expect;
+  var beforeEach: jest.Lifecycle;
+  var afterEach: jest.Lifecycle;
+  var beforeAll: jest.Lifecycle;
+  var afterAll: jest.Lifecycle;
+  var jest: typeof jest;
 }
 
 export {};

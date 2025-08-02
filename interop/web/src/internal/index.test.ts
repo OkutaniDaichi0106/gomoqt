@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import * as index from './index';
 
 describe('Internal Index Module', () => {
@@ -70,7 +71,7 @@ describe('Internal Index Module', () => {
         });
 
         it('should provide working BytesPool', () => {
-            const pool = new index.BytesPool();
+            const pool = new index.BytesPool(1, 10, 100);
             expect(pool).toBeInstanceOf(index.BytesPool);
             
             // Test basic functionality
@@ -124,7 +125,7 @@ describe('Internal Index Module', () => {
         it('should provide proper type information', () => {
             // Test that types are preserved through re-exports
             const buffer = index.BytesBuffer.make(1024);
-            const pool = new index.BytesPool();
+            const pool = new index.BytesPool(1, 10, 100);
             const mutex = new index.Mutex();
             
             // These should have the correct types (implicit type checking)
@@ -135,20 +136,21 @@ describe('Internal Index Module', () => {
     });
 
     describe('API consistency', () => {
-        it('should provide consistent API access', () => {
+        it('should provide consistent API access', async () => {
             // Compare direct import vs index import
-            const BytesBufferDirect = require('./bytes').BytesBuffer;
-            const BytesPoolDirect = require('./bytes_pool').BytesPool;
-            const MutexDirect = require('./mutex').Mutex;
+            const { BytesBuffer: BytesBufferDirect } = await import('./bytes');
+            const { BytesPool: BytesPoolDirect } = await import('./bytes_pool');
+            const { Mutex: MutexDirect } = await import('./mutex');
             
             expect(index.BytesBuffer).toBe(BytesBufferDirect);
             expect(index.BytesPool).toBe(BytesPoolDirect);
             expect(index.Mutex).toBe(MutexDirect);
         });
 
-        it('should not modify re-exported APIs', () => {
+        it('should not modify re-exported APIs', async () => {
             // Ensure that re-exports maintain original functionality
-            const directBuffer = require('./bytes').BytesBuffer.make(1024);
+            const { BytesBuffer: BytesBufferDirect } = await import('./bytes');
+            const directBuffer = BytesBufferDirect.make(1024);
             const indexBuffer = index.BytesBuffer.make(1024);
             
             // Both should have identical API

@@ -1,3 +1,4 @@
+import { describe, it, expect } from '@jest/globals';
 import { BiStreamTypes, UniStreamTypes } from './stream_type';
 
 describe('BiStreamTypes', () => {

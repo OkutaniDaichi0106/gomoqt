@@ -29,14 +29,13 @@ export class Reader {
             return [undefined, err];
         }
 
-
         const len = Number(varint);
         if (len > MAX_BYTES_LENGTH) {
             return [undefined, new Error("Varint too large")];
         }
 
-        const bytes = new Uint8Array(this.#pool.acquire(len));
-
+        const buffer = new Uint8Array(this.#pool.acquire(len));
+        const bytes = buffer.subarray(0, len); // Only use the exact length needed
 
         const [n, err2] = await this.copy(bytes);
         if (err2) {
@@ -44,7 +43,7 @@ export class Reader {
         }
 
         // Return only the bytes that were actually read
-        if ( n < len) {
+        if (n < len) {
             return [bytes.subarray(0, n), undefined];
         }
 
@@ -77,11 +76,8 @@ export class Reader {
         }
         const firstByte = this.#buf.readUint8();
 
-
         const len = 1 << (firstByte >> 6);
-
         let value: bigint = BigInt(firstByte & 0x3f);
-
 
         const remaining = len - 1; // Remaining bytes to read
         if (this.#buf.size < remaining) {
@@ -160,7 +156,7 @@ export class Reader {
         while (totalFilled < diff) {
             const {done, value} = await this.#pull.read();
             if (done) {
-                return [0, new Error("Stream closed")];
+                return [totalFilled, totalFilled > 0 ? undefined : new Error("Stream closed")];
             }
             if (!value || value.length === 0) {
                 break; // No more data to read
@@ -180,7 +176,7 @@ export class Reader {
         while (totalFilled < buffer.length) {
             const {done, value} = await this.#pull.read();
             if (done) {
-                return [0, new Error("Stream closed")];
+                return [totalFilled, totalFilled > 0 ? undefined : new Error("Stream closed")];
             }
             if (!value || value.length === 0) {
                 break; // No more data to read

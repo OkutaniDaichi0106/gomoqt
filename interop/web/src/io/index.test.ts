@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import * as ioModule from './index';
 import { Reader } from './reader';
 import { Writer } from './writer';
@@ -89,7 +90,7 @@ describe('IO Module Index', () => {
       expect(error).toBeUndefined();
       expect(result).toBe(42);
       
-      await reader.cancel(0, 'Test cleanup');
+      await reader.cancel(new StreamError(0, 'Test cleanup'));
     });
 
     it('should maintain all functionality of Writer through re-export', async () => {

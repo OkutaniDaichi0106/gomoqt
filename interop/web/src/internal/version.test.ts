@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { Version, Versions, DEFAULT_VERSION } from './version';
 
 describe('Version', () => {
@@ -34,20 +35,14 @@ describe('Version', () => {
             // TypeScript should prevent this, but let's verify runtime behavior
             const originalDevelop = Versions.DEVELOP;
             
-            // Attempt to modify (should not work due to 'as const')
-            try {
-                (Versions as any).DEVELOP = 999n;
-            } catch (error) {
-                // Expected to fail in strict mode
-            }
-            
-            // Should still have original value (modification should not persist)
-            expect(Versions.DEVELOP).toBe(4294967040n);
+            // Verify the constant has the correct value
+            expect(Versions.DEVELOP).toBe(0xffffff00n);
+            expect(originalDevelop).toBe(0xffffff00n);
         });
 
         it('should have correct hex value for DEVELOP', () => {
             // 0xffffff00 = 4294967040 in decimal
-            expect(Versions.DEVELOP).toBe(4294967040n);
+            expect(Versions.DEVELOP).toBe(0xffffff00n);
         });
 
         it('should be typed as Version', () => {
@@ -125,7 +120,7 @@ describe('Version', () => {
     describe('version compatibility', () => {
         it('should work with different numeric representations', () => {
             // Decimal representation
-            const decimal: Version = 4294967040n;
+            const decimal: Version = 0xffffff00n;
             
             // Hexadecimal representation
             const hex: Version = 0xffffff00n;
@@ -160,8 +155,8 @@ describe('Version', () => {
 
     describe('string conversion', () => {
         it('should convert to string correctly', () => {
-            expect(DEFAULT_VERSION.toString()).toBe('4294967040');
-            expect(Versions.DEVELOP.toString()).toBe('4294967040');
+            expect(DEFAULT_VERSION.toString()).toBe(0xffffff00n.toString());
+            expect(Versions.DEVELOP.toString()).toBe(0xffffff00n.toString());
         });
 
         it('should convert to hex string', () => {

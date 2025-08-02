@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { Reader } from './reader';
 import { StreamError } from './error';
 
@@ -328,8 +329,9 @@ describe('Reader', () => {
     it('should cancel the reader with error code and message', async () => {
       const code = 123;
       const message = 'Test cancellation';
+      const streamError = new StreamError(code, message);
       
-      await expect(reader.cancel(code, message)).resolves.not.toThrow();
+      await expect(reader.cancel(streamError)).resolves.not.toThrow();
     });
   });
 
@@ -405,7 +407,7 @@ describe('Reader', () => {
       expect(error).toBeUndefined();
       expect(result).toBe(42);
       
-      await freshReader.cancel(0, 'Test cleanup');
+      await freshReader.cancel(new StreamError(0, 'Test cleanup'));
     });
   });
 });

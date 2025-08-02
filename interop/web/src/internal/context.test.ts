@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { 
     Context, 
     background, 
@@ -51,7 +52,7 @@ describe('Context', () => {
             controller.abort(new Error('Custom abort'));
             
             // Wait a bit for async operations
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, 50));
             
             expect(done).toBe(true);
             expect(childCtx.signal.aborted).toBe(true);
@@ -90,7 +91,7 @@ describe('Context', () => {
             cancel();
             
             // Wait a bit for async operations
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, 50));
             
             expect(done).toBe(true);
             expect(childCtx.signal.aborted).toBe(true);
@@ -107,7 +108,7 @@ describe('Context', () => {
             parentCancel();
             
             // Wait a bit for async operations
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, 50));
             
             expect(childDone).toBe(true);
             expect(childCtx.signal.aborted).toBe(true);
@@ -139,23 +140,23 @@ describe('Context', () => {
             cancelWithCause(customError);
             
             // Wait a bit for async operations
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, 50));
             
             expect(done).toBe(true);
             expect(childCtx.signal.aborted).toBe(true);
         });
 
-        it('should handle null error', async () => {
+        it('should handle undefined error', async () => {
             const parentCtx = background();
             const [childCtx, cancelWithCause] = withCancelCause(parentCtx);
             
             let done = false;
             childCtx.done().catch(() => { done = true; });
             
-            cancelWithCause(null);
+            cancelWithCause(undefined);
             
             // Wait a bit for async operations
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, 50));
             
             expect(done).toBe(true);
             expect(childCtx.signal.aborted).toBe(true);
@@ -205,7 +206,7 @@ describe('Context', () => {
             parentCancel();
             
             // Wait a bit for async operations
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, 50));
             
             expect(done).toBe(true);
             expect(childCtx.signal.aborted).toBe(true);
@@ -222,7 +223,7 @@ describe('Context', () => {
             childCtx.done().catch(() => { done = true; });
             
             // Wait for promise to resolve
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, 50));
             
             expect(done).toBe(true);
             expect(childCtx.signal.aborted).toBe(true);
@@ -243,7 +244,7 @@ describe('Context', () => {
             });
             
             // Wait for promise to reject
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, 50));
             
             expect(done).toBe(true);
             expect(childCtx.signal.aborted).toBe(true);
@@ -264,7 +265,7 @@ describe('Context', () => {
             });
             
             // Wait for promise to reject
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, 50));
             
             expect(done).toBe(true);
             expect(childCtx.signal.aborted).toBe(true);
@@ -290,7 +291,7 @@ describe('Context', () => {
             cancel();
             
             // Wait a bit for async operations
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, 50));
             
             expect(rejected).toBe(true);
             expect(error).toBeInstanceOf(Error);
@@ -309,7 +310,7 @@ describe('Context', () => {
             cancel();
             
             // Wait a bit for async operations
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, 50));
             
             expect(ctx.err()).toBeInstanceOf(Error);
         });

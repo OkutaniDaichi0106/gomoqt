@@ -1,13 +1,26 @@
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { AnnouncementWriter, AnnouncementReader, Announcement } from './announce_stream';
 import { Writer, Reader } from './io';
 import { Context, background, withCancelCause } from './internal';
-import { AnnounceMessage, AnnouncePleaseMessage } from './message';
+import { AnnounceMessage, AnnouncePleaseMessage, AnnounceInitMessage } from './message';
 import { TrackPrefix } from './track_prefix';
 import { BroadcastPath } from './broadcast_path';
 
 // Mock dependencies
 jest.mock('./io');
-jest.mock('./message');
+jest.mock('./message', () => ({
+    AnnounceMessage: {
+        encode: jest.fn(),
+        decode: jest.fn()
+    },
+    AnnouncePleaseMessage: jest.fn(),
+    AnnounceInitMessage: {
+        encode: jest.fn()
+    }
+}));
+
+// Import the mocked module to use in tests
+const { AnnounceMessage: MockedAnnounceMessage } = jest.requireActual('./message') as any;
 
 describe('AnnouncementWriter', () => {
     let mockWriter: jest.Mocked<Writer>;
@@ -23,24 +36,26 @@ describe('AnnouncementWriter', () => {
             writeBoolean: jest.fn(),
             writeVarint: jest.fn(),
             writeString: jest.fn(),
+            writeStringArray: jest.fn(),
             writeUint8Array: jest.fn(),
             writeUint8: jest.fn(),
-            flush: jest.fn().mockResolvedValue(undefined),
-            close: jest.fn().mockResolvedValue(undefined),
-            cancel: jest.fn().mockResolvedValue(undefined),
-            closed: jest.fn().mockResolvedValue(undefined)
+            flush: jest.fn<() => Promise<Error | undefined>>().mockResolvedValue(undefined),
+            close: jest.fn().mockReturnValue(undefined),
+            cancel: jest.fn().mockReturnValue(undefined),
+            closed: jest.fn().mockReturnValue(Promise.resolve())
         } as any;
 
         mockReader = {
             readBoolean: jest.fn(),
             readVarint: jest.fn(),
             readString: jest.fn(),
+            readStringArray: jest.fn(),
             readUint8Array: jest.fn(),
             readUint8: jest.fn(),
             copy: jest.fn(),
             fill: jest.fn(),
-            cancel: jest.fn().mockResolvedValue(undefined),
-            closed: jest.fn().mockResolvedValue(Promise.resolve())
+            cancel: jest.fn().mockReturnValue(undefined),
+            closed: jest.fn().mockReturnValue(Promise.resolve())
         } as any;
 
         mockAnnouncePlease = {
@@ -72,37 +87,55 @@ describe('AnnouncementWriter', () => {
             mockAnnouncement = {
                 broadcastPath: '/test/path' as BroadcastPath,
                 isActive: jest.fn().mockReturnValue(true),
-                ended: jest.fn().mockResolvedValue(undefined),
+                ended: jest.fn().mockReturnValue(Promise.resolve()),
                 fork: jest.fn().mockReturnValue({} as Announcement),
                 end: jest.fn()
             } as any;
         });
 
         it('should send announcement when path matches prefix', async () => {
-            (AnnounceMessage.encode as jest.Mock).mockResolvedValue([{}, undefined]);
+            (AnnounceMessage.encode as any).mockResolvedValue([{}, undefined]);
+            (AnnounceInitMessage.encode as any).mockResolvedValue([{}, undefined]);
+            
+            // Initialize the writer first
+            await writer.init([]);
 
-            await writer.send(mockAnnouncement);
-
+            const result = await writer.send(mockAnnouncement);
+            
+            expect(result).toBeUndefined();
             expect(AnnounceMessage.encode).toHaveBeenCalledWith(mockWriter, 'path', true);
         });
 
-        it('should throw error when path does not match prefix', async () => {
+        it('should return error when path does not match prefix', async () => {
             const differentAnnouncement = {
                 broadcastPath: '/different/path' as BroadcastPath,
                 isActive: jest.fn().mockReturnValue(true),
-                ended: jest.fn().mockResolvedValue(undefined),
+                ended: jest.fn().mockReturnValue(Promise.resolve()),
                 fork: jest.fn().mockReturnValue({} as Announcement),
                 end: jest.fn()
             } as any;
+            
+            (AnnounceInitMessage.encode as any).mockResolvedValue([{}, undefined]);
+            
+            // Initialize the writer first
+            await writer.init([]);
 
-            await expect(writer.send(differentAnnouncement)).rejects.toThrow('Path /different/path does not start with prefix /test/');
+            const result = await writer.send(differentAnnouncement);
+            expect(result).toBeInstanceOf(Error);
+            expect(result?.message).toBe('Path /different/path does not start with prefix /test/');
         });
 
-        it('should throw error when encoding fails', async () => {
+        it('should return error when encoding fails', async () => {
             const error = new Error('Encoding failed');
-            (AnnounceMessage.encode as jest.Mock).mockResolvedValue([undefined, error]);
+            (AnnounceMessage.encode as any).mockResolvedValue([undefined, error]);
+            (AnnounceInitMessage.encode as any).mockResolvedValue([{}, undefined]);
+            
+            // Initialize the writer first
+            await writer.init([]);
 
-            await expect(writer.send(mockAnnouncement)).rejects.toThrow('Failed to write announcement: Error: Encoding failed');
+            const result = await writer.send(mockAnnouncement);
+            expect(result).toBeInstanceOf(Error);
+            expect(result?.message).toBe('Failed to write announcement: Error: Encoding failed');
         });
     });
 
@@ -181,41 +214,51 @@ describe('AnnouncementReader', () => {
     let mockWriter: jest.Mocked<Writer>;
     let mockReader: jest.Mocked<Reader>;
     let mockAnnouncePlease: AnnouncePleaseMessage;
+    let mockAnnounceInit: AnnounceInitMessage;
     let ctx: Context;
     let reader: AnnouncementReader;
 
     beforeEach(() => {
         ctx = background();
 
+        // Mock AnnounceMessage.decode to avoid the infinite loop in AnnouncementReader constructor
+        (AnnounceMessage.decode as jest.Mock).mockImplementation(() => new Promise(() => {})); // Never resolves
+
         mockWriter = {
             writeBoolean: jest.fn(),
             writeVarint: jest.fn(),
             writeString: jest.fn(),
+            writeStringArray: jest.fn(),
             writeUint8Array: jest.fn(),
             writeUint8: jest.fn(),
-            flush: jest.fn().mockResolvedValue(undefined),
-            close: jest.fn().mockResolvedValue(undefined),
-            cancel: jest.fn().mockResolvedValue(undefined),
-            closed: jest.fn().mockResolvedValue(undefined)
+            flush: jest.fn<() => Promise<Error | undefined>>().mockResolvedValue(undefined),
+            close: jest.fn().mockReturnValue(undefined),
+            cancel: jest.fn().mockReturnValue(undefined),
+            closed: jest.fn().mockReturnValue(Promise.resolve())
         } as any;
 
         mockReader = {
             readBoolean: jest.fn(),
             readVarint: jest.fn(),
             readString: jest.fn(),
+            readStringArray: jest.fn(),
             readUint8Array: jest.fn(),
             readUint8: jest.fn(),
             copy: jest.fn(),
             fill: jest.fn(),
-            cancel: jest.fn().mockResolvedValue(undefined),
-            closed: jest.fn().mockResolvedValue(Promise.resolve())
+            cancel: jest.fn().mockReturnValue(undefined),
+            closed: jest.fn().mockReturnValue(Promise.resolve())
         } as any;
 
         mockAnnouncePlease = {
             prefix: '/test/' as TrackPrefix
         } as AnnouncePleaseMessage;
 
-        reader = new AnnouncementReader(ctx, mockWriter, mockReader, mockAnnouncePlease);
+        mockAnnounceInit = {
+            suffixes: ['suffix1', 'suffix2']
+        } as AnnounceInitMessage;
+
+        reader = new AnnouncementReader(ctx, mockWriter, mockReader, mockAnnouncePlease, mockAnnounceInit);
     });
 
     describe('constructor', () => {

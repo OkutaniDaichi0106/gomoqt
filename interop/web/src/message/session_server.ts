@@ -1,6 +1,7 @@
 import { Extensions } from "../internal/extensions";
 import { Reader, Writer } from "../io";
 import { Version } from "../internal/version";
+import { varintLen, bytesLen } from "../io/len";
 
 export class SessionServerMessage {
     version: Version;
@@ -11,7 +12,20 @@ export class SessionServerMessage {
         this.extensions = extensions;
     }
 
+    length(): number {
+        let length = 0;
+        length += varintLen(this.version);
+        length += varintLen(BigInt(this.extensions.entries.size));
+        for (const ext of this.extensions.entries) {
+            length += varintLen(ext[0]);
+            length += bytesLen(ext[1]);
+        }
+        return length;
+    }
+
     static async encode(writer: Writer, version: Version, extensions: Extensions = new Extensions()): Promise<[SessionServerMessage?, Error?]> {
+        const msg = new SessionServerMessage(version, extensions);
+        writer.writeVarint(BigInt(msg.length()));
         writer.writeVarint(version);
 
         writer.writeVarint(BigInt(extensions.entries.size)); // Write the number of extensions
@@ -24,19 +38,24 @@ export class SessionServerMessage {
         if (err) {
             return [undefined, err];
         }
-        return [new SessionServerMessage(version, extensions), undefined];
+        return [msg, undefined];
     }
 
 
     static async decode(reader: Reader): Promise<[SessionServerMessage?, Error?]> {
-        let [version, err] = await reader.readVarint();
+        const [len, err] = await reader.readVarint();
         if (err) {
-            return [undefined, new Error("Failed to read version for SessionServer")];
+            return [undefined, new Error("Failed to read length for SessionServer")];
         }
 
-        let [extensionCount, err2] = await reader.readVarint();
+        const [version, err2] = await reader.readVarint();
         if (err2) {
-            return [undefined, new Error("Failed to read number of extensions for SessionServer")];
+            return [undefined, new Error("Failed to read version for SessionServer: " + err2.message)];
+        }
+
+        const [extensionCount, err3] = await reader.readVarint();
+        if (err3) {
+            return [undefined, new Error("Failed to read number of extensions for SessionServer: " + err3.message)];
         }
         if (extensionCount < 0) {
             return [undefined, new Error("Invalid number of extensions for SessionServer")];

@@ -1,4 +1,5 @@
 import { Writer, Reader } from "../io";
+import { varintLen } from "../io/len";
 
 export class GroupMessage {
     subscribeId: bigint;
@@ -9,25 +10,36 @@ export class GroupMessage {
         this.sequence = sequence;
     }
 
+    length(): number {
+        return varintLen(this.subscribeId) + varintLen(this.sequence);
+    }
+
     static async encode(writer: Writer, subscribeId: bigint, sequence: bigint): Promise<[GroupMessage?, Error?]> {
+        const msg = new GroupMessage(subscribeId, sequence);
+        writer.writeVarint(BigInt(msg.length()));
         writer.writeVarint(subscribeId);
         writer.writeVarint(sequence);
         const err = await writer.flush();
         if (err) {
             return [undefined, err];
         }
-        return [new GroupMessage(subscribeId, sequence), undefined];
+        return [msg, undefined];
     }
 
     static async decode(reader: Reader): Promise<[GroupMessage?, Error?]> {
-        let [subscribeId, err] = await reader.readVarint();
+        const [len, err] = await reader.readVarint();
         if (err) {
+            return [undefined, new Error("Failed to read length for Group")];
+        }
+
+        const [subscribeId, err2] = await reader.readVarint();
+        if (err2) {
             return [undefined, new Error("Failed to read subscribeId for Group")];
         }
 
 
-        let [sequence, err2] = await reader.readVarint();
-        if (err2) {
+        const [sequence, err3] = await reader.readVarint();
+        if (err3) {
             return [undefined, new Error("Failed to read sequence for Group")];
         }
 

@@ -6,5 +6,6 @@
   "files.associations": {
     "*.test.ts": "typescript",
     "*.spec.ts": "typescript"
-  }
+  },
+  "typescript.preferences.project": "./tsconfig.test.json"
 }

@@ -1,6 +1,7 @@
 import { Extensions } from "../internal/extensions";
 import { Version } from "../internal/version";
 import { Writer, Reader } from "../io";
+import { varintLen, bytesLen } from "../io/len";
 
 
 export class SessionClientMessage {
@@ -12,7 +13,23 @@ export class SessionClientMessage {
         this.extensions = extensions;
     }
 
+    length(): number {
+        let length = 0;
+        length += varintLen(BigInt(this.versions.size));
+        for (const version of this.versions) {
+            length += varintLen(version);
+        }
+        length += varintLen(BigInt(this.extensions.entries.size));
+        for (const ext of this.extensions.entries) {
+            length += varintLen(ext[0]); // Extension ID length
+            length += bytesLen(ext[1]); // Extension data length (includes length prefix)
+        }
+        return length;
+    }
+
     static async encode(writer: Writer, versions: Set<Version>, extensions: Extensions = new Extensions()): Promise<[SessionClientMessage?, Error?]> {
+        const msg = new SessionClientMessage(versions, extensions);
+        writer.writeVarint(BigInt(msg.length()));
         writer.writeVarint(BigInt(versions.size));
         for (const version of versions) {
             writer.writeVarint(version);
@@ -27,13 +44,18 @@ export class SessionClientMessage {
         if (err) {
             return [undefined, err];
         }
-        return [new SessionClientMessage(versions, extensions), undefined];
+        return [msg, undefined];
     }
 
     static async decode(reader: Reader): Promise<[SessionClientMessage?, Error?]> {
-        let [numVersions, err] = await reader.readVarint();
+        const [len, err] = await reader.readVarint();
         if (err) {
-            return [undefined, new Error("Failed to read number of versions for SessionClient: " + err.message)];
+            return [undefined, new Error("Failed to read length for SessionClient: " + err.message)];
+        }
+
+        let [numVersions, err2] = await reader.readVarint();
+        if (err2) {
+            return [undefined, new Error("Failed to read number of versions for SessionClient: " + err2.message)];
         }
         if (numVersions < 0) {
             return [undefined, new Error("Invalid number of versions for SessionClient")];
@@ -41,17 +63,16 @@ export class SessionClientMessage {
         if (numVersions > BigInt(Number.MAX_SAFE_INTEGER)) {
             return [undefined, new Error("Number of versions exceeds maximum safe integer for SessionClient")];
         }
-        
+
         const versions = new Set<Version>();
         for (let i = 0; i < Number(numVersions); i++) {
             let [version, err2] = await reader.readVarint();
             if (err2) {
                 return [undefined, new Error(`Failed to read version ${i} for SessionClient: ${err2.message}`)];
             }
-
             versions.add(version);
         }
-        
+
         let [numExtensions, err3] = await reader.readVarint();
         if (err3) {
             return [undefined, new Error("Failed to read number of extensions for SessionClient: " + err3.message)];

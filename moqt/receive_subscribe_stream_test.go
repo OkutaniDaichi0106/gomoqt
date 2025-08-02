@@ -141,7 +141,7 @@ func TestReceiveSubscribeStream_SubscribeID(t *testing.T) {
 	}
 }
 
-func TestReceiveSubscribeStream_SubscribeConfig(t *testing.T) {
+func TestReceiveSubscribeStream_TrackConfig(t *testing.T) {
 	tests := map[string]struct {
 		config *TrackConfig
 	}{
@@ -429,7 +429,7 @@ func TestReceiveSubscribeStream_ConcurrentAccess(t *testing.T) {
 		}()
 	}
 
-	// Test concurrent access to SubscribeConfig
+	// Test concurrent access to TrackConfig
 	wg.Add(numGoroutines)
 	for i := 0; i < numGoroutines; i++ {
 		go func() {

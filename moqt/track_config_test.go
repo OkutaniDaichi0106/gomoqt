@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestSubscribeConfig(t *testing.T) {
+func TestTrackConfig(t *testing.T) {
 	tests := map[string]struct {
 		trackPriority    TrackPriority
 		minGroupSequence GroupSequence
@@ -47,7 +47,7 @@ func TestSubscribeConfig(t *testing.T) {
 	}
 }
 
-func TestSubscribeConfig_IsInRange(t *testing.T) {
+func TestTrackConfig_IsInRange(t *testing.T) {
 	tests := map[string]struct {
 		config   TrackConfig
 		seq      GroupSequence
@@ -187,7 +187,7 @@ func TestSubscribeConfig_IsInRange(t *testing.T) {
 	}
 }
 
-func TestSubscribeConfig_String(t *testing.T) {
+func TestTrackConfig_String(t *testing.T) {
 	tests := map[string]struct {
 		config   TrackConfig
 		expected string
@@ -232,7 +232,7 @@ func TestSubscribeConfig_String(t *testing.T) {
 	}
 }
 
-func TestSubscribeConfig_ZeroValue(t *testing.T) {
+func TestTrackConfig_ZeroValue(t *testing.T) {
 	var config TrackConfig
 
 	assert.Equal(t, TrackPriority(0), config.TrackPriority)
@@ -246,7 +246,7 @@ func TestSubscribeConfig_ZeroValue(t *testing.T) {
 	assert.True(t, config.IsInRange(MaxGroupSequence))
 }
 
-func TestSubscribeConfig_Comparison(t *testing.T) {
+func TestTrackConfig_Comparison(t *testing.T) {
 	config1 := TrackConfig{
 		TrackPriority:    TrackPriority(128),
 		MinGroupSequence: GroupSequence(10),

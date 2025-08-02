@@ -51,7 +51,7 @@ func TestSendSubscribeStream_SubscribeID(t *testing.T) {
 	assert.Equal(t, id, returnedID, "SubscribeID() should return the correct ID")
 }
 
-func TestSendSubscribeStream_SubscribeConfig(t *testing.T) {
+func TestSendSubscribeStream_TrackConfig(t *testing.T) {
 	id := SubscribeID(789)
 	config := &TrackConfig{
 		TrackPriority:    TrackPriority(5),

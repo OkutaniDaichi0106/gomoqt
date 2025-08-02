@@ -20,7 +20,25 @@ func newAnnouncementWriter(stream quic.Stream, prefix prefix) *AnnouncementWrite
 		ctx:     context.WithValue(stream.Context(), &biStreamTypeCtxKey, message.StreamTypeAnnounce),
 		actives: make(map[suffix]*Announcement),
 		initCh:  make(chan struct{}, 1), // Buffered to avoid blocking on init
+		cleanCh: make(chan struct{}, 1), // Buffered to avoid blocking on clean
 	}
+
+	go func() {
+		for range sas.cleanCh {
+			if sas.Context().Err() != nil {
+				return // Context cancelled, exit goroutine
+			}
+
+			sas.mu.Lock()
+			// Remove inactive announcements from actives map
+			for suffix, ann := range sas.actives {
+				if !ann.IsActive() {
+					delete(sas.actives, suffix)
+				}
+			}
+			sas.mu.Unlock()
+		}
+	}()
 
 	return sas
 }
@@ -36,6 +54,8 @@ type AnnouncementWriter struct {
 
 	initCh   chan struct{}
 	initOnce sync.Once
+
+	cleanCh chan struct{}
 }
 
 func (sas *AnnouncementWriter) init(init []*Announcement) error {
@@ -45,11 +65,14 @@ func (sas *AnnouncementWriter) init(init []*Announcement) error {
 		defer sas.mu.Unlock()
 
 		if sas.ctx.Err() != nil {
+			// sas.mu.Unlock()
 			err = Cause(sas.ctx)
 			return
 		}
 
 		suffixes := make([]suffix, 0, len(init))
+		oldAnnouncements := make([]*Announcement, 0) // Store old announcements to end later
+
 		for _, new := range init {
 			if !new.IsActive() {
 				continue // Skip non-active announcements
@@ -60,45 +83,51 @@ func (sas *AnnouncementWriter) init(init []*Announcement) error {
 				continue // Invalid path, skip
 			}
 
-			// Cancel previous announcement if exists
+			// Check for previous announcement
 			if old, ok := sas.actives[suffix]; ok {
 				if old == new {
 					continue // Already active, no need to re-announce
 				}
-				old.End()
+				oldAnnouncements = append(oldAnnouncements, old)
 			}
 
 			sas.actives[suffix] = new
-
 			suffixes = append(suffixes, suffix)
 
 			// Watch for announcement end in background
 			new.OnEnd(func() {
-				sas.mu.Lock()
-				defer sas.mu.Unlock()
-
-				// Remove from actives only if it's still the same announcement
-				if sas.actives == nil {
-					return // Already closed
+				// Signal cleanup goroutine to handle map cleanup
+				select {
+				case sas.cleanCh <- struct{}{}:
+				default:
 				}
 
-				if current, ok := sas.actives[suffix]; ok && current == new {
-					delete(sas.actives, suffix)
-				}
-
-				if sas.ctx.Err() != nil {
+				// Send ENDED message without acquiring any locks to avoid deadlock
+				if sas.Context().Err() != nil {
 					return
 				}
 
-				// Encode and send ENDED announcement
-				err := message.AnnounceMessage{
+				// Send the message directly
+				message.AnnounceMessage{
 					AnnounceStatus: message.ENDED,
 					TrackSuffix:    suffix,
 				}.Encode(sas.stream)
-				if err != nil {
-					return
-				}
 			})
+		}
+
+		// Unlock before calling End() on old announcements to avoid deadlock
+		sas.mu.Unlock()
+
+		// End old announcements after releasing the mutex
+		for _, old := range oldAnnouncements {
+			old.End()
+		}
+
+		sas.mu.Lock()
+
+		if sas.ctx.Err() != nil {
+			err = Cause(sas.ctx)
+			return
 		}
 
 		err = message.AnnounceInitMessage{
@@ -131,7 +160,14 @@ func (sas *AnnouncementWriter) SendAnnouncement(new *Announcement) error {
 	}
 
 	if sas.initCh != nil {
-		<-sas.initCh
+		initCh := sas.initCh
+		sas.mu.Unlock()
+		<-initCh
+		sas.mu.Lock()
+	}
+
+	if sas.ctx.Err() != nil {
+		return Cause(sas.ctx)
 	}
 
 	if !new.IsActive() {
@@ -144,15 +180,31 @@ func (sas *AnnouncementWriter) SendAnnouncement(new *Announcement) error {
 		return errors.New("invalid broadcast path")
 	}
 
-	// Cancel previous announcement if exists
+	var oldAnnouncement *Announcement
+	// Check for previous announcement
 	if old, ok := sas.actives[suffix]; ok {
 		if old == new {
 			return nil // Already active, no need to re-announce
 		}
-		old.End()
+		oldAnnouncement = old
 	}
 
 	sas.actives[suffix] = new
+
+	// Unlock before calling End() on old announcement to avoid deadlock
+	sas.mu.Unlock()
+
+	// End old announcement after releasing the mutex
+	if oldAnnouncement != nil {
+		oldAnnouncement.End()
+	}
+
+	// Re-acquire lock for the remaining operations
+	sas.mu.Lock()
+
+	if sas.ctx.Err() != nil {
+		return Cause(sas.ctx)
+	}
 
 	// Create reusable AnnounceMessage
 	am := message.AnnounceMessage{
@@ -175,26 +227,23 @@ func (sas *AnnouncementWriter) SendAnnouncement(new *Announcement) error {
 
 	// Watch for announcement end in background
 	new.OnEnd(func() {
-		sas.mu.Lock()
-		defer sas.mu.Unlock()
-
-		// Remove from actives only if it's still the same announcement
-		if current, ok := sas.actives[suffix]; ok && current == new {
-			delete(sas.actives, suffix)
+		// Signal cleanup goroutine to handle map cleanup
+		select {
+		case sas.cleanCh <- struct{}{}:
+		default:
 		}
 
+		// Send ENDED message without acquiring any locks to avoid deadlock
+		// We'll check context separately without holding locks
 		if sas.stream.Context().Err() != nil {
 			return
 		}
 
-		// Reuse the same AnnounceMessage, just change status
-		am.AnnounceStatus = message.ENDED
-
-		// Encode and send ENDED announcement
-		err := am.Encode(sas.stream)
-		if err != nil {
-			return
-		}
+		// Send the message directly - any errors will be handled by the stream
+		message.AnnounceMessage{
+			AnnounceStatus: message.ENDED,
+			TrackSuffix:    suffix,
+		}.Encode(sas.stream)
 	})
 
 	return nil
@@ -211,6 +260,12 @@ func (sas *AnnouncementWriter) Close() error {
 		sas.initCh = nil
 	}
 
+	// Close cleanup channel to stop cleanup goroutine
+	if sas.cleanCh != nil {
+		close(sas.cleanCh)
+		sas.cleanCh = nil
+	}
+
 	sas.stream.CancelRead(quic.StreamErrorCode(InternalAnnounceErrorCode)) // TODO: Use a specific error code if needed
 	return sas.stream.Close()
 }
@@ -224,6 +279,12 @@ func (sas *AnnouncementWriter) CloseWithError(code AnnounceErrorCode) error {
 	if sas.initCh != nil {
 		close(sas.initCh)
 		sas.initCh = nil
+	}
+
+	// Close cleanup channel to stop cleanup goroutine
+	if sas.cleanCh != nil {
+		close(sas.cleanCh)
+		sas.cleanCh = nil
 	}
 
 	strErrCode := quic.StreamErrorCode(code)

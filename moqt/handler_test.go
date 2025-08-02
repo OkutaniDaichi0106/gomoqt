@@ -1,43 +1,104 @@
 package moqt
 
 import (
+	"context"
+	"io"
 	"testing"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 func TestNotFound(t *testing.T) {
 	tests := map[string]struct {
 		trackWriter *TrackWriter
+		expectPanic bool
 	}{
 		"nil track writer": {
 			trackWriter: nil,
+			expectPanic: false,
 		},
 		"track writer with nil TrackWriter": {
 			trackWriter: newTrackWriter(BroadcastPath("/test"), TrackName("test"), nil, nil, nil),
-		}, "track writer with mock TrackWriter": {
+			expectPanic: true,
+		},
+		"track writer with mock TrackWriter": {
 			trackWriter: newTrackWriter(BroadcastPath("/test"), TrackName("test"),
-				newReceiveSubscribeStream(SubscribeID(1), &MockQUICStream{}, &TrackConfig{}),
+				newReceiveSubscribeStream(SubscribeID(1), func() quic.Stream {
+					mockStream := &MockQUICStream{}
+					mockStream.On("Context").Return(context.Background())
+					mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+					mockStream.On("CancelWrite", mock.Anything).Return()
+					mockStream.On("CancelRead", mock.Anything).Return()
+					return mockStream
+				}(), &TrackConfig{}),
 				func() (quic.SendStream, error) {
 					return &MockQUICSendStream{}, nil
 				}, func() {}),
+			expectPanic: false,
 		},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			// Should not panic
-			NotFound(tt.trackWriter)
+			if tt.expectPanic {
+				assert.Panics(t, func() {
+					NotFound(tt.trackWriter)
+				})
+			} else {
+				// Should not panic
+				NotFound(tt.trackWriter)
+			}
 		})
 	}
 }
 
 func TestNotFoundHandler(t *testing.T) {
-	trackWriter := newTrackWriter(BroadcastPath("/test"), TrackName("test"), nil, nil, nil)
+	tests := map[string]struct {
+		trackWriter *TrackWriter
+		expectPanic bool
+	}{
+		"nil track writer": {
+			trackWriter: nil,
+			expectPanic: false,
+		},
+		"track writer with nil TrackWriter": {
+			trackWriter: newTrackWriter(BroadcastPath("/test"), TrackName("test"), nil, nil, nil),
+			expectPanic: true,
+		},
+		"track writer with mock TrackWriter": {
+			trackWriter: newTrackWriter(BroadcastPath("/test"), TrackName("test"),
+				newReceiveSubscribeStream(SubscribeID(1), func() quic.Stream {
+					mockStream := &MockQUICStream{}
+					mockStream.On("Context").Return(context.Background())
+					mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+					mockStream.On("CancelWrite", mock.Anything).Return()
+					mockStream.On("CancelRead", mock.Anything).Return()
+					return mockStream
+				}(), &TrackConfig{}),
+				func() (quic.SendStream, error) {
+					return &MockQUICSendStream{}, nil
+				}, func() {}),
+			expectPanic: false,
+		},
+	}
 
-	// Should not panic
-	NotFoundHandler.ServeTrack(trackWriter)
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			trackWriter := tt.trackWriter
+
+			if tt.expectPanic {
+				// Should panic because receiveSubscribeStream is nil
+				assert.Panics(t, func() {
+					NotFoundHandler.ServeTrack(trackWriter)
+				})
+			} else {
+				// Should not panic
+				NotFoundHandler.ServeTrack(trackWriter)
+			}
+		})
+	}
 }
 
 func TestTrackHandlerFunc(t *testing.T) {
@@ -49,7 +110,18 @@ func TestTrackHandlerFunc(t *testing.T) {
 		receivedTrackWriter = tw
 	})
 
-	testTrackWriter := newTrackWriter(BroadcastPath("/test"), TrackName("test"), nil, nil, nil)
+	// Create a proper TrackWriter with a valid receiveSubscribeStream
+	testTrackWriter := newTrackWriter(BroadcastPath("/test"), TrackName("test"),
+		newReceiveSubscribeStream(SubscribeID(1), func() quic.Stream {
+			mockStream := &MockQUICStream{}
+			mockStream.On("Context").Return(context.Background())
+			mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+			return mockStream
+		}(), &TrackConfig{}),
+		func() (quic.SendStream, error) {
+			return &MockQUICSendStream{}, nil
+		}, func() {})
+
 	handler.ServeTrack(testTrackWriter)
 
 	assert.True(t, called, "handler function was not called")
@@ -63,7 +135,18 @@ func TestTrackHandlerFuncServeTrack(t *testing.T) {
 		callCount++
 	})
 
-	trackWriter := newTrackWriter(BroadcastPath("/test"), TrackName("test"), nil, nil, nil)
+	// Create a proper TrackWriter with a valid receiveSubscribeStream
+	trackWriter := newTrackWriter(BroadcastPath("/test"), TrackName("test"),
+		newReceiveSubscribeStream(SubscribeID(1), func() quic.Stream {
+			mockStream := &MockQUICStream{}
+			mockStream.On("Context").Return(context.Background())
+			mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+			return mockStream
+		}(), &TrackConfig{}),
+		func() (quic.SendStream, error) {
+			return &MockQUICSendStream{}, nil
+		}, func() {})
+
 	// Call multiple times to ensure it works correctly
 	handler.ServeTrack(trackWriter)
 	handler.ServeTrack(trackWriter)

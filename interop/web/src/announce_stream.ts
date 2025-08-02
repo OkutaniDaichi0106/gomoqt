@@ -277,13 +277,13 @@ export class AnnouncementReader {
     }
 
     close(): void {
-        this.#cancelFunc(new Error("ReceiveAnnounceStream closed"));
+        this.#cancelFunc(new Error("AnnouncementReader closed"));
         this.#announcements.clear();
         this.#queue.close();
     }
 
     closeWithError(code: number, message: string): void {
-        this.#cancelFunc(new Error(`ReceiveAnnounceStream closed with code ${code}`));
+        this.#cancelFunc(new Error(`AnnouncementReader closed with code ${code}`));
         for (const announcement of this.#announcements.values()) {
             announcement.end();
         }

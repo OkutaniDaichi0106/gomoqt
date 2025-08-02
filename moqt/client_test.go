@@ -119,6 +119,7 @@ func TestClient_ShutdownContextCancel(t *testing.T) {
 	mockStream.On("Read", mock.Anything)
 	mockStream.On("CancelRead", mock.Anything)
 	mockStream.On("CancelWrite", mock.Anything)
+	mockStream.On("Context").Return(context.Background())
 
 	sess := newSession(mockConn, DefaultServerVersion, "/path", NewParameters(), NewParameters(), mockStream, nil, slog.Default())
 	c.addSession(sess)
@@ -255,6 +256,7 @@ func TestClient_openSession(t *testing.T) {
 				stream.On("Read", mock.Anything).Return(0, io.EOF)
 				stream.On("CancelRead", mock.Anything).Return()
 				stream.On("CancelWrite", mock.Anything).Return()
+				stream.On("Context").Return(context.Background())
 				conn.On("OpenStream").Return(stream, nil)
 				conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 				return conn
@@ -272,6 +274,7 @@ func TestClient_openSession(t *testing.T) {
 				stream.On("Read", mock.Anything).Return(0, io.EOF)
 				stream.On("CancelRead", mock.Anything).Return()
 				stream.On("CancelWrite", mock.Anything).Return()
+				stream.On("Context").Return(context.Background())
 				conn.On("OpenStream").Return(stream, nil)
 				conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 				return conn
@@ -288,6 +291,7 @@ func TestClient_openSession(t *testing.T) {
 				stream.On("Read", mock.Anything).Return(0, errors.New("ssm decode fail"))
 				stream.On("CancelRead", mock.Anything).Return()
 				stream.On("CancelWrite", mock.Anything).Return()
+				stream.On("Context").Return(context.Background())
 				conn.On("OpenStream").Return(stream, nil)
 				conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 				return conn
@@ -316,6 +320,7 @@ func TestClient_openSession(t *testing.T) {
 				stream.On("Read", mock.Anything) // ReadFunc will handle the behavior
 				stream.On("CancelRead", mock.Anything).Return()
 				stream.On("CancelWrite", mock.Anything).Return()
+				stream.On("Context").Return(context.Background())
 				conn.On("OpenStream").Return(stream, nil)
 				conn.On("Context").Return(context.Background()) // Might not be called if error occurs early
 				// Add background stream handling expectations
@@ -473,6 +478,7 @@ func TestClient_DialWebTransport_CustomDialSuccess(t *testing.T) {
 	mockStream.On("Read", mock.Anything)
 	mockStream.On("CancelRead", mock.Anything).Return()
 	mockStream.On("CancelWrite", mock.Anything).Return()
+	mockStream.On("Context").Return(context.Background())
 	mockConn.On("OpenStream").Return(mockStream, nil)
 	mockConn.On("Context").Return(context.Background())
 	mockConn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
@@ -536,6 +542,7 @@ func TestClient_DialQUIC_CustomDialSuccess(t *testing.T) {
 	mockStream.On("Read", mock.Anything)
 	mockStream.On("CancelRead", mock.Anything).Return()
 	mockStream.On("CancelWrite", mock.Anything).Return()
+	mockStream.On("Context").Return(context.Background())
 	mockConn.On("OpenStream").Return(mockStream, nil)
 	mockConn.On("Context").Return(context.Background())
 	mockConn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
@@ -625,6 +632,7 @@ func TestClient_OpenSession_NilExtensions(t *testing.T) {
 	mockStream.On("Read", mock.Anything)
 	mockStream.On("CancelRead", mock.Anything).Return()
 	mockStream.On("CancelWrite", mock.Anything).Return()
+	mockStream.On("Context").Return(context.Background())
 	mockConn.On("OpenStream").Return(mockStream, nil)
 	mockConn.On("Context").Return(context.Background())
 	mockConn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
@@ -678,6 +686,7 @@ func TestClient_OpenSession_Success(t *testing.T) {
 	mockStream.On("Read", mock.Anything)
 	mockStream.On("CancelRead", mock.Anything).Return()
 	mockStream.On("CancelWrite", mock.Anything).Return()
+	mockStream.On("Context").Return(context.Background())
 	mockConn.On("OpenStream").Return(mockStream, nil)
 	mockConn.On("Context").Return(context.Background())
 	mockConn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
@@ -754,6 +763,7 @@ func TestClient_Dial_URLSchemes(t *testing.T) {
 				mockStream.On("Write", mock.AnythingOfType("[]uint8"))
 				mockStream.On("Read", mock.AnythingOfType("[]uint8"))
 				mockStream.On("StreamID").Return(quic.StreamID(1))
+				mockStream.On("Context").Return(context.Background())
 				mockConn.On("OpenStream").Return(mockStream, nil)
 
 				mockConn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
@@ -778,6 +788,7 @@ func TestClient_Dial_URLSchemes(t *testing.T) {
 				mockStream.On("Write", mock.AnythingOfType("[]uint8"))
 				mockStream.On("Read", mock.AnythingOfType("[]uint8"))
 				mockStream.On("StreamID").Return(quic.StreamID(1))
+				mockStream.On("Context").Return(context.Background())
 				mockConn.On("OpenStream").Return(mockStream, nil)
 				mockConn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
 				mockConn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
@@ -952,6 +963,7 @@ func TestClient_Shutdown_Timeout(t *testing.T) {
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 	mockStream.On("CancelRead", mock.Anything).Return()
 	mockStream.On("CancelWrite", mock.Anything).Return()
+	mockStream.On("Context").Return(context.Background())
 
 	mockConn := &MockQUICConnection{}
 	mockConn.On("Context").Return(context.Background())

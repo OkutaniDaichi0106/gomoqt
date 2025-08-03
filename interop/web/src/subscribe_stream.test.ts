@@ -42,6 +42,17 @@ describe('SendSubscribeStream', () => {
             closed: jest.fn()
         } as any;
 
+        // Configure mock methods to return proper tuple format
+        (mockReader.readBoolean as any).mockResolvedValue([false, undefined]);
+        (mockReader.readVarint as any).mockResolvedValue([0n, undefined]);
+        (mockReader.readString as any).mockResolvedValue(['', undefined]);
+        (mockReader.readStringArray as any).mockResolvedValue([[], undefined]);
+        (mockReader.readUint8Array as any).mockResolvedValue([new Uint8Array(), undefined]);
+        (mockReader.readUint8 as any).mockResolvedValue([0, undefined]);
+        (mockReader.copy as any).mockResolvedValue([0, undefined]);
+        (mockReader.fill as any).mockResolvedValue([true, undefined]);
+        (mockReader.closed as any).mockResolvedValue(undefined);
+
         mockSubscribe = {
             subscribeId: 123n,
             broadcastPath: '/test/path',
@@ -194,6 +205,18 @@ describe('ReceiveSubscribeStream', () => {
             cancel: jest.fn(),
             closed: jest.fn()
         } as any;
+
+        // Configure mock methods to return proper tuple format
+        (mockReader.readBoolean as any).mockResolvedValue([false, undefined]);
+        (mockReader.readVarint as any).mockResolvedValueOnce([0n, undefined])
+                                                .mockResolvedValue([0n, new Error('End of stream')]);
+        (mockReader.readString as any).mockResolvedValue(['', undefined]);
+        (mockReader.readStringArray as any).mockResolvedValue([[], undefined]);
+        (mockReader.readUint8Array as any).mockResolvedValue([new Uint8Array(), undefined]);
+        (mockReader.readUint8 as any).mockResolvedValue([0, undefined]);
+        (mockReader.copy as any).mockResolvedValue([0, undefined]);
+        (mockReader.fill as any).mockResolvedValue([true, undefined]);
+        (mockReader.closed as any).mockResolvedValue(undefined);
 
         mockSubscribe = {
             subscribeId: 789n,

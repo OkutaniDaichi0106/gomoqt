@@ -3,24 +3,31 @@ import { Writer, Reader } from '../io';
 
 /**
  * Helper function to create isolated writer/reader pair that avoids TransformStream deadlock
- * Uses a custom queue-based implementation for reliable testing
+ * Uses a custom queue-based implementation for reliable testing - optimized for performance
  */
 export function createIsolatedStreams(): { writer: Writer; reader: Reader; cleanup: () => Promise<void> } {
   const chunks: Uint8Array[] = [];
   let writerClosed = false;
   
+  // Use a more efficient WritableStream implementation
   const writableStream = new WritableStream<Uint8Array>({
     write(chunk) {
-      chunks.push(new Uint8Array(chunk)); // Create a copy to avoid shared buffer issues
+      // Avoid copying if possible for performance
+      chunks.push(chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk));
     },
     close() {
       writerClosed = true;
     }
+  }, {
+    // Optimize chunk size for performance
+    highWaterMark: 16384,
+    size(chunk) { return chunk.byteLength; }
   });
   
   const writer = new Writer(writableStream);
   
   let chunkIndex = 0;
+  // Use a more efficient ReadableStream implementation
   const readableStream = new ReadableStream<Uint8Array>({
     pull(controller) {
       if (chunkIndex < chunks.length) {
@@ -30,6 +37,10 @@ export function createIsolatedStreams(): { writer: Writer; reader: Reader; clean
       }
       // If not closed and no chunks available, just return (will be called again)
     }
+  }, {
+    // Optimize chunk size for performance
+    highWaterMark: 16384,
+    size(chunk) { return chunk.byteLength; }
   });
   
   const reader = new Reader(readableStream);
@@ -43,7 +54,7 @@ export function createIsolatedStreams(): { writer: Writer; reader: Reader; clean
           await writer.close();
         }
       } catch {
-        // ignore
+        // ignore cleanup errors for performance
       }
     }
   };

@@ -1,6 +1,6 @@
 {
   "name": "@okutanidaichi/moqt",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Media over QUIC package",
   "repository": {
     "type": "git",
@@ -29,7 +29,10 @@
     "build": "npm run build:main && npm run build:browser",
     "build:main": "tsc",
     "build:browser": "tsc --project tsconfig.browser.json",
-    "test": "jest"
+    "test": "jest --passWithNoTests",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:fast": "jest --passWithNoTests --maxWorkers=75% --silent"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

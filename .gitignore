@@ -4,3 +4,5 @@ hextra-starter-template
 .github/prompts
 **/node_modules
 **/dist/
+
+**/.jest-cache/

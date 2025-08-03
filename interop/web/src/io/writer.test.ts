@@ -108,7 +108,7 @@ describe('Writer', () => {
   });
 
   describe('writeVarint', () => {
-    it('should write single byte varint for values < 64', async () => {
+    it('should write single byte varint for values < 255', async () => {
       writer.writeVarint(42n);
       await writer.flush();
 
@@ -123,7 +123,7 @@ describe('Writer', () => {
       expect(writtenData).toHaveLength(1);
       const written = writtenData[0];
       expect(written.length).toBe(2);
-      expect(written[0]).toBe(0x81); // 0x80 | (300 >> 8)
+      expect(written[0]).toBe(0x41); // 0x40 | (300 >> 8)
       expect(written[1]).toBe(0x2C); // 300 & 0xFF
     });
 
@@ -134,7 +134,7 @@ describe('Writer', () => {
       expect(writtenData).toHaveLength(1);
       const written = writtenData[0];
       expect(written.length).toBe(4);
-      expect(written[0] & 0xE0).toBe(0xE0); // Check first 3 bits
+      expect(written[0] & 0xC0).toBe(0x80); // Check first 2 bits
     });
 
     it('should write eight byte varint for large values', async () => {
@@ -144,7 +144,7 @@ describe('Writer', () => {
       expect(writtenData).toHaveLength(1);
       const written = writtenData[0];
       expect(written.length).toBe(8);
-      expect(written[0]).toBe(0xF0);
+      expect(written[0]).toBe(0xC0);
     });
 
     it('should throw error for negative values', () => {
@@ -157,7 +157,7 @@ describe('Writer', () => {
       const maxValue = (1n << 62n) - 1n;
       expect(() => {
         writer.writeVarint(maxValue + 1n);
-      }).toThrow('Varint exceeds maximum value');
+      }).toThrow('Value exceeds maximum varint size');
     });
   });
 

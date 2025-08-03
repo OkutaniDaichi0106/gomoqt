@@ -8,3 +8,13 @@ if (typeof TextEncoder === 'undefined') {
 if (typeof TextDecoder === 'undefined') {
   global.TextDecoder = require('util').TextDecoder;
 }
+
+// Suppress console.log to speed up test execution
+const originalConsoleLog = console.log;
+console.log = (...args) => {
+  // Only output important error logs in test environment
+  if (process.env.NODE_ENV === 'test' && !process.env.VERBOSE_TESTS) {
+    return;
+  }
+  originalConsoleLog.apply(console, args);
+};

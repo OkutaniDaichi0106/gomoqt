@@ -40,6 +40,58 @@ type serverWrapper struct {
 	server *quicgo_webtransportgo.Server
 }
 
+func (wrapper *serverWrapper) Handle(path string, handler webtransport.Handler) {
+	mux, ok := wrapper.server.H3.Handler.(httpRouter)
+	if ok {
+		mux.Handle(path, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			conn, err := wrapper.Upgrade(w, r)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			// Connection cleanup is handled automatically by webtransport-go library
+			handler.Handle(r, conn)
+		}))
+		return
+	}
+
+	muxFunc, ok := wrapper.server.H3.Handler.(httpFuncRouter)
+	if ok {
+		muxFunc.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+			conn, err := wrapper.Upgrade(w, r)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			// Connection cleanup is handled automatically by webtransport-go library
+			handler.Handle(r, conn)
+		})
+		return
+	}
+
+	http.DefaultServeMux.Handle(path, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := wrapper.Upgrade(w, r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		// Connection cleanup is handled automatically by webtransport-go library
+		handler.Handle(r, conn)
+	}))
+}
+
+func (s *serverWrapper) HandleFunc(path string, f webtransport.HandlerFunc) {
+	s.Handle(path, webtransport.HandlerFunc(f))
+}
+
+type httpRouter interface {
+	Handle(path string, handler http.Handler)
+}
+
+type httpFuncRouter interface {
+	HandleFunc(path string, handler func(w http.ResponseWriter, r *http.Request))
+}
+
 func (wrapper *serverWrapper) Upgrade(w http.ResponseWriter, r *http.Request) (quic.Connection, error) {
 	wtsess, err := wrapper.server.Upgrade(w, r)
 	if err != nil {

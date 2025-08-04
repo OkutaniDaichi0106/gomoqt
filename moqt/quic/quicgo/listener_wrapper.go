@@ -10,7 +10,7 @@ import (
 )
 
 func Listen(addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (quic.EarlyListener, error) {
-	ln, err := quicgo_quicgo.ListenAddrEarly(addr, tlsConfig, (*quicgo_quicgo.Config)(quicConfig))
+	ln, err := quicgo_quicgo.ListenAddrEarly(addr, tlsConfig, quicConfig)
 	return WrapListener(ln), WrapError(err)
 }
 

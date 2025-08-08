@@ -4,18 +4,18 @@ import (
 	"context"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/quic/internal"
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
 	quicgo_quicgo "github.com/quic-go/quic-go"
 )
 
-var _ internal.Stream = (*rawQuicStream)(nil)
+var _ quic.Stream = (*rawQuicStream)(nil)
 
 type rawQuicStream struct {
 	stream *quicgo_quicgo.Stream
 }
 
-func (wrapper rawQuicStream) StreamID() internal.StreamID {
-	return internal.StreamID(wrapper.stream.StreamID())
+func (wrapper rawQuicStream) StreamID() quic.StreamID {
+	return quic.StreamID(wrapper.stream.StreamID())
 }
 
 func (wrapper rawQuicStream) Read(b []byte) (int, error) {
@@ -28,11 +28,11 @@ func (wrapper rawQuicStream) Write(b []byte) (int, error) {
 	return n, wrapError(err)
 }
 
-func (wrapper rawQuicStream) CancelRead(code internal.StreamErrorCode) {
+func (wrapper rawQuicStream) CancelRead(code quic.StreamErrorCode) {
 	wrapper.stream.CancelRead(quicgo_quicgo.StreamErrorCode(code))
 }
 
-func (wrapper rawQuicStream) CancelWrite(code internal.StreamErrorCode) {
+func (wrapper rawQuicStream) CancelWrite(code quic.StreamErrorCode) {
 	wrapper.stream.CancelWrite(quicgo_quicgo.StreamErrorCode(code))
 }
 
@@ -59,21 +59,21 @@ func (wrapper rawQuicStream) Context() context.Context {
 /*
  *
  */
-var _ internal.ReceiveStream = (*rawQuicReceiveStream)(nil)
+var _ quic.ReceiveStream = (*rawQuicReceiveStream)(nil)
 
 type rawQuicReceiveStream struct {
 	stream *quicgo_quicgo.ReceiveStream
 }
 
-func (wrapper rawQuicReceiveStream) StreamID() internal.StreamID {
-	return internal.StreamID(wrapper.stream.StreamID())
+func (wrapper rawQuicReceiveStream) StreamID() quic.StreamID {
+	return quic.StreamID(wrapper.stream.StreamID())
 }
 func (wrapper rawQuicReceiveStream) Read(b []byte) (int, error) {
 	n, err := wrapper.stream.Read(b)
 	return n, wrapError(err)
 }
 
-func (wrapper rawQuicReceiveStream) CancelRead(code internal.StreamErrorCode) {
+func (wrapper rawQuicReceiveStream) CancelRead(code quic.StreamErrorCode) {
 	wrapper.stream.CancelRead(quicgo_quicgo.StreamErrorCode(code))
 }
 
@@ -85,14 +85,14 @@ func (wrapper rawQuicReceiveStream) SetReadDeadline(time time.Time) error {
  *
  */
 
-var _ internal.SendStream = (*rawQuicSendStream)(nil)
+var _ quic.SendStream = (*rawQuicSendStream)(nil)
 
 type rawQuicSendStream struct {
 	stream *quicgo_quicgo.SendStream
 }
 
-func (wrapper rawQuicSendStream) StreamID() internal.StreamID {
-	return internal.StreamID(wrapper.stream.StreamID())
+func (wrapper rawQuicSendStream) StreamID() quic.StreamID {
+	return quic.StreamID(wrapper.stream.StreamID())
 }
 
 func (wrapper rawQuicSendStream) Write(b []byte) (int, error) {
@@ -100,7 +100,7 @@ func (wrapper rawQuicSendStream) Write(b []byte) (int, error) {
 	return n, wrapError(err)
 }
 
-func (wrapper rawQuicSendStream) CancelWrite(code internal.StreamErrorCode) {
+func (wrapper rawQuicSendStream) CancelWrite(code quic.StreamErrorCode) {
 	wrapper.stream.CancelWrite(quicgo_quicgo.StreamErrorCode(code))
 }
 

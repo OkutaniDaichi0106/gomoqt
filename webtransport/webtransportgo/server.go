@@ -7,12 +7,12 @@ import (
 	"net/http"
 
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
-	"github.com/OkutaniDaichi0106/gomoqt/webtransport/internal"
+	"github.com/OkutaniDaichi0106/gomoqt/webtransport"
 	quicgo_webtransportgo "github.com/OkutaniDaichi0106/webtransport-go"
 	quicgo_quicgo "github.com/quic-go/quic-go"
 )
 
-func NewDefaultServer(checkOrigin func(r *http.Request) bool) internal.Server {
+func NewServer(checkOrigin func(r *http.Request) bool) webtransport.Server {
 	wtserver := &quicgo_webtransportgo.Server{
 		CheckOrigin: checkOrigin,
 	}
@@ -20,13 +20,13 @@ func NewDefaultServer(checkOrigin func(r *http.Request) bool) internal.Server {
 	return wrapServer(wtserver)
 }
 
-func wrapServer(server *quicgo_webtransportgo.Server) internal.Server {
+func wrapServer(server *quicgo_webtransportgo.Server) webtransport.Server {
 	return &serverWrapper{
 		server: server,
 	}
 }
 
-var _ internal.Server = (*serverWrapper)(nil)
+var _ webtransport.Server = (*serverWrapper)(nil)
 
 // serverWrapper is a wrapper for Server
 type serverWrapper struct {

@@ -1,7 +1,7 @@
 package quicgo
 
 import (
-	"github.com/OkutaniDaichi0106/gomoqt/quic/internal"
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
 	quicgo_quicgo "github.com/quic-go/quic-go"
 )
 
@@ -12,52 +12,52 @@ func wrapError(err error) error {
 
 	switch e := err.(type) {
 	case *quicgo_quicgo.StreamError:
-		return &internal.StreamError{
-			StreamID:  internal.StreamID(e.StreamID),
-			ErrorCode: internal.StreamErrorCode(e.ErrorCode),
+		return &quic.StreamError{
+			StreamID:  quic.StreamID(e.StreamID),
+			ErrorCode: quic.StreamErrorCode(e.ErrorCode),
 			Remote:    e.Remote,
 			Err:       e,
 		}
 	case *quicgo_quicgo.TransportError:
-		return &internal.TransportError{
+		return &quic.TransportError{
 			Remote:       e.Remote,
 			FrameType:    e.FrameType,
-			ErrorCode:    internal.TransportErrorCode(e.ErrorCode),
+			ErrorCode:    quic.TransportErrorCode(e.ErrorCode),
 			ErrorMessage: e.ErrorMessage,
 			Err:          e,
 		}
 	case *quicgo_quicgo.ApplicationError:
-		return &internal.ApplicationError{
+		return &quic.ApplicationError{
 			Remote:       e.Remote,
-			ErrorCode:    internal.ApplicationErrorCode(e.ErrorCode),
+			ErrorCode:    quic.ApplicationErrorCode(e.ErrorCode),
 			ErrorMessage: e.ErrorMessage,
 			Err:          e,
 		}
 	case *quicgo_quicgo.VersionNegotiationError:
-		ours := make([]internal.Version, len(e.Ours))
+		ours := make([]quic.Version, len(e.Ours))
 		for i, v := range e.Ours {
-			ours[i] = internal.Version(v)
+			ours[i] = quic.Version(v)
 		}
-		theirs := make([]internal.Version, len(e.Theirs))
+		theirs := make([]quic.Version, len(e.Theirs))
 		for i, v := range e.Theirs {
-			theirs[i] = internal.Version(v)
+			theirs[i] = quic.Version(v)
 		}
-		return &internal.VersionNegotiationError{
+		return &quic.VersionNegotiationError{
 			Ours:   ours,
 			Theirs: theirs,
 			Err:    e,
 		}
 	case *quicgo_quicgo.StatelessResetError:
-		return &internal.StatelessResetError{
+		return &quic.StatelessResetError{
 			Err: e,
 		}
 
 	case *quicgo_quicgo.IdleTimeoutError:
-		return &internal.IdleTimeoutError{
+		return &quic.IdleTimeoutError{
 			Err: e,
 		}
 	case *quicgo_quicgo.HandshakeTimeoutError:
-		return &internal.HandshakeTimeoutError{
+		return &quic.HandshakeTimeoutError{
 			Err: e,
 		}
 	default:
@@ -66,11 +66,11 @@ func wrapError(err error) error {
 	}
 }
 
-func WrapTransportError(qerr quicgo_quicgo.TransportError) *internal.TransportError {
-	return &internal.TransportError{
+func WrapTransportError(qerr quicgo_quicgo.TransportError) *quic.TransportError {
+	return &quic.TransportError{
 		Remote:       qerr.Remote,
 		FrameType:    qerr.FrameType,
-		ErrorCode:    internal.TransportErrorCode(qerr.ErrorCode),
+		ErrorCode:    quic.TransportErrorCode(qerr.ErrorCode),
 		ErrorMessage: qerr.ErrorMessage,
 	}
 }

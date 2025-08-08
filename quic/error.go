@@ -1,25 +1,73 @@
 package quic
 
 import (
-	"github.com/OkutaniDaichi0106/gomoqt/quic/internal"
+	"net"
 )
 
-type TransportError = internal.TransportError
+type TransportError struct {
+	Remote       bool
+	FrameType    uint64
+	ErrorCode    TransportErrorCode
+	ErrorMessage string
+	Err          error // only set for local errors, sometimes
+}
 
-type ApplicationError = internal.ApplicationError
+func (e *TransportError) Error() string        { return "quic: " + e.Err.Error() }
+func (e *TransportError) Is(target error) bool { return target == net.ErrClosed }
+func (e *TransportError) Unwrap() error        { return e.Err }
 
-type VersionNegotiationError = internal.VersionNegotiationError
+type ApplicationError struct {
+	Remote       bool
+	ErrorCode    ApplicationErrorCode
+	ErrorMessage string
+	Err          error
+}
 
-type StatelessResetError = internal.StatelessResetError
+func (e *ApplicationError) Error() string        { return "quic: " + e.Err.Error() }
+func (e *ApplicationError) Is(target error) bool { return target == net.ErrClosed }
+func (e *ApplicationError) Unwrap() error        { return e.Err }
 
-type IdleTimeoutError = internal.IdleTimeoutError
+type VersionNegotiationError struct {
+	Ours   []Version
+	Theirs []Version
+	Err    error
+}
 
-type HandshakeTimeoutError = internal.HandshakeTimeoutError
+func (e *VersionNegotiationError) Error() string        { return "quic: " + e.Err.Error() }
+func (e *VersionNegotiationError) Is(target error) bool { return target == net.ErrClosed }
+
+type StatelessResetError struct {
+	// Token [16]byte
+	Err error
+}
+
+func (e *StatelessResetError) Error() string        { return "quic: " + e.Err.Error() }
+func (e *StatelessResetError) Is(target error) bool { return target == net.ErrClosed }
+func (e *StatelessResetError) Timeout() bool        { return false }
+func (e *StatelessResetError) Temporary() bool      { return true }
+
+type IdleTimeoutError struct {
+	Err error
+}
+
+func (e *IdleTimeoutError) Timeout() bool        { return true }
+func (e *IdleTimeoutError) Temporary() bool      { return false }
+func (e *IdleTimeoutError) Error() string        { return e.Err.Error() }
+func (e *IdleTimeoutError) Is(target error) bool { return target == net.ErrClosed }
+
+type HandshakeTimeoutError struct {
+	Err error
+}
+
+func (e *HandshakeTimeoutError) Timeout() bool        { return true }
+func (e *HandshakeTimeoutError) Temporary() bool      { return false }
+func (e *HandshakeTimeoutError) Error() string        { return e.Err.Error() }
+func (e *HandshakeTimeoutError) Is(target error) bool { return target == net.ErrClosed }
 
 type (
-	TransportErrorCode   = internal.TransportErrorCode
-	ApplicationErrorCode = internal.ApplicationErrorCode
-	StreamErrorCode      = internal.StreamErrorCode
+	TransportErrorCode   uint64
+	ApplicationErrorCode uint64
+	StreamErrorCode      uint64
 )
 
 const (

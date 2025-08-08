@@ -1,14 +1,12 @@
 package quic
 
 import (
-	"crypto/tls"
-
-	"github.com/OkutaniDaichi0106/gomoqt/quic/internal"
-	"github.com/OkutaniDaichi0106/gomoqt/quic/quicgo"
+	"context"
+	"net"
 )
 
-func ListenDefault(addr string, tlsConfig *tls.Config, quicConfig *Config) (EarlyListener, error) {
-	return quicgo.ListenAddrEarly(addr, tlsConfig, quicConfig)
+type EarlyListener interface {
+	Accept(ctx context.Context) (Connection, error)
+	Addr() net.Addr
+	Close() error
 }
-
-type EarlyListener = internal.EarlyListener

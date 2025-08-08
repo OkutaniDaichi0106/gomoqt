@@ -14,8 +14,8 @@ import (
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/webtransport"
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/webtransport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -31,20 +31,6 @@ func TestServer_Init(t *testing.T) {
 			addr:   ":8080",
 			logger: slog.Default(),
 			config: &Config{},
-		},
-		"enable native QUIC": {
-			addr:   ":8080",
-			logger: slog.Default(),
-			config: &Config{
-				EnableNativeQUIC: true,
-			},
-		},
-		"disable native QUIC": {
-			addr:   ":8080",
-			logger: slog.Default(),
-			config: &Config{
-				EnableNativeQUIC: false,
-			},
 		},
 	}
 
@@ -62,9 +48,6 @@ func TestServer_Init(t *testing.T) {
 			assert.NotNil(t, server.doneChan, "doneChan should be initialized")
 			assert.NotNil(t, server.activeSess, "activeSess map should be initialized")
 
-			if tt.config != nil && tt.config.EnableNativeQUIC {
-				assert.NotNil(t, server.nativeQUICCh, "nativeQUICCh should be initialized")
-			}
 		})
 	}
 }
@@ -360,12 +343,8 @@ func TestServer_AcceptSession(t *testing.T) {
 			mockConn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF) // Return EOF to stop the goroutine
 
 			ctx := context.Background()
-			extensions := func(p *Parameters) (*Parameters, error) {
-				return p, nil
-			}
-			mux := NewTrackMux()
 
-			sessStream, err := acceptSessionStream(ctx, mockConn, extensions, mux, slog.Default())
+			sessStream, err := acceptSessionStream(ctx, mockConn, slog.Default())
 			if tt.expectOK {
 				assert.NoError(t, err, "acceptSessionStream() should not return error")
 				assert.NotNil(t, sessStream, "acceptSessionStream() should return session stream")
@@ -403,12 +382,8 @@ func TestServer_AcceptSession_AcceptStreamError(t *testing.T) {
 			mockConn.On("AcceptStream", mock.Anything).Return(nil, tt.expectErr)
 
 			ctx := context.Background()
-			extensions := func(p *Parameters) (*Parameters, error) {
-				return p, nil
-			}
-			mux := NewTrackMux()
 
-			sessStream, err := acceptSessionStream(ctx, mockConn, extensions, mux, slog.Default())
+			sessStream, err := acceptSessionStream(ctx, mockConn, slog.Default())
 
 			assert.Error(t, err, "acceptSessionStream() should return an error")
 			assert.Contains(t, err.Error(), tt.expectErr.Error(), "acceptSessionStream() should return wrapped accept error")
@@ -512,37 +487,18 @@ func TestServer_ConcurrentOperations(t *testing.T) {
 }
 
 func TestServer_WithCustomWebTransportServer(t *testing.T) {
-	tests := map[string]struct {
-		addr         string
-		logger       *slog.Logger
-		customWT     func(string, *tls.Config, *quic.Config, func(*http.Request) bool) webtransport.Server
-		expectCustom bool
-	}{
-		"custom webtransport server": {
-			addr:   ":8080",
-			logger: slog.Default(),
-			customWT: func(string, *tls.Config, *quic.Config, func(*http.Request) bool) webtransport.Server {
-				return &MockWebTransportServer{}
-			},
-			expectCustom: true,
+
+	server := &Server{
+		Addr:   ":8080",
+		Logger: slog.Default(),
+		NewWebtransportServerFunc: func(checkOrigin func(*http.Request) bool) webtransport.Server {
+			return &MockWebTransportServer{}
 		},
 	}
 
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			server := &Server{
-				Addr:                  tt.addr,
-				Logger:                tt.logger,
-				ServeWebtransportFunc: tt.customWT,
-			}
+	server.init()
 
-			server.init()
-
-			if tt.expectCustom {
-				assert.NotNil(t, server.wtServer, "should use custom WebTransport server when provided")
-			}
-		})
-	}
+	assert.NotNil(t, server.wtServer, "should use custom WebTransport server when provided")
 }
 
 func TestServer_SessionManagement(t *testing.T) {
@@ -588,7 +544,11 @@ func TestServer_SessionManagement(t *testing.T) {
 			}).Return(nil) // For session.Terminate
 			mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-			sessStream := newSessionStream(mockStream, protocol.Version(1), "path", NewParameters(), NewParameters())
+			req := &Request{
+				Path:       "/test",
+				Extensions: NewParameters(),
+			}
+			sessStream := newSessionStream(mockStream, req)
 			session := newSession(mockConn, sessStream, nil, nil, nil)
 
 			// Test adding session
@@ -697,56 +657,6 @@ func TestServer_ListenerManagement(t *testing.T) {
 
 			assert.True(t, mockListener1.AssertCalled(t, "Close"), "listener1 should be closed when server closes")
 			assert.True(t, mockListener2.AssertCalled(t, "Close"), "listener2 should be closed when server closes")
-		})
-	}
-}
-
-func TestServer_NativeQUICChannel(t *testing.T) {
-	tests := map[string]struct {
-		addr           string
-		logger         *slog.Logger
-		expectCapacity int
-	}{
-		"native QUIC channel": {
-			addr:           ":8080",
-			logger:         slog.Default(),
-			expectCapacity: 16,
-		},
-	}
-
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			server := &Server{
-				Addr:   tt.addr,
-				Logger: tt.logger,
-				Config: &Config{
-					EnableNativeQUIC: true,
-				},
-			}
-
-			server.init()
-
-			assert.NotNil(t, server.nativeQUICCh, "nativeQUICCh should be initialized")
-
-			// Test channel capacity (should be 1<<4 = 16)
-			assert.Equal(t, tt.expectCapacity, cap(server.nativeQUICCh), "nativeQUICCh capacity should match expected")
-
-			// Test sending connection to channel
-			mockConn := &MockQUICConnection{}
-			select {
-			case server.nativeQUICCh <- mockConn:
-				// Success
-			default:
-				t.Error("should be able to send connection to nativeQUICCh")
-			}
-
-			// Test receiving from channel
-			select {
-			case conn := <-server.nativeQUICCh:
-				assert.Equal(t, mockConn, conn, "received connection should match sent connection")
-			default:
-				t.Error("should be able to receive connection from nativeQUICCh")
-			}
 		})
 	}
 }

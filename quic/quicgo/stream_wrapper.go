@@ -4,52 +4,52 @@ import (
 	"context"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/quic/internal"
 	quicgo_quicgo "github.com/quic-go/quic-go"
 )
 
-var _ quic.Stream = (*rawQuicStream)(nil)
+var _ internal.Stream = (*rawQuicStream)(nil)
 
 type rawQuicStream struct {
 	stream *quicgo_quicgo.Stream
 }
 
-func (wrapper rawQuicStream) StreamID() quic.StreamID {
-	return quic.StreamID(wrapper.stream.StreamID())
+func (wrapper rawQuicStream) StreamID() internal.StreamID {
+	return internal.StreamID(wrapper.stream.StreamID())
 }
 
 func (wrapper rawQuicStream) Read(b []byte) (int, error) {
 	n, err := wrapper.stream.Read(b)
-	return n, WrapError(err)
+	return n, wrapError(err)
 }
 
 func (wrapper rawQuicStream) Write(b []byte) (int, error) {
 	n, err := wrapper.stream.Write(b)
-	return n, WrapError(err)
+	return n, wrapError(err)
 }
 
-func (wrapper rawQuicStream) CancelRead(code quic.StreamErrorCode) {
+func (wrapper rawQuicStream) CancelRead(code internal.StreamErrorCode) {
 	wrapper.stream.CancelRead(quicgo_quicgo.StreamErrorCode(code))
 }
 
-func (wrapper rawQuicStream) CancelWrite(code quic.StreamErrorCode) {
+func (wrapper rawQuicStream) CancelWrite(code internal.StreamErrorCode) {
 	wrapper.stream.CancelWrite(quicgo_quicgo.StreamErrorCode(code))
 }
 
 func (wrapper rawQuicStream) SetDeadline(time time.Time) error {
-	return WrapError(wrapper.stream.SetDeadline(time))
+	return wrapError(wrapper.stream.SetDeadline(time))
 }
 
 func (wrapper rawQuicStream) SetReadDeadline(time time.Time) error {
-	return WrapError(wrapper.stream.SetReadDeadline(time))
+	return wrapError(wrapper.stream.SetReadDeadline(time))
 }
 
 func (wrapper rawQuicStream) SetWriteDeadline(time time.Time) error {
-	return WrapError(wrapper.stream.SetWriteDeadline(time))
+	return wrapError(wrapper.stream.SetWriteDeadline(time))
 }
 
 func (wrapper rawQuicStream) Close() error {
-	return WrapError(wrapper.stream.Close())
+	return wrapError(wrapper.stream.Close())
 }
 
 func (wrapper rawQuicStream) Context() context.Context {
@@ -59,57 +59,57 @@ func (wrapper rawQuicStream) Context() context.Context {
 /*
  *
  */
-var _ quic.ReceiveStream = (*rawQuicReceiveStream)(nil)
+var _ internal.ReceiveStream = (*rawQuicReceiveStream)(nil)
 
 type rawQuicReceiveStream struct {
 	stream *quicgo_quicgo.ReceiveStream
 }
 
-func (wrapper rawQuicReceiveStream) StreamID() quic.StreamID {
-	return quic.StreamID(wrapper.stream.StreamID())
+func (wrapper rawQuicReceiveStream) StreamID() internal.StreamID {
+	return internal.StreamID(wrapper.stream.StreamID())
 }
 func (wrapper rawQuicReceiveStream) Read(b []byte) (int, error) {
 	n, err := wrapper.stream.Read(b)
-	return n, WrapError(err)
+	return n, wrapError(err)
 }
 
-func (wrapper rawQuicReceiveStream) CancelRead(code quic.StreamErrorCode) {
+func (wrapper rawQuicReceiveStream) CancelRead(code internal.StreamErrorCode) {
 	wrapper.stream.CancelRead(quicgo_quicgo.StreamErrorCode(code))
 }
 
 func (wrapper rawQuicReceiveStream) SetReadDeadline(time time.Time) error {
-	return WrapError(wrapper.stream.SetReadDeadline(time))
+	return wrapError(wrapper.stream.SetReadDeadline(time))
 }
 
 /*
  *
  */
 
-var _ quic.SendStream = (*rawQuicSendStream)(nil)
+var _ internal.SendStream = (*rawQuicSendStream)(nil)
 
 type rawQuicSendStream struct {
 	stream *quicgo_quicgo.SendStream
 }
 
-func (wrapper rawQuicSendStream) StreamID() quic.StreamID {
-	return quic.StreamID(wrapper.stream.StreamID())
+func (wrapper rawQuicSendStream) StreamID() internal.StreamID {
+	return internal.StreamID(wrapper.stream.StreamID())
 }
 
 func (wrapper rawQuicSendStream) Write(b []byte) (int, error) {
 	n, err := wrapper.stream.Write(b)
-	return n, WrapError(err)
+	return n, wrapError(err)
 }
 
-func (wrapper rawQuicSendStream) CancelWrite(code quic.StreamErrorCode) {
+func (wrapper rawQuicSendStream) CancelWrite(code internal.StreamErrorCode) {
 	wrapper.stream.CancelWrite(quicgo_quicgo.StreamErrorCode(code))
 }
 
 func (wrapper rawQuicSendStream) SetWriteDeadline(time time.Time) error {
-	return WrapError(wrapper.stream.SetWriteDeadline(time))
+	return wrapError(wrapper.stream.SetWriteDeadline(time))
 }
 
 func (wrapper rawQuicSendStream) Close() error {
-	return WrapError(wrapper.stream.Close())
+	return wrapError(wrapper.stream.Close())
 }
 
 func (wrapper rawQuicSendStream) Context() context.Context {

@@ -1,11 +1,11 @@
-package quicgo
+package webtransportgo
 
 import (
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
 	quicgo_quicgo "github.com/quic-go/quic-go"
 )
 
-func WrapError(err error) error {
+func wrapError(err error) error {
 	if err == nil {
 		return nil
 	}
@@ -63,14 +63,5 @@ func WrapError(err error) error {
 	default:
 		// If the error is not recognized, return it as is
 		return err
-	}
-}
-
-func WrapTransportError(qerr quicgo_quicgo.TransportError) *quic.TransportError {
-	return &quic.TransportError{
-		Remote:       qerr.Remote,
-		FrameType:    qerr.FrameType,
-		ErrorCode:    quic.TransportErrorCode(qerr.ErrorCode),
-		ErrorMessage: qerr.ErrorMessage,
 	}
 }

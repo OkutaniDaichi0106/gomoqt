@@ -1,4 +1,4 @@
-package quic
+package internal
 
 import (
 	"net"
@@ -70,25 +70,25 @@ type (
 	StreamErrorCode      uint64
 )
 
-const (
-	NoError                   TransportErrorCode = 0x0
-	InternalError             TransportErrorCode = 0x1
-	ConnectionRefused         TransportErrorCode = 0x2
-	FlowControlError          TransportErrorCode = 0x3
-	StreamLimitError          TransportErrorCode = 0x4
-	StreamStateError          TransportErrorCode = 0x5
-	FinalSizeError            TransportErrorCode = 0x6
-	FrameEncodingError        TransportErrorCode = 0x7
-	TransportParameterError   TransportErrorCode = 0x8
-	ConnectionIDLimitError    TransportErrorCode = 0x9
-	ProtocolViolation         TransportErrorCode = 0xA
-	InvalidToken              TransportErrorCode = 0xB
-	ApplicationErrorErrorCode TransportErrorCode = 0xC
-	CryptoBufferExceeded      TransportErrorCode = 0xD
-	KeyUpdateError            TransportErrorCode = 0xE
-	AEADLimitReached          TransportErrorCode = 0xF
-	NoViablePathError         TransportErrorCode = 0x10
-)
+// const (
+// 	NoError                   TransportErrorCode = 0x0
+// 	InternalError             TransportErrorCode = 0x1
+// 	ConnectionRefused         TransportErrorCode = 0x2
+// 	FlowControlError          TransportErrorCode = 0x3
+// 	StreamLimitError          TransportErrorCode = 0x4
+// 	StreamStateError          TransportErrorCode = 0x5
+// 	FinalSizeError            TransportErrorCode = 0x6
+// 	FrameEncodingError        TransportErrorCode = 0x7
+// 	TransportParameterError   TransportErrorCode = 0x8
+// 	ConnectionIDLimitError    TransportErrorCode = 0x9
+// 	ProtocolViolation         TransportErrorCode = 0xA
+// 	InvalidToken              TransportErrorCode = 0xB
+// 	ApplicationErrorErrorCode TransportErrorCode = 0xC
+// 	CryptoBufferExceeded      TransportErrorCode = 0xD
+// 	KeyUpdateError            TransportErrorCode = 0xE
+// 	AEADLimitReached          TransportErrorCode = 0xF
+// 	NoViablePathError         TransportErrorCode = 0x10
+// )
 
 // A StreamError is used for Stream.CancelRead and Stream.CancelWrite.
 // It is also returned from Stream.Read and Stream.Write if the peer canceled reading or writing.

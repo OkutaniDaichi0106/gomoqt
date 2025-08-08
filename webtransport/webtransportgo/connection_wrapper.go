@@ -4,7 +4,7 @@ import (
 	"context"
 	"net"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
 	quicgo_webtransportgo "github.com/OkutaniDaichi0106/webtransport-go"
 )
 
@@ -12,13 +12,13 @@ type sessionWrapper struct {
 	sess *quicgo_webtransportgo.Session
 }
 
-func WrapSession(wtconn *quicgo_webtransportgo.Session) quic.Connection {
+func wrapSession(wtconn *quicgo_webtransportgo.Session) quic.Connection {
 	return &sessionWrapper{
 		sess: wtconn,
 	}
 }
 
-func UnWrapWebTransportConnection(conn quic.Connection) *quicgo_webtransportgo.Session {
+func unwrapConn(conn quic.Connection) *quicgo_webtransportgo.Session {
 	if wconn, ok := conn.(*sessionWrapper); ok {
 		return wconn.sess
 	}

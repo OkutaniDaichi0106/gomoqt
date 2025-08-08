@@ -1,0 +1,88 @@
+package webtransportgo
+
+import (
+	"context"
+	"errors"
+	"net"
+	"net/http"
+
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/webtransport/internal"
+	quicgo_webtransportgo "github.com/OkutaniDaichi0106/webtransport-go"
+	quicgo_quicgo "github.com/quic-go/quic-go"
+)
+
+func NewDefaultServer(checkOrigin func(r *http.Request) bool) internal.Server {
+	wtserver := &quicgo_webtransportgo.Server{
+		CheckOrigin: checkOrigin,
+	}
+
+	return wrapServer(wtserver)
+}
+
+func wrapServer(server *quicgo_webtransportgo.Server) internal.Server {
+	return &serverWrapper{
+		server: server,
+	}
+}
+
+var _ internal.Server = (*serverWrapper)(nil)
+
+// serverWrapper is a wrapper for Server
+type serverWrapper struct {
+	server *quicgo_webtransportgo.Server
+}
+
+func (wrapper *serverWrapper) Upgrade(w http.ResponseWriter, r *http.Request) (quic.Connection, error) {
+	wtsess, err := wrapper.server.Upgrade(w, r)
+	if err != nil {
+		return nil, err
+	}
+
+	return wrapSession(wtsess), nil
+}
+
+func (w *serverWrapper) ServeQUICConn(conn quic.Connection) error {
+	if conn == nil {
+		return nil
+	}
+	if wrapper, ok := conn.(quicgoUnwrapper); ok {
+		return w.server.ServeQUICConn(wrapper.Unwrap())
+	}
+	return errors.New("invalid connection type: expected a wrapped quic-go connection with Unwrap() method")
+}
+
+type quicgoUnwrapper interface {
+	Unwrap() *quicgo_quicgo.Conn
+}
+
+func (w *serverWrapper) Serve(conn net.PacketConn) error {
+
+	return w.server.Serve(conn)
+}
+
+func (w *serverWrapper) Close() error {
+	return w.server.Close()
+}
+
+func (w *serverWrapper) Shutdown(ctx context.Context) error {
+	// Implement a proper shutdown logic that passes the context to the server
+	closeCh := make(chan struct{})
+
+	// Close the server in a separate goroutine
+	go func() {
+		err := w.server.Close()
+		if err != nil {
+			// Log the error if needed
+		}
+		close(closeCh)
+	}()
+
+	// Wait for either the context to be done or the close to complete
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-closeCh:
+		return nil
+	}
+}

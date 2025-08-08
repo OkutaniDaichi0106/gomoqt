@@ -4,8 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic/quicgo"
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
 	quicgo_webtransportgo "github.com/OkutaniDaichi0106/webtransport-go"
 )
 
@@ -13,5 +12,5 @@ func Dial(ctx context.Context, addr string, header http.Header) (*http.Response,
 	var d quicgo_webtransportgo.Dialer
 	rsp, wtsess, err := d.Dial(ctx, addr, header)
 
-	return rsp, WrapSession(wtsess), quicgo.WrapError(err)
+	return rsp, wrapSession(wtsess), wrapError(err)
 }

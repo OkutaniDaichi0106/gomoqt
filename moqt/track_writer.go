@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
 )
 
 func newTrackWriter(path BroadcastPath, name TrackName,
@@ -54,10 +54,17 @@ func (s *TrackWriter) Close() error {
 
 	s.groupMapMu.Unlock()
 
-	// Then close the subscribe stream
-	err := s.receiveSubscribeStream.close()
+	// Then close the subscribe stream if present
+	var err error
+	if s.receiveSubscribeStream != nil {
+		err = s.receiveSubscribeStream.close()
+		s.receiveSubscribeStream = nil
+	}
 
-	s.onCloseTrackFunc()
+	if s.onCloseTrackFunc != nil {
+		s.onCloseTrackFunc()
+		s.onCloseTrackFunc = nil
+	}
 
 	return err
 }
@@ -73,10 +80,15 @@ func (s *TrackWriter) CloseWithError(code SubscribeErrorCode) {
 
 	s.groupMapMu.Unlock()
 
-	// Then close the subscribe stream with the error code
-	s.receiveSubscribeStream.closeWithError(code)
+	if s.receiveSubscribeStream != nil {
+		s.receiveSubscribeStream.closeWithError(code)
+		s.receiveSubscribeStream = nil
+	}
 
-	s.onCloseTrackFunc()
+	if s.onCloseTrackFunc != nil {
+		s.onCloseTrackFunc()
+		s.onCloseTrackFunc = nil
+	}
 }
 
 func (s *TrackWriter) OpenGroup(seq GroupSequence) (*GroupWriter, error) {

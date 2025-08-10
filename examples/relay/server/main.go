@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
 )
 
 func main() {
@@ -29,7 +29,7 @@ func main() {
 	}
 
 	// Register the relay handler with the default mux
-	moqt.HandleFunc(context.Background(), "/server.relay", func(tw *moqt.TrackWriter) {
+	moqt.PublishFunc(context.Background(), "/server.relay", func(tw *moqt.TrackWriter) {
 		seq := moqt.GroupSequenceFirst
 		for {
 			time.Sleep(100 * time.Millisecond)
@@ -57,15 +57,13 @@ func main() {
 		}
 	})
 
-	// Serve moq over webtransport
-	http.HandleFunc("/relay", func(w http.ResponseWriter, r *http.Request) {
-		sess, err := server.AcceptWebTransport(w, r, nil)
+	moqt.HandleFunc("/relay", func(w moqt.ResponseWriter, r *moqt.Request) {
+		sess, err := server.Accept(w, r, nil)
 		if err != nil {
-			slog.Error("failed to serve web transport", "error", err)
+			slog.Error("failed to accept session", "error", err)
 			return
 		}
-
-		anns, err := sess.OpenAnnounceStream("/")
+		anns, err := sess.AcceptAnnounce("/")
 		if err != nil {
 			slog.Error("failed to open announce stream", "error", err)
 			return
@@ -82,7 +80,7 @@ func main() {
 				if !ann.IsActive() {
 					return
 				}
-				tr, err := sess.OpenTrackStream(ann.BroadcastPath(), "index", nil)
+				tr, err := sess.Subscribe(ann.BroadcastPath(), "index", nil)
 				if err != nil {
 					slog.Error("failed to open track stream", "error", err)
 					return
@@ -91,6 +89,16 @@ func main() {
 				moqt.Announce(ann, newRelayHandler(tr))
 			}(ann)
 		}
+	})
+
+	// Serve moq over webtransport
+	http.HandleFunc("/relay", func(w http.ResponseWriter, r *http.Request) {
+		err := server.ServeWebTransport(w, r)
+		if err != nil {
+			slog.Error("failed to serve web transport", "error", err)
+			return
+		}
+
 	})
 
 	err := server.ListenAndServe()

@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	moqt.HandleFunc(context.Background(), "/client.echo", func(tw *moqt.TrackWriter) {
+	moqt.PublishFunc(context.Background(), "/client.echo", func(tw *moqt.TrackWriter) {
 		seq := moqt.GroupSequenceFirst
 		for {
 			time.Sleep(100 * time.Millisecond)
@@ -46,7 +46,7 @@ func main() {
 		return
 	}
 
-	annstr, err := sess.OpenAnnounceStream("/")
+	ar, err := sess.AcceptAnnounce("/")
 	if err != nil {
 		slog.Error("failed to open announce stream",
 			"error", err,
@@ -55,7 +55,7 @@ func main() {
 	}
 
 	for {
-		ann, err := annstr.ReceiveAnnouncement(context.Background())
+		ann, err := ar.ReceiveAnnouncement(context.Background())
 		if err != nil {
 			slog.Error("failed to receive announcements",
 				"error", err,
@@ -68,7 +68,7 @@ func main() {
 				return
 			}
 
-			tr, err := sess.OpenTrackStream(ann.BroadcastPath(), "index", nil)
+			tr, err := sess.Subscribe(ann.BroadcastPath(), "index", nil)
 			if err != nil {
 				slog.Error("failed to open track stream", "error", err)
 				return

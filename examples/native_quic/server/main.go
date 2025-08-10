@@ -1,13 +1,10 @@
 package main
 
 import (
-	"context"
 	"crypto/tls"
 	"log/slog"
-	"net/http"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt"
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
@@ -15,7 +12,7 @@ import (
 
 func main() {
 	server := moqt.Server{
-		Addr: "localhost:4469",
+		Addr: "localhost:4444",
 		TLSConfig: &tls.Config{
 			NextProtos:         []string{"h3", "moq-00"},
 			Certificates:       []tls.Certificate{generateCert()},
@@ -28,55 +25,13 @@ func main() {
 		Logger: slog.Default(),
 	}
 
-	moqt.HandleFunc("/broadcast", func(w moqt.ResponseWriter, r *moqt.Request) {
+	moqt.HandleFunc("/nativequic", func(w moqt.ResponseWriter, r *moqt.Request) {
 		_, err := server.Accept(w, r, nil)
 		if err != nil {
 			slog.Error("failed to accept session", "error", err)
 			return
 		}
 	})
-
-	// Serve moq over webtransport
-	http.HandleFunc("/broadcast", func(w http.ResponseWriter, r *http.Request) {
-		err := server.ServeWebTransport(w, r)
-		if err != nil {
-			slog.Error("failed to serve web transport", "error", err)
-			return
-		}
-	})
-
-	// Register the broadcast handler with the default mux
-	moqt.PublishFunc(context.Background(), "/server.broadcast", func(tw *moqt.TrackWriter) {
-		seq := moqt.GroupSequenceFirst
-		for {
-			time.Sleep(100 * time.Millisecond)
-
-			gw, err := tw.OpenGroup(seq)
-			if err != nil {
-				slog.Error("failed to open group", "error", err)
-				return
-			}
-
-			frame := moqt.NewFrame([]byte("FRAME " + seq.String()))
-			err = gw.WriteFrame(frame)
-			if err != nil {
-				gw.CancelWrite(moqt.InternalGroupErrorCode) // TODO: Handle error properly
-				slog.Error("failed to write frame", "error", err)
-				return
-			}
-
-			// TODO: Release the frame after writing
-			// This is important to avoid memory leaks
-			gw.Close()
-
-			seq = seq.Next()
-		}
-	})
-
-	err := server.ListenAndServe()
-	if err != nil {
-		slog.Error("failed to listen and serve", "error", err)
-	}
 }
 
 func generateCert() tls.Certificate {

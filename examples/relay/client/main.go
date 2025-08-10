@@ -20,7 +20,7 @@ func main() {
 	}
 
 	//
-	annRecv, err := sess.OpenAnnounceStream("/")
+	annRecv, err := sess.AcceptAnnounce("/")
 	if err != nil {
 		slog.Error("failed to open announce stream", "error", err)
 		return
@@ -41,7 +41,7 @@ func main() {
 				return
 			}
 
-			tr, err := sess.OpenTrackStream(ann.BroadcastPath(), "", nil)
+			tr, err := sess.Subscribe(ann.BroadcastPath(), "", nil)
 			if err != nil {
 				slog.Error("failed to open track stream", "error", err)
 				return

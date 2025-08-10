@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	moqt.HandleFunc(context.Background(), "/interop.client", func(tw *moqt.TrackWriter) {
+	moqt.PublishFunc(context.Background(), "/interop.client", func(tw *moqt.TrackWriter) {
 		seq := moqt.GroupSequenceFirst
 		for range 10 {
 			group, err := tw.OpenGroup(seq)
@@ -55,7 +55,7 @@ func main() {
 	slog.Info("Connected to the server successfully")
 
 	//
-	anns, err := sess.OpenAnnounceStream("/")
+	anns, err := sess.AcceptAnnounce("/")
 	if err != nil {
 		slog.Error("failed to open announce stream", "error", err)
 		return
@@ -77,7 +77,7 @@ func main() {
 		return
 	}
 
-	tr, err := sess.OpenTrackStream(ann.BroadcastPath(), "", nil)
+	tr, err := sess.Subscribe(ann.BroadcastPath(), "", nil)
 	if err != nil {
 		slog.Error("failed to open track stream", "error", err)
 		return

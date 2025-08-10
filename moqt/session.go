@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
 )
 
 func newSession(conn quic.Connection, sessStream *sessionStream, mux *TrackMux, logger *slog.Logger, onClose func()) *Session {
@@ -145,7 +145,7 @@ func (s *Session) Terminate(code SessionErrorCode, msg string) error {
 	return nil
 }
 
-func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *TrackConfig) (*TrackReader, error) {
+func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackConfig) (*TrackReader, error) {
 	if s.terminating() {
 		return nil, s.sessErr
 	}
@@ -270,17 +270,13 @@ func (s *Session) OpenTrackStream(path BroadcastPath, name TrackName, config *Tr
 
 func (s *Session) nextSubscribeID() SubscribeID {
 	// Increment and return the previous value atomically
-	id := SubscribeID(s.subscribeIDCounter.Add(1))
-
-	return id
+	return SubscribeID(s.subscribeIDCounter.Add(1))
 }
 
-func (sess *Session) OpenAnnounceStream(prefix string) (*AnnouncementReader, error) {
+func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) {
 	if sess.terminating() {
 		return nil, sess.sessErr
 	}
-
-	// Create a logger with consistent context for this announcement
 
 	stream, err := sess.conn.OpenStream()
 	if err != nil {
@@ -454,7 +450,7 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 			"config", config.String(),
 		)
 
-		handler := sess.mux.Handler(BroadcastPath(sm.BroadcastPath))
+		handler := sess.mux.Publishr(BroadcastPath(sm.BroadcastPath))
 		if handler == nil {
 			subLogger.Warn("track not found for subscription")
 

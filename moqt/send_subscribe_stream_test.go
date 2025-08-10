@@ -1,12 +1,13 @@
 package moqt
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"sync"
 	"testing"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -19,9 +20,7 @@ func TestNewSendSubscribeStream(t *testing.T) {
 		MaxGroupSequence: GroupSequence(100),
 	}
 	mockStream := &MockQUICStream{
-		ReadFunc: func(p []byte) (int, error) {
-			return 0, io.EOF
-		},
+		ReadFunc: (&bytes.Buffer{}).Read, // Empty buffer returns EOF immediately
 	}
 	mockStream.On("Context").Return(context.Background())
 

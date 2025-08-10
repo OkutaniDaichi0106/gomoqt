@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic/quicgo"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/webtransport/webtransportgo"
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/quic/quicgo"
+	"github.com/OkutaniDaichi0106/gomoqt/webtransport/webtransportgo"
 )
 
 type Client struct {
@@ -168,23 +168,7 @@ func (c *Client) DialWebTransport(ctx context.Context, host, path string, mux *T
 
 	logger.Info("WebTransport connection established")
 
-	extensions := func() *Parameters {
-		if c.Config == nil || c.Config.ClientSetupExtensions == nil {
-			logger.Debug("no setup extensions provided, using default parameters")
-			return NewParameters()
-		}
-
-		params := c.Config.ClientSetupExtensions()
-		if params == nil {
-			logger.Debug("client setup extensions returned nil, using default parameters")
-			params = NewParameters()
-		}
-
-		logger.Debug("setup extensions configured")
-		return params
-	}
-
-	sessStream, err := openSessionStream(conn, path, extensions, mux, logger)
+	sessStream, err := openSessionStream(conn, path, c.webTransportExtensions(), logger)
 	if err != nil {
 		logger.Error("session establishment failed", "error", err)
 		return nil, err
@@ -234,7 +218,7 @@ func (c *Client) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux)
 		conn, err = c.DialQUICConn(dialCtx, addr, c.TLSConfig, c.QUICConfig)
 	} else {
 		logger.Debug("using default QUIC dial")
-		conn, err = quicgo.Dial(dialCtx, addr, c.TLSConfig, c.QUICConfig)
+		conn, err = quicgo.DialAddrEarly(dialCtx, addr, c.TLSConfig, c.QUICConfig)
 	}
 
 	if err != nil {
@@ -244,26 +228,7 @@ func (c *Client) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux)
 
 	logger.Info("QUIC connection established")
 
-	extensions := func() *Parameters {
-		if c.Config == nil || c.Config.ClientSetupExtensions == nil {
-			logger.Debug("no setup extensions provided, using default parameters")
-			params := NewParameters()
-			params.SetString(param_type_path, path)
-			return params
-		}
-
-		params := c.Config.ClientSetupExtensions()
-		if params == nil {
-			logger.Debug("client setup extensions returned nil, using default parameters")
-			params = NewParameters()
-		}
-
-		params.SetString(param_type_path, path)
-
-		return params
-	}
-
-	sessStream, err := openSessionStream(conn, path, extensions, mux, logger)
+	sessStream, err := openSessionStream(conn, path, c.nativeQUICExtensions(path), logger)
 	if err != nil {
 		logger.Error("failed to open session stream", "error", err)
 		return nil, err
@@ -278,7 +243,37 @@ func (c *Client) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux)
 	return sess, nil
 }
 
-func openSessionStream(conn quic.Connection, path string, extensions func() *Parameters, mux *TrackMux, logger *slog.Logger) (*sessionStream, error) {
+func (c *Client) nativeQUICExtensions(path string) *Parameters {
+	if c.Config == nil || c.Config.ClientSetupExtensions == nil {
+		params := NewParameters()
+		params.SetString(param_type_path, path)
+		return params
+	}
+
+	params := c.Config.ClientSetupExtensions()
+	if params == nil {
+		params = NewParameters()
+	}
+
+	params.SetString(param_type_path, path)
+
+	return params
+}
+
+func (c *Client) webTransportExtensions() *Parameters {
+	if c.Config == nil || c.Config.ClientSetupExtensions == nil {
+		return NewParameters()
+	}
+
+	params := c.Config.ClientSetupExtensions()
+	if params == nil {
+		params = NewParameters()
+	}
+
+	return params
+}
+
+func openSessionStream(conn quic.Connection, path string, extensions *Parameters, logger *slog.Logger) (*sessionStream, error) {
 	connLogger := logger.With("transport", "quic", "path", path)
 	connLogger.Debug("opening session stream")
 
@@ -308,12 +303,12 @@ func openSessionStream(conn quic.Connection, path string, extensions func() *Par
 
 	sessLogger.Debug("moq: opened session stream")
 
-	clientParams := extensions()
+	versions := DefaultClientVersions
 
 	// Send a SESSION_CLIENT message
 	scm := message.SessionClientMessage{
-		SupportedVersions: DefaultClientVersions,
-		Parameters:        clientParams.paramMap,
+		SupportedVersions: versions,
+		Parameters:        extensions.paramMap,
 	}
 	err = scm.Encode(stream)
 	if err != nil {
@@ -323,20 +318,28 @@ func openSessionStream(conn quic.Connection, path string, extensions func() *Par
 		return nil, err
 	}
 
-	var ssm message.SessionServerMessage
-	err = ssm.Decode(stream)
+	req := &Request{
+		Path:       path,
+		Versions:   versions,
+		Extensions: extensions,
+		conn:       conn,
+		ctx:        stream.Context(),
+	}
+
+	sessStr := newSessionStream(stream, req)
+
+	rsp := &response{
+		sessionStream: sessStr,
+	}
+
+	err = rsp.AwaitAccepted()
 	if err != nil {
-		sessLogger.Error("failed to receive SESSION_SERVER message",
-			"error", err,
-		)
+		sessLogger.Error("session acceptance failed", "error", err)
+		conn.CloseWithError(quic.ConnectionErrorCode(InternalSessionErrorCode), "session acceptance failed")
 		return nil, err
 	}
 
-	version := ssm.SelectedVersion
-
-	serverParams := &Parameters{ssm.Parameters}
-
-	return newSessionStream(stream, version, path, clientParams, serverParams), nil
+	return rsp.sessionStream, nil
 }
 
 func (c *Client) addSession(sess *Session) {

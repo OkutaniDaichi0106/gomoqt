@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
 )
 
 func newAnnouncementReader(stream quic.Stream, prefix prefix, initSuffixes []suffix) *AnnouncementReader {
@@ -18,14 +18,14 @@ func newAnnouncementReader(stream quic.Stream, prefix prefix, initSuffixes []suf
 		ctx:         context.WithValue(stream.Context(), &biStreamTypeCtxKey, message.StreamTypeAnnounce),
 		stream:      stream,
 		prefix:      prefix,
-		active:      make(map[suffix]*Announcement),
+		actives:     make(map[suffix]*Announcement),
 		pendings:    make([]*Announcement, 0),
 		announcedCh: make(chan struct{}, 1),
 	}
 
 	for _, suffix := range initSuffixes {
-		ann := NewAnnouncement(stream.Context(), BroadcastPath(prefix+suffix))
-		ar.active[suffix] = ann
+		ann, _ := NewAnnouncement(stream.Context(), BroadcastPath(prefix+suffix))
+		ar.actives[suffix] = ann
 		ar.pendings = append(ar.pendings, ann)
 	}
 
@@ -49,14 +49,14 @@ func newAnnouncementReader(stream quic.Stream, prefix prefix, initSuffixes []suf
 
 			ar.announcementsMu.Lock()
 
-			old, ok := ar.active[am.TrackSuffix]
+			old, ok := ar.actives[am.TrackSuffix]
 
 			switch am.AnnounceStatus {
 			case message.ACTIVE:
 				if !ok || (ok && !old.IsActive()) {
 					// Create a new announcement
-					ann := NewAnnouncement(ar.ctx, BroadcastPath(ar.prefix+am.TrackSuffix))
-					ar.active[am.TrackSuffix] = ann
+					ann, _ := NewAnnouncement(ar.ctx, BroadcastPath(ar.prefix+am.TrackSuffix))
+					ar.actives[am.TrackSuffix] = ann
 					ar.pendings = append(ar.pendings, ann)
 
 					// Notify that new announcement is available
@@ -80,10 +80,10 @@ func newAnnouncementReader(stream quic.Stream, prefix prefix, initSuffixes []suf
 			case message.ENDED:
 				if ok && old.IsActive() {
 					// End the existing announcement
-					old.End()
+					old.end()
 
 					// Remove the announcement from the map
-					delete(ar.active, am.TrackSuffix)
+					delete(ar.actives, am.TrackSuffix)
 
 					ar.announcementsMu.Unlock()
 					continue
@@ -115,7 +115,7 @@ type AnnouncementReader struct {
 	// Track Suffix -> Announcement
 	announcementsMu sync.Mutex
 
-	active map[suffix]*Announcement
+	actives map[suffix]*Announcement
 
 	pendings    []*Announcement
 	announcedCh chan struct{} // notify when new announcement is available

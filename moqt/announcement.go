@@ -7,7 +7,13 @@ import (
 	"sync"
 )
 
-func NewAnnouncement(ctx context.Context, path BroadcastPath) *Announcement {
+type EndAnnouncementFunc func()
+
+func NewAnnouncement(ctx context.Context, path BroadcastPath) (*Announcement, EndAnnouncementFunc) {
+	if !isValidPath(path) {
+		panic("[Announcement] invalid track path: " + string(path))
+	}
+
 	ctx, cancel := context.WithCancel(ctx)
 
 	ann := Announcement{
@@ -16,7 +22,7 @@ func NewAnnouncement(ctx context.Context, path BroadcastPath) *Announcement {
 		cancel: cancel,
 	}
 
-	return &ann
+	return &ann, ann.end
 }
 
 type Announcement struct {
@@ -68,7 +74,7 @@ func (a *Announcement) IsActive() bool {
 	return a.ctx.Err() == nil
 }
 
-func (a *Announcement) End() {
+func (a *Announcement) end() {
 	a.cancel()
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -99,8 +105,4 @@ func (a *Announcement) End() {
 	}
 	close(jobs)
 	wg.Wait()
-}
-
-func (a *Announcement) Fork() *Announcement {
-	return NewAnnouncement(a.ctx, a.path)
 }

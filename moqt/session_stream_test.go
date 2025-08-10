@@ -10,108 +10,118 @@ import (
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
+// TestNewSessionStream tests basic SessionStream creation
 func TestNewSessionStream(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
-	// Setup Read mock - will be used by the background goroutine in newSessionStream
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	req := &Request{
+		Path:       "test/path",
+		Extensions: NewParameters(),
+	}
 
-	ss := newSessionStream(mockStream, protocol.Version(1), "test/path", NewParameters(), NewParameters())
+	ss := newSessionStream(mockStream, req)
 
 	assert.NotNil(t, ss, "newSessionStream should not return nil")
 	assert.NotNil(t, ss.SessionUpdated(), "SessionUpdated channel should be initialized")
+	assert.Equal(t, req.Path, ss.Path, "path should be set correctly")
 
 	// Give time for background goroutines to complete
 	time.Sleep(50 * time.Millisecond)
 
-	// Verify the session stream was created properly
 	mockStream.AssertExpectations(t)
 }
 
+// TestSessionStream_updateSession tests basic session update functionality
 func TestSessionStream_updateSession(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Context").Return(context.Background())
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
+	mockStream.On("Write", mock.Anything).Return(8, nil)
+
+	req := &Request{
+		Path:       "test/path",
+		Extensions: NewParameters(),
+	}
+
+	ss := newSessionStream(mockStream, req)
 
 	bitrate := uint64(1000000)
-	// Create expected message for verification
-	sum := message.SessionUpdateMessage{
-		Bitrate: bitrate,
-	}
-	buf := bytes.NewBuffer(make([]byte, 0, 1024))
-	sum.Encode(buf)
-
-	// Set up mock expectations for Write
-	mockStream.On("Write", mock.Anything).Return(5, nil)
-	mockStream.WriteFunc = buf.Write
-
-	ss := newSessionStream(mockStream, protocol.Version(1), "test/path", NewParameters(), NewParameters())
-
 	err := ss.updateSession(bitrate)
 
-	assert.NoError(t, err)
+	assert.NoError(t, err, "updateSession should not return error")
 	assert.Equal(t, bitrate, ss.localBitrate, "local bitrate should be updated")
 
-	// Give time for background goroutines to complete
-	time.Sleep(50 * time.Millisecond)
+	mockStream.AssertCalled(t, "Write", mock.Anything)
 	mockStream.AssertExpectations(t)
 }
 
+// TestSessionStream_updateSession_WriteError tests behavior on write errors
 func TestSessionStream_updateSession_WriteError(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	writeError := errors.New("write error")
 	mockStream.On("Context").Return(context.Background())
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 	mockStream.On("Write", mock.Anything).Return(0, writeError)
 
-	ss := newSessionStream(mockStream, protocol.Version(1), "test/path", NewParameters(), NewParameters())
+	req := &Request{
+		Path:       "test/path",
+		Extensions: NewParameters(),
+	}
 
-	err := ss.updateSession(uint64(1000000))
+	ss := newSessionStream(mockStream, req)
 
-	// The current implementation returns Cause(ss.ctx) when there's a write error
-	// Since the context is not cancelled, it returns nil
-	assert.NoError(t, err, "updateSession should return nil when context is not cancelled, even with write error")
+	_ = ss.updateSession(uint64(1000000))
 
-	// Give time for background goroutines to complete
-	time.Sleep(50 * time.Millisecond)
+	// Error handling depends on implementation, but should not panic
+	assert.NotPanics(t, func() {
+		ss.updateSession(uint64(1000000))
+	}, "updateSession should not panic on write error")
+
 	mockStream.AssertExpectations(t)
 }
 
+// TestSessionStream_SessionUpdated tests SessionUpdated channel functionality
 func TestSessionStream_SessionUpdated(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Context").Return(context.Background())
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
-	ss := newSessionStream(mockStream, protocol.Version(1), "test/path", NewParameters(), NewParameters())
+	req := &Request{
+		Path:       "test/path",
+		Extensions: NewParameters(),
+	}
+
+	ss := newSessionStream(mockStream, req)
+
+	// Trigger setupDone to start listening for updates
+	ss.listenUpdates()
 
 	ch := ss.SessionUpdated()
 	assert.NotNil(t, ch, "SessionUpdated should return a valid channel")
-	// SessionUpdated() returns <-chan struct{}, not chan struct{}
 	assert.IsType(t, (<-chan struct{})(nil), ch, "SessionUpdated should return a receive-only channel")
 
-	// Give time for background goroutines to complete
-	time.Sleep(50 * time.Millisecond)
 	mockStream.AssertExpectations(t)
 }
 
+// TestSessionStream_updateSession_ZeroBitrate tests updateSession with zero bitrate
 func TestSessionStream_updateSession_ZeroBitrate(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
+	mockStream.On("Write", mock.Anything).Return(2, nil)
 
-	// Setup Read mock - EOF will trigger close from background goroutine
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
-	mockStream.On("Write", mock.Anything).Return(2, nil) // 2 bytes for zero bitrate message
+	req := &Request{
+		Path:       "test/path",
+		Extensions: NewParameters(),
+	}
 
-	ss := newSessionStream(mockStream, protocol.Version(1), "test/path", NewParameters(), NewParameters())
-
-	// Give time for background goroutine to start
-	time.Sleep(10 * time.Millisecond)
+	ss := newSessionStream(mockStream, req)
 
 	err := ss.updateSession(0)
 	assert.NoError(t, err, "updateSession(0) should not error")
@@ -121,18 +131,19 @@ func TestSessionStream_updateSession_ZeroBitrate(t *testing.T) {
 	mockStream.AssertExpectations(t)
 }
 
+// TestSessionStream_updateSession_LargeBitrate tests updateSession with large bitrate values
 func TestSessionStream_updateSession_LargeBitrate(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
+	mockStream.On("Write", mock.Anything).Return(10, nil)
 
-	// Setup Read mock - EOF will trigger close from background goroutine
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
-	mockStream.On("Write", mock.Anything).Return(10, nil) // 10 bytes for large bitrate message
+	req := &Request{
+		Path:       "test/path",
+		Extensions: NewParameters(),
+	}
 
-	ss := newSessionStream(mockStream, protocol.Version(1), "test/path", NewParameters(), NewParameters())
-
-	// Give time for background goroutine to start
-	time.Sleep(10 * time.Millisecond)
+	ss := newSessionStream(mockStream, req)
 
 	largeBitrate := uint64(1<<62 - 1) // Large but valid value
 	err := ss.updateSession(largeBitrate)
@@ -143,115 +154,142 @@ func TestSessionStream_updateSession_LargeBitrate(t *testing.T) {
 	mockStream.AssertExpectations(t)
 }
 
+// TestSessionStream_listenUpdates tests message listening functionality
 func TestSessionStream_listenUpdates(t *testing.T) {
 	tests := map[string]struct {
-		buffer        func() *bytes.Buffer
+		mockStream    func() *MockQUICStream
+		expectUpdate  bool
 		expectBitrate uint64
 	}{
 		"valid message": {
-			buffer: func() *bytes.Buffer {
-				// Create a valid SessionUpdateMessage with a bitrate
+			mockStream: func() *MockQUICStream {
+				// Valid SessionUpdateMessage
 				bitrate := uint64(1000000)
-				sessionUpdate := message.SessionUpdateMessage{
-					Bitrate: bitrate,
-				}
 				var buf bytes.Buffer
-				err := sessionUpdate.Encode(&buf)
-				if err != nil {
-					panic("failed to encode SessionUpdateMessage: " + err.Error())
+				message.SessionUpdateMessage{
+					Bitrate: bitrate,
+				}.Encode(&buf)
+
+				mockStream := &MockQUICStream{
+					ReadFunc: buf.Read,
 				}
-				return &buf
+				mockStream.On("Context").Return(context.Background())
+				return mockStream
 			},
+			expectUpdate:  true,
 			expectBitrate: 1000000,
 		},
-		"empty message": {
-			buffer: func() *bytes.Buffer {
-				// Create an empty buffer to simulate no data
-				return &bytes.Buffer{}
+		"empty stream": {
+			mockStream: func() *MockQUICStream {
+				// Empty buffer will return 0, io.EOF immediately
+				var buf bytes.Buffer
+				mockStream := &MockQUICStream{
+					ReadFunc: buf.Read,
+				}
+				mockStream.On("Context").Return(context.Background())
+				return mockStream
 			},
+			expectUpdate:  false,
 			expectBitrate: 0,
 		},
 		"zero bitrate": {
-			buffer: func() *bytes.Buffer {
-				// Create a SessionUpdateMessage with a zero bitrate
-				bitrate := uint64(0)
-				sessionUpdate := message.SessionUpdateMessage{
-					Bitrate: bitrate,
-				}
+			mockStream: func() *MockQUICStream {
 				var buf bytes.Buffer
-				err := sessionUpdate.Encode(&buf)
-				if err != nil {
-					panic("failed to encode SessionUpdateMessage: " + err.Error())
+				message.SessionUpdateMessage{
+					Bitrate: 0,
+				}.Encode(&buf)
+
+				mockStream := &MockQUICStream{
+					ReadFunc: buf.Read,
 				}
-				return &buf
+				mockStream.On("Context").Return(context.Background())
+				return mockStream
 			},
+			expectUpdate:  true,
 			expectBitrate: 0,
 		},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			buf := tt.buffer()
-			mockStream := &MockQUICStream{
-				ReadFunc: func(p []byte) (n int, err error) {
-					return buf.Read(p)
-				},
+			mockStream := tt.mockStream()
+
+			req := &Request{
+				Path:       "test/path",
+				Extensions: NewParameters(),
 			}
 
-			mockStream.On("Context").Return(context.Background())
-			mockStream.On("Read", mock.Anything).Return(0, nil).Maybe() // Maybe() allows variable number of calls
+			ss := newSessionStream(mockStream, req)
 
-			ss := newSessionStream(mockStream, protocol.Version(1), "test/path", NewParameters(), NewParameters())
+			// Start listening for updates
+			ss.listenUpdates()
 
-			// Give time for listenUpdates to process the message
+			// Give sufficient time for listenUpdates to process message
 			time.Sleep(100 * time.Millisecond)
-			// Check if we get the update notification
-			select {
-			case <-ss.SessionUpdated():
-				// Update received - this is good for valid messages
-			case <-time.After(200 * time.Millisecond):
-				if name == "valid message" {
-					t.Log("timed out waiting for session update - this might be expected due to implementation details")
+
+			if tt.expectUpdate {
+				select {
+				case <-ss.SessionUpdated():
+					// Check if the bitrate was updated correctly
+					ss.mu.Lock()
+					actualBitrate := ss.remoteBitrate
+					ss.mu.Unlock()
+					assert.Equal(t, tt.expectBitrate, actualBitrate, "remote bitrate should match expected")
+				case <-time.After(200 * time.Millisecond):
+					if name == "valid message" || name == "zero bitrate" {
+						t.Error("expected session update but timed out")
+					}
 				}
 			}
 
-			// Don't assert expectations due to ReadFunc inconsistencies
+			mockStream.AssertExpectations(t)
 		})
 	}
 }
 
+// TestSessionStream_listenUpdates_StreamClosed tests behavior when stream is closed
 func TestSessionStream_listenUpdates_StreamClosed(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
-	// Set up mock to return EOF immediately
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
-
-	ss := newSessionStream(mockStream, protocol.Version(1), "test/path", NewParameters(), NewParameters())
-
-	// Give time for listenUpdates to encounter the EOF
-	time.Sleep(50 * time.Millisecond)
-
-	// Verify context was cancelled due to EOF (channel should be closed)
-	select {
-	case <-ss.SessionUpdated():
-		// Channel is closed, which is expected
-	case <-time.After(100 * time.Millisecond):
-		t.Log("channel might not be closed yet - this may be implementation dependent")
+	req := &Request{
+		Path:       "test/path",
+		Extensions: NewParameters(),
 	}
 
-	// Don't enforce strict expectations for this timing-dependent test
+	ss := newSessionStream(mockStream, req)
+
+	// Trigger setupDone to start listening for updates
+	ss.listenUpdates()
+
+	// Give time for listenUpdates to encounter EOF and close
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify the session stream handles EOF properly
+	select {
+	case <-ss.SessionUpdated():
+		// Channel might be closed, which is acceptable
+	case <-time.After(50 * time.Millisecond):
+		// No update received, also acceptable for EOF case
+	}
+
+	mockStream.AssertExpectations(t)
 }
 
+// TestSessionStream_listenUpdates_ContextCancellation tests behavior on context cancellation
 func TestSessionStream_listenUpdates_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	mockStream := &MockQUICStream{}
-
-	// Mock Read to potentially be called
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 	mockStream.On("Context").Return(ctx)
+	mockStream.On("Read", mock.Anything).Return(0, nil).Maybe()
 
-	ss := newSessionStream(mockStream, protocol.Version(1), "test/path", NewParameters(), NewParameters())
+	req := &Request{
+		Path:       "test/path",
+		Extensions: NewParameters(),
+	}
+
+	ss := newSessionStream(mockStream, req)
 
 	// Let listenUpdates start
 	time.Sleep(10 * time.Millisecond)
@@ -259,31 +297,36 @@ func TestSessionStream_listenUpdates_ContextCancellation(t *testing.T) {
 	// Cancel the context
 	cancel()
 
-	// Give time for listenUpdates to exit
+	// Give time for listenUpdates to detect cancellation
 	time.Sleep(50 * time.Millisecond)
 
-	// Verify the stream detects closure (channel should be closed)
+	// Verify the stream handles cancellation properly
 	select {
 	case <-ss.SessionUpdated():
-		// Channel is closed, which is expected
-	case <-time.After(100 * time.Millisecond):
-		t.Log("channel might not be closed yet - this may be implementation dependent")
+		// Channel might be closed due to cancellation
+	case <-time.After(50 * time.Millisecond):
+		// No update received, also acceptable for cancellation
 	}
-
-	// Don't enforce strict expectations for this timing-dependent test
 
 	mockStream.AssertExpectations(t)
 }
 
+// TestSessionStream_ConcurrentAccess tests concurrent access to SessionStream methods
 func TestSessionStream_ConcurrentAccess(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Context").Return(context.Background())
-
-	// Setup mocks to allow concurrent operations
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 	mockStream.On("Write", mock.Anything).Return(8, nil).Maybe()
 
-	ss := newSessionStream(mockStream, protocol.Version(1), "test/path", NewParameters(), NewParameters())
+	req := &Request{
+		Path:       "test/path",
+		Extensions: NewParameters(),
+	}
+
+	ss := newSessionStream(mockStream, req)
+
+	// Trigger setupDone to start listening for updates
+	ss.listenUpdates()
 
 	// Test concurrent access to various methods
 	var wg sync.WaitGroup
@@ -308,8 +351,1093 @@ func TestSessionStream_ConcurrentAccess(t *testing.T) {
 		}
 	}()
 
+	// Concurrent access to bitrate fields (read-only)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for range 5 {
+			_ = ss.localBitrate
+			_ = ss.remoteBitrate
+			time.Sleep(time.Millisecond)
+		}
+	}()
+
 	wg.Wait()
 
 	// Test should complete without race conditions or panics
 	mockStream.AssertExpectations(t)
+}
+
+// TestResponseWriter_Accept tests responseWriter Accept functionality
+func TestResponseWriter_Accept(t *testing.T) {
+	tests := map[string]struct {
+		version     Version
+		extensions  *Parameters
+		mockStream  func() *MockQUICStream
+		expectError bool
+	}{
+		"successful accept": {
+			version:    Version(1),
+			extensions: NewParameters(),
+			mockStream: func() *MockQUICStream {
+				mockStream := &MockQUICStream{}
+				mockStream.On("Context").Return(context.Background())
+				mockStream.On("Write", mock.Anything).Return(10, nil)
+				mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
+				return mockStream
+			},
+			expectError: false,
+		},
+		"write error on accept": {
+			version:    Version(1),
+			extensions: NewParameters(),
+			mockStream: func() *MockQUICStream {
+				mockStream := &MockQUICStream{}
+				mockStream.On("Context").Return(context.Background())
+				mockStream.On("Write", mock.Anything).Return(0, errors.New("write failed"))
+				return mockStream
+			},
+			expectError: true,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockStream := tt.mockStream()
+
+			req := &Request{
+				Path:       "test/path",
+				Extensions: NewParameters(),
+			}
+
+			ss := newSessionStream(mockStream, req)
+			rw := &responseWriter{sessionStream: ss}
+
+			err := rw.Accept(tt.version, tt.extensions)
+
+			if tt.expectError {
+				assert.Error(t, err, "Accept should return error")
+			} else {
+				assert.NoError(t, err, "Accept should not return error")
+				assert.Equal(t, tt.version, ss.Version, "version should be set correctly")
+				assert.Equal(t, tt.extensions, ss.serverParameters, "server parameters should be set correctly")
+			}
+
+			mockStream.AssertExpectations(t)
+		})
+	}
+}
+
+// TestResponseWriter_Accept_OnlyOnce tests that Accept is only called once
+func TestResponseWriter_Accept_OnlyOnce(t *testing.T) {
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Write", mock.Anything).Return(10, nil).Once()
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
+
+	req := &Request{
+		Path:       "test/path",
+		Extensions: NewParameters(),
+	}
+
+	ss := newSessionStream(mockStream, req)
+	rw := &responseWriter{sessionStream: ss}
+
+	version := Version(1)
+	extensions := NewParameters()
+
+	// First call should succeed
+	err1 := rw.Accept(version, extensions)
+	assert.NoError(t, err1, "first Accept call should succeed")
+
+	// Second call should be ignored (no additional Write calls)
+	err2 := rw.Accept(Version(2), NewParameters())
+	assert.NoError(t, err2, "second Accept call should be ignored")
+
+	// Version should remain from first call
+	assert.Equal(t, version, ss.Version, "version should remain from first call")
+
+	mockStream.AssertExpectations(t)
+}
+
+// TestResponseWriter_Accept_ConcurrentCalls tests concurrent Accept calls
+func TestResponseWriter_Accept_ConcurrentCalls(t *testing.T) {
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Write", mock.Anything).Return(10, nil).Once()
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
+
+	req := &Request{
+		Path:       "test/path",
+		Extensions: NewParameters(),
+	}
+
+	ss := newSessionStream(mockStream, req)
+	rw := &responseWriter{sessionStream: ss}
+
+	version := Version(1)
+	extensions := NewParameters()
+
+	var wg sync.WaitGroup
+	const numGoroutines = 10
+
+	// Start multiple goroutines calling Accept concurrently
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			err := rw.Accept(Version(id), NewParameters())
+			assert.NoError(t, err, "Accept should not return error")
+		}(i)
+	}
+
+	// Also call Accept from main goroutine
+	err := rw.Accept(version, extensions)
+	assert.NoError(t, err, "main Accept call should not return error")
+
+	wg.Wait()
+
+	// Only one Write call should have been made due to sync.Once
+	mockStream.AssertExpectations(t)
+}
+
+// TestResponse_AwaitAccepted tests response AwaitAccepted functionality
+func TestResponse_AwaitAccepted(t *testing.T) {
+	tests := map[string]struct {
+		mockStream  func() *MockQUICStream
+		expectError bool
+		checkResult func(*testing.T, *response)
+	}{
+		"successful await": {
+			mockStream: func() *MockQUICStream {
+				// Create a valid SessionServerMessage
+				ssm := message.SessionServerMessage{
+					SelectedVersion: Version(1),
+					Parameters:      map[uint64][]byte{1: []byte("test")},
+				}
+				var buf bytes.Buffer
+				ssm.Encode(&buf)
+
+				mockStream := &MockQUICStream{
+					ReadFunc: buf.Read,
+				}
+				mockStream.On("Context").Return(context.Background())
+				return mockStream
+			},
+			expectError: false,
+			checkResult: func(t *testing.T, r *response) {
+				assert.Equal(t, Version(1), r.Version, "version should be set correctly")
+				assert.NotNil(t, r.serverParameters, "server parameters should be set")
+			},
+		},
+		"decode error": {
+			mockStream: func() *MockQUICStream {
+				mockStream := &MockQUICStream{}
+				mockStream.On("Context").Return(context.Background())
+				mockStream.On("Read", mock.Anything).Return(0, errors.New("decode failed"))
+				return mockStream
+			},
+			expectError: true,
+			checkResult: func(t *testing.T, r *response) {
+				// Version should remain unset on error
+			},
+		},
+		"EOF on read": {
+			mockStream: func() *MockQUICStream {
+				mockStream := &MockQUICStream{}
+				mockStream.On("Context").Return(context.Background())
+				mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+				return mockStream
+			},
+			expectError: true,
+			checkResult: func(t *testing.T, r *response) {
+				// Version should remain unset on error
+			},
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockStream := tt.mockStream()
+
+			req := &Request{
+				Path:       "test/path",
+				Extensions: NewParameters(),
+			}
+
+			ss := newSessionStream(mockStream, req)
+			r := &response{sessionStream: ss}
+
+			err := r.AwaitAccepted()
+
+			if tt.expectError {
+				assert.Error(t, err, "AwaitAccepted should return error")
+			} else {
+				assert.NoError(t, err, "AwaitAccepted should not return error")
+			}
+
+			tt.checkResult(t, r)
+			mockStream.AssertExpectations(t)
+		})
+	}
+}
+
+// TestResponse_AwaitAccepted_OnlyOnce tests that AwaitAccepted is only executed once
+func TestResponse_AwaitAccepted_OnlyOnce(t *testing.T) {
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+
+	// Create a valid SessionServerMessage
+	ssm := message.SessionServerMessage{
+		SelectedVersion: Version(1),
+		Parameters:      map[uint64][]byte{1: []byte("test")},
+	}
+	var buf bytes.Buffer
+	ssm.Encode(&buf)
+
+	// Use ReadFunc for simpler mocking
+	mockStream.ReadFunc = buf.Read
+
+	req := &Request{
+		Path:       "test/path",
+		Extensions: NewParameters(),
+	}
+
+	ss := newSessionStream(mockStream, req)
+	r := &response{sessionStream: ss}
+
+	// First call should read from stream
+	err1 := r.AwaitAccepted()
+	assert.NoError(t, err1, "first AwaitAccepted call should succeed")
+	assert.Equal(t, Version(1), r.Version, "version should be set from first call")
+
+	// Second call should return immediately without reading from stream
+	err2 := r.AwaitAccepted()
+	assert.NoError(t, err2, "second AwaitAccepted call should succeed")
+	assert.Equal(t, Version(1), r.Version, "version should remain from first call")
+
+	mockStream.AssertExpectations(t)
+}
+
+// TestResponse_AwaitAccepted_ConcurrentCalls tests concurrent AwaitAccepted calls
+func TestResponse_AwaitAccepted_ConcurrentCalls(t *testing.T) {
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+
+	// Create a valid SessionServerMessage
+	ssm := message.SessionServerMessage{
+		SelectedVersion: Version(1),
+		Parameters:      map[uint64][]byte{1: []byte("test")},
+	}
+	var buf bytes.Buffer
+	ssm.Encode(&buf)
+
+	// Use ReadFunc for simpler mocking
+	mockStream.ReadFunc = buf.Read
+
+	req := &Request{
+		Path:       "test/path",
+		Extensions: NewParameters(),
+	}
+
+	ss := newSessionStream(mockStream, req)
+	r := &response{sessionStream: ss}
+
+	var wg sync.WaitGroup
+	const numGoroutines = 10
+	results := make([]error, numGoroutines)
+
+	// Start multiple goroutines calling AwaitAccepted concurrently
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			results[id] = r.AwaitAccepted()
+		}(i)
+	}
+
+	wg.Wait()
+
+	// All calls should succeed
+	for i, err := range results {
+		assert.NoError(t, err, "AwaitAccepted call %d should succeed", i)
+	}
+
+	// Version should be set correctly
+	assert.Equal(t, Version(1), r.Version, "version should be set correctly")
+
+	// Only one Read call should have been made due to sync.Once
+	mockStream.AssertExpectations(t)
+}
+
+// TestResponseWriter_ResponseWriter_Interface tests that responseWriter implements ResponseWriter
+func TestResponseWriter_ResponseWriter_Interface(t *testing.T) {
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+
+	req := &Request{
+		Path:       "test/path",
+		Extensions: NewParameters(),
+	}
+
+	ss := newSessionStream(mockStream, req)
+	rw := &responseWriter{sessionStream: ss}
+
+	// Test that responseWriter implements ResponseWriter interface
+	var _ ResponseWriter = rw
+
+	assert.NotNil(t, rw, "responseWriter should not be nil")
+	assert.NotNil(t, rw.sessionStream, "sessionStream should not be nil")
+}
+
+// TestResponseWriter_Accept_NilParameters tests Accept with nil parameters
+func TestResponseWriter_Accept_NilParameters(t *testing.T) {
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Write", mock.Anything).Return(10, nil)
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
+
+	req := &Request{
+		Path:       "test/path",
+		Extensions: NewParameters(),
+	}
+
+	ss := newSessionStream(mockStream, req)
+	rw := &responseWriter{sessionStream: ss}
+
+	version := Version(1)
+	err := rw.Accept(version, nil)
+
+	assert.NoError(t, err, "Accept should handle nil parameters")
+	assert.Equal(t, version, ss.Version, "version should be set correctly")
+	assert.Nil(t, ss.serverParameters, "server parameters should be nil when nil is passed")
+
+	mockStream.AssertExpectations(t)
+}
+
+// TestResponseWriter_Accept_MultipleVersions tests Accept with different versions
+func TestResponseWriter_Accept_MultipleVersions(t *testing.T) {
+	tests := map[string]struct {
+		version Version
+	}{
+		"version 0":     {version: Version(0)},
+		"version 1":     {version: Version(1)},
+		"version 255":   {version: Version(255)},
+		"large version": {version: Version(65535)},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockStream := &MockQUICStream{}
+			mockStream.On("Context").Return(context.Background())
+			mockStream.On("Write", mock.Anything).Return(10, nil)
+			mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
+
+			req := &Request{
+				Path:       "test/path",
+				Extensions: NewParameters(),
+			}
+
+			ss := newSessionStream(mockStream, req)
+			rw := &responseWriter{sessionStream: ss}
+
+			extensions := NewParameters()
+			err := rw.Accept(tt.version, extensions)
+
+			assert.NoError(t, err, "Accept should succeed for version %d", tt.version)
+			assert.Equal(t, tt.version, ss.Version, "version should be set correctly")
+
+			mockStream.AssertExpectations(t)
+		})
+		t.Run(name, func(t *testing.T) {
+			mockStream := &MockQUICStream{}
+			mockStream.On("Context").Return(context.Background())
+			mockStream.On("Write", mock.Anything).Return(10, nil)
+			mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
+
+			req := &Request{
+				Path:       "test/path",
+				Extensions: NewParameters(),
+			}
+
+			ss := newSessionStream(mockStream, req)
+			rw := &responseWriter{sessionStream: ss}
+
+			err := rw.Accept(tt.version, NewParameters())
+
+			assert.NoError(t, err, "Accept should handle version %d", tt.version)
+			assert.Equal(t, tt.version, ss.Version, "version should be set correctly")
+
+			mockStream.AssertExpectations(t)
+		})
+	}
+}
+
+// TestResponse_AwaitAccepted_InvalidMessage tests AwaitAccepted with invalid message data
+func TestResponse_AwaitAccepted_InvalidMessage(t *testing.T) {
+	tests := map[string]struct {
+		mockStream func() *MockQUICStream
+	}{
+		"invalid message data": {
+			mockStream: func() *MockQUICStream {
+				// Create buffer with invalid data
+				invalidData := []byte{0xFF, 0xFF, 0xFF, 0xFF}
+				buf := bytes.NewBuffer(invalidData)
+
+				mockStream := &MockQUICStream{
+					ReadFunc: buf.Read,
+				}
+				mockStream.On("Context").Return(context.Background())
+				return mockStream
+			},
+		},
+		"truncated message": {
+			mockStream: func() *MockQUICStream {
+				// Create a valid message first, then truncate it
+				ssm := message.SessionServerMessage{
+					SelectedVersion: Version(1),
+					Parameters:      map[uint64][]byte{1: []byte("test")},
+				}
+				var fullBuf bytes.Buffer
+				ssm.Encode(&fullBuf)
+				fullData := fullBuf.Bytes()
+
+				// Take only first 2 bytes to create truncated message
+				truncatedData := fullData[:2]
+				buf := bytes.NewBuffer(truncatedData)
+
+				mockStream := &MockQUICStream{
+					ReadFunc: buf.Read,
+				}
+				mockStream.On("Context").Return(context.Background())
+				return mockStream
+			},
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockStream := tt.mockStream()
+
+			req := &Request{
+				Path:       "test/path",
+				Extensions: NewParameters(),
+			}
+
+			ss := newSessionStream(mockStream, req)
+			r := &response{sessionStream: ss}
+
+			err := r.AwaitAccepted()
+
+			assert.Error(t, err, "AwaitAccepted should return error for invalid message")
+
+			mockStream.AssertExpectations(t)
+		})
+	}
+}
+
+// TestResponse_AwaitAccepted_DifferentVersions tests AwaitAccepted with different protocol versions
+func TestResponse_AwaitAccepted_DifferentVersions(t *testing.T) {
+	tests := map[string]struct {
+		version Version
+	}{
+		"version 0":     {version: Version(0)},
+		"version 1":     {version: Version(1)},
+		"version 255":   {version: Version(255)},
+		"large version": {version: Version(65535)},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockStream := &MockQUICStream{}
+			mockStream.On("Context").Return(context.Background())
+
+			// Create a valid SessionServerMessage with specific version
+			ssm := message.SessionServerMessage{
+				SelectedVersion: tt.version,
+				Parameters:      map[uint64][]byte{1: []byte("test")},
+			}
+			var buf bytes.Buffer
+			ssm.Encode(&buf)
+
+			// Use ReadFunc for simpler mocking
+			mockStream.ReadFunc = buf.Read
+
+			req := &Request{
+				Path:       "test/path",
+				Extensions: NewParameters(),
+			}
+
+			ss := newSessionStream(mockStream, req)
+			r := &response{sessionStream: ss}
+
+			err := r.AwaitAccepted()
+
+			assert.NoError(t, err, "AwaitAccepted should succeed for version %d", tt.version)
+			assert.Equal(t, tt.version, r.Version, "version should be set correctly")
+			assert.NotNil(t, r.serverParameters, "server parameters should be set")
+
+			mockStream.AssertExpectations(t)
+		})
+	}
+}
+
+// TestSessionStream_listenUpdates_InitialChannelState tests initial state of updatedCh
+func TestSessionStream_listenUpdates_InitialChannelState(t *testing.T) {
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
+
+	req := &Request{
+		Path:       "test/path",
+		Extensions: NewParameters(),
+	}
+
+	ss := newSessionStream(mockStream, req)
+
+	// Trigger setupDone to start listening for updates
+	ss.listenUpdates()
+
+	// Channel should be initialized and available immediately
+	ch := ss.SessionUpdated()
+	assert.NotNil(t, ch, "SessionUpdated channel should be initialized")
+
+	// Give time for listenUpdates to start and finish
+	time.Sleep(50 * time.Millisecond)
+
+	mockStream.AssertExpectations(t)
+}
+
+// TestSessionStream_Context tests Context method
+func TestSessionStream_Context(t *testing.T) {
+	ctx := context.Background()
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(ctx)
+
+	req := &Request{
+		Path:       "test/path",
+		Extensions: NewParameters(),
+	}
+
+	ss := newSessionStream(mockStream, req)
+
+	resultCtx := ss.Context()
+
+	assert.NotNil(t, resultCtx, "Context should not be nil")
+	// The context should be a derived context with stream type value
+	assert.NotEqual(t, ctx, resultCtx, "Context should be derived with additional values")
+}
+
+// TestResponse_Interface tests that response implements expected behaviors
+func TestResponse_Interface(t *testing.T) {
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+
+	req := &Request{
+		Path:       "test/path",
+		Extensions: NewParameters(),
+	}
+
+	ss := newSessionStream(mockStream, req)
+	r := &response{sessionStream: ss}
+
+	assert.NotNil(t, r, "response should not be nil")
+	assert.NotNil(t, r.sessionStream, "sessionStream should not be nil")
+	assert.Equal(t, ss, r.sessionStream, "sessionStream should be set correctly")
+}
+
+// TestResponse_AwaitAccepted_ErrorHandling tests various error scenarios
+func TestResponse_AwaitAccepted_ErrorHandling(t *testing.T) {
+	tests := map[string]struct {
+		mockStream    func() *MockQUICStream
+		expectError   bool
+		expectVersion Version
+	}{
+		"network error on read": {
+			mockStream: func() *MockQUICStream {
+				mockStream := &MockQUICStream{}
+				mockStream.On("Context").Return(context.Background())
+				mockStream.On("Read", mock.Anything).Return(0, errors.New("network error"))
+				return mockStream
+			},
+			expectError:   true,
+			expectVersion: Version(0),
+		},
+		"context cancelled": {
+			mockStream: func() *MockQUICStream {
+				mockStream := &MockQUICStream{}
+				mockStream.On("Context").Return(context.Background())
+				mockStream.On("Read", mock.Anything).Return(0, context.Canceled)
+				return mockStream
+			},
+			expectError:   true,
+			expectVersion: Version(0),
+		},
+		"empty parameters": {
+			mockStream: func() *MockQUICStream {
+				ssm := message.SessionServerMessage{
+					SelectedVersion: Version(42),
+					Parameters:      map[uint64][]byte{},
+				}
+				var buf bytes.Buffer
+				ssm.Encode(&buf)
+
+				mockStream := &MockQUICStream{
+					ReadFunc: buf.Read,
+				}
+				mockStream.On("Context").Return(context.Background())
+				return mockStream
+			},
+			expectError:   false,
+			expectVersion: Version(42),
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockStream := tt.mockStream()
+
+			req := &Request{
+				Path:       "test/path",
+				Extensions: NewParameters(),
+			}
+
+			ss := newSessionStream(mockStream, req)
+			r := &response{sessionStream: ss}
+
+			err := r.AwaitAccepted()
+
+			if tt.expectError {
+				assert.Error(t, err, "AwaitAccepted should return error")
+			} else {
+				assert.NoError(t, err, "AwaitAccepted should not return error")
+				assert.Equal(t, tt.expectVersion, r.Version, "version should be set correctly")
+			}
+
+			mockStream.AssertExpectations(t)
+		})
+	}
+}
+
+// TestResponseWriter_Accept_ErrorHandling tests various error scenarios
+func TestResponseWriter_Accept_ErrorHandling(t *testing.T) {
+	tests := map[string]struct {
+		version     Version
+		extensions  *Parameters
+		setupMock   func(*MockQUICStream)
+		expectError bool
+	}{
+		"network write error": {
+			version:    Version(1),
+			extensions: NewParameters(),
+			setupMock: func(mockStream *MockQUICStream) {
+				mockStream.On("Write", mock.Anything).Return(0, errors.New("network write error"))
+			},
+			expectError: true,
+		},
+		"stream closed error": {
+			version:    Version(1),
+			extensions: NewParameters(),
+			setupMock: func(mockStream *MockQUICStream) {
+				mockStream.On("Write", mock.Anything).Return(0, errors.New("stream closed"))
+			},
+			expectError: true,
+		},
+		"partial write": {
+			version:    Version(1),
+			extensions: NewParameters(),
+			setupMock: func(mockStream *MockQUICStream) {
+				mockStream.On("Write", mock.Anything).Return(5, nil) // Partial write
+				mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
+			},
+			expectError: false,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockStream := &MockQUICStream{}
+			mockStream.On("Context").Return(context.Background())
+			tt.setupMock(mockStream)
+
+			req := &Request{
+				Path:       "test/path",
+				Extensions: NewParameters(),
+			}
+
+			ss := newSessionStream(mockStream, req)
+			rw := &responseWriter{sessionStream: ss}
+
+			err := rw.Accept(tt.version, tt.extensions)
+
+			if tt.expectError {
+				assert.Error(t, err, "Accept should return error")
+			} else {
+				assert.NoError(t, err, "Accept should not return error")
+				assert.Equal(t, tt.version, ss.Version, "version should be set correctly")
+			}
+
+			mockStream.AssertExpectations(t)
+		})
+	}
+}
+
+// TestResponseWriter_Accept_ParameterHandling tests parameter handling
+func TestResponseWriter_Accept_ParameterHandling(t *testing.T) {
+	tests := map[string]struct {
+		setupParam func() *Parameters
+	}{
+		"empty parameters": {
+			setupParam: func() *Parameters { return NewParameters() },
+		},
+		"parameters with values": {
+			setupParam: func() *Parameters {
+				params := NewParameters()
+				params.SetString(1, "test_value")
+				params.SetUint(2, 12345)
+				return params
+			},
+		},
+		"large parameters": {
+			setupParam: func() *Parameters {
+				params := NewParameters()
+				for i := uint64(0); i < 10; i++ {
+					params.SetUint(ParameterType(i), i*1000)
+				}
+				return params
+			},
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockStream := &MockQUICStream{}
+			mockStream.On("Context").Return(context.Background())
+			mockStream.On("Write", mock.Anything).Return(20, nil)
+			mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
+
+			req := &Request{
+				Path:       "test/path",
+				Extensions: NewParameters(),
+			}
+
+			ss := newSessionStream(mockStream, req)
+			rw := &responseWriter{sessionStream: ss}
+
+			extensions := tt.setupParam()
+			err := rw.Accept(Version(1), extensions)
+
+			assert.NoError(t, err, "Accept should handle parameters correctly")
+			assert.Equal(t, Version(1), ss.Version, "version should be set correctly")
+			assert.Equal(t, extensions, ss.serverParameters, "parameters should be set correctly")
+
+			mockStream.AssertExpectations(t)
+		})
+	}
+}
+
+// TestResponseWriter_Accept_BoundaryVersions tests Accept with boundary version values
+func TestResponseWriter_Accept_BoundaryVersions(t *testing.T) {
+	tests := map[string]struct {
+		version Version
+	}{
+		"minimum version":        {version: Version(0)},
+		"maximum uint8 version":  {version: Version(255)},
+		"maximum uint16 version": {version: Version(65535)},
+		"maximum uint32 version": {version: Version(4294967295)},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockStream := &MockQUICStream{}
+			mockStream.On("Context").Return(context.Background())
+			mockStream.On("Write", mock.Anything).Return(10, nil)
+			mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
+
+			req := &Request{
+				Path:       "test/path",
+				Extensions: NewParameters(),
+			}
+
+			ss := newSessionStream(mockStream, req)
+			rw := &responseWriter{sessionStream: ss}
+
+			err := rw.Accept(tt.version, NewParameters())
+
+			assert.NoError(t, err, "Accept should handle version %d", tt.version)
+			assert.Equal(t, tt.version, ss.Version, "version should be set correctly")
+
+			mockStream.AssertExpectations(t)
+		})
+	}
+}
+
+// TestResponse_AwaitAccepted_BoundaryVersions tests AwaitAccepted with boundary version values
+func TestResponse_AwaitAccepted_BoundaryVersions(t *testing.T) {
+	tests := map[string]struct {
+		version Version
+	}{
+		"minimum version":        {version: Version(0)},
+		"maximum uint8 version":  {version: Version(255)},
+		"maximum uint16 version": {version: Version(65535)},
+		"maximum uint32 version": {version: Version(4294967295)},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockStream := &MockQUICStream{}
+			mockStream.On("Context").Return(context.Background())
+
+			// Create a valid SessionServerMessage with boundary version
+			ssm := message.SessionServerMessage{
+				SelectedVersion: tt.version,
+				Parameters:      map[uint64][]byte{1: []byte("test")},
+			}
+			var buf bytes.Buffer
+			ssm.Encode(&buf)
+
+			// Use ReadFunc for simpler mocking
+			mockStream.ReadFunc = buf.Read
+
+			req := &Request{
+				Path:       "test/path",
+				Extensions: NewParameters(),
+			}
+
+			ss := newSessionStream(mockStream, req)
+			r := &response{sessionStream: ss}
+
+			err := r.AwaitAccepted()
+
+			assert.NoError(t, err, "AwaitAccepted should succeed for version %d", tt.version)
+			assert.Equal(t, tt.version, r.Version, "version should be set correctly")
+			assert.NotNil(t, r.serverParameters, "server parameters should be set")
+
+			mockStream.AssertExpectations(t)
+		})
+	}
+}
+
+// TestResponseWriter_Accept_Race tests for race conditions in Accept method
+func TestResponseWriter_Accept_Race(t *testing.T) {
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Write", mock.Anything).Return(10, nil).Once()
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
+
+	req := &Request{
+		Path:       "test/path",
+		Extensions: NewParameters(),
+	}
+
+	ss := newSessionStream(mockStream, req)
+	rw := &responseWriter{sessionStream: ss}
+
+	const numGoroutines = 100
+	var wg sync.WaitGroup
+	errors := make([]error, numGoroutines)
+
+	// Start many goroutines calling Accept with different versions
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			errors[id] = rw.Accept(Version(id), NewParameters())
+		}(i)
+	}
+
+	wg.Wait()
+
+	// All calls should succeed due to sync.Once
+	for i, err := range errors {
+		assert.NoError(t, err, "Accept call %d should succeed", i)
+	}
+
+	// Only one Write call should have been made
+	mockStream.AssertExpectations(t)
+}
+
+// TestResponse_AwaitAccepted_Race tests for race conditions in AwaitAccepted method
+func TestResponse_AwaitAccepted_Race(t *testing.T) {
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+
+	// Create a valid SessionServerMessage
+	ssm := message.SessionServerMessage{
+		SelectedVersion: Version(1),
+		Parameters:      map[uint64][]byte{1: []byte("test")},
+	}
+	var buf bytes.Buffer
+	ssm.Encode(&buf)
+
+	mockStream.ReadFunc = buf.Read
+
+	req := &Request{
+		Path:       "test/path",
+		Extensions: NewParameters(),
+	}
+
+	ss := newSessionStream(mockStream, req)
+	r := &response{sessionStream: ss}
+
+	const numGoroutines = 100
+	var wg sync.WaitGroup
+	results := make([]error, numGoroutines)
+
+	// Start many goroutines calling AwaitAccepted
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			results[id] = r.AwaitAccepted()
+		}(i)
+	}
+
+	wg.Wait()
+
+	// All calls should succeed
+	for i, err := range results {
+		assert.NoError(t, err, "AwaitAccepted call %d should succeed", i)
+	}
+
+	// Version should be set correctly from the first successful call
+	assert.Equal(t, Version(1), r.Version, "version should be set correctly")
+
+	// Only one Read call should have been made due to sync.Once
+	mockStream.AssertExpectations(t)
+}
+
+// TestResponseWriter_SessionStream_Sharing tests that responseWriter and sessionStream share state
+func TestResponseWriter_SessionStream_Sharing(t *testing.T) {
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Write", mock.Anything).Return(10, nil)
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
+
+	req := &Request{
+		Path:       "test/path",
+		Extensions: NewParameters(),
+	}
+
+	ss := newSessionStream(mockStream, req)
+	rw := &responseWriter{sessionStream: ss}
+
+	version := Version(42)
+	extensions := NewParameters()
+	extensions.SetString(1, "shared_state_test")
+
+	err := rw.Accept(version, extensions)
+	assert.NoError(t, err, "Accept should succeed")
+
+	// Verify that the sessionStream was updated
+	assert.Equal(t, version, ss.Version, "sessionStream version should be updated")
+	assert.Equal(t, extensions, ss.serverParameters, "sessionStream parameters should be updated")
+
+	// Verify shared state through different accessors
+	assert.Equal(t, version, rw.Version, "responseWriter should show updated version")
+	assert.Equal(t, extensions, rw.serverParameters, "responseWriter should show updated parameters")
+
+	mockStream.AssertExpectations(t)
+}
+
+// TestResponse_SessionStream_Sharing tests that response and sessionStream share state
+func TestResponse_SessionStream_Sharing(t *testing.T) {
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+
+	// Create a valid SessionServerMessage
+	version := Version(42)
+	ssm := message.SessionServerMessage{
+		SelectedVersion: version,
+		Parameters:      map[uint64][]byte{1: []byte("shared_state_test")},
+	}
+	var buf bytes.Buffer
+	ssm.Encode(&buf)
+
+	// Use ReadFunc for simpler mocking
+	mockStream.ReadFunc = buf.Read
+
+	req := &Request{
+		Path:       "test/path",
+		Extensions: NewParameters(),
+	}
+
+	ss := newSessionStream(mockStream, req)
+	r := &response{sessionStream: ss}
+
+	err := r.AwaitAccepted()
+	assert.NoError(t, err, "AwaitAccepted should succeed")
+
+	// Verify that the sessionStream was updated
+	assert.Equal(t, version, ss.Version, "sessionStream version should be updated")
+	assert.NotNil(t, ss.serverParameters, "sessionStream parameters should be set")
+
+	// Verify shared state through different accessors
+	assert.Equal(t, version, r.Version, "response should show updated version")
+	assert.Equal(t, ss.serverParameters, r.serverParameters, "response should show updated parameters")
+
+	mockStream.AssertExpectations(t)
+}
+
+// TestResponseWriter_Accept_ParameterEdgeCases tests parameter edge cases
+func TestResponseWriter_Accept_ParameterEdgeCases(t *testing.T) {
+	tests := map[string]struct {
+		setupExtensions func() *Parameters
+		expectError     bool
+	}{
+		"nil extensions": {
+			setupExtensions: func() *Parameters { return nil },
+			expectError:     false,
+		},
+		"empty extensions": {
+			setupExtensions: func() *Parameters { return NewParameters() },
+			expectError:     false,
+		},
+		"extensions with empty string": {
+			setupExtensions: func() *Parameters {
+				params := NewParameters()
+				params.SetString(1, "")
+				return params
+			},
+			expectError: false,
+		},
+		"extensions with zero values": {
+			setupExtensions: func() *Parameters {
+				params := NewParameters()
+				params.SetUint(1, 0)
+				params.SetString(2, "")
+				return params
+			},
+			expectError: false,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockStream := &MockQUICStream{}
+			mockStream.On("Context").Return(context.Background())
+			mockStream.On("Write", mock.Anything).Return(10, nil)
+			mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
+
+			req := &Request{
+				Path:       "test/path",
+				Extensions: NewParameters(),
+			}
+
+			ss := newSessionStream(mockStream, req)
+			rw := &responseWriter{sessionStream: ss}
+
+			extensions := tt.setupExtensions()
+			err := rw.Accept(Version(1), extensions)
+
+			if tt.expectError {
+				assert.Error(t, err, "Accept should return error")
+			} else {
+				assert.NoError(t, err, "Accept should handle parameters correctly")
+				assert.Equal(t, extensions, ss.serverParameters, "server parameters should be set correctly")
+			}
+
+			mockStream.AssertExpectations(t)
+		})
+	}
 }

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -27,7 +27,7 @@ func TestNewAnnouncementReader(t *testing.T) {
 	require.NotNil(t, ras)
 	assert.Equal(t, prefix, ras.prefix)
 	assert.Equal(t, mockStream, ras.stream)
-	assert.NotNil(t, ras.active)
+	assert.NotNil(t, ras.actives)
 	assert.NotNil(t, ras.pendings)
 	assert.NotNil(t, ras.announcedCh)
 	assert.NotNil(t, ras.ctx)
@@ -292,22 +292,23 @@ func TestAnnouncementReader_AnnouncementTracking(t *testing.T) {
 
 	// Test internal announcement tracking
 	ctx := context.Background()
-	ann1 := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
-	ann2 := NewAnnouncement(ctx, BroadcastPath("/test/stream2"))
+	ann1, end1 := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
+	ann2, end2 := NewAnnouncement(ctx, BroadcastPath("/test/stream2"))
+	defer end2()
 
 	// Manually add announcements to test tracking
 	ras.announcementsMu.Lock()
-	ras.active["stream1"] = ann1
-	ras.active["stream2"] = ann2
+	ras.actives["stream1"] = ann1
+	ras.actives["stream2"] = ann2
 	ras.announcementsMu.Unlock()
 
-	assert.Len(t, ras.active, 2)
+	assert.Len(t, ras.actives, 2)
 
 	// Test ending announcement
-	ann1.End()
+	end1()
 
 	// Announcement should still be in map until processed by background goroutine
-	assert.Len(t, ras.active, 2)
+	assert.Len(t, ras.actives, 2)
 
 	mockStream.AssertExpectations(t)
 }
@@ -427,7 +428,8 @@ func TestAnnouncementReader_PrefixHandling(t *testing.T) {
 
 			// Test path construction by manually adding announcement
 			ctx := context.Background()
-			ann := NewAnnouncement(ctx, BroadcastPath(tt.expectedPath))
+			ann, end := NewAnnouncement(ctx, BroadcastPath(tt.expectedPath))
+			defer end()
 			ras.announcementsMu.Lock()
 			ras.pendings = append(ras.pendings, ann)
 			ras.announcementsMu.Unlock()

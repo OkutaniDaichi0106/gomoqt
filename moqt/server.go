@@ -12,10 +12,10 @@ import (
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic/quicgo"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/webtransport"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/webtransport/webtransportgo"
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/quic/quicgo"
+	"github.com/OkutaniDaichi0106/gomoqt/webtransport"
+	"github.com/OkutaniDaichi0106/gomoqt/webtransport/webtransportgo"
 	"github.com/quic-go/quic-go/http3"
 )
 
@@ -52,9 +52,8 @@ type Server struct {
 	 * If the server is configured with a WebTransport server, it is used to handle WebTransport sessions.
 	 * If not, a default server is used.
 	 */
-	ServeWebtransportFunc func(addr string, tlsConfig *tls.Config, quicConfig *quic.Config,
-		checkOrigin func(*http.Request) bool) webtransport.Server
-	wtServer webtransport.Server
+	NewWebtransportServerFunc func(checkOrigin func(*http.Request) bool) webtransport.Server
+	wtServer                  webtransport.Server
 
 	listenerMu    sync.RWMutex
 	listeners     map[quic.EarlyListener]struct{}
@@ -67,9 +66,9 @@ type Server struct {
 
 	inShutdown atomic.Bool
 
-	nativeQUICCh chan quic.Connection
-
 	doneChan chan struct{} // Signal channel (notifies when server is completely closed)
+
+	Handler Handler
 }
 
 func (s *Server) init() {
@@ -77,9 +76,6 @@ func (s *Server) init() {
 		s.listeners = make(map[quic.EarlyListener]struct{})
 		s.doneChan = make(chan struct{})
 		s.activeSess = make(map[*Session]struct{})
-		if s.Config != nil && s.Config.EnableNativeQUIC {
-			s.nativeQUICCh = make(chan quic.Connection, 1<<4)
-		}
 		// Initialize WebtransportServer
 
 		var checkOrigin func(*http.Request) bool
@@ -87,11 +83,10 @@ func (s *Server) init() {
 			checkOrigin = s.Config.CheckHTTPOrigin
 		}
 
-		if s.ServeWebtransportFunc == nil {
-			// If not set, create a default WebTransport server
-			s.wtServer = webtransportgo.NewDefaultServer(s.Addr, s.TLSConfig, s.QUICConfig, checkOrigin)
+		if s.NewWebtransportServerFunc != nil {
+			s.wtServer = s.NewWebtransportServerFunc(checkOrigin)
 		} else {
-			s.wtServer = s.ServeWebtransportFunc(s.Addr, s.TLSConfig, s.QUICConfig, checkOrigin)
+			s.wtServer = webtransportgo.NewServer(checkOrigin)
 		}
 
 		if s.Logger != nil {
@@ -181,12 +176,12 @@ func (s *Server) ServeQUICConn(conn quic.Connection) error {
 
 		return s.wtServer.ServeQUICConn(conn)
 	case NextProtoMOQ:
-		select {
-		case s.nativeQUICCh <- conn:
-		default:
-			conn.CloseWithError(quic.ConnectionErrorCode(quic.ConnectionRefused), "")
+		if logger != nil {
+			logger.Debug("handling MOQ session",
+				"remote_address", conn.RemoteAddr(),
+			)
 		}
-		return nil
+		return s.handleNativeQUIC(conn)
 	default:
 		if logger != nil {
 			logger.Error("unsupported negotiated protocol",
@@ -198,172 +193,293 @@ func (s *Server) ServeQUICConn(conn quic.Connection) error {
 	}
 }
 
-func (s *Server) AcceptQUIC(ctx context.Context, path string, mux *TrackMux) (*Session, error) {
+func (s *Server) ServeWebTransport(w http.ResponseWriter, r *http.Request) error {
 	if s.shuttingDown() {
-		return nil, ErrServerClosed
+		http.Error(w, "server is shutting down", http.StatusServiceUnavailable)
+		return fmt.Errorf("server is shutting down")
 	}
 
 	s.init()
-
-	if s.nativeQUICCh == nil {
-		return nil, fmt.Errorf("native QUIC support is not enabled")
-	}
-
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case conn := <-s.nativeQUICCh:
-		if s.shuttingDown() {
-			return nil, ErrServerClosed
-		}
-
-		var connLogger *slog.Logger
-		if s.Logger != nil {
-			connLogger = s.Logger.With(
-				"remote_address", conn.RemoteAddr().String(),
-				"alpn", conn.ConnectionState().TLS.NegotiatedProtocol,
-				"quic_version", conn.ConnectionState().Version,
-			)
-		} else {
-			connLogger = slog.New(slog.DiscardHandler)
-		}
-
-		connLogger.Debug("establishing a session over QUIC connection")
-
-		// Listen the session stream
-		extensions := func(clientParams *Parameters) (*Parameters, error) {
-			var err error
-
-			// Get the path parameter
-			_, err = clientParams.GetString(param_type_path)
-			if err != nil {
-				connLogger.Error("failed to get 'path' parameter", "error", err)
-				return nil, err
-			}
-
-			// Get any setup extensions
-			if s.Config == nil || s.Config.ServerSetupExtensions == nil {
-				connLogger.Debug("no setup extensions provided, using default parameters")
-				return NewParameters(), nil
-			}
-
-			params, err := s.Config.ServerSetupExtensions(clientParams)
-			if err != nil {
-				connLogger.Error("failed to get setup extensions", "error", err)
-				return nil, err
-			}
-
-			if params == nil {
-				connLogger.Debug("server setup extensions returned nil, using default parameters")
-				return NewParameters(), nil
-			}
-
-			return params, nil
-		}
-
-		acceptCtx, cancelAccept := context.WithTimeout(ctx, s.acceptTimeout())
-		defer cancelAccept()
-		sessStream, err := acceptSessionStream(acceptCtx, conn, extensions, mux, connLogger)
-		if err != nil {
-			connLogger.Error("failed to accept session stream", "error", err)
-			return nil, err
-		}
-
-		var sess *Session
-		sess = newSession(conn, sessStream, mux, connLogger, func() { s.removeSession(sess) })
-		s.addSession(sess)
-
-		return sess, nil
-	}
-}
-
-// ServeWebTransport serves a WebTransport session.
-// It upgrades the HTTP/3 connection to a WebTransport session and calls the session handler.
-// If the server is not configured with a WebTransport server, it creates a default server.
-func (s *Server) AcceptWebTransport(w http.ResponseWriter, r *http.Request, mux *TrackMux) (*Session, error) {
-	if s.shuttingDown() {
-		return nil, ErrServerClosed
-	}
-
-	s.init()
-
-	var logger *slog.Logger
-	if s.Logger != nil {
-		var protocol string
-		if r.TLS == nil {
-			protocol = "none"
-		} else {
-			protocol = r.TLS.NegotiatedProtocol
-		}
-		logger = s.Logger.With(
-			"remote_address", r.RemoteAddr,
-			"alpn", protocol,
-			"url_path", r.URL.Path,
-		)
-	} else {
-		logger = slog.New(slog.DiscardHandler)
-	}
 
 	conn, err := s.wtServer.Upgrade(w, r)
 	if err != nil {
-		logger.Error("failed to upgrade HTTP to WebTransport",
-			"error", err,
+		http.Error(w, "failed to upgrade connection", http.StatusInternalServerError)
+		return fmt.Errorf("failed to upgrade connection: %w", err)
+	}
+
+	var connLogger *slog.Logger
+	if s.Logger != nil {
+		connLogger = s.Logger.With(
+			"remote_address", conn.RemoteAddr(),
+			"alpn", conn.ConnectionState().TLS.NegotiatedProtocol,
+			"quic_version", conn.ConnectionState().Version,
 		)
-		w.WriteHeader(http.StatusInternalServerError)
-		return nil, err
+	} else {
+		connLogger = slog.New(slog.DiscardHandler)
 	}
 
-	connLogger := logger.With(
-		"quic_version", conn.ConnectionState().Version,
-	)
-
-	connLogger.Debug("WebTransport connection established")
-
-	extensions := func(clientParams *Parameters) (*Parameters, error) {
-		if s.Config == nil || s.Config.ServerSetupExtensions == nil {
-			connLogger.Debug("no setup extensions provided, using default parameters")
-			return NewParameters(), nil
-		}
-
-		params, err := s.Config.ServerSetupExtensions(clientParams)
-		if err != nil {
-			connLogger.Error("failed to get setup extensions",
-				"error", err,
-			)
-			return nil, err
-		}
-
-		if params == nil {
-			connLogger.Debug("server setup extensions returned nil, using default parameters")
-			return NewParameters(), nil
-		}
-
-		return params.Clone(), nil
-	}
+	connLogger.Debug("establishing a WebTransport session")
 
 	acceptCtx, cancelAccept := context.WithTimeout(r.Context(), s.acceptTimeout())
 	defer cancelAccept()
-	sessStr, err := acceptSessionStream(acceptCtx, conn, extensions, mux, connLogger)
+	sessStr, err := acceptSessionStream(acceptCtx, conn, connLogger)
 	if err != nil {
 		connLogger.Error("failed to accept session stream",
 			"error", err,
 		)
-		return nil, err
+		return fmt.Errorf("failed to accept session stream: %w", err)
 	}
 
 	// Set the path for the session
-	sessStr.path = r.URL.Path
+	sessStr.Path = r.URL.Path
+
+	rsp := &responseWriter{
+		sessionStream: sessStr,
+	}
+	req := sessStr.Request
+
+	if s.Handler != nil {
+		s.Handler.ServeMOQ(rsp, req)
+	} else {
+		DefaultRouter.ServeMOQ(rsp, req)
+	}
+
+	return nil
+}
+
+func (s *Server) handleNativeQUIC(conn quic.Connection) error {
+	if s.shuttingDown() {
+		conn.CloseWithError(quic.ConnectionErrorCode(quic.ConnectionRefused), "server is shutting down")
+		return nil
+	}
+
+	s.init()
+
+	var connLogger *slog.Logger
+	if s.Logger != nil {
+		connLogger = s.Logger.With(
+			"remote_address", conn.RemoteAddr(),
+			"alpn", conn.ConnectionState().TLS.NegotiatedProtocol,
+			"quic_version", conn.ConnectionState().Version,
+		)
+	} else {
+		connLogger = slog.New(slog.DiscardHandler)
+	}
+
+	connLogger.Debug("establishing a WebTransport session")
+
+	acceptCtx, cancelAccept := context.WithTimeout(conn.Context(), s.acceptTimeout())
+	defer cancelAccept()
+	sessStr, err := acceptSessionStream(acceptCtx, conn, connLogger)
+	if err != nil {
+		connLogger.Error("failed to accept session stream",
+			"error", err,
+		)
+		return err
+	}
+
+	rsp := &responseWriter{
+		sessionStream: sessStr,
+	}
+	req := sessStr.Request
+
+	if s.Handler != nil {
+		s.Handler.ServeMOQ(rsp, req)
+	} else {
+		DefaultRouter.ServeMOQ(rsp, req)
+	}
+
+	return nil
+}
+
+// func (s *Server) webtransportExtensions(clientParams *Parameters) (*Parameters, error) {
+// 	if s.Config == nil || s.Config.ServerSetupExtensions == nil {
+// 		// connLogger.Debug("no setup extensions provided, using default parameters")
+// 		return NewParameters(), nil
+// 	}
+
+// 	params, err := s.Config.ServerSetupExtensions(clientParams)
+// 	if err != nil {
+// 		// connLogger.Error("failed to get setup extensions",
+// 		// 	"error", err,
+// 		// )
+// 		return nil, err
+// 	}
+
+// 	if params == nil {
+// 		// connLogger.Debug("server setup extensions returned nil, using default parameters")
+// 		return NewParameters(), nil
+// 	}
+
+// 	return params.Clone(), nil
+// }
+
+// func (s *Server) nativeQUICExtensions(clientParams *Parameters) (*Parameters, error) {
+// 	var err error
+
+// 	// Get the path parameter
+// 	_, err = clientParams.GetString(param_type_path)
+// 	if err != nil {
+// 		// connLogger.Error("failed to get 'path' parameter", "error", err)
+// 		return nil, err
+// 	}
+
+// 	// Get any setup extensions
+// 	if s.Config == nil || s.Config.ServerSetupExtensions == nil {
+// 		// connLogger.Debug("no setup extensions provided, using default parameters")
+// 		return NewParameters(), nil
+// 	}
+
+// 	params, err := s.Config.ServerSetupExtensions(clientParams)
+// 	if err != nil {
+// 		// connLogger.Error("failed to get setup extensions", "error", err)
+// 		return nil, err
+// 	}
+
+// 	if params == nil {
+// 		// connLogger.Debug("server setup extensions returned nil, using default parameters")
+// 		return NewParameters(), nil
+// 	}
+
+// 	return params, nil
+// }
+
+func (s *Server) Accept(w ResponseWriter, r *Request, mux *TrackMux) (*Session, error) {
+	if s.shuttingDown() {
+		r.conn.CloseWithError(quic.ConnectionErrorCode(quic.ConnectionRefused), "server is shutting down")
+		return nil, ErrServerClosed
+	}
+
+	s.init()
+
+	conn := r.conn
+	if conn == nil {
+		return nil, fmt.Errorf("quic connection cannot be nil")
+	}
+
+	var connLogger *slog.Logger
+	if s.Logger != nil {
+		connLogger = s.Logger.With(
+			"remote_address", conn.RemoteAddr().String(),
+			"alpn", conn.ConnectionState().TLS.NegotiatedProtocol,
+			"quic_version", conn.ConnectionState().Version,
+		)
+	} else {
+		connLogger = slog.New(slog.DiscardHandler)
+	}
+
+	connLogger.Debug("establishing a session over QUIC connection")
+
+	// acceptCtx, cancelAccept := context.WithTimeout(context.Background(), s.acceptTimeout())
+	// defer cancelAccept()
+	// sessStream, err := acceptSessionStream(acceptCtx, conn, s.nativeQUICExtensions, connLogger)
+	// if err != nil {
+	// 	connLogger.Error("failed to accept session stream", "error", err)
+	// 	return nil
+	// }
+	if w == nil {
+		return nil, fmt.Errorf("response writer cannot be nil")
+	}
+	if r == nil {
+		return nil, fmt.Errorf("request cannot be nil")
+	}
+	rsp, ok := w.(*responseWriter)
+	if !ok {
+		return nil, fmt.Errorf("response writer is not of type *response")
+	}
 
 	var sess *Session
-	sess = newSession(conn, sessStr, mux, connLogger, func() { s.removeSession(sess) })
+	sess = newSession(conn, rsp.sessionStream, mux, connLogger, func() { s.removeSession(sess) })
 	s.addSession(sess)
 
 	return sess, nil
 }
 
-func acceptSessionStream(acceptCtx context.Context, conn quic.Connection,
-	extensions func(*Parameters) (*Parameters, error), mux *TrackMux, connLogger *slog.Logger) (*sessionStream, error) {
+// // ServeWebTransport serves a WebTransport session.
+// // It upgrades the HTTP/3 connection to a WebTransport session and calls the session handler.
+// // If the server is not configured with a WebTransport server, it creates a default server.
+// func (s *Server) AcceptWebTransport(w http.ResponseWriter, r *http.Request, mux *TrackMux) (*Session, error) {
+// 	if s.shuttingDown() {
+// 		return nil, ErrServerClosed
+// 	}
 
+// 	s.init()
+
+// 	var logger *slog.Logger
+// 	if s.Logger != nil {
+// 		var protocol string
+// 		if r.TLS == nil {
+// 			protocol = "none"
+// 		} else {
+// 			protocol = r.TLS.NegotiatedProtocol
+// 		}
+// 		logger = s.Logger.With(
+// 			"remote_address", r.RemoteAddr,
+// 			"alpn", protocol,
+// 			"url_path", r.URL.Path,
+// 		)
+// 	} else {
+// 		logger = slog.New(slog.DiscardHandler)
+// 	}
+
+// 	conn, err := s.wtServer.Upgrade(w, r)
+// 	if err != nil {
+// 		logger.Error("failed to upgrade HTTP to WebTransport",
+// 			"error", err,
+// 		)
+// 		w.WriteHeader(http.StatusInternalServerError)
+// 		return nil, err
+// 	}
+
+// 	connLogger := logger.With(
+// 		"quic_version", conn.ConnectionState().Version,
+// 	)
+
+// 	connLogger.Debug("WebTransport connection established")
+
+// 	extensions := func(clientParams *Parameters) (*Parameters, error) {
+// 		if s.Config == nil || s.Config.ServerSetupExtensions == nil {
+// 			connLogger.Debug("no setup extensions provided, using default parameters")
+// 			return NewParameters(), nil
+// 		}
+
+// 		params, err := s.Config.ServerSetupExtensions(clientParams)
+// 		if err != nil {
+// 			connLogger.Error("failed to get setup extensions",
+// 				"error", err,
+// 			)
+// 			return nil, err
+// 		}
+
+// 		if params == nil {
+// 			connLogger.Debug("server setup extensions returned nil, using default parameters")
+// 			return NewParameters(), nil
+// 		}
+
+// 		return params.Clone(), nil
+// 	}
+
+// 	acceptCtx, cancelAccept := context.WithTimeout(r.Context(), s.acceptTimeout())
+// 	defer cancelAccept()
+// 	sessStr, err := acceptSessionStream(acceptCtx, conn, extensions, connLogger)
+// 	if err != nil {
+// 		connLogger.Error("failed to accept session stream",
+// 			"error", err,
+// 		)
+// 		return nil, err
+// 	}
+
+// 	// Set the path for the session
+// 	sessStr.path = r.URL.Path
+
+// 	var sess *Session
+// 	sess = newSession(conn, sessStr, mux, connLogger, func() { s.removeSession(sess) })
+// 	s.addSession(sess)
+
+// 	return sess, nil
+// }
+
+func acceptSessionStream(acceptCtx context.Context, conn quic.Connection, connLogger *slog.Logger) (*sessionStream, error) {
 	sessionID := generateSessionID()
 
 	sessLogger := connLogger.With(
@@ -391,9 +507,9 @@ func acceptSessionStream(acceptCtx context.Context, conn quic.Connection,
 		var appErr *quic.ApplicationError
 		if errors.As(err, &appErr) {
 			return nil, &SessionError{ApplicationError: appErr}
+		} else {
+			return nil, fmt.Errorf("moq: unexpected error occurred on session stream: %w", err)
 		}
-
-		return nil, err
 	}
 
 	streamLogger := sessLogger.With(
@@ -417,39 +533,50 @@ func acceptSessionStream(acceptCtx context.Context, conn quic.Connection,
 		return nil, err
 	}
 
+	// Get the client parameters
 	clientParams := &Parameters{scm.Parameters}
+
+	// Get the path parameter
 	path, _ := clientParams.GetString(param_type_path)
 
-	serverParams, err := extensions(clientParams.Clone())
-	if err != nil {
-		sessLogger.Error("failed to process setup extensions",
-			"error", err,
-		)
-		return nil, err
+	// serverParams, err := extensions(clientParams.Clone())
+	// if err != nil {
+	// 	sessLogger.Error("failed to process setup extensions",
+	// 		"error", err,
+	// 	)
+	// 	return nil, err
+	// }
+
+	// version := DefaultServerVersion
+
+	// // Send a SESSION_SERVER message
+	// ssm := message.SessionServerMessage{
+	// 	SelectedVersion: version,
+	// 	Parameters:      serverParams.paramMap,
+	// }
+	// err = ssm.Encode(stream)
+	// if err != nil {
+	// 	sessLogger.Error("failed to send SESSION_SERVER message",
+	// 		"error", err,
+	// 	)
+
+	// 	var appErr *quic.ApplicationError
+	// 	if errors.As(err, &appErr) {
+	// 		return nil, &SessionError{ApplicationError: appErr}
+	// 	}
+
+	// 	return nil, err
+	// }
+
+	req := &Request{
+		ctx:        stream.Context(),
+		Path:       path,
+		Versions:   scm.SupportedVersions,
+		Extensions: clientParams,
+		conn:       conn,
 	}
 
-	version := DefaultServerVersion
-
-	// Send a SESSION_SERVER message
-	ssm := message.SessionServerMessage{
-		SelectedVersion: version,
-		Parameters:      serverParams.paramMap,
-	}
-	err = ssm.Encode(stream)
-	if err != nil {
-		sessLogger.Error("failed to send SESSION_SERVER message",
-			"error", err,
-		)
-
-		var appErr *quic.ApplicationError
-		if errors.As(err, &appErr) {
-			return nil, &SessionError{ApplicationError: appErr}
-		}
-
-		return nil, err
-	}
-
-	return newSessionStream(stream, version, path, clientParams, serverParams), nil
+	return newSessionStream(stream, req), nil
 }
 
 func (s *Server) ListenAndServe() error {
@@ -473,7 +600,7 @@ func (s *Server) ListenAndServe() error {
 	if s.ListenFunc != nil {
 		ln, err = s.ListenFunc(s.Addr, tlsConfig, s.QUICConfig)
 	} else {
-		ln, err = quicgo.Listen(s.Addr, tlsConfig, s.QUICConfig)
+		ln, err = quicgo.ListenAddrEarly(s.Addr, tlsConfig, s.QUICConfig)
 	}
 	if err != nil {
 		if s.Logger != nil {
@@ -512,7 +639,7 @@ func (s *Server) ListenAndServeTLS(certFile, keyFile string) error {
 	if s.ListenFunc != nil {
 		ln, err = s.ListenFunc(s.Addr, tlsConfig.Clone(), s.QUICConfig)
 	} else {
-		ln, err = quicgo.Listen(s.Addr, tlsConfig.Clone(), s.QUICConfig)
+		ln, err = quicgo.ListenAddrEarly(s.Addr, tlsConfig.Clone(), s.QUICConfig)
 	}
 	if err != nil {
 		if s.Logger != nil {

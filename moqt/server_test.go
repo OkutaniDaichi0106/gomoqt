@@ -112,6 +112,11 @@ func TestServer_ServeQUICListener(t *testing.T) {
 			mockConn.On("ConnectionState").Return(quic.ConnectionState{
 				TLS: tls.ConnectionState{NegotiatedProtocol: "moq-00"},
 			})
+			// Context is used for accept timeout in handleNativeQUIC
+			mockConn.On("Context").Return(context.Background())
+			// Avoid blocking goroutines: no actual streams in this test
+			mockConn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
+			mockConn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
 			mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
 
 			mockListener.On("Accept", mock.Anything).Return(mockConn, nil)

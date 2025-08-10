@@ -16,7 +16,7 @@ import (
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -121,7 +121,10 @@ func TestClient_ShutdownContextCancel(t *testing.T) {
 	mockStream.On("CancelWrite", mock.Anything)
 	mockStream.On("Context").Return(context.Background())
 
-	sessStream := newSessionStream(mockStream, DefaultServerVersion, "path", NewParameters(), NewParameters())
+	sessStream := newSessionStream(mockStream, &Request{
+		Path:       "path",
+		Extensions: NewParameters(),
+	})
 	sess := newSession(mockConn, sessStream, nil, slog.Default(), nil)
 	c.addSession(sess)
 
@@ -294,6 +297,7 @@ func TestClient_openSession(t *testing.T) {
 				stream.On("CancelWrite", mock.Anything).Return()
 				stream.On("Context").Return(context.Background())
 				conn.On("OpenStream").Return(stream, nil)
+				conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
 				conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 				return conn
 			},
@@ -327,6 +331,7 @@ func TestClient_openSession(t *testing.T) {
 				// Add background stream handling expectations
 				conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
 				conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
+				conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
 				conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 				return conn
 			},
@@ -339,7 +344,12 @@ func TestClient_openSession(t *testing.T) {
 			c := &Client{}
 			c.init() // Initialize the client properly
 			conn := tt.mockConn()
-			_, err := openSessionStream(conn, "/path", tt.extension, nil, slog.Default())
+			// Use a safe default extension provider when not specified
+			extProvider := tt.extension
+			if extProvider == nil {
+				extProvider = func() *Parameters { return &Parameters{} }
+			}
+			_, err := openSessionStream(conn, "/path", extProvider(), slog.Default())
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
@@ -645,7 +655,7 @@ func TestClient_OpenSession_NilExtensions(t *testing.T) {
 
 	// Expect panic when extensions is nil
 	assert.Panics(t, func() {
-		openSessionStream(mockConn, "/test", nil, nil, slog.Default())
+		openSessionStream(mockConn, "/test", nil, slog.Default())
 	})
 }
 
@@ -701,7 +711,7 @@ func TestClient_OpenSession_Success(t *testing.T) {
 	extensions := func() *Parameters {
 		return NewParameters()
 	}
-	sessStream, err := openSessionStream(mockConn, "/test", extensions, nil, slog.Default())
+	sessStream, err := openSessionStream(mockConn, "/test", extensions(), slog.Default())
 	require.NoError(t, err)
 	require.NotNil(t, sessStream)
 
@@ -747,6 +757,7 @@ func TestClient_Dial_URLSchemes(t *testing.T) {
 			c.DialWebTransportFunc = func(ctx context.Context, addr string, header http.Header) (*http.Response, quic.Connection, error) {
 				mockConn := &MockQUICConnection{}
 				mockConn.On("Context").Return(context.Background())
+				mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
 				mockStream := &MockQUICStream{
 					WriteFunc: func(p []byte) (int, error) {
 						return len(p), nil // Mock successful write
@@ -776,6 +787,7 @@ func TestClient_Dial_URLSchemes(t *testing.T) {
 			c.DialQUICConn = func(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (quic.Connection, error) {
 				mockConn := &MockQUICConnection{}
 				mockConn.On("Context").Return(context.Background())
+				mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
 				buffer := bytes.NewBuffer(nil)
 				message.SessionServerMessage{
 					SelectedVersion: protocol.Develop,
@@ -973,7 +985,10 @@ func TestClient_Shutdown_Timeout(t *testing.T) {
 	mockConn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
 	mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-	sessStream := newSessionStream(mockStream, DefaultServerVersion, "path", NewParameters(), NewParameters())
+	sessStream := newSessionStream(mockStream, &Request{
+		Path:       "path",
+		Extensions: NewParameters(),
+	})
 	sess := newSession(mockConn, sessStream, nil, slog.Default(), nil)
 	c.addSession(sess)
 

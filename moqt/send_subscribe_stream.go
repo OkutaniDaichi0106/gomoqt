@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
 )
 
 func newSendSubscribeStream(id SubscribeID, stream quic.Stream, initConfig *TrackConfig) *sendSubscribeStream {

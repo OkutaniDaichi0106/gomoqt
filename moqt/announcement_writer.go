@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
 )
 
 func newAnnouncementWriter(stream quic.Stream, prefix prefix) *AnnouncementWriter {
@@ -15,95 +15,70 @@ func newAnnouncementWriter(stream quic.Stream, prefix prefix) *AnnouncementWrite
 	}
 
 	sas := &AnnouncementWriter{
-		prefix:  prefix,
-		stream:  stream,
-		ctx:     context.WithValue(stream.Context(), &biStreamTypeCtxKey, message.StreamTypeAnnounce),
-		actives: make(map[suffix]*Announcement),
-		initCh:  make(chan struct{}, 1), // Buffered to avoid blocking on init
-		cleanCh: make(chan struct{}, 1), // Buffered to avoid blocking on clean
+		prefix:   prefix,
+		stream:   stream,
+		ctx:      context.WithValue(stream.Context(), &biStreamTypeCtxKey, message.StreamTypeAnnounce),
+		actives:  make(map[suffix]*Announcement),
+		endFuncs: make(map[suffix]func()),
+		initCh:   make(chan struct{}),
 	}
-
-	go func() {
-		for range sas.cleanCh {
-			if sas.Context().Err() != nil {
-				return // Context cancelled, exit goroutine
-			}
-
-			sas.mu.Lock()
-			// Remove inactive announcements from actives map
-			for suffix, ann := range sas.actives {
-				if !ann.IsActive() {
-					delete(sas.actives, suffix)
-				}
-			}
-			sas.mu.Unlock()
-		}
-	}()
 
 	return sas
 }
 
 type AnnouncementWriter struct {
-	mu sync.RWMutex
-
 	prefix prefix
 	stream quic.Stream
 	ctx    context.Context
 
-	actives map[suffix]*Announcement
+	mu       sync.RWMutex
+	actives  map[suffix]*Announcement
+	endFuncs map[suffix]func()
 
 	initCh   chan struct{}
 	initOnce sync.Once
-
-	cleanCh chan struct{}
 }
 
-func (sas *AnnouncementWriter) init(init []*Announcement) error {
+func (aw *AnnouncementWriter) init(init map[*Announcement]struct{}) error {
 	var err error
-	sas.initOnce.Do(func() {
-		sas.mu.Lock()
-		defer sas.mu.Unlock()
-
-		if sas.ctx.Err() != nil {
-			// sas.mu.Unlock()
-			err = Cause(sas.ctx)
+	aw.initOnce.Do(func() {
+		if aw.ctx.Err() != nil {
+			err = Cause(aw.ctx)
 			return
 		}
 
 		suffixes := make([]suffix, 0, len(init))
-		oldAnnouncements := make([]*Announcement, 0) // Store old announcements to end later
+		oldAnns := make([]*Announcement, 0) // Store old announcements to end later
 
-		for _, new := range init {
+		for new := range init {
 			if !new.IsActive() {
 				continue // Skip non-active announcements
 			}
 
-			suffix, ok := new.BroadcastPath().GetSuffix(sas.prefix)
+			suffix, ok := new.BroadcastPath().GetSuffix(aw.prefix)
 			if !ok {
 				continue // Invalid path, skip
 			}
 
 			// Check for previous announcement
-			if old, ok := sas.actives[suffix]; ok {
+			if old, ok := aw.actives[suffix]; ok {
 				if old == new {
 					continue // Already active, no need to re-announce
 				}
-				oldAnnouncements = append(oldAnnouncements, old)
+				// Always treat the existing one as the old one and replace with the new one
+				oldAnns = append(oldAnns, old)
 			}
 
-			sas.actives[suffix] = new
-			suffixes = append(suffixes, suffix)
-
-			// Watch for announcement end in background
-			new.OnEnd(func() {
-				// Signal cleanup goroutine to handle map cleanup
-				select {
-				case sas.cleanCh <- struct{}{}:
-				default:
+			newEndFunc := func() {
+				aw.mu.Lock()
+				if cur, ok := aw.actives[suffix]; ok && cur == new {
+					delete(aw.actives, suffix)
+					delete(aw.endFuncs, suffix)
 				}
+				aw.mu.Unlock()
 
 				// Send ENDED message without acquiring any locks to avoid deadlock
-				if sas.Context().Err() != nil {
+				if aw.Context().Err() != nil {
 					return
 				}
 
@@ -111,28 +86,34 @@ func (sas *AnnouncementWriter) init(init []*Announcement) error {
 				message.AnnounceMessage{
 					AnnounceStatus: message.ENDED,
 					TrackSuffix:    suffix,
-				}.Encode(sas.stream)
-			})
-		}
+				}.Encode(aw.stream)
+			}
 
-		// Unlock before calling End() on old announcements to avoid deadlock
-		sas.mu.Unlock()
+			aw.mu.Lock()
+			aw.actives[suffix] = new
+			aw.endFuncs[suffix] = newEndFunc
+			aw.mu.Unlock()
+
+			suffixes = append(suffixes, suffix)
+
+			// Watch for announcement end in background
+			new.OnEnd(newEndFunc)
+		}
 
 		// End old announcements after releasing the mutex
-		for _, old := range oldAnnouncements {
-			old.End()
+		for _, old := range oldAnns {
+			// end() triggers OnEnd callbacks to send ENDED messages, etc.
+			old.end()
 		}
 
-		sas.mu.Lock()
-
-		if sas.ctx.Err() != nil {
-			err = Cause(sas.ctx)
+		if aw.ctx.Err() != nil {
+			err = Cause(aw.ctx)
 			return
 		}
 
 		err = message.AnnounceInitMessage{
 			Suffixes: suffixes,
-		}.Encode(sas.stream)
+		}.Encode(aw.stream)
 		if err != nil {
 			var strErr *quic.StreamError
 			if errors.As(err, &strErr) {
@@ -144,66 +125,66 @@ func (sas *AnnouncementWriter) init(init []*Announcement) error {
 			return
 		}
 
-		close(sas.initCh)
-		sas.initCh = nil
+		aw.mu.Lock()
+		if aw.initCh != nil {
+			close(aw.initCh)
+			aw.initCh = nil
+		}
+		aw.mu.Unlock()
 	})
 
 	return err
 }
 
-func (sas *AnnouncementWriter) SendAnnouncement(new *Announcement) error {
-	sas.mu.Lock()
-	defer sas.mu.Unlock()
-
-	if sas.ctx.Err() != nil {
-		return Cause(sas.ctx)
+func (aw *AnnouncementWriter) SendAnnouncement(new *Announcement) error {
+	if aw.ctx.Err() != nil {
+		return Cause(aw.ctx)
 	}
 
-	if sas.initCh != nil {
-		initCh := sas.initCh
-		sas.mu.Unlock()
+	// Wait for initialization outside of lock
+	aw.mu.RLock()
+	initCh := aw.initCh
+	aw.mu.RUnlock()
+
+	if initCh != nil {
 		<-initCh
-		sas.mu.Lock()
 	}
 
-	if sas.ctx.Err() != nil {
-		return Cause(sas.ctx)
-	}
-
-	if !new.IsActive() {
-		return errors.New("announcement must be active")
+	if aw.ctx.Err() != nil {
+		return Cause(aw.ctx)
 	}
 
 	// Get suffix for this announcement
-	suffix, ok := new.BroadcastPath().GetSuffix(sas.prefix)
+	suffix, ok := new.BroadcastPath().GetSuffix(aw.prefix)
 	if !ok {
 		return errors.New("invalid broadcast path")
 	}
 
-	var oldAnnouncement *Announcement
-	// Check for previous announcement
-	if old, ok := sas.actives[suffix]; ok {
-		if old == new {
-			return nil // Already active, no need to re-announce
-		}
-		oldAnnouncement = old
+	if !new.IsActive() {
+		return nil // No need to send inactive announcements
 	}
 
-	sas.actives[suffix] = new
-
-	// Unlock before calling End() on old announcement to avoid deadlock
-	sas.mu.Unlock()
-
-	// End old announcement after releasing the mutex
-	if oldAnnouncement != nil {
-		oldAnnouncement.End()
+	// Check for previous announcement and get old endFunc
+	aw.mu.Lock()
+	old, exists := aw.actives[suffix]
+	if exists && old == new {
+		aw.mu.Unlock()
+		return nil // Already active, no need to re-announce
 	}
 
-	// Re-acquire lock for the remaining operations
-	sas.mu.Lock()
+	var oldEndFunc func()
+	if exists {
+		oldEndFunc = aw.endFuncs[suffix]
+	}
+	aw.mu.Unlock()
 
-	if sas.ctx.Err() != nil {
-		return Cause(sas.ctx)
+	// End old announcement outside of lock
+	if oldEndFunc != nil {
+		old.end() // 旧アナウンスは終了させる（OnEnd 経由でクリーンアップ）
+	}
+
+	if aw.ctx.Err() != nil {
+		return Cause(aw.ctx)
 	}
 
 	// Create reusable AnnounceMessage
@@ -213,7 +194,7 @@ func (sas *AnnouncementWriter) SendAnnouncement(new *Announcement) error {
 	}
 
 	// Encode and send ACTIVE announcement
-	err := am.Encode(sas.stream)
+	err := am.Encode(aw.stream)
 	if err != nil {
 		var strErr *quic.StreamError
 		if errors.As(err, &strErr) {
@@ -225,75 +206,72 @@ func (sas *AnnouncementWriter) SendAnnouncement(new *Announcement) error {
 		return err
 	}
 
-	// Watch for announcement end in background
-	new.OnEnd(func() {
-		// Signal cleanup goroutine to handle map cleanup
-		select {
-		case sas.cleanCh <- struct{}{}:
-		default:
+	endFunc := func() {
+		aw.mu.Lock()
+		if current, exists := aw.actives[suffix]; exists && current == new {
+			delete(aw.actives, suffix)
+			delete(aw.endFuncs, suffix)
 		}
+		aw.mu.Unlock()
 
-		// Send ENDED message without acquiring any locks to avoid deadlock
-		// We'll check context separately without holding locks
-		if sas.stream.Context().Err() != nil {
+		// Send ENDED message without holding locks
+		if aw.Context().Err() != nil {
 			return
 		}
 
-		// Send the message directly - any errors will be handled by the stream
 		message.AnnounceMessage{
 			AnnounceStatus: message.ENDED,
 			TrackSuffix:    suffix,
-		}.Encode(sas.stream)
-	})
+		}.Encode(aw.stream)
+	}
+
+	// Update actives map atomically
+	aw.mu.Lock()
+	aw.actives[suffix] = new
+	aw.endFuncs[suffix] = endFunc
+	aw.mu.Unlock()
+
+	// Watch for announcement end in background
+	new.OnEnd(endFunc)
 
 	return nil
 }
 
-func (sas *AnnouncementWriter) Close() error {
-	sas.mu.Lock()
-	defer sas.mu.Unlock()
+func (aw *AnnouncementWriter) Close() error {
+	aw.mu.Lock()
+	defer aw.mu.Unlock()
 
-	sas.actives = nil
+	aw.actives = nil
+	aw.endFuncs = nil
 
-	if sas.initCh != nil {
-		close(sas.initCh)
-		sas.initCh = nil
+	if aw.initCh != nil {
+		close(aw.initCh)
+		aw.initCh = nil
 	}
 
-	// Close cleanup channel to stop cleanup goroutine
-	if sas.cleanCh != nil {
-		close(sas.cleanCh)
-		sas.cleanCh = nil
-	}
-
-	sas.stream.CancelRead(quic.StreamErrorCode(InternalAnnounceErrorCode)) // TODO: Use a specific error code if needed
-	return sas.stream.Close()
+	aw.stream.CancelRead(quic.StreamErrorCode(InternalAnnounceErrorCode)) // TODO: Use a specific error code if needed
+	return aw.stream.Close()
 }
 
-func (sas *AnnouncementWriter) CloseWithError(code AnnounceErrorCode) error {
-	sas.mu.Lock()
-	defer sas.mu.Unlock()
+func (aw *AnnouncementWriter) CloseWithError(code AnnounceErrorCode) error {
+	aw.mu.Lock()
+	defer aw.mu.Unlock()
 
-	sas.actives = nil
+	aw.actives = nil
+	aw.endFuncs = nil
 
-	if sas.initCh != nil {
-		close(sas.initCh)
-		sas.initCh = nil
-	}
-
-	// Close cleanup channel to stop cleanup goroutine
-	if sas.cleanCh != nil {
-		close(sas.cleanCh)
-		sas.cleanCh = nil
+	if aw.initCh != nil {
+		close(aw.initCh)
+		aw.initCh = nil
 	}
 
 	strErrCode := quic.StreamErrorCode(code)
-	sas.stream.CancelWrite(strErrCode)
-	sas.stream.CancelRead(strErrCode)
+	aw.stream.CancelWrite(strErrCode)
+	aw.stream.CancelRead(strErrCode)
 
 	return nil
 }
 
-func (sas *AnnouncementWriter) Context() context.Context {
-	return sas.ctx
+func (aw *AnnouncementWriter) Context() context.Context {
+	return aw.ctx
 }

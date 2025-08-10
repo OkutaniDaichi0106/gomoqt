@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -51,16 +51,11 @@ func TestNewReceiveSubscribeStream(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			mockStream := &MockQUICStream{
-				ReadFunc: func(p []byte) (int, error) {
-					// Return EOF to close the goroutine cleanly
-					return 0, io.EOF
-				},
-			}
+			mockStream := &MockQUICStream{}
 
 			// Mock the Read method calls for the listenUpdates goroutine
 			mockStream.On("Context").Return(context.Background())
-			mockStream.On("Read", mock.AnythingOfType("[]uint8"))
+			mockStream.On("Read", mock.AnythingOfType("[]uint8")).Return(0, io.EOF)
 
 			rss := newReceiveSubscribeStream(tt.subscribeID, mockStream, tt.config)
 
@@ -255,22 +250,11 @@ func TestReceiveSubscribeStream_ListenUpdates_WithSubscribeUpdateMessage(t *test
 	err := updateMsg.Encode(buf)
 	require.NoError(t, err)
 
-	data := buf.Bytes()
-	readPos := 0
 	mockStream := &MockQUICStream{
-		ReadFunc: func(p []byte) (int, error) {
-			if readPos < len(data) {
-				n := copy(p, data[readPos:])
-				readPos += n
-				return n, nil
-			}
-			// After reading all data, return EOF
-			return 0, io.EOF
-		},
+		ReadFunc: buf.Read,
 	}
-	// Mock the Read method calls for the listenUpdates goroutine
+	// Mock the Context method
 	mockStream.On("Context").Return(context.Background())
-	mockStream.On("Read", mock.AnythingOfType("[]uint8"))
 
 	config := &TrackConfig{
 		TrackPriority:    TrackPriority(1),
@@ -525,21 +509,11 @@ func TestReceiveSubscribeStream_UpdateChannelBehavior(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		data := buf.Bytes()
-		readPos := 0
 		mockStream := &MockQUICStream{
-			ReadFunc: func(p []byte) (int, error) {
-				if readPos < len(data) {
-					n := copy(p, data[readPos:])
-					readPos += n
-					return n, nil
-				}
-				return 0, io.EOF
-			},
+			ReadFunc: buf.Read,
 		}
-		// Mock the Read method calls for the listenUpdates goroutine
+		// Mock the Context method
 		mockStream.On("Context").Return(context.Background())
-		mockStream.On("Read", mock.AnythingOfType("[]uint8"))
 
 		config := &TrackConfig{TrackPriority: TrackPriority(0)}
 		rss := newReceiveSubscribeStream(subscribeID, mockStream, config) // Should receive multiple update notifications

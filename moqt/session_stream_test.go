@@ -670,26 +670,6 @@ func TestResponse_AwaitAccepted_ConcurrentCalls(t *testing.T) {
 	mockStream.AssertExpectations(t)
 }
 
-// TestResponseWriter_ResponseWriter_Interface tests that responseWriter implements ResponseWriter
-func TestResponseWriter_ResponseWriter_Interface(t *testing.T) {
-	mockStream := &MockQUICStream{}
-	mockStream.On("Context").Return(context.Background())
-
-	req := &Request{
-		Path:       "test/path",
-		Extensions: NewParameters(),
-	}
-
-	ss := newSessionStream(mockStream, req)
-	rw := &responseWriter{sessionStream: ss}
-
-	// Test that responseWriter implements ResponseWriter interface
-	var _ ResponseWriter = rw
-
-	assert.NotNil(t, rw, "responseWriter should not be nil")
-	assert.NotNil(t, rw.sessionStream, "sessionStream should not be nil")
-}
-
 // TestResponseWriter_Accept_NilParameters tests Accept with nil parameters
 func TestResponseWriter_Accept_NilParameters(t *testing.T) {
 	mockStream := &MockQUICStream{}

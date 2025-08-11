@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
 )
 
 func main() {
@@ -36,45 +36,14 @@ func main() {
 		})),
 	}
 
-	moqt.HandleFunc(context.Background(), "/server.interop", func(tw *moqt.TrackWriter) {
-		seq := moqt.GroupSequenceFirst
-		for range 10 {
-			group, err := tw.OpenGroup(seq)
-			if err != nil {
-				slog.Error("failed to open group", "error", err)
-				break
-			}
-
-			slog.Info("Opened group successfully", "group_sequence", group.GroupSequence())
-
-			frame := moqt.NewFrame([]byte("Hello from interop server in Go!"))
-			err = group.WriteFrame(frame)
-			if err != nil {
-				group.CancelWrite(moqt.InternalGroupErrorCode) // TODO: Handle error properly
-				slog.Error("failed to write frame", "error", err)
-				break
-			}
-
-			slog.Info("Sent frame successfully", "frame", string(frame.Bytes()))
-
-			group.Close()
-
-			seq = seq.Next()
-
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		tw.Close()
-	})
-
-	http.HandleFunc("/interop", func(w http.ResponseWriter, r *http.Request) {
-		sess, err := server.AcceptWebTransport(w, r, nil)
+	moqt.HandleFunc("/interop", func(w moqt.ResponseWriter, r *moqt.Request) {
+		sess, err := server.Accept(w, r, nil)
 		if err != nil {
-			slog.Error("failed to serve moq over webtransport", "error", err)
+			slog.Error("failed to accept session", "error", err)
 			return
 		}
 
-		anns, err := sess.OpenAnnounceStream("/")
+		anns, err := sess.AcceptAnnounce("/")
 		if err != nil {
 			slog.Error("failed to open announce stream", "error", err)
 			return
@@ -92,7 +61,7 @@ func main() {
 
 		slog.Info("Received announcement", "path", ann.BroadcastPath())
 
-		tr, err := sess.OpenTrackStream(ann.BroadcastPath(), "", nil)
+		tr, err := sess.Subscribe(ann.BroadcastPath(), "", nil)
 		if err != nil {
 			slog.Error("failed to open track stream", "error", err)
 			return
@@ -126,6 +95,45 @@ func main() {
 				}
 			}(gr)
 		}
+	})
+
+	http.HandleFunc("/interop", func(w http.ResponseWriter, r *http.Request) {
+		err := server.ServeWebTransport(w, r)
+		if err != nil {
+			slog.Error("failed to serve moq over webtransport", "error", err)
+			return
+		}
+	})
+
+	moqt.PublishFunc(context.Background(), "/server.interop", func(tw *moqt.TrackWriter) {
+		seq := moqt.GroupSequenceFirst
+		for range 10 {
+			group, err := tw.OpenGroup(seq)
+			if err != nil {
+				slog.Error("failed to open group", "error", err)
+				break
+			}
+
+			slog.Info("Opened group successfully", "group_sequence", group.GroupSequence())
+
+			frame := moqt.NewFrame([]byte("Hello from interop server in Go!"))
+			err = group.WriteFrame(frame)
+			if err != nil {
+				group.CancelWrite(moqt.InternalGroupErrorCode) // TODO: Handle error properly
+				slog.Error("failed to write frame", "error", err)
+				break
+			}
+
+			slog.Info("Sent frame successfully", "frame", string(frame.Bytes()))
+
+			group.Close()
+
+			seq = seq.Next()
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		tw.Close()
 	})
 
 	err := server.ListenAndServe()

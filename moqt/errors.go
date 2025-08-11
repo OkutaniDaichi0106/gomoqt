@@ -130,6 +130,8 @@ const (
 	TooManySubscribeErrorCode        SessionErrorCode = 0x6
 	GoAwayTimeoutErrorCode           SessionErrorCode = 0x10
 	UnsupportedVersionErrorCode      SessionErrorCode = 0x12
+
+	SetupFailedErrorCode SessionErrorCode = 0x13
 )
 
 type SessionErrorCode quic.ApplicationErrorCode

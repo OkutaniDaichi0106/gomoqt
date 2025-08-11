@@ -3,8 +3,6 @@ package moqt
 import (
 	"context"
 	"sync"
-
-	"github.com/OkutaniDaichi0106/gomoqt/quic"
 )
 
 var DefaultRouter *Router = defaultRouter
@@ -90,8 +88,7 @@ type Request struct {
 	Versions   []Version
 	Extensions *Parameters
 
-	conn quic.Connection
-	ctx  context.Context
+	ctx context.Context
 }
 
 func (r *Request) Context() context.Context {
@@ -100,6 +97,7 @@ func (r *Request) Context() context.Context {
 
 type ResponseWriter interface {
 	Accept(v Version, extensions *Parameters) error
+	Reject(code SessionErrorCode) error
 }
 
 var _ Handler = (*HandlerFunc)(nil)
@@ -111,10 +109,7 @@ func (f HandlerFunc) ServeMOQ(w ResponseWriter, r *Request) {
 }
 
 var NotFoundFunc func(w ResponseWriter, r *Request) = func(w ResponseWriter, r *Request) {
-	// Default NotFound handler
-	if r.conn != nil {
-		r.conn.CloseWithError(quic.ConnectionErrorCode(404), "not found")
-	}
+	w.Reject(SetupFailedErrorCode)
 }
 
 var NotFoundHandler Handler = HandlerFunc(NotFoundFunc)

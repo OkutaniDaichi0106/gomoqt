@@ -40,12 +40,15 @@ type Server struct {
 	 */
 	Config *Config
 
-	ListenFunc func(addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (quic.EarlyListener, error)
+	/*
+	 * Set-up Request Handler
+	 */
+	Handler Handler
 
 	/*
-	 * Logger
+	 * Listen QUIC function
 	 */
-	Logger *slog.Logger
+	ListenFunc func(addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (quic.EarlyListener, error)
 
 	/*
 	 * WebTransport Server
@@ -54,6 +57,11 @@ type Server struct {
 	 */
 	NewWebtransportServerFunc func(checkOrigin func(*http.Request) bool) webtransport.Server
 	wtServer                  webtransport.Server
+
+	/*
+	 * Logger
+	 */
+	Logger *slog.Logger
 
 	listenerMu    sync.RWMutex
 	listeners     map[quic.EarlyListener]struct{}
@@ -68,7 +76,6 @@ type Server struct {
 
 	doneChan chan struct{} // Signal channel (notifies when server is completely closed)
 
-	Handler Handler
 }
 
 func (s *Server) init() {
@@ -195,7 +202,6 @@ func (s *Server) ServeQUICConn(conn quic.Connection) error {
 
 func (s *Server) ServeWebTransport(w http.ResponseWriter, r *http.Request) error {
 	if s.shuttingDown() {
-		http.Error(w, "server is shutting down", http.StatusServiceUnavailable)
 		return fmt.Errorf("server is shutting down")
 	}
 
@@ -249,7 +255,6 @@ func (s *Server) ServeWebTransport(w http.ResponseWriter, r *http.Request) error
 
 func (s *Server) handleNativeQUIC(conn quic.Connection) error {
 	if s.shuttingDown() {
-		conn.CloseWithError(quic.ConnectionErrorCode(quic.ConnectionRefused), "server is shutting down")
 		return nil
 	}
 
@@ -346,13 +351,23 @@ func (s *Server) handleNativeQUIC(conn quic.Connection) error {
 
 func (s *Server) Accept(w ResponseWriter, r *Request, mux *TrackMux) (*Session, error) {
 	if s.shuttingDown() {
-		r.conn.CloseWithError(quic.ConnectionErrorCode(quic.ConnectionRefused), "server is shutting down")
 		return nil, ErrServerClosed
 	}
 
 	s.init()
 
-	conn := r.conn
+	if w == nil {
+		return nil, fmt.Errorf("response writer cannot be nil")
+	}
+	if r == nil {
+		return nil, fmt.Errorf("request cannot be nil")
+	}
+	rsp, ok := w.(*responseWriter)
+	if !ok {
+		return nil, fmt.Errorf("response writer is not of type *response")
+	}
+
+	conn := rsp.conn
 	if conn == nil {
 		return nil, fmt.Errorf("quic connection cannot be nil")
 	}
@@ -369,24 +384,6 @@ func (s *Server) Accept(w ResponseWriter, r *Request, mux *TrackMux) (*Session, 
 	}
 
 	connLogger.Debug("establishing a session over QUIC connection")
-
-	// acceptCtx, cancelAccept := context.WithTimeout(context.Background(), s.acceptTimeout())
-	// defer cancelAccept()
-	// sessStream, err := acceptSessionStream(acceptCtx, conn, s.nativeQUICExtensions, connLogger)
-	// if err != nil {
-	// 	connLogger.Error("failed to accept session stream", "error", err)
-	// 	return nil
-	// }
-	if w == nil {
-		return nil, fmt.Errorf("response writer cannot be nil")
-	}
-	if r == nil {
-		return nil, fmt.Errorf("request cannot be nil")
-	}
-	rsp, ok := w.(*responseWriter)
-	if !ok {
-		return nil, fmt.Errorf("response writer is not of type *response")
-	}
 
 	var sess *Session
 	sess = newSession(conn, rsp.sessionStream, mux, connLogger, func() { s.removeSession(sess) })
@@ -573,7 +570,6 @@ func acceptSessionStream(acceptCtx context.Context, conn quic.Connection, connLo
 		Path:       path,
 		Versions:   scm.SupportedVersions,
 		Extensions: clientParams,
-		conn:       conn,
 	}
 
 	return newSessionStream(stream, req), nil

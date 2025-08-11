@@ -322,7 +322,6 @@ func openSessionStream(conn quic.Connection, path string, extensions *Parameters
 		Path:       path,
 		Versions:   versions,
 		Extensions: extensions,
-		conn:       conn,
 		ctx:        stream.Context(),
 	}
 

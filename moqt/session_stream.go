@@ -2,9 +2,7 @@ package moqt
 
 import (
 	"context"
-	"fmt"
 	"sync"
-	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
@@ -16,26 +14,21 @@ func newSessionStream(stream quic.Stream, req *Request) *sessionStream {
 		ctx:       context.WithValue(stream.Context(), &biStreamTypeCtxKey, message.StreamTypeSession),
 		stream:    stream,
 		Request:   req,
-		setupDone: make(chan struct{}, 1), // Make it buffered
-		updatedCh: make(chan struct{}, 1), // Initialize immediately
+		setupDone: make(chan struct{}),
+		updatedCh: make(chan struct{}, 1),
 	}
 
 	go func() {
 		<-ss.setupDone
-		fmt.Println("Session stream goroutine started")
 
 		var sum message.SessionUpdateMessage
 		var err error
 
 		for {
-			fmt.Println("Attempting to decode session update message")
 			err = sum.Decode(ss.stream)
 			if err != nil {
-				// Debug: Log the error
-				fmt.Printf("Session stream decode error: %v\n", err)
 				break
 			}
-			fmt.Printf("Successfully decoded session update with bitrate: %d\n", sum.Bitrate)
 
 			// Update the session bitrate
 			ss.mu.Lock()
@@ -44,33 +37,19 @@ func newSessionStream(stream quic.Stream, req *Request) *sessionStream {
 			// Notify that the session has been updated
 			select {
 			case ss.updatedCh <- struct{}{}:
-				fmt.Println("Session update notification sent")
 			default:
-				fmt.Println("Session update notification channel full")
 			}
 
 			ss.mu.Unlock()
-			
-			// Give some time for the test to receive the notification before potentially closing the channel
-			// This is a race condition workaround - in real code, the stream would keep reading
-			fmt.Println("Session update processing completed, continuing...")
 		}
 
-		fmt.Println("Session stream goroutine ending, closing channel")
-		
-		// Give a reasonable delay to ensure any pending notifications are processed
-		// In real applications, this goroutine would run longer, but for testing we need this delay
-		time.Sleep(50 * time.Millisecond)
-		
 		ss.mu.Lock()
 
 		if ss.updatedCh != nil {
 			close(ss.updatedCh)
-			ss.updatedCh = nil
 		}
 
 		ss.mu.Unlock()
-		// fmt.Println("Session stream goroutine ended")
 	}()
 
 	return ss
@@ -126,6 +105,7 @@ func (r *response) AwaitAccepted() error {
 
 type responseWriter struct {
 	*sessionStream
+	conn      quic.Connection
 	onceSetup sync.Once
 }
 
@@ -152,6 +132,12 @@ func (w *responseWriter) Accept(v Version, extensions *Parameters) error {
 		w.listenUpdates()
 	})
 	return err
+}
+
+func (w *responseWriter) Reject(code SessionErrorCode) error {
+	w.stream.CancelWrite(quic.StreamErrorCode(code))
+	w.stream.CancelRead(quic.StreamErrorCode(code))
+	return nil
 }
 
 func (ss *sessionStream) updateSession(bitrate uint64) error {
@@ -182,6 +168,8 @@ func (ss *sessionStream) listenUpdates() {
 }
 
 func (ss *sessionStream) SessionUpdated() <-chan struct{} {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
 	return ss.updatedCh
 }
 

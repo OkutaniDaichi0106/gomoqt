@@ -3,6 +3,7 @@ package moqt
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -41,6 +42,8 @@ type TrackWriter struct {
 	openUniStreamFunc func() (quic.SendStream, error)
 
 	onCloseTrackFunc func()
+
+	pubCtx context.Context
 }
 
 func (s *TrackWriter) Close() error {
@@ -96,8 +99,12 @@ func (s *TrackWriter) OpenGroup(seq GroupSequence) (*GroupWriter, error) {
 		return nil, errors.New("group sequence must not be zero")
 	}
 
-	if s.ctx.Err() != nil {
-		return nil, context.Cause(s.ctx)
+	if s.subCtx.Err() != nil {
+		return nil, context.Cause(s.subCtx)
+	}
+
+	if s.pubCtx.Err() != nil {
+		return nil, fmt.Errorf("publish context error: %w", context.Cause(s.pubCtx))
 	}
 
 	if !s.accepted.Load() {
@@ -180,6 +187,14 @@ func (s *TrackWriter) TrackConfig() *TrackConfig {
 		return nil
 	}
 	return s.receiveSubscribeStream.TrackConfig()
+}
+
+func (s *TrackWriter) Context() context.Context {
+	return s.pubCtx
+}
+
+func (s *TrackWriter) setContext(ctx context.Context) {
+	s.pubCtx = ctx
 }
 
 func (s *TrackWriter) addGroup(group *GroupWriter) {

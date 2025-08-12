@@ -146,7 +146,7 @@ func TestMux_Publishr(t *testing.T) {
 	path := BroadcastPath("/test")
 
 	// Initially should return NotFoundHandler
-	handler := mux.Publishr(path)
+	handler := mux.TrackHandler(path)
 	assert.NotNil(t, handler, "Handler should not return nil")
 
 	// Register handler
@@ -154,7 +154,7 @@ func TestMux_Publishr(t *testing.T) {
 	mux.Publish(ctx, path, expectedHandler)
 
 	// Should return registered handler
-	handler = mux.Publishr(path)
+	handler = mux.TrackHandler(path)
 	assert.NotNil(t, handler, "Handler should return registered handler")
 }
 
@@ -391,7 +391,7 @@ func TestMux_Clear(t *testing.T) {
 
 	// Verify handlers are registered
 	for _, path := range paths {
-		handler := mux.Publishr(path)
+		handler := mux.TrackHandler(path)
 		assert.NotNil(t, handler, "handler should exist for path %s before Clear", path)
 	}
 
@@ -400,7 +400,7 @@ func TestMux_Clear(t *testing.T) {
 
 	// Verify all handlers are removed
 	for _, path := range paths {
-		handler := mux.Publishr(path)
+		handler := mux.TrackHandler(path)
 		// Should return NotFoundHandler after clear
 		assert.NotNil(t, handler, "should return NotFoundHandler for path %s after Clear", path)
 	}
@@ -454,7 +454,7 @@ func TestMux_Announce_Inactive(t *testing.T) {
 	mux.Announce(announcement, handler)
 
 	// Handler should not be registered
-	foundHandler := mux.Publishr(path)
+	foundHandler := mux.TrackHandler(path)
 	assert.NotNil(t, foundHandler, "should return NotFoundHandler for inactive announcement")
 }
 

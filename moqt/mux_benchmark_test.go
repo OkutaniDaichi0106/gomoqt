@@ -72,7 +72,7 @@ func BenchmarkTrackMux_Handler(b *testing.B) {
 
 			for i := 0; i < b.N; i++ {
 				path := paths[i%size]
-				_ = mux.Publishr(path)
+				_ = mux.TrackHandler(path)
 			}
 		})
 	}
@@ -161,7 +161,7 @@ func BenchmarkTrackMux_ConcurrentRead(b *testing.B) {
 		i := 0
 		for pb.Next() {
 			path := paths[i%numPaths]
-			_ = mux.Publishr(path)
+			_ = mux.TrackHandler(path)
 			i++
 		}
 	})
@@ -217,7 +217,7 @@ func BenchmarkTrackMux_MixedWorkload(b *testing.B) {
 			} else {
 				// 90% reads - handler lookup
 				path := paths[localCounter%initialPaths]
-				_ = mux.Publishr(path)
+				_ = mux.TrackHandler(path)
 			}
 			localCounter++
 		}
@@ -248,7 +248,7 @@ func BenchmarkTrackMux_DeepNestedPaths(b *testing.B) {
 				if i%2 == 0 {
 					mux.Publish(ctx, path, handler)
 				} else {
-					_ = mux.Publishr(path)
+					_ = mux.TrackHandler(path)
 				}
 			}
 		})
@@ -283,7 +283,7 @@ func BenchmarkTrackMux_MemoryUsage(b *testing.B) {
 				// Perform some operations to measure realistic memory usage
 				for j := 0; j < 100; j++ {
 					lookupPath := BroadcastPath(fmt.Sprintf("/path/%d/%d", i, j%size))
-					_ = mux.Publishr(lookupPath)
+					_ = mux.TrackHandler(lookupPath)
 				}
 			}
 
@@ -330,7 +330,7 @@ func BenchmarkTrackMux_AllocationPatterns(b *testing.B) {
 
 		for i := 0; i < b.N; i++ {
 			path := paths[i%1000]
-			_ = mux.Publishr(path)
+			_ = mux.TrackHandler(path)
 		}
 	})
 }
@@ -407,7 +407,7 @@ func BenchmarkTrackMux_LockContention(b *testing.B) {
 			i := 0
 			for pb.Next() {
 				path := BroadcastPath(fmt.Sprintf("/path/%d", i%numPaths))
-				_ = mux.Publishr(path)
+				_ = mux.TrackHandler(path)
 				i++
 			}
 		})
@@ -442,7 +442,7 @@ func BenchmarkTrackMux_LockContention(b *testing.B) {
 				} else {
 					// 95% reads
 					path := BroadcastPath(fmt.Sprintf("/path/%d", i%numPaths))
-					_ = mux.Publishr(path)
+					_ = mux.TrackHandler(path)
 				}
 				i++
 			}
@@ -588,7 +588,7 @@ func BenchmarkTrackMux_CPUProfileOptimization(b *testing.B) {
 				path := BroadcastPath(pathBuilder.String())
 
 				// Operations that will consume CPU cycles
-				_ = mux.Publishr(path) // Map lookup
+				_ = mux.TrackHandler(path) // Map lookup
 				trackWriter := newTrackWriter(path, TrackName(fmt.Sprintf("track-%d", i)), nil, func() (quic.SendStream, error) {
 					mockSendStream := &MockQUICSendStream{}
 					mockSendStream.On("CancelWrite", mock.Anything).Return()

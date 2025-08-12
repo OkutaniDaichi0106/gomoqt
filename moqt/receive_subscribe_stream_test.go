@@ -342,7 +342,7 @@ func TestReceiveSubscribeStream_CloseWithError(t *testing.T) {
 			}
 
 			// Check that context is cancelled
-			assert.Error(t, rss.ctx.Err(), "Context should be cancelled")
+			assert.Error(t, rss.subCtx.Err(), "Context should be cancelled")
 
 			mockStream.AssertExpectations(t)
 		})
@@ -373,10 +373,10 @@ func TestReceiveSubscribeStream_CloseWithError_MultipleClose(t *testing.T) {
 
 	err := rss.closeWithError(InternalSubscribeErrorCode)
 	assert.NoError(t, err, "CloseWithError should return error when already closed")
-	assert.Error(t, rss.ctx.Err(), "Context should be cancelled after first closeWithError")
+	assert.Error(t, rss.subCtx.Err(), "Context should be cancelled after first closeWithError")
 
 	// Get the cause and check its type
-	cause := Cause(rss.ctx)
+	cause := Cause(rss.subCtx)
 	var subscribeErr *SubscribeError
 	assert.ErrorAs(t, cause, &subscribeErr, "closeErr should be a SubscribeError")
 }

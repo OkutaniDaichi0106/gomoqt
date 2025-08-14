@@ -48,7 +48,7 @@ type Server struct {
 	/*
 	 * Listen QUIC function
 	 */
-	ListenFunc func(addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (quic.EarlyListener, error)
+	ListenFunc quic.ListenAddrEarlyFunc
 
 	/*
 	 * WebTransport Server

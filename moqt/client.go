@@ -15,6 +15,7 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
 	"github.com/OkutaniDaichi0106/gomoqt/quic/quicgo"
+	"github.com/OkutaniDaichi0106/gomoqt/webtransport"
 	"github.com/OkutaniDaichi0106/gomoqt/webtransport/webtransportgo"
 )
 
@@ -35,9 +36,9 @@ type Client struct {
 	Config *Config
 
 	/***/
-	DialQUICConn func(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (quic.Connection, error)
+	DialQUICConn quic.DialAddrEarlyFunc
 
-	DialWebTransportFunc func(ctx context.Context, addr string, header http.Header) (*http.Response, quic.Connection, error)
+	DialWebTransportFunc webtransport.DialAddrFunc
 
 	/*
 	 * Logger

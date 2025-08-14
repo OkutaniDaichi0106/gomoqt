@@ -12,5 +12,5 @@ func Dial(ctx context.Context, addr string, header http.Header) (*http.Response,
 	var d quicgo_webtransportgo.Dialer
 	rsp, wtsess, err := d.Dial(ctx, addr, header)
 
-	return rsp, wrapSession(wtsess), wrapError(err)
+	return rsp, wrapSession(wtsess), err
 }

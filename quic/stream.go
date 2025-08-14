@@ -4,6 +4,8 @@ import (
 	"context"
 	"io"
 	"time"
+
+	"github.com/quic-go/quic-go"
 )
 
 type Stream interface {
@@ -34,4 +36,4 @@ type ReceiveStream interface {
 	SetReadDeadline(time.Time) error
 }
 
-type StreamID uint64
+type StreamID = quic.StreamID

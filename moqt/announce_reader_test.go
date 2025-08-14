@@ -831,7 +831,6 @@ func TestAnnouncementReader_StreamErrors(t *testing.T) {
 				return &quic.StreamError{
 					StreamID:  quic.StreamID(123),
 					ErrorCode: quic.StreamErrorCode(42),
-					Err:       io.ErrUnexpectedEOF, // Provide an underlying error
 				}
 			},
 			expectedType: &AnnounceError{},

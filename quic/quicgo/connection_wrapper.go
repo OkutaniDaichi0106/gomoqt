@@ -25,17 +25,16 @@ type connWrapper struct {
 
 func (wrapper *connWrapper) AcceptStream(ctx context.Context) (quic.Stream, error) {
 	stream, err := wrapper.conn.AcceptStream(ctx)
-	return &rawQuicStream{stream: stream}, wrapError(err)
+	return &rawQuicStream{stream: stream}, err
 }
 
 func (wrapper *connWrapper) AcceptUniStream(ctx context.Context) (quic.ReceiveStream, error) {
 	stream, err := wrapper.conn.AcceptUniStream(ctx)
-	return &rawQuicReceiveStream{stream: stream}, wrapError(err)
+	return &rawQuicReceiveStream{stream: stream}, err
 }
 
-func (wrapper *connWrapper) CloseWithError(code quic.ConnectionErrorCode, msg string) error {
-	err := wrapper.conn.CloseWithError(quicgo_quicgo.ApplicationErrorCode(code), msg)
-	return wrapError(err)
+func (wrapper *connWrapper) CloseWithError(code quic.ApplicationErrorCode, msg string) error {
+	return wrapper.conn.CloseWithError(code, msg)
 }
 
 func (wrapper *connWrapper) ConnectionState() quic.ConnectionState {
@@ -59,36 +58,27 @@ func (wrapper *connWrapper) LocalAddr() net.Addr {
 
 func (wrapper *connWrapper) OpenStream() (quic.Stream, error) {
 	stream, err := wrapper.conn.OpenStream()
-	return &rawQuicStream{stream: stream}, wrapError(err)
+	return &rawQuicStream{stream: stream}, err
 }
 
 func (wrapper *connWrapper) OpenStreamSync(ctx context.Context) (quic.Stream, error) {
 	stream, err := wrapper.conn.OpenStreamSync(ctx)
-	return &rawQuicStream{stream: stream}, wrapError(err)
+	return &rawQuicStream{stream: stream}, err
 }
 
 func (wrapper *connWrapper) OpenUniStream() (quic.SendStream, error) {
 	stream, err := wrapper.conn.OpenUniStream()
-	return &rawQuicSendStream{stream: stream}, wrapError(err)
+	return &rawQuicSendStream{stream: stream}, err
 }
 
 func (wrapper *connWrapper) OpenUniStreamSync(ctx context.Context) (quic.SendStream, error) {
 	stream, err := wrapper.conn.OpenUniStreamSync(ctx)
-	return &rawQuicSendStream{stream: stream}, wrapError(err)
+	return &rawQuicSendStream{stream: stream}, err
 }
-
-// func (wrapper *connWrapper) ReceiveDatagram(ctx context.Context) ([]byte, error) {
-// 	bytes, err := wrapper.conn.ReceiveDatagram(ctx)
-// 	return bytes, wrapError(err)
-// }
 
 func (wrapper *connWrapper) RemoteAddr() net.Addr {
 	return wrapper.conn.RemoteAddr()
 }
-
-// func (wrapper *connWrapper) SendDatagram(b []byte) error {
-// 	return wrapError(wrapper.conn.SendDatagram(b))
-// }
 
 func (wrapper connWrapper) Unwrap() *quicgo_quicgo.Conn {
 	return wrapper.conn

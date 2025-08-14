@@ -19,13 +19,11 @@ func (wrapper rawQuicStream) StreamID() quic.StreamID {
 }
 
 func (wrapper rawQuicStream) Read(b []byte) (int, error) {
-	n, err := wrapper.stream.Read(b)
-	return n, wrapError(err)
+	return wrapper.stream.Read(b)
 }
 
 func (wrapper rawQuicStream) Write(b []byte) (int, error) {
-	n, err := wrapper.stream.Write(b)
-	return n, wrapError(err)
+	return wrapper.stream.Write(b)
 }
 
 func (wrapper rawQuicStream) CancelRead(code quic.StreamErrorCode) {
@@ -37,19 +35,19 @@ func (wrapper rawQuicStream) CancelWrite(code quic.StreamErrorCode) {
 }
 
 func (wrapper rawQuicStream) SetDeadline(time time.Time) error {
-	return wrapError(wrapper.stream.SetDeadline(time))
+	return wrapper.stream.SetDeadline(time)
 }
 
 func (wrapper rawQuicStream) SetReadDeadline(time time.Time) error {
-	return wrapError(wrapper.stream.SetReadDeadline(time))
+	return wrapper.stream.SetReadDeadline(time)
 }
 
 func (wrapper rawQuicStream) SetWriteDeadline(time time.Time) error {
-	return wrapError(wrapper.stream.SetWriteDeadline(time))
+	return wrapper.stream.SetWriteDeadline(time)
 }
 
 func (wrapper rawQuicStream) Close() error {
-	return wrapError(wrapper.stream.Close())
+	return wrapper.stream.Close()
 }
 
 func (wrapper rawQuicStream) Context() context.Context {
@@ -69,8 +67,7 @@ func (wrapper rawQuicReceiveStream) StreamID() quic.StreamID {
 	return quic.StreamID(wrapper.stream.StreamID())
 }
 func (wrapper rawQuicReceiveStream) Read(b []byte) (int, error) {
-	n, err := wrapper.stream.Read(b)
-	return n, wrapError(err)
+	return wrapper.stream.Read(b)
 }
 
 func (wrapper rawQuicReceiveStream) CancelRead(code quic.StreamErrorCode) {
@@ -78,7 +75,7 @@ func (wrapper rawQuicReceiveStream) CancelRead(code quic.StreamErrorCode) {
 }
 
 func (wrapper rawQuicReceiveStream) SetReadDeadline(time time.Time) error {
-	return wrapError(wrapper.stream.SetReadDeadline(time))
+	return wrapper.stream.SetReadDeadline(time)
 }
 
 /*
@@ -96,8 +93,7 @@ func (wrapper rawQuicSendStream) StreamID() quic.StreamID {
 }
 
 func (wrapper rawQuicSendStream) Write(b []byte) (int, error) {
-	n, err := wrapper.stream.Write(b)
-	return n, wrapError(err)
+	return wrapper.stream.Write(b)
 }
 
 func (wrapper rawQuicSendStream) CancelWrite(code quic.StreamErrorCode) {
@@ -105,11 +101,11 @@ func (wrapper rawQuicSendStream) CancelWrite(code quic.StreamErrorCode) {
 }
 
 func (wrapper rawQuicSendStream) SetWriteDeadline(time time.Time) error {
-	return wrapError(wrapper.stream.SetWriteDeadline(time))
+	return wrapper.stream.SetWriteDeadline(time)
 }
 
 func (wrapper rawQuicSendStream) Close() error {
-	return wrapError(wrapper.stream.Close())
+	return wrapper.stream.Close()
 }
 
 func (wrapper rawQuicSendStream) Context() context.Context {

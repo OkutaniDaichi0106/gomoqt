@@ -187,6 +187,12 @@ func (c *Client) DialWebTransport(ctx context.Context, host, path string, mux *T
 func (c *Client) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux) (*Session, error) {
 	sessionID := generateSessionID()
 
+	if c.shuttingDown() {
+		return nil, ErrClientClosed
+	}
+
+	c.init()
+
 	var logger *slog.Logger
 	if c.Logger == nil {
 		logger = slog.New(slog.DiscardHandler)
@@ -195,14 +201,6 @@ func (c *Client) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux)
 			"address", addr,
 			"path", path)
 	}
-	logger.Info("initiating QUIC MOQ session")
-
-	if c.shuttingDown() {
-		logger.Warn("QUIC dial rejected: client shutting down")
-		return nil, ErrClientClosed
-	}
-
-	c.init()
 
 	logger.Debug("starting QUIC connection establishment")
 
@@ -217,7 +215,7 @@ func (c *Client) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux)
 		logger.Debug("using custom QUIC dial function")
 		conn, err = c.DialQUICConn(dialCtx, addr, c.TLSConfig, c.QUICConfig)
 	} else {
-		logger.Debug("using default QUIC dial")
+		logger.Debug("using default QUIC dial function")
 		conn, err = quicgo.DialAddrEarly(dialCtx, addr, c.TLSConfig, c.QUICConfig)
 	}
 
@@ -334,7 +332,7 @@ func openSessionStream(conn quic.Connection, path string, extensions *Parameters
 	err = rsp.AwaitAccepted()
 	if err != nil {
 		sessLogger.Error("session acceptance failed", "error", err)
-		conn.CloseWithError(quic.ConnectionErrorCode(InternalSessionErrorCode), "session acceptance failed")
+		conn.CloseWithError(quic.ApplicationErrorCode(InternalSessionErrorCode), "session acceptance failed")
 		return nil, err
 	}
 

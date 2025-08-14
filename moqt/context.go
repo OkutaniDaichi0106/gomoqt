@@ -22,7 +22,6 @@ func Cause(ctx context.Context) error {
 						Remote:       strErr.Remote,
 						ErrorCode:    quic.ApplicationErrorCode(strErr.ErrorCode),
 						ErrorMessage: "moqt: closed session stream",
-						Err:          strErr,
 					},
 				}
 			case message.StreamTypeAnnounce:

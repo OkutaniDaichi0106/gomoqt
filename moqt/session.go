@@ -35,7 +35,7 @@ func newSession(conn quic.Connection, sessStream *sessionStream, mux *TrackMux, 
 			"reason", context.Cause(streamCtx),
 		)
 
-		conn.CloseWithError(quic.ConnectionErrorCode(ProtocolViolationErrorCode), "session stream closed unexpectedly")
+		conn.CloseWithError(quic.ApplicationErrorCode(ProtocolViolationErrorCode), "session stream closed unexpectedly")
 	}()
 
 	sess := &Session{
@@ -117,7 +117,7 @@ func (s *Session) Terminate(code SessionErrorCode, msg string) error {
 		s.onClose()
 	}
 
-	err := s.conn.CloseWithError(quic.ConnectionErrorCode(code), msg)
+	err := s.conn.CloseWithError(quic.ApplicationErrorCode(code), msg)
 	if err != nil {
 		var appErr *quic.ApplicationError
 		if errors.As(err, &appErr) {
@@ -450,7 +450,7 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 			"config", config.String(),
 		)
 
-		handler := sess.mux.Publishr(BroadcastPath(sm.BroadcastPath))
+		handler := sess.mux.TrackHandler(BroadcastPath(sm.BroadcastPath))
 		if handler == nil {
 			subLogger.Warn("track not found for subscription")
 

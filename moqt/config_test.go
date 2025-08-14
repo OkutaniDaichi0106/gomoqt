@@ -16,9 +16,6 @@ func TestConfig_Clone(t *testing.T) {
 				ClientSetupExtensions: func() *Parameters {
 					return &Parameters{}
 				},
-				ServerSetupExtensions: func(clientParams *Parameters) (serverParams *Parameters, err error) {
-					return &Parameters{}, nil
-				},
 
 				SetupTimeout: 30 * time.Second,
 			},
@@ -42,7 +39,6 @@ func TestConfig_Clone(t *testing.T) {
 
 			// Check if both are nil or both are non-nil for function fields
 			assert.Equal(t, original.ClientSetupExtensions == nil, cloned.ClientSetupExtensions == nil, "ClientSetupExtensions nil status should be equal")
-			assert.Equal(t, original.ServerSetupExtensions == nil, cloned.ServerSetupExtensions == nil, "ServerSetupExtensions nil status should be equal")
 			assert.Equal(t, original.SetupTimeout, cloned.SetupTimeout, "Timeout should be equal")
 		})
 	}

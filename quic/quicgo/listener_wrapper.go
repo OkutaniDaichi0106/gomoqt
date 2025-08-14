@@ -11,7 +11,7 @@ import (
 
 func ListenAddrEarly(addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (quic.EarlyListener, error) {
 	ln, err := quicgo_quicgo.ListenAddrEarly(addr, tlsConfig, quicConfig)
-	return wrapListener(ln), wrapError(err)
+	return wrapListener(ln), err
 }
 
 var _ quic.EarlyListener = (*listenerWrapper)(nil)
@@ -28,7 +28,7 @@ type listenerWrapper struct {
 
 func (wrapper *listenerWrapper) Accept(ctx context.Context) (quic.Connection, error) {
 	conn, err := wrapper.listener.Accept(ctx)
-	return wrapConnection(conn), wrapError(err)
+	return wrapConnection(conn), err
 }
 
 func (wrapper *listenerWrapper) Addr() net.Addr {
@@ -36,5 +36,5 @@ func (wrapper *listenerWrapper) Addr() net.Addr {
 }
 
 func (wrapper *listenerWrapper) Close() error {
-	return wrapError(wrapper.listener.Close())
+	return wrapper.listener.Close()
 }

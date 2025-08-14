@@ -1,3 +1,5 @@
 package quic
 
-type Version uint32
+import "github.com/quic-go/quic-go"
+
+type Version = quic.Version

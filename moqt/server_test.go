@@ -543,7 +543,7 @@ func TestServer_SessionManagement(t *testing.T) {
 			mockConn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF) // For handleUniStreams
 			mockConn.On("CloseWithError", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
 				cancelConn(&quic.ApplicationError{
-					ErrorCode:    quic.ApplicationErrorCode(args[0].(quic.ConnectionErrorCode)),
+					ErrorCode:    quic.ApplicationErrorCode(args[0].(quic.ApplicationErrorCode)),
 					ErrorMessage: args[1].(string),
 				}) // Cancel the connection context
 			}).Return(nil) // For session.Terminate

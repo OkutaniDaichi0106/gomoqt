@@ -18,12 +18,12 @@ func wrapSession(wtconn *quicgo_webtransportgo.Session) quic.Connection {
 	}
 }
 
-func unwrapConn(conn quic.Connection) *quicgo_webtransportgo.Session {
-	if wconn, ok := conn.(*sessionWrapper); ok {
-		return wconn.sess
-	}
-	return nil
-}
+// func unwrapConn(conn quic.Connection) *quicgo_webtransportgo.Session {
+// 	if wconn, ok := conn.(*sessionWrapper); ok {
+// 		return wconn.sess
+// 	}
+// 	return nil
+// }
 
 func (conn *sessionWrapper) AcceptStream(ctx context.Context) (quic.Stream, error) {
 	stream, err := conn.sess.AcceptStream(ctx)
@@ -35,19 +35,12 @@ func (conn *sessionWrapper) AcceptUniStream(ctx context.Context) (quic.ReceiveSt
 	return &receiveStreamWrapper{stream: stream}, err
 }
 
-func (conn *sessionWrapper) CloseWithError(code quic.ConnectionErrorCode, msg string) error {
+func (conn *sessionWrapper) CloseWithError(code quic.ApplicationErrorCode, msg string) error {
 	return conn.sess.CloseWithError(quicgo_webtransportgo.SessionErrorCode(code), msg)
 }
 
 func (wrapper *sessionWrapper) ConnectionState() quic.ConnectionState {
-	state := wrapper.sess.ConnectionState()
-	return quic.ConnectionState{
-		TLS:               state.TLS,
-		SupportsDatagrams: state.SupportsDatagrams,
-		Used0RTT:          state.Used0RTT,
-		Version:           quic.Version(state.Version),
-		GSO:               state.GSO,
-	}
+	return wrapper.sess.ConnectionState()
 }
 
 func (conn *sessionWrapper) Context() context.Context {

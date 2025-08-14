@@ -11,5 +11,5 @@ import (
 func DialAddrEarly(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (quic.Connection, error) {
 	conn, err := quicgo_quicgo.DialAddrEarly(ctx, addr, tlsConfig, quicConfig)
 
-	return wrapConnection(conn), wrapError(err)
+	return wrapConnection(conn), err
 }

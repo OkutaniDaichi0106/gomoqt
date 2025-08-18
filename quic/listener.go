@@ -6,9 +6,9 @@ import (
 	"net"
 )
 
-type ListenAddrEarlyFunc func(addr string, tlsConfig *tls.Config, quicConfig *Config) (EarlyListener, error)
+type ListenAddrFunc func(addr string, tlsConfig *tls.Config, quicConfig *Config) (Listener, error)
 
-type EarlyListener interface {
+type Listener interface {
 	Accept(ctx context.Context) (Connection, error)
 	Addr() net.Addr
 	Close() error

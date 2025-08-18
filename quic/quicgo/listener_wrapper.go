@@ -9,16 +9,16 @@ import (
 	quicgo_quicgo "github.com/quic-go/quic-go"
 )
 
-var _ quic.ListenAddrEarlyFunc = ListenAddrEarly
+var _ quic.ListenAddrFunc = ListenAddrEarly
 
-func ListenAddrEarly(addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (quic.EarlyListener, error) {
+func ListenAddrEarly(addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (quic.Listener, error) {
 	ln, err := quicgo_quicgo.ListenAddrEarly(addr, tlsConfig, quicConfig)
 	return wrapListener(ln), err
 }
 
-var _ quic.EarlyListener = (*listenerWrapper)(nil)
+var _ quic.Listener = (*listenerWrapper)(nil)
 
-func wrapListener(quicListener *quicgo_quicgo.EarlyListener) quic.EarlyListener {
+func wrapListener(quicListener *quicgo_quicgo.EarlyListener) quic.Listener {
 	return &listenerWrapper{
 		listener: quicListener,
 	}

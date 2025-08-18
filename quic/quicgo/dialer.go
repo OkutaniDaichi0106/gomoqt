@@ -8,7 +8,7 @@ import (
 	quicgo_quicgo "github.com/quic-go/quic-go"
 )
 
-var _ quic.DialAddrEarlyFunc = DialAddrEarly
+var _ quic.DialAddrFunc = DialAddrEarly
 
 func DialAddrEarly(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (quic.Connection, error) {
 	conn, err := quicgo_quicgo.DialAddrEarly(ctx, addr, tlsConfig, quicConfig)

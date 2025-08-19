@@ -222,56 +222,56 @@ func (err GroupError) GroupErrorCode() GroupErrorCode {
 	return GroupErrorCode(err.ErrorCode)
 }
 
-/*
- * Internal Error
- */
-type InternalError struct {
-	Reason string
-}
+// /*
+//  * Internal Error
+//  */
+// type InternalError struct {
+// 	Reason string
+// }
 
-func (err InternalError) Error() string {
-	return fmt.Sprintf("moqt: internal error: %s", err.Reason)
-}
+// func (err InternalError) Error() string {
+// 	return fmt.Sprintf("moqt: internal error: %s", err.Reason)
+// }
 
-func (InternalError) Is(err error) bool {
-	_, ok := err.(InternalError)
-	return ok
-}
+// func (InternalError) Is(err error) bool {
+// 	_, ok := err.(InternalError)
+// 	return ok
+// }
 
-func (err InternalError) AnnounceErrorCode() AnnounceErrorCode {
-	return InternalAnnounceErrorCode
-}
+// func (err InternalError) AnnounceErrorCode() AnnounceErrorCode {
+// 	return InternalAnnounceErrorCode
+// }
 
-func (err InternalError) SubscribeErrorCode() SubscribeErrorCode {
-	return InternalSubscribeErrorCode
-}
+// func (err InternalError) SubscribeErrorCode() SubscribeErrorCode {
+// 	return InternalSubscribeErrorCode
+// }
 
-func (err InternalError) SessionErrorCode() SessionErrorCode {
-	return InternalSessionErrorCode
-}
+// func (err InternalError) SessionErrorCode() SessionErrorCode {
+// 	return InternalSessionErrorCode
+// }
 
-func (err InternalError) GroupErrorCode() GroupErrorCode {
-	return InternalGroupErrorCode
-}
+// func (err InternalError) GroupErrorCode() GroupErrorCode {
+// 	return InternalGroupErrorCode
+// }
 
-/*
- * Unauthorized Error
- */
-type UnauthorizedError struct{}
+// /*
+//  * Unauthorized Error
+//  */
+// type UnauthorizedError struct{}
 
-func (UnauthorizedError) Error() string {
-	return "moqt: unauthorized"
-}
+// func (UnauthorizedError) Error() string {
+// 	return "moqt: unauthorized"
+// }
 
-func (UnauthorizedError) Is(err error) bool {
-	_, ok := err.(UnauthorizedError)
-	return ok
-}
+// func (UnauthorizedError) Is(err error) bool {
+// 	_, ok := err.(UnauthorizedError)
+// 	return ok
+// }
 
-func (err UnauthorizedError) SubscribeErrorCode() SubscribeErrorCode {
-	return UnauthorizedSubscribeErrorCode
-}
+// func (err UnauthorizedError) SubscribeErrorCode() SubscribeErrorCode {
+// 	return UnauthorizedSubscribeErrorCode
+// }
 
-func (err UnauthorizedError) SessionErrorCode() SessionErrorCode {
-	return UnauthorizedSessionErrorCode
-}
+// func (err UnauthorizedError) SessionErrorCode() SessionErrorCode {
+// 	return UnauthorizedSessionErrorCode
+// }

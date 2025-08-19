@@ -1,7 +1,6 @@
 package moqt
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
@@ -361,109 +360,109 @@ func TestGroupError(t *testing.T) {
 	}
 }
 
-// Test for InternalError
-func TestInternalError(t *testing.T) {
-	tests := map[string]struct {
-		err                      InternalError
-		expectedString           string
-		expectedAnnounceCode     AnnounceErrorCode
-		expectedSubscribeCode    SubscribeErrorCode
-		expectedSessionCode      SessionErrorCode
-		expectedGroupCode        GroupErrorCode
-		shouldMatchInternalError bool
-	}{
-		"with reason": {
-			err:                      InternalError{Reason: "test error"},
-			expectedString:           "moqt: internal error: test error",
-			expectedAnnounceCode:     InternalAnnounceErrorCode,
-			expectedSubscribeCode:    InternalSubscribeErrorCode,
-			expectedSessionCode:      InternalSessionErrorCode,
-			expectedGroupCode:        InternalGroupErrorCode,
-			shouldMatchInternalError: true,
-		},
-		"empty reason": {
-			err:                      InternalError{Reason: ""},
-			expectedString:           "moqt: internal error: ",
-			expectedAnnounceCode:     InternalAnnounceErrorCode,
-			expectedSubscribeCode:    InternalSubscribeErrorCode,
-			expectedSessionCode:      InternalSessionErrorCode,
-			expectedGroupCode:        InternalGroupErrorCode,
-			shouldMatchInternalError: true,
-		},
-	}
+// // Test for InternalError
+// func TestInternalError(t *testing.T) {
+// 	tests := map[string]struct {
+// 		err                      InternalError
+// 		expectedString           string
+// 		expectedAnnounceCode     AnnounceErrorCode
+// 		expectedSubscribeCode    SubscribeErrorCode
+// 		expectedSessionCode      SessionErrorCode
+// 		expectedGroupCode        GroupErrorCode
+// 		shouldMatchInternalError bool
+// 	}{
+// 		"with reason": {
+// 			err:                      InternalError{Reason: "test error"},
+// 			expectedString:           "moqt: internal error: test error",
+// 			expectedAnnounceCode:     InternalAnnounceErrorCode,
+// 			expectedSubscribeCode:    InternalSubscribeErrorCode,
+// 			expectedSessionCode:      InternalSessionErrorCode,
+// 			expectedGroupCode:        InternalGroupErrorCode,
+// 			shouldMatchInternalError: true,
+// 		},
+// 		"empty reason": {
+// 			err:                      InternalError{Reason: ""},
+// 			expectedString:           "moqt: internal error: ",
+// 			expectedAnnounceCode:     InternalAnnounceErrorCode,
+// 			expectedSubscribeCode:    InternalSubscribeErrorCode,
+// 			expectedSessionCode:      InternalSessionErrorCode,
+// 			expectedGroupCode:        InternalGroupErrorCode,
+// 			shouldMatchInternalError: true,
+// 		},
+// 	}
 
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, tt.expectedString, tt.err.Error())
-			assert.Equal(t, tt.expectedAnnounceCode, tt.err.AnnounceErrorCode())
-			assert.Equal(t, tt.expectedSubscribeCode, tt.err.SubscribeErrorCode())
-			assert.Equal(t, tt.expectedSessionCode, tt.err.SessionErrorCode())
-			assert.Equal(t, tt.expectedGroupCode, tt.err.GroupErrorCode())
+// 	for name, tt := range tests {
+// 		t.Run(name, func(t *testing.T) {
+// 			assert.Equal(t, tt.expectedString, tt.err.Error())
+// 			assert.Equal(t, tt.expectedAnnounceCode, tt.err.AnnounceErrorCode())
+// 			assert.Equal(t, tt.expectedSubscribeCode, tt.err.SubscribeErrorCode())
+// 			assert.Equal(t, tt.expectedSessionCode, tt.err.SessionErrorCode())
+// 			assert.Equal(t, tt.expectedGroupCode, tt.err.GroupErrorCode())
 
-			// Test Is method
-			var internalErr InternalError
-			assert.Equal(t, tt.shouldMatchInternalError, errors.Is(tt.err, internalErr))
-		})
-	}
-}
+// 			// Test Is method
+// 			var internalErr InternalError
+// 			assert.Equal(t, tt.shouldMatchInternalError, errors.Is(tt.err, internalErr))
+// 		})
+// 	}
+// }
 
-// Test for UnauthorizedError
-func TestUnauthorizedError(t *testing.T) {
-	tests := map[string]struct {
-		err                        UnauthorizedError
-		expectedString             string
-		expectedSubscribeCode      SubscribeErrorCode
-		expectedSessionCode        SessionErrorCode
-		shouldMatchUnauthorizedErr bool
-	}{
-		"default": {
-			err:                        UnauthorizedError{},
-			expectedString:             "moqt: unauthorized",
-			expectedSubscribeCode:      UnauthorizedSubscribeErrorCode,
-			expectedSessionCode:        UnauthorizedSessionErrorCode,
-			shouldMatchUnauthorizedErr: true,
-		},
-	}
+// // Test for UnauthorizedError
+// func TestUnauthorizedError(t *testing.T) {
+// 	tests := map[string]struct {
+// 		err                        UnauthorizedError
+// 		expectedString             string
+// 		expectedSubscribeCode      SubscribeErrorCode
+// 		expectedSessionCode        SessionErrorCode
+// 		shouldMatchUnauthorizedErr bool
+// 	}{
+// 		"default": {
+// 			err:                        UnauthorizedError{},
+// 			expectedString:             "moqt: unauthorized",
+// 			expectedSubscribeCode:      UnauthorizedSubscribeErrorCode,
+// 			expectedSessionCode:        UnauthorizedSessionErrorCode,
+// 			shouldMatchUnauthorizedErr: true,
+// 		},
+// 	}
 
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, tt.expectedString, tt.err.Error())
-			assert.Equal(t, tt.expectedSubscribeCode, tt.err.SubscribeErrorCode())
-			assert.Equal(t, tt.expectedSessionCode, tt.err.SessionErrorCode())
+// 	for name, tt := range tests {
+// 		t.Run(name, func(t *testing.T) {
+// 			assert.Equal(t, tt.expectedString, tt.err.Error())
+// 			assert.Equal(t, tt.expectedSubscribeCode, tt.err.SubscribeErrorCode())
+// 			assert.Equal(t, tt.expectedSessionCode, tt.err.SessionErrorCode())
 
-			// Test Is method
-			var unauthorizedErr UnauthorizedError
-			assert.Equal(t, tt.shouldMatchUnauthorizedErr, errors.Is(tt.err, unauthorizedErr))
-		})
-	}
-}
+// 			// Test Is method
+// 			var unauthorizedErr UnauthorizedError
+// 			assert.Equal(t, tt.shouldMatchUnauthorizedErr, errors.Is(tt.err, unauthorizedErr))
+// 		})
+// 	}
+// }
 
-// Test for error compatibility with standard errors
-func TestErrorCompatibility(t *testing.T) {
-	// Test errors.Is compatibility
-	t.Run("errors.Is with InternalError", func(t *testing.T) {
-		err := InternalError{Reason: "test"}
-		var internalErr InternalError
-		assert.True(t, errors.Is(err, internalErr))
-	})
+// // Test for error compatibility with standard errors
+// func TestErrorCompatibility(t *testing.T) {
+// 	// Test errors.Is compatibility
+// 	t.Run("errors.Is with InternalError", func(t *testing.T) {
+// 		err := InternalError{Reason: "test"}
+// 		var internalErr InternalError
+// 		assert.True(t, errors.Is(err, internalErr))
+// 	})
 
-	t.Run("errors.Is with UnauthorizedError", func(t *testing.T) {
-		err := UnauthorizedError{}
-		var unauthorizedErr UnauthorizedError
-		assert.True(t, errors.Is(err, unauthorizedErr))
-	})
+// 	t.Run("errors.Is with UnauthorizedError", func(t *testing.T) {
+// 		err := UnauthorizedError{}
+// 		var unauthorizedErr UnauthorizedError
+// 		assert.True(t, errors.Is(err, unauthorizedErr))
+// 	})
 
-	// Test errors.As compatibility
-	t.Run("errors.As with InternalError", func(t *testing.T) {
-		err := InternalError{Reason: "test"}
-		var target InternalError
-		assert.True(t, errors.As(err, &target))
-		assert.Equal(t, "test", target.Reason)
-	})
+// 	// Test errors.As compatibility
+// 	t.Run("errors.As with InternalError", func(t *testing.T) {
+// 		err := InternalError{Reason: "test"}
+// 		var target InternalError
+// 		assert.True(t, errors.As(err, &target))
+// 		assert.Equal(t, "test", target.Reason)
+// 	})
 
-	t.Run("errors.As with UnauthorizedError", func(t *testing.T) {
-		err := UnauthorizedError{}
-		var target UnauthorizedError
-		assert.True(t, errors.As(err, &target))
-	})
-}
+// 	t.Run("errors.As with UnauthorizedError", func(t *testing.T) {
+// 		err := UnauthorizedError{}
+// 		var target UnauthorizedError
+// 		assert.True(t, errors.As(err, &target))
+// 	})
+// }

@@ -43,9 +43,9 @@ type relayHandler struct {
 	dests map[*moqt.TrackWriter]struct{}
 }
 
-func (h *relayHandler) ServeTrack(pub *moqt.TrackWriter) {
+func (h *relayHandler) ServeTrack(ctx context.Context, tw *moqt.TrackWriter) {
 	h.mu.Lock()
-	h.dests[pub] = struct{}{}
+	h.dests[tw] = struct{}{}
 	h.mu.Unlock()
 
 	<-h.ctx.Done()

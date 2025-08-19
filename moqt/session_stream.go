@@ -9,12 +9,12 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
 )
 
-func newSessionStream(stream quic.Stream, req *Request) *sessionStream {
+func newSessionStream(stream quic.Stream, req *SetupRequest) *sessionStream {
 	ss := &sessionStream{
-		ctx:       context.WithValue(stream.Context(), &biStreamTypeCtxKey, message.StreamTypeSession),
-		stream:    stream,
-		Request:   req,
-		updatedCh: make(chan struct{}, 1),
+		ctx:          context.WithValue(stream.Context(), &biStreamTypeCtxKey, message.StreamTypeSession),
+		stream:       stream,
+		SetupRequest: req,
+		updatedCh:    make(chan struct{}, 1),
 	}
 	return ss
 }
@@ -35,7 +35,7 @@ type sessionStream struct {
 
 	// Parameters specified by the client and server
 
-	*Request
+	*SetupRequest
 
 	// Parameters specified by the server
 	serverParameters *Parameters
@@ -65,7 +65,7 @@ func (r *response) AwaitAccepted() error {
 	return err
 }
 
-var _ ResponseWriter = (*responseWriter)(nil)
+var _ SetupResponseWriter = (*responseWriter)(nil)
 
 type responseWriter struct {
 	*sessionStream

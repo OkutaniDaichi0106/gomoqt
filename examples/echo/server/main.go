@@ -28,7 +28,7 @@ func main() {
 		Logger: slog.Default(),
 	}
 
-	moqt.HandleFunc("/echo", func(w moqt.ResponseWriter, r *moqt.Request) {
+	moqt.HandleFunc("/echo", func(w moqt.SetupResponseWriter, r *moqt.SetupRequest) {
 		mux := moqt.NewTrackMux()
 		sess, err := server.Accept(w, r, mux)
 		if err != nil {
@@ -59,7 +59,7 @@ func main() {
 					return
 				}
 
-				mux.Announce(ann, moqt.TrackHandlerFunc(func(tw *moqt.TrackWriter) {
+				mux.Announce(ann, moqt.TrackHandlerFunc(func(ctx context.Context, tw *moqt.TrackWriter) {
 					defer tr.Close()
 
 					for {

@@ -29,7 +29,7 @@ func main() {
 	}
 
 	// Register the relay handler with the default mux
-	moqt.PublishFunc(context.Background(), "/server.relay", func(tw *moqt.TrackWriter) {
+	moqt.PublishFunc(context.Background(), "/server.relay", func(ctx context.Context, tw *moqt.TrackWriter) {
 		seq := moqt.GroupSequenceFirst
 		for {
 			time.Sleep(100 * time.Millisecond)
@@ -57,7 +57,7 @@ func main() {
 		}
 	})
 
-	moqt.HandleFunc("/relay", func(w moqt.ResponseWriter, r *moqt.Request) {
+	moqt.HandleFunc("/relay", func(w moqt.SetupResponseWriter, r *moqt.SetupRequest) {
 		sess, err := server.Accept(w, r, nil)
 		if err != nil {
 			slog.Error("failed to accept session", "error", err)

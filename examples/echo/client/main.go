@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	moqt.PublishFunc(context.Background(), "/client.echo", func(tw *moqt.TrackWriter) {
+	moqt.PublishFunc(context.Background(), "/client.echo", func(ctx context.Context, tw *moqt.TrackWriter) {
 		seq := moqt.GroupSequenceFirst
 		for {
 			time.Sleep(100 * time.Millisecond)

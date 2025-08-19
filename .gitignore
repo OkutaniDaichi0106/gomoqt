@@ -1,8 +1,11 @@
 **.pem
-hextra-starter-template
 
-.github/prompts
+**/.github/prompts
 **/node_modules
 **/dist/
 
 **/.jest-cache/
+**/.vscode
+
+**/_vendor
+**/docs/moqt/public

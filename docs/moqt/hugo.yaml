@@ -1,0 +1,129 @@
+baseURL: https://example.org/
+languageCode: en-us
+title: gomoqt
+
+module:
+  imports:
+    - path: github.com/imfing/hextra
+
+# Menu bar configuration
+menu:
+  main:
+    - identifier: about
+      name: About
+      weight: 1
+      url: /about/
+    - identifier: docs
+      name: Docs
+      weight: 2
+      url: /docs/
+    - identifier: blog
+      name: Blog
+      weight: 3
+      url: /blog/
+    - identifier: sponsor
+      name: ❤ Sponsor ↗
+      weight: 4
+      url: https://github.com/sponsors/OkutaniDaichi0106
+    - identifier: search
+      name: Search
+      params:
+        type: search
+    - identifier: github
+      name: GitHub
+      url: "https://github.com/OkutaniDaichi0106/gomoqt"
+      params:
+        icon: github
+    - identifier: v0.10
+      name: Doc(v0.10)
+      parent: docs
+      url: https://gomoqt.github.io/gomoqt/versions/v0.10/
+  sidebar:
+    - identifier: appendix
+      name: Appendix
+      params:
+        type: separator
+      weight: 1
+    - identifier: gomoqt/moqt
+      name: gomoqt/moqt on pkg.go.dev
+      url: https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt/moqt
+      weight: 2
+    - identifier: moq-lite-spec
+      name: "MoQ-Lite Spec (draft-01)"
+      weight: 3
+      url: https://www.ietf.org/archive/id/draft-lcurley-moq-lite-01.html
+    - identifier: quic-video
+      name: "quic.video (MoQ Prototype)"
+      weight: 4
+      url: https://quic.video/
+
+# Logo and Title configuration
+params:
+  page:
+    tabs:
+      sync: true
+  navbar:
+    displayTitle: true
+    displayLogo: false
+    logo:
+      path: /images/logo.png
+      dark: /images/logo-dark.png
+      link: /
+      width: 30
+      height: 30
+    # Wider navbar to better align with the Hextra home layout
+    width: wide
+  blog:
+    list:
+      displayTags: true
+  editURL:
+    enable: true
+    base: "https://github.com/OkutaniDaichi0106/gomoqt/edit/main"
+
+# Allow raw HTML in Markdown for hero wrappers and containers
+markup:
+  highlight:
+    noClasses: false
+  goldmark:
+    renderer:
+      unsafe: true
+
+# Allow inline shortcodes if used inside paragraphs
+enableInlineShortcodes: true
+
+enableGitInfo: true
+
+defaultContentLanguage: en
+
+languages:
+  en:
+    languageName: English
+    weight: 1
+    title: gomoqt
+  ja:
+    languageName: 日本語
+    weight: 2
+    title: gomoqt
+    contentDir: i18n/ja
+  ko:
+    languageName: 한국어
+    weight: 3
+    title: gomoqt
+    contentDir: i18n/ko
+  zh-cn:
+    languageName: 简体中文
+    weight: 4
+    title: gomoqt
+    contentDir: i18n/zh-cn
+  zh-tw:
+    languageName: 繁體中文
+    weight: 5
+    title: gomoqt
+    contentDir: i18n/zh-tw
+  ru:
+    languageName: Русский
+    weight: 6
+    title: gomoqt
+    contentDir: i18n/ru
+
+hasCJKLanguage: true

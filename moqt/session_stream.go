@@ -14,48 +14,10 @@ func newSessionStream(stream quic.Stream, req *Request) *sessionStream {
 		ctx:       context.WithValue(stream.Context(), &biStreamTypeCtxKey, message.StreamTypeSession),
 		stream:    stream,
 		Request:   req,
-		setupDone: make(chan struct{}),
 		updatedCh: make(chan struct{}, 1),
 	}
-
-	go func() {
-		<-ss.setupDone
-
-		var sum message.SessionUpdateMessage
-		var err error
-
-		for {
-			err = sum.Decode(ss.stream)
-			if err != nil {
-				break
-			}
-
-			// Update the session bitrate
-			ss.mu.Lock()
-			ss.remoteBitrate = sum.Bitrate
-
-			// Notify that the session has been updated
-			select {
-			case ss.updatedCh <- struct{}{}:
-			default:
-			}
-
-			ss.mu.Unlock()
-		}
-
-		ss.mu.Lock()
-
-		if ss.updatedCh != nil {
-			close(ss.updatedCh)
-		}
-
-		ss.mu.Unlock()
-	}()
-
 	return ss
 }
-
-var _ ResponseWriter = (*responseWriter)(nil)
 
 type sessionStream struct {
 	ctx       context.Context
@@ -78,7 +40,7 @@ type sessionStream struct {
 	// Parameters specified by the server
 	serverParameters *Parameters
 
-	setupDone chan struct{}
+	listenOnce sync.Once
 }
 
 type response struct {
@@ -102,6 +64,8 @@ func (r *response) AwaitAccepted() error {
 
 	return err
 }
+
+var _ ResponseWriter = (*responseWriter)(nil)
 
 type responseWriter struct {
 	*sessionStream
@@ -159,12 +123,33 @@ func (ss *sessionStream) updateSession(bitrate uint64) error {
 // listenUpdates triggers the goroutine to start listening for session updates
 func (ss *sessionStream) listenUpdates() {
 	// Safe to call multiple times
-	select {
-	case ss.setupDone <- struct{}{}:
-		// Successfully triggered
-	default:
-		// Already triggered or closed
-	}
+	ss.listenOnce.Do(func() {
+		go func() {
+			var sum message.SessionUpdateMessage
+			var err error
+
+			for {
+				err = sum.Decode(ss.stream)
+				if err != nil {
+					break
+				}
+
+				ss.mu.Lock()
+				ss.remoteBitrate = sum.Bitrate
+				select {
+				case ss.updatedCh <- struct{}{}:
+				default:
+				}
+				ss.mu.Unlock()
+			}
+
+			ss.mu.Lock()
+			if ss.updatedCh != nil {
+				close(ss.updatedCh)
+			}
+			ss.mu.Unlock()
+		}()
+	})
 }
 
 func (ss *sessionStream) SessionUpdated() <-chan struct{} {

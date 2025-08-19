@@ -108,7 +108,7 @@ func TestReceiveSubscribeStream_SubscribeID(t *testing.T) {
 			}
 			// Mock the Read method calls for the listenUpdates goroutine
 			mockStream.On("Context").Return(context.Background())
-			mockStream.On("Read", mock.AnythingOfType("[]uint8")).Return(0, io.EOF)
+			mockStream.On("Read", mock.AnythingOfType("[]uint8")).Return(0, io.EOF).Maybe()
 
 			config := &TrackConfig{
 				TrackPriority:    TrackPriority(1),
@@ -169,7 +169,7 @@ func TestReceiveSubscribeStream_TrackConfig(t *testing.T) {
 			}
 			// Mock the Read method calls for the listenUpdates goroutine
 			mockStream.On("Context").Return(context.Background())
-			mockStream.On("Read", mock.AnythingOfType("[]uint8")).Return(0, io.EOF)
+			mockStream.On("Read", mock.AnythingOfType("[]uint8")).Return(0, io.EOF).Maybe()
 
 			rss := newReceiveSubscribeStream(subscribeID, mockStream, tt.config)
 
@@ -206,7 +206,7 @@ func TestReceiveSubscribeStream_Updated(t *testing.T) {
 	}
 	// Mock the Read method calls for the listenUpdates goroutine
 	mockStream.On("Context").Return(context.Background())
-	mockStream.On("Read", mock.AnythingOfType("[]uint8")).Return(0, io.EOF)
+	mockStream.On("Read", mock.AnythingOfType("[]uint8")).Return(0, io.EOF).Maybe()
 
 	config := &TrackConfig{
 		TrackPriority:    TrackPriority(1),
@@ -342,7 +342,7 @@ func TestReceiveSubscribeStream_CloseWithError(t *testing.T) {
 			}
 
 			// Check that context is cancelled
-			assert.Error(t, rss.subCtx.Err(), "Context should be cancelled")
+			assert.Error(t, rss.ctx.Err(), "Context should be cancelled")
 
 			mockStream.AssertExpectations(t)
 		})
@@ -373,10 +373,10 @@ func TestReceiveSubscribeStream_CloseWithError_MultipleClose(t *testing.T) {
 
 	err := rss.closeWithError(InternalSubscribeErrorCode)
 	assert.NoError(t, err, "CloseWithError should return error when already closed")
-	assert.Error(t, rss.subCtx.Err(), "Context should be cancelled after first closeWithError")
+	assert.Error(t, rss.ctx.Err(), "Context should be cancelled after first closeWithError")
 
 	// Get the cause and check its type
-	cause := Cause(rss.subCtx)
+	cause := Cause(rss.ctx)
 	var subscribeErr *SubscribeError
 	assert.ErrorAs(t, cause, &subscribeErr, "closeErr should be a SubscribeError")
 }
@@ -390,7 +390,7 @@ func TestReceiveSubscribeStream_ConcurrentAccess(t *testing.T) {
 	}
 	// Mock the Read method calls for the listenUpdates goroutine
 	mockStream.On("Context").Return(context.Background())
-	mockStream.On("Read", mock.AnythingOfType("[]uint8")).Return(0, io.EOF)
+	mockStream.On("Read", mock.AnythingOfType("[]uint8")).Return(0, io.EOF).Maybe()
 
 	config := &TrackConfig{
 		TrackPriority:    TrackPriority(1),
@@ -459,7 +459,7 @@ func TestReceiveSubscribeStream_UpdateChannelBehavior(t *testing.T) {
 		}
 		// Mock the Read method calls for the listenUpdates goroutine
 		mockStream.On("Context").Return(context.Background())
-		mockStream.On("Read", mock.AnythingOfType("[]uint8")).Return(0, io.EOF)
+		mockStream.On("Read", mock.AnythingOfType("[]uint8")).Return(0, io.EOF).Maybe()
 		config := &TrackConfig{TrackPriority: TrackPriority(1)}
 
 		rss := newReceiveSubscribeStream(subscribeID, mockStream, config)

@@ -56,17 +56,19 @@ func (a *Announcement) BroadcastPath() BroadcastPath {
 	return a.path
 }
 
-func (a *Announcement) AwaitEnd() <-chan struct{} {
-	return a.ctx.Done()
+func (a *Announcement) Context() context.Context {
+	return a.ctx
 }
 
 func (a *Announcement) OnEnd(f func()) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
 	if a.ctx.Err() != nil {
 		f()
 		return
 	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	a.onEndFuncs = append(a.onEndFuncs, f)
 }
 
@@ -79,10 +81,7 @@ func (a *Announcement) end() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	workerCount := runtime.NumCPU()
-	if workerCount > len(a.onEndFuncs) {
-		workerCount = len(a.onEndFuncs)
-	}
+	workerCount := min(runtime.NumCPU(), len(a.onEndFuncs))
 	if workerCount == 0 {
 		workerCount = 1
 	}

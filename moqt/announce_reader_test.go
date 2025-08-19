@@ -66,7 +66,7 @@ func TestAnnouncementReader_ReceiveAnnouncement(t *testing.T) {
 					},
 				}
 				mockStream.On("Context").Return(context.Background())
-				mockStream.On("Read", mock.AnythingOfType("[]uint8"))
+				mockStream.On("Read", mock.AnythingOfType("[]uint8")).Maybe()
 				// Add expectations for potential CloseWithError calls from goroutines
 				mockStream.On("CancelRead", mock.Anything).Return().Maybe()
 				mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
@@ -86,7 +86,7 @@ func TestAnnouncementReader_ReceiveAnnouncement(t *testing.T) {
 					},
 				}
 				mockStream.On("Context").Return(context.Background())
-				mockStream.On("Read", mock.AnythingOfType("[]uint8"))
+				mockStream.On("Read", mock.AnythingOfType("[]uint8")).Maybe()
 				// Don't provide initial suffixes so that ReceiveAnnouncement will wait
 				return newAnnouncementReader(mockStream, "/test/", []string{})
 			}(),
@@ -103,7 +103,7 @@ func TestAnnouncementReader_ReceiveAnnouncement(t *testing.T) {
 					},
 				}
 				mockStream.On("Context").Return(context.Background())
-				mockStream.On("Read", mock.AnythingOfType("[]uint8"))
+				mockStream.On("Read", mock.AnythingOfType("[]uint8")).Maybe()
 				mockStream.On("Close").Return(nil)
 				// Don't provide initial suffixes so that ReceiveAnnouncement will wait
 				ras := newAnnouncementReader(mockStream, "/test/", []string{})
@@ -337,7 +337,7 @@ func TestAnnouncementReader_ConcurrentAccess(t *testing.T) {
 			select {}
 		},
 	}
-	mockStream.On("Read", mock.AnythingOfType("[]uint8"))
+	mockStream.On("Read", mock.AnythingOfType("[]uint8")).Maybe()
 	mockStream.On("Close").Return(nil)
 	mockStream.On("Context").Return(context.Background())
 
@@ -451,7 +451,7 @@ func TestAnnouncementReader_InvalidMessage(t *testing.T) {
 	mockStream := &MockQUICStream{
 		ReadFunc: buf.Read,
 	}
-	mockStream.On("Read", mock.AnythingOfType("[]uint8"))
+	mockStream.On("Read", mock.AnythingOfType("[]uint8")).Maybe()
 	mockStream.On("Context").Return(context.Background())
 
 	ras := newAnnouncementReader(mockStream, "/test/", []string{"valid_announcement"})
@@ -492,7 +492,7 @@ func TestAnnouncementReader_ActiveThenEnded(t *testing.T) {
 			select {}
 		},
 	}
-	mockStream.On("Read", mock.AnythingOfType("[]uint8"))
+	mockStream.On("Read", mock.AnythingOfType("[]uint8")).Maybe()
 	mockStream.On("Context").Return(context.Background())
 
 	ras := newAnnouncementReader(mockStream, "/test/", []string{})
@@ -540,7 +540,7 @@ func TestAnnouncementReader_MultipleActiveStreams(t *testing.T) {
 			select {}
 		},
 	}
-	mockStream.On("Read", mock.AnythingOfType("[]uint8"))
+	mockStream.On("Read", mock.AnythingOfType("[]uint8")).Maybe()
 	mockStream.On("Context").Return(context.Background())
 
 	ras := newAnnouncementReader(mockStream, "/test/", []string{})
@@ -598,7 +598,7 @@ func TestAnnouncementReader_DuplicateActiveError(t *testing.T) {
 			select {}
 		},
 	}
-	mockStream.On("Read", mock.AnythingOfType("[]uint8"))
+	mockStream.On("Read", mock.AnythingOfType("[]uint8")).Maybe()
 	mockStream.On("Context").Return(context.Background())
 	// Expect CloseWithError calls for duplicate announcement error
 	mockStream.On("CancelRead", mock.Anything).Return()
@@ -649,7 +649,7 @@ func TestAnnouncementReader_EndNonExistentStreamError(t *testing.T) {
 			select {}
 		},
 	}
-	mockStream.On("Read", mock.AnythingOfType("[]uint8"))
+	mockStream.On("Read", mock.AnythingOfType("[]uint8")).Maybe()
 	mockStream.On("Context").Return(context.Background())
 	// Expect CloseWithError calls for ending non-existent stream error
 	mockStream.On("CancelRead", mock.Anything).Return()
@@ -697,7 +697,7 @@ func TestAnnouncementReader_NotifyChannel(t *testing.T) {
 			select {}
 		},
 	}
-	mockStream.On("Read", mock.AnythingOfType("[]uint8"))
+	mockStream.On("Read", mock.AnythingOfType("[]uint8")).Maybe()
 	mockStream.On("Context").Return(context.Background())
 
 	// Don't provide initial suffixes so we only get the stream message
@@ -792,7 +792,7 @@ func TestAnnouncementReader_BoundaryValues(t *testing.T) {
 					select {}
 				},
 			}
-			mockStream.On("Read", mock.AnythingOfType("[]uint8"))
+			mockStream.On("Read", mock.AnythingOfType("[]uint8")).Maybe()
 			mockStream.On("Context").Return(context.Background())
 
 			// Don't provide initial suffixes so we only get the stream message
@@ -860,7 +860,7 @@ func TestAnnouncementReader_StreamErrors(t *testing.T) {
 					return 0, testError
 				},
 			}
-			mockStream.On("Read", mock.AnythingOfType("[]uint8"))
+			mockStream.On("Read", mock.AnythingOfType("[]uint8")).Maybe()
 			mockStream.On("Context").Return(ctx)
 
 			ras := newAnnouncementReader(mockStream, "/test/", []string{"valid_announcement"})

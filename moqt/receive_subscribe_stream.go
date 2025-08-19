@@ -19,7 +19,7 @@ func newReceiveSubscribeStream(id SubscribeID, stream quic.Stream, config *Track
 		config:      config,
 		stream:      stream,
 		updatedCh:   make(chan struct{}, 1),
-		subCtx:      context.WithValue(stream.Context(), &biStreamTypeCtxKey, message.StreamTypeSubscribe),
+		ctx:         context.WithValue(stream.Context(), &biStreamTypeCtxKey, message.StreamTypeSubscribe),
 	}
 
 	// Listen for updates in a separate goroutine
@@ -29,7 +29,7 @@ func newReceiveSubscribeStream(id SubscribeID, stream quic.Stream, config *Track
 
 		for {
 			rss.configMu.Lock()
-			if rss.subCtx.Err() != nil {
+			if rss.ctx.Err() != nil {
 				rss.configMu.Unlock()
 				break
 			}
@@ -80,7 +80,7 @@ type receiveSubscribeStream struct {
 	config    *TrackConfig
 	updatedCh chan struct{}
 
-	subCtx context.Context
+	ctx context.Context
 }
 
 func (rss *receiveSubscribeStream) SubscribeID() SubscribeID {
@@ -92,8 +92,8 @@ func (rss *receiveSubscribeStream) writeInfo(info Info) error {
 	rss.acceptOnce.Do(func() {
 		rss.configMu.Lock()
 		defer rss.configMu.Unlock()
-		if rss.subCtx.Err() != nil {
-			err = context.Cause(rss.subCtx)
+		if rss.ctx.Err() != nil {
+			err = Cause(rss.ctx)
 			return
 		}
 		sum := message.SubscribeOkMessage{
@@ -129,8 +129,8 @@ func (rss *receiveSubscribeStream) close() error {
 	rss.configMu.Lock()
 	defer rss.configMu.Unlock()
 
-	if rss.subCtx.Err() != nil {
-		return context.Cause(rss.subCtx)
+	if rss.ctx.Err() != nil {
+		return Cause(rss.ctx)
 	}
 
 	// Close the write-side stream
@@ -154,8 +154,8 @@ func (rss *receiveSubscribeStream) closeWithError(code SubscribeErrorCode) error
 	rss.configMu.Lock()
 	defer rss.configMu.Unlock()
 
-	if rss.subCtx.Err() != nil {
-		return Cause(rss.subCtx)
+	if rss.ctx.Err() != nil {
+		return Cause(rss.ctx)
 	}
 
 	strErrCode := quic.StreamErrorCode(code)

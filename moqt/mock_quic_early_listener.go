@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-var _ quic.EarlyListener = (*MockEarlyListener)(nil)
+var _ quic.Listener = (*MockEarlyListener)(nil)
 
 // MockEarlyListener implements a mock for quic.EarlyListener using mock.Mock
 type MockEarlyListener struct {

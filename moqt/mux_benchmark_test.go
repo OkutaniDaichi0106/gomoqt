@@ -14,9 +14,8 @@ import (
 // BenchmarkTrackMux_NewTrackMux benchmarks TrackMux creation
 func BenchmarkTrackMux_NewTrackMux(b *testing.B) {
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		mux := NewTrackMux()
 		_ = mux
 	}
@@ -29,18 +28,18 @@ func BenchmarkTrackMux_Handle(b *testing.B) {
 		b.Run(fmt.Sprintf("size-%d", size), func(b *testing.B) {
 			mux := NewTrackMux()
 			ctx := context.Background()
-			handler := TrackHandlerFunc(func(tw *TrackWriter) {})
+			handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {})
 
 			// Pre-generate paths to avoid string generation overhead during benchmark
 			paths := make([]BroadcastPath, size)
-			for i := 0; i < size; i++ {
+			for i := range size {
 				paths[i] = BroadcastPath(fmt.Sprintf("/path/%d", i))
 			}
 
 			b.ReportAllocs()
 			b.ResetTimer()
 
-			for i := 0; i < b.N; i++ {
+			for i := 0; b.Loop(); i++ {
 				// Use modulo to cycle through paths for repeated benchmarks
 				path := paths[i%size]
 				mux.Publish(ctx, path, handler)
@@ -57,11 +56,11 @@ func BenchmarkTrackMux_Handler(b *testing.B) {
 		b.Run(fmt.Sprintf("size-%d", size), func(b *testing.B) {
 			mux := NewTrackMux()
 			ctx := context.Background()
-			handler := TrackHandlerFunc(func(tw *TrackWriter) {})
+			handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {})
 
 			// Pre-populate with handlers
 			paths := make([]BroadcastPath, size)
-			for i := 0; i < size; i++ {
+			for i := range size {
 				path := BroadcastPath(fmt.Sprintf("/path/%d", i))
 				paths[i] = path
 				mux.Publish(ctx, path, handler)
@@ -70,9 +69,9 @@ func BenchmarkTrackMux_Handler(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 
-			for i := 0; i < b.N; i++ {
+			for i := 0; b.Loop(); i++ {
 				path := paths[i%size]
-				_ = mux.TrackHandler(path)
+				mux.TrackHandler(path)
 			}
 		})
 	}
@@ -85,7 +84,7 @@ func BenchmarkTrackMux_ServeTrack(b *testing.B) {
 	path := BroadcastPath("/test/path")
 
 	// Register a simple handler
-	mux.Publish(ctx, path, TrackHandlerFunc(func(tw *TrackWriter) {
+	mux.Publish(ctx, path, TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {
 		// Simple no-op handler for benchmarking
 	}))
 
@@ -102,10 +101,9 @@ func BenchmarkTrackMux_ServeTrack(b *testing.B) {
 	trackWriter := newTrackWriter(path, TrackName("test_track"), nil, openUniStreamFunc, onCloseTrack)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
-		mux.ServeTrack(trackWriter)
+	for b.Loop() {
+		mux.serveTrack(trackWriter)
 	}
 }
 
@@ -117,7 +115,7 @@ func BenchmarkTrackMux_ServeAnnouncements(b *testing.B) {
 		b.Run(fmt.Sprintf("size-%d", size), func(b *testing.B) {
 			mux := NewTrackMux()
 			ctx := context.Background()
-			handler := TrackHandlerFunc(func(tw *TrackWriter) {})
+			handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {})
 
 			// Pre-populate with handlers under /room/ prefix
 			for i := 0; i < size; i++ {
@@ -132,8 +130,8 @@ func BenchmarkTrackMux_ServeAnnouncements(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 
-			for i := 0; i < b.N; i++ {
-				mux.ServeAnnouncements(announceWriter, "/room/")
+			for b.Loop() {
+				mux.serveAnnouncements(announceWriter, "/room/")
 			}
 		})
 	}
@@ -143,12 +141,12 @@ func BenchmarkTrackMux_ServeAnnouncements(b *testing.B) {
 func BenchmarkTrackMux_ConcurrentRead(b *testing.B) {
 	mux := NewTrackMux()
 	ctx := context.Background()
-	handler := TrackHandlerFunc(func(tw *TrackWriter) {})
+	handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {})
 
 	// Pre-populate with handlers
 	const numPaths = 1000
 	paths := make([]BroadcastPath, numPaths)
-	for i := 0; i < numPaths; i++ {
+	for i := range numPaths {
 		path := BroadcastPath(fmt.Sprintf("/path/%d", i))
 		paths[i] = path
 		mux.Publish(ctx, path, handler)
@@ -161,7 +159,7 @@ func BenchmarkTrackMux_ConcurrentRead(b *testing.B) {
 		i := 0
 		for pb.Next() {
 			path := paths[i%numPaths]
-			_ = mux.TrackHandler(path)
+			mux.TrackHandler(path)
 			i++
 		}
 	})
@@ -169,7 +167,7 @@ func BenchmarkTrackMux_ConcurrentRead(b *testing.B) {
 
 // BenchmarkTrackMux_ConcurrentWrite benchmarks concurrent handler registration
 func BenchmarkTrackMux_ConcurrentWrite(b *testing.B) {
-	handler := TrackHandlerFunc(func(tw *TrackWriter) {})
+	handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {})
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -190,12 +188,12 @@ func BenchmarkTrackMux_ConcurrentWrite(b *testing.B) {
 func BenchmarkTrackMux_MixedWorkload(b *testing.B) {
 	mux := NewTrackMux()
 	ctx := context.Background()
-	handler := TrackHandlerFunc(func(tw *TrackWriter) {})
+	handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {})
 
 	// Pre-populate with some handlers
 	const initialPaths = 500
 	paths := make([]BroadcastPath, initialPaths)
-	for i := 0; i < initialPaths; i++ {
+	for i := range initialPaths {
 		path := BroadcastPath(fmt.Sprintf("/existing/%d", i))
 		paths[i] = path
 		mux.Publish(ctx, path, handler)
@@ -217,7 +215,7 @@ func BenchmarkTrackMux_MixedWorkload(b *testing.B) {
 			} else {
 				// 90% reads - handler lookup
 				path := paths[localCounter%initialPaths]
-				_ = mux.TrackHandler(path)
+				mux.TrackHandler(path)
 			}
 			localCounter++
 		}
@@ -232,11 +230,11 @@ func BenchmarkTrackMux_DeepNestedPaths(b *testing.B) {
 		b.Run(fmt.Sprintf("depth-%d", depth), func(b *testing.B) {
 			mux := NewTrackMux()
 			ctx := context.Background()
-			handler := TrackHandlerFunc(func(tw *TrackWriter) {})
+			handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {})
 
 			// Create deeply nested path
 			pathBuilder := "/root"
-			for i := 0; i < depth; i++ {
+			for i := range depth {
 				pathBuilder += fmt.Sprintf("/level%d", i)
 			}
 			path := BroadcastPath(pathBuilder)
@@ -248,7 +246,7 @@ func BenchmarkTrackMux_DeepNestedPaths(b *testing.B) {
 				if i%2 == 0 {
 					mux.Publish(ctx, path, handler)
 				} else {
-					_ = mux.TrackHandler(path)
+					mux.TrackHandler(path)
 				}
 			}
 		})
@@ -269,21 +267,21 @@ func BenchmarkTrackMux_MemoryUsage(b *testing.B) {
 
 			b.ResetTimer()
 
-			for i := 0; i < b.N; i++ {
+			for i := 0; b.Loop(); i++ {
 				mux := NewTrackMux()
 				ctx := context.Background()
-				handler := TrackHandlerFunc(func(tw *TrackWriter) {})
+				handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {})
 
 				// Register many handlers
-				for j := 0; j < size; j++ {
+				for j := range size {
 					path := BroadcastPath(fmt.Sprintf("/path/%d/%d", i, j))
 					mux.Publish(ctx, path, handler)
 				}
 
 				// Perform some operations to measure realistic memory usage
-				for j := 0; j < 100; j++ {
+				for j := range 100 {
 					lookupPath := BroadcastPath(fmt.Sprintf("/path/%d/%d", i, j%size))
-					_ = mux.TrackHandler(lookupPath)
+					mux.TrackHandler(lookupPath)
 				}
 			}
 
@@ -301,12 +299,12 @@ func BenchmarkTrackMux_AllocationPatterns(b *testing.B) {
 	b.Run("handler-registration", func(b *testing.B) {
 		mux := NewTrackMux()
 		ctx := context.Background()
-		handler := TrackHandlerFunc(func(tw *TrackWriter) {})
+		handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {})
 
 		b.ReportAllocs()
 		b.ResetTimer()
 
-		for i := 0; i < b.N; i++ {
+		for i := 0; b.Loop(); i++ {
 			path := BroadcastPath(fmt.Sprintf("/alloc/test/%d", i))
 			mux.Publish(ctx, path, handler)
 		}
@@ -315,11 +313,11 @@ func BenchmarkTrackMux_AllocationPatterns(b *testing.B) {
 	b.Run("handler-lookup", func(b *testing.B) {
 		mux := NewTrackMux()
 		ctx := context.Background()
-		handler := TrackHandlerFunc(func(tw *TrackWriter) {})
+		handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {})
 
 		// Pre-register handlers
 		paths := make([]BroadcastPath, 1000)
-		for i := 0; i < 1000; i++ {
+		for i := range 1000 {
 			path := BroadcastPath(fmt.Sprintf("/alloc/lookup/%d", i))
 			paths[i] = path
 			mux.Publish(ctx, path, handler)
@@ -328,9 +326,9 @@ func BenchmarkTrackMux_AllocationPatterns(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 
-		for i := 0; i < b.N; i++ {
+		for i := 0; b.Loop(); i++ {
 			path := paths[i%1000]
-			_ = mux.TrackHandler(path)
+			mux.TrackHandler(path)
 		}
 	})
 }
@@ -347,9 +345,9 @@ func BenchmarkTrackMux_StringOperations(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 
-		for i := 0; i < b.N; i++ {
+		for i := 0; b.Loop(); i++ {
 			path := paths[i%len(paths)]
-			_ = isValidPath(path)
+			isValidPath(path)
 		}
 	})
 
@@ -363,9 +361,9 @@ func BenchmarkTrackMux_StringOperations(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 
-		for i := 0; i < b.N; i++ {
+		for i := 0; b.Loop(); i++ {
 			prefix := prefixes[i%len(prefixes)]
-			_ = isValidPrefix(prefix)
+			isValidPrefix(prefix)
 		}
 	})
 
@@ -379,9 +377,9 @@ func BenchmarkTrackMux_StringOperations(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 
-		for i := 0; i < b.N; i++ {
+		for i := 0; b.Loop(); i++ {
 			path := paths[i%len(paths)]
-			_ = strings.Split(string(path), "/")
+			strings.Split(string(path), "/")
 		}
 	})
 }
@@ -390,11 +388,11 @@ func BenchmarkTrackMux_StringOperations(b *testing.B) {
 func BenchmarkTrackMux_LockContention(b *testing.B) {
 	mux := NewTrackMux()
 	ctx := context.Background()
-	handler := TrackHandlerFunc(func(tw *TrackWriter) {})
+	handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {})
 
 	// Pre-populate with handlers
 	const numPaths = 1000
-	for i := 0; i < numPaths; i++ {
+	for i := range numPaths {
 		path := BroadcastPath(fmt.Sprintf("/path/%d", i))
 		mux.Publish(ctx, path, handler)
 	}
@@ -407,7 +405,7 @@ func BenchmarkTrackMux_LockContention(b *testing.B) {
 			i := 0
 			for pb.Next() {
 				path := BroadcastPath(fmt.Sprintf("/path/%d", i%numPaths))
-				_ = mux.TrackHandler(path)
+				mux.TrackHandler(path)
 				i++
 			}
 		})
@@ -442,7 +440,7 @@ func BenchmarkTrackMux_LockContention(b *testing.B) {
 				} else {
 					// 95% reads
 					path := BroadcastPath(fmt.Sprintf("/path/%d", i%numPaths))
-					_ = mux.TrackHandler(path)
+					mux.TrackHandler(path)
 				}
 				i++
 			}
@@ -458,7 +456,7 @@ func BenchmarkTrackMux_AnnouncementTree(b *testing.B) {
 		b.Run(fmt.Sprintf("tree-traversal-size-%d", size), func(b *testing.B) {
 			mux := NewTrackMux()
 			ctx := context.Background()
-			handler := TrackHandlerFunc(func(tw *TrackWriter) {})
+			handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {})
 
 			// Create a deep tree structure
 			for i := 0; i < size; i++ {
@@ -472,8 +470,8 @@ func BenchmarkTrackMux_AnnouncementTree(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 
-			for i := 0; i < b.N; i++ {
-				mux.ServeAnnouncements(mockWriter, "/level1/level2/")
+			for b.Loop() {
+				mux.serveAnnouncements(mockWriter, "/level1/level2/")
 			}
 		})
 	}
@@ -487,10 +485,10 @@ func BenchmarkTrackMux_MapOperations(b *testing.B) {
 		b.Run(fmt.Sprintf("map-lookup-size-%d", size), func(b *testing.B) {
 			// Create a map similar to handlerIndex
 			handlerMap := make(map[BroadcastPath]TrackHandler, size)
-			handler := TrackHandlerFunc(func(tw *TrackWriter) {})
+			handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {})
 
 			// Pre-populate the map
-			for i := 0; i < size; i++ {
+			for i := range size {
 				path := BroadcastPath(fmt.Sprintf("/path/%d", i))
 				handlerMap[path] = handler
 			}
@@ -504,7 +502,7 @@ func BenchmarkTrackMux_MapOperations(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 
-			for i := 0; i < b.N; i++ {
+			for i := 0; b.Loop(); i++ {
 				path := lookupPaths[i%1000]
 				_ = handlerMap[path]
 			}
@@ -516,14 +514,14 @@ func BenchmarkTrackMux_MapOperations(b *testing.B) {
 func BenchmarkTrackMux_GCPressure(b *testing.B) {
 	b.Run("frequent-mux-creation", func(b *testing.B) {
 		ctx := context.Background()
-		handler := TrackHandlerFunc(func(tw *TrackWriter) {})
+		handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {})
 
 		b.ReportAllocs()
 		b.ResetTimer()
 
-		for i := 0; i < b.N; i++ {
+		for i := 0; b.Loop(); i++ {
 			mux := NewTrackMux()
-			for j := 0; j < 10; j++ {
+			for j := range 10 {
 				path := BroadcastPath(fmt.Sprintf("/temp/%d/%d", i, j))
 				mux.Publish(ctx, path, handler)
 			}
@@ -534,12 +532,12 @@ func BenchmarkTrackMux_GCPressure(b *testing.B) {
 	b.Run("long-lived-mux", func(b *testing.B) {
 		mux := NewTrackMux()
 		ctx := context.Background()
-		handler := TrackHandlerFunc(func(tw *TrackWriter) {})
+		handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {})
 
 		b.ReportAllocs()
 		b.ResetTimer()
 
-		for i := 0; i < b.N; i++ {
+		for i := 0; b.Loop(); i++ {
 			path := BroadcastPath(fmt.Sprintf("/persistent/%d", i))
 			mux.Publish(ctx, path, handler)
 
@@ -557,14 +555,14 @@ func BenchmarkTrackMux_CPUProfileOptimization(b *testing.B) {
 		b.Run("cpu-hotspots", func(b *testing.B) {
 			mux := NewTrackMux()
 			ctx := context.Background()
-			handler := TrackHandlerFunc(func(tw *TrackWriter) {})
+			handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {})
 
 			// Create a scenario that will show up clearly in CPU profiles
 			const pathDepth = 10
 			const pathCount = 1000
 
 			// Register deeply nested paths
-			for i := 0; i < pathCount; i++ {
+			for i := range pathCount {
 				var pathBuilder strings.Builder
 				for depth := 0; depth < pathDepth; depth++ {
 					pathBuilder.WriteString(fmt.Sprintf("/level%d", depth))
@@ -577,7 +575,7 @@ func BenchmarkTrackMux_CPUProfileOptimization(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 
-			for i := 0; i < b.N; i++ {
+			for i := 0; b.Loop(); i++ {
 				// Mix of operations that will show up in CPU profile
 				pathIndex := i % pathCount
 				var pathBuilder strings.Builder
@@ -588,7 +586,7 @@ func BenchmarkTrackMux_CPUProfileOptimization(b *testing.B) {
 				path := BroadcastPath(pathBuilder.String())
 
 				// Operations that will consume CPU cycles
-				_ = mux.TrackHandler(path) // Map lookup
+				mux.TrackHandler(path) // Map lookup
 				trackWriter := newTrackWriter(path, TrackName(fmt.Sprintf("track-%d", i)), nil, func() (quic.SendStream, error) {
 					mockSendStream := &MockQUICSendStream{}
 					mockSendStream.On("CancelWrite", mock.Anything).Return()
@@ -597,7 +595,7 @@ func BenchmarkTrackMux_CPUProfileOptimization(b *testing.B) {
 					mockSendStream.On("Write", mock.Anything).Return(0, nil)
 					return mockSendStream, nil
 				}, func() {})
-				mux.ServeTrack(trackWriter)
+				mux.serveTrack(trackWriter)
 			}
 		})
 	}

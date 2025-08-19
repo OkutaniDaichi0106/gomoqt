@@ -184,7 +184,7 @@ func TestSendSubscribeStream_Close(t *testing.T) {
 	mockStream.On("Close").Run(func(args mock.Arguments) {
 		cancel(nil) // Simulate stream closure cancelling the context
 	}).Return(nil)
-	mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return()
+	mockStream.On("CancelRead", mock.Anything).Return()
 
 	sss := newSendSubscribeStream(id, mockStream, config)
 
@@ -208,13 +208,13 @@ func TestSendSubscribeStream_CloseWithError(t *testing.T) {
 	mockStream.On("StreamID").Return(quic.StreamID(1))
 	ctx, cancel := context.WithCancelCause(context.Background())
 	mockStream.On("Context").Return(ctx)
-	mockStream.On("CancelWrite", mock.AnythingOfType("quic.StreamErrorCode")).Run(func(args mock.Arguments) {
+	mockStream.On("CancelWrite", mock.Anything).Run(func(args mock.Arguments) {
 		cancel(&quic.StreamError{
 			StreamID:  quic.StreamID(1),
 			ErrorCode: quic.StreamErrorCode(args[0].(quic.StreamErrorCode)),
 		})
 	}).Return()
-	mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return()
+	mockStream.On("CancelRead", mock.Anything).Return()
 
 	sss := newSendSubscribeStream(id, mockStream, config)
 
@@ -244,13 +244,13 @@ func TestSendSubscribeStream_CloseWithError_NilError(t *testing.T) {
 	mockStream.On("StreamID").Return(quic.StreamID(1))
 	ctx, cancel := context.WithCancelCause(context.Background())
 	mockStream.On("Context").Return(ctx)
-	mockStream.On("CancelWrite", mock.AnythingOfType("quic.StreamErrorCode")).Run(func(args mock.Arguments) {
+	mockStream.On("CancelWrite", mock.Anything).Run(func(args mock.Arguments) {
 		cancel(&quic.StreamError{
 			StreamID:  quic.StreamID(1),
-			ErrorCode: quic.StreamErrorCode(args[0].(quic.StreamErrorCode)),
+			ErrorCode: quic.StreamErrorCode(args[0].(quic.StreamErrorCode)), // 型はStreamErrorCodeで渡される
 		})
 	}).Return()
-	mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return()
+	mockStream.On("CancelRead", mock.Anything).Return()
 
 	sss := newSendSubscribeStream(id, mockStream, config)
 
@@ -364,13 +364,13 @@ func TestSendSubscribeStream_UpdateSubscribeWriteError(t *testing.T) {
 	mockStream.On("Write", mock.Anything).Return(0, assert.AnError)
 	ctx, cancel := context.WithCancelCause(context.Background())
 	mockStream.On("Context").Return(ctx)
-	mockStream.On("CancelWrite", mock.AnythingOfType("quic.StreamErrorCode")).Run(func(args mock.Arguments) {
+	mockStream.On("CancelWrite", mock.Anything).Run(func(args mock.Arguments) {
 		cancel(&quic.StreamError{
 			StreamID:  quic.StreamID(1),
 			ErrorCode: quic.StreamErrorCode(args[0].(quic.StreamErrorCode)),
 		})
 	}).Return()
-	mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return()
+	mockStream.On("CancelRead", mock.Anything).Return()
 
 	sss := newSendSubscribeStream(id, mockStream, config)
 
@@ -406,7 +406,7 @@ func TestSendSubscribeStream_UpdateSubscribeClosedStream(t *testing.T) {
 		cancel(nil) // Simulate stream closure cancelling the context
 	}).Return(nil)
 	mockStream.On("Context").Return(ctx)
-	mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return()
+	mockStream.On("CancelRead", mock.Anything).Return()
 
 	sss := newSendSubscribeStream(id, mockStream, config)
 
@@ -436,7 +436,7 @@ func TestSendSubscribeStream_CloseAlreadyClosed(t *testing.T) {
 	mockStream.On("Close").Run(func(args mock.Arguments) {
 		cancel(nil)
 	}).Return(nil)
-	mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return()
+	mockStream.On("CancelRead", mock.Anything).Return()
 
 	sss := newSendSubscribeStream(SubscribeID(110), mockStream, &TrackConfig{})
 
@@ -462,7 +462,7 @@ func TestSendSubscribeStream_CloseWithError_MultipleClose(t *testing.T) {
 	mockStream.On("Context").Return(ctx)
 
 	var callCount int
-	mockStream.On("CancelWrite", mock.AnythingOfType("quic.StreamErrorCode")).Run(func(args mock.Arguments) {
+	mockStream.On("CancelWrite", mock.Anything).Run(func(args mock.Arguments) {
 		callCount++
 		if callCount == 1 {
 			cancel(&quic.StreamError{
@@ -471,7 +471,7 @@ func TestSendSubscribeStream_CloseWithError_MultipleClose(t *testing.T) {
 			})
 		}
 	}).Return().Twice() // Called twice
-	mockStream.On("CancelRead", mock.AnythingOfType("quic.StreamErrorCode")).Return().Twice() // Called twice
+	mockStream.On("CancelRead", mock.Anything).Return().Twice() // Called twice
 
 	sss := newSendSubscribeStream(SubscribeID(111), mockStream, &TrackConfig{})
 

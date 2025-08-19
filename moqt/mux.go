@@ -21,8 +21,7 @@ var defaultMux = NewTrackMux()
 func NewTrackMux() *TrackMux {
 	return &TrackMux{
 		announcementTree:  *newAnnouncingNode(),
-		handlerIndex:      make(map[BroadcastPath]TrackHandler),
-		announcementIndex: make(map[BroadcastPath]*Announcement),
+		trackHandlerIndex: make(map[BroadcastPath]*announcedTrackHandler),
 	}
 }
 
@@ -32,7 +31,7 @@ func Publish(ctx context.Context, path BroadcastPath, handler TrackHandler) {
 	DefaultMux.Publish(ctx, path, handler)
 }
 
-func PublishFunc(ctx context.Context, path BroadcastPath, f func(tw *TrackWriter)) {
+func PublishFunc(ctx context.Context, path BroadcastPath, f func(ctx context.Context, tw *TrackWriter)) {
 	DefaultMux.PublishFunc(ctx, path, f)
 }
 
@@ -44,15 +43,14 @@ func Announce(announcement *Announcement, handler TrackHandler) {
 // It maintains separate trees for track routing and announcements, allowing efficient
 // lookup of handlers and distribution of announcements to interested subscribers.
 type TrackMux struct {
-	handlerMu    sync.RWMutex
-	handlerIndex map[BroadcastPath]TrackHandler
+	handlerMu         sync.RWMutex
+	trackHandlerIndex map[BroadcastPath]*announcedTrackHandler
 
-	announcementTree  announcingNode
-	treeMu            sync.RWMutex
-	announcementIndex map[BroadcastPath]*Announcement
+	announcementTree announcingNode
+	treeMu           sync.RWMutex
 }
 
-func (mux *TrackMux) PublishFunc(ctx context.Context, path BroadcastPath, f func(tw *TrackWriter)) {
+func (mux *TrackMux) PublishFunc(ctx context.Context, path BroadcastPath, f func(ctx context.Context, tw *TrackWriter)) {
 	mux.Publish(ctx, path, TrackHandlerFunc(f))
 }
 
@@ -70,83 +68,51 @@ func (mux *TrackMux) Publish(ctx context.Context, path BroadcastPath, handler Tr
 	mux.Announce(ann, handler)
 }
 
-func (mux *TrackMux) addHandler(path BroadcastPath, handler TrackHandler) {
+func (mux *TrackMux) registerHandler(path BroadcastPath, handler *announcedTrackHandler) {
 	mux.handlerMu.Lock()
-	defer mux.handlerMu.Unlock()
-
-	mux.handlerIndex[path] = handler
-}
-
-func (mux *TrackMux) removeHandler(path BroadcastPath) {
-	mux.handlerMu.Lock()
-	defer mux.handlerMu.Unlock()
-	delete(mux.handlerIndex, path)
-}
-
-func (mux *TrackMux) addAnnouncement(announcement *Announcement) (lastNode *announcingNode) {
-	path := announcement.BroadcastPath()
-
-	var old *Announcement
-	mux.treeMu.Lock()
-	old, ok := mux.announcementIndex[path]
-	if ok {
-		if old == announcement {
-			mux.treeMu.Unlock()
-			return // Already registered
-		}
-	}
-	mux.announcementIndex[path] = announcement
-	mux.treeMu.Unlock()
-
-	if old != nil {
-		old.end()
-	}
-
-	segments := strings.Split(string(path), "/")
-	return mux.announcementTree.addAnnouncement(segments, announcement)
-}
-
-func (mux *TrackMux) removeAnnouncementIndex(ann *Announcement) {
-	path := ann.BroadcastPath()
-	mux.treeMu.Lock()
-	cur, ok := mux.announcementIndex[path]
-	if ok && cur == ann {
-		delete(mux.announcementIndex, path)
-		mux.treeMu.Unlock()
-		mux.removeHandler(path)
+	old, ok := mux.trackHandlerIndex[path]
+	if !ok {
+		mux.trackHandlerIndex[path] = handler
+		mux.handlerMu.Unlock()
 		return
 	}
-	mux.treeMu.Unlock()
+	mux.trackHandlerIndex[path] = handler
+	mux.handlerMu.Unlock()
 
-	if ok {
-		// Call end outside the lock to avoid deadlocks
-		cur.end()
-		return
-	}
+	old.end()
 }
 
-func (s *TrackMux) findAnnouncement(path BroadcastPath) (*Announcement, bool) {
-	s.treeMu.RLock()
-	defer s.treeMu.RUnlock()
-	ann, ok := s.announcementIndex[path]
-	return ann, ok
+func (mux *TrackMux) removeHandler(handler *announcedTrackHandler) {
+	path := handler.BroadcastPath()
+	mux.handlerMu.Lock()
+	defer mux.handlerMu.Unlock()
+	if ath, ok := mux.trackHandlerIndex[path]; ok && ath == handler {
+		delete(mux.trackHandlerIndex, path)
+	}
 }
 
 func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) {
+	if announcement == nil {
+		slog.Warn("[TrackMux] Announce called with nil Announcement")
+		return
+	}
 	path := announcement.BroadcastPath()
-
 	if !announcement.IsActive() {
 		slog.Warn("[TrackMux] announcement is not active",
 			"path", path,
 		)
 		return
 	}
-
+	announcedHandler := &announcedTrackHandler{
+		Announcement: announcement,
+		TrackHandler: handler,
+	}
 	// Add the handler to the mux if it is not already registered
-	mux.addHandler(path, handler)
+	mux.registerHandler(path, announcedHandler)
 
 	// add Announcement to the mux
-	lastNode := mux.addAnnouncement(announcement)
+	segments := strings.Split(string(path), "/")
+	lastNode := mux.announcementTree.addAnnouncement(segments, announcement)
 
 	// Send announcement to all registered channels with retry mechanism
 	lastNode.mu.RLock()
@@ -165,7 +131,7 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 					case <-time.After(100 * time.Millisecond):
 						// Timeout, retry
 						continue
-					case <-announcement.AwaitEnd():
+					case <-announcement.Context().Done():
 						// Announcement ended, no need to send
 						return
 					}
@@ -179,37 +145,48 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 		// Remove the announcement from the tree unconditionally
 		lastNode.removeAnnouncement(announcement)
 
-		mux.removeAnnouncementIndex(announcement)
+		mux.removeHandler(announcedHandler)
 	})
 }
 
 // Handler returns the handler for the specified track path.
 // If no handler is found, NotFoundTrackHandler is returned.
-func (mux *TrackMux) TrackHandler(path BroadcastPath) TrackHandler {
+func (mux *TrackMux) TrackHandler(path BroadcastPath) (*Announcement, TrackHandler) {
+	ath := mux.findTrackHandler(path)
+	if ath == nil {
+		return nil, NotFoundTrackHandler
+	}
+	return ath.Announcement, ath.TrackHandler
+}
+
+func (mux *TrackMux) findTrackHandler(path BroadcastPath) *announcedTrackHandler {
 	if !isValidPath(path) {
-		panic("mux: invalid track path: " + path)
+		return nil
 	}
 
 	mux.handlerMu.RLock()
-	handler, ok := mux.handlerIndex[path]
+	ath, ok := mux.trackHandlerIndex[path]
 	mux.handlerMu.RUnlock()
-	if handler == nil || !ok {
-		slog.Warn("mux: no handler found for path", "path", path)
-		return NotFoundTrackHandler
+	if !ok {
+		return nil
+	}
+
+	if ath == nil || ath.Announcement == nil || ath.TrackHandler == nil {
+		return nil
 	}
 
 	// Treat typed-nil handler functions as absent too
-	if hf, ok := handler.(TrackHandlerFunc); ok && hf == nil {
+	if hf, ok := ath.TrackHandler.(TrackHandlerFunc); ok && hf == nil {
 		slog.Warn("mux: handler function is nil for path", "path", path)
-		return NotFoundTrackHandler
+		return nil
 	}
 
-	return handler
+	return ath
 }
 
-// ServeTrack serves the track at the specified path using the appropriate handler.
+// serveTrack serves the track at the specified path using the appropriate handler.
 // It finds the handler for the path and delegates the serving to it.
-func (mux *TrackMux) ServeTrack(tw *TrackWriter) {
+func (mux *TrackMux) serveTrack(tw *TrackWriter) {
 	if tw == nil {
 		slog.Error("mux: nil track writer")
 		return
@@ -217,23 +194,27 @@ func (mux *TrackMux) ServeTrack(tw *TrackWriter) {
 
 	path := tw.BroadcastPath
 
-	ann, ok := mux.findAnnouncement(path)
-	if ann == nil || !ok {
+	mux.handlerMu.RLock()
+	ath, ok := mux.trackHandlerIndex[path]
+	mux.handlerMu.RUnlock()
+	if !ok || ath == nil || ath.Announcement == nil {
 		slog.Warn("[TrackMux] no announcement found for path", "path", path)
 		tw.CloseWithError(TrackNotFoundErrorCode)
 		return
 	}
 
-	tw.setContext(ann.ctx)
+	if ath.TrackHandler == nil {
+		slog.Warn("mux: no handler found for path", "path", path)
+		tw.CloseWithError(TrackNotFoundErrorCode)
+		return
+	}
 
-	handler := mux.TrackHandler(path)
-
-	handler.ServeTrack(tw)
+	ath.TrackHandler.ServeTrack(ath.Announcement.ctx, tw)
 }
 
-// ServeAnnouncements serves announcements for tracks matching the given pattern.
+// serveAnnouncements serves announcements for tracks matching the given pattern.
 // It registers the AnnouncementWriter and sends announcements for matching tracks.
-func (mux *TrackMux) ServeAnnouncements(aw *AnnouncementWriter, prefix string) {
+func (mux *TrackMux) serveAnnouncements(aw *AnnouncementWriter, prefix string) {
 	if aw == nil {
 		slog.Error("mux: nil announcement writer")
 		return
@@ -309,11 +290,10 @@ func (mux *TrackMux) ServeAnnouncements(aw *AnnouncementWriter, prefix string) {
 func (mux *TrackMux) Clear() {
 	mux.treeMu.Lock()
 	mux.announcementTree = *newAnnouncingNode()
-	mux.announcementIndex = make(map[BroadcastPath]*Announcement)
 	mux.treeMu.Unlock()
 
 	mux.handlerMu.Lock()
-	mux.handlerIndex = make(map[BroadcastPath]TrackHandler)
+	mux.trackHandlerIndex = make(map[BroadcastPath]*announcedTrackHandler)
 	mux.handlerMu.Unlock()
 }
 
@@ -408,10 +388,10 @@ func isValidPrefix(prefix string) bool {
 }
 
 type TrackHandler interface {
-	ServeTrack(*TrackWriter)
+	ServeTrack(context.Context, *TrackWriter)
 }
 
-var NotFound = func(tw *TrackWriter) {
+var NotFound = func(ctx context.Context, tw *TrackWriter) {
 	if tw == nil {
 		return
 	}
@@ -421,8 +401,19 @@ var NotFound = func(tw *TrackWriter) {
 
 var NotFoundTrackHandler TrackHandler = TrackHandlerFunc(NotFound)
 
-type TrackHandlerFunc func(*TrackWriter)
+type TrackHandlerFunc func(context.Context, *TrackWriter)
 
-func (f TrackHandlerFunc) ServeTrack(tw *TrackWriter) {
-	f(tw)
+func (f TrackHandlerFunc) ServeTrack(ctx context.Context, tw *TrackWriter) {
+	f(ctx, tw)
+}
+
+var _ TrackHandler = (*announcedTrackHandler)(nil)
+
+type announcedTrackHandler struct {
+	TrackHandler
+	*Announcement
+}
+
+func (h *announcedTrackHandler) Context() context.Context {
+	return h.ctx
 }

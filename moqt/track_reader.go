@@ -66,17 +66,7 @@ func (r *TrackReader) AcceptGroup(ctx context.Context) (*GroupReader, error) {
 
 		if trackCtx.Err() != nil {
 			r.trackMu.Unlock()
-			reason := context.Cause(trackCtx)
-			var strErr *quic.StreamError
-			if errors.As(reason, &strErr) {
-				return nil, &SubscribeError{StreamError: strErr}
-			}
-
-			var appErr *quic.ApplicationError
-			if errors.As(reason, &appErr) {
-				return nil, &SessionError{ApplicationError: appErr}
-			}
-			return nil, reason
+			return nil, Cause(trackCtx)
 		}
 
 		queueCh := r.queuedCh
@@ -86,21 +76,7 @@ func (r *TrackReader) AcceptGroup(ctx context.Context) (*GroupReader, error) {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-trackCtx.Done():
-			reason := context.Cause(trackCtx)
-			var strErr *quic.StreamError
-			if errors.As(reason, &strErr) {
-				return nil, &SubscribeError{
-					StreamError: strErr,
-				}
-			}
-
-			var appErr *quic.ApplicationError
-			if errors.As(reason, &appErr) {
-				return nil, &SessionError{
-					ApplicationError: appErr,
-				}
-			}
-			return nil, reason
+			return nil, Cause(trackCtx)
 		case <-queueCh:
 		}
 	}

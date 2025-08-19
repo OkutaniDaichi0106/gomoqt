@@ -222,11 +222,11 @@ func TestClient_DialQUIC(t *testing.T) {
 				c.inShutdown.Store(true)
 			}
 			uri, _ := url.Parse(tt.uri)
-			old := c.DialQUICConn
-			c.DialQUICConn = func(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (quic.Connection, error) {
+			old := c.DialQUICFunc
+			c.DialQUICFunc = func(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (quic.Connection, error) {
 				return nil, tt.dialErr
 			}
-			defer func() { c.DialQUICConn = old }()
+			defer func() { c.DialQUICFunc = old }()
 			_, err := c.DialQUIC(context.Background(), uri.Hostname()+":"+uri.Port(), uri.Path, nil)
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -564,7 +564,7 @@ func TestClient_DialQUIC_CustomDialSuccess(t *testing.T) {
 	mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 	mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
 
-	c.DialQUICConn = func(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (quic.Connection, error) {
+	c.DialQUICFunc = func(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (quic.Connection, error) {
 		return mockConn, nil
 	}
 	sess, err := c.DialQUIC(context.Background(), "example.com:443", "/test", nil)
@@ -784,7 +784,7 @@ func TestClient_Dial_URLSchemes(t *testing.T) {
 				return &http.Response{}, mockConn, nil
 			}
 
-			c.DialQUICConn = func(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (quic.Connection, error) {
+			c.DialQUICFunc = func(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (quic.Connection, error) {
 				mockConn := &MockQUICConnection{}
 				mockConn.On("Context").Return(context.Background())
 				mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)

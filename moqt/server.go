@@ -48,7 +48,7 @@ type Server struct {
 	/*
 	 * Listen QUIC function
 	 */
-	ListenFunc quic.ListenAddrEarlyFunc
+	ListenFunc quic.ListenAddrFunc
 
 	/*
 	 * WebTransport Server
@@ -64,7 +64,7 @@ type Server struct {
 	Logger *slog.Logger
 
 	listenerMu    sync.RWMutex
-	listeners     map[quic.EarlyListener]struct{}
+	listeners     map[quic.Listener]struct{}
 	listenerGroup sync.WaitGroup
 
 	sessMu     sync.RWMutex
@@ -80,7 +80,7 @@ type Server struct {
 
 func (s *Server) init() {
 	s.initOnce.Do(func() {
-		s.listeners = make(map[quic.EarlyListener]struct{})
+		s.listeners = make(map[quic.Listener]struct{})
 		s.doneChan = make(chan struct{})
 		s.activeSess = make(map[*Session]struct{})
 		// Initialize WebtransportServer
@@ -103,7 +103,7 @@ func (s *Server) init() {
 	})
 }
 
-func (s *Server) ServeQUICListener(ln quic.EarlyListener) error {
+func (s *Server) ServeQUICListener(ln quic.Listener) error {
 	if s.shuttingDown() {
 		return ErrServerClosed
 	}
@@ -591,7 +591,7 @@ func (s *Server) ListenAndServe() error {
 		tlsConfig.NextProtos = []string{NextProtoMOQ}
 	}
 
-	var ln quic.EarlyListener
+	var ln quic.Listener
 	var err error
 	if s.ListenFunc != nil {
 		ln, err = s.ListenFunc(s.Addr, tlsConfig, s.QUICConfig)
@@ -631,7 +631,7 @@ func (s *Server) ListenAndServeTLS(certFile, keyFile string) error {
 		NextProtos:   []string{NextProtoMOQ, http3.NextProtoH3},
 	}
 
-	var ln quic.EarlyListener
+	var ln quic.Listener
 	if s.ListenFunc != nil {
 		ln, err = s.ListenFunc(s.Addr, tlsConfig.Clone(), s.QUICConfig)
 	} else {
@@ -745,18 +745,18 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-func (s *Server) addListener(ln quic.EarlyListener) {
+func (s *Server) addListener(ln quic.Listener) {
 	s.listenerMu.Lock()
 	defer s.listenerMu.Unlock()
 
 	if s.listeners == nil {
-		s.listeners = make(map[quic.EarlyListener]struct{})
+		s.listeners = make(map[quic.Listener]struct{})
 	}
 	s.listeners[ln] = struct{}{}
 	s.listenerGroup.Add(1)
 }
 
-func (s *Server) removeListener(ln quic.EarlyListener) {
+func (s *Server) removeListener(ln quic.Listener) {
 	s.listenerMu.Lock()
 
 	_, ok := s.listeners[ln]

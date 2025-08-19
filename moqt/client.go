@@ -35,9 +35,14 @@ type Client struct {
 	 */
 	Config *Config
 
-	/***/
-	DialQUICConn quic.DialAddrEarlyFunc
+	/*
+	 * Dial QUIC function
+	 */
+	DialQUICFunc quic.DialAddrFunc
 
+	/*
+	 * Dial WebTransport function
+	 */
 	DialWebTransportFunc webtransport.DialAddrFunc
 
 	/*
@@ -212,9 +217,9 @@ func (c *Client) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux)
 	var conn quic.Connection
 	var err error
 
-	if c.DialQUICConn != nil {
+	if c.DialQUICFunc != nil {
 		logger.Debug("using custom QUIC dial function")
-		conn, err = c.DialQUICConn(dialCtx, addr, c.TLSConfig, c.QUICConfig)
+		conn, err = c.DialQUICFunc(dialCtx, addr, c.TLSConfig, c.QUICConfig)
 	} else {
 		logger.Debug("using default QUIC dial function")
 		conn, err = quicgo.DialAddrEarly(dialCtx, addr, c.TLSConfig, c.QUICConfig)

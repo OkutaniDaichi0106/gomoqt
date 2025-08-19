@@ -213,7 +213,7 @@ func TestAnnouncement_End(t *testing.T) {
 	}
 }
 
-func TestAnnouncement_AwaitEnd(t *testing.T) {
+func TestAnnouncement_ContextDone(t *testing.T) {
 	tests := map[string]struct {
 		path        BroadcastPath
 		endDelay    time.Duration
@@ -239,11 +239,11 @@ func TestAnnouncement_AwaitEnd(t *testing.T) {
 			ctx := context.Background()
 			announcement, end := NewAnnouncement(ctx, tt.path)
 
-			// Test that AwaitEnd returns a channel that is not closed initially
+			// Test that Context().Done() is not closed initially
 			select {
-			case <-announcement.AwaitEnd():
+			case <-announcement.Context().Done():
 				if !tt.expectClose {
-					t.Error("Expected AwaitEnd() channel to not be closed initially")
+					t.Error("Expected Context().Done() channel to not be closed initially")
 				}
 			default:
 				// This is the expected behavior for non-closed channels
@@ -256,7 +256,7 @@ func TestAnnouncement_AwaitEnd(t *testing.T) {
 				}()
 
 				select {
-				case <-announcement.AwaitEnd():
+				case <-announcement.Context().Done():
 					assert.True(t, tt.expectClose, "Channel closed when not expected")
 				case <-time.After(tt.timeout):
 					assert.False(t, tt.expectClose, "Expected channel to be closed but timeout occurred")
@@ -311,14 +311,14 @@ func TestAnnouncement_WithCancelledContext(t *testing.T) {
 	}
 }
 
-func TestAnnouncement_ConcurrentAwaitEnd(t *testing.T) {
+func TestAnnouncement_ConcurrentContextDone(t *testing.T) {
 	tests := map[string]struct {
 		path          BroadcastPath
 		numGoroutines int
 		endDelay      time.Duration
 		timeout       time.Duration
 	}{
-		"concurrent await end": {
+		"concurrent context done": {
 			path:          BroadcastPath("/test/path"),
 			numGoroutines: 10,
 			endDelay:      50 * time.Millisecond,
@@ -336,7 +336,7 @@ func TestAnnouncement_ConcurrentAwaitEnd(t *testing.T) {
 			for i := 0; i < tt.numGoroutines; i++ {
 				go func() {
 					select {
-					case <-announcement.AwaitEnd():
+					case <-announcement.Context().Done():
 						results <- true
 					case <-time.After(tt.timeout):
 						results <- false

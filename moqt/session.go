@@ -32,7 +32,7 @@ func newSession(conn quic.Connection, sessStream *sessionStream, mux *TrackMux, 
 
 		// If the stream is closed unexpectedly, terminate the session
 		logger.Warn("session stream closed unexpectedly",
-			"reason", context.Cause(streamCtx),
+			"reason", Cause(streamCtx),
 		)
 
 		conn.CloseWithError(quic.ApplicationErrorCode(ProtocolViolationErrorCode), "session stream closed unexpectedly")
@@ -424,7 +424,7 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 		// This is a blocking call that will handle incoming announcements
 		// and will not return until the stream is closed.
 		// It will also handle the initial announcements if any.
-		sess.mux.ServeAnnouncements(annstr, prefix)
+		sess.mux.serveAnnouncements(annstr, prefix)
 	case message.StreamTypeSubscribe:
 		var sm message.SubscribeMessage
 		err := sm.Decode(stream)
@@ -450,10 +450,9 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 			"config", config.String(),
 		)
 
-		handler := sess.mux.TrackHandler(BroadcastPath(sm.BroadcastPath))
+		handler := sess.mux.findTrackHandler(BroadcastPath(sm.BroadcastPath))
 		if handler == nil {
 			subLogger.Warn("track not found for subscription")
-
 			strErrCode := quic.StreamErrorCode(TrackNotFoundErrorCode)
 			stream.CancelWrite(strErrCode)
 			stream.CancelRead(strErrCode)
@@ -470,7 +469,7 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 
 		subLogger.Info("serving track for subscription")
 
-		handler.ServeTrack(trackWriter)
+		handler.ServeTrack(handler.ctx, trackWriter)
 	default:
 		streamLogger.Error("unknown bidirectional stream type",
 			"stream_type", streamType,
@@ -557,6 +556,7 @@ func (sess *Session) processUniStream(stream quic.ReceiveStream, streamLogger *s
 func (s *Session) addTrackWriter(id SubscribeID, writer *TrackWriter) {
 	s.trackWriterMapLocker.Lock()
 	defer s.trackWriterMapLocker.Unlock()
+
 	s.trackWriters[id] = writer
 }
 
@@ -564,10 +564,7 @@ func (s *Session) removeTrackWriter(id SubscribeID) {
 	s.trackWriterMapLocker.Lock()
 	defer s.trackWriterMapLocker.Unlock()
 
-	if writer, ok := s.trackWriters[id]; ok {
-		writer.Close()
-		delete(s.trackWriters, id)
-	}
+	delete(s.trackWriters, id)
 }
 
 func (s *Session) addTrackReader(id SubscribeID, reader *TrackReader) {

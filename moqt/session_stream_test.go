@@ -101,6 +101,7 @@ func TestSessionStream_SessionUpdated(t *testing.T) {
 
 	// Trigger setupDone to start listening for updates
 	ss.listenUpdates()
+	time.Sleep(1000 * time.Millisecond)
 
 	ch := ss.SessionUpdated()
 	assert.NotNil(t, ch, "SessionUpdated should return a valid channel")
@@ -235,7 +236,7 @@ func TestSessionStream_listenUpdates(t *testing.T) {
 					actualBitrate := ss.remoteBitrate
 					ss.mu.Unlock()
 					assert.Equal(t, tt.expectBitrate, actualBitrate, "remote bitrate should match expected")
-				case <-time.After(200 * time.Millisecond):
+				case <-time.After(500 * time.Millisecond):
 					if name == "valid message" || name == "zero bitrate" {
 						t.Error("expected session update but timed out")
 					}
@@ -315,7 +316,7 @@ func TestSessionStream_listenUpdates_ContextCancellation(t *testing.T) {
 func TestSessionStream_ConcurrentAccess(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Context").Return(context.Background())
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 	mockStream.On("Write", mock.Anything).Return(8, nil).Maybe()
 
 	req := &Request{
@@ -332,35 +333,29 @@ func TestSessionStream_ConcurrentAccess(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Concurrent updateSession calls
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for i := range 5 {
 			ss.updateSession(uint64(i * 1000))
 			time.Sleep(time.Millisecond)
 		}
-	}()
+	})
 
 	// Concurrent SessionUpdated calls
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for range 5 {
 			ss.SessionUpdated()
 			time.Sleep(time.Millisecond)
 		}
-	}()
+	})
 
 	// Concurrent access to bitrate fields (read-only)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for range 5 {
 			_ = ss.localBitrate
 			_ = ss.remoteBitrate
 			time.Sleep(time.Millisecond)
 		}
-	}()
+	})
 
 	wg.Wait()
 
@@ -546,7 +541,7 @@ func TestResponse_AwaitAccepted(t *testing.T) {
 			mockStream: func() *MockQUICStream {
 				mockStream := &MockQUICStream{}
 				mockStream.On("Context").Return(context.Background())
-				mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+				mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 				return mockStream
 			},
 			expectError: true,

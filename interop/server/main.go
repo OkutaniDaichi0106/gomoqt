@@ -39,6 +39,7 @@ func main() {
 	moqt.HandleFunc("/interop", func(w moqt.ResponseWriter, r *moqt.Request) {
 		sess, err := server.Accept(w, r, nil)
 		if err != nil {
+			w.Reject(moqt.ProtocolViolationErrorCode)
 			slog.Error("failed to accept session", "error", err)
 			return
 		}
@@ -105,7 +106,7 @@ func main() {
 		}
 	})
 
-	moqt.PublishFunc(context.Background(), "/server.interop", func(tw *moqt.TrackWriter) {
+	moqt.PublishFunc(context.Background(), "/server.interop", func(ctx context.Context, tw *moqt.TrackWriter) {
 		seq := moqt.GroupSequenceFirst
 		for range 10 {
 			group, err := tw.OpenGroup(seq)

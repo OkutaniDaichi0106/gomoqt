@@ -322,7 +322,7 @@ func openSessionStream(conn quic.Connection, path string, extensions *Parameters
 		return nil, err
 	}
 
-	req := &Request{
+	req := &SetupRequest{
 		Path:       path,
 		Versions:   versions,
 		Extensions: extensions,

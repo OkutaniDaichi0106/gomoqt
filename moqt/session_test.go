@@ -40,7 +40,7 @@ func TestNewSession(t *testing.T) {
 			conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF) // For handleUniStreams goroutine
 			conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-			sessStream := newSessionStream(mockStream, &Request{
+			sessStream := newSessionStream(mockStream, &SetupRequest{
 				Path:       "test/path",
 				Extensions: NewParameters(),
 			})
@@ -81,7 +81,7 @@ func TestNewSessionWithNilMux(t *testing.T) {
 			conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF) // For handleUniStreams goroutine
 			conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-			sessStream := newSessionStream(mockStream, &Request{
+			sessStream := newSessionStream(mockStream, &SetupRequest{
 				Path:       "test/path",
 				Extensions: NewParameters(),
 			})
@@ -124,7 +124,7 @@ func TestSession_Terminate(t *testing.T) {
 			conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF) // For handleUniStreams goroutine
 			conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-			sessStream := newSessionStream(mockStream, &Request{
+			sessStream := newSessionStream(mockStream, &SetupRequest{
 				Path:       "test/path",
 				Extensions: NewParameters(),
 			})
@@ -189,7 +189,7 @@ func TestSession_Subscribe(t *testing.T) {
 			conn.On("OpenStream").Return(mockTrackStream, nil)
 			conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-			sessStream := newSessionStream(mockStream, &Request{
+			sessStream := newSessionStream(mockStream, &SetupRequest{
 				Path:       "test/path",
 				Extensions: NewParameters(),
 			})
@@ -227,7 +227,7 @@ func TestSession_Subscribe_OpenError(t *testing.T) {
 	conn.On("OpenStream").Return(nil, errors.New("open stream failed"))
 	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-	sessStream := newSessionStream(mockStream, &Request{
+	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	})
@@ -260,7 +260,7 @@ func TestSession_Context(t *testing.T) {
 	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
 	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-	sessStream := newSessionStream(mockStream, &Request{
+	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	})
@@ -285,7 +285,7 @@ func TestSession_nextSubscribeID(t *testing.T) {
 	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
 	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-	sessStream := newSessionStream(mockStream, &Request{
+	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	})
@@ -313,7 +313,7 @@ func TestSession_HandleBiStreams_AcceptError(t *testing.T) {
 	conn.On("AcceptUniStream", mock.Anything).Return(nil, errors.New("accept stream failed"))
 	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-	sessStream := newSessionStream(mockStream, &Request{
+	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	})
@@ -341,7 +341,7 @@ func TestSession_HandleUniStreamsAcceptError(t *testing.T) {
 	conn.On("AcceptUniStream", mock.Anything).Return(nil, errors.New("accept uni stream failed"))
 	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-	sessStream := newSessionStream(mockStream, &Request{
+	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	})
@@ -372,7 +372,7 @@ func TestSession_ConcurrentAccess(t *testing.T) {
 	conn.On("OpenUniStream").Return(&MockQUICSendStream{}, nil)
 	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-	sessStream := newSessionStream(mockStream, &Request{
+	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	})
@@ -433,7 +433,7 @@ func TestSession_ContextCancellation(t *testing.T) {
 	}).Return(nil)
 	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-	sessStream := newSessionStream(mockStream, &Request{
+	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	})
@@ -468,7 +468,7 @@ func TestSession_WithRealMux(t *testing.T) {
 
 	mux := NewTrackMux()
 
-	sessStream := newSessionStream(mockStream, &Request{
+	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	})

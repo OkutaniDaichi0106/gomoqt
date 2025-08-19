@@ -20,7 +20,7 @@ func TestNewSessionStream(t *testing.T) {
 	mockStream.On("Context").Return(context.Background())
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
-	req := &Request{
+	req := &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	}
@@ -44,7 +44,7 @@ func TestSessionStream_updateSession(t *testing.T) {
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 	mockStream.On("Write", mock.Anything).Return(8, nil)
 
-	req := &Request{
+	req := &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	}
@@ -69,7 +69,7 @@ func TestSessionStream_updateSession_WriteError(t *testing.T) {
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 	mockStream.On("Write", mock.Anything).Return(0, writeError)
 
-	req := &Request{
+	req := &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	}
@@ -92,7 +92,7 @@ func TestSessionStream_SessionUpdated(t *testing.T) {
 	mockStream.On("Context").Return(context.Background())
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
-	req := &Request{
+	req := &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	}
@@ -117,7 +117,7 @@ func TestSessionStream_updateSession_ZeroBitrate(t *testing.T) {
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 	mockStream.On("Write", mock.Anything).Return(2, nil)
 
-	req := &Request{
+	req := &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	}
@@ -139,7 +139,7 @@ func TestSessionStream_updateSession_LargeBitrate(t *testing.T) {
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 	mockStream.On("Write", mock.Anything).Return(10, nil)
 
-	req := &Request{
+	req := &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	}
@@ -215,7 +215,7 @@ func TestSessionStream_listenUpdates(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			mockStream := tt.mockStream()
 
-			req := &Request{
+			req := &SetupRequest{
 				Path:       "test/path",
 				Extensions: NewParameters(),
 			}
@@ -254,7 +254,7 @@ func TestSessionStream_listenUpdates_StreamClosed(t *testing.T) {
 	mockStream.On("Context").Return(context.Background())
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
-	req := &Request{
+	req := &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	}
@@ -285,7 +285,7 @@ func TestSessionStream_listenUpdates_ContextCancellation(t *testing.T) {
 	mockStream.On("Context").Return(ctx)
 	mockStream.On("Read", mock.Anything).Return(0, nil).Maybe()
 
-	req := &Request{
+	req := &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	}
@@ -319,7 +319,7 @@ func TestSessionStream_ConcurrentAccess(t *testing.T) {
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 	mockStream.On("Write", mock.Anything).Return(8, nil).Maybe()
 
-	req := &Request{
+	req := &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	}
@@ -400,7 +400,7 @@ func TestResponseWriter_Accept(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			mockStream := tt.mockStream()
 
-			req := &Request{
+			req := &SetupRequest{
 				Path:       "test/path",
 				Extensions: NewParameters(),
 			}
@@ -430,7 +430,7 @@ func TestResponseWriter_Accept_OnlyOnce(t *testing.T) {
 	mockStream.On("Write", mock.Anything).Return(10, nil).Once()
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
-	req := &Request{
+	req := &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	}
@@ -462,7 +462,7 @@ func TestResponseWriter_Accept_ConcurrentCalls(t *testing.T) {
 	mockStream.On("Write", mock.Anything).Return(10, nil).Once()
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
-	req := &Request{
+	req := &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	}
@@ -555,7 +555,7 @@ func TestResponse_AwaitAccepted(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			mockStream := tt.mockStream()
 
-			req := &Request{
+			req := &SetupRequest{
 				Path:       "test/path",
 				Extensions: NewParameters(),
 			}
@@ -593,7 +593,7 @@ func TestResponse_AwaitAccepted_OnlyOnce(t *testing.T) {
 	// Use ReadFunc for simpler mocking
 	mockStream.ReadFunc = buf.Read
 
-	req := &Request{
+	req := &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	}
@@ -630,7 +630,7 @@ func TestResponse_AwaitAccepted_ConcurrentCalls(t *testing.T) {
 	// Use ReadFunc for simpler mocking
 	mockStream.ReadFunc = buf.Read
 
-	req := &Request{
+	req := &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	}
@@ -672,7 +672,7 @@ func TestResponseWriter_Accept_NilParameters(t *testing.T) {
 	mockStream.On("Write", mock.Anything).Return(10, nil)
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
-	req := &Request{
+	req := &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	}
@@ -708,7 +708,7 @@ func TestResponseWriter_Accept_MultipleVersions(t *testing.T) {
 			mockStream.On("Write", mock.Anything).Return(10, nil)
 			mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
-			req := &Request{
+			req := &SetupRequest{
 				Path:       "test/path",
 				Extensions: NewParameters(),
 			}
@@ -730,7 +730,7 @@ func TestResponseWriter_Accept_MultipleVersions(t *testing.T) {
 			mockStream.On("Write", mock.Anything).Return(10, nil)
 			mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
-			req := &Request{
+			req := &SetupRequest{
 				Path:       "test/path",
 				Extensions: NewParameters(),
 			}
@@ -794,7 +794,7 @@ func TestResponse_AwaitAccepted_InvalidMessage(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			mockStream := tt.mockStream()
 
-			req := &Request{
+			req := &SetupRequest{
 				Path:       "test/path",
 				Extensions: NewParameters(),
 			}
@@ -838,7 +838,7 @@ func TestResponse_AwaitAccepted_DifferentVersions(t *testing.T) {
 			// Use ReadFunc for simpler mocking
 			mockStream.ReadFunc = buf.Read
 
-			req := &Request{
+			req := &SetupRequest{
 				Path:       "test/path",
 				Extensions: NewParameters(),
 			}
@@ -863,7 +863,7 @@ func TestSessionStream_listenUpdates_InitialChannelState(t *testing.T) {
 	mockStream.On("Context").Return(context.Background())
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
-	req := &Request{
+	req := &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	}
@@ -889,7 +889,7 @@ func TestSessionStream_Context(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Context").Return(ctx)
 
-	req := &Request{
+	req := &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	}
@@ -908,7 +908,7 @@ func TestResponse_Interface(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Context").Return(context.Background())
 
-	req := &Request{
+	req := &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	}
@@ -972,7 +972,7 @@ func TestResponse_AwaitAccepted_ErrorHandling(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			mockStream := tt.mockStream()
 
-			req := &Request{
+			req := &SetupRequest{
 				Path:       "test/path",
 				Extensions: NewParameters(),
 			}
@@ -1035,7 +1035,7 @@ func TestResponseWriter_Accept_ErrorHandling(t *testing.T) {
 			mockStream.On("Context").Return(context.Background())
 			tt.setupMock(mockStream)
 
-			req := &Request{
+			req := &SetupRequest{
 				Path:       "test/path",
 				Extensions: NewParameters(),
 			}
@@ -1091,7 +1091,7 @@ func TestResponseWriter_Accept_ParameterHandling(t *testing.T) {
 			mockStream.On("Write", mock.Anything).Return(20, nil)
 			mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
-			req := &Request{
+			req := &SetupRequest{
 				Path:       "test/path",
 				Extensions: NewParameters(),
 			}
@@ -1129,7 +1129,7 @@ func TestResponseWriter_Accept_BoundaryVersions(t *testing.T) {
 			mockStream.On("Write", mock.Anything).Return(10, nil)
 			mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
-			req := &Request{
+			req := &SetupRequest{
 				Path:       "test/path",
 				Extensions: NewParameters(),
 			}
@@ -1174,7 +1174,7 @@ func TestResponse_AwaitAccepted_BoundaryVersions(t *testing.T) {
 			// Use ReadFunc for simpler mocking
 			mockStream.ReadFunc = buf.Read
 
-			req := &Request{
+			req := &SetupRequest{
 				Path:       "test/path",
 				Extensions: NewParameters(),
 			}
@@ -1200,7 +1200,7 @@ func TestResponseWriter_Accept_Race(t *testing.T) {
 	mockStream.On("Write", mock.Anything).Return(10, nil).Once()
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
-	req := &Request{
+	req := &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	}
@@ -1247,7 +1247,7 @@ func TestResponse_AwaitAccepted_Race(t *testing.T) {
 
 	mockStream.ReadFunc = buf.Read
 
-	req := &Request{
+	req := &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	}
@@ -1289,7 +1289,7 @@ func TestResponseWriter_SessionStream_Sharing(t *testing.T) {
 	mockStream.On("Write", mock.Anything).Return(10, nil)
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
-	req := &Request{
+	req := &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	}
@@ -1332,7 +1332,7 @@ func TestResponse_SessionStream_Sharing(t *testing.T) {
 	// Use ReadFunc for simpler mocking
 	mockStream.ReadFunc = buf.Read
 
-	req := &Request{
+	req := &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
 	}
@@ -1394,7 +1394,7 @@ func TestResponseWriter_Accept_ParameterEdgeCases(t *testing.T) {
 			mockStream.On("Write", mock.Anything).Return(10, nil)
 			mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
-			req := &Request{
+			req := &SetupRequest{
 				Path:       "test/path",
 				Extensions: NewParameters(),
 			}

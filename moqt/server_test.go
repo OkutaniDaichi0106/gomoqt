@@ -549,7 +549,7 @@ func TestServer_SessionManagement(t *testing.T) {
 			}).Return(nil) // For session.Terminate
 			mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
-			req := &Request{
+			req := &SetupRequest{
 				Path:       "/test",
 				Extensions: NewParameters(),
 			}

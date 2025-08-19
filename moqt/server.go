@@ -43,7 +43,7 @@ type Server struct {
 	/*
 	 * Set-up Request Handler
 	 */
-	Handler Handler
+	Handler SetupHandler
 
 	/*
 	 * Listen QUIC function
@@ -242,7 +242,7 @@ func (s *Server) ServeWebTransport(w http.ResponseWriter, r *http.Request) error
 	rsp := &responseWriter{
 		sessionStream: sessStr,
 	}
-	req := sessStr.Request
+	req := sessStr.SetupRequest
 
 	if s.Handler != nil {
 		s.Handler.ServeMOQ(rsp, req)
@@ -286,7 +286,7 @@ func (s *Server) handleNativeQUIC(conn quic.Connection) error {
 	rsp := &responseWriter{
 		sessionStream: sessStr,
 	}
-	req := sessStr.Request
+	req := sessStr.SetupRequest
 
 	if s.Handler != nil {
 		s.Handler.ServeMOQ(rsp, req)
@@ -349,7 +349,7 @@ func (s *Server) handleNativeQUIC(conn quic.Connection) error {
 // 	return params, nil
 // }
 
-func (s *Server) Accept(w ResponseWriter, r *Request, mux *TrackMux) (*Session, error) {
+func (s *Server) Accept(w SetupResponseWriter, r *SetupRequest, mux *TrackMux) (*Session, error) {
 	if s.shuttingDown() {
 		return nil, ErrServerClosed
 	}
@@ -565,7 +565,7 @@ func acceptSessionStream(acceptCtx context.Context, conn quic.Connection, connLo
 	// 	return nil, err
 	// }
 
-	req := &Request{
+	req := &SetupRequest{
 		ctx:        stream.Context(),
 		Path:       path,
 		Versions:   scm.SupportedVersions,

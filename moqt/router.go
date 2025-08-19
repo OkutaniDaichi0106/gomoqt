@@ -5,38 +5,38 @@ import (
 	"sync"
 )
 
-var DefaultRouter *Router = defaultRouter
+var DefaultRouter *SetupRouter = defaultRouter
 
-var defaultRouter *Router = NewRouter()
+var defaultRouter *SetupRouter = NewRouter()
 
-func HandleFunc(pattern string, f func(w ResponseWriter, r *Request)) {
+func HandleFunc(pattern string, f func(w SetupResponseWriter, r *SetupRequest)) {
 	DefaultRouter.HandleFunc(pattern, f)
 }
 
-func Handle(pattern string, h Handler) {
+func Handle(pattern string, h SetupHandler) {
 	DefaultRouter.Handle(pattern, h)
 }
 
-func NewRouter() *Router {
-	return &Router{
-		handlers: make(map[string]Handler),
+func NewRouter() *SetupRouter {
+	return &SetupRouter{
+		handlers: make(map[string]SetupHandler),
 	}
 }
 
-type Router struct {
+type SetupRouter struct {
 	mu       sync.RWMutex
-	handlers map[string]Handler
+	handlers map[string]SetupHandler
 }
 
-func (r *Router) Handle(pattern string, h Handler) {
+func (r *SetupRouter) Handle(pattern string, h SetupHandler) {
 	r.register(pattern, h)
 }
 
-func (r *Router) HandleFunc(pattern string, f func(w ResponseWriter, r *Request)) {
-	r.Handle(pattern, HandlerFunc(f))
+func (r *SetupRouter) HandleFunc(pattern string, f func(w SetupResponseWriter, r *SetupRequest)) {
+	r.Handle(pattern, SetupHandlerFunc(f))
 }
 
-func (r *Router) register(path string, h Handler) {
+func (r *SetupRouter) register(path string, h SetupHandler) {
 	if path == "" {
 		panic("moq: path cannot be empty")
 	}
@@ -46,44 +46,44 @@ func (r *Router) register(path string, h Handler) {
 	if h == nil {
 		panic("moq: handler cannot be nil")
 	}
-	if f, ok := h.(HandlerFunc); ok && f == nil {
+	if f, ok := h.(SetupHandlerFunc); ok && f == nil {
 		panic("moq: handler function cannot be nil")
 	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.handlers == nil {
-		r.handlers = make(map[string]Handler)
+		r.handlers = make(map[string]SetupHandler)
 	}
 	r.handlers[path] = h
 }
 
-func (r *Router) Handler(pattern string) Handler {
+func (r *SetupRouter) Handler(pattern string) SetupHandler {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	if h, ok := r.handlers[pattern]; ok {
 		return h
 	}
-	return NotFoundHandler
+	return RejectSetupHandler
 }
 
-func (r *Router) ServeMOQ(w ResponseWriter, req *Request) {
+func (r *SetupRouter) ServeMOQ(w SetupResponseWriter, req *SetupRequest) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	handler := r.Handler(req.Path)
 	if handler == nil {
-		handler = NotFoundHandler
+		handler = RejectSetupHandler
 	}
 
 	handler.ServeMOQ(w, req)
 }
 
-type Handler interface {
-	ServeMOQ(w ResponseWriter, r *Request)
+type SetupHandler interface {
+	ServeMOQ(w SetupResponseWriter, r *SetupRequest)
 }
 
-type Request struct {
+type SetupRequest struct {
 	Path       string
 	Versions   []Version
 	Extensions *Parameters
@@ -91,25 +91,25 @@ type Request struct {
 	ctx context.Context
 }
 
-func (r *Request) Context() context.Context {
+func (r *SetupRequest) Context() context.Context {
 	return r.ctx
 }
 
-type ResponseWriter interface {
+type SetupResponseWriter interface {
 	Accept(v Version, extensions *Parameters) error
 	Reject(code SessionErrorCode) error
 }
 
-var _ Handler = (*HandlerFunc)(nil)
+var _ SetupHandler = (*SetupHandlerFunc)(nil)
 
-type HandlerFunc func(w ResponseWriter, r *Request)
+type SetupHandlerFunc func(w SetupResponseWriter, r *SetupRequest)
 
-func (f HandlerFunc) ServeMOQ(w ResponseWriter, r *Request) {
+func (f SetupHandlerFunc) ServeMOQ(w SetupResponseWriter, r *SetupRequest) {
 	f(w, r)
 }
 
-var NotFoundFunc func(w ResponseWriter, r *Request) = func(w ResponseWriter, r *Request) {
+var RejectSetupFunc func(w SetupResponseWriter, r *SetupRequest) = func(w SetupResponseWriter, r *SetupRequest) {
 	w.Reject(SetupFailedErrorCode)
 }
 
-var NotFoundHandler Handler = HandlerFunc(NotFoundFunc)
+var RejectSetupHandler SetupHandler = SetupHandlerFunc(RejectSetupFunc)

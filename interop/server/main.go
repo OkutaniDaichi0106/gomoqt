@@ -36,7 +36,7 @@ func main() {
 		})),
 	}
 
-	moqt.HandleFunc("/interop", func(w moqt.ResponseWriter, r *moqt.Request) {
+	moqt.HandleFunc("/interop", func(w moqt.SetupResponseWriter, r *moqt.SetupRequest) {
 		sess, err := server.Accept(w, r, nil)
 		if err != nil {
 			w.Reject(moqt.ProtocolViolationErrorCode)

@@ -38,8 +38,3 @@ func (f *Frame) Len() int {
 func (f *Frame) Cap() int {
 	return cap(f.message.Payload)
 }
-
-// Reset resets the frame's payload to an empty state.
-func (f *Frame) Reset() {
-	f.message.Payload = f.message.Payload[:0]
-}

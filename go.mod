@@ -1,6 +1,6 @@
 module github.com/OkutaniDaichi0106/gomoqt
 
-go 1.24.1
+go 1.25.0
 
 require (
 	github.com/OkutaniDaichi0106/webtransport-go v0.9.1

@@ -1,11 +1,15 @@
-**.pem
-
+# IDE
+**/.vscode
 **/.github/prompts
+
+# Dev modules
+**/_vendor
 **/node_modules
+**/.jest-cache/
+
+# Build staff
+**/docs/moqt/public
 **/dist/
 
-**/.jest-cache/
-**/.vscode
-
-**/_vendor
-**/docs/moqt/public
+# Local Environment
+**.pem

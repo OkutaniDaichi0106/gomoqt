@@ -19,7 +19,7 @@ func (fm FrameMessage) Len() int {
 }
 
 func (fm FrameMessage) Encode(w io.Writer) error {
-	err := WriteVarint(w, uint64(len(fm.Payload)))
+	err := writeVarint(w, uint64(len(fm.Payload)))
 	if err != nil {
 		return err
 	}

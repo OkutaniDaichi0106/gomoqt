@@ -41,9 +41,9 @@ type Server struct {
 	Config *Config
 
 	/*
-	 * Set-up Request Handler
+	 * Set-up Request SetupHandler
 	 */
-	Handler SetupHandler
+	SetupHandler SetupHandler
 
 	/*
 	 * Listen QUIC function
@@ -244,8 +244,8 @@ func (s *Server) ServeWebTransport(w http.ResponseWriter, r *http.Request) error
 	}
 	req := sessStr.SetupRequest
 
-	if s.Handler != nil {
-		s.Handler.ServeMOQ(rsp, req)
+	if s.SetupHandler != nil {
+		s.SetupHandler.ServeMOQ(rsp, req)
 	} else {
 		DefaultRouter.ServeMOQ(rsp, req)
 	}
@@ -288,8 +288,8 @@ func (s *Server) handleNativeQUIC(conn quic.Connection) error {
 	}
 	req := sessStr.SetupRequest
 
-	if s.Handler != nil {
-		s.Handler.ServeMOQ(rsp, req)
+	if s.SetupHandler != nil {
+		s.SetupHandler.ServeMOQ(rsp, req)
 	} else {
 		DefaultRouter.ServeMOQ(rsp, req)
 	}

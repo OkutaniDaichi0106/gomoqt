@@ -18,11 +18,12 @@ export class SubscribeUpdateMessage {
 
     static async encode(writer: Writer, trackPriority: bigint, minGroupSequence: bigint, maxGroupSequence: bigint): Promise<[SubscribeUpdateMessage?, Error?]> {
         const msg = new SubscribeUpdateMessage(trackPriority, minGroupSequence, maxGroupSequence);
-        writer.writeVarint(BigInt(msg.length()));
-        writer.writeVarint(trackPriority);
-        writer.writeVarint(minGroupSequence);
-        writer.writeVarint(maxGroupSequence);
-        const err = await writer.flush();
+        let err: Error | undefined = undefined;
+        writer.writeVarint(msg.length());
+        writer.writeBigVarint(trackPriority);
+        writer.writeBigVarint(minGroupSequence);
+        writer.writeBigVarint(maxGroupSequence);
+        err = await writer.flush();
         if (err) {
             return [undefined, err];
         }
@@ -30,26 +31,26 @@ export class SubscribeUpdateMessage {
     }
 
     static async decode(reader: Reader): Promise<[SubscribeUpdateMessage?, Error?]> {
-        const [len, err] = await reader.readVarint();
+        let err: Error | undefined;
+        [, err] = await reader.readVarint();
         if (err) {
-            return [undefined, new Error("Failed to read length for SubscribeUpdateMessage")];
+            return [undefined, err];
         }
-
-        const [trackPriority, err2] = await reader.readVarint();
-        if (err2) {
-            return [undefined, new Error("Failed to read trackPriority for SubscribeUpdateMessage: " + err2.message)];
+        let trackPriority: bigint;
+        [trackPriority, err] = await reader.readBigVarint();
+        if (err) {
+            return [undefined, err];
         }
-
-        const [minGroupSequence, err3] = await reader.readVarint();
-        if (err3) {
-            return [undefined, new Error("Failed to read minGroupSequence for SubscribeUpdateMessage: " + err3.message)];
+        let minGroupSequence: bigint;
+        [minGroupSequence, err] = await reader.readBigVarint();
+        if (err) {
+            return [undefined, err];
         }
-
-        const [maxGroupSequence, err4] = await reader.readVarint();
-        if (err4) {
-            return [undefined, new Error("Failed to read maxGroupSequence for SubscribeUpdateMessage: " + err4.message)];
+        let maxGroupSequence: bigint;
+        [maxGroupSequence, err] = await reader.readBigVarint();
+        if (err) {
+            return [undefined, err];
         }
-
         return [new SubscribeUpdateMessage(trackPriority, minGroupSequence, maxGroupSequence), undefined];
     }
 }

@@ -14,9 +14,10 @@ export class SubscribeOkMessage {
 
     static async encode(writer: Writer, groupOrder: bigint): Promise<[SubscribeOkMessage?, Error?]> {
         const msg = new SubscribeOkMessage(groupOrder);
-        writer.writeVarint(BigInt(msg.length()));
-        writer.writeVarint(groupOrder);
-        const err = await writer.flush();
+        let err: Error | undefined = undefined;
+        writer.writeVarint(msg.length());
+        writer.writeBigVarint(groupOrder);
+        err = await writer.flush();
         if (err) {
             return [undefined, err];
         }
@@ -24,16 +25,16 @@ export class SubscribeOkMessage {
     }
 
     static async decode(reader: Reader): Promise<[SubscribeOkMessage?, Error?]> {
-        const [len, err] = await reader.readVarint();
+        let err: Error | undefined;
+        [, err] = await reader.readVarint();
         if (err) {
-            return [undefined, new Error("Failed to read length for SubscribeOkMessage: " + err.message)];
+            return [undefined, err];
         }
-
-        const [varint, err2] = await reader.readVarint();
-        if (err2) {
-            return [undefined, new Error("Failed to read groupOrder for SubscribeOkMessage: " + err2.message)];
+        let varint: bigint;
+        [varint, err] = await reader.readBigVarint();
+        if (err) {
+            return [undefined, err];
         }
-
         return [new SubscribeOkMessage(varint), undefined];
     }
 }

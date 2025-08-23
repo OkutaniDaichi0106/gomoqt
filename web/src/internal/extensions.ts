@@ -1,32 +1,32 @@
 export class Extensions {
-    entries: Map<bigint, Uint8Array>;
+    entries: Map<number, Uint8Array>;
 
     constructor() {
-        this.entries = new Map<bigint, Uint8Array>();
+        this.entries = new Map<number, Uint8Array>();
     }
 
-    has(id: bigint): boolean {
+    has(id: number): boolean {
         return this.entries.has(id);
     }
 
-    delete(id: bigint): boolean {
+    delete(id: number): boolean {
         return this.entries.delete(id);
     }
 
-    addBytes(id: bigint, bytes: Uint8Array): void {
+    addBytes(id: number, bytes: Uint8Array): void {
         this.entries.set(id, bytes);
     }
 
-    getBytes(id: bigint): Uint8Array | undefined {
+    getBytes(id: number): Uint8Array | undefined {
         return this.entries.get(id);
     }
 
-    addString(id: bigint, str: string): void {
+    addString(id: number, str: string): void {
         const encoder = new TextEncoder();
         this.entries.set(id, encoder.encode(str));
     }
 
-    getString(id: bigint): string | undefined {
+    getString(id: number): string | undefined {
         const bytes = this.entries.get(id);
         if (bytes) {
             const decoder = new TextDecoder();
@@ -35,14 +35,14 @@ export class Extensions {
         return undefined;
     }
 
-    addNumber(id: bigint, num: bigint): void {
+    addNumber(id: number, num: bigint): void {
         const buffer = new ArrayBuffer(8);
         const view = new DataView(buffer);
         view.setBigUint64(0, BigInt(num), true); // true for little-endian
         this.entries.set(id, new Uint8Array(buffer));
     }
 
-    getNumber(id: bigint): bigint | undefined {
+    getNumber(id: number): bigint | undefined {
         const bytes = this.entries.get(id);
         if (bytes && bytes.length === 8) {
             const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -51,12 +51,12 @@ export class Extensions {
         return undefined;
     }
 
-    addBoolean(id: bigint, value: boolean): void {
+    addBoolean(id: number, value: boolean): void {
         const byte = new Uint8Array([value ? 1 : 0]);
         this.entries.set(id, byte);
     }
 
-    getBoolean(id: bigint): boolean | undefined {
+    getBoolean(id: number): boolean | undefined {
         const bytes = this.entries.get(id);
         if (bytes && bytes.length === 1) {
             return bytes[0] === 1;

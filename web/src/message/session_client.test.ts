@@ -19,7 +19,7 @@ describe('SessionClientMessage', () => {
   it('should create instance with versions and extensions', () => {
     const versions = new Set<Version>([Versions.DEVELOP]);
     const extensions = new Extensions();
-    extensions.addString(1n, 'test');
+  extensions.addString(1, 'test');
     
     const message = new SessionClientMessage(versions, extensions);
     
@@ -65,8 +65,8 @@ describe('SessionClientMessage', () => {
   it('should calculate correct length with extensions', () => {
     const versions = new Set<Version>([Versions.DEVELOP]);
     const extensions = new Extensions();
-    extensions.addString(1n, 'test');
-    extensions.addBytes(2n, new Uint8Array([1, 2, 3]));
+    extensions.addString(1, 'test');
+    extensions.addBytes(2, new Uint8Array([1, 2, 3]));
     
     const message = new SessionClientMessage(versions, extensions);
     const length = message.length();
@@ -181,9 +181,9 @@ describe('SessionClientMessage', () => {
   it('should encode and decode with extensions', async () => {
     const versions = new Set<Version>([Versions.DEVELOP]);
     const extensions = new Extensions();
-    extensions.addString(1n, 'test-string');
-    extensions.addBytes(2n, new Uint8Array([1, 2, 3, 4, 5]));
-    extensions.addString(100n, 'another-extension');
+  extensions.addString(1, 'test-string');
+  extensions.addBytes(2, new Uint8Array([1, 2, 3, 4, 5]));
+  extensions.addString(100, 'another-extension');
     
     // Create buffer for encoding
     const chunks: Uint8Array[] = [];
@@ -227,9 +227,9 @@ describe('SessionClientMessage', () => {
     expect(decodedMessage?.versions.size).toBe(1);
     expect(decodedMessage?.versions.has(Versions.DEVELOP)).toBe(true);
     expect(decodedMessage?.extensions.entries.size).toBe(3);
-    expect(decodedMessage?.extensions.getString(1n)).toBe('test-string');
-    expect(decodedMessage?.extensions.getBytes(2n)).toEqual(new Uint8Array([1, 2, 3, 4, 5]));
-    expect(decodedMessage?.extensions.getString(100n)).toBe('another-extension');
+  expect(decodedMessage?.extensions.getString(1)).toBe('test-string');
+  expect(decodedMessage?.extensions.getBytes(2)).toEqual(new Uint8Array([1, 2, 3, 4, 5]));
+  expect(decodedMessage?.extensions.getString(100)).toBe('another-extension');
   });
 
   it('should encode and decode with empty versions set', async () => {
@@ -330,8 +330,8 @@ describe('SessionClientMessage', () => {
   it('should handle empty extension data', async () => {
     const versions = new Set<Version>([Versions.DEVELOP]);
     const extensions = new Extensions();
-    extensions.addBytes(1n, new Uint8Array([])); // Empty bytes
-    extensions.addString(2n, ''); // Empty string
+    extensions.addBytes(1, new Uint8Array([])); // Empty bytes
+    extensions.addString(2, ''); // Empty string
     
     // Create buffer for encoding
     const chunks: Uint8Array[] = [];
@@ -373,7 +373,7 @@ describe('SessionClientMessage', () => {
     
     // Verify content
     expect(decodedMessage?.extensions.entries.size).toBe(2);
-    expect(decodedMessage?.extensions.getBytes(1n)).toEqual(new Uint8Array([]));
-    expect(decodedMessage?.extensions.getString(2n)).toBe('');
+    expect(decodedMessage?.extensions.getBytes(1)).toEqual(new Uint8Array([]));
+    expect(decodedMessage?.extensions.getString(2)).toBe('');
   });
 });

@@ -33,8 +33,9 @@ describe('AnnouncementWriter', () => {
         ctx = background();
 
         mockWriter = {
-            writeBoolean: jest.fn(),
             writeVarint: jest.fn(),
+            writeBoolean: jest.fn(),
+            writeBigVarint: jest.fn(),
             writeString: jest.fn(),
             writeStringArray: jest.fn(),
             writeUint8Array: jest.fn(),
@@ -46,8 +47,9 @@ describe('AnnouncementWriter', () => {
         } as any;
 
         mockReader = {
-            readBoolean: jest.fn(),
             readVarint: jest.fn(),
+            readBoolean: jest.fn(),
+            readBigVarint: jest.fn(),
             readString: jest.fn(),
             readStringArray: jest.fn(),
             readUint8Array: jest.fn(),
@@ -226,7 +228,7 @@ describe('AnnouncementReader', () => {
 
         mockWriter = {
             writeBoolean: jest.fn(),
-            writeVarint: jest.fn(),
+            writeBigVarint: jest.fn(),
             writeString: jest.fn(),
             writeStringArray: jest.fn(),
             writeUint8Array: jest.fn(),
@@ -239,7 +241,7 @@ describe('AnnouncementReader', () => {
 
         mockReader = {
             readBoolean: jest.fn(),
-            readVarint: jest.fn(),
+            readBigVarint: jest.fn(),
             readString: jest.fn(),
             readStringArray: jest.fn(),
             readUint8Array: jest.fn(),

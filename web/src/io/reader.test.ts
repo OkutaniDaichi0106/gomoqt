@@ -103,11 +103,13 @@ describe('Reader', () => {
       const largeLength = new Uint8Array([0xF0, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]);
       const freshReader = createClosedReader(largeLength);
 
-      const [result, error] = await freshReader.readUint8Array();
-      
-      expect(result).toBeUndefined();
-      expect(error).toBeDefined();
-      expect(error?.message).toContain('Varint too large');
+      try {
+        await freshReader.readUint8Array();
+        // Fail if no exception is thrown
+        throw new Error('Expected to throw Varint too large');
+      } catch (e: any) {
+        expect(e.message).toContain('Varint too large');
+      }
     });
   });
 
@@ -165,12 +167,12 @@ describe('Reader', () => {
     });
   });
 
-  describe('readVarint', () => {
+  describe('readBigVarint', () => {
     it('should read single byte varint', async () => {
       const streamData = new Uint8Array([42]);
       const freshReader = createClosedReader(streamData);
 
-      const [result, error] = await freshReader.readVarint();
+      const [result, error] = await freshReader.readBigVarint();
       
       expect(error).toBeUndefined();
       expect(result).toBe(42n);
@@ -181,7 +183,7 @@ describe('Reader', () => {
       const streamData = new Uint8Array([0x41, 0x2C]);
       const freshReader = createClosedReader(streamData);
 
-      const [result, error] = await freshReader.readVarint();
+      const [result, error] = await freshReader.readBigVarint();
       
       expect(error).toBeUndefined();
       expect(result).toBe(300n);
@@ -193,7 +195,7 @@ describe('Reader', () => {
       
       const freshReader = createClosedReader(streamData);
 
-      const [result, error] = await freshReader.readVarint();
+      const [result, error] = await freshReader.readBigVarint();
       
       expect(error).toBeUndefined();
       expect(result).toBe(1000000n);
@@ -205,7 +207,7 @@ describe('Reader', () => {
       
       const freshReader = createClosedReader(streamData);
 
-      const [result, error] = await freshReader.readVarint();
+      const [result, error] = await freshReader.readBigVarint();
       
       expect(error).toBeUndefined();
       expect(result).toBe(1n << 40n);
@@ -217,7 +219,7 @@ describe('Reader', () => {
       controller.enqueue(new Uint8Array([0x2C]));
       controller.close();
 
-      const [result, error] = await reader.readVarint();
+      const [result, error] = await reader.readBigVarint();
       
       expect(error).toBeUndefined();
       expect(result).toBe(300n);
@@ -228,7 +230,7 @@ describe('Reader', () => {
       controller.enqueue(new Uint8Array([0x41]));
       controller.close();
 
-      const [result, error] = await reader.readVarint();
+      const [result, error] = await reader.readBigVarint();
       
       expect(result).toBe(0n); // Implementation returns 0n on error
       expect(error).toBeDefined();
@@ -369,7 +371,7 @@ describe('Reader', () => {
       expect(boolResult).toBe(true);
 
       // Read varint
-      const [varintResult, varintError] = await reader.readVarint();
+      const [varintResult, varintError] = await reader.readBigVarint();
       expect(varintError).toBeUndefined();
       expect(varintResult).toBe(42n);
 

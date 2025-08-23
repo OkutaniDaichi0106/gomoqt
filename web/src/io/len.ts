@@ -1,6 +1,6 @@
-export const MAX_VARINT1: bigint = (1n << 6n) - 1n; // 63
-export const MAX_VARINT2: bigint = (1n << 14n) - 1n; // 16383
-export const MAX_VARINT4: bigint = (1n << 30n) - 1n; // 1073741823
+export const MAX_VARINT1: number = (1 << 6) - 1; // 63
+export const MAX_VARINT2: number = (1 << 14) - 1; // 16383
+export const MAX_VARINT4: number = (1 << 30) - 1; // 1073741823
 export const MAX_VARINT8: bigint = (1n << 62n) - 1n; // 4611686018427387903
 
 export function varintLen(value: number | bigint): number {

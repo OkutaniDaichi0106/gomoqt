@@ -24,22 +24,24 @@ export class Reader {
     }
 
     async readUint8Array(): Promise<[Uint8Array?, Error?]> {
-        const [varint, err] = await this.readVarint();
+        let err: Error | undefined;
+        let len: number;
+        [len, err] = await this.readVarint();
         if (err) {
             return [undefined, err];
         }
 
-        const len = Number(varint);
         if (len > MAX_BYTES_LENGTH) {
-            return [undefined, new Error("Varint too large")];
+            throw new Error("Varint too large");
         }
 
         const buffer = new Uint8Array(this.#pool.acquire(len));
         const bytes = buffer.subarray(0, len); // Only use the exact length needed
 
-        const [n, err2] = await this.copy(bytes);
-        if (err2) {
-            return [undefined, err2];
+        let n = 0;
+        [n, err] = await this.copy(bytes);
+        if (err) {
+            return [undefined, err];
         }
 
         // Return only the bytes that were actually read
@@ -51,7 +53,9 @@ export class Reader {
     }
 
     async readString(): Promise<[string, Error?]> {
-        const [bytes, err] = await this.readUint8Array();
+        let err: Error | undefined = undefined;
+        const [bytes, err2] = await this.readUint8Array();
+        err = err2;
         if (err) {
             return ["", err];
         }
@@ -62,40 +66,73 @@ export class Reader {
         return [str, undefined];
     }
 
-    async readVarint(): Promise<[bigint, Error?]> {
+    async readVarint(): Promise<[number, Error?]> {
+        let err: Error | undefined = undefined;
+        let varint = 0;
         if (this.#buf.size == 0) {
-            const [filled, err] = await this.fill(1);
+            let filled = 0;
+            [filled, err] = await this.fill(1);
             if (err) {
-                return [0n, err];
+                return [0, err];
             }
-
             if (!filled) {
-                return [0n, new Error("Failed to read byte")];
+                err = new Error("Failed to read byte");
+                return [0, err];
             }
-
         }
         const firstByte = this.#buf.readUint8();
-
         const len = 1 << (firstByte >> 6);
-        let value: bigint = BigInt(firstByte & 0x3f);
-
+        varint = firstByte & 0x3f;
         const remaining = len - 1; // Remaining bytes to read
         if (this.#buf.size < remaining) {
-            const [filled, err] = await this.fill(remaining - this.#buf.size);
+            let filled = 0;
+            [filled, err] = await this.fill(remaining - this.#buf.size);
+            if (err) {
+                return [0, err];
+            }
+            if (!filled) {
+                err = new Error("Failed to read byte");
+                return [0, err];
+            }
+        }
+        for (let i = 0; i < remaining; i++) {
+            varint = (varint << 8) | this.#buf.readUint8();
+        }
+        return [varint, undefined];
+    }
+
+    async readBigVarint(): Promise<[bigint, Error?]> {
+        let err: Error | undefined = undefined;
+        if (this.#buf.size == 0) {
+            let filled = 0;
+            [filled, err] = await this.fill(1);
             if (err) {
                 return [0n, err];
             }
             if (!filled) {
-                return [0n, new Error("Failed to read byte")];
+                err = new Error("Failed to read byte");
+                return [0n, err];
             }
         }
-
-        for (let i = 0; i < remaining; i++) {
-            value = value << 8n | BigInt(this.#buf.readUint8());
+        const firstByte = this.#buf.readUint8();
+        const len = 1 << (firstByte >> 6);
+        let bigVarint = BigInt(firstByte & 0x3f);
+        const remaining = len - 1; // Remaining bytes to read
+        if (this.#buf.size < remaining) {
+            let filled = 0;
+            [filled, err] = await this.fill(remaining - this.#buf.size);
+            if (err) {
+                return [0n, err];
+            }
+            if (!filled) {
+                err = new Error("Failed to read byte");
+                return [0n, err];
+            }
         }
-
-
-        return [value, undefined];
+        for (let i = 0; i < remaining; i++) {
+            bigVarint = (bigVarint << 8n) | BigInt(this.#buf.readUint8());
+        }
+        return [bigVarint, undefined];
     }
 
     async readUint8(): Promise<[number, Error?]> {
@@ -128,21 +165,25 @@ export class Reader {
     }
 
     async readStringArray(): Promise<[string[], Error?]> {
-        const [varint, err] = await this.readVarint();
+        let err: Error | undefined = undefined;
+        let bigVarint = 0n;
+        [bigVarint, err] = await this.readBigVarint();
         if (err) {
             return [[], err];
         }
 
-        const count = Number(varint);
+        const count = Number(bigVarint);
         if (count > MAX_BYTES_LENGTH) {
-            return [[], new Error("Varint too large")];
+            err = new Error("Varint too large");
+            return [[], err];
         }
 
         const strings: string[] = [];
         for (let i = 0; i < count; i++) {
-            const [str, err2] = await this.readString();
-            if (err2) {
-                return [[], err2];
+            let str = "";
+            [str, err] = await this.readString();
+            if (err) {
+                return [[], err];
             }
             strings.push(str);
         }

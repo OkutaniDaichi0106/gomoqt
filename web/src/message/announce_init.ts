@@ -19,9 +19,10 @@ export class AnnounceInitMessage {
 
     static async encode(writer: Writer, suffixes: string[]): Promise<[AnnounceInitMessage?, Error?]> {
         const msg = new AnnounceInitMessage(suffixes);
-        writer.writeVarint(BigInt(msg.length()));
+        let err: Error | undefined = undefined;
+        writer.writeVarint(msg.length());
         writer.writeStringArray(suffixes);
-        const err = await writer.flush();
+        err = await writer.flush();
         if (err) {
             return [undefined, err];
         }
@@ -29,13 +30,15 @@ export class AnnounceInitMessage {
     }
 
     static async decode(reader: Reader): Promise<[AnnounceInitMessage?, Error?]> {
-        const [len, err] = await reader.readVarint();
+        let err: Error | undefined = undefined;
+        [, err] = await reader.readVarint();
         if (err) {
-            return [undefined, new Error("Failed to read length for AnnounceInit")];
+            return [undefined, err];
         }
-        const [suffixes, err2] = await reader.readStringArray();
-        if (err2) {
-            return [undefined, new Error("Failed to read suffixes for AnnounceInit")];
+        let suffixes: string[];
+        [suffixes, err] = await reader.readStringArray();
+        if (err) {
+            return [undefined, err];
         }
 
         return [new AnnounceInitMessage(suffixes), undefined];

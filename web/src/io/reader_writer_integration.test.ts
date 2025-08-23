@@ -47,12 +47,12 @@ describe('Reader/Writer Integration Tests', () => {
       
       try {
         // Write
-        writer.writeVarint(testValue);
+        writer.writeBigVarint(testValue);
         await writer.flush();
         await writer.close();
         
         // Read
-        const [readValue, err] = await reader.readVarint();
+        const [readValue, err] = await reader.readBigVarint();
         
         expect(err).toBeUndefined();
         expect(readValue).toBe(testValue);
@@ -67,12 +67,12 @@ describe('Reader/Writer Integration Tests', () => {
       
       try {
         // Write
-        writer.writeVarint(testValue);
+        writer.writeBigVarint(testValue);
         await writer.flush();
         await writer.close();
         
         // Read
-        const [readValue, err] = await reader.readVarint();
+        const [readValue, err] = await reader.readBigVarint();
         
         expect(err).toBeUndefined();
         expect(readValue).toBe(testValue);
@@ -207,7 +207,7 @@ describe('Reader/Writer Integration Tests', () => {
       try {
         // Write multiple values
         writer.writeBoolean(true);
-        writer.writeVarint(123n);
+        writer.writeBigVarint(123n);
         writer.writeString('test');
         writer.writeUint8Array(new Uint8Array([1, 2, 3]));
         writer.writeStringArray(['a', 'b', 'c']);
@@ -220,7 +220,7 @@ describe('Reader/Writer Integration Tests', () => {
         expect(err1).toBeUndefined();
         expect(bool1).toBe(true);
 
-        const [varint1, err2] = await reader.readVarint();
+        const [varint1, err2] = await reader.readBigVarint();
         expect(err2).toBeUndefined();
         expect(varint1).toBe(123n);
 

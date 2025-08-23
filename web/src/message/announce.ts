@@ -16,10 +16,11 @@ export class AnnounceMessage {
 
     static async encode(writer: Writer, suffix: string, active: boolean): Promise<[AnnounceMessage?, Error?]> {
         const msg = new AnnounceMessage(suffix, active);
-        writer.writeVarint(BigInt(msg.length()));
+        let err: Error | undefined = undefined;
+        writer.writeVarint(msg.length());
         writer.writeBoolean(active);
         writer.writeString(suffix);
-        const err = await writer.flush();
+        err = await writer.flush();
         if (err) {
             return [undefined, err];
         }
@@ -27,21 +28,21 @@ export class AnnounceMessage {
     }
 
     static async decode(reader: Reader): Promise<[AnnounceMessage?, Error?]> {
-        const [len, err] = await reader.readVarint();
+        let err: Error | undefined = undefined;
+        [, err] = await reader.readVarint();
         if (err) {
-            return [undefined, new Error("Failed to read length for Announce")];
+            return [undefined, err];
         }
-
-        const [active, err2] = await reader.readBoolean();
-        if (err2) {
-            return [undefined, new Error("Failed to read active for Announce")];
+        let active = false;
+        [active, err] = await reader.readBoolean();
+        if (err) {
+            return [undefined, err];
         }
-
-        const [suffix, err3] = await reader.readString();
-        if (err3) {
-            return [undefined, new Error("Failed to read suffix for Announce")];
+        let suffix = "";
+        [suffix, err] = await reader.readString();
+        if (err) {
+            return [undefined, err];
         }
-
         return [new AnnounceMessage(suffix, active), undefined];
     }
 }

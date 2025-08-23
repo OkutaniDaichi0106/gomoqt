@@ -30,7 +30,7 @@ export class Writer {
         if (data.length > MAX_BYTES_LENGTH) {
             throw new Error("Bytes length exceeds maximum limit");
         }
-        this.writeVarint(BigInt(data.length));
+        this.writeVarint(data.length);
         this.#buf.write(data);
     }
 
@@ -40,33 +40,77 @@ export class Writer {
         this.writeUint8Array(data);
     }
 
-    writeVarint(num: bigint): void {
+    writeVarint(num: number): void {
         if (num < 0) {
             throw new Error("Varint cannot be negative");
         }
         if (num <= MAX_VARINT1) {
             // 1 byte
-            this.#buf.writeUint8(Number(num));
+            this.#buf.write(Uint8Array.of(num));
         } else if (num <= MAX_VARINT2) {
             // 2 bytes
-            this.#buf.writeUint8(Number((num >> 8n) | 0x40n));
-            this.#buf.writeUint8(Number(num & 0xFFn));
+            const out = new Uint8Array(2);
+            out[0] = (num >> 8) | 0x40;
+            out[1] = num & 0xFF;
+            this.#buf.write(out);
         } else if (num <= MAX_VARINT4) {
             // 4 bytes
-            this.#buf.writeUint8(Number((num >> 24n) | 0x80n));
-            this.#buf.writeUint8(Number((num >> 16n) & 0xFFn));
-            this.#buf.writeUint8(Number((num >> 8n) & 0xFFn));
-            this.#buf.writeUint8(Number(num & 0xFFn));
+            const out = new Uint8Array(4);
+            out[0] = (num >> 24) | 0x80;
+            out[1] = (num >> 16) & 0xFF;
+            out[2] = (num >> 8) & 0xFF;
+            out[3] = num & 0xFF;
+            this.#buf.write(out);
         } else if (num <= MAX_VARINT8) {
             // 8 bytes
-            this.#buf.writeUint8(Number((num >> 56n) | 0xC0n));
-            this.#buf.writeUint8(Number((num >> 48n) & 0xFFn));
-            this.#buf.writeUint8(Number((num >> 40n) & 0xFFn));
-            this.#buf.writeUint8(Number((num >> 32n) & 0xFFn));
-            this.#buf.writeUint8(Number((num >> 24n) & 0xFFn));
-            this.#buf.writeUint8(Number((num >> 16n) & 0xFFn));
-            this.#buf.writeUint8(Number((num >> 8n) & 0xFFn));
-            this.#buf.writeUint8(Number(num & 0xFFn));
+            const out = new Uint8Array(8);
+            out[0] = (num >> 56) | 0xC0;
+            out[1] = (num >> 48) & 0xFF;
+            out[2] = (num >> 40) & 0xFF;
+            out[3] = (num >> 32) & 0xFF;
+            out[4] = (num >> 24) & 0xFF;
+            out[5] = (num >> 16) & 0xFF;
+            out[6] = (num >> 8) & 0xFF;
+            out[7] = num & 0xFF;
+            this.#buf.write(out);
+        } else {
+            throw new RangeError("Value exceeds maximum varint size");
+        }
+    }
+
+    writeBigVarint(num: bigint): void {
+        if (num < 0n) {
+            throw new Error("Varint cannot be negative");
+        }
+        if (num <= MAX_VARINT1) {
+            // 1 byte
+            this.#buf.write(Uint8Array.of(Number(num)));
+        } else if (num <= MAX_VARINT2) {
+            // 2 bytes
+            const out = new Uint8Array(2);
+            out[0] = Number((num >> 8n) | 0x40n);
+            out[1] = Number(num & 0xFFn);
+            this.#buf.write(out);
+        } else if (num <= MAX_VARINT4) {
+            // 4 bytes
+            const out = new Uint8Array(4);
+            out[0] = Number((num >> 24n) | 0x80n);
+            out[1] = Number((num >> 16n) & 0xFFn);
+            out[2] = Number((num >> 8n) & 0xFFn);
+            out[3] = Number(num & 0xFFn);
+            this.#buf.write(out);
+        } else if (num <= MAX_VARINT8) {
+            // 8 bytes
+            const out = new Uint8Array(8);
+            out[0] = Number((num >> 56n) | 0xC0n);
+            out[1] = Number((num >> 48n) & 0xFFn);
+            out[2] = Number((num >> 40n) & 0xFFn);
+            out[3] = Number((num >> 32n) & 0xFFn);
+            out[4] = Number((num >> 24n) & 0xFFn);
+            out[5] = Number((num >> 16n) & 0xFFn);
+            out[6] = Number((num >> 8n) & 0xFFn);
+            out[7] = Number(num & 0xFFn);
+            this.#buf.write(out);
         } else {
             throw new RangeError("Value exceeds maximum varint size");
         }
@@ -77,7 +121,7 @@ export class Writer {
     }
 
     writeStringArray(arr: string[]): void {
-        this.writeVarint(BigInt(arr.length));
+        this.writeVarint(arr.length);
         for (const str of arr) {
             this.writeString(str);
         }

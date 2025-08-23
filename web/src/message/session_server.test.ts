@@ -9,8 +9,8 @@ describe('SessionServerMessage', () => {
   it('should encode and decode', async () => {
     const version = 1n;
     const extensions = new Extensions();
-    extensions.addBytes(1n, new Uint8Array([1, 2, 3]));
-    extensions.addBytes(2n, new Uint8Array([4, 5, 6]));
+  extensions.addBytes(1, new Uint8Array([1, 2, 3]));
+  extensions.addBytes(2, new Uint8Array([4, 5, 6]));
 
     const { writer, reader, cleanup } = createIsolatedStreams();
 

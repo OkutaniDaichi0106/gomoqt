@@ -145,13 +145,13 @@ describe('Test Utilities', () => {
       const testValues = [0n, 1n, 255n, 256n, 65535n, 65536n];
       
       for (const value of testValues) {
-        writer.writeVarint(value);
+        writer.writeBigVarint(value);
       }
       await writer.flush();
       await writer.close();
       
       for (const expectedValue of testValues) {
-        const [readValue, error] = await reader.readVarint();
+        const [readValue, error] = await reader.readBigVarint();
         expect(error).toBeUndefined();
         expect(readValue).toBe(expectedValue);
       }

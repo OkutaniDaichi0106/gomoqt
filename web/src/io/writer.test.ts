@@ -107,9 +107,9 @@ describe('Writer', () => {
     });
   });
 
-  describe('writeVarint', () => {
+  describe('writeBigVarint', () => {
     it('should write single byte varint for values < 255', async () => {
-      writer.writeVarint(42n);
+      writer.writeBigVarint(42n);
       await writer.flush();
 
       expect(writtenData).toHaveLength(1);
@@ -117,7 +117,7 @@ describe('Writer', () => {
     });
 
     it('should write two byte varint for values < 16384', async () => {
-      writer.writeVarint(300n); // 0x012C
+      writer.writeBigVarint(300n); // 0x012C
       await writer.flush();
 
       expect(writtenData).toHaveLength(1);
@@ -128,7 +128,7 @@ describe('Writer', () => {
     });
 
     it('should write four byte varint for values < 2^30', async () => {
-      writer.writeVarint(1000000n);
+      writer.writeBigVarint(1000000n);
       await writer.flush();
 
       expect(writtenData).toHaveLength(1);
@@ -138,7 +138,7 @@ describe('Writer', () => {
     });
 
     it('should write eight byte varint for large values', async () => {
-      writer.writeVarint(1n << 40n);
+      writer.writeBigVarint(1n << 40n);
       await writer.flush();
 
       expect(writtenData).toHaveLength(1);
@@ -149,14 +149,14 @@ describe('Writer', () => {
 
     it('should throw error for negative values', () => {
       expect(() => {
-        writer.writeVarint(-1n);
+        writer.writeBigVarint(-1n);
       }).toThrow('Varint cannot be negative');
     });
 
     it('should throw error for values exceeding maximum', () => {
       const maxValue = (1n << 62n) - 1n;
       expect(() => {
-        writer.writeVarint(maxValue + 1n);
+        writer.writeBigVarint(maxValue + 1n);
       }).toThrow('Value exceeds maximum varint size');
     });
   });
@@ -243,7 +243,7 @@ describe('Writer', () => {
   describe('integration tests', () => {
     it('should write multiple data types in sequence', async () => {
       writer.writeBoolean(true);
-      writer.writeVarint(123n);
+      writer.writeBigVarint(123n);
       writer.writeString('test');
       writer.writeUint8Array(new Uint8Array([1, 2, 3]));
       

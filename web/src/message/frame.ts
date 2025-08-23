@@ -21,13 +21,15 @@ export class FrameMessage {
     }
 
     static async decode(reader: Reader): Promise<[FrameMessage?, Error?]> {
-        const [dataResult, err] = await reader.readUint8Array();
+        let arr: Uint8Array<ArrayBufferLike> | undefined;
+        let err: Error | undefined;
+        [arr, err] = await reader.readUint8Array();
         if (err) {
-            return [undefined, new Error("Failed to read data for FrameMessage")];
+            return [undefined, err];
         }
-        if (dataResult === undefined) {
-            return [undefined, new Error("data is undefined")];
+        if (arr === undefined) {
+            throw new Error("read extData: Uint8Array is undefined");
         }
-        return [new FrameMessage(dataResult), undefined];
+        return [new FrameMessage(arr), undefined];
     }
 }

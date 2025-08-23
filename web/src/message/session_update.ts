@@ -14,9 +14,10 @@ export class SessionUpdateMessage {
 
     static async encode(writer: Writer, bitrate: bigint): Promise<[SessionUpdateMessage?, Error?]> {
         const msg = new SessionUpdateMessage(bitrate);
-        writer.writeVarint(BigInt(msg.length()));
-        writer.writeVarint(bitrate);
-        const err = await writer.flush();
+        let err: Error | undefined;
+        writer.writeVarint(msg.length());
+        writer.writeBigVarint(bitrate);
+        err = await writer.flush();
         if (err) {
             return [undefined, err];
         }
@@ -24,15 +25,16 @@ export class SessionUpdateMessage {
     }
 
     static async decode(reader: Reader): Promise<[SessionUpdateMessage?, Error?]> {
-        const [len, err] = await reader.readVarint();
+        let err: Error | undefined;
+        [, err] = await reader.readVarint();
         if (err) {
-            return [undefined, new Error("Failed to read length for SessionUpdateMessage")];
+            return [undefined, err];
         }
-        const [varint, err2] = await reader.readVarint();
-        if (err2) {
-            return [undefined, new Error("Failed to read bitrate for SessionUpdateMessage: " + err2.message)];
+        let varint: bigint;
+        [varint, err] = await reader.readBigVarint();
+        if (err) {
+            return [undefined, err];
         }
-
         return [new SessionUpdateMessage(varint), undefined];
     }
 }

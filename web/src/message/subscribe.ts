@@ -34,14 +34,15 @@ export class SubscribeMessage {
     static async encode(writer: Writer, subscribeId: bigint, broadcastPath: string, trackName: string,
          trackPriority: bigint, minGroupSequence: bigint, maxGroupSequence: bigint): Promise<[SubscribeMessage?, Error?]> {
         const msg = new SubscribeMessage(subscribeId, broadcastPath, trackName, trackPriority, minGroupSequence, maxGroupSequence);
-        writer.writeVarint(BigInt(msg.length()));
-        writer.writeVarint(subscribeId);
+        let err: Error | undefined = undefined;
+        writer.writeVarint(msg.length());
+        writer.writeBigVarint(subscribeId);
         writer.writeString(broadcastPath);
         writer.writeString(trackName);
-        writer.writeVarint(trackPriority);
-        writer.writeVarint(minGroupSequence);
-        writer.writeVarint(maxGroupSequence);
-        const err = await writer.flush();
+        writer.writeBigVarint(trackPriority);
+        writer.writeBigVarint(minGroupSequence);
+        writer.writeBigVarint(maxGroupSequence);
+        err = await writer.flush();
         if (err) {
             return [undefined, err];
         }
@@ -49,41 +50,41 @@ export class SubscribeMessage {
     }
 
     static async decode(reader: Reader): Promise<[SubscribeMessage?, Error?]> {
-        const [len, err] = await reader.readVarint();
+        let err: Error | undefined;
+        [, err] = await reader.readVarint();
         if (err) {
-            return [undefined, new Error("Failed to read length for SubscribeMessage: " + err.message)];
+            return [undefined, err];
         }
-
-        const [subscribeId, err2] = await reader.readVarint();
-        if (err2) {
-            return [undefined, new Error("Failed to read subscribeId for SubscribeMessage")];
+        let subscribeId: bigint;
+        [subscribeId, err] = await reader.readBigVarint();
+        if (err) {
+            return [undefined, err];
         }
-
-        const [broadcastPath, err3] = await reader.readString();
-        if (err3) {
-            return [undefined, new Error("Failed to read broadcastPath for SubscribeMessage")];
+        let broadcastPath: string;
+        [broadcastPath, err] = await reader.readString();
+        if (err) {
+            return [undefined, err];
         }
-
-        const [trackName, err4] = await reader.readString();
-        if (err4) {
-            return [undefined, new Error("Failed to read trackName for SubscribeMessage")];
+        let trackName: string;
+        [trackName, err] = await reader.readString();
+        if (err) {
+            return [undefined, err];
         }
-
-        const [trackPriority, err5] = await reader.readVarint();
-        if (err5) {
-            return [undefined, new Error("Failed to read trackPriority for SubscribeMessage")];
+        let trackPriority: bigint;
+        [trackPriority, err] = await reader.readBigVarint();
+        if (err) {
+            return [undefined, err];
         }
-
-        const [minGroupSequence, err6] = await reader.readVarint();
-        if (err6) {
-            return [undefined, new Error("Failed to read minGroupSequence for SubscribeMessage")];
+        let minGroupSequence: bigint;
+        [minGroupSequence, err] = await reader.readBigVarint();
+        if (err) {
+            return [undefined, err];
         }
-
-        const [maxGroupSequence, err7] = await reader.readVarint();
-        if (err7) {
-            return [undefined, new Error("Failed to read maxGroupSequence for SubscribeMessage")];
+        let maxGroupSequence: bigint;
+        [maxGroupSequence, err] = await reader.readBigVarint();
+        if (err) {
+            return [undefined, err];
         }
-
         return [new SubscribeMessage(subscribeId, broadcastPath, trackName, trackPriority, minGroupSequence, maxGroupSequence), undefined];
     }
 }

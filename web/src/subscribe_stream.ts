@@ -69,16 +69,14 @@ export class ReceiveSubscribeStream {
 		this.#subscribe = subscribe;
 		[this.#ctx, this.#cancelFunc] = withCancelCause(sessCtx);
 
+		// The async loop can be cancelled by sessCtx.done.
 		(async () => {
-			for (;;) {
-				const [msg, err] = await SubscribeUpdateMessage.decode(reader)
+			while (true) {
+				const [msg, err] = await SubscribeUpdateMessage.decode(reader);
 				if (err) {
-					// TODO: handle this situation
-					break
+					return;
 				}
-
-				this.#update = msg!
-
+				this.#update = msg;
 				this.#cond.broadcast();
 			}
 		})();

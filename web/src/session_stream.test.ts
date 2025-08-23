@@ -22,7 +22,7 @@ describe('SessionStream', () => {
         
         mockWriter = {
             writeBoolean: jest.fn(),
-            writeVarint: jest.fn(),
+            writeBigVarint: jest.fn(),
             writeString: jest.fn(),
             writeUint8Array: jest.fn(),
             writeUint8: jest.fn(),
@@ -34,7 +34,7 @@ describe('SessionStream', () => {
 
         mockReader = {
             readBoolean: jest.fn(),
-            readVarint: jest.fn(),
+            readBigVarint: jest.fn(),
             readString: jest.fn(),
             readStringArray: jest.fn(),
             readUint8Array: jest.fn(),

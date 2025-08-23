@@ -13,10 +13,11 @@ export class AnnouncePleaseMessage {
     }
 
     static async encode(writer: Writer, prefix: string): Promise<[AnnouncePleaseMessage?, Error?]> {
-        const msg = new AnnouncePleaseMessage(prefix)
-        writer.writeVarint(BigInt(msg.length()));
+        const msg = new AnnouncePleaseMessage(prefix);
+        let err: Error | undefined;
+        writer.writeVarint(msg.length());
         writer.writeString(prefix);
-        const err = await writer.flush();
+        err = await writer.flush();
         if (err) {
             return [undefined, err];
         }
@@ -24,15 +25,16 @@ export class AnnouncePleaseMessage {
     }
 
     static async decode(reader: Reader): Promise<[AnnouncePleaseMessage?, Error?]> {
-        const [len, err] = await reader.readVarint();
+        let err: Error | undefined;
+        [, err] = await reader.readVarint();
         if (err) {
-            return [undefined, new Error("Failed to read length for AnnouncePlease")];
+            return [undefined, err];
         }
-        const [str, err2] = await reader.readString();
-        if (err2) {
-            return [undefined, new Error("Failed to read prefix for AnnouncePlease")];
+        let str: string;
+        [str, err] = await reader.readString();
+        if (err) {
+            return [undefined, err];
         }
-
         return [new AnnouncePleaseMessage(str), undefined];
     }
 }

@@ -16,9 +16,9 @@ export class GroupMessage {
 
     static async encode(writer: Writer, subscribeId: bigint, sequence: bigint): Promise<[GroupMessage?, Error?]> {
         const msg = new GroupMessage(subscribeId, sequence);
-        writer.writeVarint(BigInt(msg.length()));
-        writer.writeVarint(subscribeId);
-        writer.writeVarint(sequence);
+        writer.writeVarint(msg.length());
+        writer.writeBigVarint(subscribeId);
+        writer.writeBigVarint(sequence);
         const err = await writer.flush();
         if (err) {
             return [undefined, err];
@@ -27,20 +27,22 @@ export class GroupMessage {
     }
 
     static async decode(reader: Reader): Promise<[GroupMessage?, Error?]> {
-        const [len, err] = await reader.readVarint();
+        let err: Error | undefined;
+        [, err] = await reader.readVarint();
         if (err) {
-            return [undefined, new Error("Failed to read length for Group")];
+            return [undefined, err];
         }
 
-        const [subscribeId, err2] = await reader.readVarint();
-        if (err2) {
-            return [undefined, new Error("Failed to read subscribeId for Group")];
+        let subscribeId: bigint;
+        [subscribeId, err] = await reader.readBigVarint();
+        if (err) {
+            return [undefined, err];
         }
 
-
-        const [sequence, err3] = await reader.readVarint();
-        if (err3) {
-            return [undefined, new Error("Failed to read sequence for Group")];
+        let sequence: bigint;
+        [sequence, err] = await reader.readBigVarint();
+        if (err) {
+            return [undefined, err];
         }
 
         return [new GroupMessage(subscribeId, sequence), undefined];

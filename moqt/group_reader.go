@@ -38,7 +38,7 @@ func (s *GroupReader) ReadFrame(frame *Frame) error {
 
 	// Set the internal message if not already set
 	if frame.message == nil {
-		frame.message = &message.FrameMessage{}
+		frame.message = message.FrameMessage{}
 	}
 
 	err := frame.message.Decode(s.stream)

@@ -10,22 +10,20 @@ import (
 // Returns a pointer to a Frame containing the provided payload.
 func NewFrame(b []byte) *Frame {
 	return &Frame{
-		message: &message.FrameMessage{
-			Payload: b,
-		},
+		message: b,
 	}
 }
 
 // Frame represents a data frame containing a payload.
 type Frame struct {
-	message *message.FrameMessage
+	message message.FrameMessage
 }
 
 // Bytes returns a copy of the payload bytes contained in the Frame.
 // The returned slice is a copy and can be safely modified by the caller.
 func (f *Frame) Bytes() []byte {
 	data := make([]byte, f.message.Len())
-	copy(data, f.message.Payload)
+	copy(data, f.message)
 	return data
 }
 
@@ -36,5 +34,5 @@ func (f *Frame) Len() int {
 
 // Cap returns the capacity of the underlying payload slice.
 func (f *Frame) Cap() int {
-	return cap(f.message.Payload)
+	return cap(f.message)
 }

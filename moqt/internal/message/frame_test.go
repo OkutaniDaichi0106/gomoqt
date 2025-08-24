@@ -15,24 +15,16 @@ func TestFrameMessage_EncodeDecode(t *testing.T) {
 		wantErr bool
 	}{
 		"valid payload": {
-			input: message.FrameMessage{
-				Payload: []byte{1, 2},
-			},
+			input: []byte{1, 2},
 		},
 		"empty payload": {
-			input: message.FrameMessage{
-				Payload: []byte{},
-			},
+			input: []byte{},
 		},
 		"string payload": {
-			input: message.FrameMessage{
-				Payload: []byte("bar"),
-			},
+			input: []byte("bar"),
 		},
 		"large payload": {
-			input: message.FrameMessage{
-				Payload: bytes.Repeat([]byte("a"), 1024),
-			},
+			input: bytes.Repeat([]byte("a"), 1024),
 		},
 		// "nil payload": {
 		// 	input: message.FrameMessage{
@@ -55,7 +47,7 @@ func TestFrameMessage_EncodeDecode(t *testing.T) {
 			require.NoError(t, err)
 
 			// Decode
-			var decoded message.FrameMessage
+			decoded := message.FrameMessage{}
 			err = decoded.Decode(&buf)
 			require.NoError(t, err)
 

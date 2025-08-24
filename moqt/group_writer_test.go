@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -68,7 +67,7 @@ func TestGroupWriter_WriteFrame(t *testing.T) {
 		mockStream *MockQUICSendStream
 	}{
 		"valid frame": {
-			frame: &Frame{message: &message.FrameMessage{Payload: []byte("test")}},
+			frame: &Frame{message: []byte("test")},
 			mockStream: func() *MockQUICSendStream {
 				mockStream := &MockQUICSendStream{}
 				mockStream.On("Context").Return(context.Background())
@@ -162,7 +161,7 @@ func TestGroupWriter_ContextCancellation(t *testing.T) {
 		cancel()
 
 		// Test that operations continue to work (they don't check context in current implementation)
-		frame := &Frame{message: &message.FrameMessage{Payload: []byte("test")}}
+		frame := &Frame{message: []byte("test")}
 		err := sgs.WriteFrame(frame)
 		assert.NoError(t, err)
 		assert.Equal(t, uint64(1), sgs.frameCount)

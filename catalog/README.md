@@ -1,3 +1,3 @@
 # Common Catalog Format for MOQ
-This package has not been implemented yet.
+This package is in progress.
 TODO

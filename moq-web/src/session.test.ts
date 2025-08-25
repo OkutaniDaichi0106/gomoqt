@@ -304,8 +304,8 @@ describe("Session", () => {
             expect(typeof session.update).toBe('function');
             expect(typeof session.close).toBe('function');
             expect(typeof session.closeWithError).toBe('function');
-            expect(typeof session.openAnnounceStream).toBe('function');
-            expect(typeof session.openTrackStream).toBe('function');
+            expect(typeof session.acceptAnnounce).toBe('function');
+            expect(typeof session.subscribe).toBe('function');
         });
     });
 
@@ -320,14 +320,14 @@ describe("Session", () => {
             expect(typeof session.update).toBe('function');
         });
 
-        it("should have openAnnounceStream method", () => {
-            expect(session.openAnnounceStream).toBeDefined();
-            expect(typeof session.openAnnounceStream).toBe('function');
+        it("should have acceptAnnounce method", () => {
+            expect(session.acceptAnnounce).toBeDefined();
+            expect(typeof session.acceptAnnounce).toBe('function');
         });
 
-        it("should have openTrackStream method", () => {
-            expect(session.openTrackStream).toBeDefined();
-            expect(typeof session.openTrackStream).toBe('function');
+        it("should have subscribe method", () => {
+            expect(session.subscribe).toBeDefined();
+            expect(typeof session.subscribe).toBe('function');
         });
 
         it("should have close method", () => {
@@ -373,7 +373,7 @@ describe("Session", () => {
         it("should handle errors gracefully during initialization", async () => {
             const errorMockConn = {
                 ...mockConn,
-                createBidirectionalStream: jest.fn().mockImplementation(() => 
+                createBidirectionalStream: jest.fn().mockImplementation(() =>
                     Promise.reject(new Error("Stream creation failed"))
                 ),
                 close: jest.fn()
@@ -391,13 +391,13 @@ describe("Session", () => {
             // Mock SessionServerMessage to return incompatible version
             const SessionServerMessageMock = jest.mocked(SessionServerMessage);
             const originalDecode = SessionServerMessageMock.decode;
-            SessionServerMessageMock.decode.mockImplementationOnce(() => 
+            SessionServerMessageMock.decode.mockImplementationOnce(() =>
                 Promise.resolve([{ version: 999n, extensions: {} } as any, undefined])
             );
 
             const versionSession = new Session(versionMockConn as any);
             await expect(versionSession.ready).rejects.toThrow("Incompatible session version");
-            
+
             // Restore original mock
             SessionServerMessageMock.decode = originalDecode;
         });
@@ -405,24 +405,24 @@ describe("Session", () => {
 
     describe("async operations", () => {
         let readySession: Session;
-        
+
         beforeEach(async () => {
             readySession = new Session(mockConn as any);
             await readySession.ready;
         });
 
-        it("should handle openAnnounceStream", async () => {
+        it("should handle acceptAnnounce", async () => {
             const prefix = { segments: ["test"] };
-            const stream = readySession.openAnnounceStream(prefix as any);
+            const stream = readySession.acceptAnnounce(prefix as any);
             expect(stream).toBeInstanceOf(Promise);
         });
 
-        it("should handle openTrackStream", async () => {
+        it("should handle subscribe", async () => {
             const path = { segments: ["test", "path"] };
             const trackName = "test-track";
             const config = { trackPriority: 1n, minGroupSequence: 0n, maxGroupSequence: 10n };
-            
-            const stream = readySession.openTrackStream(path as any, trackName, config);
+
+            const stream = readySession.subscribe(path as any, trackName, config);
             expect(stream).toBeInstanceOf(Promise);
         });
     });

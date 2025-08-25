@@ -87,7 +87,7 @@ export class Session {
 		this.#sessionStream.update(bitrate);
 	}
 
-	async openAnnounceStream(prefix: TrackPrefix): Promise<AnnouncementReader> {
+	async acceptAnnounce(prefix: TrackPrefix): Promise<AnnouncementReader> {
 		const stream = await this.#conn.createBidirectionalStream()
 		const writer = new Writer(stream.writable);
 		const reader = new Reader(stream.readable);
@@ -121,7 +121,7 @@ export class Session {
 		return new AnnouncementReader(this.#ctx, writer, reader, req, rsp);
 	}
 
-	async openTrackStream(path: BroadcastPath, name: string, config: TrackConfig = {
+	async subscribe(path: BroadcastPath, name: string, config: TrackConfig = {
             trackPriority: 0n,
             minGroupSequence: 0n,
             maxGroupSequence: 0n,

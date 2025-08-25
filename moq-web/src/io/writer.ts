@@ -127,6 +127,10 @@ export class Writer {
         }
     }
 
+    copyFrom(src: Source): void {
+        src.copyTo(this.#buf.reserve(src.byteLength));
+    }
+
     async flush(): Promise<Error | undefined> {
         console.log(`Flushing buffer of size: ${this.#buf.bytes()}`);
         if (this.#buf.size > 0) {
@@ -155,4 +159,9 @@ export class Writer {
     closed(): Promise<void> {
         return this.#writer.closed;
     }
+}
+
+export interface Source {
+    byteLength: number;
+    copyTo(target: ArrayBuffer | ArrayBufferView<ArrayBufferLike>): void;
 }

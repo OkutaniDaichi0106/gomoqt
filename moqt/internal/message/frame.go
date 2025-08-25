@@ -9,22 +9,19 @@ import (
  *   Payload ([]byte),
  * }
  */
-
-type FrameMessage struct {
-	Payload []byte
-}
+type FrameMessage []byte
 
 func (fm FrameMessage) Len() int {
-	return len(fm.Payload)
+	return len(fm)
 }
 
 func (fm FrameMessage) Encode(w io.Writer) error {
-	err := writeVarint(w, uint64(len(fm.Payload)))
+	err := writeVarint(w, uint64(len(fm)))
 	if err != nil {
 		return err
 	}
 
-	_, err = w.Write(fm.Payload)
+	_, err = w.Write(fm)
 	if err != nil {
 		return err
 	}
@@ -40,18 +37,18 @@ func (fm *FrameMessage) Decode(src io.Reader) error {
 
 	// If payload length is zero, reset the slice to zero length
 	if num == 0 {
-		fm.Payload = fm.Payload[:0]
+		*fm = (*fm)[:0]
 		return nil
 	}
 
 	// Ensure the payload slice has enough capacity
-	if cap(fm.Payload) < int(num) {
-		fm.Payload = make([]byte, num)
+	if cap(*fm) < int(num) {
+		*fm = make([]byte, num)
 	} else {
-		fm.Payload = fm.Payload[:num]
+		*fm = (*fm)[:num]
 	}
 
-	_, err = io.ReadFull(src, fm.Payload)
+	_, err = io.ReadFull(src, *fm)
 
 	return err
 }

@@ -10,10 +10,12 @@ export function createIsolatedStreams(): { writer: Writer; reader: Reader; clean
   let writerClosed = false;
   
   // Use a more efficient WritableStream implementation
-  const writableStream = new WritableStream<Uint8Array>({
+    const writableStream = new WritableStream<Uint8Array>({
     write(chunk) {
-      // Avoid copying if possible for performance
-      chunks.push(chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk));
+      // Copy the chunk to avoid holding a reference to a mutable buffer
+      // (Writer may reuse or reset its internal buffer after flush).
+      const copy = chunk instanceof Uint8Array ? chunk.slice() : new Uint8Array(chunk);
+      chunks.push(copy);
     },
     close() {
       writerClosed = true;

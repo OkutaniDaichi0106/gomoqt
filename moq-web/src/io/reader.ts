@@ -35,21 +35,18 @@ export class Reader {
             throw new Error("Varint too large");
         }
 
-        const buffer = new Uint8Array(this.#pool.acquire(len));
-        const bytes = buffer.subarray(0, len); // Only use the exact length needed
+    // Acquire an underlying ArrayBuffer from the pool but create a view
+    // of the exact requested length to avoid returning a larger buffer
+    // (which would contain trailing zeros).
+    const ab = this.#pool.acquire(len);
+    const buffer = new Uint8Array(ab as ArrayBuffer, 0, len);
 
-        let n = 0;
-        [n, err] = await this.copy(bytes);
+    err = await this.fillN(buffer, len);
         if (err) {
             return [undefined, err];
         }
 
-        // Return only the bytes that were actually read
-        if (n < len) {
-            return [bytes.subarray(0, n), undefined];
-        }
-
-        return [bytes, undefined];
+        return [buffer, undefined];
     }
 
     async readString(): Promise<[string, Error?]> {
@@ -70,13 +67,8 @@ export class Reader {
         let err: Error | undefined = undefined;
         let varint = 0;
         if (this.#buf.size == 0) {
-            let filled = 0;
-            [filled, err] = await this.fill(1);
+            err = await this.pushN(1);
             if (err) {
-                return [0, err];
-            }
-            if (!filled) {
-                err = new Error("Failed to read byte");
                 return [0, err];
             }
         }
@@ -85,18 +77,14 @@ export class Reader {
         varint = firstByte & 0x3f;
         const remaining = len - 1; // Remaining bytes to read
         if (this.#buf.size < remaining) {
-            let filled = 0;
-            [filled, err] = await this.fill(remaining - this.#buf.size);
+            err = await this.pushN(remaining - this.#buf.size);
             if (err) {
-                return [0, err];
-            }
-            if (!filled) {
-                err = new Error("Failed to read byte");
                 return [0, err];
             }
         }
         for (let i = 0; i < remaining; i++) {
-            varint = (varint << 8) | this.#buf.readUint8();
+            // Use arithmetic multiplication to avoid 32-bit bitwise overflow in JS
+            varint = varint * 256 + this.#buf.readUint8();
         }
         return [varint, undefined];
     }
@@ -104,13 +92,8 @@ export class Reader {
     async readBigVarint(): Promise<[bigint, Error?]> {
         let err: Error | undefined = undefined;
         if (this.#buf.size == 0) {
-            let filled = 0;
-            [filled, err] = await this.fill(1);
+            err = await this.pushN(1);
             if (err) {
-                return [0n, err];
-            }
-            if (!filled) {
-                err = new Error("Failed to read byte");
                 return [0n, err];
             }
         }
@@ -120,17 +103,14 @@ export class Reader {
         const remaining = len - 1; // Remaining bytes to read
         if (this.#buf.size < remaining) {
             let filled = 0;
-            [filled, err] = await this.fill(remaining - this.#buf.size);
+            err = await this.pushN(remaining - this.#buf.size);
             if (err) {
-                return [0n, err];
-            }
-            if (!filled) {
-                err = new Error("Failed to read byte");
                 return [0n, err];
             }
         }
         for (let i = 0; i < remaining; i++) {
-            bigVarint = (bigVarint << 8n) | BigInt(this.#buf.readUint8());
+            // Use arithmetic multiplication for bigints to avoid bitwise operations
+            bigVarint = bigVarint * 256n + BigInt(this.#buf.readUint8());
         }
         return [bigVarint, undefined];
     }
@@ -138,13 +118,9 @@ export class Reader {
     async readUint8(): Promise<[number, Error?]> {
         let num: number;
         if (this.#buf.size == 0) {
-            const [filled, err] = await this.fill(1);
+            const err = await this.pushN(1);
             if (err) {
                 return [0, err];
-            }
-
-            if (!filled) {
-                return [0, new Error("Failed to read byte")];
             }
         }
 
@@ -191,51 +167,58 @@ export class Reader {
         return [strings, undefined];
     }
 
-    async fill(diff: number): Promise<[number, Error?]> {
+    async pushN(n: number): Promise<Error | undefined> {
         let totalFilled = 0;
 
-        while (totalFilled < diff) {
+        while (totalFilled < n) {
             const {done, value} = await this.#pull.read();
             if (done) {
-                return [totalFilled, totalFilled > 0 ? undefined : new Error("Stream closed")];
+                return new Error("Stream closed");
             }
             if (!value || value.length === 0) {
-                break; // No more data to read
+                continue; // Skip empty values
             }
 
             this.#buf.write(value);
             totalFilled += value.length;
        }
 
-        return [totalFilled, undefined];
+        return undefined;
     }
 
-    async copy(buffer: Uint8Array): Promise<[number, Error?]> {
-        // Read existing data into the buffer
-        let totalFilled = this.#buf.read(buffer);
+    async fillN(buffer: Uint8Array, n: number): Promise<Error | undefined> {
 
-        while (totalFilled < buffer.length) {
+        // Read up to the requested number of bytes from the internal buffer
+        let totalFilled = 0;
+        if (this.#buf.size > 0) {
+            const toRead = Math.min(this.#buf.size, n);
+            totalFilled = this.#buf.read(buffer.subarray(0, toRead));
+        }
+
+        while (totalFilled < n) {
             const {done, value} = await this.#pull.read();
             if (done) {
-                return [totalFilled, totalFilled > 0 ? undefined : new Error("Stream closed")];
+                return new Error("Stream closed");
             }
             if (!value || value.length === 0) {
-                break; // No more data to read
+                // No data this iteration; wait for next pull
+                continue;
             }
 
-            const needed = buffer.length - totalFilled;
+            const needed = n - totalFilled;
             const len = Math.min(needed, value.length);
 
             buffer.set(value.subarray(0, len), totalFilled);
             totalFilled += len;
 
             if (value.length > len) {
+                // Store leftover bytes to internal buffer for subsequent reads
                 const leftover = value.subarray(len);
                 this.#buf.write(leftover);
             }
         }
 
-        return [totalFilled, undefined];
+        return undefined;
     }
 
     async cancel(reason: StreamError): Promise<void> {
@@ -247,5 +230,3 @@ export class Reader {
         return this.#closed;
     }
 }
-
-

@@ -4,6 +4,7 @@ import { CancelCauseFunc, Context, withCancelCause, background } from "./interna
 import { Reader, Writer } from "./io";
 import { StreamError } from "./io/error";
 import { GroupMessage } from "./message";
+import { Frame } from "./frame";
 
 // Mock dependencies
 jest.mock("./internal/context", () => ({
@@ -82,23 +83,25 @@ describe("GroupWriter", () => {
     describe("write", () => {
         it("should write data and flush successfully", async () => {
             const data = new Uint8Array([1, 2, 3, 4]);
+            const frame = new Frame(data);
             mockWriter.flush.mockResolvedValue(undefined);
 
-            const error = await groupWriter.writeFrame(data);
+            const error = await groupWriter.writeFrame(frame);
 
-            expect(mockWriter.writeUint8Array).toHaveBeenCalledWith(data);
+            expect(mockWriter.writeUint8Array).toHaveBeenCalledWith(frame.bytes);
             expect(mockWriter.flush).toHaveBeenCalled();
             expect(error).toBeUndefined();
         });
 
         it("should return error if flush fails", async () => {
             const data = new Uint8Array([1, 2, 3, 4]);
+            const frame = new Frame(data);
             const flushError = new Error("Flush failed");
             mockWriter.flush.mockResolvedValue(flushError);
 
-            const error = await groupWriter.writeFrame(data);
+            const error = await groupWriter.writeFrame(frame);
 
-            expect(mockWriter.writeUint8Array).toHaveBeenCalledWith(data);
+            expect(mockWriter.writeUint8Array).toHaveBeenCalledWith(frame.bytes);
             expect(mockWriter.flush).toHaveBeenCalled();
             expect(error).toBe(flushError);
         });
@@ -136,6 +139,8 @@ describe("GroupReader", () => {
     beforeEach(() => {
         mockReader = {
             readUint8Array: jest.fn(),
+            readVarint: jest.fn(),
+            fillN: jest.fn(),
             cancel: jest.fn().mockReturnValue(Promise.resolve()),
             closed: jest.fn().mockReturnValue(Promise.resolve())
         } as any;
@@ -176,24 +181,32 @@ describe("GroupReader", () => {
     describe("read", () => {
         it("should read data successfully", async () => {
             const expectedData = new Uint8Array([1, 2, 3, 4]);
-            mockReader.readUint8Array.mockResolvedValue([expectedData, undefined]);
+            const dest = new Frame(new Uint8Array(4));
 
-            const [data, error] = await groupReader.readFrame();
+            (mockReader.readVarint as jest.MockedFunction<() => Promise<[number, Error | undefined]>>).mockResolvedValue([expectedData.byteLength, undefined]);
+            (mockReader.fillN as jest.MockedFunction<(buf: Uint8Array, len: number) => Promise<Error | undefined>>).mockImplementation(async (buf: Uint8Array, len: number) => {
+                buf.set(expectedData.subarray(0, len));
+                return undefined;
+            });
 
-            expect(mockReader.readUint8Array).toHaveBeenCalled();
-            expect(data).toBe(expectedData);
-            expect(error).toBeUndefined();
+            const err = await groupReader.readFrame(dest);
+
+            expect(mockReader.readVarint).toHaveBeenCalled();
+            expect(mockReader.fillN).toHaveBeenCalledWith(dest.bytes, expectedData.byteLength);
+            expect(dest.bytes.slice(0, expectedData.byteLength)).toEqual(expectedData);
+            expect(err).toBeUndefined();
         });
 
         it("should handle read errors", async () => {
-            const readError = new Error("Read failed");
-            mockReader.readUint8Array.mockResolvedValue([undefined, readError]);
+            const readErr = new Error("Read failed");
+            const dest = new Frame(new Uint8Array(4));
 
-            const [data, error] = await groupReader.readFrame();
+            (mockReader.readVarint as jest.MockedFunction<() => Promise<[number, Error | undefined]>>).mockResolvedValue([0, readErr]);
 
-            expect(mockReader.readUint8Array).toHaveBeenCalled();
-            expect(data).toBeUndefined();
-            expect(error).toBe(readError);
+            const err = await groupReader.readFrame(dest);
+
+            expect(mockReader.readVarint).toHaveBeenCalled();
+            expect(err).toBe(readErr);
         });
     });
 

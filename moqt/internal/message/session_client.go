@@ -1,7 +1,6 @@
 package message
 
 import (
-	"bytes"
 	"io"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
@@ -59,7 +58,7 @@ func (scm SessionClientMessage) Encode(w io.Writer) error {
 }
 
 func (scm *SessionClientMessage) Decode(src io.Reader) error {
-	num, err := ReadVarint(src)
+	num, err := ReadMessageLength(src)
 	if err != nil {
 		return err
 	}
@@ -72,25 +71,30 @@ func (scm *SessionClientMessage) Decode(src io.Reader) error {
 		return err
 	}
 
-	r := bytes.NewReader(b)
-
-	count, err := ReadVarint(r)
+	count, n, err := ReadVarint(b)
 	if err != nil {
 		return err
 	}
+	b = b[n:]
 
 	scm.SupportedVersions = make([]protocol.Version, count)
 	for i := range count {
-		num, err = ReadVarint(r)
+		num, n, err := ReadVarint(b)
 		if err != nil {
 			return err
 		}
 		scm.SupportedVersions[i] = protocol.Version(num)
+		b = b[n:]
 	}
 
-	scm.Parameters, err = ReadParameters(r)
+	scm.Parameters, n, err = ReadParameters(b)
 	if err != nil {
 		return err
+	}
+	b = b[n:]
+
+	if len(b) != 0 {
+		return ErrMessageTooShort
 	}
 
 	return nil

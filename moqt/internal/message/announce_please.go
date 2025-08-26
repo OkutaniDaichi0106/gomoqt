@@ -1,7 +1,6 @@
 package message
 
 import (
-	"bytes"
 	"io"
 
 	"github.com/quic-go/quic-go/quicvarint"
@@ -39,7 +38,7 @@ func (aim AnnouncePleaseMessage) Encode(w io.Writer) error {
 }
 
 func (aim *AnnouncePleaseMessage) Decode(src io.Reader) error {
-	num, err := ReadVarint(src)
+	num, err := ReadMessageLength(src)
 	if err != nil {
 		return err
 	}
@@ -52,13 +51,16 @@ func (aim *AnnouncePleaseMessage) Decode(src io.Reader) error {
 		return err
 	}
 
-	r := bytes.NewReader(b)
-
-	str, err := ReadString(r)
+	str, n, err := ReadString(b)
 	if err != nil {
 		return err
 	}
 	aim.TrackPrefix = str
+	b = b[n:]
+
+	if len(b) != 0 {
+		return ErrMessageTooShort
+	}
 
 	return nil
 }

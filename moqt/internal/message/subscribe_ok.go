@@ -1,7 +1,6 @@
 package message
 
 import (
-	"bytes"
 	"io"
 
 	"github.com/quic-go/quic-go/quicvarint"
@@ -34,7 +33,7 @@ func (som SubscribeOkMessage) Encode(w io.Writer) error {
 }
 
 func (som *SubscribeOkMessage) Decode(src io.Reader) error {
-	num, err := ReadVarint(src)
+	num, err := ReadMessageLength(src)
 	if err != nil {
 		return err
 	}
@@ -46,13 +45,16 @@ func (som *SubscribeOkMessage) Decode(src io.Reader) error {
 		return err
 	}
 
-	r := bytes.NewReader(b)
-
-	num, err = ReadVarint(r)
+	num, n, err := ReadVarint(b)
 	if err != nil {
 		return err
 	}
 	som.GroupOrder = GroupOrder(num)
+	b = b[n:]
+
+	if len(b) != 0 {
+		return ErrMessageTooShort
+	}
 
 	return nil
 }

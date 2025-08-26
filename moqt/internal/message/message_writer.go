@@ -2,86 +2,70 @@ package message
 
 import (
 	"fmt"
-	"io"
 )
 
-func writeVarint(w io.Writer, i uint64) error {
+func WriteVarint(b []byte, i uint64) int {
 	if i <= maxVarInt1 {
-		_, err := w.Write([]byte{byte(i)})
-		return err
+		b = append(b, byte(i))
+		return 1
 	}
 	if i <= maxVarInt2 {
-		b := []byte{
-			uint8(i>>8) | 0x40,
+		b = append(b,
+			uint8(i>>8)|0x40,
 			byte(i),
-		}
-		_, err := w.Write(b)
-		return err
+		)
+		return 2
 	}
 	if i <= maxVarInt4 {
-		b := []byte{
-			uint8(i>>24) | 0x80,
-			uint8(i >> 16),
-			uint8(i >> 8),
+		b = append(b,
+			uint8(i>>24)|0x80,
+			uint8(i>>16),
+			uint8(i>>8),
 			byte(i),
-		}
-		_, err := w.Write(b)
-		return err
+		)
+		return 4
 	}
 	if i <= maxVarInt8 {
-		b := []byte{
-			uint8(i>>56) | 0xc0,
-			uint8(i >> 48),
-			uint8(i >> 40),
-			uint8(i >> 32),
-			uint8(i >> 24),
-			uint8(i >> 16),
-			uint8(i >> 8),
+		b = append(b,
+			uint8(i>>56)|0xc0,
+			uint8(i>>48),
+			uint8(i>>40),
+			uint8(i>>32),
+			uint8(i>>24),
+			uint8(i>>16),
+			uint8(i>>8),
 			byte(i),
-		}
-		_, err := w.Write(b)
-		return err
+		)
+		return 8
 	}
 	panic(fmt.Sprintf("%#x doesn't fit into 62 bits", i))
 }
 
-func WriteBytes(w io.Writer, b []byte) error {
-	if err := writeVarint(w, uint64(len(b))); err != nil {
-		return err
-	}
-	_, err := w.Write(b)
-	return err
+func WriteBytes(dest []byte, b []byte) int {
+	n := WriteVarint(dest, uint64(len(b)))
+	dest = append(dest, b...)
+	return n + len(b)
 }
 
-func WriteString(w io.Writer, s string) error {
-	return WriteBytes(w, []byte(s))
+func WriteString(dest []byte, s string) int {
+	return WriteBytes(dest, []byte(s))
 }
 
-func WriteStringArray(w io.Writer, arr []string) error {
-	if err := writeVarint(w, uint64(len(arr))); err != nil {
-		return err
-	}
+func WriteStringArray(dest []byte, arr []string) int {
+	n := WriteVarint(dest, uint64(len(arr)))
 	for _, str := range arr {
-		if err := WriteString(w, str); err != nil {
-			return err
-		}
+		n += WriteString(dest[n:], str)
 	}
-	return nil
+	return n
 }
 
-func WriteParameters(w io.Writer, params Parameters) error {
-	if err := writeVarint(w, uint64(len(params))); err != nil {
-		return err
-	}
+func WriteParameters(dest []byte, params Parameters) int {
+	n := WriteVarint(dest, uint64(len(params)))
 	for key, value := range params {
-		if err := writeVarint(w, key); err != nil {
-			return err
-		}
-		if err := WriteBytes(w, value); err != nil {
-			return err
-		}
+		n += WriteVarint(dest[n:], key)
+		n += WriteBytes(dest[n:], value)
 	}
-	return nil
+	return n
 }
 
 const (

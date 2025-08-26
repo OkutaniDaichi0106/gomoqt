@@ -1,7 +1,6 @@
 package message
 
 import (
-	"bytes"
 	"io"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
@@ -70,7 +69,7 @@ func (s SubscribeMessage) Encode(w io.Writer) error {
 }
 
 func (s *SubscribeMessage) Decode(src io.Reader) error {
-	num, err := ReadVarint(src)
+	num, err := ReadMessageLength(src)
 	if err != nil {
 		return err
 	}
@@ -83,43 +82,51 @@ func (s *SubscribeMessage) Decode(src io.Reader) error {
 		return err
 	}
 
-	r := bytes.NewReader(b)
-
-	num, err = ReadVarint(r)
+	num, n, err := ReadVarint(b)
 	if err != nil {
 		return err
 	}
 	s.SubscribeID = SubscribeID(num)
+	b = b[n:]
 
-	str, err := ReadString(r)
+	str, n, err := ReadString(b)
 	if err != nil {
 		return err
 	}
 	s.BroadcastPath = str
+	b = b[n:]
 
-	str, err = ReadString(r)
+	str, n, err = ReadString(b)
 	if err != nil {
 		return err
 	}
 	s.TrackName = str
+	b = b[n:]
 
-	num, err = ReadVarint(r)
+	num, n, err = ReadVarint(b)
 	if err != nil {
 		return err
 	}
 	s.TrackPriority = TrackPriority(num)
+	b = b[n:]
 
-	num, err = ReadVarint(r)
+	num, n, err = ReadVarint(b)
 	if err != nil {
 		return err
 	}
 	s.MinGroupSequence = GroupSequence(num)
+	b = b[n:]
 
-	num, err = ReadVarint(r)
+	num, n, err = ReadVarint(b)
 	if err != nil {
 		return err
 	}
 	s.MaxGroupSequence = GroupSequence(num)
+	b = b[n:]
+
+	if len(b) != 0 {
+		return ErrMessageTooShort
+	}
 
 	return nil
 }

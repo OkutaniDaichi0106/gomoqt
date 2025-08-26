@@ -35,11 +35,11 @@ func (sgs *GroupWriter) GroupSequence() GroupSequence {
 }
 
 func (sgs *GroupWriter) WriteFrame(frame *Frame) error {
-	if frame == nil || frame.message == nil {
+	if frame == nil {
 		return nil
 	}
 
-	err := frame.message.Encode(sgs.stream)
+	err := frame.Encode(sgs.stream)
 	if err != nil {
 		return Cause(sgs.ctx)
 	}

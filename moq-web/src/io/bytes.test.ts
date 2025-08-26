@@ -1,10 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { BytesBuffer } from './bytes';
-import { DefaultBytesPool } from './bytes_pool';
 
 describe('BytesBuffer', () => {
     it('should write and read data', () => {
-        const buffer = new BytesBuffer(DefaultBytesPool.acquire(1024));
+        const buffer = new BytesBuffer(new ArrayBuffer(1024));
         const data = new Uint8Array([1, 2, 3]);
         buffer.write(data);
         expect(buffer.size).toBe(3);
@@ -16,7 +15,7 @@ describe('BytesBuffer', () => {
     });
 
     it('should grow when capacity is exceeded', () => {
-        const buffer = new BytesBuffer(DefaultBytesPool.acquire(2));
+        const buffer = new BytesBuffer(new ArrayBuffer(2));
         const data = new Uint8Array([1, 2]);
         buffer.write(data);
         expect(buffer.capacity).toBeGreaterThanOrEqual(2);
@@ -27,7 +26,7 @@ describe('BytesBuffer', () => {
 
     describe('readUint8', () => {
         it('should read a single byte', () => {
-            const buffer = new BytesBuffer(DefaultBytesPool.acquire(10));
+            const buffer = new BytesBuffer(new ArrayBuffer(10));
             const data = new Uint8Array([1, 2, 3]);
             buffer.write(data);
             expect(buffer.size).toBe(3);
@@ -39,7 +38,7 @@ describe('BytesBuffer', () => {
 
     describe('writeUint8', () => {
         it('should write a single byte', () => {
-            const buffer = new BytesBuffer(DefaultBytesPool.acquire(10));
+            const buffer = new BytesBuffer(new ArrayBuffer(10));
             buffer.writeUint8(42);
             buffer.writeUint8(43);
             buffer.writeUint8(44);
@@ -51,7 +50,7 @@ describe('BytesBuffer', () => {
 
     describe('reserve', () => {
         it('should return a writable buffer with sufficient capacity', () => {
-            const buffer = new BytesBuffer(DefaultBytesPool.acquire(10));
+            const buffer = new BytesBuffer(new ArrayBuffer(10));
             const data1 = new Uint8Array([1, 2, 3]);
             buffer.write(data1);
             expect(buffer.size).toBe(3);
@@ -74,7 +73,7 @@ describe('BytesBuffer', () => {
 
     describe('bytes method', () => {
         it('should return current buffer content without consuming it', () => {
-            const buffer = new BytesBuffer(DefaultBytesPool.acquire(10));
+            const buffer = new BytesBuffer(new ArrayBuffer(10));
             const data = new Uint8Array([1, 2, 3, 4, 5]);
             buffer.write(data);
             
@@ -85,22 +84,9 @@ describe('BytesBuffer', () => {
         });
     });
 
-    describe('release method', () => {
-        it('should release the buffer back to the pool', () => {
-            const buffer = new BytesBuffer(DefaultBytesPool.acquire(10));
-            const data = new Uint8Array([1, 2, 3]);
-            buffer.write(data);
-            expect(buffer.size).toBe(3);
-            expect(buffer.capacity).toBeGreaterThan(0);
-            buffer.release();
-            expect(buffer.size).toBe(0);
-            expect(buffer.capacity).toBe(0);
-        });
-    });
-
     describe('write method with large data', () => {
         it('should handle writing data larger than initial capacity', () => {
-            const buffer = new BytesBuffer(DefaultBytesPool.acquire(2));
+            const buffer = new BytesBuffer(new ArrayBuffer(2));
             const largeData = new Uint8Array([1, 2, 3, 4]);
             buffer.write(largeData);
             expect(buffer.size).toBe(4);
@@ -111,7 +97,7 @@ describe('BytesBuffer', () => {
 
     describe('edge cases', () => {
         it('should handle empty writes and reads', () => {
-            const buffer = new BytesBuffer(DefaultBytesPool.acquire(10));
+            const buffer = new BytesBuffer(new ArrayBuffer(10));
             const emptyData = new Uint8Array(0);
             buffer.write(emptyData);
             expect(buffer.size).toBe(0);
@@ -123,7 +109,7 @@ describe('BytesBuffer', () => {
         });
 
         it('should handle reset correctly', () => {
-            const buffer = new BytesBuffer(DefaultBytesPool.acquire(10));
+            const buffer = new BytesBuffer(new ArrayBuffer(10));
             const data = new Uint8Array([1, 2, 3]);
             buffer.write(data);
             expect(buffer.size).toBe(3);

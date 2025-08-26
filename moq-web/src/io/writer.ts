@@ -1,4 +1,4 @@
-import { BytesBuffer, MAX_BYTES_LENGTH, MAX_UINT } from "../internal/bytes";
+import { BytesBuffer, MAX_BYTES_LENGTH, MAX_UINT } from "./bytes";
 import { DefaultBytesPool } from "../internal/bytes_pool";
 import { StreamError } from "./error";
 import { MAX_VARINT1, MAX_VARINT2, MAX_VARINT4, MAX_VARINT8 } from "./len";
@@ -6,17 +6,13 @@ import { MAX_VARINT1, MAX_VARINT2, MAX_VARINT4, MAX_VARINT8 } from "./len";
 export class Writer {
     #writer: WritableStreamDefaultWriter<Uint8Array>;
     #buf: BytesBuffer;
+    #closed: Promise<void>;
 
     constructor(stream: WritableStream<Uint8Array>, buf: ArrayBufferLike = DefaultBytesPool.acquire(1024)) {
         this.#writer = stream.getWriter();
         this.#buf = new BytesBuffer(buf);
 
-        async () => {
-            await this.#writer.closed;
-
-            // TODO: Handle stream closure
-            this.#buf.release(); // Release the buffer back to the pool
-        };
+        this.#closed = this.#writer.closed;
     }
 
     writeUint8(value: number): void {
@@ -128,6 +124,7 @@ export class Writer {
     }
 
     copyFrom(src: Source): void {
+        this.writeVarint(src.byteLength);
         src.copyTo(this.#buf.reserve(src.byteLength));
     }
 
@@ -148,12 +145,10 @@ export class Writer {
 
     async close(): Promise<void> {
         await this.#writer.close();
-        this.#buf.release(); // Release the buffer back to the pool
     }
 
     async cancel(err: StreamError): Promise<void> {
         await this.#writer.abort(err);
-        this.#buf.release(); // Release the buffer back to the pool
     }
 
     closed(): Promise<void> {

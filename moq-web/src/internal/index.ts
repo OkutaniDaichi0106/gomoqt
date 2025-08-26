@@ -1,4 +1,3 @@
-export * from "./bytes";
 export * from "./bytes_pool";
 export * from "./extensions";
 export * from "./context";

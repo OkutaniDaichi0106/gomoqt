@@ -1,6 +1,6 @@
 {
   "name": "@okutanidaichi/moqt",
-  "version": "0.3.0",
+  "version": "0.4.8",
   "description": "Media over QUIC package",
   "repository": {
     "type": "git",
@@ -20,6 +20,10 @@
     "./internal": {
       "types": "./dist/internal/index.d.ts",
       "import": "./dist/internal/index.js"
+    },
+    "./io": {
+      "types": "./dist/io/index.d.ts",
+      "import": "./dist/io/index.js"
     }
   },
   "files": [

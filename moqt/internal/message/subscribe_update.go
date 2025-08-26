@@ -1,7 +1,6 @@
 package message
 
 import (
-	"bytes"
 	"io"
 
 	"github.com/quic-go/quic-go/quicvarint"
@@ -48,7 +47,7 @@ func (su SubscribeUpdateMessage) Encode(w io.Writer) error {
 }
 
 func (sum *SubscribeUpdateMessage) Decode(src io.Reader) error {
-	num, err := ReadVarint(src)
+	num, err := ReadMessageLength(src)
 	if err != nil {
 		return err
 	}
@@ -61,25 +60,30 @@ func (sum *SubscribeUpdateMessage) Decode(src io.Reader) error {
 		return err
 	}
 
-	r := bytes.NewReader(b)
-
-	num, err = ReadVarint(r)
+	num, n, err := ReadVarint(b)
 	if err != nil {
 		return err
 	}
 	sum.TrackPriority = TrackPriority(num)
+	b = b[n:]
 
-	num, err = ReadVarint(r)
+	num, n, err = ReadVarint(b)
 	if err != nil {
 		return err
 	}
 	sum.MinGroupSequence = GroupSequence(num)
+	b = b[n:]
 
-	num, err = ReadVarint(r)
+	num, n, err = ReadVarint(b)
 	if err != nil {
 		return err
 	}
 	sum.MaxGroupSequence = GroupSequence(num)
+	b = b[n:]
+
+	if len(b) != 0 {
+		return ErrMessageTooShort
+	}
 
 	return nil
 }

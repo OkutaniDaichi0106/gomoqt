@@ -30,11 +30,17 @@ func TestNewFrame(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			frame := NewFrame(tt.data)
+			// Create frame with capacity equal to len(data)
+			cap := len(tt.data)
+			frame := NewFrame(cap)
 			assert.NotNil(t, frame)
 
+			if len(tt.data) > 0 {
+				frame.Append(tt.data)
+			}
+
 			copiedBytes := frame.Bytes()
-			if tt.expected == nil {
+			if len(tt.expected) == 0 {
 				assert.Empty(t, copiedBytes)
 			} else {
 				assert.Equal(t, tt.expected, copiedBytes)
@@ -70,10 +76,15 @@ func TestFrame_CopyBytes(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			frame := NewFrame(tt.data)
+			cap := len(tt.data)
+			frame := NewFrame(cap)
+			if len(tt.data) > 0 {
+				frame.Append(tt.data)
+			}
+
 			copiedBytes := frame.Bytes()
 
-			if tt.data == nil {
+			if len(tt.data) == 0 {
 				assert.Empty(t, copiedBytes)
 			} else {
 				assert.Equal(t, tt.data, copiedBytes)
@@ -107,7 +118,12 @@ func TestFrame_Size(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			frame := NewFrame(tt.data)
+			cap := len(tt.data)
+			frame := NewFrame(cap)
+			frame.Reset()
+			if len(tt.data) > 0 {
+				frame.Append(tt.data)
+			}
 			size := frame.Len()
 			assert.Equal(t, tt.want, size)
 		})

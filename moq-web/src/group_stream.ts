@@ -9,6 +9,7 @@ export class GroupWriter {
     #writer: Writer;
     #ctx: Context;
     #cancelFunc: CancelCauseFunc;
+    #frameCount: number = 0;
 
     constructor(trackCtx: Context, writer: Writer, group: GroupMessage) {
         this.#group = group;
@@ -34,6 +35,10 @@ export class GroupWriter {
         return this.#group.sequence;
     }
 
+    get frameCount(): number {
+        return this.#frameCount;
+    }
+
     async writeFrame(src: Frame | Source): Promise<Error | undefined> {
         if (src instanceof Frame) {
             this.#writer.writeUint8Array(src.bytes);
@@ -41,7 +46,14 @@ export class GroupWriter {
             this.#writer.copyFrom(src);
         }
         const err = await this.#writer.flush();
-        return err;
+        if (err) {
+            console.error("Error writing frame:", err);
+            return err;
+        }
+
+        this.#frameCount++;
+
+        return undefined;
     }
 
     close(): void {
@@ -65,6 +77,7 @@ export class GroupReader {
     #reader: Reader;
     #ctx: Context;
     #cancelFunc: CancelCauseFunc;
+    #frameCount: number = 0;
 
     constructor(trackCtx: Context, reader: Reader, group: GroupMessage) {
         this.#group = group;
@@ -79,6 +92,10 @@ export class GroupReader {
 
     get groupSequence(): bigint {
         return this.#group.sequence;
+    }
+
+    get frameCount(): number {
+        return this.#frameCount;
     }
 
     async readFrame(dest: Frame): Promise<Error | undefined> {
@@ -103,6 +120,8 @@ export class GroupReader {
         if (err) {
             return err;
         }
+
+        this.#frameCount++;
 
         return undefined;
     }

@@ -12,3 +12,5 @@ export * from './stream_type';
 export * from './subscribe_stream';
 export * from './track';
 export * from './track_mux';
+export * from './error';
+export * from './frame';

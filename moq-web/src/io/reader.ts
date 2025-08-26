@@ -1,4 +1,4 @@
-import { BytesBuffer, MAX_BYTES_LENGTH } from "../internal/bytes";
+import { BytesBuffer, MAX_BYTES_LENGTH } from "./bytes";
 import { BytesPool, DefaultBytesPool } from "../internal/bytes_pool";
 import { StreamError, StreamErrorCode } from "./error";
 
@@ -17,10 +17,7 @@ export class Reader {
 
         this.#buf = new BytesBuffer(pool.acquire(1024));
 
-        this.#closed = this.#pull.closed.then(() => {
-            this.#buf.release();
-            return;
-        })
+        this.#closed = this.#pull.closed;
     }
 
     async readUint8Array(): Promise<[Uint8Array?, Error?]> {
@@ -223,7 +220,6 @@ export class Reader {
 
     async cancel(reason: StreamError): Promise<void> {
         this.#pull.cancel(reason)
-        this.#buf.release();
     }
 
     closed(): Promise<void> {

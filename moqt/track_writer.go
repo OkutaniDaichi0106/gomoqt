@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"sync"
-	"sync/atomic"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
@@ -32,8 +31,6 @@ type TrackWriter struct {
 	TrackName     TrackName
 
 	*receiveSubscribeStream
-
-	accepted atomic.Bool
 
 	groupMapMu   sync.Mutex
 	activeGroups map[*GroupWriter]struct{}
@@ -100,13 +97,9 @@ func (s *TrackWriter) OpenGroup(seq GroupSequence) (*GroupWriter, error) {
 		return nil, Cause(s.ctx)
 	}
 
-	if !s.accepted.Load() {
-		err := s.receiveSubscribeStream.writeInfo(Info{})
-		if err != nil {
-			return nil, err
-		}
-
-		s.accepted.Store(true)
+	err := s.receiveSubscribeStream.WriteInfo(Info{})
+	if err != nil {
+		return nil, err
 	}
 
 	stream, err := s.openUniStreamFunc()
@@ -160,19 +153,6 @@ func (s *TrackWriter) OpenGroup(seq GroupSequence) (*GroupWriter, error) {
 	s.addGroup(group)
 
 	return group, nil
-}
-
-func (s *TrackWriter) WriteInfo(info Info) error {
-	if !s.accepted.Load() {
-		err := s.receiveSubscribeStream.writeInfo(info)
-		if err != nil {
-			return err
-		}
-
-		s.accepted.Store(true)
-	}
-
-	return nil
 }
 
 func (s *TrackWriter) TrackConfig() *TrackConfig {

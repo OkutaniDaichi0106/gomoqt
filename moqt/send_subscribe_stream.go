@@ -9,12 +9,13 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
 )
 
-func newSendSubscribeStream(id SubscribeID, stream quic.Stream, initConfig *TrackConfig) *sendSubscribeStream {
+func newSendSubscribeStream(id SubscribeID, stream quic.Stream, initConfig *TrackConfig, info Info) *sendSubscribeStream {
 	substr := &sendSubscribeStream{
 		ctx:    context.WithValue(stream.Context(), &biStreamTypeCtxKey, message.StreamTypeSubscribe),
 		id:     id,
 		config: initConfig,
 		stream: stream,
+		info:   info,
 	}
 
 	return substr
@@ -28,6 +29,8 @@ type sendSubscribeStream struct {
 	stream quic.Stream
 
 	mu sync.Mutex
+
+	info Info
 
 	id SubscribeID
 }
@@ -99,6 +102,10 @@ func (sss *sendSubscribeStream) UpdateSubscribe(newConfig *TrackConfig) error {
 	sss.config = newConfig
 
 	return nil
+}
+
+func (sss *sendSubscribeStream) ReadInfo() Info {
+	return sss.info
 }
 
 func (sss *sendSubscribeStream) Context() context.Context {

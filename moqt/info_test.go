@@ -8,32 +8,26 @@ import (
 
 func TestInfo(t *testing.T) {
 	tests := map[string]struct {
-		trackPriority TrackPriority
-		groupOrder    GroupOrder
+		groupPeriod GroupPeriod
 	}{
 		"default values": {
-			trackPriority: TrackPriority(0),
-			groupOrder:    GroupOrder(0),
+			groupPeriod: GroupPeriod(0),
 		},
 		"high priority": {
-			trackPriority: TrackPriority(255),
-			groupOrder:    GroupOrder(1),
+			groupPeriod: GroupPeriod(1),
 		},
 		"low priority": {
-			trackPriority: TrackPriority(1),
-			groupOrder:    GroupOrder(2),
+			groupPeriod: GroupPeriod(2),
 		},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			info := Info{
-				TrackPriority: tt.trackPriority,
-				GroupOrder:    tt.groupOrder,
+				GroupPeriod: tt.groupPeriod,
 			}
 
-			assert.Equal(t, tt.trackPriority, info.TrackPriority)
-			assert.Equal(t, tt.groupOrder, info.GroupOrder)
+			assert.Equal(t, tt.groupPeriod, info.GroupPeriod)
 		})
 	}
 }
@@ -41,24 +35,20 @@ func TestInfo(t *testing.T) {
 func TestInfoZeroValue(t *testing.T) {
 	var info Info
 
-	assert.Equal(t, TrackPriority(0), info.TrackPriority)
-	assert.Equal(t, GroupOrder(0), info.GroupOrder)
+	assert.Equal(t, GroupPeriod(0), info.GroupPeriod)
 }
 
 func TestInfoComparison(t *testing.T) {
 	info1 := Info{
-		TrackPriority: TrackPriority(10),
-		GroupOrder:    GroupOrder(1),
+		GroupPeriod: GroupPeriod(1),
 	}
 
 	info2 := Info{
-		TrackPriority: TrackPriority(10),
-		GroupOrder:    GroupOrder(1),
+		GroupPeriod: GroupPeriod(1),
 	}
 
 	info3 := Info{
-		TrackPriority: TrackPriority(20),
-		GroupOrder:    GroupOrder(2),
+		GroupPeriod: GroupPeriod(2),
 	}
 
 	assert.Equal(t, info1, info2, "identical Info structs should be equal")

@@ -24,7 +24,8 @@ func TestNewSendSubscribeStream(t *testing.T) {
 	}
 	mockStream.On("Context").Return(context.Background())
 
-	sss := newSendSubscribeStream(id, mockStream, config)
+	info := Info{}
+	sss := newSendSubscribeStream(id, mockStream, config, info)
 
 	assert.NotNil(t, sss, "newSendSubscribeStream should not return nil")
 	assert.Equal(t, id, sss.id, "id should be set correctly")
@@ -43,11 +44,29 @@ func TestSendSubscribeStream_SubscribeID(t *testing.T) {
 	}
 	mockStream.On("Context").Return(context.Background())
 
-	sss := newSendSubscribeStream(id, mockStream, config)
+	info := Info{}
+	sss := newSendSubscribeStream(id, mockStream, config, info)
 
 	returnedID := sss.SubscribeID()
 
 	assert.Equal(t, id, returnedID, "SubscribeID() should return the correct ID")
+}
+
+func TestSendSubscribeStream_ReadInfo(t *testing.T) {
+	id := SubscribeID(999)
+	config := &TrackConfig{}
+	mockStream := &MockQUICStream{
+		ReadFunc: func(p []byte) (int, error) {
+			return 0, io.EOF
+		},
+	}
+	mockStream.On("Context").Return(context.Background())
+
+	info := Info{GroupPeriod: GroupPeriod(42)}
+	sss := newSendSubscribeStream(id, mockStream, config, info)
+
+	ret := sss.ReadInfo()
+	assert.Equal(t, info, ret, "ReadInfo() should return the Info passed to constructor")
 }
 
 func TestSendSubscribeStream_TrackConfig(t *testing.T) {
@@ -64,7 +83,7 @@ func TestSendSubscribeStream_TrackConfig(t *testing.T) {
 	}
 	mockStream.On("Context").Return(context.Background())
 
-	sss := newSendSubscribeStream(id, mockStream, config)
+	sss := newSendSubscribeStream(id, mockStream, config, Info{})
 
 	returnedConfig := sss.TrackConfig()
 	assert.Equal(t, config, returnedConfig, "TrackConfig() should return the original config")
@@ -88,7 +107,7 @@ func TestSendSubscribeStream_UpdateSubscribe(t *testing.T) {
 	mockStream.On("Context").Return(context.Background())
 	mockStream.On("Write", mock.Anything).Return(0, nil)
 
-	sss := newSendSubscribeStream(id, mockStream, config)
+	sss := newSendSubscribeStream(id, mockStream, config, Info{})
 
 	// Test valid update
 	newConfig := &TrackConfig{
@@ -123,7 +142,7 @@ func TestSendSubscribeStream_UpdateSubscribe_InvalidRange(t *testing.T) {
 	}
 	mockStream.On("Context").Return(context.Background())
 
-	sss := newSendSubscribeStream(id, mockStream, config)
+	sss := newSendSubscribeStream(id, mockStream, config, Info{})
 
 	tests := map[string]struct {
 		newConfig *TrackConfig
@@ -186,7 +205,7 @@ func TestSendSubscribeStream_Close(t *testing.T) {
 	}).Return(nil)
 	mockStream.On("CancelRead", mock.Anything).Return()
 
-	sss := newSendSubscribeStream(id, mockStream, config)
+	sss := newSendSubscribeStream(id, mockStream, config, Info{})
 
 	err := sss.close()
 	assert.NoError(t, err, "Close() should not return error")
@@ -216,7 +235,7 @@ func TestSendSubscribeStream_CloseWithError(t *testing.T) {
 	}).Return()
 	mockStream.On("CancelRead", mock.Anything).Return()
 
-	sss := newSendSubscribeStream(id, mockStream, config)
+	sss := newSendSubscribeStream(id, mockStream, config, Info{})
 
 	testErrCode := InternalSubscribeErrorCode
 	err := sss.closeWithError(testErrCode)
@@ -252,7 +271,7 @@ func TestSendSubscribeStream_CloseWithError_NilError(t *testing.T) {
 	}).Return()
 	mockStream.On("CancelRead", mock.Anything).Return()
 
-	sss := newSendSubscribeStream(id, mockStream, config)
+	sss := newSendSubscribeStream(id, mockStream, config, Info{})
 
 	testErrCode := SubscribeErrorCode(0) // Using zero error code
 	err := sss.closeWithError(testErrCode)
@@ -280,7 +299,7 @@ func TestSendSubscribeStream_ConcurrentUpdate(t *testing.T) {
 	mockStream.On("Context").Return(context.Background())
 	mockStream.On("Write", mock.Anything).Return(0, nil)
 
-	sss := newSendSubscribeStream(id, mockStream, config)
+	sss := newSendSubscribeStream(id, mockStream, config, Info{})
 
 	// Test concurrent updates
 	var wg sync.WaitGroup
@@ -332,7 +351,7 @@ func TestSendSubscribeStream_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	mockStream.On("Context").Return(ctx)
 
-	sss := newSendSubscribeStream(id, mockStream, config)
+	sss := newSendSubscribeStream(id, mockStream, config, Info{})
 
 	// Cancel the context
 	cancel()
@@ -372,7 +391,7 @@ func TestSendSubscribeStream_UpdateSubscribeWriteError(t *testing.T) {
 	}).Return()
 	mockStream.On("CancelRead", mock.Anything).Return()
 
-	sss := newSendSubscribeStream(id, mockStream, config)
+	sss := newSendSubscribeStream(id, mockStream, config, Info{})
 
 	newConfig := &TrackConfig{
 		TrackPriority:    TrackPriority(2),
@@ -408,7 +427,7 @@ func TestSendSubscribeStream_UpdateSubscribeClosedStream(t *testing.T) {
 	mockStream.On("Context").Return(ctx)
 	mockStream.On("CancelRead", mock.Anything).Return()
 
-	sss := newSendSubscribeStream(id, mockStream, config)
+	sss := newSendSubscribeStream(id, mockStream, config, Info{})
 
 	// Close the stream first
 	err := sss.close()
@@ -438,7 +457,7 @@ func TestSendSubscribeStream_CloseAlreadyClosed(t *testing.T) {
 	}).Return(nil)
 	mockStream.On("CancelRead", mock.Anything).Return()
 
-	sss := newSendSubscribeStream(SubscribeID(110), mockStream, &TrackConfig{})
+	sss := newSendSubscribeStream(SubscribeID(110), mockStream, &TrackConfig{}, Info{})
 
 	// Close once
 	err1 := sss.close()
@@ -473,7 +492,7 @@ func TestSendSubscribeStream_CloseWithError_MultipleClose(t *testing.T) {
 	}).Return().Twice() // Called twice
 	mockStream.On("CancelRead", mock.Anything).Return().Twice() // Called twice
 
-	sss := newSendSubscribeStream(SubscribeID(111), mockStream, &TrackConfig{})
+	sss := newSendSubscribeStream(SubscribeID(111), mockStream, &TrackConfig{}, Info{})
 
 	// Close with error once
 	testErrCode := InternalSubscribeErrorCode
@@ -558,7 +577,7 @@ func TestSendSubscribeStream_UpdateSubscribeValidRangeTransitions(t *testing.T) 
 				mockStream.On("Write", mock.Anything).Return(0, nil)
 			}
 
-			sss := newSendSubscribeStream(id, mockStream, tt.initialConfig)
+			sss := newSendSubscribeStream(id, mockStream, tt.initialConfig, Info{})
 
 			err := sss.UpdateSubscribe(tt.newConfig)
 			if tt.expectError {

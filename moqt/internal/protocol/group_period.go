@@ -1,3 +1,3 @@
 package protocol
 
-type GroupPeriod byte
+type GroupPeriod uint64

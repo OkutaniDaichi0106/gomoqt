@@ -87,7 +87,7 @@ func (rss *receiveSubscribeStream) SubscribeID() SubscribeID {
 	return rss.subscribeID
 }
 
-func (rss *receiveSubscribeStream) writeInfo(info Info) error {
+func (rss *receiveSubscribeStream) WriteInfo(info Info) error {
 	var err error
 	rss.acceptOnce.Do(func() {
 		rss.configMu.Lock()
@@ -97,7 +97,7 @@ func (rss *receiveSubscribeStream) writeInfo(info Info) error {
 			return
 		}
 		sum := message.SubscribeOkMessage{
-			GroupPeriod: message.GroupPeriod(info.GroupOrder),
+			GroupPeriod: message.GroupPeriod(info.GroupPeriod),
 		}
 		err = sum.Encode(rss.stream)
 		if err != nil {

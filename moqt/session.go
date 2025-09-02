@@ -250,7 +250,7 @@ func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackCon
 		return nil, err
 	}
 
-	substr := newSendSubscribeStream(id, stream, config)
+	substr := newSendSubscribeStream(id, stream, config, Info{subok.GroupPeriod})
 
 	streamLogger.Debug("subscribe stream opened",
 		"subscribe_id", id,

@@ -9,13 +9,7 @@ import (
 
 type SubscribeID = protocol.SubscribeID
 type TrackPriority = protocol.TrackPriority
-type GroupOrder = protocol.GroupOrder
-
-const (
-	GroupOrderDefault    GroupOrder = 0x00
-	GroupOrderAscending  GroupOrder = 0x01
-	GroupOrderDescending GroupOrder = 0x02
-)
+type GroupPeriod = protocol.GroupPeriod
 
 /*
 * SUBSCRIBE Message {
@@ -51,7 +45,7 @@ func (s SubscribeMessage) Len() int {
 
 func (s SubscribeMessage) Encode(w io.Writer) error {
 	msgLen := s.Len()
-	b := pool.Get(msgLen)
+	b := pool.Get(msgLen + VarintLen(uint64(msgLen)))
 	defer pool.Put(b)
 
 	b = quicvarint.Append(b, uint64(msgLen))

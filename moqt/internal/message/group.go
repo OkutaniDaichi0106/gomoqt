@@ -5,7 +5,6 @@ import (
 	"io"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
-	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type GroupSequence = protocol.GroupSequence
@@ -26,12 +25,12 @@ func (g GroupMessage) Len() int {
 
 func (g GroupMessage) Encode(w io.Writer) error {
 	msgLen := g.Len()
-	b := pool.Get(msgLen + quicvarint.Len(uint64(msgLen)))
+	b := pool.Get(msgLen + VarintLen(uint64(msgLen)))
 	defer pool.Put(b)
 
-	b = quicvarint.Append(b, uint64(msgLen))
-	b = quicvarint.Append(b, uint64(g.SubscribeID))
-	b = quicvarint.Append(b, uint64(g.GroupSequence))
+	b, _ = WriteVarint(b, uint64(msgLen))
+	b, _ = WriteVarint(b, uint64(g.SubscribeID))
+	b, _ = WriteVarint(b, uint64(g.GroupSequence))
 
 	_, err := w.Write(b)
 

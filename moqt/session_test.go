@@ -167,7 +167,7 @@ func TestSession_Subscribe(t *testing.T) {
 			mockTrackStream.On("StreamID").Return(quic.StreamID(2))
 			// Create a SubscribeOkMessage response
 			subok := message.SubscribeOkMessage{
-				GroupOrder: message.GroupOrderDefault,
+				GroupPeriod: 0,
 			}
 			var buf bytes.Buffer
 			err := subok.Encode(&buf)

@@ -2,8 +2,6 @@ package message
 
 import (
 	"io"
-
-	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type SessionUpdateMessage struct {
@@ -19,11 +17,11 @@ func (sum SessionUpdateMessage) Len() int {
 
 func (sum SessionUpdateMessage) Encode(w io.Writer) error {
 	msgLen := sum.Len()
-	b := pool.Get(msgLen)
+	b := pool.Get(msgLen + VarintLen(uint64(msgLen)))
 	defer pool.Put(b)
 
-	b = quicvarint.Append(b, uint64(msgLen))
-	b = quicvarint.Append(b, sum.Bitrate)
+	b, _ = WriteVarint(b, uint64(msgLen))
+	b, _ = WriteVarint(b, sum.Bitrate)
 
 	_, err := w.Write(b)
 	return err

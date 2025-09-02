@@ -14,24 +14,24 @@ func TestSubscribeOkMessage_EncodeDecode(t *testing.T) {
 		input   message.SubscribeOkMessage
 		wantErr bool
 	}{
-		"valid message with default group order": {
+		"valid message with 0 group frequency": {
 			input: message.SubscribeOkMessage{
-				GroupOrder: message.GroupOrderDefault,
+				GroupPeriod: 0,
 			},
 		},
-		"valid message with ascending group order": {
+		"valid message with valid group frequency": {
 			input: message.SubscribeOkMessage{
-				GroupOrder: message.GroupOrderAscending,
+				GroupPeriod: message.GroupPeriod(1),
 			},
 		},
-		"valid message with descending group order": {
+		"valid message with big group frequency": {
 			input: message.SubscribeOkMessage{
-				GroupOrder: message.GroupOrderDescending,
+				GroupPeriod: message.GroupPeriod(255),
 			},
 		},
 		"zero value": {
 			input: message.SubscribeOkMessage{
-				GroupOrder: 0,
+				GroupPeriod: 0,
 			},
 		},
 	}

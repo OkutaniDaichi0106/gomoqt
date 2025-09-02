@@ -2,8 +2,6 @@ package message
 
 import (
 	"io"
-
-	"github.com/quic-go/quic-go/quicvarint"
 )
 
 /*
@@ -16,21 +14,16 @@ type AnnouncePleaseMessage struct {
 }
 
 func (aim AnnouncePleaseMessage) Len() int {
-	var l int
-
-	l += StringLen(aim.TrackPrefix)
-
-	return l
+	return StringLen(aim.TrackPrefix)
 }
 
 func (aim AnnouncePleaseMessage) Encode(w io.Writer) error {
 	msgLen := aim.Len()
-	b := pool.Get(msgLen)
+	b := pool.Get(msgLen + VarintLen(uint64(msgLen)))
 	defer pool.Put(b)
 
-	b = quicvarint.Append(b, uint64(msgLen))
-	b = quicvarint.Append(b, uint64(len(aim.TrackPrefix)))
-	b = append(b, aim.TrackPrefix...)
+	b, _ = WriteVarint(b, uint64(msgLen))
+	b, _ = WriteString(b, aim.TrackPrefix)
 
 	_, err := w.Write(b)
 

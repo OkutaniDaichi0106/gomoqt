@@ -2,8 +2,6 @@ package message
 
 import (
 	"io"
-
-	"github.com/quic-go/quic-go/quicvarint"
 )
 
 /*
@@ -16,29 +14,16 @@ type AnnounceInitMessage struct {
 }
 
 func (aim AnnounceInitMessage) Len() int {
-	var l int
-
-	l += quicvarint.Len(uint64(len(aim.Suffixes)))
-
-	for _, suffix := range aim.Suffixes {
-		l += quicvarint.Len(uint64(len(suffix))) + len(suffix)
-	}
-
-	return l
+	return StringArrayLen(aim.Suffixes)
 }
 
 func (aim AnnounceInitMessage) Encode(dst io.Writer) error {
 	msgLen := aim.Len()
-	b := pool.Get(msgLen)
+	b := pool.Get(msgLen + VarintLen(uint64(msgLen)))
 	defer pool.Put(b)
 
-	b = quicvarint.Append(b, uint64(msgLen))
-	b = quicvarint.Append(b, uint64(len(aim.Suffixes)))
-
-	for _, suffix := range aim.Suffixes {
-		b = quicvarint.Append(b, uint64(len(suffix)))
-		b = append(b, suffix...)
-	}
+	b, _ = WriteVarint(b, uint64(msgLen))
+	b, _ = WriteStringArray(b, aim.Suffixes)
 
 	_, err := dst.Write(b)
 

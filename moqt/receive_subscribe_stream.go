@@ -97,7 +97,7 @@ func (rss *receiveSubscribeStream) writeInfo(info Info) error {
 			return
 		}
 		sum := message.SubscribeOkMessage{
-			GroupOrder: message.GroupOrder(info.GroupOrder),
+			GroupPeriod: message.GroupPeriod(info.GroupOrder),
 		}
 		err = sum.Encode(rss.stream)
 		if err != nil {

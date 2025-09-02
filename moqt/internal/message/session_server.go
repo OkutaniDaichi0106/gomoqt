@@ -4,7 +4,6 @@ import (
 	"io"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
-	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type SessionServerMessage struct {
@@ -31,18 +30,17 @@ func (ssm SessionServerMessage) Len() int {
 
 func (ssm SessionServerMessage) Encode(w io.Writer) error {
 	msgLen := ssm.Len()
-	b := pool.Get(msgLen)
+	b := pool.Get(msgLen + VarintLen(uint64(msgLen)))
 	defer pool.Put(b)
 
-	b = quicvarint.Append(b, uint64(msgLen))
-	b = quicvarint.Append(b, uint64(ssm.SelectedVersion))
+	b, _ = WriteVarint(b, uint64(msgLen))
+	b, _ = WriteVarint(b, uint64(ssm.SelectedVersion))
 
 	// Append parameters
-	b = quicvarint.Append(b, uint64(len(ssm.Parameters)))
+	b, _ = WriteVarint(b, uint64(len(ssm.Parameters)))
 	for key, value := range ssm.Parameters {
-		b = quicvarint.Append(b, key)
-		b = quicvarint.Append(b, uint64(len(value)))
-		b = append(b, value...)
+		b, _ = WriteVarint(b, key)
+		b, _ = WriteBytes(b, value)
 	}
 
 	_, err := w.Write(b)

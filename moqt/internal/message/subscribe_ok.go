@@ -2,30 +2,28 @@ package message
 
 import (
 	"io"
-
-	"github.com/quic-go/quic-go/quicvarint"
 )
 
 /*
  * SUBSCRIBE_OK Message {
- *   Group Order (varint),
+ *   Group Frequency (varint),
  * }
  */
 type SubscribeOkMessage struct {
-	GroupOrder GroupOrder
+	GroupPeriod GroupPeriod
 }
 
 func (som SubscribeOkMessage) Len() int {
-	return VarintLen(uint64(som.GroupOrder))
+	return VarintLen(uint64(som.GroupPeriod))
 }
 
 func (som SubscribeOkMessage) Encode(w io.Writer) error {
 	msgLen := som.Len()
-	b := pool.Get(msgLen)
+	b := pool.Get(msgLen + VarintLen(uint64(msgLen)))
 	defer pool.Put(b)
 
-	b = quicvarint.Append(b, uint64(msgLen))
-	b = quicvarint.Append(b, uint64(som.GroupOrder))
+	b, _ = WriteVarint(b, uint64(msgLen))
+	b, _ = WriteVarint(b, uint64(som.GroupPeriod))
 
 	_, err := w.Write(b)
 
@@ -49,7 +47,7 @@ func (som *SubscribeOkMessage) Decode(src io.Reader) error {
 	if err != nil {
 		return err
 	}
-	som.GroupOrder = GroupOrder(num)
+	som.GroupPeriod = GroupPeriod(num)
 	b = b[n:]
 
 	if len(b) != 0 {

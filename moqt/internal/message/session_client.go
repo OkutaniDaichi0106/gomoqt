@@ -4,7 +4,6 @@ import (
 	"io"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
-	"github.com/quic-go/quic-go/quicvarint"
 )
 
 /*
@@ -36,21 +35,20 @@ func (scm SessionClientMessage) Len() int {
 
 func (scm SessionClientMessage) Encode(w io.Writer) error {
 	msgLen := scm.Len()
-	b := pool.Get(msgLen)
+	b := pool.Get(msgLen + VarintLen(uint64(msgLen)))
 	defer pool.Put(b)
 
-	b = quicvarint.Append(b, uint64(msgLen))
-	b = quicvarint.Append(b, uint64(len(scm.SupportedVersions)))
+	b, _ = WriteVarint(b, uint64(msgLen))
+	b, _ = WriteVarint(b, uint64(len(scm.SupportedVersions)))
 	for _, version := range scm.SupportedVersions {
-		b = quicvarint.Append(b, uint64(version))
+		b, _ = WriteVarint(b, uint64(version))
 	}
 
 	// Append parameters
-	b = quicvarint.Append(b, uint64(len(scm.Parameters)))
+	b, _ = WriteVarint(b, uint64(len(scm.Parameters)))
 	for key, value := range scm.Parameters {
-		b = quicvarint.Append(b, key)
-		b = quicvarint.Append(b, uint64(len(value)))
-		b = append(b, value...)
+		b, _ = WriteVarint(b, key)
+		b, _ = WriteBytes(b, value)
 	}
 
 	_, err := w.Write(b)

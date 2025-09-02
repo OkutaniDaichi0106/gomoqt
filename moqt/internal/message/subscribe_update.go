@@ -2,8 +2,6 @@ package message
 
 import (
 	"io"
-
-	"github.com/quic-go/quic-go/quicvarint"
 )
 
 /*
@@ -33,13 +31,13 @@ func (su SubscribeUpdateMessage) Len() int {
 
 func (su SubscribeUpdateMessage) Encode(w io.Writer) error {
 	msgLen := su.Len()
-	p := pool.Get(msgLen)
+	p := pool.Get(msgLen + VarintLen(uint64(msgLen)))
 	defer pool.Put(p)
 
-	p = quicvarint.Append(p, uint64(msgLen))
-	p = quicvarint.Append(p, uint64(su.TrackPriority))
-	p = quicvarint.Append(p, uint64(su.MinGroupSequence))
-	p = quicvarint.Append(p, uint64(su.MaxGroupSequence))
+	p, _ = WriteVarint(p, uint64(msgLen))
+	p, _ = WriteVarint(p, uint64(su.TrackPriority))
+	p, _ = WriteVarint(p, uint64(su.MinGroupSequence))
+	p, _ = WriteVarint(p, uint64(su.MaxGroupSequence))
 
 	_, err := w.Write(p)
 

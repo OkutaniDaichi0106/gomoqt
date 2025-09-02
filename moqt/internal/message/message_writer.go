@@ -4,17 +4,17 @@ import (
 	"fmt"
 )
 
-func WriteVarint(b []byte, i uint64) int {
+func WriteVarint(b []byte, i uint64) ([]byte, int) {
 	if i <= maxVarInt1 {
 		b = append(b, byte(i))
-		return 1
+		return b, 1
 	}
 	if i <= maxVarInt2 {
 		b = append(b,
 			uint8(i>>8)|0x40,
 			byte(i),
 		)
-		return 2
+		return b, 2
 	}
 	if i <= maxVarInt4 {
 		b = append(b,
@@ -23,7 +23,7 @@ func WriteVarint(b []byte, i uint64) int {
 			uint8(i>>8),
 			byte(i),
 		)
-		return 4
+		return b, 4
 	}
 	if i <= maxVarInt8 {
 		b = append(b,
@@ -36,36 +36,41 @@ func WriteVarint(b []byte, i uint64) int {
 			uint8(i>>8),
 			byte(i),
 		)
-		return 8
+		return b, 8
 	}
 	panic(fmt.Sprintf("%#x doesn't fit into 62 bits", i))
 }
 
-func WriteBytes(dest []byte, b []byte) int {
-	n := WriteVarint(dest, uint64(len(b)))
+func WriteBytes(dest []byte, b []byte) ([]byte, int) {
+	dest, n := WriteVarint(dest, uint64(len(b)))
 	dest = append(dest, b...)
-	return n + len(b)
+	return dest, n + len(b)
 }
 
-func WriteString(dest []byte, s string) int {
+func WriteString(dest []byte, s string) ([]byte, int) {
 	return WriteBytes(dest, []byte(s))
 }
 
-func WriteStringArray(dest []byte, arr []string) int {
-	n := WriteVarint(dest, uint64(len(arr)))
+func WriteStringArray(dest []byte, arr []string) ([]byte, int) {
+	dest, n := WriteVarint(dest, uint64(len(arr)))
+	var m int
 	for _, str := range arr {
-		n += WriteString(dest[n:], str)
+		dest, m = WriteString(dest, str)
+		n += m
 	}
-	return n
+	return dest, n
 }
 
-func WriteParameters(dest []byte, params Parameters) int {
-	n := WriteVarint(dest, uint64(len(params)))
+func WriteParameters(dest []byte, params Parameters) ([]byte, int) {
+	dest, n := WriteVarint(dest, uint64(len(params)))
+	var m int
 	for key, value := range params {
-		n += WriteVarint(dest[n:], key)
-		n += WriteBytes(dest[n:], value)
+		dest, m = WriteVarint(dest, key)
+		n += m
+		dest, m = WriteBytes(dest, value)
+		n += m
 	}
-	return n
+	return dest, n
 }
 
 const (

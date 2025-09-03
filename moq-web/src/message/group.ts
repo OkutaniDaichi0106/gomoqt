@@ -1,11 +1,12 @@
 import { Writer, Reader } from "../io";
 import { varintLen } from "../io/len";
+import { GroupSequence } from "../protocol";
 
 export class GroupMessage {
     subscribeId: bigint;
-    sequence: bigint;
+    sequence: GroupSequence;
 
-    constructor(subscribeId: bigint, sequence: bigint) {
+    constructor(subscribeId: bigint, sequence: GroupSequence) {
         this.subscribeId = subscribeId;
         this.sequence = sequence;
     }
@@ -14,7 +15,7 @@ export class GroupMessage {
         return varintLen(this.subscribeId) + varintLen(this.sequence);
     }
 
-    static async encode(writer: Writer, subscribeId: bigint, sequence: bigint): Promise<[GroupMessage?, Error?]> {
+    static async encode(writer: Writer, subscribeId: bigint, sequence: GroupSequence): Promise<[GroupMessage?, Error?]> {
         const msg = new GroupMessage(subscribeId, sequence);
         writer.writeVarint(msg.length());
         writer.writeBigVarint(subscribeId);
@@ -39,7 +40,7 @@ export class GroupMessage {
             return [undefined, err];
         }
 
-        let sequence: bigint;
+        let sequence: GroupSequence;
         [sequence, err] = await reader.readBigVarint();
         if (err) {
             return [undefined, err];

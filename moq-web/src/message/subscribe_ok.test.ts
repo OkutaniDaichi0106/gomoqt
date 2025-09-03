@@ -5,15 +5,15 @@ import { createIsolatedStreams } from './test-utils.test';
 
 describe('SubscribeOkMessage', () => {
   it('should encode and decode', async () => {
-    const groupOrder = 1n;
+    const groupPeriod = 1;
 
     const { writer, reader, cleanup } = createIsolatedStreams();
 
     try {
-      const [encodedMessage, encodeErr] = await SubscribeOkMessage.encode(writer, groupOrder);
+      const [encodedMessage, encodeErr] = await SubscribeOkMessage.encode(writer, groupPeriod);
       expect(encodeErr).toBeUndefined();
       expect(encodedMessage).toBeDefined();
-      expect(encodedMessage?.groupOrder).toEqual(groupOrder);
+      expect(encodedMessage?.groupPeriod).toEqual(groupPeriod);
 
       // Close writer to signal end of stream
       await writer.close();
@@ -21,7 +21,7 @@ describe('SubscribeOkMessage', () => {
       const [decodedMessage, decodeErr] = await SubscribeOkMessage.decode(reader);
       expect(decodeErr).toBeUndefined();
       expect(decodedMessage).toBeDefined();
-      expect(decodedMessage?.groupOrder).toEqual(groupOrder);
+      expect(decodedMessage?.groupPeriod).toEqual(groupPeriod);
     } finally {
       await cleanup();
     }

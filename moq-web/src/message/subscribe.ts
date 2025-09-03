@@ -1,16 +1,17 @@
 import { Writer, Reader } from "../io";
 import { varintLen, stringLen } from "../io/len";
+import { GroupSequence } from "../protocol";
 
 export class SubscribeMessage {
     subscribeId: bigint;
     broadcastPath: string;
     trackName: string;
     trackPriority: bigint;
-    minGroupSequence: bigint;
-    maxGroupSequence: bigint;
+    minGroupSequence: GroupSequence;
+    maxGroupSequence: GroupSequence;
 
     constructor(subscribeId: bigint, broadcastPath: string, trackName: string,
-         trackPriority: bigint, minGroupSequence: bigint, maxGroupSequence: bigint) {
+         trackPriority: bigint, minGroupSequence: GroupSequence, maxGroupSequence: GroupSequence) {
         this.subscribeId = subscribeId;
         this.broadcastPath = broadcastPath;
         this.trackName = trackName;
@@ -32,7 +33,7 @@ export class SubscribeMessage {
 
 
     static async encode(writer: Writer, subscribeId: bigint, broadcastPath: string, trackName: string,
-         trackPriority: bigint, minGroupSequence: bigint, maxGroupSequence: bigint): Promise<[SubscribeMessage?, Error?]> {
+         trackPriority: bigint, minGroupSequence: GroupSequence, maxGroupSequence: GroupSequence): Promise<[SubscribeMessage?, Error?]> {
         const msg = new SubscribeMessage(subscribeId, broadcastPath, trackName, trackPriority, minGroupSequence, maxGroupSequence);
         let err: Error | undefined = undefined;
         writer.writeVarint(msg.length());
@@ -75,12 +76,12 @@ export class SubscribeMessage {
         if (err) {
             return [undefined, err];
         }
-        let minGroupSequence: bigint;
+        let minGroupSequence: GroupSequence;
         [minGroupSequence, err] = await reader.readBigVarint();
         if (err) {
             return [undefined, err];
         }
-        let maxGroupSequence: bigint;
+        let maxGroupSequence: GroupSequence;
         [maxGroupSequence, err] = await reader.readBigVarint();
         if (err) {
             return [undefined, err];

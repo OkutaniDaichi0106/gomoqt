@@ -1,5 +1,4 @@
-import { Extensions } from "../internal/extensions";
-import { Version } from "../internal/version";
+import { Extensions,Version } from "../internal";
 import { Writer, Reader } from "../io";
 import { varintLen, bytesLen } from "../io/len";
 

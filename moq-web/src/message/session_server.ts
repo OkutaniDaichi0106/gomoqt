@@ -1,6 +1,5 @@
-import { Extensions } from "../internal/extensions";
+import { Extensions, Version } from "../internal";
 import { Reader, Writer } from "../io";
-import { Version } from "../internal/version";
 import { varintLen, bytesLen } from "../io/len";
 
 export class SessionServerMessage {

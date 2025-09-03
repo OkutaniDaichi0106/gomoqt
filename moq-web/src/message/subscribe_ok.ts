@@ -1,22 +1,22 @@
-import { Writer, Reader } from "../io";
-import { varintLen } from "../io/len";
+import { Writer, Reader, varintLen } from "../io";
+import { GroupPeriod } from "../protocol";
 
 export class SubscribeOkMessage {
-    groupOrder: bigint;
+    groupPeriod: GroupPeriod;
 
-    constructor(groupOrder: bigint) {
-        this.groupOrder = groupOrder;
+    constructor(groupPeriod: GroupPeriod) {
+        this.groupPeriod = groupPeriod;
     }
 
     length(): number {
-        return varintLen(this.groupOrder);
+        return varintLen(this.groupPeriod);
     }
 
-    static async encode(writer: Writer, groupOrder: bigint): Promise<[SubscribeOkMessage?, Error?]> {
-        const msg = new SubscribeOkMessage(groupOrder);
+    static async encode(writer: Writer, groupPeriod: GroupPeriod): Promise<[SubscribeOkMessage?, Error?]> {
+        const msg = new SubscribeOkMessage(groupPeriod);
         let err: Error | undefined = undefined;
         writer.writeVarint(msg.length());
-        writer.writeBigVarint(groupOrder);
+        writer.writeVarint(groupPeriod);
         err = await writer.flush();
         if (err) {
             return [undefined, err];
@@ -30,8 +30,8 @@ export class SubscribeOkMessage {
         if (err) {
             return [undefined, err];
         }
-        let varint: bigint;
-        [varint, err] = await reader.readBigVarint();
+        let varint: GroupPeriod;
+        [varint, err] = await reader.readVarint();
         if (err) {
             return [undefined, err];
         }

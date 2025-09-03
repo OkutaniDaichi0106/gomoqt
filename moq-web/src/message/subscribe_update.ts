@@ -1,12 +1,13 @@
 import { Writer, Reader } from "../io";
 import { varintLen } from "../io/len";
+import { GroupSequence } from "../protocol";
 
 export class SubscribeUpdateMessage {
     trackPriority: bigint;
-    minGroupSequence: bigint;
-    maxGroupSequence: bigint;
+    minGroupSequence: GroupSequence;
+    maxGroupSequence: GroupSequence;
 
-    constructor(trackPriority: bigint, minGroupSequence: bigint, maxGroupSequence: bigint) {
+    constructor(trackPriority: bigint, minGroupSequence: GroupSequence, maxGroupSequence: GroupSequence) {
         this.trackPriority = trackPriority;
         this.minGroupSequence = minGroupSequence;
         this.maxGroupSequence = maxGroupSequence;
@@ -41,12 +42,12 @@ export class SubscribeUpdateMessage {
         if (err) {
             return [undefined, err];
         }
-        let minGroupSequence: bigint;
+        let minGroupSequence: GroupSequence;
         [minGroupSequence, err] = await reader.readBigVarint();
         if (err) {
             return [undefined, err];
         }
-        let maxGroupSequence: bigint;
+        let maxGroupSequence: GroupSequence;
         [maxGroupSequence, err] = await reader.readBigVarint();
         if (err) {
             return [undefined, err];

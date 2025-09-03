@@ -1,5 +1,5 @@
 import { BytesBuffer, MAX_BYTES_LENGTH } from "./bytes";
-import { BytesPool, DefaultBytesPool } from "../internal/bytes_pool";
+import { BufferPool, DefaultBufferPool } from "./buffer_pool";
 import { StreamError, StreamErrorCode } from "./error";
 
 let DefaultReadSize: number = 1024; // 1 KB
@@ -8,10 +8,10 @@ export class Reader {
     // #byob?: ReadableStreamBYOBReader;
     #pull: ReadableStreamDefaultReader<Uint8Array>;
     #buf: BytesBuffer;
-    #pool: BytesPool;
+    #pool: BufferPool;
     #closed: Promise<void>;
 
-    constructor(readable: ReadableStream<Uint8Array>, pool: BytesPool = DefaultBytesPool) {
+    constructor(readable: ReadableStream<Uint8Array>, pool: BufferPool = DefaultBufferPool) {
         this.#pool = pool;
         this.#pull = readable.getReader();
 

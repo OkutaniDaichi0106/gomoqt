@@ -68,9 +68,9 @@ func TestGroupWriter_WriteFrame(t *testing.T) {
 	}{
 		"valid frame": {
 			frame: func() *Frame {
-				frame := NewFrame(len([]byte("test")))
-				frame.Append([]byte("test"))
-				return frame
+				fb := NewFrameBuilder(len([]byte("test")))
+				fb.Append([]byte("test"))
+				return fb.Frame()
 			}(),
 			mockStream: func() *MockQUICSendStream {
 				mockStream := &MockQUICSendStream{}
@@ -167,9 +167,9 @@ func TestGroupWriter_ContextCancellation(t *testing.T) {
 		cancel()
 
 		// Test that operations continue to work (they don't check context in current implementation)
-		frameLocal := NewFrame(len([]byte("test")))
+		frameLocal := NewFrameBuilder(len([]byte("test")))
 		frameLocal.Append([]byte("test"))
-		err := sgs.WriteFrame(frameLocal)
+		err := sgs.WriteFrame(frameLocal.Frame())
 		assert.NoError(t, err)
 		assert.Equal(t, uint64(1), sgs.frameCount)
 		mockStream.AssertExpectations(t)

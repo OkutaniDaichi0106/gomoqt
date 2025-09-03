@@ -13,6 +13,7 @@ func newGroupReader(sequence GroupSequence, stream quic.ReceiveStream,
 	return &GroupReader{
 		sequence: sequence,
 		stream:   stream,
+		frame:    newFrame(0),
 		onClose:  onClose,
 	}
 }
@@ -23,6 +24,8 @@ type GroupReader struct {
 	stream     quic.ReceiveStream
 	frameCount int64
 
+	frame *Frame
+
 	onClose func()
 }
 
@@ -30,15 +33,14 @@ func (s *GroupReader) GroupSequence() GroupSequence {
 	return s.sequence
 }
 
-func (s *GroupReader) ReadFrame(frame *Frame) error {
-	if frame == nil {
-		return errors.New("frame cannot be nil")
+func (s *GroupReader) ReadFrame() (*Frame, error) {
+	if s.frame == nil {
+		s.frame = newFrame(0)
 	}
-
-	err := frame.Decode(s.stream)
+	err := s.frame.decode(s.stream)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
-			return err
+			return nil, err
 		}
 
 		var strErr *quic.StreamError
@@ -47,15 +49,15 @@ func (s *GroupReader) ReadFrame(frame *Frame) error {
 				StreamError: strErr,
 			}
 
-			return grpErr
+			return nil, grpErr
 		}
 
-		return err
+		return nil, err
 	}
 
 	s.frameCount++
 
-	return nil
+	return s.frame, nil
 }
 
 func (s *GroupReader) CancelRead(code GroupErrorCode) {

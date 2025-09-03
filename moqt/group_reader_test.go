@@ -83,13 +83,11 @@ func TestReceiveGroupStream_ReadFrame_EOF(t *testing.T) {
 	mockStream.ReadFunc = buf.Read
 
 	rgs := newGroupReader(GroupSequence(123), mockStream, func() {})
-
-	frame := NewFrame(0)
-	err := rgs.ReadFrame(frame)
+	frame, err := rgs.ReadFrame()
 	assert.Error(t, err)
 	assert.Equal(t, io.EOF, err)
-	// Note: frame is modified even on error, so we don't assert it's nil
-	assert.NotNil(t, frame) // Frame is modified with internal message
+	// On EOF, frame should be nil
+	assert.Nil(t, frame)
 }
 
 func TestReceiveGroupStream_CancelRead(t *testing.T) {
@@ -210,12 +208,10 @@ func TestReceiveGroupStream_ReadFrame_StreamError(t *testing.T) {
 	mockStream.On("StreamID").Return(quic.StreamID(123))
 
 	rgs := newGroupReader(123, mockStream, func() {})
-
-	frame := NewFrame(0)
-	err := rgs.ReadFrame(frame)
+	frame, err := rgs.ReadFrame()
 	assert.Error(t, err)
-	// Note: frame is modified even on error, so we don't assert it's nil
-	assert.NotNil(t, frame) // Frame is modified with internal message
+	// On stream error, frame should be nil
+	assert.Nil(t, frame)
 
 	// Should be a GroupError
 	var groupErr *GroupError

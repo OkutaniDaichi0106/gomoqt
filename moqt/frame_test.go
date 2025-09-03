@@ -1,9 +1,11 @@
 package moqt
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewFrame(t *testing.T) {
@@ -32,13 +34,14 @@ func TestNewFrame(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			// Create frame with capacity equal to len(data)
 			cap := len(tt.data)
-			frame := NewFrame(cap)
-			assert.NotNil(t, frame)
+			builder := NewFrameBuilder(cap)
+			assert.NotNil(t, builder)
 
 			if len(tt.data) > 0 {
-				frame.Append(tt.data)
+				builder.Append(tt.data)
 			}
 
+			frame := builder.Frame()
 			copiedBytes := frame.Bytes()
 			if len(tt.expected) == 0 {
 				assert.Empty(t, copiedBytes)
@@ -77,11 +80,10 @@ func TestFrame_CopyBytes(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			cap := len(tt.data)
-			frame := NewFrame(cap)
-			if len(tt.data) > 0 {
-				frame.Append(tt.data)
-			}
+			builder := NewFrameBuilder(cap)
+			builder.Append(tt.data)
 
+			frame := builder.Frame()
 			copiedBytes := frame.Bytes()
 
 			if len(tt.data) == 0 {
@@ -119,13 +121,77 @@ func TestFrame_Size(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			cap := len(tt.data)
-			frame := NewFrame(cap)
-			frame.Reset()
-			if len(tt.data) > 0 {
-				frame.Append(tt.data)
-			}
+			builder := NewFrameBuilder(cap)
+			builder.Append(tt.data)
+			frame := builder.Frame()
 			size := frame.Len()
 			assert.Equal(t, tt.want, size)
 		})
 	}
+}
+
+func TestFrame_ResetAndAppendGrowth(t *testing.T) {
+	// Ensure reset clears length but keeps capacity, append grows buffer when needed
+	b := make([]byte, 512)
+	for i := range b {
+		b[i] = byte(i % 256)
+	}
+
+	builder := NewFrameBuilder(16)
+	// append small data first
+	builder.Append([]byte("small"))
+	frame := builder.Frame()
+	oldCap := frame.Cap()
+	oldLen := frame.Len()
+	assert.True(t, oldCap >= oldLen)
+
+	// append large data to force growth
+	builder.Append(b)
+	frame = builder.Frame()
+	assert.Equal(t, oldLen+len(b), frame.Len())
+	assert.True(t, frame.Cap() >= frame.Len())
+
+	// reset should set length to zero but preserve capacity
+	builder.Reset()
+	frame = builder.Frame()
+	assert.Equal(t, 0, frame.Len())
+	assert.True(t, frame.Cap() >= 0)
+}
+
+func TestFrame_CloneIndependence(t *testing.T) {
+	data := []byte("original data")
+	builder := NewFrameBuilder(len(data))
+	builder.Append(data)
+	frame := builder.Frame()
+
+	clone := frame.Clone()
+	// modify clone's returned bytes and ensure original not affected
+	cb := clone.Bytes()
+	require.NotNil(t, cb)
+	if len(cb) > 0 {
+		cb[0] = 'X'
+	}
+
+	ob := frame.Bytes()
+	if len(ob) > 0 {
+		assert.NotEqual(t, cb[0], ob[0])
+	}
+}
+
+func TestFrame_EncodeDecode_RoundTrip(t *testing.T) {
+	// round-trip encode/decode using an in-memory buffer
+	data := []byte("roundtrip payload")
+	builder := NewFrameBuilder(len(data))
+	builder.Append(data)
+	frame := builder.Frame()
+
+	var buf bytes.Buffer
+	err := frame.encode(&buf)
+	assert.NoError(t, err)
+
+	// prepare a fresh frame with capacity 0 and decode
+	f2 := newFrame(0)
+	err = f2.decode(&buf)
+	assert.NoError(t, err)
+	assert.Equal(t, frame.Bytes(), f2.Bytes())
 }

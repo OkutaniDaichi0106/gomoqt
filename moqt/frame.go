@@ -10,12 +10,12 @@ import (
 // Note: The given byte slice is referenced directly. If you modify the original slice after calling NewFrame,
 // the Frame's contents will also be affected. Frame is designed to be immutable after creation.
 // Returns a pointer to a Frame containing the provided payload.
-func NewFrame(cap int) *Frame {
-	buf := make([]byte, 8, 8+cap)
+func newFrame(cap int) *Frame {
+	buf := make([]byte, 8+cap)
 	return &Frame{
 		buf:    buf,
-		header: [8]byte(buf[:8]),
-		body:   buf[8:],
+		header: [8]byte{},
+		body:   buf[8:8], // Start with zero length
 	}
 }
 
@@ -26,26 +26,22 @@ type Frame struct {
 	body   []byte
 }
 
-func (f *Frame) Reset() {
+func (f *Frame) reset() {
 	f.body = f.body[:0]
 }
 
-func (f *Frame) Append(b []byte) {
-	if len(b) > cap(f.body)-len(f.body) {
+func (f *Frame) append(b []byte) {
+	if len(b)+len(f.body) > cap(f.body) {
 		// Reallocate the body buffer if necessary
 		cap := min(len(f.body)+len(b), 2*cap(f.body))
-		newBuf := make([]byte, cap)
-		f.header = [8]byte(newBuf[:8])
+		newBuf := make([]byte, 8+cap)
 		body := newBuf[8:]
+		body = body[:len(f.body)]
 		copy(body, f.body)
 		f.body = body
 	}
 
 	f.body = append(f.body, b...)
-
-	len := uint64(len(f.body))
-	start := 8 - message.VarintLen(len)
-	message.WriteVarint(f.header[start:], len)
 }
 
 // Bytes returns a copy of the payload bytes contained in the Frame.
@@ -66,13 +62,17 @@ func (f *Frame) Cap() int {
 	return cap(f.body)
 }
 
-func (f *Frame) Encode(w io.Writer) error {
-	start := 8 - message.VarintLen(uint64(len(f.body)))
+func (f *Frame) encode(w io.Writer) error {
+	l := uint64(len(f.body))
+	// end := 8 - message.VarintLen(l)
+	header, size := message.WriteVarint(f.header[:0], l)
+	start := 8 - size
+	copy(f.buf[start:], header)
 	_, err := w.Write(f.buf[start:])
 	return err
 }
 
-func (f *Frame) Decode(src io.Reader) error {
+func (f *Frame) decode(src io.Reader) error {
 	num, err := message.ReadMessageLength(src)
 	if err != nil {
 		return err
@@ -93,7 +93,33 @@ func (f *Frame) Decode(src io.Reader) error {
 
 	_, err = io.ReadFull(src, f.body)
 
-	message.WriteVarint(f.header[:], uint64(num))
-
 	return err
+}
+
+func (f *Frame) Clone() *Frame {
+	clone := newFrame(f.Cap())
+	clone.append(f.Bytes())
+	return clone
+}
+
+func NewFrameBuilder(cap int) *FrameBuilder {
+	return &FrameBuilder{
+		frame: newFrame(cap),
+	}
+}
+
+type FrameBuilder struct {
+	frame *Frame
+}
+
+func (fb *FrameBuilder) Append(b []byte) {
+	fb.frame.append(b)
+}
+
+func (fb *FrameBuilder) Frame() *Frame {
+	return fb.frame
+}
+
+func (fb *FrameBuilder) Reset() {
+	fb.frame.reset()
 }

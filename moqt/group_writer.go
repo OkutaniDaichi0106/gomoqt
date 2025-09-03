@@ -39,7 +39,7 @@ func (sgs *GroupWriter) WriteFrame(frame *Frame) error {
 		return nil
 	}
 
-	err := frame.Encode(sgs.stream)
+	err := frame.encode(sgs.stream)
 	if err != nil {
 		return Cause(sgs.ctx)
 	}

@@ -450,15 +450,6 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 			"config", config.String(),
 		)
 
-		handler := sess.mux.findTrackHandler(BroadcastPath(sm.BroadcastPath))
-		if handler == nil {
-			subLogger.Warn("track not found for subscription")
-			strErrCode := quic.StreamErrorCode(TrackNotFoundErrorCode)
-			stream.CancelWrite(strErrCode)
-			stream.CancelRead(strErrCode)
-			return
-		}
-
 		substr := newReceiveSubscribeStream(sm.SubscribeID, stream, config)
 
 		subLogger.Debug("accepted a subscribe stream")
@@ -469,7 +460,7 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 
 		subLogger.Info("serving track for subscription")
 
-		handler.ServeTrack(handler.ctx, trackWriter)
+		sess.mux.serveTrack(trackWriter)
 	default:
 		streamLogger.Error("unknown bidirectional stream type",
 			"stream_type", streamType,

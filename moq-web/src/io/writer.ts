@@ -1,5 +1,5 @@
 import { BytesBuffer, MAX_BYTES_LENGTH, MAX_UINT } from "./bytes";
-import { DefaultBytesPool } from "../internal/bytes_pool";
+import { DefaultBufferPool } from "./buffer_pool";
 import { StreamError } from "./error";
 import { MAX_VARINT1, MAX_VARINT2, MAX_VARINT4, MAX_VARINT8 } from "./len";
 
@@ -8,7 +8,7 @@ export class Writer {
     #buf: BytesBuffer;
     #closed: Promise<void>;
 
-    constructor(stream: WritableStream<Uint8Array>, buf: ArrayBufferLike = DefaultBytesPool.acquire(1024)) {
+    constructor(stream: WritableStream<Uint8Array>, buf: ArrayBufferLike = DefaultBufferPool.acquire(1024)) {
         this.#writer = stream.getWriter();
         this.#buf = new BytesBuffer(buf);
 

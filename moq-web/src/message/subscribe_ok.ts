@@ -1,40 +1,38 @@
 import { Writer, Reader, varintLen } from "../io";
 import { GroupPeriod } from "../protocol";
 
+export interface SubscribeOkMessageInit {
+    groupPeriod?: GroupPeriod;
+}
+
 export class SubscribeOkMessage {
     groupPeriod: GroupPeriod;
 
-    constructor(groupPeriod: GroupPeriod) {
-        this.groupPeriod = groupPeriod;
+    constructor(init: SubscribeOkMessageInit) {
+        this.groupPeriod = init.groupPeriod ?? 0;
     }
 
-    length(): number {
+    get messageLength(): number {
         return varintLen(this.groupPeriod);
     }
 
-    static async encode(writer: Writer, groupPeriod: GroupPeriod): Promise<[SubscribeOkMessage?, Error?]> {
-        const msg = new SubscribeOkMessage(groupPeriod);
+    async encode(writer: Writer): Promise<Error | undefined> {
         let err: Error | undefined = undefined;
-        writer.writeVarint(msg.length());
-        writer.writeVarint(groupPeriod);
-        err = await writer.flush();
-        if (err) {
-            return [undefined, err];
-        }
-        return [msg, undefined];
+        writer.writeVarint(this.messageLength + varintLen(this.messageLength));
+        writer.writeVarint(this.groupPeriod);
+        return await writer.flush();
     }
 
-    static async decode(reader: Reader): Promise<[SubscribeOkMessage?, Error?]> {
-        let err: Error | undefined;
-        [, err] = await reader.readVarint();
+    async decode(reader: Reader): Promise<Error | undefined> {
+        let [, err] = await reader.readVarint();
         if (err) {
-            return [undefined, err];
+            return err;
         }
-        let varint: GroupPeriod;
-        [varint, err] = await reader.readVarint();
+        [this.groupPeriod, err] = await reader.readVarint();
         if (err) {
-            return [undefined, err];
+            return err;
         }
-        return [new SubscribeOkMessage(varint), undefined];
+
+        return undefined;
     }
 }

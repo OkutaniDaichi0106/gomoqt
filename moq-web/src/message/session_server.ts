@@ -1,17 +1,22 @@
-import { Extensions, Version } from "../internal";
+import { Extensions, Version,DEFAULT_VERSION } from "../internal";
 import { Reader, Writer } from "../io";
 import { varintLen, bytesLen } from "../io/len";
+
+export interface SessionServerMessageInit {
+    version?: Version;
+    extensions?: Extensions;
+}
 
 export class SessionServerMessage {
     version: Version;
     extensions: Extensions;
 
-    constructor(version: Version, extensions: Extensions = new Extensions()) {
-        this.version = version;
-        this.extensions = extensions;
+    constructor(init: SessionServerMessageInit) {
+        this.version = init.version ?? DEFAULT_VERSION;
+        this.extensions = init.extensions ?? new Extensions();
     }
 
-    length(): number {
+    get messageLength(): number {
         let length = 0;
         length += varintLen(this.version);
         length += varintLen(this.extensions.entries.size);
@@ -22,64 +27,54 @@ export class SessionServerMessage {
         return length;
     }
 
-    static async encode(writer: Writer, version: Version, extensions: Extensions = new Extensions()): Promise<[SessionServerMessage?, Error?]> {
-        const msg = new SessionServerMessage(version, extensions);
-        let err: Error | undefined;
-        writer.writeVarint(msg.length());
-        writer.writeBigVarint(version);
-        writer.writeVarint(extensions.entries.size); // Write the number of extensions
-        for (const ext of extensions.entries) {
+    async encode(writer: Writer): Promise<Error | undefined> {
+        writer.writeVarint(this.messageLength+varintLen(this.messageLength));
+        writer.writeBigVarint(this.version);
+        writer.writeVarint(this.extensions.entries.size); // Write the number of extensions
+        for (const ext of this.extensions.entries) {
             writer.writeVarint(ext[0]); // Write the extension ID
             writer.writeUint8Array(ext[1]); // Write the extension data
         }
-        err = await writer.flush();
-        if (err) {
-            return [undefined, err];
-        }
-        return [msg, undefined];
+        return await writer.flush();
     }
 
 
-    static async decode(reader: Reader): Promise<[SessionServerMessage?, Error?]> {
-        let err: Error | undefined;
-        [, err] = await reader.readVarint();
-            if (err) {
-                return [undefined, err];
-            }
-        let version: bigint;
-        [version, err] = await reader.readBigVarint();
+    async decode(reader: Reader): Promise<Error | undefined> {
+        let [, err] = await reader.readVarint();
         if (err) {
-                return [undefined, err];
-            }
+            return err;
+        }
+        [this.version, err] = await reader.readBigVarint();
+        if (err) {
+            return err;
+        }
         let extensionCount: number;
         [extensionCount, err] = await reader.readVarint();
         if (err) {
-            return [undefined, err];
+            return err;
         }
-        if (extensionCount < 0) {
-            throw new Error("Invalid number of extensions for SessionServer");
-        }
-        if (extensionCount > Number.MAX_SAFE_INTEGER) {
-            throw new Error("Number of extensions exceeds maximum safe integer for SessionServer");
-        }
+
         const extensions = new Extensions();
 
         let extId: number;
         for (let i = 0; i < extensionCount; i++) {
             [extId, err] = await reader.readVarint();
             if (err) {
-                return [undefined, err];
+                return err;
             }
             let extData: Uint8Array | undefined;
             [extData, err] = await reader.readUint8Array();
             if (err) {
-                return [undefined, err];
+                return err;
             }
             if (extData === undefined) {
                 throw new Error("read extData: Uint8Array is undefined");
             }
             extensions.addBytes(extId, extData);
         }
-        return [new SessionServerMessage(version, extensions), undefined];
+
+        this.extensions = extensions;
+
+        return undefined;
     }
 }

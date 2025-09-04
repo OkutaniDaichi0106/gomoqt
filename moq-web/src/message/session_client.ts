@@ -1,18 +1,22 @@
-import { Extensions,Version } from "../internal";
+import { Extensions,Version,DEFAULT_CLIENT_VERSIONS } from "../internal";
 import { Writer, Reader } from "../io";
 import { varintLen, bytesLen } from "../io/len";
 
+export interface SessionClientInit {
+    versions?: Set<Version>;
+    extensions?: Extensions;
+}
 
 export class SessionClientMessage {
     versions: Set<Version>;
     extensions: Extensions;
 
-    constructor(versions: Set<Version>, extensions: Extensions = new Extensions()) {
-        this.versions = versions;
-        this.extensions = extensions;
+    constructor(init: SessionClientInit) {
+        this.versions = init.versions ?? DEFAULT_CLIENT_VERSIONS;
+        this.extensions = init.extensions ?? new Extensions();
     }
 
-    length(): number {
+    get messageLength(): number {
         let length = 0;
         length += varintLen(this.versions.size);
         for (const version of this.versions) {
@@ -26,36 +30,31 @@ export class SessionClientMessage {
         return length;
     }
 
-    static async encode(writer: Writer, versions: Set<Version>, extensions: Extensions = new Extensions()): Promise<[SessionClientMessage?, Error?]> {
-        const msg = new SessionClientMessage(versions, extensions);
+    async encode(writer: Writer): Promise<Error | undefined> {
         let err: Error | undefined;
-        writer.writeVarint(msg.length());
-        writer.writeVarint(versions.size);
-        for (const version of versions) {
+        writer.writeVarint(this.messageLength + varintLen(this.messageLength));
+        writer.writeVarint(this.versions.size);
+        for (const version of this.versions) {
             writer.writeBigVarint(version);
         }
-        writer.writeVarint(extensions.entries.size);
-        for (const ext of extensions.entries) {
+        writer.writeVarint(this.extensions.entries.size);
+        for (const ext of this.extensions.entries) {
             writer.writeVarint(ext[0]); // Write the extension ID
             writer.writeUint8Array(ext[1]); // Write the extension data
         }
-        err = await writer.flush();
-        if (err) {
-            return [undefined, err];
-        }
-        return [msg, undefined];
+        return await writer.flush();
     }
 
-    static async decode(reader: Reader): Promise<[SessionClientMessage?, Error?]> {
+    async decode(reader: Reader): Promise<Error | undefined> {
         let err: Error | undefined;
         [, err] = await reader.readVarint();
         if (err) {
-            return [undefined, err];
+            return err;
         }
         let numVersions: number;
         [numVersions, err] = await reader.readVarint();
         if (err) {
-            return [undefined, err];
+            return err;
         }
         if (numVersions < 0) {
             throw new Error("Invalid number of versions for SessionClient");
@@ -68,14 +67,14 @@ export class SessionClientMessage {
             let version: bigint;
             [version, err] = await reader.readBigVarint();
             if (err) {
-                return [undefined, err];
+                return err;
             }
             versions.add(version);
         }
         let numExtensions: number;
         [numExtensions, err] = await reader.readVarint();
         if (err) {
-            return [undefined, err];
+            return err;
         }
         if (numExtensions === undefined) {
             throw new Error("read numExtensions: number is undefined");
@@ -92,19 +91,23 @@ export class SessionClientMessage {
         for (let i = 0; i < numExtensions; i++) {
             [extId, err] = await reader.readVarint();
             if (err) {
-                return [undefined, err];
+                return err;
             }
             let extData: Uint8Array | undefined;
             [extData, err] = await reader.readUint8Array();
             if (err) {
-                return [undefined, err];
+                return err;
             }
             if (extData === undefined) {
                 throw new Error("read extData: Uint8Array is undefined");
             }
             extensions.addBytes(extId, extData);
         }
-        return [new SessionClientMessage(versions, extensions), undefined];
+
+        this.versions = versions;
+        this.extensions = extensions;
+
+        return undefined;
     }
 }
 

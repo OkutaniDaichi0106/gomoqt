@@ -4,10 +4,18 @@ import { Cond } from "./internal/cond";
 import { CancelCauseFunc, Context, withCancelCause } from "./internal/context";
 import { StreamError } from "./io/error";
 import { Info } from "./info";
+import { TrackPriority,GroupSequence,SubscribeID } from ".";
+
+export interface TrackConfig {
+	trackPriority: TrackPriority;
+    minGroupSequence: GroupSequence;
+    maxGroupSequence: GroupSequence;
+}
 
 export class SendSubscribeStream {
 	#config: TrackConfig;
 	#id: SubscribeID;
+	#info: Info;
 	#reader: Reader
 	#writer: Writer
 	#ctx: Context;
@@ -19,6 +27,7 @@ export class SendSubscribeStream {
 		this.#writer = writer;
 		this.#config = subscribe;
 		this.#id = subscribe.subscribeId;
+		this.#info = ok;
 	}
 
 	get subscribeId(): SubscribeID {
@@ -29,16 +38,21 @@ export class SendSubscribeStream {
 		return this.#ctx;
 	}
 
-	get trackConfig(): TrackConfig {
+	get config(): TrackConfig {
 		return this.#config;
 	}
 
-	async update(trackPriority: bigint, minGroupSequence: bigint, maxGroupSequence: bigint): Promise<Error | undefined> {
-		const [result, err] = await SubscribeUpdateMessage.encode(this.#writer, trackPriority, minGroupSequence, maxGroupSequence);
+	get info(): Info {
+		return this.#info;
+	}
+
+	async update(update: TrackConfig): Promise<Error | undefined> {
+		const msg = new SubscribeUpdateMessage(update);
+		const err = await msg.encode(this.#writer);
 		if (err) {
 			return new Error(`Failed to write subscribe update: ${err}`);
 		}
-		this.#config = result!;
+		this.#config = update;
 
 		const flushErr = await this.#writer.flush();
 		if (flushErr) {
@@ -59,7 +73,7 @@ export class ReceiveSubscribeStream {
 	#cond: Cond = new Cond();
 	#reader: Reader
 	#writer: Writer
-	#ok?: SubscribeOkMessage
+	#info?: Info
 	#ctx: Context;
 	#cancelFunc: CancelCauseFunc;
 
@@ -71,10 +85,12 @@ export class ReceiveSubscribeStream {
 
 		// The async loop can be cancelled by sessCtx.done.
 		(async () => {
+			const msg = new SubscribeUpdateMessage({});
+			let err: Error | undefined;
 			while (true) {
-				const [msg, err] = await SubscribeUpdateMessage.decode(reader);
+				err = await msg.decode(reader);
 				if (err) {
-					return;
+					return; // TODO: Handle decode error
 				}
 				this.#update = msg;
 				this.#cond.broadcast();
@@ -102,27 +118,21 @@ export class ReceiveSubscribeStream {
 		return this.#cond.wait();
 	}
 
-	async accept(info: Info): Promise<Error | undefined> {
-		if (this.#ok) {
-				return undefined; // Already accepted
-			}
+	async writeInfo(info?: Info): Promise<Error | undefined> {
+		if (this.#info) {
+			return undefined; // Info already written
+		}
 
-			const [msg, err] = await SubscribeOkMessage.encode(this.#writer, BigInt(info.groupOrder));
-			if (err) {
-				return new Error(`Failed to write subscribe ok: ${err}`);
-			}
-			if (!msg) {
-				return new Error("Failed to encode subscribe ok message");
-			}
+		const msg = new SubscribeOkMessage({});
 
-			console.log(`Accepted subscribe ok with groupOrder: ${msg.groupOrder}`);
+		const err = await msg.encode(this.#writer);
+		if (err) {
+			return new Error(`Failed to write subscribe ok: ${err}`);
+		}
 
-			this.#ok = msg;
+		console.log(`Accepted subscribe ok with groupPeriod: ${msg.groupPeriod}`);
 
-			const flushErr = await this.#writer.flush();
-			if (flushErr) {
-				return new Error(`Failed to flush subscribe ok: ${flushErr}`);
-			}
+		this.#info = msg;
 	}
 
 	close(): void {
@@ -148,12 +158,4 @@ export class ReceiveSubscribeStream {
 		this.#cond.broadcast(); // Notify any waiting threads that the stream is closed
 	}
 }
-
-export type TrackConfig = {
-	trackPriority: bigint;
-    minGroupSequence: bigint;
-    maxGroupSequence: bigint;
-}
-
-export type SubscribeID = bigint;
 

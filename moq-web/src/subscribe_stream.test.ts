@@ -24,7 +24,7 @@ jest.mock('./message', () => {
 describe('SendSubscribeStream', () => {
 	describe('trackConfig getter', () => {
 		it('should return subscribe message config when no update exists', () => {
-			const config = sendStream.trackConfig;
+			const config = sendStream.config;
 			expect(config.trackPriority).toBe(mockSubscribe.trackPriority);
 			expect(config.minGroupSequence).toBe(mockSubscribe.minGroupSequence);
 			expect(config.maxGroupSequence).toBe(mockSubscribe.maxGroupSequence);
@@ -36,7 +36,7 @@ describe('SendSubscribeStream', () => {
 				maxGroupSequence: 200n
 			}, undefined]);
 			await sendStream.update(2n, 10n, 200n);
-			const config = sendStream.trackConfig;
+			const config = sendStream.config;
 			expect(config.trackPriority).toBe(2n);
 			expect(config.minGroupSequence).toBe(10n);
 			expect(config.maxGroupSequence).toBe(200n);
@@ -125,7 +125,7 @@ describe('SendSubscribeStream', () => {
 			maxGroupSequence: 100n
 		} as SubscribeMessage;
 		mockSubscribeOk = {
-			groupOrder: 456n
+			groupPeriod: 456
 		} as SubscribeOkMessage;
 		sendStream = new SendSubscribeStream(ctx, mockWriter, mockReader, mockSubscribe, mockSubscribeOk);
 	});
@@ -143,11 +143,10 @@ describe('ReceiveSubscribeStream', () => {
 	let mockReader: jest.Mocked<Reader>;
 	let mockSubscribe: SubscribeMessage;
 	let ctx: Context;
-	let cancelFunc: () => void;
 	let receiveStream: ReceiveSubscribeStream;
 
 	beforeEach(() => {
-	[ctx, cancelFunc] = withCancelCause(background());
+		ctx = background();
 		mockWriter = {
 			writeBoolean: jest.fn(),
 			writeBigVarint: jest.fn(),
@@ -187,9 +186,6 @@ describe('ReceiveSubscribeStream', () => {
 		afterEach(() => {
 			if (typeof receiveStream?.closeWithError === 'function') {
 				receiveStream.closeWithError(999, 'test cleanup');
-			}
-			if (typeof cancelFunc === 'function') {
-				cancelFunc();
 			}
 		});
 
@@ -266,8 +262,8 @@ describe('ReceiveSubscribeStream methods', () => {
 	describe('accept', () => {
 		it('should return error when encoding fails', async () => {
 			(SubscribeOkMessage.encode as any).mockResolvedValue([undefined, new Error('Encoding failed')]);
-			const info: Info = { groupOrder: 100, trackPriority: 50 };
-			const result = await receiveStream.accept(info);
+			const info: Info = { groupPeriod: 100 };
+			const result = await receiveStream.writeInfo(info);
 			expect(result).toBeInstanceOf(Error);
 			expect(result?.message).toBe('Failed to write subscribe ok: Error: Encoding failed');
 		});

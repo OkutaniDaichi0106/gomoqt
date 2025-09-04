@@ -13,7 +13,7 @@ type suffix = string;
 export class AnnouncementWriter {
     #writer: Writer;
     #reader: Reader;
-    #prefix: TrackPrefix;
+    readonly prefix: TrackPrefix;
     #announcements: Map<suffix, Announcement> = new Map();
     #ctx: Context;
     #cancelFunc: CancelCauseFunc;
@@ -25,7 +25,7 @@ export class AnnouncementWriter {
         this.#writer = writer;
         this.#reader = reader;
 
-        this.#prefix = validateTrackPrefix(req.prefix);
+        this.prefix = validateTrackPrefix(req.prefix);
 
         [this.#ctx, this.#cancelFunc] = withCancelCause(sessCtx);
         this.#ready = new Promise<void>((resolve) => {
@@ -39,16 +39,16 @@ export class AnnouncementWriter {
     }
 
     async init(anns: Announcement[]): Promise<Error | undefined> {
-        const onEndFuncs:Map<suffix, () => void> = new Map();
+        // const onEndFuncs:Map<suffix, () => void> = new Map();
         for (const announcement of anns) {
             const path = announcement.broadcastPath;
             const active = announcement.isActive();
 
-            if (!path.startsWith(this.#prefix)) {
-                return new Error(`Path ${path} does not start with prefix ${this.#prefix}`);
+            if (!path.startsWith(this.prefix)) {
+                return new Error(`Path ${path} does not start with prefix ${this.prefix}`);
             }
 
-            const suffix = path.substring(this.#prefix.length);
+            const suffix = path.substring(this.prefix.length);
             const old = this.#announcements.get(suffix);
             if (active) {
                 if (old && old.isActive()) {
@@ -58,20 +58,20 @@ export class AnnouncementWriter {
                     this.#announcements.delete(suffix);
                 }
 
-                const fork = announcement.fork();
-                this.#announcements.set(suffix, fork);
+                this.#announcements.set(suffix, announcement);
 
-                const onEnd = async () => {
-                    await fork.ended();
+                announcement.ended().then(async ()=>{
                     // When the announcement ends, we remove it from the map
                     this.#announcements.delete(suffix);
-                    const [_, err] = await AnnounceMessage.encode(this.#writer, suffix, false);
+                    const msg = new AnnounceMessage({
+                        suffix,
+                        active: false
+                    });
+                    const err = await msg.encode(this.#writer);
                     if (err) {
                         return new Error(`Failed to write end of announcement: ${err}`);
                     }
-                };
-
-                onEndFuncs.set(suffix, onEnd);
+                });
             } else {
                 if (!old) {
                     return new Error(`Announcement for path ${suffix} does not exist`);
@@ -85,17 +85,16 @@ export class AnnouncementWriter {
             }
         }
 
-        const suffixes: string[] = Array.from(onEndFuncs.keys());
-        const [_, err] = await AnnounceInitMessage.encode(this.#writer, suffixes);
+        const msg = new AnnounceInitMessage({
+            suffixes: Array.from(this.#announcements.keys())
+        });
+        const err = await msg.encode(this.#writer);
         if (err) {
             return new Error(`Failed to write init message: ${err}`);
         }
 
+        // Resolve the initialization promise
         this.#resolveInit();
-
-        for (const [suffix, onEnd] of onEndFuncs.entries()) {
-            onEnd();
-        }
 
         return undefined;
     }
@@ -106,11 +105,11 @@ export class AnnouncementWriter {
         const path = announcement.broadcastPath;
         const active = announcement.isActive();
 
-        if (!path.startsWith(this.#prefix)) {
-            return new Error(`Path ${path} does not start with prefix ${this.#prefix}`);
+        if (!path.startsWith(this.prefix)) {
+            return new Error(`Path ${path} does not start with prefix ${this.prefix}`);
         }
 
-        const suffix = path.substring(this.#prefix.length);
+        const suffix = path.substring(this.prefix.length);
         const old = this.#announcements.get(suffix);
         if (active) {
             if (old && old.isActive()) {
@@ -120,25 +119,27 @@ export class AnnouncementWriter {
                 this.#announcements.delete(suffix);
             }
 
-            const [_, err] = await AnnounceMessage.encode(this.#writer, suffix, active);
+            const msg = new AnnounceMessage({
+                suffix,
+                active
+            });
+            let err = await msg.encode(this.#writer);
             if (err) {
                 return new Error(`Failed to write announcement: ${err}`);
             }
 
             console.log(`Announcement sent for path: ${suffix}`);
 
-            const fork = announcement.fork();
-            this.#announcements.set(suffix, fork);
+            this.#announcements.set(suffix, announcement);
 
-            async () => {
-                await fork.ended();
-                // When the announcement ends, we remove it from the map
+            announcement.ended().then(async () => {
                 this.#announcements.delete(suffix);
-                const [_, err] = await AnnounceMessage.encode(this.#writer, suffix, false);
+                msg.active = false;
+                err = await msg.encode(this.#writer);
                 if (err) {
                     return new Error(`Failed to write end of announcement: ${err}`);
                 }
-            };
+            });
         } else {
             if (!old) {
                 return new Error(`Announcement for path ${suffix} does not exist`);
@@ -183,7 +184,7 @@ export class AnnouncementWriter {
 export class AnnouncementReader {
     #writer: Writer;
     #reader: Reader;
-    #prefix: string;
+    prefix: string;
     #announcements: Map<string, Announcement> = new Map();
     #queue: Queue<Announcement> = new Queue();
     #ctx: Context;
@@ -199,14 +200,14 @@ export class AnnouncementReader {
         if (!isValidPrefix(prefix)) {
             throw new Error(`Invalid prefix: ${prefix}. It must start and end with '/'.`);
         }
-        this.#prefix = prefix;
+        this.prefix = prefix;
         const [ctx, cancelFunc] = withCancelCause(sessCtx);
         this.#ctx = ctx;
         this.#cancelFunc = cancelFunc;
 
         // Set initial announcements
         for (const suffix of aim.suffixes) {
-            const path = validateBroadcastPath(prefix + suffix)
+            const path = validateBroadcastPath(prefix + suffix);
             const announcement = new Announcement(path, ctx);
             this.#announcements.set(suffix, announcement);
             this.#queue.enqueue(announcement);
@@ -214,13 +215,11 @@ export class AnnouncementReader {
 
         // Listen for incoming announcements
         (async () => {
+            const msg = new AnnounceMessage({});
             for (;;) {
-                const [msg, err] = await AnnounceMessage.decode(reader);
+                const err = await msg.decode(reader);
                 if (err) {
                     throw new Error(`Failed to read announcement: ${err}`);
-                }
-                if (!msg) {
-                    throw new Error("Announcement message is undefined after decoding");
                 }
 
                 const old = this.#announcements.get(msg.suffix);
@@ -303,13 +302,13 @@ export class Announcement {
         [this.#ctx, this.#cancelFunc] = withCancel(ctx);
     }
 
-    end() {
+    end(): void {
         this.#cancelFunc();
     }
 
-    fork(): Announcement {
-        return new Announcement(this.broadcastPath, this.#ctx);
-    }
+    // fork(): Announcement {
+    //     return new Announcement(this.broadcastPath, this.#ctx);
+    // }
 
     isActive(): boolean {
         return this.#ctx.err() === undefined;

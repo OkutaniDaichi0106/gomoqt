@@ -6,7 +6,7 @@ import { SessionStream } from "./session_stream";
 import { background, Context, withPromise } from "./internal/context";
 import { AnnouncementReader, AnnouncementWriter } from "./announce_stream";
 import { TrackPrefix } from "./track_prefix";
-import { ReceiveSubscribeStream, SendSubscribeStream, TrackConfig, SubscribeID } from "./subscribe_stream";
+import { ReceiveSubscribeStream, SendSubscribeStream, TrackConfig } from "./subscribe_stream";
 import { BroadcastPath } from "./broadcast_path";
 import { TrackReader, TrackWriter } from "./track";
 import { GroupReader, GroupWriter } from "./group_stream";
@@ -15,6 +15,7 @@ import { BiStreamTypes, UniStreamTypes } from "./stream_type";
 import { Queue } from "./internal/queue";
 import { Info } from "./info";
 import { subscribe } from "diagnostics_channel";
+import { TrackName, SubscribeID } from "./protocol";
 
 export class Session {
 	readonly ready: Promise<void>
@@ -24,7 +25,7 @@ export class Session {
 
 	#idCounter: bigint = 0n;
 
-	#mux: TrackMux;
+	readonly mux: TrackMux;
 
 	#enqueueFuncs: Map<SubscribeID, (stream: Reader, msg: GroupMessage) => void> = new Map();
 
@@ -32,7 +33,7 @@ export class Session {
 		versions: Set<Version> = new Set([Versions.DEVELOP]), extensions: Extensions = new Extensions(),
 		mux: TrackMux = DefaultTrackMux) {
 		this.#conn = conn;
-		this.#mux = mux;
+		this.mux = mux;
 		this.ready = conn.ready.then(async () => {
 			const stream = await conn.createBidirectionalStream();
 			const baseCtx = withPromise(background(), conn.closed); // TODO: Handle connection closure properly
@@ -41,25 +42,27 @@ export class Session {
 
 			// Send STREAM_TYPE
 			writer.writeUint8(BiStreamTypes.SessionStreamType);
-			const err = await writer.flush();
+			let err = await writer.flush();
 			if (err) {
 				console.error("Failed to flush writer:", err);
 				throw err;
 			}
 
 			// Send the session client message
-			const [req, reqErr] = await SessionClientMessage.encode(writer, versions, extensions);
-			if (reqErr) {
-				throw reqErr;
+			const req = new SessionClientMessage({ versions, extensions });
+			err = await req.encode(writer);
+			if (err) {
+				throw err;
 			}
 			if (!req) {
 				throw new Error("Failed to encode SessionClientMessage");
 			}
 
 			// Receive the session server message
-			const [rsp, rspErr] = await SessionServerMessage.decode(reader);
-			if (rspErr) {
-				throw rspErr;
+			const rsp = new SessionServerMessage({});
+			err = await rsp.decode(reader);
+			if (err) {
+				throw err;
 			}
 			if (!rsp) {
 				throw new Error("Failed to decode SessionServerMessage");
@@ -94,62 +97,61 @@ export class Session {
 
 		// Send STREAM_TYPE
 		writer.writeUint8(BiStreamTypes.AnnounceStreamType);
-		const err = await writer.flush();
+		let err = await writer.flush();
 		if (err) {
 			throw err;
 		}
 
 		// Send AnnouncePleaseMessage
-		const [req, reqErr] = await AnnouncePleaseMessage.encode(writer, prefix)
-		if (reqErr) {
-			throw reqErr;
-		}
-		if (!req) {
-			throw new Error("Failed to encode AnnouncePleaseMessage");
+		const req = new AnnouncePleaseMessage({prefix: prefix});
+		err = await req.encode(writer);
+		if (err) {
+			throw err;
 		}
 
 		// Receive AnnounceInitMessage
-		const [rsp, rspErr] = await AnnounceInitMessage.decode(reader);
-		if (rspErr) {
-			throw rspErr;
+		const rsp = new AnnounceInitMessage({});
+		err = await rsp.decode(reader);
+		if (err) {
+			throw err;
 		}
-		if (!rsp) {
-			throw new Error("Failed to decode AnnounceInitMessage");
-		}
-
 
 		return new AnnouncementReader(this.#ctx, writer, reader, req, rsp);
 	}
 
-	async subscribe(path: BroadcastPath, name: string, config: TrackConfig = {
-            trackPriority: 0n,
-            minGroupSequence: 0n,
-            maxGroupSequence: 0n,
-        }): Promise<TrackReader> {
+	async subscribe(path: BroadcastPath, name: TrackName, config?: TrackConfig): Promise<TrackReader> {
 		const stream = await this.#conn.createBidirectionalStream()
 		const writer = new Writer(stream.writable);
 		const reader = new Reader(stream.readable);
 
 		// Send STREAM_TYPE
 		writer.writeUint8(BiStreamTypes.SubscribeStreamType);
-		const err = await writer.flush();
+		let err = await writer.flush();
 		if (err) {
 			throw err;
 		}
 
 		// Send SUBSCRIBE message
-		const [req, reqErr] = await SubscribeMessage.encode(writer, this.#idCounter++, path, name,
-			config.trackPriority, config.minGroupSequence, config.maxGroupSequence);
-		if (reqErr) {
-			throw reqErr;
+		const req = new SubscribeMessage({
+			subscribeId: this.#idCounter++,
+			broadcastPath: path,
+			trackName: name,
+			trackPriority: config?.trackPriority ?? 0,
+			minGroupSequence: config?.minGroupSequence ?? 0n,
+			maxGroupSequence: config?.maxGroupSequence ?? 0n
+		});
+		err = await req.encode(writer);
+		if (err) {
+			throw err;
 		}
 		if (!req) {
 			throw new Error("Failed to encode TrackSubscribeMessage");
 		}
 
-		const [rsp, rspErr] = await SubscribeOkMessage.decode(reader);
-		if (rspErr) {
-			throw rspErr;
+		const rsp = new SubscribeOkMessage({});
+		err = await rsp.decode(reader);
+		if (err) {
+			throw err;
 		}
 		if (!rsp) {
 			throw new Error("Failed to decode SubscribeOkMessage");
@@ -171,13 +173,10 @@ export class Session {
 	}
 
 	async #handleGroupStream(reader: Reader): Promise<void> {
-		const [req, err] = await GroupMessage.decode(reader);
+		const req = new GroupMessage({});
+		const err = await req.decode(reader);
 		if (err) {
 			console.error("Failed to decode GroupMessage:", err);
-			return;
-		}
-		if (!req) {
-			console.error("Received empty GroupMessage");
 			return;
 		}
 
@@ -191,17 +190,12 @@ export class Session {
 	}
 
 	async #handleSubscribeStream(writer: Writer, reader: Reader): Promise<void> {
-		const [req, reqErr] = await SubscribeMessage.decode(reader);
+		const req = new SubscribeMessage({});
+		const reqErr = await req.decode(reader);
 		if (reqErr) {
 			console.error("Failed to decode SubscribeMessage:", reqErr);
 			return;
 		}
-		if (!req) {
-			console.error("Received empty SubscribeMessage");
-			return;
-		}
-
-		const id = req.subscribeId;
 
 		const subscribeStream = new ReceiveSubscribeStream(this.#ctx, writer, reader, req);
 
@@ -216,19 +210,20 @@ export class Session {
         };
 
 
-		const trackWriter = new TrackWriter(req.broadcastPath, req.trackName, subscribeStream, openUniStreamFunc);
+		const trackWriter = new TrackWriter(
+			req.broadcastPath as BroadcastPath,
+			req.trackName,
+			subscribeStream, openUniStreamFunc
+		);
 
-		this.#mux.serveTrack(trackWriter);
+		this.mux.serveTrack(trackWriter);
 	}
 
 	async #handleAnnounceStream(writer: Writer, reader: Reader): Promise<void> {
-		const [req, err] = await AnnouncePleaseMessage.decode(reader);
+		const req = new AnnouncePleaseMessage({});
+		const err = await req.decode(reader);
 		if (err) {
 			console.error("Failed to decode AnnouncePleaseMessage:", err);
-			return;
-		}
-		if (!req) {
-			console.error("Received empty AnnouncePleaseMessage");
 			return;
 		}
 
@@ -236,7 +231,7 @@ export class Session {
 
 		const stream = new AnnouncementWriter(this.#ctx, writer, reader, req);
 
-		this.#mux.serveAnnouncement(stream, req.prefix);
+		this.mux.serveAnnouncement(stream, stream.prefix);
 	}
 
 	async #listenBiStreams(): Promise<void> {

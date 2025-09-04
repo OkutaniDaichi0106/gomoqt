@@ -1,14 +1,18 @@
 import { Writer, Reader } from "../io";
 import { varintLen, stringLen } from "../io/len";
 
+export interface AnnounceInitMessageInit {
+    suffixes?: string[];
+}
+
 export class AnnounceInitMessage {
     suffixes: string[];
 
-    constructor(suffixes: string[]) {
-        this.suffixes = suffixes;
+    constructor(init: AnnounceInitMessageInit) {
+        this.suffixes = init.suffixes ?? [];
     }
 
-    length(): number {
+    get messageLength(): number {
         let len = 0;
         len += varintLen(this.suffixes.length);
         for (const suffix of this.suffixes) {
@@ -17,30 +21,21 @@ export class AnnounceInitMessage {
         return len;
     }
 
-    static async encode(writer: Writer, suffixes: string[]): Promise<[AnnounceInitMessage?, Error?]> {
-        const msg = new AnnounceInitMessage(suffixes);
-        let err: Error | undefined = undefined;
-        writer.writeVarint(msg.length());
-        writer.writeStringArray(suffixes);
-        err = await writer.flush();
-        if (err) {
-            return [undefined, err];
-        }
-        return [msg, undefined];
+    async encode(writer: Writer): Promise<Error | undefined> {
+        writer.writeVarint(this.messageLength + varintLen(this.messageLength));
+        writer.writeStringArray(this.suffixes);
+        return await writer.flush();
     }
 
-    static async decode(reader: Reader): Promise<[AnnounceInitMessage?, Error?]> {
-        let err: Error | undefined = undefined;
-        [, err] = await reader.readVarint();
+    async decode(reader: Reader): Promise<Error | undefined> {
+        let [, err] = await reader.readVarint();
         if (err) {
-            return [undefined, err];
+            return err;
         }
-        let suffixes: string[];
-        [suffixes, err] = await reader.readStringArray();
+        [this.suffixes, err] = await reader.readStringArray();
         if (err) {
-            return [undefined, err];
+            return err;
         }
-
-        return [new AnnounceInitMessage(suffixes), undefined];
+        return undefined;
     }
 }

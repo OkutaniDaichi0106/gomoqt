@@ -8,13 +8,13 @@ import { UniStreamTypes } from "./stream_type";
 import { GroupMessage } from "./message";
 import { BroadcastPath } from "./broadcast_path";
 import { PublishAbortedErrorCode, SubscribeErrorCode } from "./error";
+import { GroupSequence } from ".";
 
 export class TrackWriter {
     broadcastPath: BroadcastPath;
     trackName: string;
     #subscribeStream: ReceiveSubscribeStream;
     #openUniStreamFunc: () => Promise<[Writer?, Error?]>;
-    #accepted: boolean = false;
     #groups: GroupWriter[] = [];
 
     constructor(broadcastPath: BroadcastPath, trackName: string,
@@ -35,41 +35,37 @@ export class TrackWriter {
         return this.#subscribeStream.subscribeId;
     }
 
-    get trackConfig(): TrackConfig {
+    get config(): TrackConfig {
         return this.#subscribeStream.trackConfig;
     }
 
-    async openGroup(groupId: bigint): Promise<[GroupWriter?, Error?]> {
-        if (!this.#accepted) {
-            const err = await this.#subscribeStream.accept({
-                groupOrder: 0,
-                trackPriority: 0
-            })
-            if (err) {
-                return [undefined, err];
-            }
-            this.#accepted = true;
-        }
-
-        const [writer, err] = await this.#openUniStreamFunc();
+    async openGroup(groupSequence: GroupSequence): Promise<[GroupWriter?, Error?]> {
+        let err: Error | undefined;
+        err = await this.#subscribeStream.writeInfo()
         if (err) {
             return [undefined, err];
         }
 
-        if (!writer) {
-            return [undefined, new Error("Failed to create group writer")];
+        let writer: Writer | undefined;
+        [writer, err] = await this.#openUniStreamFunc();
+        if (err) {
+            return [undefined, err];
         }
 
-        writer.writeUint8(UniStreamTypes.GroupStreamType);
-        const [msg, err2] = await GroupMessage.encode(writer, this.subscribeId, groupId);
-        if (err2) {
+        writer!.writeUint8(UniStreamTypes.GroupStreamType);
+        const msg = new GroupMessage({
+            subscribeId: this.subscribeId,
+            sequence: groupSequence
+        });
+        err = await msg.encode(writer!);
+        if (err) {
             return [undefined, new Error("Failed to create group message")];
         }
         if (!msg) {
             return [undefined, new Error("Failed to encode group message")];
         }
 
-        const group = new GroupWriter(this.context, writer, msg)
+        const group = new GroupWriter(this.context, writer!, msg)
 
         this.#groups.push(group);
 
@@ -77,16 +73,10 @@ export class TrackWriter {
     }
 
     async writeInfo(info: Info): Promise<Error | undefined> {
-        if (this.#accepted) {
-            return undefined; // Already accepted, no need to write info again
-        }
-
-        const err = await this.#subscribeStream.accept(info);
+        const err = await this.#subscribeStream.writeInfo(info);
         if (err) {
             return err;
         }
-
-        this.#accepted = true;
     }
 
     closeWithError(code: SubscribeErrorCode, message: string): void {
@@ -138,8 +128,12 @@ export class TrackReader {
         return [group, undefined];
     }
 
-    async update(trackPriority: bigint, minGroupSequence: bigint, maxGroupSequence: bigint): Promise<Error | undefined> {
-        return this.#subscribeStream.update(trackPriority, minGroupSequence, maxGroupSequence);
+    async update(config: TrackConfig): Promise<Error | undefined> {
+        return this.#subscribeStream.update(config);
+    }
+
+    readInfo(): Info {
+        return this.#subscribeStream.info;
     }
 
     cancel(code: number, message: string): void {
@@ -148,7 +142,7 @@ export class TrackReader {
     }
 
     get trackConfig(): TrackConfig {
-        return this.#subscribeStream.trackConfig;
+        return this.#subscribeStream.config;
     }
 
     get context(): Context {

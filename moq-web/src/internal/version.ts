@@ -5,3 +5,5 @@ export const Versions = {
 } as const;
 
 export const DEFAULT_VERSION: Version = Versions.DEVELOP;
+
+export const DEFAULT_CLIENT_VERSIONS: Set<Version> = new Set([Versions.DEVELOP]);

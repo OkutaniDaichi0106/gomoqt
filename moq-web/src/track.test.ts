@@ -42,7 +42,7 @@ describe('TrackWriter', () => {
         };
 
         mockOpenUniStreamFunc = jest.fn();
-        
+
         trackWriter = new TrackWriter(
             '/test/path' as BroadcastPath,
             'test-track',
@@ -72,11 +72,11 @@ describe('TrackWriter', () => {
 
         it('should accept subscription and open group successfully', async () => {
             const groupId = 456n;
-            
+
             const [groupWriter, error] = await trackWriter.openGroup(groupId);
 
             expect(mockSubscribeStream.accept).toHaveBeenCalledWith({
-                groupOrder: 0,
+                groupPeriod: 0,
                 trackPriority: 0
             });
             expect(mockOpenUniStreamFunc).toHaveBeenCalled();
@@ -124,8 +124,8 @@ describe('TrackWriter', () => {
         });
 
         it('should accept subscription with provided info', async () => {
-            const info: Info = { groupOrder: 100, trackPriority: 50 };
-            
+            const info: Info = { groupPeriod: 100, trackPriority: 50 };
+
             const error = await trackWriter.writeInfo(info);
 
             expect(mockSubscribeStream.accept).toHaveBeenCalledWith(info);
@@ -135,7 +135,7 @@ describe('TrackWriter', () => {
         it('should return error if accept fails', async () => {
             const acceptError = new Error('Accept failed');
             mockSubscribeStream.accept.mockResolvedValue(acceptError);
-            const info: Info = { groupOrder: 100, trackPriority: 50 };
+            const info: Info = { groupPeriod: 100, trackPriority: 50 };
 
             const error = await trackWriter.writeInfo(info);
 
@@ -143,8 +143,8 @@ describe('TrackWriter', () => {
         });
 
         it('should not accept again if already accepted', async () => {
-            const info: Info = { groupOrder: 100, trackPriority: 50 };
-            
+            const info: Info = { groupPeriod: 100, trackPriority: 50 };
+
             // First call should accept
             await trackWriter.writeInfo(info);
             expect(mockSubscribeStream.accept).toHaveBeenCalledWith(info);
@@ -173,7 +173,7 @@ describe('TrackReader', () => {
             cancel: jest.fn(),
             closed: jest.fn()
         };
-        
+
         mockGroupMessage = {} as GroupMessage;
 
         mockSubscribeStream = {
@@ -185,7 +185,7 @@ describe('TrackReader', () => {
 
         mockAcceptFunc = jest.fn();
         mockOnCloseFunc = jest.fn();
-        
+
         trackReader = new TrackReader(mockSubscribeStream, mockAcceptFunc, mockOnCloseFunc);
     });
 

@@ -1,91 +1,87 @@
 import { Writer, Reader } from "../io";
 import { varintLen, stringLen } from "../io/len";
-import { GroupSequence } from "../protocol";
+import { GroupSequence, TrackPriority } from "../protocol";
+
+export interface SubscribeMessageInit {
+    subscribeId?: bigint;
+    broadcastPath?: string;
+    trackName?: string;
+    trackPriority?: TrackPriority;
+    minGroupSequence?: GroupSequence;
+    maxGroupSequence?: GroupSequence;
+}
 
 export class SubscribeMessage {
     subscribeId: bigint;
     broadcastPath: string;
     trackName: string;
-    trackPriority: bigint;
+    trackPriority: TrackPriority;
     minGroupSequence: GroupSequence;
     maxGroupSequence: GroupSequence;
 
-    constructor(subscribeId: bigint, broadcastPath: string, trackName: string,
-         trackPriority: bigint, minGroupSequence: GroupSequence, maxGroupSequence: GroupSequence) {
-        this.subscribeId = subscribeId;
-        this.broadcastPath = broadcastPath;
-        this.trackName = trackName;
-        this.trackPriority = trackPriority;
-        this.minGroupSequence = minGroupSequence;
-        this.maxGroupSequence = maxGroupSequence;
+    constructor(init: SubscribeMessageInit) {
+        this.subscribeId = init.subscribeId ?? 0n;
+        this.broadcastPath = init.broadcastPath ?? "";
+        this.trackName = init.trackName ?? "";
+        this.trackPriority = init.trackPriority ?? 0;
+        this.minGroupSequence = init.minGroupSequence ?? 0n;
+        this.maxGroupSequence = init.maxGroupSequence ?? 0n;
     }
 
-    length(): number {
+    get messageLength(): number {
         return (
-            varintLen(this.subscribeId) +
-            stringLen(this.broadcastPath) +
-            stringLen(this.trackName) +
-            varintLen(this.trackPriority) +
-            varintLen(this.minGroupSequence) +
-            varintLen(this.maxGroupSequence)
+            varintLen(this.subscribeId)
+            + stringLen(this.broadcastPath)
+            + stringLen(this.trackName)
+            + varintLen(this.trackPriority)
+            + varintLen(this.minGroupSequence)
+            + varintLen(this.maxGroupSequence)
         );
     }
 
 
-    static async encode(writer: Writer, subscribeId: bigint, broadcastPath: string, trackName: string,
-         trackPriority: bigint, minGroupSequence: GroupSequence, maxGroupSequence: GroupSequence): Promise<[SubscribeMessage?, Error?]> {
-        const msg = new SubscribeMessage(subscribeId, broadcastPath, trackName, trackPriority, minGroupSequence, maxGroupSequence);
+    async encode(writer: Writer): Promise<Error | undefined> {
         let err: Error | undefined = undefined;
-        writer.writeVarint(msg.length());
-        writer.writeBigVarint(subscribeId);
-        writer.writeString(broadcastPath);
-        writer.writeString(trackName);
-        writer.writeBigVarint(trackPriority);
-        writer.writeBigVarint(minGroupSequence);
-        writer.writeBigVarint(maxGroupSequence);
-        err = await writer.flush();
-        if (err) {
-            return [undefined, err];
-        }
-        return [msg, undefined];
+        writer.writeVarint(this.messageLength + varintLen(this.messageLength));
+        writer.writeBigVarint(this.subscribeId);
+        writer.writeString(this.broadcastPath);
+        writer.writeString(this.trackName);
+        writer.writeVarint(this.trackPriority);
+        writer.writeBigVarint(this.minGroupSequence);
+        writer.writeBigVarint(this.maxGroupSequence);
+        return await writer.flush();
     }
 
-    static async decode(reader: Reader): Promise<[SubscribeMessage?, Error?]> {
-        let err: Error | undefined;
-        [, err] = await reader.readVarint();
+    async decode(reader: Reader): Promise<Error | undefined> {
+        let [, err] = await reader.readVarint();
         if (err) {
-            return [undefined, err];
+            return err;
         }
-        let subscribeId: bigint;
-        [subscribeId, err] = await reader.readBigVarint();
+        [this.subscribeId, err] = await reader.readBigVarint();
         if (err) {
-            return [undefined, err];
+            return err;
         }
-        let broadcastPath: string;
-        [broadcastPath, err] = await reader.readString();
+        [this.broadcastPath, err] = await reader.readString();
         if (err) {
-            return [undefined, err];
+            return err;
         }
-        let trackName: string;
-        [trackName, err] = await reader.readString();
+        [this.trackName, err] = await reader.readString();
         if (err) {
-            return [undefined, err];
+            return err;
         }
-        let trackPriority: bigint;
-        [trackPriority, err] = await reader.readBigVarint();
+        [this.trackPriority, err] = await reader.readVarint();
         if (err) {
-            return [undefined, err];
+            return err;
         }
-        let minGroupSequence: GroupSequence;
-        [minGroupSequence, err] = await reader.readBigVarint();
+        [this.minGroupSequence, err] = await reader.readBigVarint();
         if (err) {
-            return [undefined, err];
+            return err;
         }
-        let maxGroupSequence: GroupSequence;
-        [maxGroupSequence, err] = await reader.readBigVarint();
+        [this.maxGroupSequence, err] = await reader.readBigVarint();
         if (err) {
-            return [undefined, err];
+            return err;
         }
-        return [new SubscribeMessage(subscribeId, broadcastPath, trackName, trackPriority, minGroupSequence, maxGroupSequence), undefined];
+
+        return undefined;
     }
 }

@@ -7,7 +7,7 @@
  * A broadcast path is simply a string with specific format requirements.
  * Use validation functions to ensure correctness at runtime.
  */
-export type BroadcastPath = string;
+export type BroadcastPath = string & { readonly brand: unique symbol };
 
 /**
  * Runtime type guard to check if a string is a valid BroadcastPath.
@@ -28,7 +28,7 @@ export function validateBroadcastPath(path: string): BroadcastPath {
     if (!isValidBroadcastPath(path)) {
         throw new Error(`Invalid broadcast path: "${path}". Must start with "/"`);
     }
-    return path;
+    return path as BroadcastPath;
 }
 
 /**

@@ -1,40 +1,38 @@
 import { Writer, Reader } from "../io";
 import { varintLen } from "../io/len";
 
+export interface SessionUpdateMessageInit {
+    bitrate?: bigint;
+}
+
 export class SessionUpdateMessage {
     bitrate: bigint;
 
-    constructor(bitrate: bigint) {
-        this.bitrate = bitrate;
+    constructor(init: SessionUpdateMessageInit) {
+        this.bitrate = init.bitrate ?? 0n;
     }
 
-    length(): number {
+    get messageLength(): number {
         return varintLen(this.bitrate);
     }
 
-    static async encode(writer: Writer, bitrate: bigint): Promise<[SessionUpdateMessage?, Error?]> {
-        const msg = new SessionUpdateMessage(bitrate);
+    async encode(writer: Writer): Promise<Error | undefined> {
         let err: Error | undefined;
-        writer.writeVarint(msg.length());
-        writer.writeBigVarint(bitrate);
-        err = await writer.flush();
-        if (err) {
-            return [undefined, err];
-        }
-        return [msg, undefined];
+        writer.writeVarint(this.messageLength + varintLen(this.messageLength));
+        writer.writeBigVarint(this.bitrate);
+        return await writer.flush();
     }
 
-    static async decode(reader: Reader): Promise<[SessionUpdateMessage?, Error?]> {
-        let err: Error | undefined;
-        [, err] = await reader.readVarint();
+    async decode(reader: Reader): Promise<Error | undefined> {
+        let [, err] = await reader.readVarint();
         if (err) {
-            return [undefined, err];
+            return err;
         }
-        let varint: bigint;
-        [varint, err] = await reader.readBigVarint();
+        [this.bitrate, err] = await reader.readBigVarint();
         if (err) {
-            return [undefined, err];
+            return err;
         }
-        return [new SessionUpdateMessage(varint), undefined];
+
+        return undefined;
     }
 }

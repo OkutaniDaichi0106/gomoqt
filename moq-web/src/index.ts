@@ -14,3 +14,4 @@ export * from './track';
 export * from './track_mux';
 export * from './error';
 export * from './frame';
+export * from './protocol';

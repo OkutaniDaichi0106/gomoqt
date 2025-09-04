@@ -9,7 +9,6 @@ export class GroupWriter {
     #writer: Writer;
     #ctx: Context;
     #cancelFunc: CancelCauseFunc;
-    #frameCount: number = 0;
 
     constructor(trackCtx: Context, writer: Writer, group: GroupMessage) {
         this.#group = group;
@@ -35,10 +34,6 @@ export class GroupWriter {
         return this.#group.sequence;
     }
 
-    get frameCount(): number {
-        return this.#frameCount;
-    }
-
     async writeFrame(src: Frame | Source): Promise<Error | undefined> {
         if (src instanceof Frame) {
             this.#writer.writeUint8Array(src.bytes);
@@ -50,8 +45,6 @@ export class GroupWriter {
             console.error("Error writing frame:", err);
             return err;
         }
-
-        this.#frameCount++;
 
         return undefined;
     }
@@ -77,7 +70,7 @@ export class GroupReader {
     #reader: Reader;
     #ctx: Context;
     #cancelFunc: CancelCauseFunc;
-    #frameCount: number = 0;
+    #frame?: Frame;
 
     constructor(trackCtx: Context, reader: Reader, group: GroupMessage) {
         this.#group = group;
@@ -94,36 +87,31 @@ export class GroupReader {
         return this.#group.sequence;
     }
 
-    get frameCount(): number {
-        return this.#frameCount;
-    }
-
-    async readFrame(dest: Frame): Promise<Error | undefined> {
+    async readFrame(): Promise<[Frame?, Error?]> {
         let err: Error | undefined;
         let len: number;
         [len, err] = await this.#reader.readVarint();
         if (err) {
-            return err;
+            return [undefined, err];
         }
 
         if (len > Number.MAX_SAFE_INTEGER) {
-            return new Error("Varint too large");
+            return [undefined, new Error("Varint too large")];
         }
 
-        if (dest.bytes.byteLength < len) {
-            const cap = Math.max(dest.bytes.byteLength * 2, len);
+        if (!this.#frame || this.#frame.bytes.byteLength < len) {
+            const currentSize = this.#frame?.bytes.byteLength || 0;
+            const cap = Math.max(currentSize * 2, len);
             // Swap buffers
-            dest.bytes = new Uint8Array(cap);
+            this.#frame = new Frame(new Uint8Array(cap));
         }
 
-        err = await this.#reader.fillN(dest.bytes, len);
+        err = await this.#reader.fillN(this.#frame.bytes, len);
         if (err) {
-            return err;
+            return [undefined, err];
         }
 
-        this.#frameCount++;
-
-        return undefined;
+        return [this.#frame, undefined];
     }
 
     cancel(code: number): void {

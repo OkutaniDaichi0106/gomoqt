@@ -11,8 +11,8 @@ const DefaultWebTransportOptions: WebTransportOptions = {
 
 const DefaultMOQOptions: MOQOptions = {
     extensions: undefined,
-    reconnect: false,
-    migrate: (url: URL) => false,
+    reconnect: false, // TODO: Implement reconnect logic
+    // migrate: (url: URL) => false,
     transport: DefaultWebTransportOptions,
 };
 
@@ -21,10 +21,9 @@ export class Client {
     readonly options: MOQOptions;
     #mux: TrackMux;
 
-    constructor(options: MOQOptions = DefaultMOQOptions,
-        mux: TrackMux = new TrackMux()) {
+    constructor(options: MOQOptions = DefaultMOQOptions, mux?: TrackMux) {
         this.options = options;
-        this.#mux = mux;
+        this.#mux = mux || new TrackMux();
     }
 
     async dial(url: string | URL, mux: TrackMux = DefaultTrackMux): Promise<Session> {
@@ -51,5 +50,3 @@ export class Client {
         this.#sessions = new Set();
     }
 }
-
-export const MOQ = Client;

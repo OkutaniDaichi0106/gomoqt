@@ -2,50 +2,47 @@ import { Writer, Reader } from "../io";
 import { varintLen } from "../io/len";
 import { GroupSequence } from "../protocol";
 
+export interface GroupMessageInit {
+    subscribeId?: bigint;
+    sequence?: GroupSequence;
+}
+
 export class GroupMessage {
     subscribeId: bigint;
     sequence: GroupSequence;
 
-    constructor(subscribeId: bigint, sequence: GroupSequence) {
-        this.subscribeId = subscribeId;
-        this.sequence = sequence;
+    constructor(init: GroupMessageInit) {
+        this.subscribeId = init.subscribeId ?? 0n;
+        this.sequence = init.sequence ?? 0n;
     }
 
-    length(): number {
+    get messageLength(): number {
         return varintLen(this.subscribeId) + varintLen(this.sequence);
     }
 
-    static async encode(writer: Writer, subscribeId: bigint, sequence: GroupSequence): Promise<[GroupMessage?, Error?]> {
-        const msg = new GroupMessage(subscribeId, sequence);
-        writer.writeVarint(msg.length());
-        writer.writeBigVarint(subscribeId);
-        writer.writeBigVarint(sequence);
-        const err = await writer.flush();
-        if (err) {
-            return [undefined, err];
-        }
-        return [msg, undefined];
+    async encode(writer: Writer): Promise<Error | undefined> {
+        writer.writeVarint(this.messageLength + varintLen(this.messageLength));
+        writer.writeBigVarint(this.subscribeId);
+        writer.writeBigVarint(this.sequence);
+        return await writer.flush();
     }
 
-    static async decode(reader: Reader): Promise<[GroupMessage?, Error?]> {
-        let err: Error | undefined;
-        [, err] = await reader.readVarint();
+    async decode(reader: Reader): Promise<Error | undefined> {
+        let [, err] = await reader.readVarint();
         if (err) {
-            return [undefined, err];
+            return err;
         }
 
-        let subscribeId: bigint;
-        [subscribeId, err] = await reader.readBigVarint();
+        [this.subscribeId, err] = await reader.readBigVarint();
         if (err) {
-            return [undefined, err];
+            return err;
         }
 
-        let sequence: GroupSequence;
-        [sequence, err] = await reader.readBigVarint();
+        [this.sequence, err] = await reader.readBigVarint();
         if (err) {
-            return [undefined, err];
+            return err;
         }
 
-        return [new GroupMessage(subscribeId, sequence), undefined];
+        return undefined;
     }
 }

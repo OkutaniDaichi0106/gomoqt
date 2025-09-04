@@ -1,4 +1,5 @@
-export type Info = {
-	groupOrder: number
-	trackPriority: number
+import { type GroupPeriod } from "./protocol";
+
+export interface Info {
+	groupPeriod: GroupPeriod
 }

@@ -1,40 +1,36 @@
 import { Writer, Reader } from "../io";
-import { stringLen } from "../io/len";
+import { stringLen,varintLen } from "../io/len";
+
+export interface AnnouncePleaseMessageInit {
+    prefix?: string;
+}
 
 export class AnnouncePleaseMessage {
     prefix: string;
 
-    constructor(prefix: string) {
-        this.prefix = prefix;
+    constructor(init: AnnouncePleaseMessageInit) {
+        this.prefix = init.prefix ?? "";
     }
 
-    length(): number {
+    get messageLength(): number {
         return stringLen(this.prefix);
     }
 
-    static async encode(writer: Writer, prefix: string): Promise<[AnnouncePleaseMessage?, Error?]> {
-        const msg = new AnnouncePleaseMessage(prefix);
-        let err: Error | undefined;
-        writer.writeVarint(msg.length());
-        writer.writeString(prefix);
-        err = await writer.flush();
-        if (err) {
-            return [undefined, err];
-        }
-        return [msg, undefined];
+    async encode(writer: Writer): Promise<Error | undefined> {
+        writer.writeVarint(this.messageLength + varintLen(this.messageLength));
+        writer.writeString(this.prefix);
+        return await writer.flush();
     }
 
-    static async decode(reader: Reader): Promise<[AnnouncePleaseMessage?, Error?]> {
-        let err: Error | undefined;
-        [, err] = await reader.readVarint();
+    async decode(reader: Reader): Promise<Error | undefined> {
+        let [, err] = await reader.readVarint();
         if (err) {
-            return [undefined, err];
+            return err;
         }
-        let str: string;
-        [str, err] = await reader.readString();
+        [this.prefix, err] = await reader.readString();
         if (err) {
-            return [undefined, err];
+            return err;
         }
-        return [new AnnouncePleaseMessage(str), undefined];
+        return undefined;
     }
 }

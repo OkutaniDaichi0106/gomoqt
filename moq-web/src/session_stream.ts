@@ -4,16 +4,18 @@ import { StreamError } from "./io/error";
 import { SessionUpdateMessage } from "./message";
 import { SessionClientMessage } from "./message/session_client";
 import { SessionServerMessage } from "./message/session_server";
+import { Cond } from "./internal";
 
 export class SessionStream {
     #writer: Writer;
     #reader: Reader;
     #ctx: Context;
     #cancelFunc: CancelCauseFunc;
-	client: SessionClientMessage;
-    server: SessionServerMessage;
-    clientInfo!: SessionUpdateMessage;
-    serverInfo!: SessionUpdateMessage;
+    #cond: Cond = new Cond();
+	readonly client: SessionClientMessage;
+    readonly server: SessionServerMessage;
+    #clientInfo!: SessionUpdateMessage;
+    #serverInfo!: SessionUpdateMessage;
 
     constructor(ctx: Context, writer: Writer, reader: Reader, client: SessionClientMessage, server: SessionServerMessage) {
         this.client = client;
@@ -24,27 +26,42 @@ export class SessionStream {
 
         // Listen for incoming messages
         async () => {
+            const msg = new SessionUpdateMessage({});
+            let err: Error | undefined;
             for (;;) {
-                const [result, err] = await SessionUpdateMessage.decode(this.#reader)
+                err = await msg.decode(this.#reader)
                 if (err) {
-                    // TODO: handle this situation
-                    break
+                    break // TODO: handle this situation
                 }
 
-                this.serverInfo = result!
+                this.#serverInfo = msg;
+                this.#cond.broadcast();
             }
         }
     }
 
     async update(bitrate: bigint): Promise<void> {
-        const [result, err] = await SessionUpdateMessage.encode(this.#writer, bitrate);
+        const msg = new SessionUpdateMessage({ bitrate });
+        const err = await msg.encode(this.#writer);
         if (err) {
             throw new Error(`Failed to encode session update message: ${err}`);
         }
 
-        this.clientInfo = result!;
+        this.#clientInfo = msg;
 
-        return
+        return;
+    }
+
+    async updated(): Promise<void> {
+        await this.#cond.wait();
+    }
+
+    get clientInfo(): SessionUpdateMessage {
+        return this.#clientInfo;
+    }
+
+    get serverInfo(): SessionUpdateMessage {
+        return this.#serverInfo;
     }
 
     close(): void {

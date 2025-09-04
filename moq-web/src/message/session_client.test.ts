@@ -3,15 +3,8 @@ import { SessionClientMessage } from './session_client';
 import { Extensions } from '../internal/extensions';
 import { Versions, Version } from '../internal/version';
 import { Writer, Reader } from '../io';
-import { BytesPool } from '../internal/bytes_pool';
 
 describe('SessionClientMessage', () => {
-  let bytesPool: BytesPool;
-
-  beforeEach(() => {
-    bytesPool = new BytesPool(1024, 4096, 16384);
-  });
-
   it('should be defined', () => {
     expect(SessionClientMessage).toBeDefined();
   });
@@ -20,18 +13,18 @@ describe('SessionClientMessage', () => {
     const versions = new Set<Version>([Versions.DEVELOP]);
     const extensions = new Extensions();
   extensions.addString(1, 'test');
-    
-    const message = new SessionClientMessage(versions, extensions);
-    
+
+    const message = new SessionClientMessage({versions, extensions});
+
     expect(message.versions).toBe(versions);
     expect(message.extensions).toBe(extensions);
   });
 
   it('should create instance with versions only', () => {
     const versions = new Set<Version>([Versions.DEVELOP]);
-    
-    const message = new SessionClientMessage(versions);
-    
+
+    const message = new SessionClientMessage({versions});
+
     expect(message.versions).toBe(versions);
     expect(message.extensions).toBeInstanceOf(Extensions);
     expect(message.extensions.entries.size).toBe(0);
@@ -40,10 +33,10 @@ describe('SessionClientMessage', () => {
   it('should calculate correct length with single version and no extensions', () => {
     const versions = new Set<Version>([Versions.DEVELOP]);
     const extensions = new Extensions();
-    
-    const message = new SessionClientMessage(versions, extensions);
-    const length = message.length();
-    
+
+    const message = new SessionClientMessage({versions, extensions});
+    const length = message.messageLength;
+
     // Expected: varint(1) + varint(DEVELOP) + varint(0)
     // DEVELOP = 0xffffff00n, which needs 5 bytes in varint encoding
     // varint(1) = 1 byte, varint(0) = 1 byte
@@ -54,10 +47,10 @@ describe('SessionClientMessage', () => {
   it('should calculate correct length with multiple versions', () => {
     const versions = new Set<Version>([Versions.DEVELOP, 1n, 2n]);
     const extensions = new Extensions();
-    
-    const message = new SessionClientMessage(versions, extensions);
-    const length = message.length();
-    
+
+    const message = new SessionClientMessage({versions, extensions});
+    const length = message.messageLength;
+
     expect(length).toBeGreaterThan(0);
     expect(typeof length).toBe('number');
   });
@@ -67,10 +60,10 @@ describe('SessionClientMessage', () => {
     const extensions = new Extensions();
     extensions.addString(1, 'test');
     extensions.addBytes(2, new Uint8Array([1, 2, 3]));
-    
-    const message = new SessionClientMessage(versions, extensions);
-    const length = message.length();
-    
+
+    const message = new SessionClientMessage({versions, extensions});
+    const length = message.messageLength;
+
     expect(length).toBeGreaterThan(0);
     expect(typeof length).toBe('number');
   });
@@ -78,7 +71,7 @@ describe('SessionClientMessage', () => {
   it('should encode and decode with single version and no extensions', async () => {
     const versions = new Set<Version>([Versions.DEVELOP]);
     const extensions = new Extensions();
-    
+
     // Create buffer for encoding
     const chunks: Uint8Array[] = [];
     const writableStream = new WritableStream({
@@ -86,14 +79,13 @@ describe('SessionClientMessage', () => {
         chunks.push(chunk);
       }
     });
-    const buffer = bytesPool.acquire(4096);
-    const writer = new Writer(writableStream, buffer);
-    
+    const writer = new Writer(writableStream);
+
     // Encode
-    const [encodedMessage, encodeErr] = await SessionClientMessage.encode(writer, versions, extensions);
+    const message = new SessionClientMessage({versions, extensions});
+    const encodeErr = await message.encode(writer);
     expect(encodeErr).toBeUndefined();
-    expect(encodedMessage).toBeInstanceOf(SessionClientMessage);
-    
+
     // Combine chunks into single buffer
     const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
     const combinedBuffer = new Uint8Array(totalLength);
@@ -102,9 +94,9 @@ describe('SessionClientMessage', () => {
       combinedBuffer.set(chunk, offset);
       offset += chunk.length;
     }
-    
+
     console.log('Encoded buffer:', Array.from(combinedBuffer).join(','));
-    
+
     // Create readable stream for decoding
     const readableStream = new ReadableStream({
       start(controller) {
@@ -112,13 +104,14 @@ describe('SessionClientMessage', () => {
         controller.close();
       }
     });
-    const reader = new Reader(readableStream, bytesPool);
-    
+    const reader = new Reader(readableStream);
+
     // Decode
-    const [decodedMessage, decodeErr] = await SessionClientMessage.decode(reader);
+    const decodedMessage = new SessionClientMessage({});
+    const decodeErr = await decodedMessage.decode(reader);
     expect(decodeErr).toBeUndefined();
     expect(decodedMessage).toBeInstanceOf(SessionClientMessage);
-    
+
     // Verify content
     expect(decodedMessage?.versions.size).toBe(1);
     const decodedVersions = Array.from(decodedMessage?.versions || []);
@@ -130,7 +123,7 @@ describe('SessionClientMessage', () => {
   it('should encode and decode with multiple versions', async () => {
     const versions = new Set<Version>([Versions.DEVELOP, 1n, 2n, 100n]);
     const extensions = new Extensions();
-    
+
     // Create buffer for encoding
     const chunks: Uint8Array[] = [];
     const writableStream = new WritableStream({
@@ -138,14 +131,13 @@ describe('SessionClientMessage', () => {
         chunks.push(chunk);
       }
     });
-    const buffer = bytesPool.acquire(4096);
-    const writer = new Writer(writableStream, buffer);
-    
+    const writer = new Writer(writableStream);
+
     // Encode
-    const [encodedMessage, encodeErr] = await SessionClientMessage.encode(writer, versions, extensions);
+    const message = new SessionClientMessage({ versions, extensions });
+    const encodeErr = await message.encode(writer);
     expect(encodeErr).toBeUndefined();
-    expect(encodedMessage).toBeInstanceOf(SessionClientMessage);
-    
+
     // Combine chunks into single buffer
     const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
     const combinedBuffer = new Uint8Array(totalLength);
@@ -154,7 +146,7 @@ describe('SessionClientMessage', () => {
       combinedBuffer.set(chunk, offset);
       offset += chunk.length;
     }
-    
+
     // Create readable stream for decoding
     const readableStream = new ReadableStream({
       start(controller) {
@@ -162,20 +154,20 @@ describe('SessionClientMessage', () => {
         controller.close();
       }
     });
-    const reader = new Reader(readableStream, bytesPool);
-    
+    const reader = new Reader(readableStream);
+
     // Decode
-    const [decodedMessage, decodeErr] = await SessionClientMessage.decode(reader);
+    const decodedMessage = new SessionClientMessage({});
+    const decodeErr = await decodedMessage.decode(reader);
     expect(decodeErr).toBeUndefined();
-    expect(decodedMessage).toBeInstanceOf(SessionClientMessage);
-    
+
     // Verify content
-    expect(decodedMessage?.versions.size).toBe(4);
-    expect(decodedMessage?.versions.has(Versions.DEVELOP)).toBe(true);
-    expect(decodedMessage?.versions.has(1n)).toBe(true);
-    expect(decodedMessage?.versions.has(2n)).toBe(true);
-    expect(decodedMessage?.versions.has(100n)).toBe(true);
-    expect(decodedMessage?.extensions.entries.size).toBe(0);
+    expect(decodedMessage.versions.size).toBe(4);
+    expect(decodedMessage.versions.has(Versions.DEVELOP)).toBe(true);
+    expect(decodedMessage.versions.has(1n)).toBe(true);
+    expect(decodedMessage.versions.has(2n)).toBe(true);
+    expect(decodedMessage.versions.has(100n)).toBe(true);
+    expect(decodedMessage.extensions.entries.size).toBe(0);
   });
 
   it('should encode and decode with extensions', async () => {
@@ -184,7 +176,7 @@ describe('SessionClientMessage', () => {
   extensions.addString(1, 'test-string');
   extensions.addBytes(2, new Uint8Array([1, 2, 3, 4, 5]));
   extensions.addString(100, 'another-extension');
-    
+
     // Create buffer for encoding
     const chunks: Uint8Array[] = [];
     const writableStream = new WritableStream({
@@ -192,14 +184,13 @@ describe('SessionClientMessage', () => {
         chunks.push(chunk);
       }
     });
-    const buffer = bytesPool.acquire(4096);
-    const writer = new Writer(writableStream, buffer);
-    
+    const writer = new Writer(writableStream);
+
     // Encode
-    const [encodedMessage, encodeErr] = await SessionClientMessage.encode(writer, versions, extensions);
+    const message = new SessionClientMessage({ versions, extensions });
+    const encodeErr = await message.encode(writer);
     expect(encodeErr).toBeUndefined();
-    expect(encodedMessage).toBeInstanceOf(SessionClientMessage);
-    
+
     // Combine chunks into single buffer
     const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
     const combinedBuffer = new Uint8Array(totalLength);
@@ -208,7 +199,7 @@ describe('SessionClientMessage', () => {
       combinedBuffer.set(chunk, offset);
       offset += chunk.length;
     }
-    
+
     // Create readable stream for decoding
     const readableStream = new ReadableStream({
       start(controller) {
@@ -216,26 +207,26 @@ describe('SessionClientMessage', () => {
         controller.close();
       }
     });
-    const reader = new Reader(readableStream, bytesPool);
-    
+    const reader = new Reader(readableStream);
+
     // Decode
-    const [decodedMessage, decodeErr] = await SessionClientMessage.decode(reader);
+    const decodedMessage = new SessionClientMessage({});
+    const decodeErr = await decodedMessage.decode(reader);
     expect(decodeErr).toBeUndefined();
-    expect(decodedMessage).toBeInstanceOf(SessionClientMessage);
-    
+
     // Verify content
-    expect(decodedMessage?.versions.size).toBe(1);
-    expect(decodedMessage?.versions.has(Versions.DEVELOP)).toBe(true);
-    expect(decodedMessage?.extensions.entries.size).toBe(3);
-  expect(decodedMessage?.extensions.getString(1)).toBe('test-string');
-  expect(decodedMessage?.extensions.getBytes(2)).toEqual(new Uint8Array([1, 2, 3, 4, 5]));
-  expect(decodedMessage?.extensions.getString(100)).toBe('another-extension');
+    expect(decodedMessage.versions.size).toBe(1);
+    expect(decodedMessage.versions.has(Versions.DEVELOP)).toBe(true);
+    expect(decodedMessage.extensions.entries.size).toBe(3);
+  expect(decodedMessage.extensions.getString(1)).toBe('test-string');
+  expect(decodedMessage.extensions.getBytes(2)).toEqual(new Uint8Array([1, 2, 3, 4, 5]));
+  expect(decodedMessage.extensions.getString(100)).toBe('another-extension');
   });
 
   it('should encode and decode with empty versions set', async () => {
     const versions = new Set<Version>();
     const extensions = new Extensions();
-    
+
     // Create buffer for encoding
     const chunks: Uint8Array[] = [];
     const writableStream = new WritableStream({
@@ -243,14 +234,12 @@ describe('SessionClientMessage', () => {
         chunks.push(chunk);
       }
     });
-    const buffer = bytesPool.acquire(4096);
-    const writer = new Writer(writableStream, buffer);
-    
+    const writer = new Writer(writableStream);
     // Encode
-    const [encodedMessage, encodeErr] = await SessionClientMessage.encode(writer, versions, extensions);
+    const message = new SessionClientMessage({ versions, extensions });
+    const encodeErr = await message.encode(writer);
     expect(encodeErr).toBeUndefined();
-    expect(encodedMessage).toBeInstanceOf(SessionClientMessage);
-    
+
     // Combine chunks into single buffer
     const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
     const combinedBuffer = new Uint8Array(totalLength);
@@ -259,7 +248,7 @@ describe('SessionClientMessage', () => {
       combinedBuffer.set(chunk, offset);
       offset += chunk.length;
     }
-    
+
     // Create readable stream for decoding
     const readableStream = new ReadableStream({
       start(controller) {
@@ -267,23 +256,23 @@ describe('SessionClientMessage', () => {
         controller.close();
       }
     });
-    const reader = new Reader(readableStream, bytesPool);
-    
+    const reader = new Reader(readableStream);
+
     // Decode
-    const [decodedMessage, decodeErr] = await SessionClientMessage.decode(reader);
+    const decodedMessage = new SessionClientMessage({});
+    const decodeErr = await decodedMessage.decode(reader);
     expect(decodeErr).toBeUndefined();
-    expect(decodedMessage).toBeInstanceOf(SessionClientMessage);
-    
+
     // Verify content
-    expect(decodedMessage?.versions.size).toBe(0);
-    expect(decodedMessage?.extensions.entries.size).toBe(0);
+    expect(decodedMessage.versions.size).toBe(0);
+    expect(decodedMessage.extensions.entries.size).toBe(0);
   });
 
   it('should handle large version numbers', async () => {
     const largeVersion = BigInt('0x1FFFFFFFFF'); // Within varint8 range
     const versions = new Set<Version>([largeVersion]);
     const extensions = new Extensions();
-    
+
     // Create buffer for encoding
     const chunks: Uint8Array[] = [];
     const writableStream = new WritableStream({
@@ -291,14 +280,13 @@ describe('SessionClientMessage', () => {
         chunks.push(chunk);
       }
     });
-    const buffer = bytesPool.acquire(4096);
-    const writer = new Writer(writableStream, buffer);
-    
+    const writer = new Writer(writableStream);
+
     // Encode
-    const [encodedMessage, encodeErr] = await SessionClientMessage.encode(writer, versions, extensions);
+    const message = new SessionClientMessage({ versions, extensions });
+    const encodeErr = await message.encode(writer);
     expect(encodeErr).toBeUndefined();
-    expect(encodedMessage).toBeInstanceOf(SessionClientMessage);
-    
+
     // Combine chunks into single buffer
     const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
     const combinedBuffer = new Uint8Array(totalLength);
@@ -307,7 +295,7 @@ describe('SessionClientMessage', () => {
       combinedBuffer.set(chunk, offset);
       offset += chunk.length;
     }
-    
+
     // Create readable stream for decoding
     const readableStream = new ReadableStream({
       start(controller) {
@@ -315,16 +303,16 @@ describe('SessionClientMessage', () => {
         controller.close();
       }
     });
-    const reader = new Reader(readableStream, bytesPool);
-    
+    const reader = new Reader(readableStream);
+
     // Decode
-    const [decodedMessage, decodeErr] = await SessionClientMessage.decode(reader);
+    const decodedMessage = new SessionClientMessage({});
+    const decodeErr = await decodedMessage.decode(reader);
     expect(decodeErr).toBeUndefined();
-    expect(decodedMessage).toBeInstanceOf(SessionClientMessage);
-    
+
     // Verify content
-    expect(decodedMessage?.versions.size).toBe(1);
-    expect(decodedMessage?.versions.has(largeVersion)).toBe(true);
+    expect(decodedMessage.versions.size).toBe(1);
+    expect(decodedMessage.versions.has(largeVersion)).toBe(true);
   });
 
   it('should handle empty extension data', async () => {
@@ -332,7 +320,7 @@ describe('SessionClientMessage', () => {
     const extensions = new Extensions();
     extensions.addBytes(1, new Uint8Array([])); // Empty bytes
     extensions.addString(2, ''); // Empty string
-    
+
     // Create buffer for encoding
     const chunks: Uint8Array[] = [];
     const writableStream = new WritableStream({
@@ -340,14 +328,13 @@ describe('SessionClientMessage', () => {
         chunks.push(chunk);
       }
     });
-    const buffer = bytesPool.acquire(4096);
-    const writer = new Writer(writableStream, buffer);
-    
+    const writer = new Writer(writableStream);
+
     // Encode
-    const [encodedMessage, encodeErr] = await SessionClientMessage.encode(writer, versions, extensions);
+    const message = new SessionClientMessage({ versions, extensions });
+    const encodeErr = await message.encode(writer);
     expect(encodeErr).toBeUndefined();
-    expect(encodedMessage).toBeInstanceOf(SessionClientMessage);
-    
+
     // Combine chunks into single buffer
     const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
     const combinedBuffer = new Uint8Array(totalLength);
@@ -356,7 +343,7 @@ describe('SessionClientMessage', () => {
       combinedBuffer.set(chunk, offset);
       offset += chunk.length;
     }
-    
+
     // Create readable stream for decoding
     const readableStream = new ReadableStream({
       start(controller) {
@@ -364,16 +351,16 @@ describe('SessionClientMessage', () => {
         controller.close();
       }
     });
-    const reader = new Reader(readableStream, bytesPool);
-    
+    const reader = new Reader(readableStream);
+
     // Decode
-    const [decodedMessage, decodeErr] = await SessionClientMessage.decode(reader);
+    const decodedMessage = new SessionClientMessage({});
+    const decodeErr = await decodedMessage.decode(reader);
     expect(decodeErr).toBeUndefined();
-    expect(decodedMessage).toBeInstanceOf(SessionClientMessage);
-    
+
     // Verify content
-    expect(decodedMessage?.extensions.entries.size).toBe(2);
-    expect(decodedMessage?.extensions.getBytes(1)).toEqual(new Uint8Array([]));
-    expect(decodedMessage?.extensions.getString(2)).toBe('');
+    expect(decodedMessage.extensions.entries.size).toBe(2);
+    expect(decodedMessage.extensions.getBytes(1)).toEqual(new Uint8Array([]));
+    expect(decodedMessage.extensions.getString(2)).toBe('');
   });
 });

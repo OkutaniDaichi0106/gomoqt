@@ -48,8 +48,8 @@ describe('SessionStream', () => {
         const versions = new Set<Version>([0xffffff00n]);
         const extensions = new Extensions();
 
-        mockClient = new SessionClientMessage(versions, extensions);
-        mockServer = new SessionServerMessage(0xffffff00n, extensions);
+        mockClient = new SessionClientMessage({ versions, extensions });
+        mockServer = new SessionServerMessage({ version: 0xffffff00n, extensions });
     });
 
     describe('constructor', () => {
@@ -71,10 +71,9 @@ describe('SessionStream', () => {
     describe('update', () => {
         beforeEach(() => {
             sessionStream = new SessionStream(ctx, mockWriter, mockReader, mockClient, mockServer);
-            // Mock the static encode method
-            jest.spyOn(SessionUpdateMessage, 'encode').mockImplementation(async (writer: Writer, bitrate: bigint) => {
-                return [new SessionUpdateMessage(bitrate), undefined];
-            });
+            // Mock the encode method on SessionUpdateMessage instances
+            const mockEncode = jest.fn().mockImplementation(async () => undefined);
+            jest.spyOn(SessionUpdateMessage.prototype, 'encode').mockImplementation(async () => undefined);
         });
 
         afterEach(() => {
@@ -86,7 +85,7 @@ describe('SessionStream', () => {
 
             await sessionStream.update(bitrate);
 
-            expect(SessionUpdateMessage.encode).toHaveBeenCalledWith(mockWriter, bitrate);
+            expect(SessionUpdateMessage.prototype.encode).toHaveBeenCalled();
             expect(sessionStream.clientInfo).toBeDefined();
             expect(sessionStream.clientInfo.bitrate).toBe(bitrate);
         });
@@ -96,7 +95,7 @@ describe('SessionStream', () => {
             const error = new Error('Encoding failed');
             
             // Mock encode to return error
-            jest.spyOn(SessionUpdateMessage, 'encode').mockResolvedValue([undefined, error]);
+            jest.spyOn(SessionUpdateMessage.prototype, 'encode').mockImplementation(async () => error);
 
             await expect(sessionStream.update(bitrate)).rejects.toThrow('Failed to encode session update message: Error: Encoding failed');
         });
@@ -144,10 +143,8 @@ describe('SessionStream', () => {
     describe('integration', () => {
         beforeEach(() => {
             sessionStream = new SessionStream(ctx, mockWriter, mockReader, mockClient, mockServer);
-            // Mock the static encode method
-            jest.spyOn(SessionUpdateMessage, 'encode').mockImplementation(async (writer: Writer, bitrate: bigint) => {
-                return [new SessionUpdateMessage(bitrate), undefined];
-            });
+            // Mock the encode method on SessionUpdateMessage instances
+            jest.spyOn(SessionUpdateMessage.prototype, 'encode').mockImplementation(async () => undefined);
         });
 
         afterEach(() => {

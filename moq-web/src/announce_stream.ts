@@ -306,9 +306,9 @@ export class Announcement {
         this.#cancelFunc();
     }
 
-    // fork(): Announcement {
-    //     return new Announcement(this.broadcastPath, this.#ctx);
-    // }
+    fork(): Announcement {
+        return new Announcement(this.broadcastPath, this.#ctx);
+    }
 
     isActive(): boolean {
         return this.#ctx.err() === undefined;

@@ -1,6 +1,6 @@
 
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
-import { BufferPool } from './bytes_pool';
+import { BufferPool } from './';
 
 describe('BytesPool', () => {
   it('should acquire and release bytes', () => {

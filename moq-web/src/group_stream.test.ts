@@ -181,7 +181,6 @@ describe("GroupReader", () => {
     describe("read", () => {
         it("should read data successfully", async () => {
             const expectedData = new Uint8Array([1, 2, 3, 4]);
-            const dest = new Frame(new Uint8Array(4));
 
             (mockReader.readVarint as jest.MockedFunction<() => Promise<[number, Error | undefined]>>).mockResolvedValue([expectedData.byteLength, undefined]);
             (mockReader.fillN as jest.MockedFunction<(buf: Uint8Array, len: number) => Promise<Error | undefined>>).mockImplementation(async (buf: Uint8Array, len: number) => {
@@ -189,23 +188,23 @@ describe("GroupReader", () => {
                 return undefined;
             });
 
-            const err = await groupReader.readFrame(dest);
+            const [frame, err] = await groupReader.readFrame();
 
             expect(mockReader.readVarint).toHaveBeenCalled();
-            expect(mockReader.fillN).toHaveBeenCalledWith(dest.bytes, expectedData.byteLength);
-            expect(dest.bytes.slice(0, expectedData.byteLength)).toEqual(expectedData);
+            expect(mockReader.fillN).toHaveBeenCalledWith(frame!.bytes, expectedData.byteLength);
+            expect(frame!.bytes.slice(0, expectedData.byteLength)).toEqual(expectedData);
             expect(err).toBeUndefined();
         });
 
         it("should handle read errors", async () => {
             const readErr = new Error("Read failed");
-            const dest = new Frame(new Uint8Array(4));
 
             (mockReader.readVarint as jest.MockedFunction<() => Promise<[number, Error | undefined]>>).mockResolvedValue([0, readErr]);
 
-            const err = await groupReader.readFrame(dest);
+            const [frame, err] = await groupReader.readFrame();
 
             expect(mockReader.readVarint).toHaveBeenCalled();
+            expect(frame).toBeUndefined();
             expect(err).toBe(readErr);
         });
     });

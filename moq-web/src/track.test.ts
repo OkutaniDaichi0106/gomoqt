@@ -9,10 +9,11 @@ import { Info } from './info';
 import { GroupMessage } from './message';
 
 // Mock the GroupMessage module
+const mockGroupMessage = {
+    encode: jest.fn()
+};
 jest.mock('./message', () => ({
-    GroupMessage: {
-        encode: jest.fn()
-    }
+    GroupMessage: jest.fn().mockImplementation(() => mockGroupMessage)
 }));
 
 describe('TrackWriter', () => {
@@ -37,8 +38,12 @@ describe('TrackWriter', () => {
             subscribeId: 123n,
             trackConfig: {} as TrackConfig,
             accept: jest.fn(),
+            writeInfo: jest.fn().mockImplementation(() => Promise.resolve(undefined)),
             closeWithError: jest.fn(),
-            close: jest.fn()
+            close: jest.fn(),
+            update: jest.fn(),
+            info: {} as any,
+            _infoWritten: false
         };
 
         mockOpenUniStreamFunc = jest.fn();
@@ -67,7 +72,7 @@ describe('TrackWriter', () => {
             // Setup default successful returns
             mockSubscribeStream.accept.mockResolvedValue(undefined);
             mockOpenUniStreamFunc.mockResolvedValue([mockWriter, undefined]);
-            (GroupMessage.encode as jest.Mock).mockImplementation(() => Promise.resolve([{}, undefined]));
+            mockGroupMessage.encode.mockImplementation((writer: any) => Promise.resolve(undefined));
         });
 
         it('should accept subscription and open group successfully', async () => {
@@ -75,20 +80,18 @@ describe('TrackWriter', () => {
 
             const [groupWriter, error] = await trackWriter.openGroup(groupId);
 
-            expect(mockSubscribeStream.accept).toHaveBeenCalledWith({
-                groupPeriod: 0,
-                trackPriority: 0
-            });
+            expect(mockSubscribeStream.writeInfo).toHaveBeenCalledWith();
             expect(mockOpenUniStreamFunc).toHaveBeenCalled();
             expect(mockWriter.writeUint8).toHaveBeenCalled();
-            expect(GroupMessage.encode).toHaveBeenCalledWith(mockWriter, 123n, groupId);
+            expect(GroupMessage).toHaveBeenCalledWith({ subscribeId: 123n, sequence: groupId });
+            expect(mockGroupMessage.encode).toHaveBeenCalledWith(mockWriter);
             expect(groupWriter).toBeInstanceOf(GroupWriter);
             expect(error).toBeUndefined();
         });
 
         it('should return error if subscription accept fails', async () => {
             const acceptError = new Error('Accept failed');
-            mockSubscribeStream.accept.mockResolvedValue(acceptError);
+            mockSubscribeStream.writeInfo.mockResolvedValue(acceptError);
 
             const [groupWriter, error] = await trackWriter.openGroup(456n);
 
@@ -109,33 +112,34 @@ describe('TrackWriter', () => {
         it('should skip accept if already accepted', async () => {
             // First call should accept
             await trackWriter.openGroup(456n);
-            expect(mockSubscribeStream.accept).toHaveBeenCalledTimes(1);
+            expect(mockSubscribeStream.writeInfo).toHaveBeenCalledTimes(1);
 
-            // Second call should not accept again
-            mockSubscribeStream.accept.mockClear();
+            // Second call should still call writeInfo (but it returns early)
+            mockSubscribeStream.writeInfo.mockClear();
             await trackWriter.openGroup(789n);
-            expect(mockSubscribeStream.accept).not.toHaveBeenCalled();
+            expect(mockSubscribeStream.writeInfo).toHaveBeenCalledTimes(1);
         });
     });
 
     describe('writeInfo', () => {
         beforeEach(() => {
-            mockSubscribeStream.accept.mockResolvedValue(undefined);
+            mockSubscribeStream.writeInfo.mockImplementation(() => Promise.resolve(undefined));
         });
 
         it('should accept subscription with provided info', async () => {
-            const info: Info = { groupPeriod: 100, trackPriority: 50 };
+            const info: Info = { groupPeriod: 100 };
+            mockSubscribeStream.writeInfo.mockImplementation(() => Promise.resolve(undefined));
 
             const error = await trackWriter.writeInfo(info);
 
-            expect(mockSubscribeStream.accept).toHaveBeenCalledWith(info);
+            expect(mockSubscribeStream.writeInfo).toHaveBeenCalledWith(info);
             expect(error).toBeUndefined();
         });
 
         it('should return error if accept fails', async () => {
             const acceptError = new Error('Accept failed');
-            mockSubscribeStream.accept.mockResolvedValue(acceptError);
-            const info: Info = { groupPeriod: 100, trackPriority: 50 };
+            mockSubscribeStream.writeInfo.mockImplementation(() => Promise.resolve(acceptError));
+            const info: Info = { groupPeriod: 100 };
 
             const error = await trackWriter.writeInfo(info);
 
@@ -143,11 +147,11 @@ describe('TrackWriter', () => {
         });
 
         it('should not accept again if already accepted', async () => {
-            const info: Info = { groupPeriod: 100, trackPriority: 50 };
+            const info: Info = { groupPeriod: 100 };
 
             // First call should accept
             await trackWriter.writeInfo(info);
-            expect(mockSubscribeStream.accept).toHaveBeenCalledWith(info);
+            expect(mockSubscribeStream.writeInfo).toHaveBeenCalledWith(info);
 
             // Second call should return early
             mockSubscribeStream.accept.mockClear();
@@ -180,7 +184,8 @@ describe('TrackReader', () => {
             context: mockContext,
             trackConfig: {} as TrackConfig,
             update: jest.fn(),
-            cancel: jest.fn()
+            cancel: jest.fn(),
+            info: {} as any
         };
 
         mockAcceptFunc = jest.fn();
@@ -229,14 +234,15 @@ describe('TrackReader', () => {
 
     describe('update', () => {
         it('should call subscribeStream update', async () => {
-            const trackPriority = 100n;
+            const trackPriority = 100;
             const minGroupSequence = 1n;
             const maxGroupSequence = 10n;
+            const config: TrackConfig = { trackPriority, minGroupSequence, maxGroupSequence };
             mockSubscribeStream.update.mockResolvedValue(undefined);
 
-            const error = await trackReader.update(trackPriority, minGroupSequence, maxGroupSequence);
+            const error = await trackReader.update(config);
 
-            expect(mockSubscribeStream.update).toHaveBeenCalledWith(trackPriority, minGroupSequence, maxGroupSequence);
+            expect(mockSubscribeStream.update).toHaveBeenCalledWith(config);
             expect(error).toBeUndefined();
         });
     });

@@ -9,4 +9,3 @@ export * from "./subscribe";
 export * from "./subscribe_ok";
 export * from "./subscribe_update";
 export * from "./group";
-export * from "./frame";

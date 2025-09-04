@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
-import { SendSubscribeStream, ReceiveSubscribeStream, TrackConfig, SubscribeID } from './subscribe_stream';
+import { SendSubscribeStream, ReceiveSubscribeStream, TrackConfig } from './subscribe_stream';
+import { SubscribeID } from './protocol';
 import { SubscribeMessage, SubscribeOkMessage, SubscribeUpdateMessage } from './message';
 import { Writer, Reader } from './io';
 import { Context, background, withCancelCause } from './internal/context';
@@ -8,18 +9,32 @@ import { StreamError } from './io/error';
 
 // Mock dependencies (announce_stream.test.ts style)
 jest.mock('./io');
-jest.mock('./message', () => {
-	return {
-		SubscribeMessage: jest.fn(),
-		SubscribeOkMessage: {
-			encode: jest.fn()
-		},
-		SubscribeUpdateMessage: {
-			encode: jest.fn(),
-			decode: jest.fn<() => Promise<[SubscribeUpdateMessage?, Error?]>>().mockResolvedValue([undefined, new Error('mock error')])
-		}
-	};
-});
+const mockSubscribeUpdateMessage = {
+    trackPriority: 1,
+    minGroupSequence: 0n,
+    maxGroupSequence: 100n,
+    encode: jest.fn().mockImplementation(() => Promise.resolve(undefined as Error | undefined)),
+    decode: jest.fn().mockImplementation(() => Promise.resolve(undefined as Error | undefined))
+};
+const mockSubscribeMessage = {
+    subscribeId: 123n,
+    broadcastPath: '/test/path',
+    trackName: 'test-track',
+    trackPriority: 1,
+    minGroupSequence: 0n,
+    maxGroupSequence: 100n,
+    messageLength: 0,
+    encode: jest.fn().mockImplementation(() => Promise.resolve(undefined as Error | undefined)),
+    decode: jest.fn().mockImplementation(() => Promise.resolve(undefined as Error | undefined))
+} as SubscribeMessage;
+const mockSubscribeOkMessage = {
+    encode: jest.fn().mockImplementation(() => Promise.resolve(undefined as Error | undefined))
+};
+jest.mock('./message', () => ({
+    SubscribeMessage: jest.fn().mockImplementation(() => mockSubscribeMessage),
+    SubscribeOkMessage: jest.fn().mockImplementation(() => mockSubscribeOkMessage),
+    SubscribeUpdateMessage: jest.fn().mockImplementation(() => mockSubscribeUpdateMessage)
+}));
 
 describe('SendSubscribeStream', () => {
 	describe('trackConfig getter', () => {
@@ -30,14 +45,10 @@ describe('SendSubscribeStream', () => {
 			expect(config.maxGroupSequence).toBe(mockSubscribe.maxGroupSequence);
 		});
 		it('should return update config when update exists', async () => {
-			(SubscribeUpdateMessage.encode as any).mockResolvedValue([{
-				trackPriority: 2n,
-				minGroupSequence: 10n,
-				maxGroupSequence: 200n
-			}, undefined]);
-			await sendStream.update(2n, 10n, 200n);
+			mockSubscribeUpdateMessage.encode.mockImplementation(() => Promise.resolve(undefined as Error | undefined));
+			await sendStream.update({ trackPriority: 2, minGroupSequence: 10n, maxGroupSequence: 200n });
 			const config = sendStream.config;
-			expect(config.trackPriority).toBe(2n);
+			expect(config.trackPriority).toBe(2);
 			expect(config.minGroupSequence).toBe(10n);
 			expect(config.maxGroupSequence).toBe(200n);
 		});
@@ -50,19 +61,15 @@ describe('SendSubscribeStream', () => {
 
 	describe('update', () => {
 		it('should encode and send subscribe update message', async () => {
-			(SubscribeUpdateMessage.encode as any).mockResolvedValue([{
-				trackPriority: 2n,
-				minGroupSequence: 10n,
-				maxGroupSequence: 200n
-			}, undefined]);
-			const result = await sendStream.update(2n, 10n, 200n);
-			expect(SubscribeUpdateMessage.encode).toHaveBeenCalledWith(mockWriter, 2n, 10n, 200n);
+			mockSubscribeUpdateMessage.encode.mockImplementation(() => Promise.resolve(undefined as Error | undefined));
+			const result = await sendStream.update({ trackPriority: 2, minGroupSequence: 10n, maxGroupSequence: 200n });
+			expect(mockSubscribeUpdateMessage.encode).toHaveBeenCalled();
 			expect(mockWriter.flush).toHaveBeenCalled();
 			expect(result).toBeUndefined();
 		});
 		it('should return error when encoding fails', async () => {
-			(SubscribeUpdateMessage.encode as any).mockResolvedValue([undefined, new Error('Encoding failed')]);
-			const result = await sendStream.update(2n, 10n, 200n);
+			mockSubscribeUpdateMessage.encode.mockImplementation(() => Promise.resolve(new Error('Encoding failed')));
+			const result = await sendStream.update({ trackPriority: 2, minGroupSequence: 10n, maxGroupSequence: 200n });
 			expect(result).toBeInstanceOf(Error);
 			expect(result?.message).toBe('Failed to write subscribe update: Error: Encoding failed');
 		});
@@ -116,14 +123,7 @@ describe('SendSubscribeStream', () => {
 			cancel: jest.fn().mockReturnValue(undefined),
 			closed: jest.fn().mockReturnValue(Promise.resolve())
 		} as any;
-		mockSubscribe = {
-			subscribeId: 123n,
-			broadcastPath: '/test/path',
-			trackName: 'test-track',
-			trackPriority: 1n,
-			minGroupSequence: 0n,
-			maxGroupSequence: 100n
-		} as SubscribeMessage;
+		mockSubscribe = mockSubscribeMessage;
 		mockSubscribeOk = {
 			groupPeriod: 456
 		} as SubscribeOkMessage;
@@ -175,13 +175,16 @@ describe('ReceiveSubscribeStream', () => {
 			subscribeId: 789n,
 			broadcastPath: '/receive/path',
 			trackName: 'receive-track',
-			trackPriority: 3n,
+			trackPriority: 3,
 			minGroupSequence: 5n,
-			maxGroupSequence: 150n
+			maxGroupSequence: 150n,
+			messageLength: 0,
+			encode: jest.fn().mockImplementation(() => Promise.resolve(undefined as Error | undefined)),
+			decode: jest.fn().mockImplementation(() => Promise.resolve(undefined as Error | undefined))
 		} as SubscribeMessage;
 	receiveStream = new ReceiveSubscribeStream(ctx, mockWriter, mockReader, mockSubscribe);
 	// 非同期ループが即座に終了するよう decode の返り値をエラーに設定
-	(SubscribeUpdateMessage.decode as any).mockResolvedValue([undefined, new Error('mock error')]);
+	mockSubscribeUpdateMessage.decode.mockImplementation(() => Promise.resolve(new Error('mock error')));
 	});
 		afterEach(() => {
 			if (typeof receiveStream?.closeWithError === 'function') {
@@ -235,9 +238,12 @@ describe('ReceiveSubscribeStream methods', () => {
 			subscribeId: 789n,
 			broadcastPath: '/receive/path',
 			trackName: 'receive-track',
-			trackPriority: 3n,
+			trackPriority: 3,
 			minGroupSequence: 5n,
-			maxGroupSequence: 150n
+			maxGroupSequence: 150n,
+			messageLength: 0,
+			encode: jest.fn().mockImplementation(() => Promise.resolve(undefined as Error | undefined)),
+			decode: jest.fn().mockImplementation(() => Promise.resolve(undefined as Error | undefined))
 		} as SubscribeMessage;
 		receiveStream = new ReceiveSubscribeStream(ctx, mockWriter, mockReader, mockSubscribe);
 	});
@@ -261,7 +267,7 @@ describe('ReceiveSubscribeStream methods', () => {
 
 	describe('accept', () => {
 		it('should return error when encoding fails', async () => {
-			(SubscribeOkMessage.encode as any).mockResolvedValue([undefined, new Error('Encoding failed')]);
+			mockSubscribeOkMessage.encode.mockImplementation(() => Promise.resolve(new Error('Encoding failed')));
 			const info: Info = { groupPeriod: 100 };
 			const result = await receiveStream.writeInfo(info);
 			expect(result).toBeInstanceOf(Error);
@@ -287,11 +293,11 @@ describe('ReceiveSubscribeStream methods', () => {
 	describe('TrackConfig type', () => {
 		it('should define the correct structure', () => {
 			const config: TrackConfig = {
-				trackPriority: 1n,
+				trackPriority: 1,
 				minGroupSequence: 0n,
 				maxGroupSequence: 100n
 			};
-			expect(typeof config.trackPriority).toBe('bigint');
+			expect(typeof config.trackPriority).toBe('number');
 			expect(typeof config.minGroupSequence).toBe('bigint');
 			expect(typeof config.maxGroupSequence).toBe('bigint');
 		});

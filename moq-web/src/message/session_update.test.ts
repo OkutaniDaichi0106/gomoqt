@@ -10,18 +10,17 @@ describe('SessionUpdateMessage', () => {
     const { writer, reader, cleanup } = createIsolatedStreams();
 
     try {
-      const [encodedMessage, encodeErr] = await SessionUpdateMessage.encode(writer, bitrate);
+      const message = new SessionUpdateMessage({ bitrate });
+      const encodeErr = await message.encode(writer);
       expect(encodeErr).toBeUndefined();
-      expect(encodedMessage).toBeDefined();
-      expect(encodedMessage?.bitrate).toEqual(bitrate);
 
       // Close writer to signal end of stream
       await writer.close();
 
-      const [decodedMessage, decodeErr] = await SessionUpdateMessage.decode(reader);
+      const decodedMessage = new SessionUpdateMessage({});
+      const decodeErr = await decodedMessage.decode(reader);
       expect(decodeErr).toBeUndefined();
-      expect(decodedMessage).toBeDefined();
-      expect(decodedMessage?.bitrate).toEqual(bitrate);
+      expect(decodedMessage.bitrate).toEqual(bitrate);
     } finally {
       await cleanup();
     }

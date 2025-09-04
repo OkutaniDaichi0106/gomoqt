@@ -15,20 +15,18 @@ describe('SessionServerMessage', () => {
     const { writer, reader, cleanup } = createIsolatedStreams();
 
     try {
-      const [encodedMessage, encodeErr] = await SessionServerMessage.encode(writer, version, extensions);
+      const message = new SessionServerMessage({ version, extensions });
+      const encodeErr = await message.encode(writer);
       expect(encodeErr).toBeUndefined();
-      expect(encodedMessage).toBeDefined();
-      expect(encodedMessage?.version).toEqual(version);
-      expect(encodedMessage?.extensions).toEqual(extensions);
 
       // Close writer to signal end of stream
       await writer.close();
 
-      const [decodedMessage, decodeErr] = await SessionServerMessage.decode(reader);
+      const decodedMessage = new SessionServerMessage({});
+      const decodeErr = await decodedMessage.decode(reader);
       expect(decodeErr).toBeUndefined();
-      expect(decodedMessage).toBeDefined();
-      expect(decodedMessage?.version).toEqual(version);
-      expect(decodedMessage?.extensions).toEqual(extensions);
+      expect(decodedMessage.version).toEqual(version);
+      expect(decodedMessage.extensions).toEqual(extensions);
     } finally {
       await cleanup();
     }

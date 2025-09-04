@@ -11,20 +11,18 @@ describe('GroupMessage', () => {
     const { writer, reader, cleanup } = createIsolatedStreams();
 
     try {
-      const [encodedMessage, encodeErr] = await GroupMessage.encode(writer, subscribeId, sequence);
+      const msg = new GroupMessage({ subscribeId, sequence });
+      const encodeErr = await msg.encode(writer);
       expect(encodeErr).toBeUndefined();
-      expect(encodedMessage).toBeDefined();
-      expect(encodedMessage?.subscribeId).toEqual(subscribeId);
-      expect(encodedMessage?.sequence).toEqual(sequence);
 
       // Close writer to signal end of stream
       await writer.close();
 
-      const [decodedMessage, decodeErr] = await GroupMessage.decode(reader);
+      const decodedMsg = new GroupMessage({});
+      const decodeErr = await decodedMsg.decode(reader);
       expect(decodeErr).toBeUndefined();
-      expect(decodedMessage).toBeDefined();
-      expect(decodedMessage?.subscribeId).toEqual(subscribeId);
-      expect(decodedMessage?.sequence).toEqual(sequence);
+      expect(decodedMsg.subscribeId).toEqual(subscribeId);
+      expect(decodedMsg.sequence).toEqual(sequence);
     } finally {
       await cleanup();
     }

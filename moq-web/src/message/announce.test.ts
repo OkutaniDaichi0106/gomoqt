@@ -11,20 +11,18 @@ describe('AnnounceMessage', () => {
     const { writer, reader, cleanup } = createIsolatedStreams();
 
     try {
-      const [encodedMessage, encodeErr] = await AnnounceMessage.encode(writer, suffix, active);
+      const message = new AnnounceMessage({ suffix, active });
+      const encodeErr = await message.encode(writer);
       expect(encodeErr).toBeUndefined();
-      expect(encodedMessage).toBeDefined();
-      expect(encodedMessage?.suffix).toEqual(suffix);
-      expect(encodedMessage?.active).toEqual(active);
 
       // Close writer to signal end of stream
       await writer.close();
 
-      const [decodedMessage, decodeErr] = await AnnounceMessage.decode(reader);
+      const decodedMessage = new AnnounceMessage({});
+      const decodeErr = await decodedMessage.decode(reader);
       expect(decodeErr).toBeUndefined();
-      expect(decodedMessage).toBeDefined();
-      expect(decodedMessage?.suffix).toEqual(suffix);
-      expect(decodedMessage?.active).toEqual(active);
+      expect(decodedMessage.suffix).toEqual(suffix);
+      expect(decodedMessage.active).toEqual(active);
     } finally {
       await cleanup();
     }

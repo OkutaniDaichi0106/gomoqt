@@ -85,9 +85,9 @@ export class ReceiveSubscribeStream {
 
 		// The async loop can be cancelled by sessCtx.done.
 		(async () => {
-			const msg = new SubscribeUpdateMessage({});
-			let err: Error | undefined;
 			while (true) {
+				const msg = new SubscribeUpdateMessage({});
+				let err: Error | undefined;
 				err = await msg.decode(reader);
 				if (err) {
 					return; // TODO: Handle decode error

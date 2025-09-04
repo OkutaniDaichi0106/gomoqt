@@ -10,7 +10,6 @@ import * as Subscribe from "./subscribe";
 import * as SubscribeOk from "./subscribe_ok";
 import * as SubscribeUpdate from "./subscribe_update";
 import * as Group from "./group";
-import * as Frame from "./frame";
 
 describe("Message Index", () => {
     it("should export all session client exports", () => {
@@ -48,11 +47,7 @@ describe("Message Index", () => {
     it("should export all group exports", () => {
         expect(MessageIndex).toEqual(expect.objectContaining(Group));
     });
-    
-    it("should export all frame exports", () => {
-        expect(MessageIndex).toEqual(expect.objectContaining(Frame));
-    });
-    
+
     it("should not have any undefined exports", () => {
         const exports = Object.keys(MessageIndex);
         exports.forEach(key => {
@@ -72,7 +67,6 @@ describe("Message Index", () => {
             ...Object.keys(SubscribeOk),
             ...Object.keys(SubscribeUpdate),
             ...Object.keys(Group),
-            ...Object.keys(Frame)
         ];
         
         expectedExports.forEach(exportName => {

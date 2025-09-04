@@ -10,19 +10,18 @@ describe('AnnounceInitMessage', () => {
 
     try {
       // Encode the message
-      const [encodedMessage, encodeErr] = await AnnounceInitMessage.encode(writer, suffixes);
+      const message = new AnnounceInitMessage({ suffixes });
+      const encodeErr = await message.encode(writer);
       expect(encodeErr).toBeUndefined();
-      expect(encodedMessage).toBeDefined();
-      expect(encodedMessage?.suffixes).toEqual(suffixes);
 
       // Close writer to signal end of stream
       await writer.close();
 
       // Decode the message
-      const [decodedMessage, decodeErr] = await AnnounceInitMessage.decode(reader);
+      const decodedMessage = new AnnounceInitMessage({});
+      const decodeErr = await decodedMessage.decode(reader);
       expect(decodeErr).toBeUndefined();
-      expect(decodedMessage).toBeDefined();
-      expect(decodedMessage?.suffixes).toEqual(suffixes);
+      expect(decodedMessage.suffixes).toEqual(suffixes);
     } finally {
       await cleanup();
     }
@@ -34,19 +33,18 @@ describe('AnnounceInitMessage', () => {
 
     try {
       // Encode the message
-      const [encodedMessage, encodeErr] = await AnnounceInitMessage.encode(writer, suffixes);
+      const message = new AnnounceInitMessage({ suffixes });
+      const encodeErr = await message.encode(writer);
       expect(encodeErr).toBeUndefined();
-      expect(encodedMessage).toBeDefined();
-      expect(encodedMessage?.suffixes).toEqual(suffixes);
 
       // Close writer to signal end of stream
       await writer.close();
 
       // Decode the message
-      const [decodedMessage, decodeErr] = await AnnounceInitMessage.decode(reader);
+      const decodedMessage = new AnnounceInitMessage({});
+      const decodeErr = await decodedMessage.decode(reader);
       expect(decodeErr).toBeUndefined();
-      expect(decodedMessage).toBeDefined();
-      expect(decodedMessage?.suffixes).toEqual(suffixes);
+      expect(decodedMessage.suffixes).toEqual(suffixes);
     } finally {
       await cleanup();
     }
@@ -58,19 +56,18 @@ describe('AnnounceInitMessage', () => {
 
     try {
       // Encode the message
-      const [encodedMessage, encodeErr] = await AnnounceInitMessage.encode(writer, suffixes);
+      const message = new AnnounceInitMessage({ suffixes });
+      const encodeErr = await message.encode(writer);
       expect(encodeErr).toBeUndefined();
-      expect(encodedMessage).toBeDefined();
-      expect(encodedMessage?.suffixes).toEqual(suffixes);
 
       // Close writer to signal end of stream
       await writer.close();
 
       // Decode the message
-      const [decodedMessage, decodeErr] = await AnnounceInitMessage.decode(reader);
+      const decodedMessage = new AnnounceInitMessage({});
+      const decodeErr = await decodedMessage.decode(reader);
       expect(decodeErr).toBeUndefined();
-      expect(decodedMessage).toBeDefined();
-      expect(decodedMessage?.suffixes).toEqual(suffixes);
+      expect(decodedMessage.suffixes).toEqual(suffixes);
     } finally {
       await cleanup();
     }
@@ -82,19 +79,18 @@ describe('AnnounceInitMessage', () => {
 
     try {
       // Encode the message
-      const [encodedMessage, encodeErr] = await AnnounceInitMessage.encode(writer, suffixes);
+      const message = new AnnounceInitMessage({ suffixes });
+      const encodeErr = await message.encode(writer);
       expect(encodeErr).toBeUndefined();
-      expect(encodedMessage).toBeDefined();
-      expect(encodedMessage?.suffixes).toEqual(suffixes);
 
       // Close writer to signal end of stream
       await writer.close();
 
       // Decode the message
-      const [decodedMessage, decodeErr] = await AnnounceInitMessage.decode(reader);
+      const decodedMessage = new AnnounceInitMessage({});
+      const decodeErr = await decodedMessage.decode(reader);
       expect(decodeErr).toBeUndefined();
-      expect(decodedMessage).toBeDefined();
-      expect(decodedMessage?.suffixes).toEqual(suffixes);
+      expect(decodedMessage.suffixes).toEqual(suffixes);
     } finally {
       await cleanup();
     }
@@ -102,7 +98,7 @@ describe('AnnounceInitMessage', () => {
 
   it('should create instance with constructor', () => {
     const suffixes = ['test1', 'test2'];
-    const message = new AnnounceInitMessage(suffixes);
+    const message = new AnnounceInitMessage({ suffixes });
 
     expect(message.suffixes).toEqual(suffixes);
   });
@@ -113,19 +109,18 @@ describe('AnnounceInitMessage', () => {
 
     try {
       // Encode the message
-      const [encodedMessage, encodeErr] = await AnnounceInitMessage.encode(writer, suffixes);
+      const message = new AnnounceInitMessage({ suffixes });
+      const encodeErr = await message.encode(writer);
       expect(encodeErr).toBeUndefined();
-      expect(encodedMessage).toBeDefined();
-      expect(encodedMessage?.suffixes).toEqual(suffixes);
 
       // Close writer to signal end of stream
       await writer.close();
 
       // Decode the message
-      const [decodedMessage, decodeErr] = await AnnounceInitMessage.decode(reader);
+      const decodedMessage = new AnnounceInitMessage({});
+      const decodeErr = await decodedMessage.decode(reader);
       expect(decodeErr).toBeUndefined();
-      expect(decodedMessage).toBeDefined();
-      expect(decodedMessage?.suffixes).toEqual(suffixes);
+      expect(decodedMessage.suffixes).toEqual(suffixes);
     } finally {
       await cleanup();
     }

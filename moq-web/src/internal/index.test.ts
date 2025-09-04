@@ -3,16 +3,6 @@ import * as index from './index';
 
 describe('Internal Index Module', () => {
     describe('re-exports', () => {
-        it('should re-export bytes module', () => {
-            // Check that bytes exports are available
-            expect(index).toHaveProperty('BytesBuffer');
-        });
-
-        it('should re-export bytes_pool module', () => {
-            // Check that bytes_pool exports are available
-            expect(index).toHaveProperty('BytesPool');
-        });
-
         it('should re-export mutex module', () => {
             // Check that mutex exports are available
             expect(index).toHaveProperty('Mutex');
@@ -26,10 +16,10 @@ describe('Internal Index Module', () => {
 
         it('should have all expected core exports', () => {
             const exports = Object.keys(index);
-            
+
             // Should include key exports from each module
-            const expectedExports = ['BytesBuffer', 'BytesPool', 'Mutex', 'background', 'withCancel'];
-            
+            const expectedExports = ['Mutex', 'background', 'withCancel'];
+
             expectedExports.forEach(expectedExport => {
                 expect(exports).toContain(expectedExport);
             });
@@ -49,8 +39,6 @@ describe('Internal Index Module', () => {
 
         it('should provide access to core internal utilities', () => {
             // Verify that key internal utilities are accessible
-            expect(index.BytesBuffer).toBeDefined();
-            expect(index.BytesPool).toBeDefined();
             expect(index.Cond).toBeDefined();
             // expect(index.Context).toBeDefined();
             expect(index.Extensions).toBeDefined();
@@ -60,25 +48,6 @@ describe('Internal Index Module', () => {
     });
 
     describe('export functionality', () => {
-        it('should provide working BytesBuffer', () => {
-            const buffer = index.BytesBuffer.make(1024);
-            expect(buffer).toBeInstanceOf(index.BytesBuffer);
-            
-            // Test basic functionality
-            const data = new Uint8Array([1, 2, 3]);
-            buffer.write(data);
-            expect(buffer.size).toBe(3);
-        });
-
-        it('should provide working BytesPool', () => {
-            const pool = new index.BytesPool(1, 10, 100);
-            expect(pool).toBeInstanceOf(index.BytesPool);
-            
-            // Test basic functionality
-            const buffer = pool.acquire(10);
-            expect(buffer).toBeInstanceOf(ArrayBuffer);
-        });
-
         it('should provide working Mutex', async () => {
             const mutex = new index.Mutex();
             expect(mutex).toBeInstanceOf(index.Mutex);
@@ -95,8 +64,6 @@ describe('Internal Index Module', () => {
             // If there were circular dependencies, the import would fail
             expect(() => {
                 const modules = {
-                    BytesBuffer: index.BytesBuffer,
-                    BytesPool: index.BytesPool,
                     Mutex: index.Mutex,
                     Cond: index.Cond,
                     Extensions: index.Extensions,
@@ -107,8 +74,6 @@ describe('Internal Index Module', () => {
 
         it('should maintain proper module boundaries', () => {
             // Each exported class/function should be properly namespaced
-            expect(index.BytesBuffer.name).toBe('BytesBuffer');
-            expect(index.BytesPool.name).toBe('BytesPool');
             expect(index.Mutex.name).toBe('Mutex');
         });
     });
@@ -117,20 +82,16 @@ describe('Internal Index Module', () => {
         it('should support TypeScript imports', () => {
             // Verify that TypeScript destructuring works
             expect(() => {
-                const { BytesBuffer, BytesPool, Cond, Mutex, Extensions } = index;
-                return { BytesBuffer, BytesPool, Cond, Mutex, Extensions };
+                const { Cond, Mutex, Extensions } = index;
+                return { Cond, Mutex, Extensions };
             }).not.toThrow();
         });
 
         it('should provide proper type information', () => {
             // Test that types are preserved through re-exports
-            const buffer = index.BytesBuffer.make(1024);
-            const pool = new index.BytesPool(1, 10, 100);
             const mutex = new index.Mutex();
             
             // These should have the correct types (implicit type checking)
-            expect(typeof buffer.write).toBe('function');
-            expect(typeof pool.acquire).toBe('function');
             expect(typeof mutex.lock).toBe('function');
         });
     });
@@ -138,24 +99,20 @@ describe('Internal Index Module', () => {
     describe('API consistency', () => {
         it('should provide consistent API access', async () => {
             // Compare direct import vs index import
-            const { BytesBuffer: BytesBufferDirect } = await import('./bytes');
-            const { BytesPool: BytesPoolDirect } = await import('./bytes_pool');
             const { Mutex: MutexDirect } = await import('./mutex');
             
-            expect(index.BytesBuffer).toBe(BytesBufferDirect);
-            expect(index.BytesPool).toBe(BytesPoolDirect);
             expect(index.Mutex).toBe(MutexDirect);
         });
 
         it('should not modify re-exported APIs', async () => {
             // Ensure that re-exports maintain original functionality
-            const { BytesBuffer: BytesBufferDirect } = await import('./bytes');
-            const directBuffer = BytesBufferDirect.make(1024);
-            const indexBuffer = index.BytesBuffer.make(1024);
+            const { Mutex: MutexDirect } = await import('./mutex');
+            const directMutex = new MutexDirect();
+            const indexMutex = new index.Mutex();
             
             // Both should have identical API
-            expect(Object.getOwnPropertyNames(Object.getPrototypeOf(directBuffer)))
-                .toEqual(Object.getOwnPropertyNames(Object.getPrototypeOf(indexBuffer)));
+            expect(Object.getOwnPropertyNames(Object.getPrototypeOf(directMutex)))
+                .toEqual(Object.getOwnPropertyNames(Object.getPrototypeOf(indexMutex)));
         });
     });
 });

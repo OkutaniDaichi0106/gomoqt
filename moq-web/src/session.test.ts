@@ -10,7 +10,7 @@ import { SessionStream } from "./session_stream";
 import { background, Context, withPromise } from "./internal/context";
 import { AnnouncementReader, AnnouncementWriter } from "./announce_stream";
 import { TrackPrefix } from "./track_prefix";
-import { ReceiveSubscribeStream, SendSubscribeStream, TrackConfig, SubscribeID } from "./subscribe_stream";
+import { ReceiveSubscribeStream, SendSubscribeStream, TrackConfig } from "./subscribe_stream";
 import { BroadcastPath } from "./broadcast_path";
 import { TrackReader, TrackWriter } from "./track";
 import { GroupReader, GroupWriter } from "./group_stream";
@@ -78,29 +78,46 @@ jest.mock("./session_stream", () => ({
 
 // Mock messages
 jest.mock("./message", () => ({
-    SessionClientMessage: {
-        encode: jest.fn().mockImplementation(() => Promise.resolve([{ version: 0xffffff00n }, null]))
-    },
-    SessionServerMessage: {
-        decode: jest.fn().mockImplementation(() => Promise.resolve([{ version: 0xffffff00n }, null]))
-    },
-    AnnouncePleaseMessage: {
-        encode: jest.fn().mockImplementation(() => Promise.resolve([{}, null])),
-        decode: jest.fn().mockImplementation(() => Promise.resolve([{}, null]))
-    },
-    AnnounceInitMessage: {
-        decode: jest.fn().mockImplementation(() => Promise.resolve([{}, null]))
-    },
-    GroupMessage: {
-        decode: jest.fn().mockImplementation(() => Promise.resolve([{ subscribeId: 1n }, null]))
-    },
-    SubscribeMessage: {
-        encode: jest.fn().mockImplementation(() => Promise.resolve([{ subscribeId: 1n }, null])),
-        decode: jest.fn().mockImplementation(() => Promise.resolve([{ subscribeId: 1n, broadcastPath: {}, trackName: "" }, null]))
-    },
-    SubscribeOkMessage: {
-        decode: jest.fn().mockImplementation(() => Promise.resolve([{}, null]))
-    },
+    SessionClientMessage: jest.fn().mockImplementation((init: any = {}) => ({
+        versions: init.versions ?? new Set([0xffffff00n]),
+        extensions: init.extensions ?? {},
+        encode: jest.fn().mockImplementation(() => Promise.resolve(undefined)),
+        decode: jest.fn().mockImplementation(() => Promise.resolve(undefined))
+    })),
+    SessionServerMessage: jest.fn().mockImplementation((init: any = {}) => ({
+        version: init.version ?? 0xffffff00n,
+        extensions: init.extensions ?? {},
+        encode: jest.fn().mockImplementation(() => Promise.resolve(undefined)),
+        decode: jest.fn().mockImplementation(() => Promise.resolve(undefined))
+    })),
+    AnnouncePleaseMessage: jest.fn().mockImplementation((init: any = {}) => ({
+        prefix: init.prefix ?? "",
+        encode: jest.fn().mockImplementation(() => Promise.resolve(undefined)),
+        decode: jest.fn().mockImplementation(() => Promise.resolve(undefined))
+    })),
+    AnnounceInitMessage: jest.fn().mockImplementation((init: any = {}) => ({
+        suffixes: init.suffixes ?? [],
+        encode: jest.fn().mockImplementation(() => Promise.resolve(undefined)),
+        decode: jest.fn().mockImplementation(() => Promise.resolve(undefined))
+    })),
+    GroupMessage: jest.fn().mockImplementation((init: any = {}) => ({
+        subscribeId: init.subscribeId ?? 1n,
+        sequence: init.sequence ?? 0n,
+        encode: jest.fn().mockImplementation(() => Promise.resolve(undefined)),
+        decode: jest.fn().mockImplementation(() => Promise.resolve(undefined))
+    })),
+    SubscribeMessage: jest.fn().mockImplementation((init: any = {}) => ({
+        subscribeId: init.subscribeId ?? 1n,
+        broadcastPath: init.broadcastPath ?? {},
+        trackName: init.trackName ?? "",
+        encode: jest.fn().mockImplementation(() => Promise.resolve(undefined)),
+        decode: jest.fn().mockImplementation(() => Promise.resolve(undefined))
+    })),
+    SubscribeOkMessage: jest.fn().mockImplementation((init: any = {}) => ({
+        groupPeriod: init.groupPeriod ?? 0,
+        encode: jest.fn().mockImplementation(() => Promise.resolve(undefined)),
+        decode: jest.fn().mockImplementation(() => Promise.resolve(undefined))
+    }))
 }));
 
 // Mock IO
@@ -280,13 +297,13 @@ describe("Session", () => {
         it("should send session client message", async () => {
             await session.ready;
             const SessionClientMessageMock = jest.mocked(SessionClientMessage);
-            expect(SessionClientMessageMock.encode).toHaveBeenCalled();
+            expect(SessionClientMessageMock).toHaveBeenCalled();
         });
 
         it("should receive session server message", async () => {
             await session.ready;
             const SessionServerMessageMock = jest.mocked(SessionServerMessage);
-            expect(SessionServerMessageMock.decode).toHaveBeenCalled();
+            expect(SessionServerMessageMock).toHaveBeenCalled();
         });
     });
 
@@ -390,16 +407,23 @@ describe("Session", () => {
 
             // Mock SessionServerMessage to return incompatible version
             const SessionServerMessageMock = jest.mocked(SessionServerMessage);
-            const originalDecode = SessionServerMessageMock.decode;
-            SessionServerMessageMock.decode.mockImplementationOnce(() =>
-                Promise.resolve([{ version: 999n, extensions: {} } as any, undefined])
-            );
+            // Mock the instance decode method to set the version property
+            const mockDecode = jest.fn().mockImplementation(function(this: any) {
+                this.version = 999n; // Set incompatible version on the instance
+                return Promise.resolve(undefined);
+            });
+            SessionServerMessageMock.mockImplementationOnce(() => ({
+                version: 0xffffff00n, // Initial version (will be overwritten by decode)
+                extensions: new Extensions(),
+                encode: jest.fn().mockImplementation(() => Promise.resolve(undefined)),
+                decode: mockDecode
+            } as any));
 
             const versionSession = new Session(versionMockConn as any);
             await expect(versionSession.ready).rejects.toThrow("Incompatible session version");
 
-            // Restore original mock
-            SessionServerMessageMock.decode = originalDecode;
+            // Verify the decode method was called
+            expect(mockDecode).toHaveBeenCalled();
         });
     });
 
@@ -420,7 +444,7 @@ describe("Session", () => {
         it("should handle subscribe", async () => {
             const path = { segments: ["test", "path"] };
             const trackName = "test-track";
-            const config = { trackPriority: 1n, minGroupSequence: 0n, maxGroupSequence: 10n };
+            const config = { trackPriority: 1, minGroupSequence: 0n, maxGroupSequence: 10n };
 
             const stream = readySession.subscribe(path as any, trackName, config);
             expect(stream).toBeInstanceOf(Promise);

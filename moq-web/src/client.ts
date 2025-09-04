@@ -50,3 +50,5 @@ export class Client {
         this.#sessions = new Set();
     }
 }
+
+export const MOQ = Client;

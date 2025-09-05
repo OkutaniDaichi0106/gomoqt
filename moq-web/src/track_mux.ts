@@ -1,20 +1,25 @@
 import { Announcement, AnnouncementWriter } from "./announce_stream";
 import { BroadcastPath } from "./broadcast_path";
-import { Context } from "./internal/context";
+import { Context } from "./internal";
 import { TrackWriter } from "./track";
 import { isValidPrefix, TrackPrefix } from "./track_prefix";
+import { TrackNotFoundErrorCode } from ".";
+
+type AnnouncedTrackHandler = {
+    announcement: Announcement;
+    handler: TrackHandler;
+}
 
 export class TrackMux {
-    #handlers: Map<string, TrackHandler> = new Map();
-    #announcers: Map<string, Set<AnnouncementWriter>> = new Map();
-    #announcements: Map<string, Announcement> = new Map();
+    #handlers: Map<BroadcastPath, AnnouncedTrackHandler> = new Map();
+    #announcers: Map<TrackPrefix, Set<AnnouncementWriter>> = new Map();
+    // #announcements: Map<string, Announcement> = new Map();
 
     constructor() {}
 
     announce(announcement: Announcement, handler: TrackHandler): void {
         const path = announcement.broadcastPath;
-        this.#announcements.set(path, announcement);     
-        this.#handlers.set(path, handler);
+        this.#handlers.set(path, { announcement, handler });
 
         for (const [prefix, announcers] of this.#announcers.entries()) {
             if (path.startsWith(prefix)) {
@@ -25,25 +30,27 @@ export class TrackMux {
             }
         }
 
-        (async () => {
-            // Wait for the context to be done
-            await announcement.ended();
+        // Wait for the announcement to end
+        announcement.ended().then(() => {
             // Remove the handler when the context is done
-            this.#announcements.delete(path);
             this.#handlers.delete(path);
-        })();
+        });
     }
 
-    handleTrack(ctx: Context, path: BroadcastPath, handler: TrackHandler) {
+    publish(ctx: Promise<void>, path: BroadcastPath, handler: TrackHandler) {
         this.announce(new Announcement(path, ctx), handler);
     }
 
+    publishFunc(ctx: Promise<void>, path: BroadcastPath, handler: (ctx: Promise<void>, trackWriter: TrackWriter) => Promise<void>) {
+        this.announce(new Announcement(path, ctx), { serveTrack: handler });
+    }
+
     async serveTrack(trackWriter: TrackWriter): Promise<void> {
-        const handler = this.#handlers.get(trackWriter.broadcastPath);
-        if (handler) {
-            handler.serveTrack(trackWriter);
+        const announced = this.#handlers.get(trackWriter.broadcastPath);
+        if (announced) {
+            await announced.handler.serveTrack(announced.announcement.ended(), trackWriter);
         } else {
-            NotFoundHandler.serveTrack(trackWriter);
+            await NotFoundHandler.serveTrack(Promise.resolve(), trackWriter);
         }
     }
 
@@ -54,10 +61,13 @@ export class TrackMux {
 
         console.log(`Serving announcement for prefix: ${prefix}`);
 
-        const init = Array.from(this.#announcements.values())
-        .filter(announcement => announcement.broadcastPath.startsWith(prefix));
-
-        await writer.init(init);
+        let announced: AnnouncedTrackHandler;
+        const init: Announcement[] = [];
+        for (announced of this.#handlers.values()) {
+            if (announced.announcement.broadcastPath.startsWith(prefix)) {
+                init.push(announced.announcement);
+            }
+        }
 
         // Initialize the announcers map for this prefix if it doesn't exist
         if (!this.#announcers.has(prefix)) {
@@ -68,26 +78,28 @@ export class TrackMux {
         const announcers = this.#announcers.get(prefix)!;
         announcers.add(writer);
 
-        (async () => {
-            // Wait for the context to be done
-            await writer.context.done();
-            // Remove the announcer when the context is done
-            announcers.delete(writer);
-            if (announcers.size === 0) {
-                this.#announcers.delete(prefix);
-            }
-        })();
+        // Send initial announcements
+        await writer.init(init);
+
+        // Wait for the context to be done
+        await writer.context.done();
+
+        // Remove the announcer when the context is done
+        announcers.delete(writer);
+        if (announcers.size === 0) {
+            this.#announcers.delete(prefix);
+        }
     }
 }
 
 export const DefaultTrackMux = new TrackMux();
 
 export interface TrackHandler {
-    serveTrack(trackWriter: TrackWriter): void;
+    serveTrack(ctx: Promise<void>, trackWriter: TrackWriter): Promise<void>;
 }
 
 const NotFoundHandler: TrackHandler = {
-    serveTrack(trackWriter: TrackWriter): void {
-        trackWriter.closeWithError(0x03, "Track not found");
+    async serveTrack(ctx: Promise<void>, trackWriter: TrackWriter): Promise<void> {
+        trackWriter.closeWithError(TrackNotFoundErrorCode, "Track not found");
     }
 };

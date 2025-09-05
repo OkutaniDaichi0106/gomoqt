@@ -19,7 +19,7 @@ export class Queue<T> {
 		unlock();
 	}
 
-	async dequeue(): Promise<T | undefined> {
+	async dequeue(): Promise<T> {
 		while (true) {
 			const unlock = await this.#mutex.lock();
 
@@ -27,6 +27,11 @@ export class Queue<T> {
 				if (this.#items.length > 0) {
 					const item = this.#items.shift();
 					unlock();
+
+					// item is guaranteed to be defined here
+					if (!item) {
+						continue;
+					}
 					return item;
 				}
 
@@ -70,7 +75,7 @@ export class Queue<T> {
 		});
 	}
 
-	isClosed(): boolean {
+	get closed(): boolean {
 		return this.#closed;
 	}
 }

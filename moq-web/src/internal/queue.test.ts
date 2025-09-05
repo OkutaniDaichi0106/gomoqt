@@ -9,7 +9,7 @@ describe('Queue', () => {
   });
 
   afterEach(() => {
-    if (!queue.isClosed()) {
+    if (!queue.closed) {
       queue.close();
     }
   });
@@ -20,7 +20,7 @@ describe('Queue', () => {
 
   it('should create an empty queue', () => {
     expect(queue).toBeDefined();
-    expect(queue.isClosed()).toBe(false);
+    expect(queue.closed).toBe(false);
   });
 
   it('should enqueue and dequeue items', async () => {
@@ -105,9 +105,9 @@ describe('Queue', () => {
   });
 
   it('should close the queue', () => {
-    expect(queue.isClosed()).toBe(false);
+    expect(queue.closed).toBe(false);
     queue.close();
-    expect(queue.isClosed()).toBe(true);
+    expect(queue.closed).toBe(true);
   });
 
   it('should throw error when dequeuing from closed empty queue', async () => {

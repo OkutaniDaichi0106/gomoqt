@@ -94,7 +94,7 @@ describe('BroadcastPath', () => {
 
     describe('type safety', () => {
         it('should allow BroadcastPath to be used as string', () => {
-            const path: BroadcastPath = '/test/path';
+            const path: BroadcastPath = validateBroadcastPath('/test/path');
             expect(typeof path).toBe('string');
             expect(path.startsWith('/')).toBe(true);
             expect(path.length).toBeGreaterThan(0);

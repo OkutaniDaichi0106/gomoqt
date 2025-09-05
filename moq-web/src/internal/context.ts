@@ -1,5 +1,4 @@
 export interface Context {
-    readonly signal: AbortSignal;
     done(): Promise<void>;
     err(): Error | undefined;
 }
@@ -8,60 +7,49 @@ export type CancelFunc = () => void;
 export type CancelCauseFunc = (err: Error | undefined) => void;
 
 class DefaultContext implements Context {
-    #signal: AbortSignal;
-    #err?: Error;
     #donePromise: Promise<void>;
+    #resolve!: () => void;
+    #reject!: (reason?: any) => void;
+    #err?: Error;
 
-    constructor(signal: AbortSignal) {
-        this.#signal = signal;
-        
-        // Set error from signal reason when signal is aborted
-        if (this.#signal.aborted) {
-            this.#err = this.#signal.reason || new Error('Context cancelled');
-            // Initialize promise as already resolved for aborted signals
-            this.#donePromise = Promise.resolve();
-        } else {
-            // Initialize promise with abort listener for non-aborted signals
-            this.#donePromise = new Promise(resolve => {
-                this.#signal.addEventListener('abort', () => {
-                    this.#err = this.#signal.reason || new Error('Context cancelled');
-                    resolve();
-                }, { once: true });
+    constructor(parent?: Context) {
+        this.#donePromise = new Promise((resolve, reject) => {
+            this.#resolve = resolve;
+            this.#reject = reject;
+        });
+
+        // Set up parent cancellation propagation using Promise
+        if (parent) {
+            parent.done().then(() => {
+                this.#err = parent.err();
+                this.#resolve();
+            }).catch(() => {
+                this.#resolve();
             });
         }
     }
 
-    get signal(): AbortSignal {
-        return this.#signal;
-    }
-
     done(): Promise<void> {
-        // Promise is always initialized in constructor - just return it
         return this.#donePromise;
     }
 
     err(): Error | undefined {
         return this.#err;
     }
-}
 
-function createChildContext(parent: Context, controller: AbortController): Context {
-    if (parent.signal.aborted) {
-        controller.abort(parent.err());
-    } else {
-        parent.signal.addEventListener('abort', () => {
-            controller.abort(parent.err());
-        }, { once: true }); // Automatic cleanup for derived contexts
+    cancel(err?: Error): void {
+        this.#err = err;
+        this.#resolve();
     }
-    return new DefaultContext(controller.signal);
 }
 
 const backgroundContext: Context = function(): Context {
-    const controller = new AbortController();
+    // Create context with its own controller for background lifecycle events
+    const context = new DefaultContext();
     
     // Unified handler for better performance
     const handlePageTermination = (eventType: string) => {
-        controller.abort(new Error(`Page ${eventType}`));
+        context.cancel(new Error(`Page ${eventType}`));
     };
     
     // Use modern event handling with passive listeners where appropriate
@@ -73,11 +61,11 @@ const backgroundContext: Context = function(): Context {
     // Service Worker detection with better type safety
     if (typeof self !== 'undefined' && 'serviceWorker' in navigator) {
         self.addEventListener?.('activate', () => {
-            controller.abort(new Error('Service Worker activated'));
+            context.cancel(new Error('Service Worker activated'));
         }, { once: true });
     }
 
-    return new DefaultContext(controller.signal);
+    return context;
 }();
 
 // Public API functions
@@ -86,69 +74,61 @@ export function background(): Context {
 }
 
 export function withSignal(parent: Context, signal: AbortSignal): Context {
-    const controller = new AbortController();
-    
+    // Create a new context with its own controller for independent cancellation control
+    const context = new DefaultContext(parent);
+
     // More efficient event handling - avoid function creation in loops
-    if (parent.signal.aborted) {
-        controller.abort(parent.err());
-    } else {
-        parent.signal.addEventListener('abort', () => {
-            controller.abort(parent.err());
-        }, { once: true });
-    }
-    
     if (signal.aborted) {
-        controller.abort(signal.reason || new Error('Context cancelled'));
+        context.cancel(signal.reason || new Error('Context cancelled'));
     } else {
         signal.addEventListener('abort', () => {
-            controller.abort(signal.reason || new Error('Context cancelled'));
+            context.cancel(signal.reason || new Error('Context cancelled'));
         }, { once: true });
     }
 
-    return new DefaultContext(controller.signal);
+    return context;
 }
 
 export function withCancel(parent: Context): [Context, CancelFunc] {
-    const controller = new AbortController();
-    const context = createChildContext(parent, controller);
-    return [context, () => controller.abort(new Error('Context cancelled'))];
+    const context = new DefaultContext(parent);
+    return [context, () => context.cancel(new Error('Context cancelled'))];
 }
 
 export function withCancelCause(parent: Context): [Context, CancelCauseFunc] {
-    const controller = new AbortController();
-    const context = createChildContext(parent, controller);
-    return [context, (err: Error | undefined) => controller.abort(err)];
+    const context = new DefaultContext(parent);
+    return [context, (err: Error | undefined) => context.cancel(err)];
 }
 
 export function withTimeout(parent: Context, timeout: number): Context {
-    const controller = new AbortController();
-    const context = createChildContext(parent, controller);
+    const context = new DefaultContext(parent);
     
     const timeoutId = setTimeout(() => {
-        controller.abort(new Error(`Context timeout after ${timeout}ms`));
+        context.cancel(new Error(`Context timeout after ${timeout}ms`));
     }, timeout);
     
-    // Clean up timeout if parent is cancelled first - TypeScript optimization
+    // Clean up timeout if parent is cancelled first - using Promise
     const cleanup = () => clearTimeout(timeoutId);
-    parent.signal.addEventListener('abort', cleanup, { once: true });
-    controller.signal.addEventListener('abort', cleanup, { once: true });
+    parent.done().then(cleanup).catch(() => {});
+    context.done().then(cleanup).catch(() => {});
     
     return context;
 }
 
 export function withPromise<T>(parent: Context, promise: Promise<T>): Context {
-    const controller = new AbortController();
-    const context = createChildContext(parent, controller);
-    
+    const context = new DefaultContext(parent);
+
     // Use more specific error handling for TypeScript
     promise.then(
-        (value) => controller.abort(new Error(`Promise resolved with: ${String(value)}`)),
+        (value) => context.cancel(new Error(`Promise resolved with: ${String(value)}`)),
         (reason) => {
             const error = reason instanceof Error 
                 ? reason 
                 : new Error(`Promise rejected: ${String(reason)}`);
-            controller.abort(error);
+            context.cancel(error);
         }
+    ).catch(
+        // Catch any unexpected errors to prevent unhandled promise rejections
+        (err) => context.cancel(new Error(`Unexpected error in promise: ${String(err)}`))
     );
     
     return context;

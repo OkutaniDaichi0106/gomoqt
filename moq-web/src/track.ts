@@ -17,9 +17,11 @@ export class TrackWriter {
     #openUniStreamFunc: () => Promise<[Writer?, Error?]>;
     #groups: GroupWriter[] = [];
 
-    constructor(broadcastPath: BroadcastPath, trackName: string,
+    constructor(
+        broadcastPath: BroadcastPath,
+        trackName: string,
         subscribeStream: ReceiveSubscribeStream,
-        openUniStreamFunc: () => Promise<[Writer?, Error?]>
+        openUniStreamFunc: () => Promise<[Writer?, Error?]>,
     ) {
         this.broadcastPath = broadcastPath;
         this.trackName = trackName;
@@ -99,11 +101,11 @@ export class TrackWriter {
 
 export class TrackReader {
     #subscribeStream: SendSubscribeStream;
-    #acceptFunc: () => Promise<[Reader, GroupMessage] | undefined>;
+    #acceptFunc: () => Promise<[Reader, GroupMessage]>;
     #onCloseFunc: () => void;
 
     constructor(subscribeStream: SendSubscribeStream,
-        acceptFunc: () => Promise<[Reader, GroupMessage] | undefined>,
+        acceptFunc: () => Promise<[Reader, GroupMessage]>,
         onCloseFunc: () => void,
     ) {
         this.#subscribeStream = subscribeStream;
@@ -111,18 +113,22 @@ export class TrackReader {
         this.#onCloseFunc = onCloseFunc;
     }
 
-    async acceptGroup(): Promise<[GroupReader?, Error?]> {
-        const ctxErr = this.context.err();
-        if (ctxErr != null) {
-            return [undefined, ctxErr];
+    async acceptGroup(ctx?: Promise<void>): Promise<[GroupReader?, Error?]> {
+        const promises: Promise<Error | [Reader, GroupMessage]>[] = [
+            this.context.done().then(() => new Error(`subscribe stream cancelled: ${this.context.err()}`)),
+            this.#acceptFunc(),
+        ];
+        if (ctx) {
+            promises.push(ctx.then((): Error => new Error("Context cancelled")));
+        }
+        const result = await Promise.race(promises);
+        if (result instanceof Error) {
+            // Context was cancelled
+            return [undefined, result];
         }
 
-        const item = await this.#acceptFunc();
-        if (item === undefined) {
-            return [undefined, new Error("No group available")];
-        }
+        const [reader, msg] = result;
 
-        const [reader, msg] = item;
         const group = new GroupReader(this.context, reader, msg);
 
         return [group, undefined];

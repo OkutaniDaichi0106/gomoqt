@@ -14,7 +14,6 @@ describe('Context', () => {
         it('should create a background context', () => {
             const ctx = background();
             expect(ctx).toBeDefined();
-            expect(ctx.signal).toBeInstanceOf(AbortSignal);
             expect(ctx.err()).toBeUndefined();
         });
 
@@ -26,7 +25,6 @@ describe('Context', () => {
 
         it('should not be aborted initially', () => {
             const ctx = background();
-            expect(ctx.signal.aborted).toBe(false);
             expect(ctx.err()).toBeUndefined();
         });
     });
@@ -37,7 +35,7 @@ describe('Context', () => {
             const controller = new AbortController();
             const childCtx = withSignal(parentCtx, controller.signal);
             
-            expect(childCtx.signal).toBeDefined();
+            expect(childCtx).toBeDefined();
             expect(childCtx.err()).toBeUndefined();
         });
 
@@ -55,7 +53,6 @@ describe('Context', () => {
             await new Promise(resolve => setTimeout(resolve, 10));
             
             expect(done).toBe(true);
-            expect(childCtx.signal.aborted).toBe(true);
             expect(childCtx.err()).toBeInstanceOf(Error);
         });
 
@@ -66,7 +63,6 @@ describe('Context', () => {
             controller.abort(testError);
             
             const childCtx = withSignal(parentCtx, controller.signal);
-            expect(childCtx.signal.aborted).toBe(true);
             expect(childCtx.err()).toBeInstanceOf(Error);
         });
     });
@@ -76,7 +72,7 @@ describe('Context', () => {
             const parentCtx = background();
             const [childCtx, cancel] = withCancel(parentCtx);
             
-            expect(childCtx.signal).toBeDefined();
+            expect(childCtx).toBeDefined();
             expect(childCtx.err()).toBeUndefined();
             expect(typeof cancel).toBe('function');
         });
@@ -94,7 +90,6 @@ describe('Context', () => {
             await new Promise(resolve => setTimeout(resolve, 10));
             
             expect(done).toBe(true);
-            expect(childCtx.signal.aborted).toBe(true);
             expect(childCtx.err()).toBeInstanceOf(Error);
         });
 
@@ -111,7 +106,7 @@ describe('Context', () => {
             await new Promise(resolve => setTimeout(resolve, 10));
             
             expect(childDone).toBe(true);
-            expect(childCtx.signal.aborted).toBe(true);
+            expect(childCtx.err()).toBeInstanceOf(Error);
         });
     });
 
@@ -120,7 +115,7 @@ describe('Context', () => {
             const parentCtx = background();
             const [childCtx, cancelWithCause] = withCancelCause(parentCtx);
             
-            expect(childCtx.signal).toBeDefined();
+            expect(childCtx).toBeDefined();
             expect(childCtx.err()).toBeUndefined();
             expect(typeof cancelWithCause).toBe('function');
         });
@@ -143,7 +138,6 @@ describe('Context', () => {
             await new Promise(resolve => setTimeout(resolve, 10));
             
             expect(done).toBe(true);
-            expect(childCtx.signal.aborted).toBe(true);
         });
 
         it('should handle undefined error', async () => {
@@ -159,7 +153,6 @@ describe('Context', () => {
             await new Promise(resolve => setTimeout(resolve, 10));
             
             expect(done).toBe(true);
-            expect(childCtx.signal.aborted).toBe(true);
         });
     });
 
@@ -168,7 +161,7 @@ describe('Context', () => {
             const parentCtx = background();
             const childCtx = withTimeout(parentCtx, 1000);
             
-            expect(childCtx.signal).toBeDefined();
+            expect(childCtx).toBeDefined();
             expect(childCtx.err()).toBeUndefined();
         });
 
@@ -188,7 +181,6 @@ describe('Context', () => {
             await new Promise(resolve => setTimeout(resolve, 100));
             
             expect(done).toBe(true);
-            expect(childCtx.signal.aborted).toBe(true);
             expect(caughtError).toBeInstanceOf(Error);
             if (caughtError instanceof Error) {
                 expect(caughtError.message).toContain('timeout');
@@ -209,7 +201,6 @@ describe('Context', () => {
             await new Promise(resolve => setTimeout(resolve, 10));
             
             expect(done).toBe(true);
-            expect(childCtx.signal.aborted).toBe(true);
         });
     });
 
@@ -226,7 +217,6 @@ describe('Context', () => {
             await new Promise(resolve => setTimeout(resolve, 10));
             
             expect(done).toBe(true);
-            expect(childCtx.signal.aborted).toBe(true);
         });
 
         it('should create a context that cancels when promise rejects', async () => {
@@ -247,7 +237,6 @@ describe('Context', () => {
             await new Promise(resolve => setTimeout(resolve, 10));
             
             expect(done).toBe(true);
-            expect(childCtx.signal.aborted).toBe(true);
             expect(error).toBeInstanceOf(Error);
         });
 
@@ -268,7 +257,6 @@ describe('Context', () => {
             await new Promise(resolve => setTimeout(resolve, 10));
             
             expect(done).toBe(true);
-            expect(childCtx.signal.aborted).toBe(true);
             expect(caughtError).toBeInstanceOf(Error);
             if (caughtError instanceof Error) {
                 expect(caughtError.message).toContain('string rejection');
@@ -299,7 +287,7 @@ describe('Context', () => {
 
         it('should have signal property', () => {
             const ctx = background();
-            expect(ctx.signal).toBeInstanceOf(AbortSignal);
+            expect(ctx).toBeDefined();
         });
 
         it('should return error when cancelled', async () => {

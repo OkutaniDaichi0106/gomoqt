@@ -1,6 +1,6 @@
 {
   "name": "@okutanidaichi/moqt",
-  "version": "0.4.16",
+  "version": "0.6.1",
   "description": "Media over QUIC package",
   "repository": {
     "type": "git",

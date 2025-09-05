@@ -168,7 +168,7 @@ describe('Announcement', () => {
 
     beforeEach(() => {
         [ctx, cancelFunc] = withCancelCause(background());
-        announcement = new Announcement('/test/path' as BroadcastPath, ctx);
+        announcement = new Announcement('/test/path' as BroadcastPath, ctx.done());
     });
 
     afterEach(() => {
@@ -181,7 +181,7 @@ describe('Announcement', () => {
         });
 
         it('should validate broadcast path', () => {
-            expect(() => new Announcement('invalid-path' as BroadcastPath, ctx)).toThrow();
+            expect(() => new Announcement('invalid-path' as BroadcastPath, ctx.done())).toThrow();
         });
     });
 
@@ -202,15 +202,6 @@ describe('Announcement', () => {
     describe('end', () => {
         it('should end the announcement', () => {
             expect(() => announcement.end()).not.toThrow();
-        });
-    });
-
-    describe('fork', () => {
-        it('should create a forked announcement', () => {
-            const forked = announcement.fork();
-            expect(forked).toBeInstanceOf(Announcement);
-            expect(forked.broadcastPath).toBe(announcement.broadcastPath);
-            expect(forked).not.toBe(announcement);
         });
     });
 

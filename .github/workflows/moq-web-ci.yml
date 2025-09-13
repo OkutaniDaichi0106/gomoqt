@@ -1,0 +1,48 @@
+name: Moq Web CI
+
+on:
+  push:
+    paths:
+      - 'moq-web/**'
+  pull_request:
+    paths:
+      - 'moq-web/**'
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          cd moq-web
+          npm ci
+
+      - name: Build
+        run: |
+          cd moq-web
+          npm run build
+
+      - name: Run tests
+        run: |
+          cd moq-web
+          npm test
+
+      - name: Upload dist artifact
+        if: success() && steps
+        uses: actions/upload-artifact@v4
+        with:
+          name: moq-web-dist
+          path: moq-web/dist

@@ -44,16 +44,16 @@ menu:
       params:
         type: separator
       weight: 1
-    - identifier: gomoqt/moqt
-      name: gomoqt/moqt on pkg.go.dev
-      url: https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt/moqt
+    - identifier: gomoqt
+      name: gomoqt on pkg.go.dev
+      url: https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt
       weight: 2
     - identifier: moq-lite-spec
       name: "MoQ-Lite Spec (draft-01)"
       weight: 3
       url: https://www.ietf.org/archive/id/draft-lcurley-moq-lite-01.html
     - identifier: quic-video
-      name: "quic.video (MoQ Prototype)"
+      name: "moq.dev (MoQ Prototype)"
       weight: 4
       url: https://quic.video/
 
@@ -100,30 +100,31 @@ languages:
     languageName: English
     weight: 1
     title: gomoqt
+    contentDir: content/en
   ja:
     languageName: 日本語
     weight: 2
     title: gomoqt
-    contentDir: i18n/ja
+    contentDir: content/ja
   ko:
     languageName: 한국어
     weight: 3
     title: gomoqt
-    contentDir: i18n/ko
+    contentDir: content/ko
   zh-cn:
     languageName: 简体中文
     weight: 4
     title: gomoqt
-    contentDir: i18n/zh-cn
+    contentDir: content/zh-cn
   zh-tw:
     languageName: 繁體中文
     weight: 5
     title: gomoqt
-    contentDir: i18n/zh-tw
-  ru:
-    languageName: Русский
-    weight: 6
-    title: gomoqt
-    contentDir: i18n/ru
+    contentDir: content/zh-tw
+  # ru:
+  #   languageName: Русский
+  #   weight: 6
+  #   title: gomoqt
+  #   contentDir: content/ru
 
 hasCJKLanguage: true

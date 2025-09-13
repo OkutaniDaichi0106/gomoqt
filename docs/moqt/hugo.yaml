@@ -1,6 +1,7 @@
-baseURL: https://example.org/
+baseURL: https://okutanidaichi0106.github.io/gomoqt/
 languageCode: en-us
 title: gomoqt
+description: Fast, simply designed MoQ implementation for building scalable real-time apps.
 
 module:
   imports:

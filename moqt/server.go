@@ -209,7 +209,6 @@ func (s *Server) ServeWebTransport(w http.ResponseWriter, r *http.Request) error
 
 	conn, err := s.wtServer.Upgrade(w, r)
 	if err != nil {
-		http.Error(w, "failed to upgrade connection", http.StatusInternalServerError)
 		return fmt.Errorf("failed to upgrade connection: %w", err)
 	}
 
@@ -236,17 +235,19 @@ func (s *Server) ServeWebTransport(w http.ResponseWriter, r *http.Request) error
 		return fmt.Errorf("failed to accept session stream: %w", err)
 	}
 
+	s.Logger.Debug("accepted a session stream")
+
 	// Set the path for the session
 	sessStr.Path = r.URL.Path
 
-	rsp := &responseWriter{
-		sessionStream: sessStr,
-	}
+	rsp := newResponseWriter(conn, sessStr)
 	req := sessStr.SetupRequest
 
 	if s.SetupHandler != nil {
+		s.Logger.Debug("using custom setup handler")
 		s.SetupHandler.ServeMOQ(rsp, req)
 	} else {
+		s.Logger.Debug("no setup handler provided, using default router")
 		DefaultRouter.ServeMOQ(rsp, req)
 	}
 
@@ -283,9 +284,7 @@ func (s *Server) handleNativeQUIC(conn quic.Connection) error {
 		return err
 	}
 
-	rsp := &responseWriter{
-		sessionStream: sessStr,
-	}
+	rsp := newResponseWriter(conn, sessStr)
 	req := sessStr.SetupRequest
 
 	if s.SetupHandler != nil {
@@ -350,21 +349,31 @@ func (s *Server) handleNativeQUIC(conn quic.Connection) error {
 // }
 
 func (s *Server) Accept(w SetupResponseWriter, r *SetupRequest, mux *TrackMux) (*Session, error) {
+	if w == nil {
+		return nil, fmt.Errorf("response writer cannot be nil")
+	}
+
 	if s.shuttingDown() {
+		w.Reject(SetupFailedErrorCode)
 		return nil, ErrServerClosed
 	}
 
 	s.init()
 
-	if w == nil {
-		return nil, fmt.Errorf("response writer cannot be nil")
-	}
 	if r == nil {
+		w.Reject(SetupFailedErrorCode)
 		return nil, fmt.Errorf("request cannot be nil")
 	}
+
 	rsp, ok := w.(*responseWriter)
 	if !ok {
 		return nil, fmt.Errorf("response writer is not of type *response")
+	}
+
+	// Accept the setup request with default version and no extensions
+	err := w.WriteServerInfo(DefaultServerVersion, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to accept setup request: %w", err)
 	}
 
 	conn := rsp.conn
@@ -383,11 +392,11 @@ func (s *Server) Accept(w SetupResponseWriter, r *SetupRequest, mux *TrackMux) (
 		connLogger = slog.New(slog.DiscardHandler)
 	}
 
-	connLogger.Debug("establishing a session over QUIC connection")
-
 	var sess *Session
 	sess = newSession(conn, rsp.sessionStream, mux, connLogger, func() { s.removeSession(sess) })
 	s.addSession(sess)
+
+	connLogger.Debug("accepted a new session")
 
 	return sess, nil
 }

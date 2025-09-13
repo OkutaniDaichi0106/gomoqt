@@ -408,7 +408,7 @@ func TestResponseWriter_Accept(t *testing.T) {
 			ss := newSessionStream(mockStream, req)
 			rw := &responseWriter{sessionStream: ss}
 
-			err := rw.Accept(tt.version, tt.extensions)
+			err := rw.WriteServerInfo(tt.version, tt.extensions)
 
 			if tt.expectError {
 				assert.Error(t, err, "Accept should return error")
@@ -442,11 +442,11 @@ func TestResponseWriter_Accept_OnlyOnce(t *testing.T) {
 	extensions := NewParameters()
 
 	// First call should succeed
-	err1 := rw.Accept(version, extensions)
+	err1 := rw.WriteServerInfo(version, extensions)
 	assert.NoError(t, err1, "first Accept call should succeed")
 
 	// Second call should be ignored (no additional Write calls)
-	err2 := rw.Accept(Version(2), NewParameters())
+	err2 := rw.WriteServerInfo(Version(2), NewParameters())
 	assert.NoError(t, err2, "second Accept call should be ignored")
 
 	// Version should remain from first call
@@ -481,13 +481,13 @@ func TestResponseWriter_Accept_ConcurrentCalls(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			err := rw.Accept(Version(id), NewParameters())
+			err := rw.WriteServerInfo(Version(id), NewParameters())
 			assert.NoError(t, err, "Accept should not return error")
 		}(i)
 	}
 
 	// Also call Accept from main goroutine
-	err := rw.Accept(version, extensions)
+	err := rw.WriteServerInfo(version, extensions)
 	assert.NoError(t, err, "main Accept call should not return error")
 
 	wg.Wait()
@@ -681,7 +681,7 @@ func TestResponseWriter_Accept_NilParameters(t *testing.T) {
 	rw := &responseWriter{sessionStream: ss}
 
 	version := Version(1)
-	err := rw.Accept(version, nil)
+	err := rw.WriteServerInfo(version, nil)
 
 	assert.NoError(t, err, "Accept should handle nil parameters")
 	assert.Equal(t, version, ss.Version, "version should be set correctly")
@@ -717,7 +717,7 @@ func TestResponseWriter_Accept_MultipleVersions(t *testing.T) {
 			rw := &responseWriter{sessionStream: ss}
 
 			extensions := NewParameters()
-			err := rw.Accept(tt.version, extensions)
+			err := rw.WriteServerInfo(tt.version, extensions)
 
 			assert.NoError(t, err, "Accept should succeed for version %d", tt.version)
 			assert.Equal(t, tt.version, ss.Version, "version should be set correctly")
@@ -738,7 +738,7 @@ func TestResponseWriter_Accept_MultipleVersions(t *testing.T) {
 			ss := newSessionStream(mockStream, req)
 			rw := &responseWriter{sessionStream: ss}
 
-			err := rw.Accept(tt.version, NewParameters())
+			err := rw.WriteServerInfo(tt.version, NewParameters())
 
 			assert.NoError(t, err, "Accept should handle version %d", tt.version)
 			assert.Equal(t, tt.version, ss.Version, "version should be set correctly")
@@ -1043,7 +1043,7 @@ func TestResponseWriter_Accept_ErrorHandling(t *testing.T) {
 			ss := newSessionStream(mockStream, req)
 			rw := &responseWriter{sessionStream: ss}
 
-			err := rw.Accept(tt.version, tt.extensions)
+			err := rw.WriteServerInfo(tt.version, tt.extensions)
 
 			if tt.expectError {
 				assert.Error(t, err, "Accept should return error")
@@ -1100,7 +1100,7 @@ func TestResponseWriter_Accept_ParameterHandling(t *testing.T) {
 			rw := &responseWriter{sessionStream: ss}
 
 			extensions := tt.setupParam()
-			err := rw.Accept(Version(1), extensions)
+			err := rw.WriteServerInfo(Version(1), extensions)
 
 			assert.NoError(t, err, "Accept should handle parameters correctly")
 			assert.Equal(t, Version(1), ss.Version, "version should be set correctly")
@@ -1137,7 +1137,7 @@ func TestResponseWriter_Accept_BoundaryVersions(t *testing.T) {
 			ss := newSessionStream(mockStream, req)
 			rw := &responseWriter{sessionStream: ss}
 
-			err := rw.Accept(tt.version, NewParameters())
+			err := rw.WriteServerInfo(tt.version, NewParameters())
 
 			assert.NoError(t, err, "Accept should handle version %d", tt.version)
 			assert.Equal(t, tt.version, ss.Version, "version should be set correctly")
@@ -1217,7 +1217,7 @@ func TestResponseWriter_Accept_Race(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			errors[id] = rw.Accept(Version(id), NewParameters())
+			errors[id] = rw.WriteServerInfo(Version(id), NewParameters())
 		}(i)
 	}
 
@@ -1301,7 +1301,7 @@ func TestResponseWriter_SessionStream_Sharing(t *testing.T) {
 	extensions := NewParameters()
 	extensions.SetString(1, "shared_state_test")
 
-	err := rw.Accept(version, extensions)
+	err := rw.WriteServerInfo(version, extensions)
 	assert.NoError(t, err, "Accept should succeed")
 
 	// Verify that the sessionStream was updated
@@ -1403,7 +1403,7 @@ func TestResponseWriter_Accept_ParameterEdgeCases(t *testing.T) {
 			rw := &responseWriter{sessionStream: ss}
 
 			extensions := tt.setupExtensions()
-			err := rw.Accept(Version(1), extensions)
+			err := rw.WriteServerInfo(Version(1), extensions)
 
 			if tt.expectError {
 				assert.Error(t, err, "Accept should return error")

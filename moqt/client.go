@@ -331,9 +331,7 @@ func openSessionStream(conn quic.Connection, path string, extensions *Parameters
 
 	sessStr := newSessionStream(stream, req)
 
-	rsp := &response{
-		sessionStream: sessStr,
-	}
+	rsp := newResponse(sessStr)
 
 	err = rsp.AwaitAccepted()
 	if err != nil {

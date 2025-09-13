@@ -43,6 +43,12 @@ type sessionStream struct {
 	listenOnce sync.Once
 }
 
+func newResponse(sessStr *sessionStream) *response {
+	return &response{
+		sessionStream: sessStr,
+	}
+}
+
 type response struct {
 	*sessionStream
 	onceSetup sync.Once
@@ -67,13 +73,20 @@ func (r *response) AwaitAccepted() error {
 
 var _ SetupResponseWriter = (*responseWriter)(nil)
 
+func newResponseWriter(conn quic.Connection, sessStr *sessionStream) *responseWriter {
+	return &responseWriter{
+		sessionStream: sessStr,
+		conn:          conn,
+	}
+}
+
 type responseWriter struct {
 	*sessionStream
 	conn      quic.Connection
 	onceSetup sync.Once
 }
 
-func (w *responseWriter) Accept(v Version, extensions *Parameters) error {
+func (w *responseWriter) WriteServerInfo(v Version, extensions *Parameters) error {
 	var err error
 	w.onceSetup.Do(func() {
 		// TODO: Implement setup logic if needed

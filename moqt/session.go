@@ -418,7 +418,7 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 
 		annstr := newAnnouncementWriter(stream, prefix)
 
-		streamLogger.Debug("accepted announce stream")
+		streamLogger.Debug("accepted announce stream", "prefix", prefix)
 
 		// Serve the announcement stream
 		// This is a blocking call that will handle incoming announcements

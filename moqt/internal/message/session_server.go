@@ -30,6 +30,8 @@ func (ssm SessionServerMessage) Len() int {
 
 func (ssm SessionServerMessage) Encode(w io.Writer) error {
 	msgLen := ssm.Len()
+
+	// Allocate buffer for whole message
 	b := pool.Get(msgLen + VarintLen(uint64(msgLen)))
 	defer pool.Put(b)
 

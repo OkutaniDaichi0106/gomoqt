@@ -1,5 +1,5 @@
 baseURL: https://okutanidaichi0106.github.io/gomoqt/
-languageCode: en-us
+languageCode: en
 title: gomoqt
 description: Fast, simply designed MoQ implementation for building scalable real-time apps.
 
@@ -35,10 +35,22 @@ menu:
       url: "https://github.com/OkutaniDaichi0106/gomoqt"
       params:
         icon: github
-    - identifier: v0.10
-      name: Doc(v0.10)
-      parent: docs
-      url: https://gomoqt.github.io/gomoqt/versions/v0.10/
+    # - identifier: introduction
+    #   name: Introduction
+    #   parent: docs
+    #   url: /docs/
+    #   weight: 1
+    # - identifier: moq
+    #   name: MoQ
+    #   parent: docs
+    #   url: /docs/moq/
+    #   weight: 2
+    # - identifier: hang
+    #   name: Hang
+    #   parent: docs
+    #   url: /docs/hang/
+    #   weight: 3
+
   sidebar:
     - identifier: appendix
       name: Appendix
@@ -56,7 +68,7 @@ menu:
     - identifier: quic-video
       name: "moq.dev (MoQ Prototype)"
       weight: 4
-      url: https://quic.video/
+      url: https://moq.dev/
 
 # Logo and Title configuration
 params:
@@ -69,9 +81,9 @@ params:
     logo:
       path: /images/logo.png
       dark: /images/logo-dark.png
-      link: /
-      width: 30
-      height: 30
+      # link: /
+      # width: 30
+      # height: 30
     # Wider navbar to better align with the Hextra home layout
     width: wide
   blog:

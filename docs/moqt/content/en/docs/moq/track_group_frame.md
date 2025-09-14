@@ -35,6 +35,7 @@ func (*TrackWriter) WriteInfo(Info) error
 ```
 
 ### `moqt.TrackReader`
+
 The `moqt.TrackReader` is responsible for reading data from a track, receiving groups and frames in order, and managing any errors that occur during the process.
 
 ```go
@@ -53,11 +54,6 @@ func (*TrackReader) TrackConfig() *TrackConfig
 func (*TrackReader) Update(*TrackConfig) error
 func (TrackReader) UpdateSubscribe(*TrackConfig) error
 ```
-
-| Implementations       | Description                                 |
-|-----------------------|---------------------------------------------|
-| `moqt.TrackWriter`    | The TrackWriter handles lifecycle, group creation, metadata, and error termination for a track. |
-| `moqt.TrackReader`    | The TrackReader accepts groups and exposes their frames while managing subscription updates and closure. |
 
 ## Group
 

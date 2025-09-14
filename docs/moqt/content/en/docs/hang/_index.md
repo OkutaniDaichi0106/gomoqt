@@ -20,7 +20,6 @@ sequenceDiagram
 - **Room**: A collection of participants, each publishing under a common prefix.
 - **Participant**: A broadcaster that can produce any number of media tracks.
 - **Catalog**: A JSON document describing available media tracks, supporting live updates.
-- **Track/Group/Frame**: Hierarchical structure for media delivery, supporting out-of-order and in-order delivery as needed.
 
 ### Discovery
 Participants discover each other in a room using moq-lite's ANNOUNCE mechanism. Each participant publishes a broadcast with the room path as a prefix (e.g., `/room/alice.hang`). Discovery is dynamic, and presence is updated live.

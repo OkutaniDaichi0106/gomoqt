@@ -1,9 +1,20 @@
 ---
-title: WebTransport
-weight: 4
+title: "WebTransport"
+date: 2025-10-01
+authors:
+  - name: OkutaniDaichi0106
+    link: https://github.com/OkutaniDaichi0106
+    image: https://github.com/OkutaniDaichi0106.png
+tags:
+  - WebTransport
+  - Transport
+  - Protocol
+  - Web
 ---
 
 WebTransport is a protocol for secure, efficient, and bidirectional communication over the web using QUIC. It builds on QUIC APIs, allowing web browsers and applications to benefit from QUIC features and the Media over QUIC (MOQ) architecture.
+
+<!--more-->
 
 ## Features
 

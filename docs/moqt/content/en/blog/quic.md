@@ -1,10 +1,19 @@
-
 ---
-title: QUIC
-weight: 3
+title: "QUIC"
+date: 2025-10-01
+authors:
+  - name: OkutaniDaichi0106
+    link: https://github.com/OkutaniDaichi0106
+    image: https://github.com/OkutaniDaichi0106.png
+tags:
+  - QUIC
+  - Transport
+  - Protocol
 ---
 
 QUIC is a transport protocol for secure, efficient, and reliable communication over the internet. It supports multiplexed streams, strong security with mandatory TLS, and flexible connection management. QUIC is the foundation for protocols like Media over QUIC (MOQ) and WebTransport.
+
+<!--more-->
 
 ## Features
 

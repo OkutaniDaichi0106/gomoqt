@@ -5,9 +5,7 @@ weight: 2
 
 Server manages server-side operations for the MoQ protocol. It listens for incoming connections, establishes sessions, relays data, and manages their lifecycle.
 
-**Overview:**
-
-Here's a complete example of a MoQ relay server using WebTransport, based on the example in `examples/relay/server/main.go`:
+{{% details title="Overview" closed="true" %}}
 
 ```go
 func main() {
@@ -61,39 +59,17 @@ func main() {
     }
 }
 ```
+{{% /details %}}
 
 ## Initialize a Server
 
 There is no dedicated function (such as a constructor) for initializing a server.
 Users define the struct directly and assign values to its fields as needed.
 
-
-**Detailed Configuration Example:**
-
-For a production-ready server with TLS, QUIC settings, and logging:
-
 ```go
-server := moqt.Server{
-    Addr: "moqt.example.com:9000",
-    TLSConfig: &tls.Config{
-        NextProtos:         []string{"h3", "moq-00"},
-        Certificates:       []tls.Certificate{loadCert()},
-        InsecureSkipVerify: false, // Recommended for production
-    },
-    QUICConfig: &quic.Config{
-        Allow0RTT:       true,
-        EnableDatagrams: true,
-    },
-    Config: &moqt.Config{
-        CheckHTTPOrigin: func(r *http.Request) bool {
-            // Implement proper origin check for security
-            return r.Header.Get("Origin") == "https://trusted.example.com"
-        },
-    },
-    Logger: slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-        Level: slog.LevelInfo,
-    })),
-}
+    server := moqt.Server{
+        // Set server options here
+    }
 ```
 
 ### Configuration
@@ -108,7 +84,59 @@ The following table describes the public fields of the `Server` struct:
 | `Config`               | [`*moqt.Config`](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt/moqt#Config)                   | MOQ protocol configuration                  |
 | `Handler`              | [`moqt.Handler`](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt/moqt#Handler)                 | Set-up Request handler for routing                 |
 | `ListenFunc`           | [`quic.ListenAddrFunc`](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt/quic#ListenAddrFunc)   | Function to listen for QUIC connections     |
+| `NewWebtransportServerFunc` | `func(checkOrigin func(*http.Request) bool) webtransport.Server` | Function to create a new WebTransport server |
 | `Logger`               | [`*slog.Logger`](https://pkg.go.dev/log/slog#Logger)              | Logger for server events and errors         |
+
+
+{{< tabs items="Default QUIC, Custom QUIC" >}}
+{{< tab >}}
+**Using Default QUIC**
+
+`quic-go/quic-go` is used internally as the default QUIC implementation when relevant fields which is set for customization are not set or `nil`.
+
+{{<github-readme-stats user="quic-go" repo="quic-go" >}}
+
+{{< /tab >}}
+{{< tab >}}
+**Using Custom QUIC**
+
+To use a custom QUIC implementation, you need to provide your own implementation of the `gomoqt/quic` interfaces and `quic.ListenAddrFunc`. `(moqt.Server).ListenFunc` field is set, it is used to listen for incoming QUIC connections instead of the default implementation.
+
+```go {filename="gomoqt/moqt/server.go",base_url="https://github.com/OkutaniDaichi0106/gomoqt/tree/main/moqt/server.go"}
+type Server struct {
+    // ...
+	ListenFunc quic.ListenAddrFunc
+    // ...
+}
+```
+{{< /tab >}}
+
+{{< /tabs >}}
+
+{{< tabs items="Default WebTransport, Custom WebTransport" >}}
+{{< tab >}}
+**Using Default WebTransport**
+
+`quic-go/webtransport-go` is used internally as the default WebTransport implementation when relevant fields which is set for customization are not set or `nil`.
+
+{{<github-readme-stats user="quic-go" repo="webtransport-go" >}}
+
+{{< /tab >}}
+{{< tab >}}
+**Using Custom WebTransport**
+
+To use a custom WebTransport implementation, you need to provide your own implementation of the `webtransport.Server` interface and a function to create it. `(moqt.Server).NewWebtransportServerFunc` field is set, it is used to create a new WebTransport server instead of the default implementation.
+
+```go {filename="gomoqt/moqt/server.go",base_url="https://github.com/OkutaniDaichi0106/gomoqt/tree/main/moqt/server.go"}
+type Server struct {
+    // ...
+    NewWebtransportServerFunc func(checkOrigin func(*http.Request) bool) webtransport.Server
+    // ...
+}
+```
+{{< /tab >}}
+
+{{< /tabs >}}
 
 ## Listen and Accept Sessions
 
@@ -120,9 +148,7 @@ Before establishing sessions, servers have to handle incoming set-up requests fo
 ```go  {filename="gomoqt/moqt/server.go",base_url="https://github.com/OkutaniDaichi0106/gomoqt/tree/main/moqt/server.go"}
 type Server struct {
     // ...
-
     SetupHandler SetupHandler
-
     // ...
 }
 ```
@@ -196,15 +222,11 @@ For WebTransport-based MoQ sessions, integrate the server with an HTTP server us
 http.HandleFunc("/moq", func(w http.ResponseWriter, r *http.Request) {
     err := server.ServeWebTransport(w, r)
     if err != nil {
-        http.Error(w, "Failed to serve MoQ over WebTransport", http.StatusInternalServerError)
-        slog.Error("Failed to serve MoQ over WebTransport", "error", err)
+        // Handle error
     }
 
     // Fallback to another protocol if not WebTransport
 })
-
-// Start HTTP/3 server (requires HTTP/3 support)
-http.ListenAndServeTLS(":443", "cert.pem", "key.pem", nil)
 ```
 
 The `ServeWebTransport` method upgrades the HTTP/3 connection to WebTransport, accepts the session stream, and routes the setup request to the configured `SetupHandler`.

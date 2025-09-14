@@ -5,9 +5,15 @@ weight: 3
 
 MOQ Session is established when a client connects to a QUIC server and offers to set up a new session and the server accepts the request.
 
-## Methods
+## Implementation
+
+### `moq.Session`
 
 ```go
+type Session struct {
+    // contains filtered or unexported fields
+}
+
 func (s *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error)
 func (s *Session) Context() context.Context
 func (s *Session) SessionUpdated() <-chan struct{}

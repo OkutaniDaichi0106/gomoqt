@@ -1,5 +1,15 @@
 /* Custom overrides to make Hextra feature cards work without Tailwind arbitrary utilities. */
 
+/*
+  Primary color customization - uncomment and modify to change theme colors globally
+
+:root {
+  --primary-hue: 120deg;        // Green: 120deg, Blue: 240deg, Red: 0deg, Purple: 270deg, Orange: 30deg
+  --primary-saturation: 90%;    // Saturation (0-100%)
+  --primary-lightness: 50%;     // Lightness (0-100%)
+}
+*/
+
 /* Ensure image cards have a consistent size; don't change non-image cards */
 .hextra-feature-card {
   position: relative;
@@ -43,12 +53,22 @@ html.dark .hextra-feature-card.card--image img.card__img {
   opacity: 0.8;
 }
 
+/* --- Hero button color variants ---------------------------------------- */
+/*
+  Usage example:
+  <div class="hero-btn--green">{{<hextra/hero-button text="Get Started" link="docs">}}</div>
+*/
+
 /* --- Hero button: bright green variant ------------------------------- */
-.hero-btn--green a.hx-bg-primary-600,
-.hero-btn--green a.dark\:hx-bg-primary-600 {
+.hero-btn--green a,
+.hero-btn--green a.hx\:bg-primary-600,
+.hero-btn--green a.hx\:dark\:bg-primary-600,
+html.dark .hero-btn--green a {
   background-color: #0ebd6b !important; /* emerald-500 */
 }
-.hero-btn--green a:hover {
+.hero-btn--green a:hover,
+.hero-btn--green a.hx\:hover\:bg-primary-700:hover,
+html.dark .hero-btn--green a:hover {
   background-color: #05965e !important; /* emerald-600 */
 }
 .hero-btn--green a:focus {

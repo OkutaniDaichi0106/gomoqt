@@ -498,6 +498,8 @@ func TestClient_DialWebTransport_CustomDialSuccess(t *testing.T) {
 	mockConn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
 	mockConn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
 	mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	mockConn.On("LocalAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8081})
+	mockConn.On("ConnectionState").Return(quic.ConnectionState{})
 	mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
 
 	c.DialWebTransportFunc = func(ctx context.Context, addr string, header http.Header) (*http.Response, quic.Connection, error) {
@@ -562,6 +564,8 @@ func TestClient_DialQUIC_CustomDialSuccess(t *testing.T) {
 	mockConn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
 	mockConn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
 	mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	mockConn.On("LocalAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8081})
+	mockConn.On("ConnectionState").Return(quic.ConnectionState{})
 	mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
 
 	c.DialQUICFunc = func(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (quic.Connection, error) {
@@ -781,6 +785,8 @@ func TestClient_Dial_URLSchemes(t *testing.T) {
 				mockConn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
 				mockConn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
 				mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+				mockConn.On("LocalAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8081})
+				mockConn.On("ConnectionState").Return(quic.ConnectionState{})
 				return &http.Response{}, mockConn, nil
 			}
 
@@ -806,6 +812,8 @@ func TestClient_Dial_URLSchemes(t *testing.T) {
 				mockConn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
 				mockConn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
 				mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+				mockConn.On("LocalAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8081})
+				mockConn.On("ConnectionState").Return(quic.ConnectionState{})
 				return mockConn, nil
 			}
 

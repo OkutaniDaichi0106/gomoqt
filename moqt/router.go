@@ -96,7 +96,8 @@ func (r *SetupRequest) Context() context.Context {
 }
 
 type SetupResponseWriter interface {
-	WriteServerInfo(selected Version, extensions *Parameters) error
+	SelectVersion(v Version) error
+	SetExtensions(extensions *Parameters)
 	Reject(code SessionErrorCode) error
 }
 

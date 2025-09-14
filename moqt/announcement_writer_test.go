@@ -272,8 +272,31 @@ func TestAnnouncementWriter_Init_DeadlockIssue(t *testing.T) {
 	err := sas.init(map[*Announcement]struct{}{ann1: {}, ann2: {}})
 	assert.NoError(t, err)
 
-	// Allow time for background processing of OnEnd callbacks
-	time.Sleep(50 * time.Millisecond)
+	// Wait for background processing of OnEnd callbacks to complete
+	{
+		deadline := time.Now().Add(200 * time.Millisecond)
+		for time.Now().Before(deadline) {
+			sas.mu.RLock()
+			n := 0
+			if sas.actives != nil {
+				n = len(sas.actives)
+			}
+			sas.mu.RUnlock()
+			if n == 1 {
+				break
+			}
+			time.Sleep(1 * time.Millisecond)
+		}
+		sas.mu.RLock()
+		n := 0
+		if sas.actives != nil {
+			n = len(sas.actives)
+		}
+		sas.mu.RUnlock()
+		if n != 1 {
+			t.Fatalf("timeout waiting for %d active announcements", 1)
+		}
+	}
 
 	assert.Len(t, sas.actives, 1)
 	assert.Contains(t, sas.actives, "stream1")
@@ -551,8 +574,31 @@ func TestAnnouncementWriter_AnnouncementEnd_BackgroundProcessing(t *testing.T) {
 
 	end()
 
-	// Allow time for background goroutine to process
-	time.Sleep(100 * time.Millisecond)
+	// Wait for background goroutine to process and remove the active announcement
+	{
+		deadline := time.Now().Add(200 * time.Millisecond)
+		for time.Now().Before(deadline) {
+			sas.mu.RLock()
+			n := 0
+			if sas.actives != nil {
+				n = len(sas.actives)
+			}
+			sas.mu.RUnlock()
+			if n == 0 {
+				break
+			}
+			time.Sleep(1 * time.Millisecond)
+		}
+		sas.mu.RLock()
+		n := 0
+		if sas.actives != nil {
+			n = len(sas.actives)
+		}
+		sas.mu.RUnlock()
+		if n != 0 {
+			t.Fatalf("timeout waiting for %d active announcements", 0)
+		}
+	}
 
 	assert.Len(t, sas.actives, 0)
 
@@ -668,8 +714,31 @@ func TestAnnouncementWriter_CleanupResourceLeaks(t *testing.T) {
 		end()
 	}
 
-	// Allow time for cleanup
-	time.Sleep(100 * time.Millisecond)
+	// Wait for cleanup to finish
+	{
+		deadline := time.Now().Add(200 * time.Millisecond)
+		for time.Now().Before(deadline) {
+			sas.mu.RLock()
+			n := 0
+			if sas.actives != nil {
+				n = len(sas.actives)
+			}
+			sas.mu.RUnlock()
+			if n == 0 {
+				break
+			}
+			time.Sleep(1 * time.Millisecond)
+		}
+		sas.mu.RLock()
+		n := 0
+		if sas.actives != nil {
+			n = len(sas.actives)
+		}
+		sas.mu.RUnlock()
+		if n != 0 {
+			t.Fatalf("timeout waiting for %d active announcements", 0)
+		}
+	}
 	assert.Len(t, sas.actives, 0)
 
 	mockStream.AssertExpectations(t)
@@ -700,10 +769,52 @@ func TestAnnouncementWriter_PartialCleanup(t *testing.T) {
 	// End only some announcements
 	end2()
 
-	// Allow time for background processing
-	time.Sleep(100 * time.Millisecond)
+	// Wait for background processing to handle ended announcements
+	// Inline: wait until sas.actives no longer contains "stream2"
+	{
+		deadline := time.Now().Add(200 * time.Millisecond)
+		for time.Now().Before(deadline) {
+			sas.mu.RLock()
+			_, ok := sas.actives["stream2"]
+			sas.mu.RUnlock()
+			if !ok {
+				break
+			}
+			time.Sleep(1 * time.Millisecond)
+		}
+		sas.mu.RLock()
+		if _, ok := sas.actives["stream2"]; ok {
+			sas.mu.RUnlock()
+			t.Fatalf("timeout waiting for active announcements to not contain %s", "stream2")
+		}
+		sas.mu.RUnlock()
+	}
 
-	assert.Len(t, sas.actives, 2)
+	// Wait for background processing to reach exactly 2 active announcements
+	{
+		deadline := time.Now().Add(200 * time.Millisecond)
+		for time.Now().Before(deadline) {
+			sas.mu.RLock()
+			n := 0
+			if sas.actives != nil {
+				n = len(sas.actives)
+			}
+			sas.mu.RUnlock()
+			if n == 2 {
+				break
+			}
+			time.Sleep(1 * time.Millisecond)
+		}
+		sas.mu.RLock()
+		n := 0
+		if sas.actives != nil {
+			n = len(sas.actives)
+		}
+		sas.mu.RUnlock()
+		if n != 2 {
+			t.Fatalf("timeout waiting for %d active announcements", 2)
+		}
+	}
 	assert.Contains(t, sas.actives, "stream1")
 	assert.NotContains(t, sas.actives, "stream2")
 	assert.Contains(t, sas.actives, "stream3")
@@ -817,8 +928,31 @@ func TestAnnouncementWriter_ConcurrentAccess_SameSuffix_DeadlockRisk(t *testing.
 	<-done
 	<-done
 
-	// Allow time for background processing
-	time.Sleep(50 * time.Millisecond)
+	// Wait for background processing to converge
+	{
+		deadline := time.Now().Add(200 * time.Millisecond)
+		for time.Now().Before(deadline) {
+			sas.mu.RLock()
+			n := 0
+			if sas.actives != nil {
+				n = len(sas.actives)
+			}
+			sas.mu.RUnlock()
+			if n == 1 {
+				break
+			}
+			time.Sleep(1 * time.Millisecond)
+		}
+		sas.mu.RLock()
+		n := 0
+		if sas.actives != nil {
+			n = len(sas.actives)
+		}
+		sas.mu.RUnlock()
+		if n != 1 {
+			t.Fatalf("timeout waiting for %d active announcements", 1)
+		}
+	}
 
 	close(errors)
 	for err := range errors {
@@ -918,8 +1052,32 @@ func TestAnnouncementWriter_StressTest_HeavyConcurrentAccess(t *testing.T) {
 		<-done
 	}
 
-	// Allow time for background processing
-	time.Sleep(100 * time.Millisecond)
+	// Wait for background processing to start removing finished announcements
+	// Inline: wait until sas has at least 1 active announcement
+	{
+		deadline := time.Now().Add(200 * time.Millisecond)
+		for time.Now().Before(deadline) {
+			sas.mu.RLock()
+			n := 0
+			if sas.actives != nil {
+				n = len(sas.actives)
+			}
+			sas.mu.RUnlock()
+			if n >= 1 {
+				break
+			}
+			time.Sleep(1 * time.Millisecond)
+		}
+		sas.mu.RLock()
+		n := 0
+		if sas.actives != nil {
+			n = len(sas.actives)
+		}
+		sas.mu.RUnlock()
+		if n < 1 {
+			t.Fatalf("timeout waiting for at least %d active announcements", 1)
+		}
+	}
 
 	close(errors)
 	for err := range errors {

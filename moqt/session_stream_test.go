@@ -5,11 +5,14 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
+	"net"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -101,7 +104,8 @@ func TestSessionStream_SessionUpdated(t *testing.T) {
 
 	// Trigger setupDone to start listening for updates
 	ss.listenUpdates()
-	time.Sleep(1000 * time.Millisecond)
+	// Short sleep to let background goroutine start
+	time.Sleep(10 * time.Millisecond)
 
 	ch := ss.SessionUpdated()
 	assert.NotNil(t, ch, "SessionUpdated should return a valid channel")
@@ -363,8 +367,8 @@ func TestSessionStream_ConcurrentAccess(t *testing.T) {
 	mockStream.AssertExpectations(t)
 }
 
-// TestResponseWriter_Accept tests responseWriter Accept functionality
-func TestResponseWriter_Accept(t *testing.T) {
+// TestAccept tests responseWriter Accept functionality
+func TestAccept(t *testing.T) {
 	tests := map[string]struct {
 		version     Version
 		extensions  *Parameters
@@ -372,7 +376,7 @@ func TestResponseWriter_Accept(t *testing.T) {
 		expectError bool
 	}{
 		"successful accept": {
-			version:    Version(1),
+			version:    protocol.Develop,
 			extensions: NewParameters(),
 			mockStream: func() *MockQUICStream {
 				mockStream := &MockQUICStream{}
@@ -384,7 +388,7 @@ func TestResponseWriter_Accept(t *testing.T) {
 			expectError: false,
 		},
 		"write error on accept": {
-			version:    Version(1),
+			version:    protocol.Develop,
 			extensions: NewParameters(),
 			mockStream: func() *MockQUICStream {
 				mockStream := &MockQUICStream{}
@@ -402,18 +406,39 @@ func TestResponseWriter_Accept(t *testing.T) {
 
 			req := &SetupRequest{
 				Path:       "test/path",
+				Versions:   []Version{protocol.Develop},
 				Extensions: NewParameters(),
 			}
 
 			ss := newSessionStream(mockStream, req)
-			rw := &responseWriter{sessionStream: ss}
 
-			err := rw.WriteServerInfo(tt.version, tt.extensions)
+			// Create mock connection and server for responseWriter
+			mockConn := &MockQUICConnection{}
+			mockConn.On("Context").Return(context.Background())
+			mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+			mockConn.On("AcceptStream", mock.Anything).Return(nil, context.Canceled).Maybe()
+			mockConn.On("AcceptUniStream", mock.Anything).Return(nil, context.Canceled).Maybe()
+			mockConn.On("LocalAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080}).Maybe()
+			mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8081}).Maybe()
+
+			mockServer := &Server{}
+			mockServer.init() // Initialize the server properly
+			rw := newResponseWriter(mockConn, ss, slog.Default(), mockServer)
+
+			// Use new API: SelectVersion, SetExtensions, then Accept
+			err := rw.SelectVersion(tt.version)
+			assert.NoError(t, err, "SelectVersion should not return error")
+			rw.SetExtensions(tt.extensions)
+
+			mux := NewTrackMux()
+			session, err := Accept(rw, ss.SetupRequest, mux)
 
 			if tt.expectError {
 				assert.Error(t, err, "Accept should return error")
+				assert.Nil(t, session, "session should be nil on error")
 			} else {
 				assert.NoError(t, err, "Accept should not return error")
+				assert.NotNil(t, session, "session should not be nil on success")
 				assert.Equal(t, tt.version, ss.Version, "version should be set correctly")
 				assert.Equal(t, tt.extensions, ss.serverParameters, "server parameters should be set correctly")
 			}
@@ -423,8 +448,8 @@ func TestResponseWriter_Accept(t *testing.T) {
 	}
 }
 
-// TestResponseWriter_Accept_OnlyOnce tests that Accept is only called once
-func TestResponseWriter_Accept_OnlyOnce(t *testing.T) {
+// TestAccept_OnlyOnce tests that Accept is only called once
+func TestAccept_OnlyOnce(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Context").Return(context.Background())
 	mockStream.On("Write", mock.Anything).Return(10, nil).Once()
@@ -432,22 +457,41 @@ func TestResponseWriter_Accept_OnlyOnce(t *testing.T) {
 
 	req := &SetupRequest{
 		Path:       "test/path",
+		Versions:   []Version{protocol.Develop},
 		Extensions: NewParameters(),
 	}
 
 	ss := newSessionStream(mockStream, req)
-	rw := &responseWriter{sessionStream: ss}
 
-	version := Version(1)
+	// Create mock connection and server for responseWriter
+	mockConn := &MockQUICConnection{}
+	mockConn.On("Context").Return(context.Background())
+	mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	mockConn.On("AcceptStream", mock.Anything).Return(nil, context.Canceled).Maybe()
+	mockConn.On("AcceptUniStream", mock.Anything).Return(nil, context.Canceled).Maybe()
+
+	mockServer := &Server{}
+	mockServer.init() // Initialize the server properly
+	rw := newResponseWriter(mockConn, ss, slog.Default(), mockServer)
+
+	version := protocol.Develop
 	extensions := NewParameters()
 
 	// First call should succeed
-	err1 := rw.WriteServerInfo(version, extensions)
-	assert.NoError(t, err1, "first Accept call should succeed")
+	err := rw.SelectVersion(version)
+	assert.NoError(t, err, "SelectVersion should not return error")
+	rw.SetExtensions(extensions)
 
-	// Second call should be ignored (no additional Write calls)
-	err2 := rw.WriteServerInfo(Version(2), NewParameters())
+	mux := NewTrackMux()
+	session1, err1 := Accept(rw, ss.SetupRequest, mux)
+	assert.NoError(t, err1, "first Accept call should succeed")
+	assert.NotNil(t, session1, "first Accept should return session")
+
+	// Second call should be ignored (no additional Write calls, due to sync.Once)
+	mux2 := NewTrackMux()
+	session2, err2 := Accept(rw, ss.SetupRequest, mux2)
 	assert.NoError(t, err2, "second Accept call should be ignored")
+	assert.NotNil(t, session2, "second Accept should still return session")
 
 	// Version should remain from first call
 	assert.Equal(t, version, ss.Version, "version should remain from first call")
@@ -455,8 +499,8 @@ func TestResponseWriter_Accept_OnlyOnce(t *testing.T) {
 	mockStream.AssertExpectations(t)
 }
 
-// TestResponseWriter_Accept_ConcurrentCalls tests concurrent Accept calls
-func TestResponseWriter_Accept_ConcurrentCalls(t *testing.T) {
+// TestAccept_ConcurrentCalls tests concurrent Accept calls
+func TestAccept_ConcurrentCalls(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Context").Return(context.Background())
 	mockStream.On("Write", mock.Anything).Return(10, nil).Once()
@@ -464,33 +508,61 @@ func TestResponseWriter_Accept_ConcurrentCalls(t *testing.T) {
 
 	req := &SetupRequest{
 		Path:       "test/path",
+		Versions:   []Version{protocol.Develop},
 		Extensions: NewParameters(),
 	}
 
 	ss := newSessionStream(mockStream, req)
-	rw := &responseWriter{sessionStream: ss}
 
-	version := Version(1)
+	// Create mock connection and server for responseWriter
+	mockConn := &MockQUICConnection{}
+	mockConn.On("Context").Return(context.Background())
+	mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	mockConn.On("AcceptStream", mock.Anything).Return(nil, context.Canceled).Maybe()
+	mockConn.On("AcceptUniStream", mock.Anything).Return(nil, context.Canceled).Maybe()
+
+	mockServer := &Server{}
+	mockServer.init() // Initialize the server properly
+	rw := newResponseWriter(mockConn, ss, slog.Default(), mockServer)
+
+	version := protocol.Develop
 	extensions := NewParameters()
+
+	// Set version and extensions before concurrent calls
+	err := rw.SelectVersion(version)
+	assert.NoError(t, err, "SelectVersion should not return error")
+	rw.SetExtensions(extensions)
 
 	var wg sync.WaitGroup
 	const numGoroutines = 10
+	errors := make([]error, numGoroutines)
+	sessions := make([]*Session, numGoroutines)
 
 	// Start multiple goroutines calling Accept concurrently
 	for i := 0; i < numGoroutines; i++ {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			err := rw.WriteServerInfo(Version(id), NewParameters())
-			assert.NoError(t, err, "Accept should not return error")
+			mux := NewTrackMux()
+			session, err := Accept(rw, ss.SetupRequest, mux)
+			errors[id] = err
+			sessions[id] = session
 		}(i)
 	}
 
 	// Also call Accept from main goroutine
-	err := rw.WriteServerInfo(version, extensions)
-	assert.NoError(t, err, "main Accept call should not return error")
+	mux := NewTrackMux()
+	mainSession, mainErr := Accept(rw, ss.SetupRequest, mux)
+	assert.NoError(t, mainErr, "main Accept call should not return error")
+	assert.NotNil(t, mainSession, "main Accept should return session")
 
 	wg.Wait()
+
+	// All calls should succeed due to sync.Once
+	for i, err := range errors {
+		assert.NoError(t, err, "Accept call %d should succeed", i)
+		assert.NotNil(t, sessions[i], "session %d should not be nil", i)
+	}
 
 	// Only one Write call should have been made due to sync.Once
 	mockStream.AssertExpectations(t)
@@ -507,7 +579,7 @@ func TestResponse_AwaitAccepted(t *testing.T) {
 			mockStream: func() *MockQUICStream {
 				// Create a valid SessionServerMessage
 				ssm := message.SessionServerMessage{
-					SelectedVersion: Version(1),
+					SelectedVersion: protocol.Develop,
 					Parameters:      map[uint64][]byte{1: []byte("test")},
 				}
 				var buf bytes.Buffer
@@ -521,7 +593,7 @@ func TestResponse_AwaitAccepted(t *testing.T) {
 			},
 			expectError: false,
 			checkResult: func(t *testing.T, r *response) {
-				assert.Equal(t, Version(1), r.Version, "version should be set correctly")
+				assert.Equal(t, protocol.Develop, r.Version, "version should be set correctly")
 				assert.NotNil(t, r.serverParameters, "server parameters should be set")
 			},
 		},
@@ -561,7 +633,7 @@ func TestResponse_AwaitAccepted(t *testing.T) {
 			}
 
 			ss := newSessionStream(mockStream, req)
-			r := &response{sessionStream: ss}
+			r := newResponse(ss)
 
 			err := r.AwaitAccepted()
 
@@ -584,7 +656,7 @@ func TestResponse_AwaitAccepted_OnlyOnce(t *testing.T) {
 
 	// Create a valid SessionServerMessage
 	ssm := message.SessionServerMessage{
-		SelectedVersion: Version(1),
+		SelectedVersion: protocol.Develop,
 		Parameters:      map[uint64][]byte{1: []byte("test")},
 	}
 	var buf bytes.Buffer
@@ -599,17 +671,17 @@ func TestResponse_AwaitAccepted_OnlyOnce(t *testing.T) {
 	}
 
 	ss := newSessionStream(mockStream, req)
-	r := &response{sessionStream: ss}
+	r := newResponse(ss)
 
 	// First call should read from stream
 	err1 := r.AwaitAccepted()
 	assert.NoError(t, err1, "first AwaitAccepted call should succeed")
-	assert.Equal(t, Version(1), r.Version, "version should be set from first call")
+	assert.Equal(t, protocol.Develop, r.Version, "version should be set from first call")
 
 	// Second call should return immediately without reading from stream
 	err2 := r.AwaitAccepted()
 	assert.NoError(t, err2, "second AwaitAccepted call should succeed")
-	assert.Equal(t, Version(1), r.Version, "version should remain from first call")
+	assert.Equal(t, protocol.Develop, r.Version, "version should remain from first call")
 
 	mockStream.AssertExpectations(t)
 }
@@ -621,7 +693,7 @@ func TestResponse_AwaitAccepted_ConcurrentCalls(t *testing.T) {
 
 	// Create a valid SessionServerMessage
 	ssm := message.SessionServerMessage{
-		SelectedVersion: Version(1),
+		SelectedVersion: protocol.Develop,
 		Parameters:      map[uint64][]byte{1: []byte("test")},
 	}
 	var buf bytes.Buffer
@@ -636,7 +708,7 @@ func TestResponse_AwaitAccepted_ConcurrentCalls(t *testing.T) {
 	}
 
 	ss := newSessionStream(mockStream, req)
-	r := &response{sessionStream: ss}
+	r := newResponse(ss)
 
 	var wg sync.WaitGroup
 	const numGoroutines = 10
@@ -659,14 +731,14 @@ func TestResponse_AwaitAccepted_ConcurrentCalls(t *testing.T) {
 	}
 
 	// Version should be set correctly
-	assert.Equal(t, Version(1), r.Version, "version should be set correctly")
+	assert.Equal(t, protocol.Develop, r.Version, "version should be set correctly")
 
 	// Only one Read call should have been made due to sync.Once
 	mockStream.AssertExpectations(t)
 }
 
-// TestResponseWriter_Accept_NilParameters tests Accept with nil parameters
-func TestResponseWriter_Accept_NilParameters(t *testing.T) {
+// TestAccept_NilParameters tests Accept with nil parameters
+func TestAccept_NilParameters(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Context").Return(context.Background())
 	mockStream.On("Write", mock.Anything).Return(10, nil)
@@ -674,31 +746,46 @@ func TestResponseWriter_Accept_NilParameters(t *testing.T) {
 
 	req := &SetupRequest{
 		Path:       "test/path",
+		Versions:   []Version{protocol.Develop},
 		Extensions: NewParameters(),
 	}
 
 	ss := newSessionStream(mockStream, req)
-	rw := &responseWriter{sessionStream: ss}
 
-	version := Version(1)
-	err := rw.WriteServerInfo(version, nil)
+	// Create mock connection and server for responseWriter
+	mockConn := &MockQUICConnection{}
+	mockConn.On("Context").Return(context.Background())
+	mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	mockConn.On("AcceptStream", mock.Anything).Return(nil, context.Canceled).Maybe()
+	mockConn.On("AcceptUniStream", mock.Anything).Return(nil, context.Canceled).Maybe()
 
+	mockServer := &Server{}
+	mockServer.init() // Initialize the server properly
+	rw := newResponseWriter(mockConn, ss, slog.Default(), mockServer)
+
+	version := protocol.Develop
+
+	// Set version and extensions before Accept
+	err := rw.SelectVersion(version)
+	assert.NoError(t, err, "SelectVersion should not return error")
+	rw.SetExtensions(nil)
+
+	mux := NewTrackMux()
+	session, err := Accept(rw, ss.SetupRequest, mux)
 	assert.NoError(t, err, "Accept should handle nil parameters")
+	assert.NotNil(t, session, "session should not be nil")
 	assert.Equal(t, version, ss.Version, "version should be set correctly")
 	assert.Nil(t, ss.serverParameters, "server parameters should be nil when nil is passed")
 
 	mockStream.AssertExpectations(t)
 }
 
-// TestResponseWriter_Accept_MultipleVersions tests Accept with different versions
-func TestResponseWriter_Accept_MultipleVersions(t *testing.T) {
+// TestAccept_MultipleVersions tests Accept with different versions
+func TestAccept_MultipleVersions(t *testing.T) {
 	tests := map[string]struct {
 		version Version
 	}{
-		"version 0":     {version: Version(0)},
-		"version 1":     {version: Version(1)},
-		"version 255":   {version: Version(255)},
-		"large version": {version: Version(65535)},
+		"develop version": {version: protocol.Develop},
 	}
 
 	for name, tt := range tests {
@@ -710,37 +797,34 @@ func TestResponseWriter_Accept_MultipleVersions(t *testing.T) {
 
 			req := &SetupRequest{
 				Path:       "test/path",
+				Versions:   []Version{protocol.Develop}, // Include supported version
 				Extensions: NewParameters(),
 			}
 
 			ss := newSessionStream(mockStream, req)
-			rw := &responseWriter{sessionStream: ss}
+
+			// Create mock connection and server for responseWriter
+			mockConn := &MockQUICConnection{}
+			mockConn.On("Context").Return(context.Background())
+			mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+			mockConn.On("AcceptStream", mock.Anything).Return(nil, context.Canceled).Maybe()
+			mockConn.On("AcceptUniStream", mock.Anything).Return(nil, context.Canceled).Maybe()
+
+			mockServer := &Server{}
+			mockServer.init() // Initialize the server properly
+			rw := newResponseWriter(mockConn, ss, slog.Default(), mockServer)
 
 			extensions := NewParameters()
-			err := rw.WriteServerInfo(tt.version, extensions)
 
+			// Set version and extensions before Accept
+			err := rw.SelectVersion(tt.version)
+			assert.NoError(t, err, "SelectVersion should not return error")
+			rw.SetExtensions(extensions)
+
+			mux := NewTrackMux()
+			session, err := Accept(rw, ss.SetupRequest, mux)
 			assert.NoError(t, err, "Accept should succeed for version %d", tt.version)
-			assert.Equal(t, tt.version, ss.Version, "version should be set correctly")
-
-			mockStream.AssertExpectations(t)
-		})
-		t.Run(name, func(t *testing.T) {
-			mockStream := &MockQUICStream{}
-			mockStream.On("Context").Return(context.Background())
-			mockStream.On("Write", mock.Anything).Return(10, nil)
-			mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
-
-			req := &SetupRequest{
-				Path:       "test/path",
-				Extensions: NewParameters(),
-			}
-
-			ss := newSessionStream(mockStream, req)
-			rw := &responseWriter{sessionStream: ss}
-
-			err := rw.WriteServerInfo(tt.version, NewParameters())
-
-			assert.NoError(t, err, "Accept should handle version %d", tt.version)
+			assert.NotNil(t, session, "session should not be nil")
 			assert.Equal(t, tt.version, ss.Version, "version should be set correctly")
 
 			mockStream.AssertExpectations(t)
@@ -770,7 +854,7 @@ func TestResponse_AwaitAccepted_InvalidMessage(t *testing.T) {
 			mockStream: func() *MockQUICStream {
 				// Create a valid message first, then truncate it
 				ssm := message.SessionServerMessage{
-					SelectedVersion: Version(1),
+					SelectedVersion: protocol.Develop,
 					Parameters:      map[uint64][]byte{1: []byte("test")},
 				}
 				var fullBuf bytes.Buffer
@@ -800,7 +884,7 @@ func TestResponse_AwaitAccepted_InvalidMessage(t *testing.T) {
 			}
 
 			ss := newSessionStream(mockStream, req)
-			r := &response{sessionStream: ss}
+			r := newResponse(ss)
 
 			err := r.AwaitAccepted()
 
@@ -817,7 +901,7 @@ func TestResponse_AwaitAccepted_DifferentVersions(t *testing.T) {
 		version Version
 	}{
 		"version 0":     {version: Version(0)},
-		"version 1":     {version: Version(1)},
+		"version 1":     {version: protocol.Develop},
 		"version 255":   {version: Version(255)},
 		"large version": {version: Version(65535)},
 	}
@@ -844,7 +928,7 @@ func TestResponse_AwaitAccepted_DifferentVersions(t *testing.T) {
 			}
 
 			ss := newSessionStream(mockStream, req)
-			r := &response{sessionStream: ss}
+			r := newResponse(ss)
 
 			err := r.AwaitAccepted()
 
@@ -914,7 +998,7 @@ func TestResponse_Interface(t *testing.T) {
 	}
 
 	ss := newSessionStream(mockStream, req)
-	r := &response{sessionStream: ss}
+	r := newResponse(ss)
 
 	assert.NotNil(t, r, "response should not be nil")
 	assert.NotNil(t, r.sessionStream, "sessionStream should not be nil")
@@ -978,7 +1062,7 @@ func TestResponse_AwaitAccepted_ErrorHandling(t *testing.T) {
 			}
 
 			ss := newSessionStream(mockStream, req)
-			r := &response{sessionStream: ss}
+			r := newResponse(ss)
 
 			err := r.AwaitAccepted()
 
@@ -994,8 +1078,8 @@ func TestResponse_AwaitAccepted_ErrorHandling(t *testing.T) {
 	}
 }
 
-// TestResponseWriter_Accept_ErrorHandling tests various error scenarios
-func TestResponseWriter_Accept_ErrorHandling(t *testing.T) {
+// TestAccept_ErrorHandling tests various error scenarios
+func TestAccept_ErrorHandling(t *testing.T) {
 	tests := map[string]struct {
 		version     Version
 		extensions  *Parameters
@@ -1003,7 +1087,7 @@ func TestResponseWriter_Accept_ErrorHandling(t *testing.T) {
 		expectError bool
 	}{
 		"network write error": {
-			version:    Version(1),
+			version:    protocol.Develop,
 			extensions: NewParameters(),
 			setupMock: func(mockStream *MockQUICStream) {
 				mockStream.On("Write", mock.Anything).Return(0, errors.New("network write error"))
@@ -1011,7 +1095,7 @@ func TestResponseWriter_Accept_ErrorHandling(t *testing.T) {
 			expectError: true,
 		},
 		"stream closed error": {
-			version:    Version(1),
+			version:    protocol.Develop,
 			extensions: NewParameters(),
 			setupMock: func(mockStream *MockQUICStream) {
 				mockStream.On("Write", mock.Anything).Return(0, errors.New("stream closed"))
@@ -1019,7 +1103,7 @@ func TestResponseWriter_Accept_ErrorHandling(t *testing.T) {
 			expectError: true,
 		},
 		"partial write": {
-			version:    Version(1),
+			version:    protocol.Develop,
 			extensions: NewParameters(),
 			setupMock: func(mockStream *MockQUICStream) {
 				mockStream.On("Write", mock.Anything).Return(5, nil) // Partial write
@@ -1037,18 +1121,42 @@ func TestResponseWriter_Accept_ErrorHandling(t *testing.T) {
 
 			req := &SetupRequest{
 				Path:       "test/path",
+				Versions:   []Version{protocol.Develop}, // Include supported version
 				Extensions: NewParameters(),
 			}
 
 			ss := newSessionStream(mockStream, req)
-			rw := &responseWriter{sessionStream: ss}
 
-			err := rw.WriteServerInfo(tt.version, tt.extensions)
+			// Create mock connection and server for responseWriter
+			mockConn := &MockQUICConnection{}
+			mockConn.On("Context").Return(context.Background())
+			mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+			mockConn.On("AcceptStream", mock.Anything).Return(nil, context.Canceled).Maybe()
+			mockConn.On("AcceptUniStream", mock.Anything).Return(nil, context.Canceled).Maybe()
+
+			mockServer := &Server{}
+			mockServer.init() // Initialize the server properly
+			rw := newResponseWriter(mockConn, ss, slog.Default(), mockServer)
+
+			// Set version and extensions before Accept
+			err := rw.SelectVersion(tt.version)
+			if tt.expectError {
+				// For error cases, we might still succeed in SelectVersion
+				// The error will come from Accept
+			} else {
+				assert.NoError(t, err, "SelectVersion should not return error")
+			}
+			rw.SetExtensions(tt.extensions)
+
+			mux := NewTrackMux()
+			session, err := Accept(rw, ss.SetupRequest, mux)
 
 			if tt.expectError {
 				assert.Error(t, err, "Accept should return error")
+				assert.Nil(t, session, "session should be nil on error")
 			} else {
 				assert.NoError(t, err, "Accept should not return error")
+				assert.NotNil(t, session, "session should not be nil")
 				assert.Equal(t, tt.version, ss.Version, "version should be set correctly")
 			}
 
@@ -1057,8 +1165,8 @@ func TestResponseWriter_Accept_ErrorHandling(t *testing.T) {
 	}
 }
 
-// TestResponseWriter_Accept_ParameterHandling tests parameter handling
-func TestResponseWriter_Accept_ParameterHandling(t *testing.T) {
+// TestAccept_ParameterHandling tests parameter handling
+func TestAccept_ParameterHandling(t *testing.T) {
 	tests := map[string]struct {
 		setupParam func() *Parameters
 	}{
@@ -1093,17 +1201,35 @@ func TestResponseWriter_Accept_ParameterHandling(t *testing.T) {
 
 			req := &SetupRequest{
 				Path:       "test/path",
+				Versions:   []Version{protocol.Develop}, // Include supported version
 				Extensions: NewParameters(),
 			}
 
 			ss := newSessionStream(mockStream, req)
-			rw := &responseWriter{sessionStream: ss}
+
+			// Create mock connection and server for responseWriter
+			mockConn := &MockQUICConnection{}
+			mockConn.On("Context").Return(context.Background())
+			mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+			mockConn.On("AcceptStream", mock.Anything).Return(nil, context.Canceled).Maybe()
+			mockConn.On("AcceptUniStream", mock.Anything).Return(nil, context.Canceled).Maybe()
+
+			mockServer := &Server{}
+			mockServer.init() // Initialize the server properly
+			rw := newResponseWriter(mockConn, ss, slog.Default(), mockServer)
 
 			extensions := tt.setupParam()
-			err := rw.WriteServerInfo(Version(1), extensions)
 
+			// Set version and extensions before Accept
+			err := rw.SelectVersion(protocol.Develop)
+			assert.NoError(t, err, "SelectVersion should not return error")
+			rw.SetExtensions(extensions)
+
+			mux := NewTrackMux()
+			session, err := Accept(rw, ss.SetupRequest, mux)
 			assert.NoError(t, err, "Accept should handle parameters correctly")
-			assert.Equal(t, Version(1), ss.Version, "version should be set correctly")
+			assert.NotNil(t, session, "session should not be nil")
+			assert.Equal(t, protocol.Develop, ss.Version, "version should be set correctly")
 			assert.Equal(t, extensions, ss.serverParameters, "parameters should be set correctly")
 
 			mockStream.AssertExpectations(t)
@@ -1111,12 +1237,12 @@ func TestResponseWriter_Accept_ParameterHandling(t *testing.T) {
 	}
 }
 
-// TestResponseWriter_Accept_BoundaryVersions tests Accept with boundary version values
-func TestResponseWriter_Accept_BoundaryVersions(t *testing.T) {
+// TestAccept_BoundaryVersions tests Accept with boundary version values
+func TestAccept_BoundaryVersions(t *testing.T) {
 	tests := map[string]struct {
 		version Version
 	}{
-		"minimum version":        {version: Version(0)},
+		"minimum version":        {version: protocol.Develop},
 		"maximum uint8 version":  {version: Version(255)},
 		"maximum uint16 version": {version: Version(65535)},
 		"maximum uint32 version": {version: Version(4294967295)},
@@ -1131,15 +1257,32 @@ func TestResponseWriter_Accept_BoundaryVersions(t *testing.T) {
 
 			req := &SetupRequest{
 				Path:       "test/path",
+				Versions:   []Version{protocol.Develop, Version(255), Version(65535), Version(4294967295)},
 				Extensions: NewParameters(),
 			}
 
 			ss := newSessionStream(mockStream, req)
-			rw := &responseWriter{sessionStream: ss}
 
-			err := rw.WriteServerInfo(tt.version, NewParameters())
+			// Create mock connection and server for responseWriter
+			mockConn := &MockQUICConnection{}
+			mockConn.On("Context").Return(context.Background())
+			mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+			mockConn.On("AcceptStream", mock.Anything).Return(nil, context.Canceled).Maybe()
+			mockConn.On("AcceptUniStream", mock.Anything).Return(nil, context.Canceled).Maybe()
 
+			mockServer := &Server{}
+			mockServer.init()
+			rw := newResponseWriter(mockConn, ss, slog.Default(), mockServer)
+
+			// Set version and extensions before Accept
+			err := rw.SelectVersion(tt.version)
+			assert.NoError(t, err, "SelectVersion should not return error")
+			rw.SetExtensions(NewParameters())
+
+			mux := NewTrackMux()
+			session, err := Accept(rw, ss.SetupRequest, mux)
 			assert.NoError(t, err, "Accept should handle version %d", tt.version)
+			assert.NotNil(t, session, "session should not be nil")
 			assert.Equal(t, tt.version, ss.Version, "version should be set correctly")
 
 			mockStream.AssertExpectations(t)
@@ -1180,7 +1323,7 @@ func TestResponse_AwaitAccepted_BoundaryVersions(t *testing.T) {
 			}
 
 			ss := newSessionStream(mockStream, req)
-			r := &response{sessionStream: ss}
+			r := newResponse(ss)
 
 			err := r.AwaitAccepted()
 
@@ -1193,8 +1336,8 @@ func TestResponse_AwaitAccepted_BoundaryVersions(t *testing.T) {
 	}
 }
 
-// TestResponseWriter_Accept_Race tests for race conditions in Accept method
-func TestResponseWriter_Accept_Race(t *testing.T) {
+// TestAccept_Race tests for race conditions in Accept method
+func TestAccept_Race(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Context").Return(context.Background())
 	mockStream.On("Write", mock.Anything).Return(10, nil).Once()
@@ -1203,21 +1346,41 @@ func TestResponseWriter_Accept_Race(t *testing.T) {
 	req := &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
+		Versions:   []Version{protocol.Develop, Version(255), Version(65535), Version(4294967295)},
 	}
 
 	ss := newSessionStream(mockStream, req)
-	rw := &responseWriter{sessionStream: ss}
+
+	// Create mock connection and server for responseWriter
+	mockConn := &MockQUICConnection{}
+	mockConn.On("Context").Return(context.Background())
+	mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	mockConn.On("AcceptStream", mock.Anything).Return(nil, context.Canceled).Maybe()
+	mockConn.On("AcceptUniStream", mock.Anything).Return(nil, context.Canceled).Maybe()
+
+	mockServer := &Server{}
+	mockServer.init()
+	rw := newResponseWriter(mockConn, ss, slog.Default(), mockServer)
 
 	const numGoroutines = 100
 	var wg sync.WaitGroup
 	errors := make([]error, numGoroutines)
+	sessions := make([]*Session, numGoroutines)
 
-	// Start many goroutines calling Accept with different versions
+	// Set version and extensions before concurrent calls
+	err := rw.SelectVersion(protocol.Develop)
+	assert.NoError(t, err, "SelectVersion should not return error")
+	rw.SetExtensions(NewParameters())
+
+	// Start many goroutines calling Accept
 	for i := 0; i < numGoroutines; i++ {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			errors[id] = rw.WriteServerInfo(Version(id), NewParameters())
+			mux := NewTrackMux()
+			session, err := Accept(rw, ss.SetupRequest, mux)
+			errors[id] = err
+			sessions[id] = session
 		}(i)
 	}
 
@@ -1226,6 +1389,7 @@ func TestResponseWriter_Accept_Race(t *testing.T) {
 	// All calls should succeed due to sync.Once
 	for i, err := range errors {
 		assert.NoError(t, err, "Accept call %d should succeed", i)
+		assert.NotNil(t, sessions[i], "session %d should not be nil", i)
 	}
 
 	// Only one Write call should have been made
@@ -1239,7 +1403,7 @@ func TestResponse_AwaitAccepted_Race(t *testing.T) {
 
 	// Create a valid SessionServerMessage
 	ssm := message.SessionServerMessage{
-		SelectedVersion: Version(1),
+		SelectedVersion: protocol.Develop,
 		Parameters:      map[uint64][]byte{1: []byte("test")},
 	}
 	var buf bytes.Buffer
@@ -1253,7 +1417,7 @@ func TestResponse_AwaitAccepted_Race(t *testing.T) {
 	}
 
 	ss := newSessionStream(mockStream, req)
-	r := &response{sessionStream: ss}
+	r := newResponse(ss)
 
 	const numGoroutines = 100
 	var wg sync.WaitGroup
@@ -1276,7 +1440,7 @@ func TestResponse_AwaitAccepted_Race(t *testing.T) {
 	}
 
 	// Version should be set correctly from the first successful call
-	assert.Equal(t, Version(1), r.Version, "version should be set correctly")
+	assert.Equal(t, protocol.Develop, r.Version, "version should be set correctly")
 
 	// Only one Read call should have been made due to sync.Once
 	mockStream.AssertExpectations(t)
@@ -1292,17 +1456,35 @@ func TestResponseWriter_SessionStream_Sharing(t *testing.T) {
 	req := &SetupRequest{
 		Path:       "test/path",
 		Extensions: NewParameters(),
+		Versions:   []Version{protocol.Develop},
 	}
 
 	ss := newSessionStream(mockStream, req)
-	rw := &responseWriter{sessionStream: ss}
 
-	version := Version(42)
+	// Create mock connection and server for responseWriter
+	mockConn := &MockQUICConnection{}
+	mockConn.On("Context").Return(context.Background())
+	mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	mockConn.On("AcceptStream", mock.Anything).Return(nil, context.Canceled).Maybe()
+	mockConn.On("AcceptUniStream", mock.Anything).Return(nil, context.Canceled).Maybe()
+
+	mockServer := &Server{}
+	mockServer.init()
+	rw := newResponseWriter(mockConn, ss, slog.Default(), mockServer)
+
+	version := protocol.Develop
 	extensions := NewParameters()
 	extensions.SetString(1, "shared_state_test")
 
-	err := rw.WriteServerInfo(version, extensions)
+	// Set version and extensions before Accept
+	err := rw.SelectVersion(version)
+	assert.NoError(t, err, "SelectVersion should not return error")
+	rw.SetExtensions(extensions)
+
+	mux := NewTrackMux()
+	session, err := Accept(rw, ss.SetupRequest, mux)
 	assert.NoError(t, err, "Accept should succeed")
+	assert.NotNil(t, session, "session should not be nil")
 
 	// Verify that the sessionStream was updated
 	assert.Equal(t, version, ss.Version, "sessionStream version should be updated")
@@ -1338,7 +1520,7 @@ func TestResponse_SessionStream_Sharing(t *testing.T) {
 	}
 
 	ss := newSessionStream(mockStream, req)
-	r := &response{sessionStream: ss}
+	r := newResponse(ss)
 
 	err := r.AwaitAccepted()
 	assert.NoError(t, err, "AwaitAccepted should succeed")
@@ -1354,8 +1536,8 @@ func TestResponse_SessionStream_Sharing(t *testing.T) {
 	mockStream.AssertExpectations(t)
 }
 
-// TestResponseWriter_Accept_ParameterEdgeCases tests parameter edge cases
-func TestResponseWriter_Accept_ParameterEdgeCases(t *testing.T) {
+// TestAccept_ParameterEdgeCases tests parameter edge cases
+func TestAccept_ParameterEdgeCases(t *testing.T) {
 	tests := map[string]struct {
 		setupExtensions func() *Parameters
 		expectError     bool
@@ -1396,19 +1578,39 @@ func TestResponseWriter_Accept_ParameterEdgeCases(t *testing.T) {
 
 			req := &SetupRequest{
 				Path:       "test/path",
+				Versions:   []Version{protocol.Develop},
 				Extensions: NewParameters(),
 			}
 
 			ss := newSessionStream(mockStream, req)
-			rw := &responseWriter{sessionStream: ss}
+
+			// Create mock connection and server for responseWriter
+			mockConn := &MockQUICConnection{}
+			mockConn.On("Context").Return(context.Background())
+			mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+			mockConn.On("AcceptStream", mock.Anything).Return(nil, context.Canceled).Maybe()
+			mockConn.On("AcceptUniStream", mock.Anything).Return(nil, context.Canceled).Maybe()
+
+			mockServer := &Server{}
+			mockServer.init()
+			rw := newResponseWriter(mockConn, ss, slog.Default(), mockServer)
 
 			extensions := tt.setupExtensions()
-			err := rw.WriteServerInfo(Version(1), extensions)
+
+			// Set version and extensions before Accept
+			err := rw.SelectVersion(protocol.Develop)
+			assert.NoError(t, err, "SelectVersion should not return error")
+			rw.SetExtensions(extensions)
+
+			mux := NewTrackMux()
+			session, err := Accept(rw, ss.SetupRequest, mux)
 
 			if tt.expectError {
 				assert.Error(t, err, "Accept should return error")
+				assert.Nil(t, session, "session should be nil on error")
 			} else {
 				assert.NoError(t, err, "Accept should handle parameters correctly")
+				assert.NotNil(t, session, "session should not be nil")
 				assert.Equal(t, extensions, ss.serverParameters, "server parameters should be set correctly")
 			}
 

@@ -12,13 +12,19 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
 )
 
-func newSession(conn quic.Connection, sessStream *sessionStream, mux *TrackMux, logger *slog.Logger, onClose func()) *Session {
+func newSession(conn quic.Connection, sessStream *sessionStream, mux *TrackMux, connLogger *slog.Logger, onClose func()) *Session {
 	if mux == nil {
 		mux = DefaultMux
 	}
 
-	if logger == nil {
-		logger = slog.New(slog.DiscardHandler)
+	var sessLogger *slog.Logger
+	if connLogger == nil {
+		sessLogger = slog.New(slog.DiscardHandler)
+	} else {
+		sessLogger = connLogger.With(
+			"session_id", generateSessionID(),
+			"path", sessStream.Path,
+		)
 	}
 
 	// Supervise the session stream closure
@@ -31,7 +37,7 @@ func newSession(conn quic.Connection, sessStream *sessionStream, mux *TrackMux, 
 		}
 
 		// If the stream is closed unexpectedly, terminate the session
-		logger.Warn("session stream closed unexpectedly",
+		sessLogger.Warn("session stream closed unexpectedly",
 			"reason", Cause(streamCtx),
 		)
 
@@ -41,7 +47,7 @@ func newSession(conn quic.Connection, sessStream *sessionStream, mux *TrackMux, 
 	sess := &Session{
 		sessionStream: sessStream,
 		ctx:           conn.Context(),
-		logger:        logger,
+		logger:        connLogger,
 		conn:          conn,
 		mux:           mux,
 		trackReaders:  make(map[SubscribeID]*TrackReader),
@@ -49,19 +55,15 @@ func newSession(conn quic.Connection, sessStream *sessionStream, mux *TrackMux, 
 		onClose:       onClose,
 	}
 
-	sess.wg.Add(2)
-
 	// Listen bidirectional streams
-	go func() {
-		defer sess.wg.Done()
+	sess.wg.Go(func() {
 		sess.handleBiStreams()
-	}()
+	})
 
 	// Listen unidirectional streams
-	go func() {
-		defer sess.wg.Done()
+	sess.wg.Go(func() {
 		sess.handleUniStreams()
-	}()
+	})
 
 	return sess
 }
@@ -377,14 +379,13 @@ func (sess *Session) handleBiStreams() {
 	for { // Accept a bidirectional stream
 		stream, err := sess.conn.AcceptStream(sess.ctx)
 		if err != nil {
-			sess.logger.Debug("failed to accept bidirectional stream",
+			sess.logger.Error("moq: failed to accept bidirectional stream",
 				"error", err,
 			)
 			return
 		}
 
 		streamLogger := sess.logger.With("stream_id", stream.StreamID())
-		streamLogger.Debug("accepted bidirectional stream")
 
 		// Handle the stream
 		go sess.processBiStream(stream, streamLogger)
@@ -410,15 +411,19 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 			streamLogger.Error("failed to decode ANNOUNCE_PLEASE message",
 				"error", err,
 			)
-			sess.Terminate(ProtocolViolationErrorCode, err.Error())
+			cancelStreamWithError(stream, quic.StreamErrorCode(InternalAnnounceErrorCode))
 			return
 		}
 
 		prefix := apm.TrackPrefix
 
+		annLogger := streamLogger.With(
+			"track_prefix", prefix,
+		)
+
 		annstr := newAnnouncementWriter(stream, prefix)
 
-		streamLogger.Debug("accepted announce stream", "prefix", prefix)
+		annLogger.Debug("accepted an announce stream")
 
 		// Serve the announcement stream
 		// This is a blocking call that will handle incoming announcements
@@ -432,7 +437,7 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 			streamLogger.Error("failed to decode SUBSCRIBE message",
 				"error", err,
 			)
-			sess.Terminate(InternalSessionErrorCode, err.Error())
+			cancelStreamWithError(stream, quic.StreamErrorCode(InternalSubscribeErrorCode))
 			return
 		}
 
@@ -454,11 +459,11 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 
 		subLogger.Debug("accepted a subscribe stream")
 
-		trackWriter := newTrackWriter(BroadcastPath(sm.BroadcastPath), TrackName(sm.TrackName),
-			substr, sess.conn.OpenUniStream, func() { sess.removeTrackWriter(sm.SubscribeID) })
+		trackWriter := newTrackWriter(
+			BroadcastPath(sm.BroadcastPath), TrackName(sm.TrackName),
+			substr, sess.conn.OpenUniStream, func() { sess.removeTrackWriter(sm.SubscribeID) },
+		)
 		sess.addTrackWriter(sm.SubscribeID, trackWriter)
-
-		subLogger.Info("serving track for subscription")
 
 		sess.mux.serveTrack(trackWriter)
 	default:
@@ -484,7 +489,6 @@ func (sess *Session) handleUniStreams() {
 		}
 
 		streamLogger := sess.logger.With("stream_id", stream.StreamID())
-		streamLogger.Debug("accepted unidirectional stream")
 
 		// Handle the stream
 		go sess.processUniStream(stream, streamLogger)
@@ -570,4 +574,9 @@ func (s *Session) removeTrackReader(id SubscribeID) {
 	defer s.trackReaderMapLocker.Unlock()
 
 	delete(s.trackReaders, id)
+}
+
+func cancelStreamWithError(stream quic.Stream, code quic.StreamErrorCode) {
+	stream.CancelRead(code)
+	stream.CancelWrite(code)
 }

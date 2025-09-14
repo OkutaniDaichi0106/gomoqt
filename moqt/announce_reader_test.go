@@ -16,6 +16,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// NOTE: helper logic inlined at call-sites to keep scope local and make
+// each test tune its timeout precisely. This avoids proliferating rarely
+// used top-level helpers and keeps timings tighter for CI.
+
 func TestNewAnnouncementReader(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Context").Return(context.Background())
@@ -32,8 +36,8 @@ func TestNewAnnouncementReader(t *testing.T) {
 	assert.NotNil(t, ras.announcedCh)
 	assert.NotNil(t, ras.ctx)
 
-	// Clean up
-	time.Sleep(10 * time.Millisecond) // Allow goroutine to start and finish
+	// Clean up: short wait for goroutine startup; keep tiny to avoid flakiness
+	time.Sleep(1 * time.Millisecond)
 	mockStream.AssertExpectations(t)
 }
 
@@ -107,7 +111,8 @@ func TestAnnouncementReader_ReceiveAnnouncement(t *testing.T) {
 				mockStream.On("Close").Return(nil)
 				// Don't provide initial suffixes so that ReceiveAnnouncement will wait
 				ras := newAnnouncementReader(mockStream, "/test/", []string{})
-				time.Sleep(20 * time.Millisecond) // Allow goroutine to start
+				// Allow goroutine to start (very short)
+				time.Sleep(1 * time.Millisecond)
 				_ = ras.Close()
 				return ras
 			}(),
@@ -121,12 +126,25 @@ func TestAnnouncementReader_ReceiveAnnouncement(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			ras := tt.receiveAnnounceStream
 
-			// Allow time for background goroutine processing
+			// Allow time for background goroutine processing: wait for announcement
 			if name == "success_with_valid_announcement" {
-				time.Sleep(100 * time.Millisecond)
+				// inline waitForAnnouncements with a smaller timeout
+				deadline := time.Now().Add(100 * time.Millisecond)
+				for time.Now().Before(deadline) {
+					ras.announcementsMu.Lock()
+					n := len(ras.actives) + len(ras.pendings)
+					ras.announcementsMu.Unlock()
+					if n > 0 {
+						break
+					}
+					time.Sleep(1 * time.Millisecond)
+				}
+				if time.Now().After(deadline) {
+					t.Fatalf("timeout waiting for announcements after %v", 100*time.Millisecond)
+				}
 			}
 
-			ctxWithTimeout, cancel := context.WithTimeout(tt.ctx, 2*time.Second)
+			ctxWithTimeout, cancel := context.WithTimeout(tt.ctx, 500*time.Millisecond)
 			defer cancel()
 
 			announcement, err := ras.ReceiveAnnouncement(ctxWithTimeout)
@@ -166,9 +184,9 @@ func TestAnnouncementReader_Close(t *testing.T) {
 	}{"normal_close": {
 		setupFunc: func() *AnnouncementReader {
 			mockStream := &MockQUICStream{}
-			// Block reads to prevent goroutine from interfering
+			// Block reads to prevent goroutine from interfering (short)
 			mockStream.On("Read", mock.Anything).Run(func(args mock.Arguments) {
-				time.Sleep(100 * time.Millisecond)
+				time.Sleep(10 * time.Millisecond)
 			}).Return(0, io.EOF)
 			mockStream.On("Close").Return(nil)
 			mockStream.On("Context").Return(context.Background())
@@ -179,9 +197,9 @@ func TestAnnouncementReader_Close(t *testing.T) {
 		"already_closed": {
 			setupFunc: func() *AnnouncementReader {
 				mockStream := &MockQUICStream{}
-				// Block reads to prevent goroutine from interfering
+				// Block reads to prevent goroutine from interfering (short)
 				mockStream.On("Read", mock.Anything).Run(func(args mock.Arguments) {
-					time.Sleep(100 * time.Millisecond)
+					time.Sleep(10 * time.Millisecond)
 				}).Return(0, io.EOF)
 				mockStream.On("Close").Return(nil)
 				mockStream.On("Context").Return(context.Background())
@@ -196,7 +214,7 @@ func TestAnnouncementReader_Close(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			ras := tt.setupFunc()
-			time.Sleep(10 * time.Millisecond) // Allow goroutine to start
+			time.Sleep(5 * time.Millisecond) // Allow goroutine to start
 
 			err := ras.Close()
 
@@ -234,8 +252,8 @@ func TestAnnouncementReader_CloseWithError(t *testing.T) {
 
 	ras := newAnnouncementReader(mockStream, "/test/", []string{"valid_announcement"})
 
-	// Allow goroutine to start and call Read
-	time.Sleep(10 * time.Millisecond)
+	// Allow goroutine to start and call Read (very short)
+	time.Sleep(1 * time.Millisecond)
 
 	// First close with error
 	err := ras.CloseWithError(InternalAnnounceErrorCode)
@@ -264,8 +282,8 @@ func TestAnnouncementReader_CloseWithError_MultipleClose(t *testing.T) {
 
 	ras := newAnnouncementReader(mockStream, "/test/", []string{"valid_announcement"})
 
-	// Allow goroutine to start and call Read
-	time.Sleep(10 * time.Millisecond)
+	// Allow goroutine to start and call Read (very short)
+	time.Sleep(1 * time.Millisecond)
 
 	// First close with error
 	err := ras.CloseWithError(InternalAnnounceErrorCode)
@@ -287,8 +305,21 @@ func TestAnnouncementReader_AnnouncementTracking(t *testing.T) {
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 	ras := newAnnouncementReader(mockStream, "/test/", []string{}) // No initial announcements
 
-	// Allow goroutine to start and immediately return with EOF
-	time.Sleep(10 * time.Millisecond)
+	// Wait for the goroutine to start and process EOF (deterministic)
+	{
+		tctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		done := false
+		select {
+		case <-ras.ctx.Done():
+			done = true
+		case <-tctx.Done():
+			done = false
+		}
+		cancel()
+		if !done {
+			// Not fatal; proceed — the goroutine may not cancel context on EOF, but this avoids blind sleeps
+		}
+	}
 
 	// Test internal announcement tracking
 	ctx := context.Background()
@@ -343,8 +374,22 @@ func TestAnnouncementReader_ConcurrentAccess(t *testing.T) {
 
 	ras := newAnnouncementReader(mockStream, "/test/", []string{"valid_announcement"})
 
-	// Allow time for message processing
-	time.Sleep(100 * time.Millisecond)
+	// Wait for message processing to begin (deterministic)
+	{
+		deadline := time.Now().Add(100 * time.Millisecond)
+		for time.Now().Before(deadline) {
+			ras.announcementsMu.Lock()
+			n := len(ras.actives) + len(ras.pendings)
+			ras.announcementsMu.Unlock()
+			if n > 0 {
+				break
+			}
+			time.Sleep(1 * time.Millisecond)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timeout waiting for announcements after %v", 100*time.Millisecond)
+		}
+	}
 
 	// Test concurrent ReceiveAnnouncement calls
 	var wg sync.WaitGroup
@@ -355,7 +400,7 @@ func TestAnnouncementReader_ConcurrentAccess(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 			defer cancel()
 			ann, err := ras.ReceiveAnnouncement(ctx)
 			if err != nil {
@@ -370,7 +415,7 @@ func TestAnnouncementReader_ConcurrentAccess(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 		_ = ras.Close()
 	}()
 
@@ -420,8 +465,8 @@ func TestAnnouncementReader_PrefixHandling(t *testing.T) {
 			mockStream.On("Context").Return(context.Background())
 			ras := newAnnouncementReader(mockStream, tt.prefix, []string{tt.suffix})
 
-			// Allow goroutine to start and call Read
-			time.Sleep(10 * time.Millisecond)
+			// Allow goroutine to start and call Read (very short)
+			time.Sleep(1 * time.Millisecond)
 
 			require.NotNil(t, ras)
 			assert.Equal(t, tt.prefix, ras.prefix)
@@ -456,8 +501,8 @@ func TestAnnouncementReader_InvalidMessage(t *testing.T) {
 
 	ras := newAnnouncementReader(mockStream, "/test/", []string{"valid_announcement"})
 
-	// Give time for processing invalid data
-	time.Sleep(100 * time.Millisecond)
+	// Give time for processing invalid data (short)
+	time.Sleep(5 * time.Millisecond)
 
 	// When decode fails, the goroutine just returns without closing the stream
 	// So the context should NOT be cancelled in this case
@@ -497,8 +542,22 @@ func TestAnnouncementReader_ActiveThenEnded(t *testing.T) {
 
 	ras := newAnnouncementReader(mockStream, "/test/", []string{})
 
-	// Allow time for message processing
-	time.Sleep(300 * time.Millisecond)
+	// Wait until messages are observed by the reader instead of sleeping.
+	{
+		deadline := time.Now().Add(100 * time.Millisecond)
+		for time.Now().Before(deadline) {
+			ras.announcementsMu.Lock()
+			n := len(ras.actives) + len(ras.pendings)
+			ras.announcementsMu.Unlock()
+			if n > 0 {
+				break
+			}
+			time.Sleep(1 * time.Millisecond)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timeout waiting for announcements after %v", 100*time.Millisecond)
+		}
+	}
 
 	// Try to receive announcements - in this scenario, the announcement
 	// becomes active and then immediately ends, so we might not catch it in the active state
@@ -513,8 +572,7 @@ func TestAnnouncementReader_ActiveThenEnded(t *testing.T) {
 	assert.False(t, ann.IsActive())
 
 	// The announcement should eventually be ended by the ENDED message
-	// Wait a bit for the ending to be processed
-	time.Sleep(100 * time.Millisecond)
+	// No extra wait needed here — ReceiveAnnouncement observed the ended announcement.
 
 	mockStream.AssertExpectations(t)
 }
@@ -545,18 +603,32 @@ func TestAnnouncementReader_MultipleActiveStreams(t *testing.T) {
 
 	ras := newAnnouncementReader(mockStream, "/test/", []string{})
 
-	// Allow time for message processing
-	time.Sleep(300 * time.Millisecond)
+	// Wait until messages are observed by the reader instead of sleeping.
+	{
+		deadline := time.Now().Add(50 * time.Millisecond)
+		for time.Now().Before(deadline) {
+			ras.announcementsMu.Lock()
+			n := len(ras.actives) + len(ras.pendings)
+			ras.announcementsMu.Unlock()
+			if n > 0 {
+				break
+			}
+			time.Sleep(1 * time.Millisecond)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timeout waiting for announcements after %v", 50*time.Millisecond)
+		}
+	}
 
 	// Verify that we can receive multiple active announcements
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
 	receivedAnnouncements := make(map[string]*Announcement)
 
 	// Try to receive up to 3 announcements (2 from messages + 1 initial)
 	for i := 0; i < 3; i++ {
-		ann, err := ras.ReceiveAnnouncement(ctx)
+		// Use a short per-call timeout so a single blocking call doesn't dominate the test
+		perCtx, perCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		ann, err := ras.ReceiveAnnouncement(perCtx)
+		perCancel()
 		if err != nil {
 			if err == context.DeadlineExceeded {
 				break
@@ -606,22 +678,20 @@ func TestAnnouncementReader_DuplicateActiveError(t *testing.T) {
 
 	ras := newAnnouncementReader(mockStream, "/test/", []string{})
 
-	// Allow time for message processing and error handling
-	time.Sleep(500 * time.Millisecond)
-
-	// The stream should be closed due to the duplicate announcement error
-	// Check if context is cancelled (indicating error occurred)
-	select {
-	case <-ras.ctx.Done():
-		// Expected - stream was closed due to duplicate announcement
-		t.Log("Stream correctly closed due to duplicate announcement")
-	default:
-		// Give more time for error processing
-		time.Sleep(500 * time.Millisecond)
+	// Wait for the reader's context to be cancelled due to error.
+	{
+		tctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		closed := false
 		select {
 		case <-ras.ctx.Done():
-			t.Log("Stream closed after additional wait time")
-		default:
+			closed = true
+		case <-tctx.Done():
+			closed = false
+		}
+		cancel()
+		if closed {
+			t.Log("Stream correctly closed due to duplicate announcement")
+		} else {
 			t.Log("Stream not closed - this may be acceptable depending on implementation")
 		}
 	}
@@ -657,22 +727,20 @@ func TestAnnouncementReader_EndNonExistentStreamError(t *testing.T) {
 
 	ras := newAnnouncementReader(mockStream, "/test/", []string{})
 
-	// Allow time for message processing and error handling
-	time.Sleep(500 * time.Millisecond)
-
-	// The stream should be closed due to the error of ending non-existent stream
-	// Check if context is cancelled (indicating error occurred)
-	select {
-	case <-ras.ctx.Done():
-		// Expected - stream was closed due to ending non-existent stream
-		t.Log("Stream correctly closed due to ending non-existent stream")
-	default:
-		// Give more time for error processing
-		time.Sleep(500 * time.Millisecond)
+	// Wait for the reader's context to be cancelled due to error.
+	{
+		tctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		closed := false
 		select {
 		case <-ras.ctx.Done():
-			t.Log("Stream closed after additional wait time")
-		default:
+			closed = true
+		case <-tctx.Done():
+			closed = false
+		}
+		cancel()
+		if closed {
+			t.Log("Stream correctly closed due to ending non-existent stream")
+		} else {
 			t.Log("Stream not closed - this may be acceptable depending on implementation")
 		}
 	}
@@ -703,8 +771,22 @@ func TestAnnouncementReader_NotifyChannel(t *testing.T) {
 	// Don't provide initial suffixes so we only get the stream message
 	ras := newAnnouncementReader(mockStream, "/test/", []string{})
 
-	// Allow time for message processing and notification
-	time.Sleep(100 * time.Millisecond)
+	// Wait until the reader has processed the message
+	{
+		deadline := time.Now().Add(100 * time.Millisecond)
+		for time.Now().Before(deadline) {
+			ras.announcementsMu.Lock()
+			n := len(ras.actives) + len(ras.pendings)
+			ras.announcementsMu.Unlock()
+			if n > 0 {
+				break
+			}
+			time.Sleep(1 * time.Millisecond)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timeout waiting for announcements after %v", 100*time.Millisecond)
+		}
+	}
 
 	// Verify that we can receive the announcement without blocking
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
@@ -798,8 +880,22 @@ func TestAnnouncementReader_BoundaryValues(t *testing.T) {
 			// Don't provide initial suffixes so we only get the stream message
 			ras := newAnnouncementReader(mockStream, tt.prefix, []string{})
 
-			// Allow time for processing
-			time.Sleep(50 * time.Millisecond)
+			// Wait until the reader has processed the message
+			{
+				deadline := time.Now().Add(50 * time.Millisecond)
+				for time.Now().Before(deadline) {
+					ras.announcementsMu.Lock()
+					n := len(ras.actives) + len(ras.pendings)
+					ras.announcementsMu.Unlock()
+					if n > 0 {
+						break
+					}
+					time.Sleep(1 * time.Millisecond)
+				}
+				if time.Now().After(deadline) {
+					t.Fatalf("timeout waiting for announcements after %v", 50*time.Millisecond)
+				}
+			}
 
 			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 			defer cancel()
@@ -865,12 +961,23 @@ func TestAnnouncementReader_StreamErrors(t *testing.T) {
 
 			ras := newAnnouncementReader(mockStream, "/test/", []string{"valid_announcement"})
 
-			// Allow time for error processing
-			time.Sleep(50 * time.Millisecond)
+			// Wait for error processing by waiting for ras.ctx to be done
+			done := make(chan struct{})
+			go func() {
+				select {
+				case <-ras.ctx.Done():
+				case <-time.After(200 * time.Millisecond):
+				}
+				close(done)
+			}()
+			<-done
 
 			// Verify stream was closed due to error
-			select {
-			case <-ras.ctx.Done():
+			if ras.ctx.Err() == nil {
+				if tt.wantErr {
+					t.Error("Expected stream to be closed due to error")
+				}
+			} else {
 				cause := context.Cause(ras.ctx)
 				convertedCause := Cause(ras.ctx) // Use the Cause function to convert error types
 				if tt.wantErr {
@@ -881,10 +988,6 @@ func TestAnnouncementReader_StreamErrors(t *testing.T) {
 						var announceErr *AnnounceError
 						assert.ErrorAs(t, convertedCause, &announceErr)
 					}
-				}
-			default:
-				if tt.wantErr {
-					t.Error("Expected stream to be closed due to error")
 				}
 			}
 

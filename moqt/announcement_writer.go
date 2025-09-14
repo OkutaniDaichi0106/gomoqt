@@ -47,8 +47,21 @@ func (aw *AnnouncementWriter) init(init map[*Announcement]struct{}) error {
 			return
 		}
 
-		suffixes := make([]suffix, 0, len(init))
+		// We'll collect suffixes from the staged map to avoid duplicates
+		// and reduce temporary allocations.
+		var suffixes []suffix
 		oldAnns := make([]*Announcement, 0) // Store old announcements to end later
+
+		// We'll batch updates to aw.actives and aw.endFuncs to reduce lock churn.
+		// Pre-size the map based on input size to reduce rehashing.
+		toSet := make(map[suffix]struct {
+			ann *Announcement
+			end func()
+		}, len(init))
+
+		// Cache frequently used fields locally to avoid repeated struct field loads
+		ctx := aw.ctx
+		stream := aw.stream
 
 		for new := range init {
 			if !new.IsActive() {
@@ -60,44 +73,73 @@ func (aw *AnnouncementWriter) init(init map[*Announcement]struct{}) error {
 				continue // Invalid path, skip
 			}
 
-			// Check for previous announcement
-			if old, ok := aw.actives[suffix]; ok {
-				if old == new {
-					continue // Already active, no need to re-announce
+			// If we've already staged a new announcement for this suffix,
+			// treat the previously staged one as old and replace it.
+			if prev, ok := toSet[suffix]; ok {
+				// staged previous announcement should be ended
+				oldAnns = append(oldAnns, prev.ann)
+			} else if old, ok := aw.actives[suffix]; ok {
+				// Otherwise, if there's an existing active announcement on the writer,
+				// mark it as old so it will be ended and replaced.
+				if old != new {
+					oldAnns = append(oldAnns, old)
+				} else {
+					// already active (same instance) - skip
+					continue
 				}
-				// Always treat the existing one as the old one and replace with the new one
-				oldAnns = append(oldAnns, old)
 			}
 
-			newEndFunc := func() {
+			// capture loop variables to avoid closure capture bugs
+			n := new
+			s := suffix
+			endFunc := func() {
 				aw.mu.Lock()
-				if cur, ok := aw.actives[suffix]; ok && cur == new {
-					delete(aw.actives, suffix)
-					delete(aw.endFuncs, suffix)
+				if cur, ok := aw.actives[s]; ok && cur == n {
+					delete(aw.actives, s)
+					delete(aw.endFuncs, s)
 				}
 				aw.mu.Unlock()
 
 				// Send ENDED message without acquiring any locks to avoid deadlock
-				if aw.Context().Err() != nil {
+				if ctx.Err() != nil {
 					return
 				}
 
-				// Send the message directly
+				// Send the message directly using cached stream
 				message.AnnounceMessage{
 					AnnounceStatus: message.ENDED,
-					TrackSuffix:    suffix,
-				}.Encode(aw.stream)
+					TrackSuffix:    s,
+				}.Encode(stream)
 			}
 
+			// Stage for batched set (overwrites any previous staged announcement)
+			toSet[suffix] = struct {
+				ann *Announcement
+				end func()
+			}{ann: new, end: endFunc}
+		}
+
+		// After staging, build the unique suffix list from toSet
+		if len(toSet) > 0 {
+			suffixes = make([]suffix, 0, len(toSet))
+			for s := range toSet {
+				suffixes = append(suffixes, s)
+			}
+		}
+
+		// Apply batched updates under a single lock
+		if len(toSet) > 0 {
 			aw.mu.Lock()
-			aw.actives[suffix] = new
-			aw.endFuncs[suffix] = newEndFunc
+			for s, v := range toSet {
+				aw.actives[s] = v.ann
+				aw.endFuncs[s] = v.end
+			}
 			aw.mu.Unlock()
 
-			suffixes = append(suffixes, suffix)
-
-			// Watch for announcement end in background
-			new.OnEnd(newEndFunc)
+			// Register OnEnd handlers after we've set the maps so end handlers see maps populated
+			for _, v := range toSet {
+				v.ann.OnEnd(v.end)
+			}
 		}
 
 		// End old announcements after releasing the mutex
@@ -106,14 +148,14 @@ func (aw *AnnouncementWriter) init(init map[*Announcement]struct{}) error {
 			old.end()
 		}
 
-		if aw.ctx.Err() != nil {
-			err = Cause(aw.ctx)
+		if ctx.Err() != nil {
+			err = Cause(ctx)
 			return
 		}
 
 		err = message.AnnounceInitMessage{
 			Suffixes: suffixes,
-		}.Encode(aw.stream)
+		}.Encode(stream)
 		if err != nil {
 			var strErr *quic.StreamError
 			if errors.As(err, &strErr) {
@@ -137,8 +179,12 @@ func (aw *AnnouncementWriter) init(init map[*Announcement]struct{}) error {
 }
 
 func (aw *AnnouncementWriter) SendAnnouncement(new *Announcement) error {
-	if aw.ctx.Err() != nil {
-		return Cause(aw.ctx)
+	// Cache frequently used fields
+	ctx := aw.ctx
+	stream := aw.stream
+
+	if ctx.Err() != nil {
+		return Cause(ctx)
 	}
 
 	// Wait for initialization outside of lock
@@ -150,8 +196,8 @@ func (aw *AnnouncementWriter) SendAnnouncement(new *Announcement) error {
 		<-initCh
 	}
 
-	if aw.ctx.Err() != nil {
-		return Cause(aw.ctx)
+	if ctx.Err() != nil {
+		return Cause(ctx)
 	}
 
 	// Get suffix for this announcement
@@ -193,8 +239,8 @@ func (aw *AnnouncementWriter) SendAnnouncement(new *Announcement) error {
 		TrackSuffix:    suffix,
 	}
 
-	// Encode and send ACTIVE announcement
-	err := am.Encode(aw.stream)
+	// Encode and send ACTIVE announcement using cached stream
+	err := am.Encode(stream)
 	if err != nil {
 		var strErr *quic.StreamError
 		if errors.As(err, &strErr) {
@@ -215,14 +261,14 @@ func (aw *AnnouncementWriter) SendAnnouncement(new *Announcement) error {
 		aw.mu.Unlock()
 
 		// Send ENDED message without holding locks
-		if aw.Context().Err() != nil {
+		if ctx.Err() != nil {
 			return
 		}
 
 		message.AnnounceMessage{
 			AnnounceStatus: message.ENDED,
 			TrackSuffix:    suffix,
-		}.Encode(aw.stream)
+		}.Encode(stream)
 	}
 
 	// Update actives map atomically

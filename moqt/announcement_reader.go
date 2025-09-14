@@ -125,11 +125,6 @@ func (ras *AnnouncementReader) ReceiveAnnouncement(ctx context.Context) (*Announ
 	for {
 		ras.announcementsMu.Lock()
 
-		if ras.ctx.Err() != nil {
-			ras.announcementsMu.Unlock()
-			return nil, Cause(ras.ctx)
-		}
-
 		if len(ras.pendings) > 0 {
 			next := ras.pendings[0]
 			ras.pendings = ras.pendings[1:]
@@ -137,6 +132,11 @@ func (ras *AnnouncementReader) ReceiveAnnouncement(ctx context.Context) (*Announ
 			ras.announcementsMu.Unlock()
 
 			return next, nil
+		}
+
+		if ras.ctx.Err() != nil {
+			ras.announcementsMu.Unlock()
+			return nil, Cause(ras.ctx)
 		}
 
 		announceCh := ras.announcedCh
@@ -179,8 +179,10 @@ func (ras *AnnouncementReader) CloseWithError(code AnnounceErrorCode) error {
 		return nil
 	}
 
-	close(ras.announcedCh)
-	ras.announcedCh = nil
+	if ras.announcedCh != nil {
+		close(ras.announcedCh)
+		ras.announcedCh = nil
+	}
 
 	strErrCode := quic.StreamErrorCode(code)
 	ras.stream.CancelRead(strErrCode)

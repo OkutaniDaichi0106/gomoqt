@@ -98,7 +98,7 @@ func (s *Server) init() {
 
 		if s.Logger != nil {
 			s.Logger = s.Logger.With("address", s.Addr)
-			s.Logger.Debug("initialized server")
+			s.Logger.Info("initialized server")
 		}
 	})
 }
@@ -113,9 +113,11 @@ func (s *Server) ServeQUICListener(ln quic.Listener) error {
 	s.addListener(ln)
 	defer s.removeListener(ln)
 
-	logger := s.Logger
-	if logger != nil {
-		logger.Debug("listening for QUIC connections")
+	var listenerLogger *slog.Logger
+	if s.Logger != nil {
+		listenerLogger = s.Logger.With("listener_address", ln.Addr())
+	} else {
+		listenerLogger = slog.New(slog.DiscardHandler)
 	}
 
 	// Create context for listener's Accept operation
@@ -131,29 +133,18 @@ func (s *Server) ServeQUICListener(ln quic.Listener) error {
 		// Listen for new QUIC connections
 		conn, err := ln.Accept(ctx)
 		if err != nil {
-			if logger != nil {
-				logger.Error("failed to accept QUIC connection",
-					"error", err.Error(),
-				)
-			}
-			return err
-		}
-
-		if logger != nil {
-			logger = logger.With(
-				"remote_address", conn.RemoteAddr(),
+			listenerLogger.Error("failed to accept QUIC connection",
+				"error", err.Error(),
 			)
-			logger.Debug("accepted a new QUIC connection")
+			return err
 		}
 
 		// Handle connection in a goroutine
 		go func(conn quic.Connection) {
 			if err := s.ServeQUICConn(conn); err != nil {
-				if logger != nil {
-					logger.Debug("failed to handle connection",
-						"error", err,
-					)
-				}
+				listenerLogger.Error("failed to handle connection",
+					"error", err,
+				)
 			}
 		}(conn)
 	}
@@ -166,36 +157,12 @@ func (s *Server) ServeQUICConn(conn quic.Connection) error {
 
 	s.init()
 
-	logger := s.Logger
-	if logger != nil {
-		logger = logger.With(
-			"remote_address", conn.RemoteAddr(),
-		)
-	}
-
 	switch protocol := conn.ConnectionState().TLS.NegotiatedProtocol; protocol {
 	case http3.NextProtoH3:
-		if logger != nil {
-			logger.Debug("handling webtransport session",
-				"remote_address", conn.RemoteAddr(),
-			)
-		}
-
 		return s.wtServer.ServeQUICConn(conn)
 	case NextProtoMOQ:
-		if logger != nil {
-			logger.Debug("handling MOQ session",
-				"remote_address", conn.RemoteAddr(),
-			)
-		}
 		return s.handleNativeQUIC(conn)
 	default:
-		if logger != nil {
-			logger.Error("unsupported negotiated protocol",
-				"remote_address", conn.RemoteAddr(),
-				"protocol", protocol,
-			)
-		}
 		return fmt.Errorf("unsupported protocol: %s", protocol)
 	}
 }
@@ -215,10 +182,12 @@ func (s *Server) ServeWebTransport(w http.ResponseWriter, r *http.Request) error
 	var connLogger *slog.Logger
 	if s.Logger != nil {
 		connLogger = s.Logger.With(
+			"local_address", conn.LocalAddr(),
 			"remote_address", conn.RemoteAddr(),
 			"alpn", conn.ConnectionState().TLS.NegotiatedProtocol,
 			"quic_version", conn.ConnectionState().Version,
 		)
+		// TODO: Add connection ID
 	} else {
 		connLogger = slog.New(slog.DiscardHandler)
 	}
@@ -235,19 +204,19 @@ func (s *Server) ServeWebTransport(w http.ResponseWriter, r *http.Request) error
 		return fmt.Errorf("failed to accept session stream: %w", err)
 	}
 
-	s.Logger.Debug("accepted a session stream")
+	connLogger.Debug("accepted a session stream")
 
 	// Set the path for the session
 	sessStr.Path = r.URL.Path
 
-	rsp := newResponseWriter(conn, sessStr)
+	rsp := newResponseWriter(conn, sessStr, connLogger, s)
 	req := sessStr.SetupRequest
 
 	if s.SetupHandler != nil {
-		s.Logger.Debug("using custom setup handler")
+		connLogger.Debug("using custom setup handler")
 		s.SetupHandler.ServeMOQ(rsp, req)
 	} else {
-		s.Logger.Debug("no setup handler provided, using default router")
+		connLogger.Debug("no setup handler provided, using default router")
 		DefaultRouter.ServeMOQ(rsp, req)
 	}
 
@@ -264,223 +233,93 @@ func (s *Server) handleNativeQUIC(conn quic.Connection) error {
 	var connLogger *slog.Logger
 	if s.Logger != nil {
 		connLogger = s.Logger.With(
+			"local_address", conn.LocalAddr(),
 			"remote_address", conn.RemoteAddr(),
 			"alpn", conn.ConnectionState().TLS.NegotiatedProtocol,
 			"quic_version", conn.ConnectionState().Version,
 		)
+		// TODO: Add connection ID
 	} else {
 		connLogger = slog.New(slog.DiscardHandler)
 	}
 
-	connLogger.Debug("establishing a WebTransport session")
+	connLogger.Debug("moq: establishing a QUIC session")
 
 	acceptCtx, cancelAccept := context.WithTimeout(conn.Context(), s.acceptTimeout())
 	defer cancelAccept()
 	sessStr, err := acceptSessionStream(acceptCtx, conn, connLogger)
 	if err != nil {
-		connLogger.Error("failed to accept session stream",
+		connLogger.Error("moq: failed to accept session stream",
 			"error", err,
 		)
 		return err
 	}
 
-	rsp := newResponseWriter(conn, sessStr)
+	rsp := newResponseWriter(conn, sessStr, connLogger, s)
 	req := sessStr.SetupRequest
 
 	if s.SetupHandler != nil {
+		connLogger.Debug("moq: using custom setup handler")
 		s.SetupHandler.ServeMOQ(rsp, req)
 	} else {
+		connLogger.Debug("moq: no setup handler provided, using default router")
 		DefaultRouter.ServeMOQ(rsp, req)
 	}
 
 	return nil
 }
 
-// func (s *Server) webtransportExtensions(clientParams *Parameters) (*Parameters, error) {
-// 	if s.Config == nil || s.Config.ServerSetupExtensions == nil {
-// 		// connLogger.Debug("no setup extensions provided, using default parameters")
-// 		return NewParameters(), nil
+// func (s *Server) Accept(w SetupResponseWriter, r *SetupRequest, mux *TrackMux) (*Session, error) {
+// 	if w == nil {
+// 		return nil, fmt.Errorf("response writer cannot be nil")
 // 	}
 
-// 	params, err := s.Config.ServerSetupExtensions(clientParams)
-// 	if err != nil {
-// 		// connLogger.Error("failed to get setup extensions",
-// 		// 	"error", err,
-// 		// )
-// 		return nil, err
-// 	}
-
-// 	if params == nil {
-// 		// connLogger.Debug("server setup extensions returned nil, using default parameters")
-// 		return NewParameters(), nil
-// 	}
-
-// 	return params.Clone(), nil
-// }
-
-// func (s *Server) nativeQUICExtensions(clientParams *Parameters) (*Parameters, error) {
-// 	var err error
-
-// 	// Get the path parameter
-// 	_, err = clientParams.GetString(param_type_path)
-// 	if err != nil {
-// 		// connLogger.Error("failed to get 'path' parameter", "error", err)
-// 		return nil, err
-// 	}
-
-// 	// Get any setup extensions
-// 	if s.Config == nil || s.Config.ServerSetupExtensions == nil {
-// 		// connLogger.Debug("no setup extensions provided, using default parameters")
-// 		return NewParameters(), nil
-// 	}
-
-// 	params, err := s.Config.ServerSetupExtensions(clientParams)
-// 	if err != nil {
-// 		// connLogger.Error("failed to get setup extensions", "error", err)
-// 		return nil, err
-// 	}
-
-// 	if params == nil {
-// 		// connLogger.Debug("server setup extensions returned nil, using default parameters")
-// 		return NewParameters(), nil
-// 	}
-
-// 	return params, nil
-// }
-
-func (s *Server) Accept(w SetupResponseWriter, r *SetupRequest, mux *TrackMux) (*Session, error) {
-	if w == nil {
-		return nil, fmt.Errorf("response writer cannot be nil")
-	}
-
-	if s.shuttingDown() {
-		w.Reject(SetupFailedErrorCode)
-		return nil, ErrServerClosed
-	}
-
-	s.init()
-
-	if r == nil {
-		w.Reject(SetupFailedErrorCode)
-		return nil, fmt.Errorf("request cannot be nil")
-	}
-
-	rsp, ok := w.(*responseWriter)
-	if !ok {
-		return nil, fmt.Errorf("response writer is not of type *response")
-	}
-
-	// Accept the setup request with default version and no extensions
-	err := w.WriteServerInfo(DefaultServerVersion, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to accept setup request: %w", err)
-	}
-
-	conn := rsp.conn
-	if conn == nil {
-		return nil, fmt.Errorf("quic connection cannot be nil")
-	}
-
-	var connLogger *slog.Logger
-	if s.Logger != nil {
-		connLogger = s.Logger.With(
-			"remote_address", conn.RemoteAddr().String(),
-			"alpn", conn.ConnectionState().TLS.NegotiatedProtocol,
-			"quic_version", conn.ConnectionState().Version,
-		)
-	} else {
-		connLogger = slog.New(slog.DiscardHandler)
-	}
-
-	var sess *Session
-	sess = newSession(conn, rsp.sessionStream, mux, connLogger, func() { s.removeSession(sess) })
-	s.addSession(sess)
-
-	connLogger.Debug("accepted a new session")
-
-	return sess, nil
-}
-
-// // ServeWebTransport serves a WebTransport session.
-// // It upgrades the HTTP/3 connection to a WebTransport session and calls the session handler.
-// // If the server is not configured with a WebTransport server, it creates a default server.
-// func (s *Server) AcceptWebTransport(w http.ResponseWriter, r *http.Request, mux *TrackMux) (*Session, error) {
 // 	if s.shuttingDown() {
+// 		w.Reject(SetupFailedErrorCode)
 // 		return nil, ErrServerClosed
 // 	}
 
 // 	s.init()
 
-// 	var logger *slog.Logger
+// 	if r == nil {
+// 		w.Reject(SetupFailedErrorCode)
+// 		return nil, fmt.Errorf("request cannot be nil")
+// 	}
+
+// 	rsp, ok := w.(*responseWriter)
+// 	if !ok {
+// 		return nil, fmt.Errorf("response writer is not of type *response")
+// 	}
+
+// 	// Accept the setup request with default version and no extensions
+// 	err := w.Accept(DefaultServerVersion, nil)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to accept setup request: %w", err)
+// 	}
+
+// 	conn := rsp.conn
+// 	if conn == nil {
+// 		return nil, fmt.Errorf("quic connection cannot be nil")
+// 	}
+
+// 	var connLogger *slog.Logger
 // 	if s.Logger != nil {
-// 		var protocol string
-// 		if r.TLS == nil {
-// 			protocol = "none"
-// 		} else {
-// 			protocol = r.TLS.NegotiatedProtocol
-// 		}
-// 		logger = s.Logger.With(
-// 			"remote_address", r.RemoteAddr,
-// 			"alpn", protocol,
-// 			"url_path", r.URL.Path,
+// 		connLogger = s.Logger.With(
+// 			"local_address", conn.LocalAddr(),
+// 			"remote_address", conn.RemoteAddr(),
+// 			"alpn", conn.ConnectionState().TLS.NegotiatedProtocol,
+// 			"quic_version", conn.ConnectionState().Version,
 // 		)
+// 		// TODO: Add connection ID
 // 	} else {
-// 		logger = slog.New(slog.DiscardHandler)
+// 		connLogger = slog.New(slog.DiscardHandler)
 // 	}
 
-// 	conn, err := s.wtServer.Upgrade(w, r)
-// 	if err != nil {
-// 		logger.Error("failed to upgrade HTTP to WebTransport",
-// 			"error", err,
-// 		)
-// 		w.WriteHeader(http.StatusInternalServerError)
-// 		return nil, err
-// 	}
+// 	// var sess *Session
+// 	// sess = newSession(conn, rsp.sessionStream, mux, connLogger, func() { s.removeSession(sess) })
+// 	// s.addSession(sess)
 
-// 	connLogger := logger.With(
-// 		"quic_version", conn.ConnectionState().Version,
-// 	)
-
-// 	connLogger.Debug("WebTransport connection established")
-
-// 	extensions := func(clientParams *Parameters) (*Parameters, error) {
-// 		if s.Config == nil || s.Config.ServerSetupExtensions == nil {
-// 			connLogger.Debug("no setup extensions provided, using default parameters")
-// 			return NewParameters(), nil
-// 		}
-
-// 		params, err := s.Config.ServerSetupExtensions(clientParams)
-// 		if err != nil {
-// 			connLogger.Error("failed to get setup extensions",
-// 				"error", err,
-// 			)
-// 			return nil, err
-// 		}
-
-// 		if params == nil {
-// 			connLogger.Debug("server setup extensions returned nil, using default parameters")
-// 			return NewParameters(), nil
-// 		}
-
-// 		return params.Clone(), nil
-// 	}
-
-// 	acceptCtx, cancelAccept := context.WithTimeout(r.Context(), s.acceptTimeout())
-// 	defer cancelAccept()
-// 	sessStr, err := acceptSessionStream(acceptCtx, conn, extensions, connLogger)
-// 	if err != nil {
-// 		connLogger.Error("failed to accept session stream",
-// 			"error", err,
-// 		)
-// 		return nil, err
-// 	}
-
-// 	// Set the path for the session
-// 	sessStr.path = r.URL.Path
-
-// 	var sess *Session
-// 	sess = newSession(conn, sessStr, mux, connLogger, func() { s.removeSession(sess) })
-// 	s.addSession(sess)
+// 	connLogger.Debug("accepted a new session")
 
 // 	return sess, nil
 // }
@@ -722,6 +561,20 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		s.goAway(sess)
 	}
 	s.sessMu.Unlock()
+
+	// If there are no active sessions, signal done immediately so Shutdown
+	// returns without waiting for the context timeout.
+	s.sessMu.Lock()
+	noSessions := len(s.activeSess) == 0
+	s.sessMu.Unlock()
+	if noSessions {
+		select {
+		case <-s.doneChan:
+			// already closed
+		default:
+			close(s.doneChan)
+		}
+	}
 
 	select {
 	case <-s.doneChan:

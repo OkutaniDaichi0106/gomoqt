@@ -96,13 +96,16 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 		slog.Warn("[TrackMux] Announce called with nil Announcement")
 		return
 	}
+
 	path := announcement.BroadcastPath()
+
 	if !announcement.IsActive() {
 		slog.Warn("[TrackMux] announcement is not active",
 			"path", path,
 		)
 		return
 	}
+
 	announcedHandler := &announcedTrackHandler{
 		Announcement: announcement,
 		TrackHandler: handler,
@@ -141,6 +144,7 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 	}
 	lastNode.mu.RUnlock()
 
+	// Ensure the announcement is removed when it ends
 	announcement.OnEnd(func() {
 		// Remove the announcement from the tree unconditionally
 		lastNode.removeAnnouncement(announcement)

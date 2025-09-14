@@ -2,6 +2,9 @@ package moqt
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
+	"slices"
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
@@ -13,6 +16,7 @@ func newSessionStream(stream quic.Stream, req *SetupRequest) *sessionStream {
 	ss := &sessionStream{
 		ctx:          context.WithValue(stream.Context(), &biStreamTypeCtxKey, message.StreamTypeSession),
 		stream:       stream,
+		Version:      DefaultServerVersion, // Default version before setup
 		SetupRequest: req,
 		updatedCh:    make(chan struct{}, 1),
 	}
@@ -73,42 +77,64 @@ func (r *response) AwaitAccepted() error {
 
 var _ SetupResponseWriter = (*responseWriter)(nil)
 
-func newResponseWriter(conn quic.Connection, sessStr *sessionStream) *responseWriter {
+func newResponseWriter(conn quic.Connection, sessStr *sessionStream, connLogger *slog.Logger, server *Server) *responseWriter {
 	return &responseWriter{
 		sessionStream: sessStr,
 		conn:          conn,
+		connLogger:    connLogger,
+		server:        server,
 	}
 }
 
 type responseWriter struct {
 	*sessionStream
-	conn      quic.Connection
-	onceSetup sync.Once
+	conn       quic.Connection
+	connLogger *slog.Logger
+	server     *Server
+	onceSetup  sync.Once
 }
 
-func (w *responseWriter) WriteServerInfo(v Version, extensions *Parameters) error {
+func (w *responseWriter) SelectVersion(v Version) error {
+	if !slices.Contains(w.Versions, v) {
+		return fmt.Errorf("version %d not supported by client", v)
+	}
+	w.Version = v
+	return nil
+}
+
+func (w *responseWriter) SetExtensions(extensions *Parameters) {
+	w.serverParameters = extensions
+}
+
+func (w *responseWriter) accept(mux *TrackMux) (*Session, error) {
 	var err error
 	w.onceSetup.Do(func() {
 		// TODO: Implement setup logic if needed
 		var paramMsg message.Parameters
-		if extensions != nil {
-			paramMsg = extensions.paramMap
+		if w.serverParameters != nil {
+			paramMsg = w.serverParameters.paramMap
 		}
 		err = message.SessionServerMessage{
-			SelectedVersion: v,
+			SelectedVersion: w.Version,
 			Parameters:      paramMsg,
 		}.Encode(w.stream)
 		if err != nil {
 			return
 		}
 
-		w.Version = v
-		w.serverParameters = extensions
-
 		// Start listening for updates
 		w.listenUpdates()
 	})
-	return err
+
+	if err != nil {
+		return nil, err
+	}
+
+	var sess *Session
+	sess = newSession(w.conn, w.sessionStream, mux, w.connLogger, func() { w.server.removeSession(sess) })
+	w.server.addSession(sess)
+
+	return sess, nil
 }
 
 func (w *responseWriter) Reject(code SessionErrorCode) error {
@@ -173,4 +199,12 @@ func (ss *sessionStream) SessionUpdated() <-chan struct{} {
 
 func (ss *sessionStream) Context() context.Context {
 	return ss.ctx
+}
+
+func Accept(w SetupResponseWriter, r *SetupRequest, mux *TrackMux) (*Session, error) {
+	if rsp, ok := w.(*responseWriter); ok {
+		return rsp.accept(mux)
+	} else {
+		return nil, fmt.Errorf("moq: invalid response writer type %T", w)
+	}
 }

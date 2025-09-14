@@ -86,11 +86,13 @@ func (a *Announcement) end() {
 		workerCount = 1
 	}
 
-	jobs := make(chan func())
+	// buffer jobs to avoid blocking producers when many workers are used
+	jobs := make(chan func(), len(a.onEndFuncs))
 
 	var wg sync.WaitGroup
 
-	for range workerCount {
+	// spawn workerCount goroutines
+	for i := 0; i < workerCount; i++ {
 		go func() {
 			for f := range jobs {
 				f()
@@ -98,6 +100,7 @@ func (a *Announcement) end() {
 			}
 		}()
 	}
+
 	for _, f := range a.onEndFuncs {
 		wg.Add(1)
 		jobs <- f

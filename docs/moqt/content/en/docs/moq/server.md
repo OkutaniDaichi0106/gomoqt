@@ -42,7 +42,7 @@ func main() {
 
     // Set up MoQ handler
     moqt.HandleFunc(path, func(w moqt.SetupResponseWriter, r *moqt.SetupRequest) {
-        sess, err := server.Accept(w, r, nil)
+        sess, err := moqt.Accept(w, r, nil)
         if err != nil {
             slog.Error("Failed to accept session", "error", err)
             return
@@ -88,9 +88,8 @@ The following table describes the public fields of the `Server` struct:
 | `Logger`               | [`*slog.Logger`](https://pkg.go.dev/log/slog#Logger)              | Logger for server events and errors         |
 
 
-{{< tabs items="Default QUIC, Custom QUIC" >}}
+{{< tabs items="Using Default QUIC, Using Custom QUIC" >}}
 {{< tab >}}
-**Using Default QUIC**
 
 `quic-go/quic-go` is used internally as the default QUIC implementation when relevant fields which is set for customization are not set or `nil`.
 
@@ -98,7 +97,6 @@ The following table describes the public fields of the `Server` struct:
 
 {{< /tab >}}
 {{< tab >}}
-**Using Custom QUIC**
 
 To use a custom QUIC implementation, you need to provide your own implementation of the `gomoqt/quic` interfaces and `quic.ListenAddrFunc`. `(moqt.Server).ListenFunc` field is set, it is used to listen for incoming QUIC connections instead of the default implementation.
 
@@ -113,9 +111,8 @@ type Server struct {
 
 {{< /tabs >}}
 
-{{< tabs items="Default WebTransport, Custom WebTransport" >}}
+{{< tabs items="Using Default WebTransport, Using Custom WebTransport" >}}
 {{< tab >}}
-**Using Default WebTransport**
 
 `quic-go/webtransport-go` is used internally as the default WebTransport implementation when relevant fields which is set for customization are not set or `nil`.
 
@@ -123,7 +120,6 @@ type Server struct {
 
 {{< /tab >}}
 {{< tab >}}
-**Using Custom WebTransport**
 
 To use a custom WebTransport implementation, you need to provide your own implementation of the `webtransport.Server` interface and a function to create it. `(moqt.Server).NewWebtransportServerFunc` field is set, it is used to create a new WebTransport server instead of the default implementation.
 
@@ -138,7 +134,7 @@ type Server struct {
 
 {{< /tabs >}}
 
-## Listen and Accept Sessions
+## Accept and Set-Up Sessions
 
 ### Route Set-Up Requests
 
@@ -160,8 +156,8 @@ type SetupHandler interface {
 
 type SetupHandlerFunc func(SetupResponseWriter, *SetupRequest)
 ```
-
-- **Use Default Router**
+{{< tabs items="Using Default Router, Using Custom Router" >}}
+{{< tab >}}
 
 When `(Server).SetupHandler` is not set, `moqt.DefaultRouter` is the default router used by the server.
 To use the default router, you can register your handlers with it directly:
@@ -177,7 +173,8 @@ We also provide global function to register handlers with the default router:
     moqt.Handle("/path", handler)
 ```
 
-- **Use Custom Router**
+{{< /tab >}}
+{{< tab >}}
 
 If you need more control over routing, you can create a custom router and set it as the server's handler:
 
@@ -185,8 +182,15 @@ If you need more control over routing, you can create a custom router and set it
     router := moqt.NewRouter()
     router.HandleFunc("/path", handlerFunc)
     router.Handle("/path", handler)
-    server.Handler = router
+    server = &moqt.Server{
+        SetupHandler: router,
+        // Other server fields...
+    }
 ```
+{{< /tab >}}
+{{< /tabs >}}
+
+### Accept Sessions
 
 After a set-up request is routed to a specific handler and is accepted, a session is established.
 
@@ -195,7 +199,7 @@ After a set-up request is routed to a specific handler and is accepted, a sessio
     var mux *moqt.TrackMux
 
     moqt.HandleFunc("/path", func(w moqt.SetupResponseWriter, r *moqt.SetupRequest) {
-        sess, err := server.Accept(w, r, mux)
+        sess, err := moqt.Accept(w, r, mux)
         if err != nil {
             // Handle error
             return
@@ -205,7 +209,7 @@ After a set-up request is routed to a specific handler and is accepted, a sessio
     })
 ```
 
-The `Accept` method establishes a new MoQ session by accepting the setup request. It takes:
+The `Accept` function establishes a new MoQ session by accepting the setup request. It takes:
 - `w SetupResponseWriter`: Writer to send the server response
 - `r *SetupRequest`: The client's setup request
 - `mux *TrackMux`: Multiplexer for track management (can be nil for default handling)

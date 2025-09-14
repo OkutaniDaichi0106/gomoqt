@@ -7,15 +7,16 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt"
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
 )
 
+const CatalogTrackName = "catalog.json"
+
 func main() {
 	server := moqt.Server{
-		Addr: "localhost:4469",
+		Addr: "moqt.example.com:9000",
 		TLSConfig: &tls.Config{
 			NextProtos:         []string{"h3", "moq-00"},
 			Certificates:       []tls.Certificate{generateCert()},
@@ -25,85 +26,68 @@ func main() {
 			Allow0RTT:       true,
 			EnableDatagrams: true,
 		},
-		Logger: slog.Default(),
+		Config: &moqt.Config{
+			CheckHTTPOrigin: func(r *http.Request) bool {
+				slog.Info("HTTP Origin", "origin", r.Header.Get("Origin"))
+				return true // TODO: Implement proper origin check
+			},
+		},
+		Logger: slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+			Level: slog.LevelDebug,
+		})),
 	}
 
-	// Register the relay handler with the default mux
-	moqt.PublishFunc(context.Background(), "/server.relay", func(ctx context.Context, tw *moqt.TrackWriter) {
-		seq := moqt.GroupSequenceFirst
-		for {
-			time.Sleep(100 * time.Millisecond)
+	path := "/hang"
 
-			gw, err := tw.OpenGroup(seq)
-			if err != nil {
-				slog.Error("failed to open group", "error", err)
-				return
-			}
-
-			frame := moqt.NewFrame([]byte("FRAME " + seq.String()))
-			err = gw.WriteFrame(frame)
-			if err != nil {
-				gw.CancelWrite(moqt.InternalGroupErrorCode) // TODO: Handle error properly
-				slog.Error("failed to write frame", "error", err)
-				return
-			}
-
-			// TODO: Release the frame after writing
-			// This is important to avoid memory leaks
-
-			gw.Close()
-
-			seq = seq.Next()
-		}
-	})
-
-	moqt.HandleFunc("/relay", func(w moqt.SetupResponseWriter, r *moqt.SetupRequest) {
-		sess, err := server.Accept(w, r, nil)
-		if err != nil {
-			slog.Error("failed to accept session", "error", err)
-			return
-		}
-		anns, err := sess.AcceptAnnounce("/")
-		if err != nil {
-			slog.Error("failed to open announce stream", "error", err)
-			return
-		}
-
-		for {
-			ann, err := anns.ReceiveAnnouncement(context.Background())
-			if err != nil {
-				slog.Error("failed to receive announcement", "error", err)
-				return
-			}
-
-			go func(ann *moqt.Announcement) {
-				if !ann.IsActive() {
-					return
-				}
-				tr, err := sess.Subscribe(ann.BroadcastPath(), "index", nil)
-				if err != nil {
-					slog.Error("failed to open track stream", "error", err)
-					return
-				}
-
-				moqt.Announce(ann, newRelayHandler(tr))
-			}(ann)
-		}
-	})
-
-	// Serve moq over webtransport
-	http.HandleFunc("/relay", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 		err := server.ServeWebTransport(w, r)
 		if err != nil {
-			slog.Error("failed to serve web transport", "error", err)
+			slog.Error("Failed to serve moq over webtransport", "error", err)
+		}
+	})
+
+	moqt.HandleFunc(path, func(w moqt.SetupResponseWriter, r *moqt.SetupRequest) {
+		sess, err := moqt.Accept(w, r, nil)
+		if err != nil {
+			slog.Error("Failed to accept session", "error", err)
 			return
 		}
 
+		slog.Info("New session established")
+
+		ar, err := sess.AcceptAnnounce("/")
+		if err != nil {
+			return
+		}
+
+		for {
+			ann, err := ar.ReceiveAnnouncement(context.Background())
+			if err != nil {
+				return
+			}
+
+			path := ann.BroadcastPath()
+
+			if path.Extension() != ".hang" {
+				// Ignore non-hang announcements
+				ar.Close()
+			}
+
+			handler := newRelayHandler(path, sess)
+
+			moqt.Announce(ann, handler)
+
+			slog.Info("Announced new hang track",
+				"path", path,
+			)
+		}
 	})
 
 	err := server.ListenAndServe()
 	if err != nil {
-		slog.Error("failed to listen and serve", "error", err)
+		slog.Error("Failed to start server",
+			"error", err,
+		)
 	}
 }
 
@@ -115,8 +99,8 @@ func generateCert() tls.Certificate {
 	}
 
 	// Load certificates from the examples/cert directory (project root)
-	certPath := filepath.Join(projectRoot, "examples", "cert", "localhost.pem")
-	keyPath := filepath.Join(projectRoot, "examples", "cert", "localhost-key.pem")
+	certPath := filepath.Join(projectRoot, "examples", "cert", "moqt.example.com.pem")
+	keyPath := filepath.Join(projectRoot, "examples", "cert", "moqt.example.com-key.pem")
 
 	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
 	if err != nil {

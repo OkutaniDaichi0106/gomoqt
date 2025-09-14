@@ -30,7 +30,7 @@ func main() {
 
 	moqt.HandleFunc("/echo", func(w moqt.SetupResponseWriter, r *moqt.SetupRequest) {
 		mux := moqt.NewTrackMux()
-		sess, err := server.Accept(w, r, mux)
+		sess, err := moqt.Accept(w, r, mux)
 		if err != nil {
 			slog.Error("failed to accept session", "error", err)
 			return
@@ -78,8 +78,7 @@ func main() {
 							defer gw.Close()
 
 							for {
-								frame := moqt.NewFrame(nil)
-								err := gr.ReadFrame(frame)
+								frame, err := gr.ReadFrame()
 								if err != nil {
 									if err == io.EOF {
 										return

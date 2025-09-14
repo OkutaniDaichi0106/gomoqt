@@ -12,6 +12,7 @@ import (
 func main() {
 	moqt.PublishFunc(context.Background(), "/client.echo", func(ctx context.Context, tw *moqt.TrackWriter) {
 		seq := moqt.GroupSequenceFirst
+		builder := moqt.NewFrameBuilder(1024)
 		for {
 			time.Sleep(100 * time.Millisecond)
 
@@ -21,7 +22,10 @@ func main() {
 				return
 			}
 
-			err = gw.WriteFrame(moqt.NewFrame([]byte("FRAME " + seq.String())))
+			builder.Reset()
+			builder.Append([]byte("FRAME " + seq.String()))
+
+			err = gw.WriteFrame(builder.Frame())
 			if err != nil {
 				gw.CancelWrite(moqt.InternalGroupErrorCode)
 				slog.Error("failed to write frame", "error", err)
@@ -82,9 +86,8 @@ func main() {
 				}
 
 				go func(gr *moqt.GroupReader) {
-					frame := moqt.NewFrame(nil)
 					for {
-						err := gr.ReadFrame(frame)
+						frame, err := gr.ReadFrame()
 						if err != nil {
 							if err == io.EOF {
 								return

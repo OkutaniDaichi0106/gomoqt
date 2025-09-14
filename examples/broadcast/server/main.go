@@ -29,7 +29,7 @@ func main() {
 	}
 
 	moqt.HandleFunc("/broadcast", func(w moqt.SetupResponseWriter, r *moqt.SetupRequest) {
-		_, err := server.Accept(w, r, nil)
+		_, err := moqt.Accept(w, r, nil)
 		if err != nil {
 			slog.Error("failed to accept session", "error", err)
 			return
@@ -48,6 +48,7 @@ func main() {
 	// Register the broadcast handler with the default mux
 	moqt.PublishFunc(context.Background(), "/server.broadcast", func(ctx context.Context, tw *moqt.TrackWriter) {
 		seq := moqt.GroupSequenceFirst
+		builder := moqt.NewFrameBuilder(1024)
 		for {
 			time.Sleep(100 * time.Millisecond)
 
@@ -57,8 +58,9 @@ func main() {
 				return
 			}
 
-			frame := moqt.NewFrame([]byte("FRAME " + seq.String()))
-			err = gw.WriteFrame(frame)
+			builder.Reset()
+			builder.Append([]byte("FRAME " + seq.String()))
+			err = gw.WriteFrame(builder.Frame())
 			if err != nil {
 				gw.CancelWrite(moqt.InternalGroupErrorCode) // TODO: Handle error properly
 				slog.Error("failed to write frame", "error", err)

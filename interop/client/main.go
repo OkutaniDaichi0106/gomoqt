@@ -12,6 +12,7 @@ import (
 func main() {
 	moqt.PublishFunc(context.Background(), "/interop.client", func(ctx context.Context, tw *moqt.TrackWriter) {
 		seq := moqt.GroupSequenceFirst
+		builder := moqt.NewFrameBuilder(1024)
 		for range 10 {
 			group, err := tw.OpenGroup(seq)
 			if err != nil {
@@ -21,18 +22,15 @@ func main() {
 
 			slog.Info("Opened group successfully", "group_sequence", group.GroupSequence())
 
-			frame := moqt.NewFrame([]byte("Hello from interop client in Go!"))
-			err = group.WriteFrame(frame)
+			builder.Reset()
+			builder.Append([]byte("Hello from interop client in Go!"))
+			err = group.WriteFrame(builder.Frame())
 			if err != nil {
 				slog.Error("failed to write frame", "error", err)
 				return
 			}
 
-			slog.Info("Sent frame successfully", "frame", string(frame.Bytes()))
-
 			group.Close()
-
-			slog.Info("Closed group successfully", "group_sequence", seq)
 
 			seq = seq.Next()
 
@@ -95,9 +93,8 @@ func main() {
 		slog.Info("Accepted a group", "group_sequence", gr.GroupSequence())
 
 		go func(gr *moqt.GroupReader) {
-			frame := moqt.NewFrame(nil)
 			for {
-				err := gr.ReadFrame(frame)
+				frame, err := gr.ReadFrame()
 				if err != nil {
 					if err == io.EOF {
 						return

@@ -37,7 +37,7 @@ func main() {
 	}
 
 	moqt.HandleFunc("/interop", func(w moqt.SetupResponseWriter, r *moqt.SetupRequest) {
-		sess, err := server.Accept(w, r, nil)
+		sess, err := moqt.Accept(w, r, nil)
 		if err != nil {
 			w.Reject(moqt.ProtocolViolationErrorCode)
 			slog.Error("failed to accept session", "error", err)
@@ -78,9 +78,8 @@ func main() {
 			slog.Info("Accepted group", "group_sequence", gr.GroupSequence())
 
 			go func(gr *moqt.GroupReader) {
-				frame := moqt.NewFrame(nil)
 				for {
-					err := gr.ReadFrame(frame)
+					frame, err := gr.ReadFrame()
 					if err != nil {
 						if err == io.EOF {
 							return
@@ -108,6 +107,7 @@ func main() {
 
 	moqt.PublishFunc(context.Background(), "/server.interop", func(ctx context.Context, tw *moqt.TrackWriter) {
 		seq := moqt.GroupSequenceFirst
+		builder := moqt.NewFrameBuilder(1024)
 		for range 10 {
 			group, err := tw.OpenGroup(seq)
 			if err != nil {
@@ -117,7 +117,9 @@ func main() {
 
 			slog.Info("Opened group successfully", "group_sequence", group.GroupSequence())
 
-			frame := moqt.NewFrame([]byte("Hello from interop server in Go!"))
+			builder.Reset()
+			builder.Append([]byte("Hello from interop server in Go!"))
+			frame := builder.Frame()
 			err = group.WriteFrame(frame)
 			if err != nil {
 				group.CancelWrite(moqt.InternalGroupErrorCode) // TODO: Handle error properly

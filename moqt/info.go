@@ -1,5 +1,5 @@
 package moqt
 
 type Info struct {
-	GroupPeriod GroupPeriod
+	// TODO: Fill in fields as needed
 }

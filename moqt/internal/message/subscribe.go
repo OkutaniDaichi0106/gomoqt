@@ -9,7 +9,6 @@ import (
 
 type SubscribeID = protocol.SubscribeID
 type TrackPriority = protocol.TrackPriority
-type GroupPeriod = protocol.GroupPeriod
 
 /*
 * SUBSCRIBE Message {

@@ -62,7 +62,7 @@ func TestSendSubscribeStream_ReadInfo(t *testing.T) {
 	}
 	mockStream.On("Context").Return(context.Background())
 
-	info := Info{GroupPeriod: GroupPeriod(42)}
+	info := Info{}
 	sss := newSendSubscribeStream(id, mockStream, config, info)
 
 	ret := sss.ReadInfo()

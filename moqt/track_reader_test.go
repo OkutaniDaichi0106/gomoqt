@@ -11,7 +11,7 @@ import (
 func TestNewTrackReceiver(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Context").Return(context.Background())
-	info := Info{GroupPeriod: GroupPeriod(0)}
+	info := Info{}
 	substr := newSendSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{}, info)
 	receiver := newTrackReader("broadcastPath", "trackName", substr, func() {})
 

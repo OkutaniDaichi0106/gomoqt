@@ -14,25 +14,8 @@ func TestSubscribeOkMessage_EncodeDecode(t *testing.T) {
 		input   message.SubscribeOkMessage
 		wantErr bool
 	}{
-		"valid message with 0 group frequency": {
-			input: message.SubscribeOkMessage{
-				GroupPeriod: 0,
-			},
-		},
-		"valid message with valid group frequency": {
-			input: message.SubscribeOkMessage{
-				GroupPeriod: message.GroupPeriod(1),
-			},
-		},
-		"valid message with big group frequency": {
-			input: message.SubscribeOkMessage{
-				GroupPeriod: message.GroupPeriod(255),
-			},
-		},
-		"zero value": {
-			input: message.SubscribeOkMessage{
-				GroupPeriod: 0,
-			},
+		"valid message": {
+			input: message.SubscribeOkMessage{},
 		},
 	}
 

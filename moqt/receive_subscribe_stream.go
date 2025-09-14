@@ -96,9 +96,7 @@ func (rss *receiveSubscribeStream) WriteInfo(info Info) error {
 			err = Cause(rss.ctx)
 			return
 		}
-		sum := message.SubscribeOkMessage{
-			GroupPeriod: message.GroupPeriod(info.GroupPeriod),
-		}
+		sum := message.SubscribeOkMessage{}
 		err = sum.Encode(rss.stream)
 		if err != nil {
 			rss.closeWithError(InternalSubscribeErrorCode)

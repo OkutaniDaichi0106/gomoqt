@@ -166,9 +166,7 @@ func TestSession_Subscribe(t *testing.T) {
 			mockTrackStream := &MockQUICStream{}
 			mockTrackStream.On("StreamID").Return(quic.StreamID(2))
 			// Create a SubscribeOkMessage response
-			subok := message.SubscribeOkMessage{
-				GroupPeriod: 0,
-			}
+			subok := message.SubscribeOkMessage{}
 			var buf bytes.Buffer
 			err := subok.Encode(&buf)
 			assert.NoError(t, err, "failed to encode SubscribeOkMessage")

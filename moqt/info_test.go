@@ -7,27 +7,19 @@ import (
 )
 
 func TestInfo(t *testing.T) {
-	tests := map[string]struct {
-		groupPeriod GroupPeriod
-	}{
-		"default values": {
-			groupPeriod: GroupPeriod(0),
-		},
-		"high priority": {
-			groupPeriod: GroupPeriod(1),
-		},
-		"low priority": {
-			groupPeriod: GroupPeriod(2),
-		},
+	tests := map[string]Info{
+		"default values": {},
+		// "high priority": {
+		// },
+		// "low priority": {
+		// },
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			info := Info{
-				GroupPeriod: tt.groupPeriod,
-			}
+			info := Info{}
 
-			assert.Equal(t, tt.groupPeriod, info.GroupPeriod)
+			assert.Equal(t, tt, info)
 		})
 	}
 }
@@ -35,22 +27,16 @@ func TestInfo(t *testing.T) {
 func TestInfoZeroValue(t *testing.T) {
 	var info Info
 
-	assert.Equal(t, GroupPeriod(0), info.GroupPeriod)
+	assert.Equal(t, Info{}, info)
 }
 
-func TestInfoComparison(t *testing.T) {
-	info1 := Info{
-		GroupPeriod: GroupPeriod(1),
-	}
+// func TestInfoComparison(t *testing.T) {
+// 	info1 := Info{}
 
-	info2 := Info{
-		GroupPeriod: GroupPeriod(1),
-	}
+// 	info2 := Info{}
 
-	info3 := Info{
-		GroupPeriod: GroupPeriod(2),
-	}
+// 	info3 := Info{}
 
-	assert.Equal(t, info1, info2, "identical Info structs should be equal")
-	assert.NotEqual(t, info1, info3, "different Info structs should not be equal")
-}
+// 	assert.Equal(t, info1, info2, "identical Info structs should be equal")
+// 	assert.NotEqual(t, info1, info3, "different Info structs should not be equal")
+// }

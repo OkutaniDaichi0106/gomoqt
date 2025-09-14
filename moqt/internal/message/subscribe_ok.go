@@ -10,11 +10,10 @@ import (
  * }
  */
 type SubscribeOkMessage struct {
-	GroupPeriod GroupPeriod
 }
 
 func (som SubscribeOkMessage) Len() int {
-	return VarintLen(uint64(som.GroupPeriod))
+	return 0
 }
 
 func (som SubscribeOkMessage) Encode(w io.Writer) error {
@@ -23,7 +22,6 @@ func (som SubscribeOkMessage) Encode(w io.Writer) error {
 	defer pool.Put(b)
 
 	b, _ = WriteVarint(b, uint64(msgLen))
-	b, _ = WriteVarint(b, uint64(som.GroupPeriod))
 
 	_, err := w.Write(b)
 
@@ -42,13 +40,6 @@ func (som *SubscribeOkMessage) Decode(src io.Reader) error {
 	if err != nil {
 		return err
 	}
-
-	num, n, err := ReadVarint(b)
-	if err != nil {
-		return err
-	}
-	som.GroupPeriod = GroupPeriod(num)
-	b = b[n:]
 
 	if len(b) != 0 {
 		return ErrMessageTooShort

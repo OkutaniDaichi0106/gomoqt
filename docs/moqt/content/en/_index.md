@@ -40,12 +40,12 @@ for building scalable real-time apps.
 		style="background: radial-gradient(ellipse at 50% 80%,rgba(16,185,129,0.18),hsla(0,0%,100%,0));"
 	>}}
 	{{<hextra/feature-card
-		title="MIT License"
-		subtitle="Permissive OSS: use, modify, and redistribute for personal or commercial projects."
+		title="Pure Go: fast and lightweight"
+		subtitle="No cgo or native dependencies; easy cross‑compile. Idiomatic goroutines/channels/context."
 		class="card--image"
 		icon="sparkles"
-		image="images/mit-license.png"
-		imageClass="card__img"
+		image="https://go.dev/blog/go-brand/Go-Logo/PNG/Go-Logo_Aqua.png"
+		imageClass="card__img card__img--go"
 		style="background: radial-gradient(ellipse at 50% 80%,rgba(16,185,129,0.18),hsla(0,0%,100%,0));"
 	>}}
 	{{<hextra/feature-card
@@ -58,8 +58,8 @@ for building scalable real-time apps.
 		style="background: radial-gradient(ellipse at 50% 80%,rgba(16,185,129,0.18),hsla(0,0%,100%,0));"
 	>}}
 	{{<hextra/feature-card
-		title="Pure Go: fast and lightweight"
-		subtitle="No cgo or native dependencies; easy cross‑compile. Idiomatic goroutines/channels/context."
+		title="MIT License"
+		subtitle="Permissive OSS: use, modify, and redistribute for personal or commercial projects."
 		icon="lightning-bolt"
 	>}}
 	{{<hextra/feature-card

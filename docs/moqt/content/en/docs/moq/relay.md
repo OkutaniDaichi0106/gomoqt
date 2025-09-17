@@ -8,7 +8,7 @@ weight: 10
 By relaying media data from a source track to one or more destination tracks by servers, contents are delivered to a wider audience or users.
 To forward media data, a server subscribes to a source track as a subscriber to upstream and handles one or more downstream subscriptions as a publisher.
 
-**Overview**
+{{% details title="Overview" closed="true" %}}
 
 ```go
     var src *moqt.TrackReader
@@ -60,6 +60,7 @@ To forward media data, a server subscribes to a source track as a subscriber to 
         }
     }
 ```
+{{% /details %}}
 
 > [!TIP] Tip: The First Subscription
 > Making the first subscription before downstream clients have subscribed can reduce latency, but may increase resource usage. This trade-off should be considered when designing your relay logic.
@@ -76,34 +77,12 @@ To forward media data, a server subscribes to a source track as a subscriber to 
 
 To enhance UX, consider implementing caching strategies for frequently accessed data or long-lived objects. This can help reduce latency and improve overall performance. Some common caching techniques include:
 
-1. **In-Memory Caching**: Store frequently accessed data in memory for quick retrieval.
+1. **In-Memory Caching**: Store frequently accessed data in memory (RAM) for quick retrieval.
 2. **Distributed Caching**: Use a distributed cache system to share cached data across multiple instances.
 3. **Cache Invalidation**: Implement strategies to invalidate stale cache entries to ensure data consistency.
 
 By leveraging caching, you can significantly improve the responsiveness of your application and provide a smoother user experience.
 
-MOQ provides arrival intervals for Groups in a track to inform caching decisions.
-The interval is described in milliseconds (ms).
-When the arrival interval is 0, it indicates that the following groups arrives irregularly.
+## 📝 Future Work
 
-### Indicate Arrival Intervals
-
-```go
-    var tw *moqt.TrackWriter
-    // Before opening a group, indicate the arrival interval
-    tw.WriteInfo(moqt.Info{
-        GroupPeriod: 2 * moqt.GroupPeriodSecond, // ms
-    })
-```
-
-### Use Arrival Intervals
-
-```go
-    var tr *moqt.TrackReader
-    // Before opening a group, indicate the arrival interval
-    info := tr.ReadInfo()
-
-    period := info.GroupPeriod
-
-    var needCache bool = period == 0 || period > moqt.GroupPeriodSecond
-```
+- Per-track Caching Management: (#XXX)

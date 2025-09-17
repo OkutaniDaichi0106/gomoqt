@@ -47,14 +47,6 @@ Users define the struct directly and assign values to its fields as needed.
 
 ### Configuration
 
-Clients can be configured by setting fields on the `Client` struct.
-
-```go
-	client := moqt.Client{
-		// Set client options here
-	}
-```
-
 The following table describes the public fields of the `Client` struct:
 
 | Field                  | Type                        | Description                                 |
@@ -66,9 +58,8 @@ The following table describes the public fields of the `Client` struct:
 | `DialWebTransportFunc` | [`webtransport.DialAddrFunc`](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt/webtransport#DialAddrFunc) | Function to dial WebTransport connection    |
 | `Logger`               | [`*slog.Logger`](https://pkg.go.dev/log/slog#Logger)              | Logger for client events and errors         |
 
-{{< tabs items="Default QUIC, Custom QUIC" >}}
+{{< tabs items="Using Default QUIC, Using Custom QUIC" >}}
 {{< tab >}}
-**Using Default QUIC**
 
 `quic-go/quic-go` is used internally as the default QUIC implementation when relevant fields which is set for customization are not set or `nil`.
 
@@ -76,7 +67,6 @@ The following table describes the public fields of the `Client` struct:
 
 {{< /tab >}}
 {{< tab >}}
-**Using Custom QUIC**
 
 To use a custom QUIC implementation, you need to provide your own implementation of the `quic.DialAddrFunc`. `(moqt.Client).DialQUICFunc` field is set, it is used to dial QUIC connections instead of the default implementation.
 
@@ -91,10 +81,8 @@ type Client struct {
 
 {{< /tabs >}}
 
-{{< tabs items="Default WebTransport, Custom WebTransport" >}}
+{{< tabs items="Using Default WebTransport, Using Custom WebTransport" >}}
 {{< tab >}}
-
-**Using Default WebTransport**
 
 `quic-go/webtransport-go` is used internally as the default WebTransport implementation when relevant fields which is set for customization are not set or `nil`.
 
@@ -102,7 +90,6 @@ type Client struct {
 
 {{< /tab >}}
 {{< tab >}}
-**Using Custom WebTransport**
 
 To use a custom WebTransport implementation, you need to provide your own implementation of the `webtransport.DialAddrFunc`. `(moqt.Client).DialWebTransportFunc` field is set, it is used to dial WebTransport connections instead of the default implementation.
 
@@ -136,36 +123,34 @@ Clients can initiate a connection and establish a session with a server using th
 > When set nil for `mux`, the `DefaultTrackMux` will be used by default.
 > Ensure that the `mux` is properly configured for your use case to avoid unexpected behavior.
 
-## Terminate and Shut Down Client
+## Shutting Down a Client
 
-Clients can terminate all active sessions and shut down using two main methods, each suited for different operational needs:
+Clients can shut down in two ways: immediate or graceful.
 
 ### Immediate Shutdown
 
-Calling `Client.Close()` will immediately terminate all active sessions and release resources. This is a forceful shutdown: all sessions are closed using `Session.Terminate` with a no-error code, and any in-flight operations are interrupted. If shutdown is already in progress, further calls are ignored. After shutdown, all sessions and streams are closed.
+`(moqt.Client).Close` method forcefully terminates all sessions and releases resources. Use cautiously as it may interrupt operations.
 
 ```go
-	client.Close() // Immediately closes all sessions.
-	// Use with care, as abrupt disconnection may occur.
+    client.Close() // Immediate shutdown
 ```
 
 ### Graceful Shutdown
 
-client also provides a `Shutdown` method for graceful termination.
-This method takes a context and when it is canceled or times out, it will forcefully close all sessions.
+`(moqt.Client).Shutdown` method waits for sessions to close naturally, or forces termination on timeout.
 
 ```go
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	err := client.Shutdown(ctx) // Waits for sessions to close gracefully,
-	// or forces termination on timeout/cancel.
-
-	if err != nil {
-		// Forced termination occurred, or shutdown timed out.
-	}
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+    err := client.Shutdown(ctx)
+    if err != nil {
+        // Handle forced termination
+    }
 ```
 
-> [!NOTE] Note: No GOAWAY message
-> The current implementation does not send a `GOAWAY` message. `GOAWAY` notifies peers of upcoming shutdown, so they can stop opening new streams and finish processing existing ones before disconnecting. Immediate session closure occurs when the context is canceled. This will be updated once the `GOAWAY` message specification is finalized.
+> [!NOTE] Note: GOAWAY message
+> The current implementation does not send a GOAWAY message during shutdown. Immediate session closure occurs when the context is canceled. This will be updated once the GOAWAY message specification is finalized.
 
-In both cases, after shutdown, all sessions and streams are closed. For most use cases, prefer graceful shutdown to ensure a smooth experience for connected clients.
+## 📝 Future Work
+
+- Implement GOAWAY message: (#XXX)

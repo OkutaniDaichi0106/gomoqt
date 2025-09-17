@@ -30,7 +30,7 @@ Broadcasts are announced when they are registered with the `moqt.TrackMux`. This
 
 Peers can discover available broadcasts by specifying the prefix for the broadcast path they are interested in and listening for announcements.
 
-To be notified of announcements, use the `AcceptAnnounce` method on a `*moqt.Session`. This returns a `*moqt.AnnouncementReader`, which allows you to read incoming announcements.
+To be able to listen for announcements with a specific prefix, use the `(*moqt.Session).AcceptAnnounce` method. This returns a `*moqt.AnnouncementReader`, which allows you to read incoming announcements.
 
 ```go
 var sess *moqt.Session

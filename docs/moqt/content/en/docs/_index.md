@@ -12,15 +12,6 @@ Welcome to the docs. Start here.
 	{{< card link="demo" title="Demo" icon="lightning-bolt" subtitle="See it in action." >}}
 {{< /cards >}}
 
-## QUIC & WebTransport
-
-To get started with underlying protocols of MoQ and for advanced customization, you can explore the following sections:
-
-{{< cards >}}
-	{{< card link="quic" title="QUIC" icon="external-link" subtitle="QUIC protocol overview and setup." >}}
-	{{< card link="webtransport" title="WebTransport" icon="external-link" subtitle="WebTransport protocol overview and setup." >}}
-{{< /cards >}}
-
 ## MoQ
 
 To implement your own application using MoQ, you can refer to the following resources:

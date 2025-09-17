@@ -59,6 +59,7 @@ func main() {
     }
 }
 ```
+
 {{% /details %}}
 
 ## Initialize a Server
@@ -159,16 +160,21 @@ type SetupHandlerFunc func(SetupResponseWriter, *SetupRequest)
 {{< tabs items="Using Default Router, Using Custom Router" >}}
 {{< tab >}}
 
-When `(Server).SetupHandler` is not set, `moqt.DefaultRouter` is the default router used by the server.
-To use the default router, you can register your handlers with it directly:
+When `(Server).SetupHandler` is not set and is nil, `moqt.DefaultRouter` is the default router used by the server.
+
+You can register your handlers to the default router as follows:
 
 ```go
-    moqt.DefaultRouter.HandleFunc("/path", handlerFunc)
+    server = &moqt.Server{
+        SetupHandler: nil,
+        // Other server fields...
+    }
+
+    // Register handlers to the default router
+    moqt.DefaultRouter.HandleFunc("/path", func(w moqt.SetupResponseWriter, r *moqt.SetupRequest){/* ... */})
     moqt.DefaultRouter.Handle("/path", handler)
-```
-We also provide global function to register handlers with the default router:
 
-```go
+    // You can also use global functions
     moqt.HandleFunc("/path", handlerFunc)
     moqt.Handle("/path", handler)
 ```
@@ -179,14 +185,14 @@ We also provide global function to register handlers with the default router:
 If you need more control over routing, you can create a custom router and set it as the server's handler:
 
 ```go
-    router := moqt.NewRouter()
-    router.HandleFunc("/path", handlerFunc)
-    router.Handle("/path", handler)
+    var router moqt.SetupHandler
+
     server = &moqt.Server{
         SetupHandler: router,
         // Other server fields...
     }
 ```
+
 {{< /tab >}}
 {{< /tabs >}}
 
@@ -209,16 +215,16 @@ After a set-up request is routed to a specific handler and is accepted, a sessio
     })
 ```
 
-The `Accept` function establishes a new MoQ session by accepting the setup request. It takes:
-- `w SetupResponseWriter`: Writer to send the server response
-- `r *SetupRequest`: The client's setup request
-- `mux *TrackMux`: Multiplexer for track management (can be nil for default handling)
+The `moqt.Accept` function establishes a new MoQ session by accepting the setup request. It takes:
+- `w moqt.SetupResponseWriter`: Writer to send the server response
+- `r *moqt.SetupRequest`: The client's setup request
+- `mux *moqt.TrackMux`: Multiplexer for track management (can be nil for default handling)
 
-On success, it returns a `*Session` for managing the established connection.
+On success, it returns a `*moqt.Session` for managing the established connection.
 
 ## Handle WebTransport Connections
 
-For WebTransport-based MoQ sessions, integrate the server with an HTTP server using `ServeWebTransport`.
+For WebTransport-based MoQ sessions, integrate the server with an HTTP server using `(moqt.Server).ServeWebTransport` method.
 
 **Using with net/http:**
 
@@ -233,7 +239,7 @@ http.HandleFunc("/moq", func(w http.ResponseWriter, r *http.Request) {
 })
 ```
 
-The `ServeWebTransport` method upgrades the HTTP/3 connection to WebTransport, accepts the session stream, and routes the setup request to the configured `SetupHandler`.
+The `(moqt.Server).ServeWebTransport` method upgrades the HTTP/3 connection to WebTransport, accepts the session stream, and routes the setup request to the configured `(moqt.Server).SetupHandler`.
 
 ## Run the Server
 
@@ -248,36 +254,34 @@ For more advanced use cases:
 - `ServeQUICListener(ln quic.Listener)`: Serves on an existing QUIC listener.
 - `ServeQUICConn(conn quic.Connection)`: Handles a single QUIC connection directly.
 
+## Shutting Down a Server
 
-## Terminate and Shut Down Server
-
-Servers can terminate all active sessions and shut down using two main methods, each suited for different operational needs:
+Servers also support immediate and graceful shutdowns.
 
 ### Immediate Shutdown
 
-Calling `Server.Close()` will immediately terminate all active sessions and close all listeners. This is a forceful shutdown: all sessions are closed using `Session.Terminate` with a no-error code, and any in-flight operations are interrupted. If shutdown is already in progress, further calls are ignored. After shutdown, all sessions, streams, and listeners are closed.
+`(moqt.Server).Close` method terminates all sessions and closes listeners forcefully.
 
 ```go
-server.Close() // Immediately closes all sessions and listeners.
-// Use with care, as clients may be disconnected abruptly.
+    server.Close() // Immediate shutdown
 ```
 
 ### Graceful Shutdown
 
-server also provides a `Shutdown` method for graceful termination.
-This method takes a context and when it is canceled or times out, it will forcefully close all sessions.
+`(moqt.Server).Shutdown` method allows sessions to close gracefully before forcing termination.
 
 ```go
-ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-defer cancel()
-err := server.Shutdown(ctx) // Waits for sessions to close gracefully,
-// or forces termination on timeout/cancel.
-if err != nil {
-    // Forced termination occurred, or shutdown timed out.
-}
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+    err := server.Shutdown(ctx)
+    if err != nil {
+        // Handle forced termination
+    }
 ```
 
 > [!NOTE] Note: GOAWAY message
 > The current implementation does not send a GOAWAY message during shutdown. Immediate session closure occurs when the context is canceled. This will be updated once the GOAWAY message specification is finalized.
 
-In both cases, after shutdown, all sessions, streams, and listeners are closed. For most use cases, prefer graceful shutdown to ensure a smooth experience for connected clients.
+## 📝 Future Work
+
+- Implement GOAWAY message: (#XXX)

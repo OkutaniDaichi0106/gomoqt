@@ -11,6 +11,13 @@ MOQ Session is established when a client connects to a QUIC server and offers to
 
 ```go
 type Session struct {
+    // Embedded Fields
+    Version          Version          // through sessionStream
+    Path             string           // through sessionStream.SetupRequest
+    Versions         []Version        // through sessionStream.SetupRequest
+    ClientExtensions *Parameters      // through sessionStream.SetupRequest
+    SetupRequest     *SetupRequest    // through sessionStream
+    ServerExtensions *Parameters      // through sessionStream
     // contains filtered or unexported fields
 }
 
@@ -43,7 +50,7 @@ The session state SHOULD be sourced directly from the QUIC congestion controller
 > [!WARNING]
 > This feature is not fully implemented and does not work as intended.
 
-## Detect Session Updates
+## Detect Session Updates 🚧
 
 When the session state is updated by the peer, signals can be caught using the `(moqt.Session).SessionUpdated` channel.
 
@@ -73,3 +80,20 @@ Incoming requests, such as track subscriptions and discovery broadcasts, are han
 {{<cards>}}
     {{< card link="../announce/#announce-broadcasts" title="Announce Broadcasts" icon="external-link">}}
 {{</cards>}}
+
+## Terminating a Session
+
+To explicitly close a session due to protocol violations, errors, or other reasons, use the `(moqt.Session).Terminate` method. This closes all associated streams.
+
+```go
+func (s *Session) Terminate(code SessionErrorCode, msg string) error
+```
+
+- `code`: Error code (e.g., from built-in codes)
+- `msg`: Descriptive message
+
+Prefer reserved error codes for standard reasons. See [Built-in Error Codes](http://localhost:1313/gomoqt/docs/moq/errors/#built-in-error-codes) for details.
+
+## 📝 Future Work
+
+- Bitrate Notification: (#XXX)

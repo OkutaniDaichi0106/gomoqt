@@ -311,10 +311,10 @@ func openSessionStream(conn quic.Connection, path string, extensions *Parameters
 	}
 
 	req := &SetupRequest{
-		Path:       path,
-		Versions:   versions,
-		Extensions: extensions,
-		ctx:        stream.Context(),
+		Path:             path,
+		Versions:         versions,
+		ClientExtensions: extensions,
+		ctx:              stream.Context(),
 	}
 
 	sessStr := newSessionStream(stream, req)

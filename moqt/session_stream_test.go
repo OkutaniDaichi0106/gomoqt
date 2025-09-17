@@ -24,8 +24,8 @@ func TestNewSessionStream(t *testing.T) {
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
 	req := &SetupRequest{
-		Path:       "test/path",
-		Extensions: NewParameters(),
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -48,8 +48,8 @@ func TestSessionStream_updateSession(t *testing.T) {
 	mockStream.On("Write", mock.Anything).Return(8, nil)
 
 	req := &SetupRequest{
-		Path:       "test/path",
-		Extensions: NewParameters(),
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -73,8 +73,8 @@ func TestSessionStream_updateSession_WriteError(t *testing.T) {
 	mockStream.On("Write", mock.Anything).Return(0, writeError)
 
 	req := &SetupRequest{
-		Path:       "test/path",
-		Extensions: NewParameters(),
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -96,8 +96,8 @@ func TestSessionStream_SessionUpdated(t *testing.T) {
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
 	req := &SetupRequest{
-		Path:       "test/path",
-		Extensions: NewParameters(),
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -122,8 +122,8 @@ func TestSessionStream_updateSession_ZeroBitrate(t *testing.T) {
 	mockStream.On("Write", mock.Anything).Return(2, nil)
 
 	req := &SetupRequest{
-		Path:       "test/path",
-		Extensions: NewParameters(),
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -144,8 +144,8 @@ func TestSessionStream_updateSession_LargeBitrate(t *testing.T) {
 	mockStream.On("Write", mock.Anything).Return(10, nil)
 
 	req := &SetupRequest{
-		Path:       "test/path",
-		Extensions: NewParameters(),
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -220,8 +220,8 @@ func TestSessionStream_listenUpdates(t *testing.T) {
 			mockStream := tt.mockStream()
 
 			req := &SetupRequest{
-				Path:       "test/path",
-				Extensions: NewParameters(),
+				Path:             "test/path",
+				ClientExtensions: NewParameters(),
 			}
 
 			ss := newSessionStream(mockStream, req)
@@ -259,8 +259,8 @@ func TestSessionStream_listenUpdates_StreamClosed(t *testing.T) {
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
 	req := &SetupRequest{
-		Path:       "test/path",
-		Extensions: NewParameters(),
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -290,8 +290,8 @@ func TestSessionStream_listenUpdates_ContextCancellation(t *testing.T) {
 	mockStream.On("Read", mock.Anything).Return(0, nil).Maybe()
 
 	req := &SetupRequest{
-		Path:       "test/path",
-		Extensions: NewParameters(),
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -324,8 +324,8 @@ func TestSessionStream_ConcurrentAccess(t *testing.T) {
 	mockStream.On("Write", mock.Anything).Return(8, nil).Maybe()
 
 	req := &SetupRequest{
-		Path:       "test/path",
-		Extensions: NewParameters(),
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -405,9 +405,9 @@ func TestAccept(t *testing.T) {
 			mockStream := tt.mockStream()
 
 			req := &SetupRequest{
-				Path:       "test/path",
-				Versions:   []Version{protocol.Develop},
-				Extensions: NewParameters(),
+				Path:             "test/path",
+				Versions:         []Version{protocol.Develop},
+				ClientExtensions: NewParameters(),
 			}
 
 			ss := newSessionStream(mockStream, req)
@@ -440,7 +440,7 @@ func TestAccept(t *testing.T) {
 				assert.NoError(t, err, "Accept should not return error")
 				assert.NotNil(t, session, "session should not be nil on success")
 				assert.Equal(t, tt.version, ss.Version, "version should be set correctly")
-				assert.Equal(t, tt.extensions, ss.serverParameters, "server parameters should be set correctly")
+				assert.Equal(t, tt.extensions, ss.ServerExtensions, "server parameters should be set correctly")
 			}
 
 			mockStream.AssertExpectations(t)
@@ -456,9 +456,9 @@ func TestAccept_OnlyOnce(t *testing.T) {
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
 	req := &SetupRequest{
-		Path:       "test/path",
-		Versions:   []Version{protocol.Develop},
-		Extensions: NewParameters(),
+		Path:             "test/path",
+		Versions:         []Version{protocol.Develop},
+		ClientExtensions: NewParameters(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -507,9 +507,9 @@ func TestAccept_ConcurrentCalls(t *testing.T) {
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
 	req := &SetupRequest{
-		Path:       "test/path",
-		Versions:   []Version{protocol.Develop},
-		Extensions: NewParameters(),
+		Path:             "test/path",
+		Versions:         []Version{protocol.Develop},
+		ClientExtensions: NewParameters(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -594,7 +594,7 @@ func TestResponse_AwaitAccepted(t *testing.T) {
 			expectError: false,
 			checkResult: func(t *testing.T, r *response) {
 				assert.Equal(t, protocol.Develop, r.Version, "version should be set correctly")
-				assert.NotNil(t, r.serverParameters, "server parameters should be set")
+				assert.NotNil(t, r.ServerExtensions, "server parameters should be set")
 			},
 		},
 		"decode error": {
@@ -628,8 +628,8 @@ func TestResponse_AwaitAccepted(t *testing.T) {
 			mockStream := tt.mockStream()
 
 			req := &SetupRequest{
-				Path:       "test/path",
-				Extensions: NewParameters(),
+				Path:             "test/path",
+				ClientExtensions: NewParameters(),
 			}
 
 			ss := newSessionStream(mockStream, req)
@@ -666,8 +666,8 @@ func TestResponse_AwaitAccepted_OnlyOnce(t *testing.T) {
 	mockStream.ReadFunc = buf.Read
 
 	req := &SetupRequest{
-		Path:       "test/path",
-		Extensions: NewParameters(),
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -703,8 +703,8 @@ func TestResponse_AwaitAccepted_ConcurrentCalls(t *testing.T) {
 	mockStream.ReadFunc = buf.Read
 
 	req := &SetupRequest{
-		Path:       "test/path",
-		Extensions: NewParameters(),
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -745,9 +745,9 @@ func TestAccept_NilParameters(t *testing.T) {
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
 	req := &SetupRequest{
-		Path:       "test/path",
-		Versions:   []Version{protocol.Develop},
-		Extensions: NewParameters(),
+		Path:             "test/path",
+		Versions:         []Version{protocol.Develop},
+		ClientExtensions: NewParameters(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -775,7 +775,7 @@ func TestAccept_NilParameters(t *testing.T) {
 	assert.NoError(t, err, "Accept should handle nil parameters")
 	assert.NotNil(t, session, "session should not be nil")
 	assert.Equal(t, version, ss.Version, "version should be set correctly")
-	assert.Nil(t, ss.serverParameters, "server parameters should be nil when nil is passed")
+	assert.Nil(t, ss.ServerExtensions, "server parameters should be nil when nil is passed")
 
 	mockStream.AssertExpectations(t)
 }
@@ -796,9 +796,9 @@ func TestAccept_MultipleVersions(t *testing.T) {
 			mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
 			req := &SetupRequest{
-				Path:       "test/path",
-				Versions:   []Version{protocol.Develop}, // Include supported version
-				Extensions: NewParameters(),
+				Path:             "test/path",
+				Versions:         []Version{protocol.Develop}, // Include supported version
+				ClientExtensions: NewParameters(),
 			}
 
 			ss := newSessionStream(mockStream, req)
@@ -879,8 +879,8 @@ func TestResponse_AwaitAccepted_InvalidMessage(t *testing.T) {
 			mockStream := tt.mockStream()
 
 			req := &SetupRequest{
-				Path:       "test/path",
-				Extensions: NewParameters(),
+				Path:             "test/path",
+				ClientExtensions: NewParameters(),
 			}
 
 			ss := newSessionStream(mockStream, req)
@@ -923,8 +923,8 @@ func TestResponse_AwaitAccepted_DifferentVersions(t *testing.T) {
 			mockStream.ReadFunc = buf.Read
 
 			req := &SetupRequest{
-				Path:       "test/path",
-				Extensions: NewParameters(),
+				Path:             "test/path",
+				ClientExtensions: NewParameters(),
 			}
 
 			ss := newSessionStream(mockStream, req)
@@ -934,7 +934,7 @@ func TestResponse_AwaitAccepted_DifferentVersions(t *testing.T) {
 
 			assert.NoError(t, err, "AwaitAccepted should succeed for version %d", tt.version)
 			assert.Equal(t, tt.version, r.Version, "version should be set correctly")
-			assert.NotNil(t, r.serverParameters, "server parameters should be set")
+			assert.NotNil(t, r.ServerExtensions, "server parameters should be set")
 
 			mockStream.AssertExpectations(t)
 		})
@@ -948,8 +948,8 @@ func TestSessionStream_listenUpdates_InitialChannelState(t *testing.T) {
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
 	req := &SetupRequest{
-		Path:       "test/path",
-		Extensions: NewParameters(),
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -974,8 +974,8 @@ func TestSessionStream_Context(t *testing.T) {
 	mockStream.On("Context").Return(ctx)
 
 	req := &SetupRequest{
-		Path:       "test/path",
-		Extensions: NewParameters(),
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -993,8 +993,8 @@ func TestResponse_Interface(t *testing.T) {
 	mockStream.On("Context").Return(context.Background())
 
 	req := &SetupRequest{
-		Path:       "test/path",
-		Extensions: NewParameters(),
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -1057,8 +1057,8 @@ func TestResponse_AwaitAccepted_ErrorHandling(t *testing.T) {
 			mockStream := tt.mockStream()
 
 			req := &SetupRequest{
-				Path:       "test/path",
-				Extensions: NewParameters(),
+				Path:             "test/path",
+				ClientExtensions: NewParameters(),
 			}
 
 			ss := newSessionStream(mockStream, req)
@@ -1120,9 +1120,9 @@ func TestAccept_ErrorHandling(t *testing.T) {
 			tt.setupMock(mockStream)
 
 			req := &SetupRequest{
-				Path:       "test/path",
-				Versions:   []Version{protocol.Develop}, // Include supported version
-				Extensions: NewParameters(),
+				Path:             "test/path",
+				Versions:         []Version{protocol.Develop}, // Include supported version
+				ClientExtensions: NewParameters(),
 			}
 
 			ss := newSessionStream(mockStream, req)
@@ -1200,9 +1200,9 @@ func TestAccept_ParameterHandling(t *testing.T) {
 			mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
 			req := &SetupRequest{
-				Path:       "test/path",
-				Versions:   []Version{protocol.Develop}, // Include supported version
-				Extensions: NewParameters(),
+				Path:             "test/path",
+				Versions:         []Version{protocol.Develop}, // Include supported version
+				ClientExtensions: NewParameters(),
 			}
 
 			ss := newSessionStream(mockStream, req)
@@ -1230,7 +1230,7 @@ func TestAccept_ParameterHandling(t *testing.T) {
 			assert.NoError(t, err, "Accept should handle parameters correctly")
 			assert.NotNil(t, session, "session should not be nil")
 			assert.Equal(t, protocol.Develop, ss.Version, "version should be set correctly")
-			assert.Equal(t, extensions, ss.serverParameters, "parameters should be set correctly")
+			assert.Equal(t, extensions, ss.ServerExtensions, "parameters should be set correctly")
 
 			mockStream.AssertExpectations(t)
 		})
@@ -1256,9 +1256,9 @@ func TestAccept_BoundaryVersions(t *testing.T) {
 			mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
 			req := &SetupRequest{
-				Path:       "test/path",
-				Versions:   []Version{protocol.Develop, Version(255), Version(65535), Version(4294967295)},
-				Extensions: NewParameters(),
+				Path:             "test/path",
+				Versions:         []Version{protocol.Develop, Version(255), Version(65535), Version(4294967295)},
+				ClientExtensions: NewParameters(),
 			}
 
 			ss := newSessionStream(mockStream, req)
@@ -1318,8 +1318,8 @@ func TestResponse_AwaitAccepted_BoundaryVersions(t *testing.T) {
 			mockStream.ReadFunc = buf.Read
 
 			req := &SetupRequest{
-				Path:       "test/path",
-				Extensions: NewParameters(),
+				Path:             "test/path",
+				ClientExtensions: NewParameters(),
 			}
 
 			ss := newSessionStream(mockStream, req)
@@ -1329,7 +1329,7 @@ func TestResponse_AwaitAccepted_BoundaryVersions(t *testing.T) {
 
 			assert.NoError(t, err, "AwaitAccepted should succeed for version %d", tt.version)
 			assert.Equal(t, tt.version, r.Version, "version should be set correctly")
-			assert.NotNil(t, r.serverParameters, "server parameters should be set")
+			assert.NotNil(t, r.ServerExtensions, "server parameters should be set")
 
 			mockStream.AssertExpectations(t)
 		})
@@ -1344,9 +1344,9 @@ func TestAccept_Race(t *testing.T) {
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
 	req := &SetupRequest{
-		Path:       "test/path",
-		Extensions: NewParameters(),
-		Versions:   []Version{protocol.Develop, Version(255), Version(65535), Version(4294967295)},
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
+		Versions:         []Version{protocol.Develop, Version(255), Version(65535), Version(4294967295)},
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -1412,8 +1412,8 @@ func TestResponse_AwaitAccepted_Race(t *testing.T) {
 	mockStream.ReadFunc = buf.Read
 
 	req := &SetupRequest{
-		Path:       "test/path",
-		Extensions: NewParameters(),
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -1454,9 +1454,9 @@ func TestResponseWriter_SessionStream_Sharing(t *testing.T) {
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
 	req := &SetupRequest{
-		Path:       "test/path",
-		Extensions: NewParameters(),
-		Versions:   []Version{protocol.Develop},
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
+		Versions:         []Version{protocol.Develop},
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -1488,11 +1488,11 @@ func TestResponseWriter_SessionStream_Sharing(t *testing.T) {
 
 	// Verify that the sessionStream was updated
 	assert.Equal(t, version, ss.Version, "sessionStream version should be updated")
-	assert.Equal(t, extensions, ss.serverParameters, "sessionStream parameters should be updated")
+	assert.Equal(t, extensions, ss.ServerExtensions, "sessionStream parameters should be updated")
 
 	// Verify shared state through different accessors
 	assert.Equal(t, version, rw.Version, "responseWriter should show updated version")
-	assert.Equal(t, extensions, rw.serverParameters, "responseWriter should show updated parameters")
+	assert.Equal(t, extensions, rw.ServerExtensions, "responseWriter should show updated parameters")
 
 	mockStream.AssertExpectations(t)
 }
@@ -1515,8 +1515,8 @@ func TestResponse_SessionStream_Sharing(t *testing.T) {
 	mockStream.ReadFunc = buf.Read
 
 	req := &SetupRequest{
-		Path:       "test/path",
-		Extensions: NewParameters(),
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -1527,11 +1527,11 @@ func TestResponse_SessionStream_Sharing(t *testing.T) {
 
 	// Verify that the sessionStream was updated
 	assert.Equal(t, version, ss.Version, "sessionStream version should be updated")
-	assert.NotNil(t, ss.serverParameters, "sessionStream parameters should be set")
+	assert.NotNil(t, ss.ServerExtensions, "sessionStream parameters should be set")
 
 	// Verify shared state through different accessors
 	assert.Equal(t, version, r.Version, "response should show updated version")
-	assert.Equal(t, ss.serverParameters, r.serverParameters, "response should show updated parameters")
+	assert.Equal(t, ss.ServerExtensions, r.ServerExtensions, "response should show updated parameters")
 
 	mockStream.AssertExpectations(t)
 }
@@ -1577,9 +1577,9 @@ func TestAccept_ParameterEdgeCases(t *testing.T) {
 			mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 
 			req := &SetupRequest{
-				Path:       "test/path",
-				Versions:   []Version{protocol.Develop},
-				Extensions: NewParameters(),
+				Path:             "test/path",
+				Versions:         []Version{protocol.Develop},
+				ClientExtensions: NewParameters(),
 			}
 
 			ss := newSessionStream(mockStream, req)
@@ -1611,7 +1611,7 @@ func TestAccept_ParameterEdgeCases(t *testing.T) {
 			} else {
 				assert.NoError(t, err, "Accept should handle parameters correctly")
 				assert.NotNil(t, session, "session should not be nil")
-				assert.Equal(t, extensions, ss.serverParameters, "server parameters should be set correctly")
+				assert.Equal(t, extensions, ss.ServerExtensions, "server parameters should be set correctly")
 			}
 
 			mockStream.AssertExpectations(t)

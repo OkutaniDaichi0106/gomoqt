@@ -555,8 +555,8 @@ func TestServer_SessionManagement(t *testing.T) {
 			mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
 			req := &SetupRequest{
-				Path:       "/test",
-				Extensions: NewParameters(),
+				Path:             "/test",
+				ClientExtensions: NewParameters(),
 			}
 			sessStream := newSessionStream(mockStream, req)
 			session := newSession(mockConn, sessStream, nil, slog.Default(), nil)
@@ -909,8 +909,8 @@ func TestServer_AddRemoveSession(t *testing.T) {
 	mockConn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
 
 	req := &SetupRequest{
-		Path:       "/test",
-		Extensions: NewParameters(),
+		Path:             "/test",
+		ClientExtensions: NewParameters(),
 	}
 	sessStream := newSessionStream(mockStream, req)
 
@@ -1004,8 +1004,8 @@ func TestServer_Shutdown(t *testing.T) {
 				mockConn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
 
 				req := &SetupRequest{
-					Path:       "/test",
-					Extensions: NewParameters(),
+					Path:             "/test",
+					ClientExtensions: NewParameters(),
 				}
 				sessStream := newSessionStream(mockStream, req)
 				session := newSession(mockConn, sessStream, nil, slog.Default(), nil)
@@ -1355,8 +1355,8 @@ func TestServer_SessionLifecycle(t *testing.T) {
 				mockConn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
 
 				req := &SetupRequest{
-					Path:       "/test",
-					Extensions: NewParameters(),
+					Path:             "/test",
+					ClientExtensions: NewParameters(),
 				}
 				sessStream := newSessionStream(mockStream, req)
 				session := newSession(mockConn, sessStream, nil, slog.Default(), nil)
@@ -1516,8 +1516,8 @@ func TestServer_EdgeCaseOperations(t *testing.T) {
 				mockConn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
 
 				req := &SetupRequest{
-					Path:       "/test",
-					Extensions: NewParameters(),
+					Path:             "/test",
+					ClientExtensions: NewParameters(),
 				}
 				sessStream := newSessionStream(mockStream, req)
 				session := newSession(mockConn, sessStream, nil, slog.Default(), nil)

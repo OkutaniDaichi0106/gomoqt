@@ -414,10 +414,10 @@ func acceptSessionStream(acceptCtx context.Context, conn quic.Connection, connLo
 	// }
 
 	req := &SetupRequest{
-		ctx:        stream.Context(),
-		Path:       path,
-		Versions:   scm.SupportedVersions,
-		Extensions: clientParams,
+		ctx:              stream.Context(),
+		Path:             path,
+		Versions:         scm.SupportedVersions,
+		ClientExtensions: clientParams,
 	}
 
 	return newSessionStream(stream, req), nil

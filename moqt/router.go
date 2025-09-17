@@ -84,9 +84,9 @@ type SetupHandler interface {
 }
 
 type SetupRequest struct {
-	Path       string
-	Versions   []Version
-	Extensions *Parameters
+	Path             string
+	Versions         []Version
+	ClientExtensions *Parameters
 
 	ctx context.Context
 }

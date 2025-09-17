@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
 )
 
@@ -35,14 +34,13 @@ type sessionStream struct {
 	mu sync.Mutex
 
 	// Version of the protocol used in this session
-	Version protocol.Version
+	Version Version
 
-	// Parameters specified by the client and server
-
+	// Setup request from the client
 	*SetupRequest
 
 	// Parameters specified by the server
-	serverParameters *Parameters
+	ServerExtensions *Parameters
 
 	listenOnce sync.Once
 }
@@ -67,7 +65,7 @@ func (r *response) AwaitAccepted() error {
 			return
 		}
 		r.Version = sum.SelectedVersion
-		r.serverParameters = &Parameters{sum.Parameters}
+		r.ServerExtensions = &Parameters{sum.Parameters}
 
 		r.listenUpdates()
 	})
@@ -103,7 +101,7 @@ func (w *responseWriter) SelectVersion(v Version) error {
 }
 
 func (w *responseWriter) SetExtensions(extensions *Parameters) {
-	w.serverParameters = extensions
+	w.ServerExtensions = extensions
 }
 
 func (w *responseWriter) accept(mux *TrackMux) (*Session, error) {
@@ -111,8 +109,8 @@ func (w *responseWriter) accept(mux *TrackMux) (*Session, error) {
 	w.onceSetup.Do(func() {
 		// TODO: Implement setup logic if needed
 		var paramMsg message.Parameters
-		if w.serverParameters != nil {
-			paramMsg = w.serverParameters.paramMap
+		if w.ServerExtensions != nil {
+			paramMsg = w.ServerExtensions.paramMap
 		}
 		err = message.SessionServerMessage{
 			SelectedVersion: w.Version,

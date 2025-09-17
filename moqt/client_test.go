@@ -122,8 +122,8 @@ func TestClient_ShutdownContextCancel(t *testing.T) {
 	mockStream.On("Context").Return(context.Background())
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
-		Path:       "path",
-		Extensions: NewParameters(),
+		Path:             "path",
+		ClientExtensions: NewParameters(),
 	})
 	sess := newSession(mockConn, sessStream, nil, slog.Default(), nil)
 	c.addSession(sess)
@@ -994,8 +994,8 @@ func TestClient_Shutdown_Timeout(t *testing.T) {
 	mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
-		Path:       "path",
-		Extensions: NewParameters(),
+		Path:             "path",
+		ClientExtensions: NewParameters(),
 	})
 	sess := newSession(mockConn, sessStream, nil, slog.Default(), nil)
 	c.addSession(sess)

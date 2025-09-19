@@ -68,18 +68,22 @@ func (mux *TrackMux) Publish(ctx context.Context, path BroadcastPath, handler Tr
 	mux.Announce(ann, handler)
 }
 
-func (mux *TrackMux) registerHandler(path BroadcastPath, handler *announcedTrackHandler) {
+func (mux *TrackMux) registerHandler(ann *Announcement, handler TrackHandler) *announcedTrackHandler {
+	path := ann.BroadcastPath()
 	mux.handlerMu.Lock()
-	old, ok := mux.trackHandlerIndex[path]
-	if !ok {
-		mux.trackHandlerIndex[path] = handler
-		mux.handlerMu.Unlock()
-		return
+	announced, ok := mux.trackHandlerIndex[path]
+
+	mux.trackHandlerIndex[path] = &announcedTrackHandler{
+		Announcement: ann,
+		TrackHandler: handler,
 	}
-	mux.trackHandlerIndex[path] = handler
 	mux.handlerMu.Unlock()
 
-	old.end()
+	if ok {
+		announced.end()
+	}
+
+	return mux.trackHandlerIndex[path]
 }
 
 func (mux *TrackMux) removeHandler(handler *announcedTrackHandler) {
@@ -106,16 +110,13 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 		return
 	}
 
-	announcedHandler := &announcedTrackHandler{
-		Announcement: announcement,
-		TrackHandler: handler,
-	}
 	// Add the handler to the mux if it is not already registered
-	mux.registerHandler(path, announcedHandler)
+	announced := mux.registerHandler(announcement, handler)
 
-	// add Announcement to the mux
 	segments := strings.Split(string(path), "/")
-	lastNode := mux.announcementTree.addAnnouncement(segments, announcement)
+	prefixSegments := segments[1 : len(segments)-1] // Exclude leading and trailing empty segments
+
+	lastNode := mux.announcementTree.addAnnouncement(prefixSegments, announcement)
 
 	// Send announcement to all registered channels with retry mechanism
 	lastNode.mu.RLock()
@@ -149,7 +150,7 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 		// Remove the announcement from the tree unconditionally
 		lastNode.removeAnnouncement(announcement)
 
-		mux.removeHandler(announcedHandler)
+		mux.removeHandler(announced)
 	})
 }
 
@@ -229,11 +230,13 @@ func (mux *TrackMux) serveAnnouncements(aw *AnnouncementWriter, prefix string) {
 		return
 	}
 
+	// Use prefixSegments to get normalized segments for traversal
 	segments := strings.Split(prefix, "/")
+	prefixSegments := segments[1 : len(segments)-1]
 
 	// Register the handler on the routing tree (protect children with per-node lock)
 	current := &mux.announcementTree
-	for _, seg := range segments[1 : len(segments)-1] {
+	for _, seg := range prefixSegments {
 		current.mu.Lock()
 		if current.children == nil {
 			current.children = make(map[string]*announcingNode)
@@ -248,7 +251,7 @@ func (mux *TrackMux) serveAnnouncements(aw *AnnouncementWriter, prefix string) {
 		current = next
 	}
 
-	ch := make(chan *Announcement, 1)
+	ch := make(chan *Announcement, 2)
 	current.mu.Lock()
 	current.channels[ch] = struct{}{}
 	current.mu.Unlock()
@@ -336,17 +339,20 @@ func (node *announcingNode) createChild(seg prefixSegment) *announcingNode {
 	return child
 }
 
-func (node *announcingNode) addAnnouncement(segments []string, announcement *Announcement) (lastNode *announcingNode) {
+func (node *announcingNode) addAnnouncement(prefixSegments []string, announcement *Announcement) (lastNode *announcingNode) {
+	// store announcement on this node
 	node.mu.Lock()
 	node.announcements[announcement] = struct{}{}
 	node.mu.Unlock()
-	if len(segments) == 0 {
+
+	// if no further segments, stop here
+	if len(prefixSegments) == 0 {
 		return node
 	}
 
-	child := node.createChild(segments[0])
-
-	return child.addAnnouncement(segments[1:], announcement)
+	// create or find the child for the next segment and recurse
+	child := node.createChild(prefixSegments[0])
+	return child.addAnnouncement(prefixSegments[1:], announcement)
 }
 
 func (node *announcingNode) removeAnnouncement(announcement *Announcement) {
@@ -416,8 +422,4 @@ var _ TrackHandler = (*announcedTrackHandler)(nil)
 type announcedTrackHandler struct {
 	TrackHandler
 	*Announcement
-}
-
-func (h *announcedTrackHandler) Context() context.Context {
-	return h.ctx
 }

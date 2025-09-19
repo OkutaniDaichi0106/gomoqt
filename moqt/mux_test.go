@@ -712,3 +712,476 @@ func TestMux_SimultaneousAnnounceAndPublish(t *testing.T) {
 	_, h := mux.TrackHandler(path)
 	assert.NotNil(t, h, "Handler should be registered after simultaneous Announce and Publish")
 }
+
+// Test serveAnnouncements: initialization sends existing announcements to the writer
+func TestMux_ServeAnnouncements_InitSendsExistingAnnouncements(t *testing.T) {
+	mux := NewTrackMux()
+	ctx := context.Background()
+
+	// Create an announcement under /test/stream1 and register it in the mux
+	ann, end := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
+	defer end()
+	mux.Announce(ann, TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {}))
+
+	// Prepare mock stream for AnnouncementWriter
+	mockStream := &MockQUICStream{}
+	streamCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	mockStream.On("Context").Return(streamCtx)
+	// Allow write calls (init + potential active messages)
+	mockStream.On("Write", mock.Anything).Return(0, nil)
+
+	aw := newAnnouncementWriter(mockStream, "/test/")
+
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		mux.serveAnnouncements(aw, "/test/")
+	})
+
+	// Wait up to 500ms for a Write to happen
+	deadline := time.Now().Add(500 * time.Millisecond)
+	found := false
+	for time.Now().Before(deadline) {
+		for _, c := range mockStream.Calls {
+			if c.Method == "Write" {
+				found = true
+				break
+			}
+		}
+		if found {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if !found {
+		t.Fatal("expected Write to be called on mockStream during init")
+	}
+
+	// stop serveAnnouncements by cancelling the writer's underlying context
+	cancel()
+
+	// wait for goroutine to finish
+	ch := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+	select {
+	case <-ch:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("serveAnnouncements did not exit after cancelling context")
+	}
+
+	mockStream.AssertExpectations(t)
+}
+
+// Test serveAnnouncements: invalid prefix causes CloseWithError -> CancelWrite/CancelRead
+func TestMux_ServeAnnouncements_InvalidPrefix_ClosesWithError(t *testing.T) {
+	mux := NewTrackMux()
+
+	mockStream := &MockQUICStream{}
+	mockCtx := context.Background()
+	mockStream.On("Context").Return(mockCtx)
+
+	// Expect CancelWrite and CancelRead with InvalidPrefixErrorCode
+	mockStream.On("CancelWrite", quic.StreamErrorCode(InvalidPrefixErrorCode)).Return().Once()
+	mockStream.On("CancelRead", quic.StreamErrorCode(InvalidPrefixErrorCode)).Return().Once()
+
+	aw := newAnnouncementWriter(mockStream, "/test/")
+
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		mux.serveAnnouncements(aw, "invalid")
+	})
+
+	// Wait up to 500ms for CancelWrite to be called
+	deadline := time.Now().Add(500 * time.Millisecond)
+	found := false
+	for time.Now().Before(deadline) {
+		for _, c := range mockStream.Calls {
+			if c.Method == "CancelWrite" {
+				found = true
+				break
+			}
+		}
+		if found {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if !found {
+		t.Fatal("expected CancelWrite to be called on mockStream for invalid prefix")
+	}
+
+	mockStream.AssertCalled(t, "CancelWrite", quic.StreamErrorCode(InvalidPrefixErrorCode))
+	mockStream.AssertCalled(t, "CancelRead", quic.StreamErrorCode(InvalidPrefixErrorCode))
+
+	// ensure goroutine terminates
+	ch := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+	select {
+	case <-ch:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("serveAnnouncements did not exit for invalid prefix")
+	}
+
+	mockStream.AssertExpectations(t)
+}
+
+// Test serveAnnouncements: init returns a quic.StreamError and serveAnnouncements should close with InternalAnnounceErrorCode
+func TestMux_ServeAnnouncements_InitWriteError_ClosesWithInternalError(t *testing.T) {
+	mux := NewTrackMux()
+	ctx := context.Background()
+
+	// Create an announcement so that aw.init will attempt to write
+	ann, end := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
+	defer end()
+	mux.Announce(ann, TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {}))
+
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+
+	streamError := &quic.StreamError{
+		StreamID:  quic.StreamID(1),
+		ErrorCode: quic.StreamErrorCode(42),
+	}
+
+	// Make the first Write (in init) fail with a quic.StreamError
+	mockStream.On("Write", mock.Anything).Return(0, streamError).Once()
+
+	// Expect CloseWithError -> CancelWrite/CancelRead with InternalAnnounceErrorCode
+	mockStream.On("CancelWrite", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Once()
+	mockStream.On("CancelRead", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Once()
+
+	aw := newAnnouncementWriter(mockStream, "/test/")
+
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		mux.serveAnnouncements(aw, "/test/")
+	})
+
+	// Wait up to 500ms for CancelWrite to be called
+	deadline := time.Now().Add(500 * time.Millisecond)
+	found := false
+	for time.Now().Before(deadline) {
+		for _, c := range mockStream.Calls {
+			if c.Method == "CancelWrite" {
+				found = true
+				break
+			}
+		}
+		if found {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if !found {
+		t.Fatal("expected CancelWrite to be called on mockStream when init write fails")
+	}
+
+	mockStream.AssertCalled(t, "CancelWrite", quic.StreamErrorCode(InternalAnnounceErrorCode))
+	mockStream.AssertCalled(t, "CancelRead", quic.StreamErrorCode(InternalAnnounceErrorCode))
+
+	ch := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+	select {
+	case <-ch:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("serveAnnouncements did not exit after init write error")
+	}
+
+	mockStream.AssertExpectations(t)
+}
+
+// Test serveAnnouncements: SendAnnouncement (after init) returns write error and serveAnnouncements should close with InternalAnnounceErrorCode
+func TestMux_ServeAnnouncements_SendAnnouncementWriteError_ClosesWithInternalError(t *testing.T) {
+	mux := NewTrackMux()
+	ctx := context.Background()
+
+	// Prepare a new announcement to be announced later
+	annLater, endLater := NewAnnouncement(ctx, BroadcastPath("/test/stream2"))
+	defer endLater()
+
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+
+	// Make the first Write (SendAnnouncement) fail with StreamError
+	streamErr := &quic.StreamError{StreamID: quic.StreamID(2), ErrorCode: quic.StreamErrorCode(99)}
+	mockStream.On("Write", mock.Anything).Return(0, streamErr).Once()
+
+	// Expect cancel calls for internal error
+	mockStream.On("CancelWrite", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Once()
+	mockStream.On("CancelRead", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Once()
+
+	aw := newAnnouncementWriter(mockStream, "/test/")
+
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		mux.serveAnnouncements(aw, "/test/")
+	})
+
+	// Give serveAnnouncements a moment to register its channel
+	time.Sleep(50 * time.Millisecond)
+
+	// Announce the later announcement; this should trigger SendAnnouncement which will cause the second Write to fail
+	mux.Announce(annLater, TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {}))
+
+	// Wait for CancelWrite to be called
+	deadline := time.Now().Add(500 * time.Millisecond)
+	found := false
+	for time.Now().Before(deadline) {
+		for _, c := range mockStream.Calls {
+			if c.Method == "CancelWrite" {
+				found = true
+				break
+			}
+		}
+		if found {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if !found {
+		t.Fatal("expected CancelWrite to be called on mockStream after SendAnnouncement write error")
+	}
+
+	mockStream.AssertCalled(t, "CancelWrite", quic.StreamErrorCode(InternalAnnounceErrorCode))
+	mockStream.AssertCalled(t, "CancelRead", quic.StreamErrorCode(InternalAnnounceErrorCode))
+
+	ch := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+	select {
+	case <-ch:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("serveAnnouncements did not exit after SendAnnouncement write error")
+	}
+
+	mockStream.AssertExpectations(t)
+}
+
+// Test serveAnnouncements: cancelling the writer context stops the loop
+func TestMux_ServeAnnouncements_ContextCancel_StopsLoop(t *testing.T) {
+	mux := NewTrackMux()
+
+	mockStream := &MockQUICStream{}
+	streamCtx, cancel := context.WithCancel(context.Background())
+	mockStream.On("Context").Return(streamCtx)
+	// allow Write if init happens
+	mockStream.On("Write", mock.Anything).Return(0, nil)
+
+	aw := newAnnouncementWriter(mockStream, "/test/")
+
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		mux.serveAnnouncements(aw, "/test/")
+	})
+
+	// wait a short moment for serveAnnouncements to start and register
+	time.Sleep(50 * time.Millisecond)
+
+	// Cancel the underlying stream context - this should cancel aw.Context()
+	cancel()
+
+	// wait for goroutine to exit
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// ok
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("serveAnnouncements did not exit after cancelling writer context")
+	}
+
+	// Ensure CancelWrite/CancelRead were not called (normal cancellation path)
+	for _, c := range mockStream.Calls {
+		if c.Method == "CancelWrite" || c.Method == "CancelRead" {
+			t.Fatalf("unexpected cancel call %s during context cancel path", c.Method)
+		}
+	}
+
+	mockStream.AssertExpectations(t)
+}
+
+// Test serveAnnouncements: two listeners for same prefix both receive announcements
+func TestMux_ServeAnnouncements_MultipleListeners_ReceiveAnnouncement(t *testing.T) {
+	mux := NewTrackMux()
+	ctx := context.Background()
+
+	// Prepare announcement to broadcast
+	ann, end := NewAnnouncement(ctx, BroadcastPath("/multi/stream"))
+	defer end()
+
+	// First mock stream
+	mock1 := &MockQUICStream{}
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	mock1.On("Context").Return(ctx1)
+	mock1.On("Write", mock.Anything).Return(0, nil)
+	aw1 := newAnnouncementWriter(mock1, "/multi/")
+
+	// Second mock stream
+	mock2 := &MockQUICStream{}
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	mock2.On("Context").Return(ctx2)
+	mock2.On("Write", mock.Anything).Return(0, nil)
+	aw2 := newAnnouncementWriter(mock2, "/multi/")
+
+	// Start two serveAnnouncements goroutines
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		mux.serveAnnouncements(aw1, "/multi/")
+	})
+	wg.Go(func() {
+		mux.serveAnnouncements(aw2, "/multi/")
+	})
+
+	// Give serveAnnouncements time to register channels
+	time.Sleep(50 * time.Millisecond)
+
+	// Announce - should be delivered to both listeners
+	mux.Announce(ann, TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {}))
+
+	// Wait a bit for SendAnnouncement to be called on both streams
+	deadline := time.Now().Add(500 * time.Millisecond)
+	got1, got2 := false, false
+	for time.Now().Before(deadline) {
+		for _, c := range mock1.Calls {
+			if c.Method == "Write" {
+				got1 = true
+				break
+			}
+		}
+		for _, c := range mock2.Calls {
+			if c.Method == "Write" {
+				got2 = true
+				break
+			}
+		}
+		if got1 && got2 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if !got1 || !got2 {
+		t.Fatalf("expected Write on both streams: got1=%v got2=%v", got1, got2)
+	}
+
+	// Cleanup: end the announcement and cancel writer contexts so goroutines exit
+	end()
+	cancel1()
+	cancel2()
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(500 * time.Millisecond):
+		mock1.AssertExpectations(t)
+		mock2.AssertExpectations(t)
+		t.Fatal("serveAnnouncements goroutines did not exit in time")
+	}
+
+	mock1.AssertExpectations(t)
+	mock2.AssertExpectations(t)
+}
+
+// Stress test: multiple serveAnnouncements listeners and concurrent Announce calls should not deadlock or panic
+func TestMux_ServeAnnouncements_ConcurrentAnnounce_NoDeadlock(t *testing.T) {
+	mux := NewTrackMux()
+	ctx := context.Background()
+
+	// Start several listeners (AnnouncementWriters)
+	listeners := 5
+	var aws []*AnnouncementWriter
+	var mocks []*MockQUICStream
+	var cancels []context.CancelFunc
+	for i := 0; i < listeners; i++ {
+		ms := &MockQUICStream{}
+		// use cancellable contexts so we can stop goroutines later
+		cctx, cancel := context.WithCancel(context.Background())
+		cancels = append(cancels, cancel)
+		ms.On("Context").Return(cctx)
+		ms.On("Write", mock.Anything).Return(0, nil)
+		mocks = append(mocks, ms)
+		aw := newAnnouncementWriter(ms, "/race/")
+		aws = append(aws, aw)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(len(aws))
+	for _, aw := range aws {
+		a := aw
+		go func() {
+			defer wg.Done()
+			mux.serveAnnouncements(a, "/race/")
+		}()
+	}
+
+	// Concurrently call Announce many times
+	var announceWg sync.WaitGroup
+	producers := 10
+	perProducer := 20
+	announceWg.Add(producers)
+	for p := 0; p < producers; p++ {
+		go func(id int) {
+			defer announceWg.Done()
+			for j := 0; j < perProducer; j++ {
+				ann, end := NewAnnouncement(ctx, BroadcastPath(fmt.Sprintf("/race/stream-%d-%d", id, j)))
+				// announce and end quickly
+				mux.Announce(ann, TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {}))
+				end()
+			}
+		}(p)
+	}
+
+	// Wait for producers to finish
+	announceWg.Wait()
+
+	// Cleanup: cancel underlying mock contexts so listener goroutines exit
+	for _, cancel := range cancels {
+		cancel()
+	}
+	for _, ms := range mocks {
+		ms.AssertExpectations(t)
+	}
+
+	// Give a short time for goroutines to process
+	time.Sleep(100 * time.Millisecond)
+
+	// Try to stop listener goroutines by ending announcements on the tree: create a final announcement and end it
+	finalAnn, finalEnd := NewAnnouncement(ctx, BroadcastPath("/race/final"))
+	mux.Announce(finalAnn, TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {}))
+	finalEnd()
+
+	// Wait for listeners to exit (they should exit eventually)
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("serveAnnouncements listeners did not exit in time")
+	}
+}

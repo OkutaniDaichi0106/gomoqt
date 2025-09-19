@@ -303,9 +303,7 @@ func TestSendSubscribeStream_ConcurrentUpdate(t *testing.T) {
 
 	// Test concurrent updates
 	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		newConfig := &TrackConfig{
 			TrackPriority:    TrackPriority(2),
 			MinGroupSequence: GroupSequence(5),
@@ -315,10 +313,8 @@ func TestSendSubscribeStream_ConcurrentUpdate(t *testing.T) {
 		if err != nil {
 			t.Logf("First concurrent update failed: %v", err)
 		}
-	}()
-
-	go func() {
-		defer wg.Done()
+	})
+	wg.Go(func() {
 		newConfig := &TrackConfig{
 			TrackPriority:    TrackPriority(3),
 			MinGroupSequence: GroupSequence(5), // Use same min to avoid conflict
@@ -328,7 +324,7 @@ func TestSendSubscribeStream_ConcurrentUpdate(t *testing.T) {
 		if err != nil {
 			t.Logf("Second concurrent update failed: %v", err)
 		}
-	}()
+	})
 
 	// Wait for both goroutines to complete
 	wg.Wait()

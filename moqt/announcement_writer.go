@@ -226,7 +226,7 @@ func (aw *AnnouncementWriter) SendAnnouncement(new *Announcement) error {
 
 	// End old announcement outside of lock
 	if oldEndFunc != nil {
-		old.end() // 旧アナウンスは終了させる（OnEnd 経由でクリーンアップ）
+		old.end() //
 	}
 
 	if aw.ctx.Err() != nil {

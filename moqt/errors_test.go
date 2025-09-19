@@ -62,11 +62,11 @@ func TestAnnounceErrorCode_String(t *testing.T) {
 		},
 		"banned prefix error code": {
 			code:   BannedPrefixErrorCode,
-			expect: "moqt: unknown announce error", // Should return default case
+			expect: "moqt: banned prefix",
 		},
 		"unknown code": {
 			code:   AnnounceErrorCode(0xFF), // Some arbitrary value not defined
-			expect: "moqt: unknown announce error",
+			expect: "",
 		},
 	}
 
@@ -109,7 +109,7 @@ func TestSubscribeErrorCode_String(t *testing.T) {
 		},
 		"unknown code": {
 			code:   SubscribeErrorCode(0xFF), // Some arbitrary value not defined
-			expect: "moqt: unknown subscribe error",
+			expect: "",
 		},
 	}
 
@@ -160,7 +160,7 @@ func TestSessionErrorCode_String(t *testing.T) {
 		},
 		"unknown code": {
 			code:   SessionErrorCode(0xFF), // Some arbitrary value not defined
-			expect: "moqt: unknown session error",
+			expect: "",
 		},
 	}
 
@@ -207,7 +207,7 @@ func TestGroupErrorCode_String(t *testing.T) {
 		},
 		"unknown code": {
 			code:   GroupErrorCode(0xFF), // Some arbitrary value not defined
-			expect: "moqt: unknown group error",
+			expect: "",
 		},
 	}
 

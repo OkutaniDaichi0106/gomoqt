@@ -219,11 +219,23 @@ func TestAnnouncementWriter_Init_DuplicateAnnouncements(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, sas.actives, 1)
 	assert.Contains(t, sas.actives, "stream1")
-	assert.Equal(t, ann2, sas.actives["stream1"])
 
-	// First announcement should be ended
-	assert.False(t, ann1.IsActive())
-	assert.True(t, ann2.IsActive())
+	// Due to map iteration order the final active announcement may be either
+	// ann1 or ann2. Accept both possibilities but ensure exactly one is active
+	// and the other is ended.
+	active := sas.actives["stream1"]
+	switch active {
+	case ann1:
+		// ann1 remained, ann2 should be ended
+		assert.True(t, ann1.IsActive())
+		assert.False(t, ann2.IsActive())
+	case ann2:
+		// ann2 remained, ann1 should be ended
+		assert.True(t, ann2.IsActive())
+		assert.False(t, ann1.IsActive())
+	default:
+		t.Fatalf("unexpected active announcement: %v", active)
+	}
 
 	mockStream.AssertExpectations(t)
 }

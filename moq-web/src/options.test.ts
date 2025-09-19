@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
-import { MOQOptions } from './options';
+import type { MOQOptions } from './options';
 import { Extensions } from './internal/extensions';
 
 describe('MOQOptions', () => {

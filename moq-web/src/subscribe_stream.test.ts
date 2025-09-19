@@ -1,10 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
-import { SendSubscribeStream, ReceiveSubscribeStream, TrackConfig } from './subscribe_stream';
-import { SubscribeID } from './protocol';
-import { SubscribeMessage, SubscribeOkMessage, SubscribeUpdateMessage } from './message';
-import { Writer, Reader } from './io';
-import { Context, background, withCancelCause } from './internal/context';
-import { Info } from './info';
+import type { TrackConfig } from './subscribe_stream';
+import { SendSubscribeStream, ReceiveSubscribeStream } from './subscribe_stream';
+import type { SubscribeID } from './protocol';
+import type { SubscribeMessage, SubscribeOkMessage} from './message';
+import { SubscribeUpdateMessage } from './message';
+import type { Writer, Reader } from './io';
+import type { Context} from './internal/context';
+import { background, withCancelCause } from './internal/context';
+import type { Info } from './info';
 import { StreamError } from './io/error';
 
 // Mock dependencies (announce_stream.test.ts style)

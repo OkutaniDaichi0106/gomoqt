@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { SessionClientMessage } from './session_client';
 import { Extensions } from '../internal/extensions';
-import { Versions, Version } from '../internal/version';
+import type { Version } from '../internal/version';
+import { Versions } from '../internal/version';
 import { Writer, Reader } from '../io';
 
 describe('SessionClientMessage', () => {

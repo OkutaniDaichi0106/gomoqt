@@ -6,7 +6,9 @@ import {
     withCancel, 
     withCancelCause, 
     withTimeout, 
-    withPromise 
+    withPromise,
+    ContextCancelledError,
+    ContextTimeoutError
 } from './context';
 
 describe('Context', () => {
@@ -301,6 +303,26 @@ describe('Context', () => {
             await new Promise(resolve => setTimeout(resolve, 10));
             
             expect(ctx.err()).toBeInstanceOf(Error);
+        });
+    });
+
+    describe('ContextCancelledError', () => {
+        it('should be an instance of Error', () => {
+            expect(ContextCancelledError).toBeInstanceOf(Error);
+        });
+
+        it('should have the correct message', () => {
+            expect(ContextCancelledError.message).toBe('Context cancelled');
+        });
+    });
+
+    describe('ContextTimeoutError', () => {
+        it('should be an instance of Error', () => {
+            expect(ContextTimeoutError).toBeInstanceOf(Error);
+        });
+
+        it('should have the correct message', () => {
+            expect(ContextTimeoutError.message).toBe('Context timeout');
         });
     });
 });

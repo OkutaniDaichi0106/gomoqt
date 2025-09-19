@@ -55,7 +55,7 @@ export class BytesBuffer {
         if (this.size < 1) {
             throw new Error("Not enough data to read a byte");
         }
-        const value = this.#buf[this.#off];
+        const value = this.#buf[this.#off]!;
         this.#off += 1;
         if (this.#off === this.#len) {
             this.reset();
@@ -134,17 +134,17 @@ export function writeVarint(view: Uint8Array, num: number, offset = 0): number  
         if (num > Number.MAX_SAFE_INTEGER) {
             throw new RangeError("Number too large for writeVarint; use writeBigVarint");
         }
-    if (view.length - offset < 8) throw new RangeError("buffer too small");
-    const bn = BigInt(num);
-    view[offset + 0] = Number((bn >> 56n) | 0xc0n);
-    view[offset + 1] = Number((bn >> 48n) & 0xffn);
-    view[offset + 2] = Number((bn >> 40n) & 0xffn);
-    view[offset + 3] = Number((bn >> 32n) & 0xffn);
-    view[offset + 4] = Number((bn >> 24n) & 0xffn);
-    view[offset + 5] = Number((bn >> 16n) & 0xffn);
-    view[offset + 6] = Number((bn >> 8n) & 0xffn);
-    view[offset + 7] = Number(bn & 0xffn);
-    return 8;
+        if (view.length - offset < 8) throw new RangeError("buffer too small");
+        const bn = BigInt(num);
+        view[offset + 0] = Number((bn >> 56n) | 0xc0n);
+        view[offset + 1] = Number((bn >> 48n) & 0xffn);
+        view[offset + 2] = Number((bn >> 40n) & 0xffn);
+        view[offset + 3] = Number((bn >> 32n) & 0xffn);
+        view[offset + 4] = Number((bn >> 24n) & 0xffn);
+        view[offset + 5] = Number((bn >> 16n) & 0xffn);
+        view[offset + 6] = Number((bn >> 8n) & 0xffn);
+        view[offset + 7] = Number(bn & 0xffn);
+        return 8;
     }
 }
 
@@ -191,11 +191,16 @@ export function writeUint8Array(view: Uint8Array, data: Uint8Array, offset = 0):
     // We'll attempt to write varint at the start of view and then copy data
     // Caller must ensure view.length >= varintLen + data.length. We simply throw if not enough.
     // Determine needed varint length by checking thresholds
-    let headerLen = 0;
-    if (len <= MAX_VARINT1) headerLen = 1;
-    else if (len <= MAX_VARINT2) headerLen = 2;
-    else if (len <= MAX_VARINT4) headerLen = 4;
-    else headerLen = 8;
+    let headerLen: number;
+    if (len <= MAX_VARINT1) {
+        headerLen = 1;
+    } else if (len <= MAX_VARINT2) {
+        headerLen = 2;
+    } else if (len <= MAX_VARINT4) {
+        headerLen = 4;
+    } else {
+        headerLen = 8;
+    }
 
     if (view.length - offset < headerLen + len) throw new RangeError("buffer too small");
 
@@ -216,14 +221,14 @@ export function readVarint(view: Uint8Array, offset = 0): [number, number] {
     if (offset >= view.length) {
         throw new RangeError("offset out of bounds");
     }
-    const first = view[offset];
+    const first = view[offset]!;
     const len = 1 << (first >> 6);
     if (view.length - offset < len) {
         throw new RangeError("buffer too small for varint");
     }
     let value = first & 0x3f;
     for (let i = 1; i < len; i++) {
-        value = value * 256 + view[offset + i];
+        value = value * 256 + view[offset + i]!;
     }
     return [value, len];
 }
@@ -232,14 +237,14 @@ export function readBigVarint(view: Uint8Array, offset = 0): [bigint, number] {
     if (offset >= view.length) {
         throw new RangeError("offset out of bounds");
     }
-    const first = view[offset];
+    const first = view[offset]!;
     const len = 1 << (first >> 6);
     if (view.length - offset < len) {
         throw new RangeError("buffer too small for varint");
     }
     let value = BigInt(first & 0x3f);
     for (let i = 1; i < len; i++) {
-        value = value * 256n + BigInt(view[offset + i]);
+        value = value * 256n + BigInt(view[offset + i]!);
     }
     return [value, len];
 }

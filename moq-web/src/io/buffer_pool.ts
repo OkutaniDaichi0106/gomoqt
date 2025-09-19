@@ -1,4 +1,4 @@
-interface BytesPoolOptions {
+export interface BytesPoolOptions {
     maxPerBucket?: number; // Maximum arrays per bucket
     maxTotalBytes?: number; // Optional total byte limit
 }
@@ -9,6 +9,13 @@ export let DefaultBytesPoolOptions: Required<BytesPoolOptions> = {
     maxTotalBytes: 0, // 0 means no limit
 };
 
+export interface BufferPoolInit {
+    min: number;
+    middle: number;
+    max: number;
+    options?: BytesPoolOptions;
+}
+
 export class BufferPool {
     #min: number;
     #middle: number;
@@ -18,7 +25,8 @@ export class BufferPool {
     #maxTotalBytes: number;
     #currentBytes: number;
 
-    constructor(min: number, middle: number, max: number, options: BytesPoolOptions = DefaultBytesPoolOptions) {
+    constructor(init: BufferPoolInit) {
+        const { min, middle, max, options } = init;
         if (!(min > 0 && middle > 0 && max > 0)) {
             throw new Error("min, middle, max must be greater than 0");
         }
@@ -29,8 +37,8 @@ export class BufferPool {
         this.#middle = middle;
         this.#max = max;
         this.#buckets = [[], [], []];
-        this.#maxPerBucket = options.maxPerBucket ?? DefaultBytesPoolOptions.maxPerBucket;
-        this.#maxTotalBytes = options.maxTotalBytes ?? DefaultBytesPoolOptions.maxTotalBytes;
+        this.#maxPerBucket = options?.maxPerBucket ?? DefaultBytesPoolOptions.maxPerBucket;
+        this.#maxTotalBytes = options?.maxTotalBytes ?? DefaultBytesPoolOptions.maxTotalBytes;
         this.#currentBytes = 0;
     }
 
@@ -46,7 +54,7 @@ export class BufferPool {
         } else {
             return new ArrayBuffer(capacity);
         }
-        const bucket = this.#buckets[idx];
+        const bucket = this.#buckets[idx]!;
         if (bucket.length > 0) {
             this.#currentBytes -= size;
             return bucket.pop()!;
@@ -65,7 +73,7 @@ export class BufferPool {
             idx = 2;
         }else return; // Non-matching sizes are GC'd
         if (this.#maxTotalBytes && this.#currentBytes + size > this.#maxTotalBytes) return;
-        const bucket = this.#buckets[idx];
+        const bucket = this.#buckets[idx]!;
         if (bucket.length >= this.#maxPerBucket) {
             bucket.shift();
             this.#currentBytes -= size;
@@ -77,7 +85,7 @@ export class BufferPool {
     // Explicit cleanup (optional)
     cleanup(): void {
         for (let i = 0; i < this.#buckets.length; i++) {
-            this.#buckets[i].length = 0;
+            this.#buckets[i]!.length = 0;
         }
 
         return;
@@ -85,4 +93,8 @@ export class BufferPool {
 }
 
 // Global default pool instance
-export const DefaultBufferPool = new BufferPool(64, 256, 1024);
+export const DefaultBufferPool = new BufferPool({
+    min: 64,
+    middle: 256,
+    max: 1024
+});

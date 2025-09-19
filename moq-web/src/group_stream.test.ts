@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { GroupWriter, GroupReader } from "./group_stream";
-import { CancelCauseFunc, Context, withCancelCause, background } from "./internal/context";
-import { Reader, Writer } from "./io";
+import type { CancelCauseFunc, Context} from "./internal/context";
+import { withCancelCause, background } from "./internal/context";
+import type { Reader, Writer } from "./io";
 import { StreamError } from "./io/error";
-import { GroupMessage } from "./message";
+import type { GroupMessage } from "./message";
 import { Frame } from "./frame";
 
 // Mock dependencies

@@ -1,8 +1,10 @@
-import { Announcement, AnnouncementWriter } from "./announce_stream";
-import { BroadcastPath } from "./broadcast_path";
-import { Context } from "./internal";
-import { TrackWriter } from "./track";
-import { isValidPrefix, TrackPrefix } from "./track_prefix";
+import type { AnnouncementWriter } from "./announce_stream";
+import { Announcement } from "./announce_stream";
+import type { BroadcastPath } from "./broadcast_path";
+
+import type { TrackWriter } from "./track";
+import type { TrackPrefix } from "./track_prefix";
+import { isValidPrefix } from "./track_prefix";
 import { TrackNotFoundErrorCode } from ".";
 
 type AnnouncedTrackHandler = {
@@ -42,7 +44,7 @@ export class TrackMux {
     }
 
     publishFunc(ctx: Promise<void>, path: BroadcastPath, handler: (ctx: Promise<void>, trackWriter: TrackWriter) => Promise<void>) {
-        this.announce(new Announcement(path, ctx), { serveTrack: handler });
+        this.publish(ctx, path, { serveTrack: handler });
     }
 
     async serveTrack(trackWriter: TrackWriter): Promise<void> {

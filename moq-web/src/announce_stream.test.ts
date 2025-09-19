@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { AnnouncementWriter, AnnouncementReader, Announcement } from './announce_stream';
-import { Writer, Reader } from './io';
-import { Context, background, withCancelCause } from './internal';
-import { AnnounceMessage, AnnouncePleaseMessage, AnnounceInitMessage } from './message';
-import { TrackPrefix } from './track_prefix';
-import { BroadcastPath } from './broadcast_path';
+import type { Writer, Reader } from './io';
+import type { Context} from './internal';
+import { background, withCancelCause } from './internal';
+import type { AnnouncePleaseMessage, AnnounceInitMessage } from './message';
+import { AnnounceMessage } from './message';
+import type { TrackPrefix } from './track_prefix';
+import type { BroadcastPath } from './broadcast_path';
 
 // Mock dependencies
 jest.mock('./io');

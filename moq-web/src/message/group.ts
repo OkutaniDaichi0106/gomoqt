@@ -1,6 +1,6 @@
-import { Writer, Reader } from "../io";
+import type { Writer, Reader } from "../io";
 import { varintLen } from "../io/len";
-import { GroupSequence } from "../protocol";
+import type { GroupSequence } from "../protocol";
 
 export interface GroupMessageInit {
     subscribeId?: bigint;
@@ -21,14 +21,14 @@ export class GroupMessage {
     }
 
     async encode(writer: Writer): Promise<Error | undefined> {
-        writer.writeVarint(this.messageLength + varintLen(this.messageLength));
+        writer.writeVarint(this.messageLength);
         writer.writeBigVarint(this.subscribeId);
         writer.writeBigVarint(this.sequence);
         return await writer.flush();
     }
 
     async decode(reader: Reader): Promise<Error | undefined> {
-        let [, err] = await reader.readVarint();
+        let [len, err] = await reader.readVarint();
         if (err) {
             return err;
         }
@@ -41,6 +41,10 @@ export class GroupMessage {
         [this.sequence, err] = await reader.readBigVarint();
         if (err) {
             return err;
+        }
+
+        if (len !== this.messageLength) {
+            throw new Error(`message length mismatch: expected ${len}, got ${this.messageLength}`);
         }
 
         return undefined;

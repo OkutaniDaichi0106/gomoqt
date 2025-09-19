@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
-import { Version, Versions, DEFAULT_VERSION } from './version';
+import type { Version} from './version';
+import { Versions, DEFAULT_VERSION } from './version';
 
 describe('Version', () => {
     describe('Version type', () => {

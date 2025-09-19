@@ -1,13 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { SessionStream } from './session_stream';
-import { Context, background, withCancelCause } from './internal/context';
-import { Writer, Reader } from './io';
+import type { Context} from './internal/context';
+import { background, withCancelCause } from './internal/context';
+import type { Writer, Reader } from './io';
 import { StreamError } from './io/error';
 import { SessionUpdateMessage } from './message/session_update';
 import { SessionClientMessage } from './message/session_client';
 import { SessionServerMessage } from './message/session_server';
 import { Extensions } from './internal/extensions';
-import { Version } from './internal/version';
+import type { Version } from './internal/version';
 
 describe('SessionStream', () => {
     let ctx: Context;

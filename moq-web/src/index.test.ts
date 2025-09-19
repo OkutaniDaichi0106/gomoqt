@@ -64,9 +64,8 @@ describe('Main Index Module', () => {
 
     it('should export utility functions', () => {
         // Verify utility function exports
-        expect(index).toHaveProperty('getExtension');
-        expect(index).toHaveProperty('createBroadcastPath');
-        expect(typeof index.getExtension).toBe('function');
-        expect(typeof index.createBroadcastPath).toBe('function');
+        expect(index).toHaveProperty('extension');
+        expect(index).toHaveProperty('isValidBroadcastPath');
+        expect(typeof index.extension).toBe('function');
     });
 });

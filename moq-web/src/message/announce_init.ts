@@ -1,4 +1,4 @@
-import { Writer, Reader } from "../io";
+import type { Writer, Reader } from "../io";
 import { varintLen, stringLen } from "../io/len";
 
 export interface AnnounceInitMessageInit {
@@ -22,13 +22,13 @@ export class AnnounceInitMessage {
     }
 
     async encode(writer: Writer): Promise<Error | undefined> {
-        writer.writeVarint(this.messageLength + varintLen(this.messageLength));
+        writer.writeVarint(this.messageLength);
         writer.writeStringArray(this.suffixes);
         return await writer.flush();
     }
 
     async decode(reader: Reader): Promise<Error | undefined> {
-        let [, err] = await reader.readVarint();
+        let [len, err] = await reader.readVarint();
         if (err) {
             return err;
         }
@@ -36,6 +36,11 @@ export class AnnounceInitMessage {
         if (err) {
             return err;
         }
+
+        if (len !== this.messageLength) {
+            throw new Error(`message length mismatch: expected ${len}, got ${this.messageLength}`);
+        }
+
         return undefined;
     }
 }

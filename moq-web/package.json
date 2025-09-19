@@ -1,6 +1,6 @@
 {
   "name": "@okutanidaichi/moqt",
-  "version": "0.6.1",
+  "version": "0.6.4",
   "description": "Media over QUIC package",
   "repository": {
     "type": "git",
@@ -13,17 +13,19 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "browser": "./dist/browser.js",
+      "browser": "./dist/index.js",
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
     },
     "./internal": {
       "types": "./dist/internal/index.d.ts",
-      "import": "./dist/internal/index.js"
+      "import": "./dist/internal/index.js",
+      "browser": "./dist/internal/browser.js"
     },
     "./io": {
       "types": "./dist/io/index.d.ts",
-      "import": "./dist/io/index.js"
+      "import": "./dist/io/index.js",
+      "browser": "./dist/io/browser.js"
     }
   },
   "files": [
@@ -33,6 +35,9 @@
     "build": "npm run build:main && npm run build:browser",
     "build:main": "tsc",
     "build:browser": "tsc --project tsconfig.browser.json",
+    "postbuild": "node ./scripts/copy-src-to-dist.cjs",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
     "test": "jest --passWithNoTests",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
@@ -44,9 +49,9 @@
     "@typescript-eslint/eslint-plugin": "^8.35.1",
     "@typescript-eslint/parser": "^8.35.1",
     "eslint": "^9.30.1",
-    "jest": "^30.0.3",
+    "jest": "^30.1.3",
     "jest-environment-jsdom": "^30.0.4",
-    "ts-jest": "^29.4.0",
+    "ts-jest": "^29.4.1",
     "tslint": "^5.20.1",
     "tsup": "^8.5.0",
     "typescript": "^5.8.3",

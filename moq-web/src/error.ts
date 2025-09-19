@@ -1,9 +1,18 @@
 export type SessionErrorCode = number;
 
 export type AnnounceErrorCode = number;
+export const InternalAnnounceErrorCode: AnnounceErrorCode = 0x00;
 
 export type SubscribeErrorCode = number;
-export const TrackNotFoundErrorCode: SubscribeErrorCode = 2;
+
+export const InternalSubscribeErrorCode: SubscribeErrorCode = 0x00;
+export const InvalidRangeErrorCode: SubscribeErrorCode = 0x01;
+export const DuplicateSubscribeIDErrorCode: SubscribeErrorCode = 0x02;
+export const TrackNotFoundErrorCode: SubscribeErrorCode = 0x03;
+export const UnauthorizedSubscribeErrorCode: SubscribeErrorCode = 0x04; // TODO: Is this necessary?
+export const SubscribeTimeoutErrorCode: SubscribeErrorCode = 0x05;
+
+
 
 export type GroupErrorCode = number;
 export const InternalGroupErrorCode: GroupErrorCode = 0x00;

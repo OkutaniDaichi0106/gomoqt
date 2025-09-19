@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { Client } from "./client";
 import { Session } from "./session";
-import { MOQOptions } from "./options";
+import type { MOQOptions } from "./options";
 import { TrackMux } from "./track_mux";
 
 // Mock WebTransport

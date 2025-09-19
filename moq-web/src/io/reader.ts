@@ -1,26 +1,137 @@
 import { BytesBuffer, MAX_BYTES_LENGTH } from "./bytes";
-import { BufferPool, DefaultBufferPool } from "./buffer_pool";
-import { StreamError, StreamErrorCode } from "./error";
+import type { BufferPool} from "./buffer_pool";
+import { DefaultBufferPool } from "./buffer_pool";
+import type { StreamError, StreamErrorCode } from "./error";
 
 let DefaultReadSize: number = 1024; // 1 KB
+
+// /**
+//  * Reads a varint-encoded number from the byte array at the specified offset
+//  * @param buf The byte array to read from
+//  * @param offset The offset to start reading at
+//  * @returns The decoded number and the number of bytes read
+//  */
+// export function readVarint(buf: Uint8Array, offset: number): { value: number, readLength: number } {
+//     let result = 0;
+//     let shift = 0;
+//     let currentOffset = offset;
+
+//     // Optimize: handle common cases
+//     if (currentOffset >= buf.length) {
+//         throw new Error("Buffer underflow while reading varint");
+//     }
+
+//     let byte = buf[currentOffset++];
+//     result = byte & 0x7F;
+//     if ((byte & 0x80) === 0) {
+//         return { value: result, readLength: 1 };
+//     }
+
+//     // Continue reading
+//     while (currentOffset < buf.length) {
+//         byte = buf[currentOffset++];
+//         result |= (byte & 0x7F) << shift;
+//         if ((byte & 0x80) === 0) {
+//             return { value: result, readLength: currentOffset - offset };
+//         }
+//         shift += 7;
+//         if (shift >= 32) {
+//             throw new Error("Varint too long for number");
+//         }
+//     }
+
+//     throw new Error("Buffer underflow while reading varint");
+// }
+
+// /**
+//  * Reads a varint-encoded bigint from the byte array at the specified offset
+//  * @param buf The byte array to read from
+//  * @param offset The offset to start reading at
+//  * @returns The decoded bigint and the number of bytes read
+//  */
+// export function readBigVarint(buf: Uint8Array, offset: number): { value: bigint, readLength: number } {
+//     let result = 0n;
+//     let shift = 0;
+//     let currentOffset = offset;
+
+//     // Optimize: handle common cases
+//     if (currentOffset >= buf.length) {
+//         throw new Error("Buffer underflow while reading big varint");
+//     }
+
+//     let byte = buf[currentOffset++];
+//     result = BigInt(byte & 0x7F);
+//     if ((byte & 0x80) === 0) {
+//         return { value: result, readLength: 1 };
+//     }
+
+//     // Continue reading
+//     while (currentOffset < buf.length) {
+//         byte = buf[currentOffset++];
+//         result |= BigInt(byte & 0x7F) << BigInt(shift);
+//         if ((byte & 0x80) === 0) {
+//             return { value: result, readLength: currentOffset - offset };
+//         }
+//         shift += 7;
+//         if (shift >= 64) {
+//             throw new Error("Varint too long for bigint");
+//         }
+//     }
+
+//     throw new Error("Buffer underflow while reading big varint");
+// }
+
+// /**
+//  * Reads a string (UTF-8 encoded) from the byte array at the specified offset
+//  * @param buf The byte array to read from
+//  * @param offset The offset to start reading at
+//  * @returns The decoded string and the number of bytes read
+//  */
+// export function readString(buf: Uint8Array, offset: number): { value: string, readLength: number } {
+//     // First read the length as varint
+//     const { value: length, readLength: varintLength } = readVarint(buf, offset);
+//     if (offset + varintLength + length > buf.length) {
+//         throw new Error("Buffer underflow while reading string");
+//     }
+//     // Then read the string bytes
+//     const strBytes = buf.subarray(offset + varintLength, offset + varintLength + length);
+//     const decoder = new TextDecoder();
+//     const str = decoder.decode(strBytes);
+//     return { value: str, readLength: varintLength + length };
+// }
+
+// /**
+//  * Reads bytes from the byte array at the specified offset
+//  * @param buf The byte array to read from
+//  * @param offset The offset to start reading at
+//  * @param length The number of bytes to read
+//  * @returns The read bytes and the number of bytes read
+//  */
+// export function readUint8Array(buf: Uint8Array, offset: number): { value: Uint8Array, readLength: number } {
+//     const { value: length, readLength } = readVarint(buf, offset);
+//     offset += readLength;
+//     if (offset + length > buf.length) {
+//         throw new Error("Buffer underflow while reading bytes");
+//     }
+//     const bytes = buf.subarray(offset, offset + length);
+//     return { value: bytes, readLength: length + readLength };
+// }
 
 export class Reader {
     // #byob?: ReadableStreamBYOBReader;
     #pull: ReadableStreamDefaultReader<Uint8Array>;
     #buf: BytesBuffer;
-    #pool: BufferPool;
     #closed: Promise<void>;
 
-    constructor(readable: ReadableStream<Uint8Array>, pool: BufferPool = DefaultBufferPool) {
-        this.#pool = pool;
+    constructor(readable: ReadableStream<Uint8Array>, transfer?: ArrayBufferLike) {
         this.#pull = readable.getReader();
 
-        this.#buf = new BytesBuffer(pool.acquire(1024));
+        this.#buf = new BytesBuffer(transfer || DefaultBufferPool.acquire(DefaultReadSize));
 
         this.#closed = this.#pull.closed;
     }
 
-    async readUint8Array(): Promise<[Uint8Array?, Error?]> {
+    async readUint8Array(transfer?: ArrayBufferLike): Promise<[Uint8Array?, Error?]> {
         let err: Error | undefined;
         let len: number;
         [len, err] = await this.readVarint();
@@ -32,13 +143,14 @@ export class Reader {
             throw new Error("Varint too large");
         }
 
-    // Acquire an underlying ArrayBuffer from the pool but create a view
-    // of the exact requested length to avoid returning a larger buffer
-    // (which would contain trailing zeros).
-    const ab = this.#pool.acquire(len);
-    const buffer = new Uint8Array(ab as ArrayBuffer, 0, len);
+        let buffer: Uint8Array;
+        if (transfer && transfer.byteLength >= len) {
+            buffer = new Uint8Array(transfer, 0, len);
+        } else {
+            buffer = new Uint8Array(len);
+        }
 
-    err = await this.fillN(buffer, len);
+        err = await this.fillN(buffer, len);
         if (err) {
             return [undefined, err];
         }
@@ -165,6 +277,10 @@ export class Reader {
     }
 
     async pushN(n: number): Promise<Error | undefined> {
+        if (n <= 0) {
+            return undefined;
+        }
+
         let totalFilled = 0;
 
         while (totalFilled < n) {
@@ -172,6 +288,9 @@ export class Reader {
             if (done) {
                 return new Error("Stream closed");
             }
+
+            console.log("Pulled", value);
+
             if (!value || value.length === 0) {
                 continue; // Skip empty values
             }
@@ -219,7 +338,7 @@ export class Reader {
     }
 
     async cancel(reason: StreamError): Promise<void> {
-        this.#pull.cancel(reason)
+        return this.#pull.cancel(reason);
     }
 
     closed(): Promise<void> {

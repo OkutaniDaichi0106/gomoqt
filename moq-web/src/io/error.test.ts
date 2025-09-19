@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
-import { StreamError, StreamErrorCode } from './error';
+import type { StreamErrorCode } from './error';
+import { StreamError } from './error';
 
 describe('StreamError', () => {
   describe('constructor', () => {

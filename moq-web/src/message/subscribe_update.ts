@@ -1,6 +1,6 @@
-import { Writer, Reader } from "../io";
+import type { Writer, Reader } from "../io";
 import { varintLen } from "../io/len";
-import { GroupSequence } from "../protocol";
+import type { GroupSequence } from "../protocol";
 
 export interface SubscribeUpdateMessageInit {
     trackPriority?: number;
@@ -28,9 +28,7 @@ export class SubscribeUpdateMessage {
     }
 
     async encode(writer: Writer): Promise<Error | undefined> {
-        // const msg = new SubscribeUpdateMessage(trackPriority, minGroupSequence, maxGroupSequence);
-        let err: Error | undefined;
-        writer.writeVarint(this.messageLength + varintLen(this.messageLength));
+        writer.writeVarint(this.messageLength);
         writer.writeVarint(this.trackPriority);
         writer.writeBigVarint(this.minGroupSequence);
         writer.writeBigVarint(this.maxGroupSequence);
@@ -38,7 +36,7 @@ export class SubscribeUpdateMessage {
     }
 
     async decode(reader: Reader): Promise<Error | undefined> {
-        let [, err] = await reader.readVarint();
+        let [len, err] = await reader.readVarint();
         if (err) {
             return err;
         }
@@ -53,6 +51,10 @@ export class SubscribeUpdateMessage {
         [this.maxGroupSequence, err] = await reader.readBigVarint();
         if (err) {
             return err;
+        }
+
+        if (len !== this.messageLength) {
+            throw new Error(`message length mismatch: expected ${len}, got ${this.messageLength}`);
         }
 
         return undefined;

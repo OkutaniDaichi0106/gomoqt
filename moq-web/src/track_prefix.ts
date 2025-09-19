@@ -7,7 +7,7 @@
  * A track prefix is simply a string with specific format requirements.
  * Use validation functions to ensure correctness at runtime.
  */
-export type TrackPrefix = string & { readonly brand: unique symbol };
+export type TrackPrefix = `/${string}/` | `/`;
 
 /**
  * Runtime type guard to check if a string is a valid TrackPrefix.
@@ -24,9 +24,9 @@ export function isValidPrefix(path: string): boolean {
  * @returns The validated TrackPrefix
  * @throws Error if the path is not a valid TrackPrefix
  */
-export function validateTrackPrefix(path: string): TrackPrefix {
-    if (!isValidPrefix(path)) {
-        throw new Error(`Invalid track prefix: "${path}". Must start and end with "/"`);
+export function validateTrackPrefix(prefix: string): TrackPrefix {
+    if (!isValidPrefix(prefix)) {
+        throw new Error(`Invalid track prefix: "${prefix}". Must start and end with "/"`);
     }
-    return path as TrackPrefix;
+    return prefix as TrackPrefix;
 }

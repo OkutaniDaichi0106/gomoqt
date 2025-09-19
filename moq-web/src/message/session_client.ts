@@ -1,5 +1,6 @@
-import { Extensions,Version,DEFAULT_CLIENT_VERSIONS } from "../internal";
-import { Writer, Reader } from "../io";
+import { Extensions, DEFAULT_CLIENT_VERSIONS } from "../internal";
+import type { Version } from "../internal";
+import type { Writer, Reader } from "../io";
 import { varintLen, bytesLen } from "../io/len";
 
 export interface SessionClientInit {
@@ -31,8 +32,7 @@ export class SessionClientMessage {
     }
 
     async encode(writer: Writer): Promise<Error | undefined> {
-        let err: Error | undefined;
-        writer.writeVarint(this.messageLength + varintLen(this.messageLength));
+        writer.writeVarint(this.messageLength);
         writer.writeVarint(this.versions.size);
         for (const version of this.versions) {
             writer.writeBigVarint(version);
@@ -46,8 +46,7 @@ export class SessionClientMessage {
     }
 
     async decode(reader: Reader): Promise<Error | undefined> {
-        let err: Error | undefined;
-        [, err] = await reader.readVarint();
+        let [len, err] = await reader.readVarint();
         if (err) {
             return err;
         }
@@ -106,6 +105,10 @@ export class SessionClientMessage {
 
         this.versions = versions;
         this.extensions = extensions;
+
+        if (len !== this.messageLength) {
+            throw new Error(`message length mismatch: expected ${len}, got ${this.messageLength}`);
+        }
 
         return undefined;
     }

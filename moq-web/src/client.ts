@@ -1,5 +1,5 @@
 import { Session } from "./session";
-import { MOQOptions } from "./options";
+import type { MOQOptions } from "./options";
 import { Extensions } from "./internal";
 import { DefaultTrackMux, TrackMux } from "./track_mux";
 

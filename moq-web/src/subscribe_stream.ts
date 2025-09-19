@@ -1,10 +1,12 @@
-import { SubscribeMessage, SubscribeOkMessage, SubscribeUpdateMessage } from "./message";
-import { Writer, Reader } from "./io"
+import type { SubscribeMessage} from "./message";
+import { SubscribeOkMessage, SubscribeUpdateMessage } from "./message";
+import type { Writer, Reader } from "./io"
 import { Cond } from "./internal/cond";
-import { CancelCauseFunc, Context, withCancelCause } from "./internal/context";
+import type { CancelCauseFunc, Context} from "./internal/context";
+import { withCancelCause } from "./internal/context";
 import { StreamError } from "./io/error";
-import { Info } from "./info";
-import { TrackPriority,GroupSequence,SubscribeID } from ".";
+import type { Info } from "./info";
+import type { TrackPriority,GroupSequence,SubscribeID } from ".";
 
 export interface TrackConfig {
 	trackPriority: TrackPriority;
@@ -129,8 +131,6 @@ export class ReceiveSubscribeStream {
 		if (err) {
 			return new Error(`Failed to write subscribe ok: ${err}`);
 		}
-
-		console.log(`Accepted subscribe ok with groupPeriod: ${msg.groupPeriod}`);
 
 		this.#info = msg;
 	}

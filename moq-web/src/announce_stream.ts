@@ -1,12 +1,17 @@
-import { Reader, Writer } from "./io";
-import { AnnounceMessage, AnnouncePleaseMessage } from "./message";
-import { CancelCauseFunc, CancelFunc, Context, withCancel, withCancelCause,withPromise,background } from "./internal/context";
+import type { Reader, Writer } from "./io";
+import type { AnnouncePleaseMessage } from "./message";
+import { AnnounceMessage } from "./message";
+import { withCancel, withCancelCause, withPromise, background, ContextCancelledError } from "./internal/context";
+import type { CancelCauseFunc, CancelFunc, Context } from "./internal/context";
 import { Cond } from "./internal/cond";
-import { TrackPrefix, isValidPrefix, validateTrackPrefix } from "./track_prefix";
-import { BroadcastPath, validateBroadcastPath } from "./broadcast_path";
+import type { TrackPrefix } from "./track_prefix";
+import { isValidPrefix, validateTrackPrefix } from "./track_prefix";
+import { validateBroadcastPath } from "./broadcast_path";
+import type{  BroadcastPath } from "./broadcast_path";
 import { StreamError } from "./io/error";
 import { Queue } from "./internal";
 import { AnnounceInitMessage } from "./message/announce_init";
+import type { AnnounceErrorCode } from ".";
 
 type suffix = string;
 
@@ -167,7 +172,7 @@ export class AnnouncementWriter {
         this.#cancelFunc(undefined);
     }
 
-    closeWithError(code: number, message: string): void {
+    closeWithError(code: AnnounceErrorCode, message: string): void {
         const ctxErr = this.#ctx.err();
         if (ctxErr !== undefined) {
             throw ctxErr;
@@ -212,56 +217,13 @@ export class AnnouncementReader {
         }
 
         // Listen for incoming announcements
-        const readNext = () => {
-            const msg = new AnnounceMessage({});
-            msg.decode(this.#reader).then((err) => {
-                if (err) {
-                    // Handle error, perhaps log or cancel
-                    console.error(`Failed to read announcement: ${err}`);
-                    return;
-                }
-
-                const old = this.#announcements.get(msg.suffix);
-
-                if (msg.active) {
-                    if (old && old.isActive()) {
-                        console.error(`Announcement for path ${msg.suffix} already exists`);
-                        return;
-                    } else if (old && !old.isActive()) {
-                        // Delete the old announcement if it is inactive
-                        this.#announcements.delete(msg.suffix);
-                    }
-
-                    const fullPath = this.prefix + msg.suffix;
-                    const announcement = new Announcement(validateBroadcastPath(fullPath), this.#ctx.done());
-                    this.#announcements.set(msg.suffix, announcement);
-                    this.#queue.enqueue(announcement);
-                } else {
-                    if (!old) {
-                        console.error(`Announcement for path ${msg.suffix} does not exist`);
-                        return;
-                    } else if (old && !old.isActive()) {
-                        console.error(`Announcement for path ${msg.suffix} is already inactive`);
-                        return;
-                    }
-
-                    // End the old active announcement
-                    old.end();
-                    this.#announcements.delete(msg.suffix);
-                }
-
-                this.#cond.broadcast();
-
-                // Continue reading next message
-                queueMicrotask(readNext);
-            });
-        };
-
         // Start the reading loop
-        queueMicrotask(readNext);
+        queueMicrotask(this.#readNext.bind(this));
     }
 
-    async receive(ctx?: Promise<void>): Promise<[Announcement | undefined, Error | undefined]> {
+    async receive(signal: Promise<void>): Promise<[Announcement | undefined, Error | undefined]> {
+        const ctx = withPromise(this.context, signal);
+
         while (true) {
             const announcement = await this.#queue.dequeue();
 
@@ -269,20 +231,64 @@ export class AnnouncementReader {
                 return [announcement, undefined];
             }
 
-            // Wait for the next announcement or context done
-            const promises: Promise<Error | void>[] = [
-                this.#ctx.done().then(()=>new Error(`announce stream cancelled: ${this.#ctx.err()}`)),
-                this.#cond.wait()
-            ];
-            if (ctx) {
-                promises.push(ctx.then(()=>new Error("Context cancelled")));
+            if (ctx.err() !== undefined) {
+                return [undefined, ctx.err()];
             }
-            const result = await Promise.race(promises);
+
+            // Wait for either context cancellation or a condition signal.
+            // Using Promise.race here is safe because `cond.wait()` is implemented such that
+            // it is a lightweight synchronization primitive and does not capture heavy resources.
+            // Even if `cond.wait()` loses the race, it does not keep large memory references alive.
+            const result = await Promise.race([
+                ctx.done().then(() => ctx.err() ?? ContextCancelledError),
+                this.#cond.wait(),
+            ]);
 
             if (result instanceof Error) {
                 return [undefined, result];
             }
         }
+    }
+
+    #readNext(): void {
+        const msg = new AnnounceMessage({});
+        msg.decode(this.#reader).then((err) => {
+            if (err) {
+                console.error(`Failed to read announcement: ${err}`);
+                return;
+            }
+
+            const old = this.#announcements.get(msg.suffix);
+
+            if (msg.active) {
+                if (old && old.isActive()) {
+                    console.error(`Announcement for path ${msg.suffix} already exists`);
+                    return;
+                } else if (old && !old.isActive()) {
+                    this.#announcements.delete(msg.suffix);
+                }
+
+                const fullPath = this.prefix + msg.suffix;
+                const announcement = new Announcement(validateBroadcastPath(fullPath), this.#ctx.done());
+                this.#announcements.set(msg.suffix, announcement);
+                this.#queue.enqueue(announcement);
+            } else {
+                if (!old) {
+                    console.error(`Announcement for path ${msg.suffix} does not exist`);
+                    return;
+                } else if (old && !old.isActive()) {
+                    console.error(`Announcement for path ${msg.suffix} is already inactive`);
+                    return;
+                }
+
+                old.end();
+                this.#announcements.delete(msg.suffix);
+            }
+
+            this.#cond.broadcast();
+
+            queueMicrotask(this.#readNext.bind(this));
+        });
     }
 
     get context(): Context {
@@ -295,7 +301,7 @@ export class AnnouncementReader {
         this.#queue.close();
     }
 
-    closeWithError(code: number, message: string): void {
+    closeWithError(code: AnnounceErrorCode, message: string): void {
         this.#cancelFunc(new Error(`AnnouncementReader closed with code ${code}`));
         for (const announcement of this.#announcements.values()) {
             announcement.end();
@@ -311,8 +317,8 @@ export class Announcement {
     #ctx: Context;
     #cancelFunc: CancelFunc;
 
-    constructor(path: BroadcastPath, context: Promise<void>) {
-        this.broadcastPath = path;
+    constructor(path: string, context: Promise<void>) {
+        this.broadcastPath = validateBroadcastPath(path);
         const ctx = withPromise(background(), context);
         [this.#ctx, this.#cancelFunc] = withCancel(ctx);
     }

@@ -1,4 +1,4 @@
-import { Extensions } from './internal/extensions';
+import type { Extensions } from './internal/extensions';
 
 export interface MOQOptions {
 	extensions?: Extensions;

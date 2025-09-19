@@ -1,21 +1,24 @@
-import { Version, Versions } from "./internal";
+import { Versions } from "./internal";
+import type { Version } from "./internal";
 import { AnnouncePleaseMessage, AnnounceInitMessage, GroupMessage, SessionClientMessage, SessionServerMessage, SubscribeMessage, SubscribeOkMessage } from "./message";
 import { Writer, Reader } from "./io";
 import { Extensions } from "./internal/extensions";
 import { SessionStream } from "./session_stream";
-import { background, Context, withPromise } from "./internal/context";
+import { background, withPromise } from "./internal/context";
+import type { Context } from "./internal/context";
 import { AnnouncementReader, AnnouncementWriter } from "./announce_stream";
-import { TrackPrefix } from "./track_prefix";
-import { ReceiveSubscribeStream, SendSubscribeStream, TrackConfig } from "./subscribe_stream";
-import { BroadcastPath } from "./broadcast_path";
+import type { TrackPrefix } from "./track_prefix";
+import { ReceiveSubscribeStream, SendSubscribeStream } from "./subscribe_stream";
+import type { TrackConfig } from "./subscribe_stream";
+import type { BroadcastPath } from "./broadcast_path";
 import { TrackReader, TrackWriter } from "./track";
 import { GroupReader, GroupWriter } from "./group_stream";
-import { DefaultTrackMux, TrackMux } from "./track_mux";
+import type { TrackMux } from "./track_mux";
+import { DefaultTrackMux } from "./track_mux";
 import { BiStreamTypes, UniStreamTypes } from "./stream_type";
 import { Queue } from "./internal/queue";
-import { Info } from "./info";
-import { subscribe } from "diagnostics_channel";
-import { TrackName, SubscribeID } from "./protocol";
+import type { Info } from "./info";
+import type { TrackName, SubscribeID } from "./protocol";
 
 export class Session {
 	readonly ready: Promise<void>
@@ -23,15 +26,18 @@ export class Session {
 	#sessionStream!: SessionStream
 	#ctx!: Context;
 
-	#idCounter: bigint = 0n;
+	#subscribeIDCounter: bigint = 0n;
 
 	readonly mux: TrackMux;
 
 	#enqueueFuncs: Map<SubscribeID, (stream: Reader, msg: GroupMessage) => void> = new Map();
 
-	constructor(conn: WebTransport,
-		versions: Set<Version> = new Set([Versions.DEVELOP]), extensions: Extensions = new Extensions(),
-		mux: TrackMux = DefaultTrackMux) {
+	constructor(
+		conn: WebTransport,
+		versions: Set<Version> = new Set([Versions.DEVELOP]),
+		extensions: Extensions = new Extensions(),
+		mux: TrackMux = DefaultTrackMux
+	) {
 		this.#conn = conn;
 		this.mux = mux;
 		this.ready = conn.ready.then(async () => {
@@ -48,6 +54,8 @@ export class Session {
 				throw err;
 			}
 
+			console.log("Starting session negotiation...");
+
 			// Send the session client message
 			const req = new SessionClientMessage({ versions, extensions });
 			err = await req.encode(writer);
@@ -58,6 +66,8 @@ export class Session {
 				throw new Error("Failed to encode SessionClientMessage");
 			}
 
+			console.log("Sent session client message:", req);
+
 			// Receive the session server message
 			const rsp = new SessionServerMessage({});
 			err = await rsp.decode(reader);
@@ -67,6 +77,8 @@ export class Session {
 			if (!rsp) {
 				throw new Error("Failed to decode SessionServerMessage");
 			}
+
+			console.log(`Negotiated session version: ${rsp.version}`);
 
 			// TODO: Check the version compatibility
 			if (!versions.has(rsp.version)) {
@@ -133,7 +145,7 @@ export class Session {
 
 		// Send SUBSCRIBE message
 		const req = new SubscribeMessage({
-			subscribeId: this.#idCounter++,
+			subscribeId: this.#subscribeIDCounter++,
 			broadcastPath: path,
 			trackName: name,
 			trackPriority: config?.trackPriority ?? 0,
@@ -316,6 +328,4 @@ export class Session {
 			reason: message,
 		});
 	}
-
-
 }

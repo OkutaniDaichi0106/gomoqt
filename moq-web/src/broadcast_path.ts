@@ -7,7 +7,7 @@
  * A broadcast path is simply a string with specific format requirements.
  * Use validation functions to ensure correctness at runtime.
  */
-export type BroadcastPath = string & { readonly brand: unique symbol };
+export type BroadcastPath = `/${string}`;
 
 /**
  * Runtime type guard to check if a string is a valid BroadcastPath.
@@ -40,7 +40,7 @@ export function validateBroadcastPath(path: string): BroadcastPath {
  * getExtension("/video/stream") // returns ""
  * getExtension("/file.min.js") // returns ".js"
  */
-export function getExtension(path: BroadcastPath): string {
+export function extension(path: BroadcastPath): string {
     const lastDot = path.lastIndexOf('.');
     const lastSlash = path.lastIndexOf('/');
     
@@ -57,41 +57,3 @@ export function getExtension(path: BroadcastPath): string {
     return path.substring(lastDot);
 }
 
-/**
- * Creates a BroadcastPath with compile-time and runtime validation.
- * @param path - The string to validate and convert to BroadcastPath
- * @returns A validated BroadcastPath
- * @throws Error if the path is not a valid BroadcastPath
- */
-export function createBroadcastPath(path: string): BroadcastPath {
-    if (!isValidBroadcastPath(path)) {
-        throw new Error(`Invalid broadcast path: "${path}". Must start with "/"`);
-    }
-    return path as BroadcastPath;
-}
-
-/**
- * Template literal type helper for compile-time validation.
- * Use this when you know the path at compile time.
- */
-export function broadcastPath<T extends string>(
-    path: T extends `/${string}` ? T : T extends "/" ? T : never
-): BroadcastPath {
-    return path as unknown as BroadcastPath;
-}
-
-/**
- * Usage examples:
- * 
- * // Compile-time validation (will show error if invalid format):
- * const validPath = broadcastPath("/alice.json");     // ✅ OK
- * const invalidPath = broadcastPath("alice.json");    // ❌ Compile error
- * 
- * // Runtime validation (for dynamic strings):
- * const dynamicPath = createBroadcastPath(userInput); // ✅ OK with runtime check
- * 
- * // Type guard usage:
- * if (isValidBroadcastPath(someString)) {
- *     // someString is now typed as BroadcastPath
- * }
- */

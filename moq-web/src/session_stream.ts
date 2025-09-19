@@ -1,9 +1,10 @@
-import { CancelCauseFunc, Context, withCancelCause } from "./internal/context";
-import { Reader, Writer } from "./io";
+import type { CancelCauseFunc, Context} from "./internal/context";
+import { withCancelCause } from "./internal/context";
+import type { Reader, Writer } from "./io";
 import { StreamError } from "./io/error";
 import { SessionUpdateMessage } from "./message";
-import { SessionClientMessage } from "./message/session_client";
-import { SessionServerMessage } from "./message/session_server";
+import type { SessionClientMessage } from "./message/session_client";
+import type { SessionServerMessage } from "./message/session_server";
 import { Cond } from "./internal";
 
 export class SessionStream {

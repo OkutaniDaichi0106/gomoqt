@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { TrackReader, TrackWriter } from './track';
 import { GroupReader, GroupWriter } from './group_stream';
-import { Context, withCancelCause, background } from './internal/context';
-import { ReceiveSubscribeStream, SendSubscribeStream, TrackConfig } from './subscribe_stream';
+import type { Context} from './internal/context';
+import { withCancelCause, background,ContextCancelledError } from './internal/context';
+import type { TrackConfig } from './subscribe_stream';
+import { ReceiveSubscribeStream, SendSubscribeStream } from './subscribe_stream';
 import { Writer, Reader } from './io';
-import { BroadcastPath } from './broadcast_path';
-import { Info } from './info';
+import type { BroadcastPath } from './broadcast_path';
+import type { Info } from './info';
 import { GroupMessage } from './message';
 
 // Mock the GroupMessage module
@@ -206,7 +208,7 @@ describe('TrackReader', () => {
         });
 
         it('should return context error when context is cancelled', async () => {
-            const contextError = new Error('Context cancelled');
+            const contextError = ContextCancelledError;
             const [ctx, cancelFunc] = withCancelCause(background());
             mockSubscribeStream.context = ctx;
             trackReader = new TrackReader(mockSubscribeStream, mockAcceptFunc, mockOnCloseFunc);
@@ -219,16 +221,6 @@ describe('TrackReader', () => {
             expect(mockAcceptFunc).not.toHaveBeenCalled();
             expect(groupReader).toBeUndefined();
             expect(error).toBe(contextError);
-        });
-
-        it('should return error when no group is available', async () => {
-            mockAcceptFunc.mockResolvedValue(undefined);
-
-            const [groupReader, error] = await trackReader.acceptGroup();
-
-            expect(groupReader).toBeUndefined();
-            expect(error).toBeInstanceOf(Error);
-            expect(error?.message).toBe('No group available');
         });
     });
 

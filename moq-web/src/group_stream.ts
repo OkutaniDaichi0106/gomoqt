@@ -1,8 +1,11 @@
-import { CancelCauseFunc, Context, withCancelCause } from "./internal/context";
-import { Reader, Writer, Source } from "./io";
+import type { Reader, Writer } from "./io";
+import { withCancelCause } from "./internal/context";
+import type { CancelCauseFunc, Context } from "./internal/context";
+import type { Source } from "./io";
 import { StreamError } from "./io/error";
-import { GroupMessage } from "./message";
+import type { GroupMessage } from "./message";
 import { Frame } from "./frame";
+import type { GroupErrorCode } from ".";
 
 export class GroupWriter {
     #group: GroupMessage;
@@ -42,7 +45,6 @@ export class GroupWriter {
         }
         const err = await this.#writer.flush();
         if (err) {
-            console.error("Error writing frame:", err);
             return err;
         }
 
@@ -114,7 +116,7 @@ export class GroupReader {
         return [this.#frame, undefined];
     }
 
-    cancel(code: number): void {
+    cancel(code: GroupErrorCode): void {
         const reason = new StreamError(code, "Stream cancelled");
         this.#reader.cancel(reason);
         this.#cancelFunc(reason);

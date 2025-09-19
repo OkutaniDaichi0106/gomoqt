@@ -9,7 +9,9 @@
     "esModuleInterop": true
   },
   "include": [
-    "src/browser.ts"
+    "src/browser.ts",
+    "src/internal/browser.ts",
+    "src/io/browser.ts"
   ],
   "exclude": [
     "**/*.test.ts",

@@ -1,36 +1,29 @@
-import { Writer, Reader, varintLen } from "../io";
-import { GroupPeriod } from "../protocol";
+import type { Writer, Reader} from "../io";
+import { varintLen } from "../io";
 
-export interface SubscribeOkMessageInit {
-    groupPeriod?: GroupPeriod;
-}
+export interface SubscribeOkMessageInit {}
 
 export class SubscribeOkMessage {
-    groupPeriod: GroupPeriod;
 
-    constructor(init: SubscribeOkMessageInit) {
-        this.groupPeriod = init.groupPeriod ?? 0;
-    }
+    constructor(init: SubscribeOkMessageInit) {}
 
     get messageLength(): number {
-        return varintLen(this.groupPeriod);
+        return 0;
     }
 
     async encode(writer: Writer): Promise<Error | undefined> {
-        let err: Error | undefined = undefined;
-        writer.writeVarint(this.messageLength + varintLen(this.messageLength));
-        writer.writeVarint(this.groupPeriod);
+        writer.writeVarint(this.messageLength);
         return await writer.flush();
     }
 
     async decode(reader: Reader): Promise<Error | undefined> {
-        let [, err] = await reader.readVarint();
+        let [len, err] = await reader.readVarint();
         if (err) {
             return err;
         }
-        [this.groupPeriod, err] = await reader.readVarint();
-        if (err) {
-            return err;
+
+        if (len !== this.messageLength) {
+            throw new Error(`message length mismatch: expected ${len}, got ${this.messageLength}`);
         }
 
         return undefined;

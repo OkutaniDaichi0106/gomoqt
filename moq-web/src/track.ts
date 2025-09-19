@@ -1,14 +1,16 @@
 import { GroupReader, GroupWriter } from "./group_stream";
-import { Info } from "./info";
+import type { Info } from "./info";
 import { Queue } from "./internal";
-import { Context } from "./internal/context";
-import { ReceiveSubscribeStream, SendSubscribeStream, TrackConfig } from "./subscribe_stream";
-import { Writer, Reader } from "./io";
+import type { Context} from "./internal/context";
+import {ContextCancelledError,withCancel,withPromise } from "./internal/context";
+import type { ReceiveSubscribeStream, SendSubscribeStream, TrackConfig } from "./subscribe_stream";
+import type { Writer, Reader } from "./io";
 import { UniStreamTypes } from "./stream_type";
 import { GroupMessage } from "./message";
-import { BroadcastPath } from "./broadcast_path";
-import { PublishAbortedErrorCode, SubscribeErrorCode } from "./error";
-import { GroupSequence } from ".";
+import type { BroadcastPath } from "./broadcast_path";
+import type { SubscribeErrorCode } from "./error";
+import { PublishAbortedErrorCode } from "./error";
+import type { GroupSequence } from ".";
 
 export class TrackWriter {
     broadcastPath: BroadcastPath;
@@ -101,11 +103,12 @@ export class TrackWriter {
 
 export class TrackReader {
     #subscribeStream: SendSubscribeStream;
-    #acceptFunc: () => Promise<[Reader, GroupMessage]>;
+    #acceptFunc: (ctx: Promise<void>) => Promise<[Reader, GroupMessage]>;
     #onCloseFunc: () => void;
 
-    constructor(subscribeStream: SendSubscribeStream,
-        acceptFunc: () => Promise<[Reader, GroupMessage]>,
+    constructor(
+        subscribeStream: SendSubscribeStream,
+        acceptFunc: (ctx: Promise<void>) => Promise<[Reader, GroupMessage]>,
         onCloseFunc: () => void,
     ) {
         this.#subscribeStream = subscribeStream;
@@ -113,21 +116,15 @@ export class TrackReader {
         this.#onCloseFunc = onCloseFunc;
     }
 
-    async acceptGroup(ctx?: Promise<void>): Promise<[GroupReader?, Error?]> {
-        const promises: Promise<Error | [Reader, GroupMessage]>[] = [
-            this.context.done().then(() => new Error(`subscribe stream cancelled: ${this.context.err()}`)),
-            this.#acceptFunc(),
-        ];
-        if (ctx) {
-            promises.push(ctx.then((): Error => new Error("Context cancelled")));
-        }
-        const result = await Promise.race(promises);
-        if (result instanceof Error) {
-            // Context was cancelled
-            return [undefined, result];
+    async acceptGroup(signal: Promise<void>): Promise<[GroupReader?, Error?]> {
+        // Check if context is already cancelled
+        if (this.context.err()) {
+            return [undefined, this.context.err()];
         }
 
-        const [reader, msg] = result;
+        const ctx = withPromise(this.context, signal);
+
+        const [reader, msg] = await this.#acceptFunc(ctx.done());
 
         const group = new GroupReader(this.context, reader, msg);
 

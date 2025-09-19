@@ -1,7 +1,138 @@
 import { BytesBuffer, MAX_BYTES_LENGTH, MAX_UINT } from "./bytes";
 import { DefaultBufferPool } from "./buffer_pool";
-import { StreamError } from "./error";
+import type { StreamError } from "./error";
 import { MAX_VARINT1, MAX_VARINT2, MAX_VARINT4, MAX_VARINT8 } from "./len";
+
+// /**
+//  * Grows the buffer if necessary to accommodate the required size
+//  * @param buf The current buffer
+//  * @param requiredSize The minimum size needed
+//  * @returns The buffer, possibly reallocated
+//  */
+// function growBuffer(buf: Uint8Array, requiredSize: number): Uint8Array {
+//     if (buf.length >= requiredSize) {
+//         return buf;
+//     }
+//     // Go's slice growth algorithm: double the capacity or use required size, whichever is larger
+//     const newCapacity = Math.max(buf.length * 2, requiredSize);
+//     const newBuf = new Uint8Array(newCapacity);
+//     newBuf.set(buf);
+//     return newBuf;
+// }
+
+// /**
+//  * Ensures the buffer has enough capacity for additional bytes
+//  * @param buf The current buffer
+//  * @param offset The current offset
+//  * @param additionalBytes The number of additional bytes needed
+//  * @returns The buffer, possibly reallocated
+//  */
+// function ensureCapacity(buf: Uint8Array, offset: number, additionalBytes: number): Uint8Array {
+//     const requiredSize = offset + additionalBytes;
+//     if (buf.length >= requiredSize) {
+//         return buf;
+//     }
+//     return growBuffer(buf, requiredSize);
+// }
+
+// /**
+//  * Writes a varint-encoded number to the byte array at the specified offset
+//  * @param buf The byte array to write to
+//  * @param offset The offset to start writing at
+//  * @param value The number to encode
+//  * @returns The modified byte array and the number of bytes written
+//  */
+// export function writeVarint(buf: Uint8Array, offset: number, value: number): { buf: Uint8Array, wroteLength: number } {
+//     // Ensure we have enough space for maximum varint size (5 bytes for 32-bit)
+//     buf = ensureCapacity(buf, offset, 5);
+
+//     let written = 0;
+//     let v = value;
+
+//     // Optimize: use number instead of BigInt for small values
+//     if (v < 0x80) {
+//         buf[offset] = v;
+//         return { buf, wroteLength: 1 };
+//     }
+
+//     while (v >= 0x80) {
+//         buf[offset + written] = (v & 0x7F) | 0x80;
+//         v >>= 7;
+//         written++;
+//     }
+//     buf[offset + written] = v;
+//     written++;
+
+//     return { buf, wroteLength: written };
+// }
+
+// /**
+//  * Writes a varint-encoded bigint to the byte array at the specified offset
+//  * @param buf The byte array to write to
+//  * @param offset The offset to start writing at
+//  * @param value The bigint to encode
+//  * @returns The modified byte array and the number of bytes written
+//  */
+// export function writeBigVarint(buf: Uint8Array, offset: number, value: bigint): { buf: Uint8Array, wroteLength: number } {
+//     // Ensure we have enough space for maximum varint size (10 bytes for 64-bit)
+//     buf = ensureCapacity(buf, offset, 10);
+
+//     let written = 0;
+//     let v = value;
+
+//     // Optimize: handle small values quickly
+//     if (v < 0x80n) {
+//         buf[offset] = Number(v);
+//         return { buf, wroteLength: 1 };
+//     }
+
+//     while (v >= 0x80n) {
+//         buf[offset + written] = Number((v & 0x7Fn) | 0x80n);
+//         v >>= 7n;
+//         written++;
+//     }
+//     buf[offset + written] = Number(v);
+//     written++;
+
+//     return { buf, wroteLength: written };
+// }
+
+// /**
+//  * Writes a string (UTF-8 encoded) to the byte array at the specified offset
+//  * @param buf The byte array to write to
+//  * @param offset The offset to start writing at
+//  * @param str The string to encode
+//  * @returns The modified byte array and the number of bytes written
+//  */
+// export function writeString(buf: Uint8Array, offset: number, str: string): { buf: Uint8Array, wroteLength: number } {
+//     const encoder = new TextEncoder();
+//     const strBytes = encoder.encode(str);
+
+//     // Ensure capacity for varint (max 5 bytes) + string bytes
+//     buf = ensureCapacity(buf, offset, 5 + strBytes.length);
+
+//     // Write the length as varint
+//     const { buf: buf1, wroteLength: lengthWritten } = writeVarint(buf, offset, strBytes.length);
+//     buf = buf1;
+
+//     // Write the string bytes efficiently
+//     buf.set(strBytes, offset + lengthWritten);
+
+//     return { buf, wroteLength: lengthWritten + strBytes.length };
+// }
+
+// /**
+//  * Writes bytes to the byte array at the specified offset
+//  * @param buf The byte array to write to
+//  * @param offset The offset to start writing at
+//  * @param bytes The bytes to append
+//  * @returns The modified byte array and the number of bytes written
+//  */
+// export function writeBytes(buf: Uint8Array, offset: number, bytes: Uint8Array): { buf: Uint8Array, wroteLength: number } {
+//     buf = ensureCapacity(buf, offset, bytes.length);
+//     buf.set(bytes, offset);
+//     return { buf, wroteLength: bytes.length };
+// }
 
 export class Writer {
     #writer: WritableStreamDefaultWriter<Uint8Array>;

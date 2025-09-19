@@ -1,0 +1,111 @@
+@import "tailwindcss";
+
+:root {
+  --background-rgb: 214, 219, 220;
+  --foreground-rgb: 0, 0, 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background-rgb: 0, 0, 0;
+    --foreground-rgb: 255, 255, 255;
+  }
+}
+
+body {
+  background: rgb(var(--background-rgb));
+  color: rgb(var(--foreground-rgb));
+}
+
+/* Hang Room Container - responsive to window size */
+.hang-room-container {
+  /* Responsive dimensions based on viewport size */
+  width: min(80vw, 600px);  /* 80% of viewport width, max 600px */
+  height: min(40vh, 300px); /* 40% of viewport height, max 300px */
+  /* Minimum sizes to ensure usability on small screens */
+  min-width: 300px;
+  min-height: 130px;
+  border-radius: 8px;
+  display: block;
+  background-color: #000000;
+  position: relative;
+  box-sizing: border-box;
+  /* Center the container horizontally */
+  margin: 0 auto;
+  /* Complete stability */
+  contain: strict;
+  transform: translateZ(0);
+  will-change: auto;
+  /* Force no transitions or animations on container */
+  transition: none !important;
+  animation: none !important;
+  /* Prevent any layout shifts */
+  overflow: hidden;
+}
+
+/* Responsive breakpoints for different screen sizes */
+@media (max-width: 640px) {
+  .hang-room-container {
+    width: 95vw;  /* More space on mobile */
+    height: 45vh;
+    min-width: 280px;
+    min-height: 120px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .hang-room-container {
+    width: min(70vw, 800px);  /* Larger on desktop */
+    height: min(50vh, 400px);
+  }
+}
+
+@media (min-width: 1440px) {
+  .hang-room-container {
+    width: min(60vw, 1000px); /* Even larger on large screens */
+    height: min(55vh, 500px);
+  }
+}
+
+/* Ensure all children are completely stable */
+.hang-room-container *,
+.hang-room-container *::before,
+.hang-room-container *::after {
+  box-sizing: border-box;
+  transition: none !important;
+  animation: none !important;
+  transform: none !important;
+}
+
+/* Fallback state - identical size, only background changes */
+.hang-room-container[data-fallback] {
+  background-color: #0e0e0e;
+  /* Pulse animation ONLY affects opacity, not size */
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* hang-room element - exact same dimensions as container */
+hang-room {
+  display: block;
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  contain: strict;
+  overflow: hidden;
+  /* Absolutely no transitions */
+  transition: none !important;
+  animation: none !important;
+  transform: none !important;
+}
+

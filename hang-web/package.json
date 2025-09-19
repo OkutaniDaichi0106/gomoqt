@@ -1,0 +1,59 @@
+{
+  "name": "@okutanidaichi/hang",
+  "version": "0.1.1",
+  "description": "",
+  "main": "dist/index.js",
+  "module": "src/index.ts",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "npm run build:main && npm run build:browser",
+    "build:main": "tsc",
+    "build:browser": "tsc --project tsconfig.browser.json",
+    "postbuild": "node ./scripts/copy-src-to-dist.cjs",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
+    "test": "jest --passWithNoTests",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "exports": {
+    ".": {
+      "browser": "./dist/browser.js",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./elements": {
+      "import": "./dist/elements/index.js",
+      "types": "./dist/elements/index.d.ts",
+      "browser": "./dist/elements/browser.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@okutanidaichi/moqt": "file:../moq-web",
+    "@types/audioworklet": "^0.0.83",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^24.0.4",
+    "@typescript-eslint/eslint-plugin": "^8.35.1",
+    "@typescript-eslint/parser": "^8.35.1",
+    "eslint": "^9.30.1",
+    "jest": "^30.0.3",
+    "jest-environment-jsdom": "^30.0.4",
+    "ts-jest": "^29.4.0",
+    "tslint": "^5.20.1",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "zod": "^4.1.5"
+  },
+  "packageManager": "pnpm@10.15.0+sha512.486ebc259d3e999a4e8691ce03b5cac4a71cbeca39372a9b762cb500cfdf0873e2cb16abe3d951b1ee2cf012503f027b98b6584e4df22524e0c7450d9ec7aa7b"
+}

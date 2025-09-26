@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import type { MockedFunction } from 'jest-mock';
 import { Session } from "./session";
 import { Version, Versions } from "./internal";
 import { AnnouncePleaseMessage, AnnounceInitMessage, GroupMessage,
@@ -71,7 +72,10 @@ class MockWebTransport {
 // Mock SessionStream
 jest.mock("./session_stream", () => ({
     SessionStream: jest.fn().mockImplementation(() => ({
-        context: { signal: new AbortController().signal },
+        context: { 
+            done: jest.fn().mockReturnValue(Promise.resolve()),
+            err: jest.fn().mockReturnValue(undefined)
+        },
         update: jest.fn()
     }))
 }));
@@ -88,7 +92,10 @@ jest.mock("./message", () => ({
         version: init.version ?? 0xffffff00n,
         extensions: init.extensions ?? {},
         encode: jest.fn().mockImplementation(() => Promise.resolve(undefined)),
-        decode: jest.fn().mockImplementation(() => Promise.resolve(undefined))
+        decode: jest.fn().mockImplementation(function(this: any) {
+            this.version = this.version ?? 0xffffff00n;
+            return Promise.resolve(undefined);
+        })
     })),
     AnnouncePleaseMessage: jest.fn().mockImplementation((init: any = {}) => ({
         prefix: init.prefix ?? "",
@@ -192,13 +199,21 @@ jest.mock("./info", () => ({
     Info: jest.fn()
 }));
 
+// Mock protocol module
+jest.mock("./protocol", () => ({
+    TrackName: jest.fn(),
+    SubscribeID: jest.fn()
+}));
+
 // Mock context and background
 jest.mock("./internal/context", () => ({
     background: jest.fn().mockReturnValue({
-        signal: new AbortController().signal
+        done: jest.fn().mockReturnValue(Promise.resolve()),
+        err: jest.fn().mockReturnValue(undefined)
     }),
     withPromise: jest.fn().mockImplementation((ctx, promise) => ({
-        signal: new AbortController().signal
+        done: jest.fn().mockReturnValue(Promise.resolve()),
+        err: jest.fn().mockReturnValue(undefined)
     })),
     Context: jest.fn()
 }));
@@ -216,6 +231,7 @@ jest.mock("./internal", () => ({
     Versions: {
         DEVELOP: 0xffffff00n
     },
+    DEFAULT_CLIENT_VERSIONS: new Set([0xffffff00n]),
     Queue: jest.fn().mockImplementation(() => ({
         enqueue: jest.fn(),
         dequeue: jest.fn()
@@ -231,23 +247,27 @@ describe("Session", () => {
         jest.clearAllMocks();
     });
 
+    afterEach(() => {
+        // No cleanup needed since console.error is handled globally
+    });
+
     describe("constructor", () => {
         it("should create a session with default parameters", () => {
-            session = new Session(mockConn as any);
+            session = new Session({conn: mockConn as any});
             expect(session).toBeDefined();
             expect(session.ready).toBeDefined();
         });
 
         it("should create a session with custom versions", () => {
             const versions = new Set([Versions.DEVELOP]);
-            session = new Session(mockConn as any, versions);
+            session = new Session({conn: mockConn as any, versions});
             expect(session).toBeDefined();
             expect(session.ready).toBeDefined();
         });
 
         it("should create a session with custom extensions", () => {
             const extensions = new Extensions();
-            session = new Session(mockConn as any, new Set([Versions.DEVELOP]), extensions);
+            session = new Session({conn: mockConn as any, versions: new Set([Versions.DEVELOP]), extensions});
             expect(session).toBeDefined();
             expect(session.ready).toBeDefined();
         });
@@ -258,7 +278,7 @@ describe("Session", () => {
                 serveTrack: jest.fn(),
                 serveAnnouncement: jest.fn()
             };
-            session = new Session(mockConn as any, new Set([Versions.DEVELOP]), extensions, mockMux as any);
+            session = new Session({conn: mockConn as any, versions: new Set([Versions.DEVELOP]), extensions, mux: mockMux as any});
             expect(session).toBeDefined();
             expect(session.ready).toBeDefined();
         });
@@ -266,7 +286,7 @@ describe("Session", () => {
 
     describe("ready", () => {
         it("should resolve when connection is ready", async () => {
-            session = new Session(mockConn as any);
+            session = new Session({conn: mockConn as any});
             await expect(session.ready).resolves.toBeUndefined();
         });
 
@@ -277,14 +297,14 @@ describe("Session", () => {
                 close: jest.fn() // Add close method to prevent the error
             };
 
-            session = new Session(mockConnWithError as any);
+            session = new Session({conn: mockConnWithError as any});
             await expect(session.ready).rejects.toThrow("Connection failed");
         });
     });
 
     describe("session initialization", () => {
         beforeEach(() => {
-            session = new Session(mockConn as any);
+            session = new Session({conn: mockConn as any});
         });
 
         it("should initialize session stream when ready", async () => {
@@ -309,7 +329,7 @@ describe("Session", () => {
 
     describe("internal state", () => {
         beforeEach(() => {
-            session = new Session(mockConn as any);
+            session = new Session({conn: mockConn as any});
         });
 
         it("should initialize session successfully", () => {
@@ -328,7 +348,7 @@ describe("Session", () => {
 
     describe("methods", () => {
         beforeEach(async () => {
-            session = new Session(mockConn as any);
+            session = new Session({conn: mockConn as any});
             await session.ready;
         });
 
@@ -362,28 +382,48 @@ describe("Session", () => {
             expect(() => session.update(1000n)).not.toThrow();
         });
 
-        it("should close connection with normal closure", () => {
+        it("should close connection with normal closure", async () => {
             const closeSpy = jest.spyOn(mockConn, 'close');
-            session.close();
-            expect(closeSpy).toHaveBeenCalledWith({
-                closeCode: 0x0,
-                reason: "No Error"
-            });
+            
+            // Mock Promise.allSettled to resolve immediately, avoiding background task wait
+            const originalAllSettled = Promise.allSettled;
+            jest.spyOn(Promise, 'allSettled').mockResolvedValue([]);
+            
+            try {
+                await session.close();
+                expect(closeSpy).toHaveBeenCalledWith({
+                    closeCode: 0x0,
+                    reason: "No Error"
+                });
+            } finally {
+                // Restore the original Promise.allSettled
+                (Promise.allSettled as jest.Mock).mockRestore();
+            }
         });
 
-        it("should close connection with error", () => {
+        it("should close connection with error", async () => {
             const closeSpy = jest.spyOn(mockConn, 'close');
-            session.closeWithError(123, "Test error");
-            expect(closeSpy).toHaveBeenCalledWith({
-                closeCode: 123,
-                reason: "Test error"
-            });
+            
+            // Mock Promise.allSettled to resolve immediately, avoiding background task wait
+            const originalAllSettled = Promise.allSettled;
+            jest.spyOn(Promise, 'allSettled').mockResolvedValue([]);
+            
+            try {
+                await session.closeWithError(123, "Test error");
+                expect(closeSpy).toHaveBeenCalledWith({
+                    closeCode: 123,
+                    reason: "Test error"
+                });
+            } finally {
+                // Restore the original Promise.allSettled
+                (Promise.allSettled as jest.Mock).mockRestore();
+            }
         });
     });
 
     describe("error handling", () => {
         beforeEach(async () => {
-            session = new Session(mockConn as any);
+            session = new Session({conn: mockConn as any});
             await session.ready;
         });
 
@@ -396,7 +436,7 @@ describe("Session", () => {
                 close: jest.fn()
             };
 
-            const errorSession = new Session(errorMockConn as any);
+            const errorSession = new Session({conn: errorMockConn as any});
             await expect(errorSession.ready).rejects.toThrow();
         });
 
@@ -419,7 +459,7 @@ describe("Session", () => {
                 decode: mockDecode
             } as any));
 
-            const versionSession = new Session(versionMockConn as any);
+            const versionSession = new Session({conn: versionMockConn as any});
             await expect(versionSession.ready).rejects.toThrow("Incompatible session version");
 
             // Verify the decode method was called
@@ -431,14 +471,18 @@ describe("Session", () => {
         let readySession: Session;
 
         beforeEach(async () => {
-            readySession = new Session(mockConn as any);
+            readySession = new Session({conn: mockConn as any});
             await readySession.ready;
         });
 
         it("should handle acceptAnnounce", async () => {
             const prefix = { segments: ["test"] };
-            const stream = readySession.acceptAnnounce(prefix as any);
-            expect(stream).toBeInstanceOf(Promise);
+            const result = await readySession.acceptAnnounce(prefix as any);
+            expect(result).toBeInstanceOf(Array);
+            expect(result).toHaveLength(2);
+            // Should return [AnnouncementReader?, Error?]
+            const [reader, error] = result;
+            expect(error).toBeUndefined();
         });
 
         it("should handle subscribe", async () => {
@@ -446,8 +490,12 @@ describe("Session", () => {
             const trackName = "test-track";
             const config = { trackPriority: 1, minGroupSequence: 0n, maxGroupSequence: 10n };
 
-            const stream = readySession.subscribe(path as any, trackName, config);
-            expect(stream).toBeInstanceOf(Promise);
+            const result = await readySession.subscribe(path as any, trackName, config);
+            expect(result).toBeInstanceOf(Array);
+            expect(result).toHaveLength(2);
+            // Should return [TrackReader?, Error?]
+            const [trackReader, error] = result;
+            expect(error).toBeUndefined();
         });
     });
 });

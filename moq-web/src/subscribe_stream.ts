@@ -1,6 +1,7 @@
 import type { SubscribeMessage} from "./message";
 import { SubscribeOkMessage, SubscribeUpdateMessage } from "./message";
 import type { Writer, Reader } from "./io"
+import { EOF } from "./io"
 import { Cond } from "./internal/cond";
 import type { CancelCauseFunc, Context} from "./internal/context";
 import { withCancelCause } from "./internal/context";
@@ -62,16 +63,16 @@ export class SendSubscribeStream {
 		}
 	}
 
-	cancel(code: number, message: string): void {
+	async closeWithError(code: number, message: string): Promise<void> {
         const err = new StreamError(code, message);
-		this.#writer.cancel(err);
+		await this.#writer.cancel(err);
 		this.#cancelFunc(err);
 	}
 }
 
 export class ReceiveSubscribeStream {
-	#subscribe: SubscribeMessage
-	#update?: SubscribeUpdateMessage
+	readonly subscribeId: SubscribeID;
+	#trackConfig: TrackConfig;
 	#cond: Cond = new Cond();
 	#reader: Reader
 	#writer: Writer
@@ -79,37 +80,48 @@ export class ReceiveSubscribeStream {
 	#ctx: Context;
 	#cancelFunc: CancelCauseFunc;
 
-	constructor(sessCtx: Context, writer: Writer, reader: Reader, subscribe: SubscribeMessage) {
+
+	constructor(
+		sessCtx: Context,
+		writer: Writer,
+		reader: Reader,
+		subscribe: SubscribeMessage
+	) {
 		this.#reader = reader
 		this.#writer = writer
-		this.#subscribe = subscribe;
+		this.subscribeId = subscribe.subscribeId;
+		this.#trackConfig = subscribe;
 		[this.#ctx, this.#cancelFunc] = withCancelCause(sessCtx);
 
-		// The async loop can be cancelled by sessCtx.done.
-		(async () => {
-			while (true) {
-				const msg = new SubscribeUpdateMessage({});
-				let err: Error | undefined;
-				err = await msg.decode(reader);
-				if (err) {
-					return; // TODO: Handle decode error
-				}
-				this.#update = msg;
-				this.#cond.broadcast();
-			}
-		})();
+		this.#handleUpdates();
 	}
 
-	get subscribeId(): SubscribeID {
-		return this.#subscribe.subscribeId;
+	async #handleUpdates(): Promise<void> {
+		while (true) {
+			const msg = new SubscribeUpdateMessage({});
+			const err = await msg.decode(this.#reader);
+			if (err) {
+				if (err !== EOF ) {
+					console.error(`moq: error reading SUBSCRIBE_UPDATE message for subscribe ID: ${this.subscribeId}: ${err}`);
+				}
+				return;
+			}
+
+			console.debug(`moq: SUBSCRIBE_UPDATE message received.`,
+				{
+					"subscribeId": this.subscribeId,
+					"message": msg
+				}
+			);
+
+			this.#trackConfig = msg;
+
+			this.#cond.broadcast();
+		}
 	}
 
 	get trackConfig(): TrackConfig {
-		if (this.#update) {
-			return this.#update;
-		} else {
-			return this.#subscribe;
-		}
+		return this.#trackConfig;
 	}
 
 	get context(): Context {
@@ -122,40 +134,52 @@ export class ReceiveSubscribeStream {
 
 	async writeInfo(info?: Info): Promise<Error | undefined> {
 		if (this.#info) {
+			console.warn(`Info already written for subscribe ID: ${this.subscribeId}`);
 			return undefined; // Info already written
+		}
+
+		let err = this.#ctx.err();
+		if (err !== undefined) {
+			return err;
 		}
 
 		const msg = new SubscribeOkMessage({});
 
-		const err = await msg.encode(this.#writer);
+		err = await msg.encode(this.#writer);
 		if (err) {
-			return new Error(`Failed to write subscribe ok: ${err}`);
+			return new Error(`moq: failed to encode SUBSCRIBE_OK message: ${err}`);
 		}
+
+		console.debug(`moq: SUBSCRIBE_OK message sent.`,
+			{
+				"subscribeId": this.subscribeId,
+				"message": msg
+			}
+		);
 
 		this.#info = msg;
 	}
 
-	close(): void {
-		const ctxErr = this.#ctx.err();
-		if (ctxErr !== undefined) {
-			// throw ctxErr;
+	async close(): Promise<void> {
+		if (this.#ctx.err() !== undefined) {
 			return;
 		}
-		this.#writer.close();
 		this.#cancelFunc(undefined);
-		this.#cond.broadcast(); // Notify any waiting threads that the stream is closed
+		await this.#writer.close();
+
+		this.#cond.broadcast();
 	}
 
-	closeWithError(code: number, message: string): void {
-		const ctxErr = this.#ctx.err();
-		if (ctxErr !== undefined) {
-			// throw ctxErr;
+	async closeWithError(code: number, message: string): Promise<void> {
+		if (this.#ctx.err() !== undefined) {
 			return;
 		}
-		const err = new StreamError(code, message);
-		this.#writer.cancel(err);
-		this.#cancelFunc(err);
-		this.#cond.broadcast(); // Notify any waiting threads that the stream is closed
+		const cause = new StreamError(code, message);
+		this.#cancelFunc(cause);
+		await this.#writer.cancel(cause);
+		await this.#reader.cancel(cause);
+
+		this.#cond.broadcast();
 	}
 }
 

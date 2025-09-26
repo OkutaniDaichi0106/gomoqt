@@ -1,25 +1,30 @@
 /** @type {import('ts-jest').JestConfigWithTsJest} */
 module.exports = {
   preset: 'ts-jest',
-  testEnvironment: 'jsdom',
+  testEnvironment: 'node', // Changed from jsdom to node for better stability
   setupFilesAfterEnv: ['<rootDir>/jest.setup.cjs'],
   extensionsToTreatAsEsm: ['.ts'],
   slowTestThreshold: 5000,
   
-  // パフォーマンス最適化設定
-  maxWorkers: '50%', // CPUコア数の50%を使用
+  // Suppress log output for clean test results
+  silent: false, // Keep false to enable log control in setup.cjs
+  verbose: false, // Disable verbose test output
+  
+  // Performance optimization settings
+  maxWorkers: 1, // Use single worker for stability
+  // runInBand: true, // Replaced by maxWorkers: 1 to avoid deprecation warning
   cache: true,
   cacheDirectory: '<rootDir>/.jest-cache',
   
-  // 並列実行の最適化
-  testTimeout: 10000, // 10秒でタイムアウト
+  // Test execution optimization
+  testTimeout: 10000, // 10 second timeout
   
-  // TypeScript変換の最適化 - 最新の推奨設定
+  // TypeScript transformation optimization - latest recommended settings
   transform: {
     '^.+\\.ts$': ['ts-jest', {
       useESM: true,
       tsconfig: 'tsconfig.test.json',
-      // 型チェックを無効化して速度向上
+      // Disable type checking for faster execution
       diagnostics: false,
     }],
   },
@@ -28,18 +33,32 @@ module.exports = {
     '^(\\.{1,2}/.*)\\.js$': '$1',
   },
   
-  // 不要なファイルをスキップ
+  // Skip unnecessary files
   testPathIgnorePatterns: [
     '/node_modules/',
     '/dist/',
     '/coverage/',
+    '/.git/',
   ],
   
-  // 監視モードの最適化
+  // Watch mode optimization
   watchPathIgnorePatterns: [
     '/node_modules/',
     '/dist/',
     '/coverage/',
     '/.jest-cache/',
+    '/.git/',
   ],
+  
+  // Collect coverage from source files only
+  collectCoverageFrom: [
+    'src/**/*.{ts,tsx}',
+    '!src/**/*.d.ts',
+    '!src/**/*.test.{ts,tsx}',
+    '!src/**/index.ts', // Usually just exports
+  ],
+  
+  // Error reporting configuration
+  errorOnDeprecated: true,
+  bail: false, // Continue running tests after failures
 };

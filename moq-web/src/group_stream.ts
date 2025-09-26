@@ -5,7 +5,8 @@ import type { Source } from "./io";
 import { StreamError } from "./io/error";
 import type { GroupMessage } from "./message";
 import { Frame } from "./frame";
-import type { GroupErrorCode } from ".";
+import type { GroupErrorCode } from "./error";
+import { PublishAbortedErrorCode,SubscribeCanceledErrorCode } from "./error";
 
 export class GroupWriter {
     #group: GroupMessage;
@@ -18,19 +19,9 @@ export class GroupWriter {
         this.#writer = writer;
         [this.#ctx, this.#cancelFunc] = withCancelCause(trackCtx);
 
-        (async () => {
-            // Wait for the writer to close
-            await trackCtx.done();
-            const err = trackCtx.err();
-            if (err) {
-                // If the context is cancelled, cancel the stream with the error
-                this.cancel(0, err.message); // TODO: Use a more descriptive message
-                return;
-            } else {
-                // If the context is not cancelled, cancel the stream with a code of 0 (indicating normal closure)
-                this.cancel(0, "normal closure");
-            }
-        })();
+        trackCtx.done().then(()=>{
+            this.cancel(SubscribeCanceledErrorCode, "track was closed");
+        });
     }
 
     get groupSequence(): bigint {
@@ -51,15 +42,22 @@ export class GroupWriter {
         return undefined;
     }
 
-    close(): void {
-        this.#writer.close();
-        this.#cancelFunc(new Error("Stream closed")); // Notify the context about closure
+    async close(): Promise<void> {
+        if (this.#ctx.err() !== undefined) {
+            return;
+        }
+        this.#cancelFunc(undefined); // Notify the context about closure
+        await this.#writer.close();
     }
 
-    cancel(code: number, message: string): void {
-        const err = new StreamError(code, message);
-        this.#writer.cancel(err);
-        this.#cancelFunc(err); // Notify the context about cancellation
+    async cancel(code: GroupErrorCode, message: string): Promise<void> {
+        if (this.#ctx.err() !== undefined) {
+            // Do nothing if already cancelled
+            return;
+        }
+        const cause = new StreamError(code, message);
+        this.#cancelFunc(cause); // Notify the context about cancellation
+        await this.#writer.cancel(cause);
     }
 
     get context(): Context {
@@ -79,17 +77,16 @@ export class GroupReader {
         this.#reader = reader;
         [this.#ctx, this.#cancelFunc] = withCancelCause(trackCtx);
 
-        (async () => {
-            await trackCtx.done();
-            this.cancel(0);
-        })();
+        trackCtx.done().then(()=>{
+            this.cancel(PublishAbortedErrorCode, "track was closed");
+        });
     }
 
     get groupSequence(): bigint {
         return this.#group.sequence;
     }
 
-    async readFrame(): Promise<[Frame?, Error?]> {
+    async readFrame(): Promise<[Frame, undefined] | [undefined, Error]> {
         let err: Error | undefined;
         let len: number;
         [len, err] = await this.#reader.readVarint();
@@ -116,10 +113,14 @@ export class GroupReader {
         return [this.#frame, undefined];
     }
 
-    cancel(code: GroupErrorCode): void {
-        const reason = new StreamError(code, "Stream cancelled");
-        this.#reader.cancel(reason);
+    async cancel(code: GroupErrorCode, message: string): Promise<void> {
+        if (this.#ctx.err() !== undefined) {
+            // Do nothing if already cancelled
+            return;
+        }
+        const reason = new StreamError(code, message);
         this.#cancelFunc(reason);
+        await this.#reader.cancel(reason);
     }
 
     get context(): Context {

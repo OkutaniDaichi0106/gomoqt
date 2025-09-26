@@ -51,7 +51,7 @@ describe('IO Module Index', () => {
 
     it('should not have any unexpected exports', () => {
       const exportedKeys = Object.keys(ioModule);
-      const expectedKeys = ['Reader', 'Writer', 'StreamError', 'MAX_VARINT1', 'MAX_VARINT2', 'MAX_VARINT4', 'MAX_VARINT8', 'varintLen', 'stringLen', 'bytesLen', 'BytesBuffer', 'BufferPool', 'MAX_BYTES_LENGTH', 'MAX_UINT', 'writeVarint', 'readVarint', 'writeBigVarint', 'readBigVarint', 'writeUint8Array', 'readUint8Array', 'writeString', 'readString', 'DefaultBytesPoolOptions', 'DefaultBufferPool'];
+      const expectedKeys = ['Reader', 'Writer', 'StreamError', 'EOF', 'MAX_VARINT1', 'MAX_VARINT2', 'MAX_VARINT4', 'MAX_VARINT8', 'varintLen', 'stringLen', 'bytesLen', 'BytesBuffer', 'BufferPool', 'MAX_BYTES_LENGTH', 'MAX_UINT', 'writeVarint', 'readVarint', 'writeBigVarint', 'readBigVarint', 'writeUint8Array', 'readUint8Array', 'writeString', 'readString', 'DefaultBytesPoolOptions', 'DefaultBufferPool'];
       
       // Check that all exported keys are expected
       exportedKeys.forEach(key => {

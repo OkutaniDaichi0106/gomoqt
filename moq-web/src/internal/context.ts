@@ -20,7 +20,6 @@ class DefaultContext implements Context {
     #donePromise: Promise<void>;
     #resolve!: () => void;
     #err?: Error; // undefined => either not done yet OR completed cleanly
-    #finished = false;
 
     constructor(parent?: Context) {
         this.#donePromise = new Promise((resolve) => {
@@ -43,9 +42,8 @@ class DefaultContext implements Context {
         return this.#err;
     }
 
-    cancel(err?: Error): void {
-        if (this.#finished) return; // idempotent
-        this.#finished = true;
+    cancel(err: Error = ContextCancelledError): void {
+        if (this.#err !== undefined) return; // idempotent
         this.#err = err; // explicitly set, even if undefined
         this.#resolve();
     }
@@ -116,7 +114,7 @@ export function withTimeout(parent: Context, timeoutMs: number): Context {
 export function withPromise<T>(parent: Context, promise: Promise<T>): Context {
     const context = new DefaultContext(parent);
     promise.then(
-        () => context.cancel(undefined), // normal completion, no error cause
+        () => context.cancel(), // normal completion, no error cause
         (reason) => {
             const error = reason instanceof Error ? reason : new Error(String(reason));
             context.cancel(error);

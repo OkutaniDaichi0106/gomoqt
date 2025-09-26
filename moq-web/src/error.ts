@@ -2,6 +2,12 @@ export type SessionErrorCode = number;
 
 export type AnnounceErrorCode = number;
 export const InternalAnnounceErrorCode: AnnounceErrorCode = 0x00;
+export const DuplicatedAnnounceErrorCode: AnnounceErrorCode = 0x1;
+export const InvalidAnnounceStatusErrorCode: AnnounceErrorCode = 0x2; // TODO: Is this necessary?
+export const UninterestedErrorCode: AnnounceErrorCode = 0x3;
+export const BannedPrefixErrorCode: AnnounceErrorCode = 0x4; // TODO: Is this necessary?
+export const InvalidPrefixErrorCode: AnnounceErrorCode = 0x5; // TODO: Is this necessary?
+
 
 export type SubscribeErrorCode = number;
 

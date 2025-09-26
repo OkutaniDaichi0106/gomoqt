@@ -38,8 +38,8 @@ describe('TrackMux', () => {
         mockAnnouncement = new Announcement('/test/path' as BroadcastPath, ctx.done());
 
         mockAnnouncementWriter = {
-            send: jest.fn(),
-            init: jest.fn(),
+            send: jest.fn(() => Promise.resolve(undefined)),
+            init: jest.fn(() => Promise.resolve(undefined)),
             context: ctx
         } as any;
     });
@@ -179,11 +179,17 @@ describe('TrackMux', () => {
             expect(mockAnnouncementWriter.init).toHaveBeenCalledWith([]);
         });
 
-        it('should throw error for invalid prefix', async () => {
+        it('should allow serving announcements for invalid-looking prefix (no validation)', async () => {
             const invalidPrefix = 'invalid-prefix' as TrackPrefix;
 
-            await expect(trackMux.serveAnnouncement(mockAnnouncementWriter, invalidPrefix))
-                .rejects.toThrow('Invalid track prefix: invalid-prefix');
+            const servePromise = trackMux.serveAnnouncement(mockAnnouncementWriter, invalidPrefix);
+
+            // Cancel the context to complete the serveAnnouncement
+            cancelFunc(new Error('Test cleanup'));
+
+            await servePromise;
+
+            expect(mockAnnouncementWriter.init).toHaveBeenCalledWith([]);
         });
 
         it('should clean up announcer when context ends', async () => {

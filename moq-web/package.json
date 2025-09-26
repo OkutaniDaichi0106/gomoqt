@@ -41,7 +41,10 @@
     "test": "jest --passWithNoTests",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "test:fast": "jest --passWithNoTests --maxWorkers=75% --silent"
+    "test:fast": "jest --passWithNoTests --maxWorkers=75% --silent",
+    "test:quiet": "jest --passWithNoTests --silent --reporters=default",
+    "test:verbose": "VERBOSE_TESTS=true jest --passWithNoTests --verbose",
+    "test:ci": "jest --passWithNoTests --silent --ci --coverage --watchAll=false"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

@@ -6,12 +6,17 @@ describe('Writer', () => {
   let writer: Writer;
   let writableStream: WritableStream<Uint8Array>;
   let writtenData: Uint8Array[];
+  let streamClosed = false;
 
   beforeEach(() => {
     writtenData = [];
+    streamClosed = false;
     writableStream = new WritableStream<Uint8Array>({
       write(chunk) {
         writtenData.push(chunk);
+      },
+      close() {
+        streamClosed = true;
       }
     });
     writer = new Writer(writableStream);
@@ -19,9 +24,14 @@ describe('Writer', () => {
 
   afterEach(async () => {
     try {
-      await writer.close();
-    } catch {
-      // Ignore errors during cleanup
+      if (!streamClosed) {
+        await writer.close();
+      }
+    } catch (error: any) {
+      // Ignore errors during cleanup - stream might already be closed
+      if (error?.code !== 'ERR_INVALID_STATE') {
+        console.warn('Cleanup error:', error);
+      }
     }
   });
 

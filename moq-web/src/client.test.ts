@@ -38,8 +38,8 @@ class MockWebTransport {
 
 // Mock Session
 jest.mock("./session", () => ({
-    Session: jest.fn().mockImplementation((transport: any) => ({
-        ready: transport?.ready || Promise.resolve(),
+    Session: jest.fn().mockImplementation((init: any) => ({
+        ready: init?.conn?.ready || Promise.resolve(),
         close: jest.fn(),
     }))
 }));
@@ -64,23 +64,27 @@ describe("Client", () => {
         it("should create a client with default options", () => {
             const client = new Client();
             expect(client.options).toBeDefined();
-            expect(client.options.transport?.allowPooling).toBe(false);
-            expect(client.options.transport?.congestionControl).toBe("low-latency");
-            expect(client.options.transport?.requireUnreliable).toBe(true);
+            expect(client.options.versions).toBeDefined();
+            expect(client.options.versions).toBeInstanceOf(Set);
+            expect(client.options.transportOptions?.allowPooling).toBe(false);
+            expect(client.options.transportOptions?.congestionControl).toBe("low-latency");
+            expect(client.options.transportOptions?.requireUnreliable).toBe(true);
         });
         
         it("should create a client with custom options", () => {
             const customOptions: MOQOptions = {
-                transport: {
+                versions: new Set([1n]),
+                transportOptions: {
                     allowPooling: true,
                     congestionControl: "throughput",
                     requireUnreliable: false,
                 }
             };
             const client = new Client(customOptions);
-            expect(client.options.transport?.allowPooling).toBe(true);
-            expect(client.options.transport?.congestionControl).toBe("throughput");
-            expect(client.options.transport?.requireUnreliable).toBe(false);
+            expect(client.options.versions).toEqual(new Set([1n]));
+            expect(client.options.transportOptions?.allowPooling).toBe(true);
+            expect(client.options.transportOptions?.congestionControl).toBe("throughput");
+            expect(client.options.transportOptions?.requireUnreliable).toBe(false);
         });
 
         it("should create a client with custom mux", () => {
@@ -96,7 +100,11 @@ describe("Client", () => {
             
             const session = await client.dial(url);
             expect(session).toBeDefined();
-            expect(Session).toHaveBeenCalledWith(expect.any(MockWebTransport), undefined, undefined, expect.anything());
+            expect(Session).toHaveBeenCalledWith({
+                conn: expect.any(MockWebTransport),
+                extensions: undefined,
+                mux: expect.anything()
+            });
         });
         
         it("should handle URL object", async () => {

@@ -19,7 +19,7 @@ export class Queue<T> {
 		unlock();
 	}
 
-	async dequeue(): Promise<T> {
+	async dequeue(): Promise<T | undefined> {
 		while (true) {
 			const unlock = await this.#mutex.lock();
 
@@ -37,7 +37,7 @@ export class Queue<T> {
 
 				if (this.#closed) {
 					unlock();
-					throw new Error("Queue is closed and empty");
+					return undefined;
 				}
 				
 				// No items available - set up waiting if not already waiting

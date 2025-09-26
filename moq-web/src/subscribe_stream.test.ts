@@ -101,6 +101,7 @@ describe('SendSubscribeStream', () => {
 
 	beforeEach(() => {
 		ctx = background();
+		
 		mockWriter = {
 			writeVarint: jest.fn(),
 			writeBoolean: jest.fn(),
@@ -127,9 +128,7 @@ describe('SendSubscribeStream', () => {
 			closed: jest.fn().mockReturnValue(Promise.resolve())
 		} as any;
 		mockSubscribe = mockSubscribeMessage;
-		mockSubscribeOk = {
-			groupPeriod: 456
-		} as SubscribeOkMessage;
+		mockSubscribeOk = {} as SubscribeOkMessage;
 		sendStream = new SendSubscribeStream(ctx, mockWriter, mockReader, mockSubscribe, mockSubscribeOk);
 	});
 
@@ -150,6 +149,7 @@ describe('ReceiveSubscribeStream', () => {
 
 	beforeEach(() => {
 		ctx = background();
+		
 		mockWriter = {
 			writeBoolean: jest.fn(),
 			writeBigVarint: jest.fn(),
@@ -186,7 +186,7 @@ describe('ReceiveSubscribeStream', () => {
 			decode: jest.fn().mockImplementation(() => Promise.resolve(undefined as Error | undefined))
 		} as SubscribeMessage;
 	receiveStream = new ReceiveSubscribeStream(ctx, mockWriter, mockReader, mockSubscribe);
-	// 非同期ループが即座に終了するよう decode の返り値をエラーに設定
+	// Set decode return value to error so the async loop terminates immediately
 	mockSubscribeUpdateMessage.decode.mockImplementation(() => Promise.resolve(new Error('mock error')));
 	});
 		afterEach(() => {
@@ -213,6 +213,7 @@ describe('ReceiveSubscribeStream methods', () => {
 
 	beforeEach(() => {
 		ctx = background();
+		
 		mockWriter = {
 			writeBoolean: jest.fn(),
 			writeBigVarint: jest.fn(),
@@ -251,6 +252,10 @@ describe('ReceiveSubscribeStream methods', () => {
 		receiveStream = new ReceiveSubscribeStream(ctx, mockWriter, mockReader, mockSubscribe);
 	});
 
+	afterEach(() => {
+		// No cleanup needed since console.error is handled globally
+	});
+
 	describe('trackConfig getter', () => {
 		it('should return subscribe message config when no update exists', () => {
 			const config = receiveStream.trackConfig;
@@ -274,7 +279,7 @@ describe('ReceiveSubscribeStream methods', () => {
 			const info: Info = { groupPeriod: 100 };
 			const result = await receiveStream.writeInfo(info);
 			expect(result).toBeInstanceOf(Error);
-			expect(result?.message).toBe('Failed to write subscribe ok: Error: Encoding failed');
+			expect(result?.message).toBe('moq: failed to encode SUBSCRIBE_OK message: Error: Encoding failed');
 		});
 	});
 
@@ -292,7 +297,7 @@ describe('ReceiveSubscribeStream methods', () => {
 		});
 	});
 
-	// 型テスト: TrackConfig
+	// Type test: TrackConfig
 	describe('TrackConfig type', () => {
 		it('should define the correct structure', () => {
 			const config: TrackConfig = {
@@ -306,7 +311,7 @@ describe('ReceiveSubscribeStream methods', () => {
 		});
 	});
 
-	// 型テスト: SubscribeID
+	// Type test: SubscribeID
 	describe('SubscribeID type', () => {
 		it('should be a bigint', () => {
 			const id: SubscribeID = 123n;

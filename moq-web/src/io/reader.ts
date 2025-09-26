@@ -5,6 +5,8 @@ import type { StreamError, StreamErrorCode } from "./error";
 
 let DefaultReadSize: number = 1024; // 1 KB
 
+export const EOF = new Error("EOF");
+
 // /**
 //  * Reads a varint-encoded number from the byte array at the specified offset
 //  * @param buf The byte array to read from
@@ -131,7 +133,7 @@ export class Reader {
         this.#closed = this.#pull.closed;
     }
 
-    async readUint8Array(transfer?: ArrayBufferLike): Promise<[Uint8Array?, Error?]> {
+    async readUint8Array(transfer?: ArrayBufferLike): Promise<[Uint8Array, undefined]|[undefined, Error]> {
         let err: Error | undefined;
         let len: number;
         [len, err] = await this.readVarint();
@@ -158,7 +160,7 @@ export class Reader {
         return [buffer, undefined];
     }
 
-    async readString(): Promise<[string, Error?]> {
+    async readString(): Promise<[string, Error | undefined]> {
         let err: Error | undefined = undefined;
         const [bytes, err2] = await this.readUint8Array();
         err = err2;
@@ -172,7 +174,7 @@ export class Reader {
         return [str, undefined];
     }
 
-    async readVarint(): Promise<[number, Error?]> {
+    async readVarint(): Promise<[number, Error | undefined]> {
         let err: Error | undefined = undefined;
         let varint = 0;
         if (this.#buf.size == 0) {
@@ -198,7 +200,7 @@ export class Reader {
         return [varint, undefined];
     }
 
-    async readBigVarint(): Promise<[bigint, Error?]> {
+    async readBigVarint(): Promise<[bigint, Error | undefined]> {
         let err: Error | undefined = undefined;
         if (this.#buf.size == 0) {
             err = await this.pushN(1);
@@ -224,7 +226,7 @@ export class Reader {
         return [bigVarint, undefined];
     }
 
-    async readUint8(): Promise<[number, Error?]> {
+    async readUint8(): Promise<[number, Error | undefined]> {
         let num: number;
         if (this.#buf.size == 0) {
             const err = await this.pushN(1);
@@ -237,7 +239,7 @@ export class Reader {
         return [num, undefined];
     }
 
-    async readBoolean(): Promise<[boolean, Error?]> {
+    async readBoolean(): Promise<[boolean, Error | undefined]> {
         const [num, err] = await this.readUint8();
         if (err) {
             return [false, err];
@@ -249,7 +251,7 @@ export class Reader {
         return [num === 1, undefined];
     }
 
-    async readStringArray(): Promise<[string[], Error?]> {
+    async readStringArray(): Promise<[string[], Error | undefined]> {
         let err: Error | undefined = undefined;
         let bigVarint = 0n;
         [bigVarint, err] = await this.readBigVarint();
@@ -289,8 +291,6 @@ export class Reader {
                 return new Error("Stream closed");
             }
 
-            console.log("Pulled", value);
-
             if (!value || value.length === 0) {
                 continue; // Skip empty values
             }
@@ -314,7 +314,7 @@ export class Reader {
         while (totalFilled < n) {
             const {done, value} = await this.#pull.read();
             if (done) {
-                return new Error("Stream closed");
+                return EOF;
             }
             if (!value || value.length === 0) {
                 // No data this iteration; wait for next pull

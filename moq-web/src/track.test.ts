@@ -200,7 +200,7 @@ describe('TrackReader', () => {
         it('should accept group successfully when context is valid', async () => {
             mockAcceptFunc.mockResolvedValue([mockReader, mockGroupMessage]);
 
-            const [groupReader, error] = await trackReader.acceptGroup();
+            const [groupReader, error] = await trackReader.acceptGroup(Promise.resolve());
 
             expect(mockAcceptFunc).toHaveBeenCalled();
             expect(groupReader).toBeInstanceOf(GroupReader);
@@ -216,7 +216,7 @@ describe('TrackReader', () => {
             cancelFunc(contextError);
             await new Promise(resolve => setTimeout(resolve, 10));
 
-            const [groupReader, error] = await trackReader.acceptGroup();
+            const [groupReader, error] = await trackReader.acceptGroup(Promise.resolve());
 
             expect(mockAcceptFunc).not.toHaveBeenCalled();
             expect(groupReader).toBeUndefined();

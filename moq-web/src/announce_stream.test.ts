@@ -150,7 +150,7 @@ describe('AnnouncementWriter', () => {
 
             const result = await writer.send(mockAnnouncement);
             expect(result).toBeInstanceOf(Error);
-            expect(result?.message).toBe('Failed to write announcement: Error: Encoding failed');
+            expect(result?.message).toBe('Encoding failed');
         });
     });
 

@@ -44,7 +44,7 @@ describe("GroupWriter", () => {
 
         mockContext = {
             done: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
-            err: jest.fn().mockReturnValue(null)
+            err: jest.fn().mockReturnValue(undefined)
         } as any;
 
         mockCancelFunc = jest.fn();
@@ -109,20 +109,20 @@ describe("GroupWriter", () => {
     });
 
     describe("close", () => {
-        it("should close writer and cancel context", () => {
-            groupWriter.close();
+        it("should close writer and cancel context", async () => {
+            await groupWriter.close();
 
             expect(mockWriter.close).toHaveBeenCalled();
-            expect(mockCancelFunc).toHaveBeenCalledWith(expect.any(Error));
+            expect(mockCancelFunc).toHaveBeenCalledWith(undefined);
         });
     });
 
     describe("cancel", () => {
-        it("should cancel writer and context with error", () => {
+        it("should cancel writer and context with error", async () => {
             const code = 404;
             const message = "Not found";
 
-            groupWriter.cancel(code, message);
+            await groupWriter.cancel(code, message);
 
             expect(mockWriter.cancel).toHaveBeenCalledWith(expect.any(StreamError));
             expect(mockCancelFunc).toHaveBeenCalledWith(expect.any(StreamError));
@@ -148,7 +148,7 @@ describe("GroupReader", () => {
 
         mockContext = {
             done: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
-            err: jest.fn().mockReturnValue(null)
+            err: jest.fn().mockReturnValue(undefined)
         } as any;
 
         mockCancelFunc = jest.fn();
@@ -211,10 +211,11 @@ describe("GroupReader", () => {
     });
 
     describe("cancel", () => {
-        it("should cancel reader with code", () => {
+        it("should cancel reader with code", async () => {
             const code = 404;
+            const message = "Not found";
 
-            groupReader.cancel(code);
+            await groupReader.cancel(code, message);
 
             expect(mockReader.cancel).toHaveBeenCalledWith(expect.any(StreamError));
             expect(mockCancelFunc).toHaveBeenCalledWith(expect.any(StreamError));

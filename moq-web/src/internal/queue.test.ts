@@ -113,7 +113,8 @@ describe('Queue', () => {
   it('should throw error when dequeuing from closed empty queue', async () => {
     queue.close();
     
-    await expect(queue.dequeue()).rejects.toThrow('Queue is closed and empty');
+    const val = await queue.dequeue();
+    expect(val).toBeUndefined();
   });
 
   it('should allow dequeuing remaining items after close', async () => {
@@ -128,15 +129,16 @@ describe('Queue', () => {
     expect(item1).toBe(1);
     expect(item2).toBe(2);
     
-    await expect(queue.dequeue()).rejects.toThrow('Queue is closed and empty');
+    const val = await queue.dequeue();
+    expect(val).toBeUndefined();
   });
 
   it('should wake up waiters when closed', async () => {
-    let dequeueError: Error | undefined;
+    let dequeueResult: number | undefined;
 
     // Start dequeue operation on empty queue
-    const dequeuePromise = queue.dequeue().catch(error => {
-      dequeueError = error;
+    const dequeuePromise = queue.dequeue().then(result => {
+      dequeueResult = result;
     });
 
     // Give some time to ensure dequeue is waiting
@@ -145,11 +147,10 @@ describe('Queue', () => {
     // Close the queue
     queue.close();
 
-    // Wait for dequeue to complete with error
+    // Wait for dequeue to complete
     await dequeuePromise;
 
-    expect(dequeueError).toBeInstanceOf(Error);
-    expect(dequeueError?.message).toBe('Queue is closed and empty');
+    expect(dequeueResult).toBeUndefined();
   });
 
   it('should handle string items', async () => {

@@ -32,8 +32,11 @@ function createIsolatedStreams(): { writer: Writer; reader: Reader; cleanup: () 
     cleanup: async () => {
       try {
         await writer.close();
-      } catch {
-        // ignore
+      } catch (error) {
+        // Ignore errors during cleanup - stream might already be closed
+        if (error.code !== 'ERR_INVALID_STATE') {
+          throw error;
+        }
       }
     }
   };

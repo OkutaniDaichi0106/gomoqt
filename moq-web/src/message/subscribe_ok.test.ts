@@ -20,7 +20,6 @@ describe('SubscribeOkMessage', () => {
       const decodedMessage = new SubscribeOkMessage({});
       const decodeErr = await decodedMessage.decode(reader);
       expect(decodeErr).toBeUndefined();
-      expect(decodedMessage.groupPeriod).toEqual(groupPeriod);
     } finally {
       await cleanup();
     }

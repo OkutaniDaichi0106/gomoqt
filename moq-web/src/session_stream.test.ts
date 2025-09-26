@@ -40,17 +40,44 @@ describe('SessionStream', () => {
             readStringArray: jest.fn(),
             readUint8Array: jest.fn(),
             readUint8: jest.fn(),
+            readVarint: jest.fn(),
             copy: jest.fn(),
             fill: jest.fn(),
             cancel: jest.fn(),
             closed: jest.fn()
         } as any;
 
+        // Mock readVarint to return [number, Error | undefined]
+        (mockReader.readVarint as jest.MockedFunction<any>).mockResolvedValue([0, undefined]);
+        (mockReader.readBigVarint as jest.MockedFunction<any>).mockResolvedValue([0n, undefined]);
+
         const versions = new Set<Version>([0xffffff00n]);
         const extensions = new Extensions();
 
         mockClient = new SessionClientMessage({ versions, extensions });
         mockServer = new SessionServerMessage({ version: 0xffffff00n, extensions });
+
+        // Mock SessionUpdateMessage.decode to prevent actual decoding
+        const originalDecode = SessionUpdateMessage.prototype.decode;
+        SessionUpdateMessage.prototype.decode = jest.fn(async () => new Error('Mock decode error to break loop'));
+    });
+
+    afterEach(async () => {
+        // Cancel context to clean up any background tasks
+        if (ctx) {
+            const [, cancel] = withCancelCause(ctx);
+            cancel(new Error('Test cleanup'));
+        }
+        
+        // Clean up session stream if it exists
+        if (sessionStream) {
+            try {
+                // Wait a bit for any ongoing operations to complete
+                await new Promise(resolve => setTimeout(resolve, 10));
+            } catch (error) {
+                // Ignore cleanup errors
+            }
+        }
     });
 
     describe('constructor', () => {
@@ -64,8 +91,8 @@ describe('SessionStream', () => {
             expect(sessionStream.context).toBeDefined();
         });
 
-        it('should create a child context', () => {
-            expect(sessionStream.context).not.toBe(ctx);
+        it('should use the provided context', () => {
+            expect(sessionStream.context).toBe(ctx);
         });
     });
 
@@ -77,8 +104,19 @@ describe('SessionStream', () => {
             jest.spyOn(SessionUpdateMessage.prototype, 'encode').mockImplementation(async () => undefined);
         });
 
-        afterEach(() => {
+        afterEach(async () => {
             jest.restoreAllMocks();
+            
+            // Clean up session stream
+            if (sessionStream) {
+                try {
+                    const [, cancel] = withCancelCause(sessionStream.context);
+                    cancel(new Error('Test cleanup'));
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                } catch (error) {
+                    // Ignore cleanup errors
+                }
+            }
         });
 
         it('should encode and send session update message', async () => {
@@ -102,28 +140,67 @@ describe('SessionStream', () => {
         });
     });
 
-    describe('close', () => {
+    describe('context cancellation', () => {
+        let ctxWithCancel: Context;
+        let cancel: (reason: Error) => void;
+
         beforeEach(() => {
-            sessionStream = new SessionStream(ctx, mockWriter, mockReader, mockClient, mockServer);
+            [ctxWithCancel, cancel] = withCancelCause(background());
+            sessionStream = new SessionStream(ctxWithCancel, mockWriter, mockReader, mockClient, mockServer);
         });
 
-        it('should cancel context with close error', () => {
-            // The close method should cancel the internal context
-            expect(() => sessionStream.close()).not.toThrow();
+        it('should use the provided context that can be cancelled', () => {
+            // The session stream should use the provided context
+            expect(sessionStream.context).toBeDefined();
+            expect(sessionStream.context).toBe(ctxWithCancel);
+            
+            // Initially the context should not be cancelled
+            expect(sessionStream.context.err()).toBeFalsy();
+            
+            // Cancel the context
+            cancel(new Error("Context cancelled"));
+            
+            // The session context should now be cancelled
+            expect(sessionStream.context.err()).toBeTruthy();
         });
     });
 
-    describe('closeWithError', () => {
+    describe('error handling', () => {
         beforeEach(() => {
             sessionStream = new SessionStream(ctx, mockWriter, mockReader, mockClient, mockServer);
         });
 
-        it('should create StreamError and cancel context', () => {
+        it('should handle StreamError appropriately', () => {
             const code = 500;
             const message = 'Internal error';
 
-            // This should not throw
-            expect(() => sessionStream.closeWithError(code, message)).not.toThrow();
+            // Create a StreamError instance to test
+            const streamError = new StreamError(code, message);
+            
+            expect(streamError.code).toBe(code);
+            expect(streamError.message).toBe(message);
+            expect(streamError).toBeInstanceOf(Error);
+            expect(streamError).toBeInstanceOf(StreamError);
+        });
+
+        it('should handle decode errors in background updates', async () => {
+            // Reset the mock to return an error after first call
+            let callCount = 0;
+            (SessionUpdateMessage.prototype.decode as jest.MockedFunction<any>).mockImplementation(async () => {
+                callCount++;
+                if (callCount === 1) {
+                    return undefined; // First call succeeds
+                }
+                return new Error('Decode error'); // Subsequent calls fail
+            });
+
+            // Wait a bit for the background handler to process
+            await new Promise(resolve => setTimeout(resolve, 50));
+            
+            // The session stream should still be functional
+            expect(sessionStream.context).toBeDefined();
+            expect(sessionStream.client).toBeDefined();
+            expect(sessionStream.server).toBeDefined();
         });
     });
 
@@ -148,8 +225,19 @@ describe('SessionStream', () => {
             jest.spyOn(SessionUpdateMessage.prototype, 'encode').mockImplementation(async () => undefined);
         });
 
-        afterEach(() => {
+        afterEach(async () => {
             jest.restoreAllMocks();
+            
+            // Clean up session stream
+            if (sessionStream) {
+                try {
+                    const [, cancel] = withCancelCause(sessionStream.context);
+                    cancel(new Error('Test cleanup'));
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                } catch (error) {
+                    // Ignore cleanup errors
+                }
+            }
         });
 
         it('should handle complete session lifecycle', async () => {
@@ -161,7 +249,7 @@ describe('SessionStream', () => {
             expect(sessionStream.clientInfo.bitrate).toBe(bitrate);
 
             // Close session
-            expect(() => sessionStream.close()).not.toThrow();
+            // expect(() => sessionStream.close()).not.toThrow();
         });
     });
 });

@@ -103,7 +103,7 @@ func TestSessionStream_SessionUpdated(t *testing.T) {
 	ss := newSessionStream(mockStream, req)
 
 	// Trigger setupDone to start listening for updates
-	ss.listenUpdates()
+	ss.handleUpdates()
 	// Short sleep to let background goroutine start
 	time.Sleep(10 * time.Millisecond)
 
@@ -227,7 +227,7 @@ func TestSessionStream_listenUpdates(t *testing.T) {
 			ss := newSessionStream(mockStream, req)
 
 			// Start listening for updates
-			ss.listenUpdates()
+			ss.handleUpdates()
 
 			// Give sufficient time for listenUpdates to process message
 			time.Sleep(100 * time.Millisecond)
@@ -266,7 +266,7 @@ func TestSessionStream_listenUpdates_StreamClosed(t *testing.T) {
 	ss := newSessionStream(mockStream, req)
 
 	// Trigger setupDone to start listening for updates
-	ss.listenUpdates()
+	ss.handleUpdates()
 
 	// Give time for listenUpdates to encounter EOF and close
 	time.Sleep(100 * time.Millisecond)
@@ -331,7 +331,7 @@ func TestSessionStream_ConcurrentAccess(t *testing.T) {
 	ss := newSessionStream(mockStream, req)
 
 	// Trigger setupDone to start listening for updates
-	ss.listenUpdates()
+	ss.handleUpdates()
 
 	// Test concurrent access to various methods
 	var wg sync.WaitGroup
@@ -955,7 +955,7 @@ func TestSessionStream_listenUpdates_InitialChannelState(t *testing.T) {
 	ss := newSessionStream(mockStream, req)
 
 	// Trigger setupDone to start listening for updates
-	ss.listenUpdates()
+	ss.handleUpdates()
 
 	// Channel should be initialized and available immediately
 	ch := ss.SessionUpdated()

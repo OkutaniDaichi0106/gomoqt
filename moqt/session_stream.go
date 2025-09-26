@@ -67,7 +67,7 @@ func (r *response) AwaitAccepted() error {
 		r.Version = sum.SelectedVersion
 		r.ServerExtensions = &Parameters{sum.Parameters}
 
-		r.listenUpdates()
+		r.handleUpdates()
 	})
 
 	return err
@@ -121,7 +121,7 @@ func (w *responseWriter) accept(mux *TrackMux) (*Session, error) {
 		}
 
 		// Start listening for updates
-		w.listenUpdates()
+		w.handleUpdates()
 	})
 
 	if err != nil {
@@ -157,8 +157,8 @@ func (ss *sessionStream) updateSession(bitrate uint64) error {
 	return nil
 }
 
-// listenUpdates triggers the goroutine to start listening for session updates
-func (ss *sessionStream) listenUpdates() {
+// handleUpdates triggers the goroutine to start listening for session updates
+func (ss *sessionStream) handleUpdates() {
 	// Safe to call multiple times
 	ss.listenOnce.Do(func() {
 		go func() {

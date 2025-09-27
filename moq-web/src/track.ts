@@ -51,7 +51,7 @@ export class TrackWriter {
         }
 
         let writer: Writer | undefined;
-        const [w, e] = await this.#openUniStreamFunc();
+        [writer, err] = await this.#openUniStreamFunc();
         if (err) {
             return [undefined, err];
         }

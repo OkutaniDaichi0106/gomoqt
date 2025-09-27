@@ -1,3 +1,1 @@
-export interface Info {
-
-}
+export interface Info {}

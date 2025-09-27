@@ -185,8 +185,10 @@ describe('TrackReader', () => {
         mockSubscribeStream = {
             context: mockContext,
             trackConfig: {} as TrackConfig,
+            config: {} as TrackConfig,
             update: jest.fn(),
             cancel: jest.fn(),
+            closeWithError: jest.fn(),
             info: {} as any
         };
 
@@ -240,13 +242,13 @@ describe('TrackReader', () => {
     });
 
     describe('cancel', () => {
-        it('should cancel subscribeStream and call onCloseFunc', () => {
+        it('should cancel subscribeStream and call onCloseFunc', async () => {
             const code = 1;
             const message = 'Test cancellation';
 
-            trackReader.cancel(code, message);
+            await trackReader.closeWithError(code, message);
 
-            expect(mockSubscribeStream.cancel).toHaveBeenCalledWith(code, message);
+            expect(mockSubscribeStream.closeWithError).toHaveBeenCalledWith(code, message);
             expect(mockOnCloseFunc).toHaveBeenCalled();
         });
     });

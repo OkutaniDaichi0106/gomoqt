@@ -1,44 +1,28 @@
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect } from '@jest/globals';
 import type { Info } from './info';
 
 describe('Info', () => {
-    it('should define the correct type structure', () => {
-        // This is a type-only test to ensure the type is correctly defined
-        const mockInfo: Info = {
-            groupPeriod: 123,
-        };
-
-        expect(mockInfo.groupPeriod).toBe(123);
+    it('should be defined as a type', () => {
+        // This test ensures the Info interface is properly exported and can be used
+        const info: Info = {};
+        
+        // Since Info is currently an empty interface, we can only verify it exists
+        expect(typeof info).toBe('object');
     });
 
-    it('should allow all required properties', () => {
-        // Verify that all properties are required by creating an info object
-        const info: Info = {
-            groupPeriod: 100,
-        };
-
-        // Type assertion to ensure all properties exist and are number
-        expect(typeof info.groupPeriod).toBe('number');
+    it('should allow creating empty Info objects', () => {
+        // Test that we can create an empty Info object since it's currently an empty interface
+        const info: Info = {};
+        
+        expect(info).toBeDefined();
+        expect(info).toEqual({});
     });
 
-    it('should handle large number values', () => {
-        const info: Info = {
-            groupPeriod: Number.MAX_SAFE_INTEGER, // Maximum safe number
-        };
-
-        expect(info.groupPeriod).toBe(Number.MAX_SAFE_INTEGER);
-    });
-
-    it('should be immutable once created', () => {
-        const info: Info = {
-            groupPeriod: 123,
-        };
-
-        // Properties should be accessible
-        expect(info.groupPeriod).toBe(123);
-
-        // Info type should support property access
-        const { groupPeriod } = info;
-        expect(groupPeriod).toBe(123);
+    it('should be assignable to object type', () => {
+        // Verify that Info objects are valid objects
+        const info: Info = {};
+        const obj: object = info;
+        
+        expect(obj).toBe(info);
     });
 });

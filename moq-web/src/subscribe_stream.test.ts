@@ -57,8 +57,8 @@ describe('SendSubscribeStream', () => {
 		});
 	});
 		afterEach(() => {
-			if (typeof sendStream?.cancel === 'function') {
-				sendStream.cancel(999, 'test cleanup');
+			if (typeof sendStream?.closeWithError === 'function') {
+				sendStream.closeWithError(999, 'test cleanup');
 			}
 		});
 
@@ -78,9 +78,9 @@ describe('SendSubscribeStream', () => {
 		});
 	});
 
-	describe('cancel', () => {
-		it('should cancel writer and context with StreamError', () => {
-			expect(() => sendStream.cancel(500, 'Test error')).not.toThrow();
+	describe('closeWithError', () => {
+		it('should close writer and context with StreamError', () => {
+			expect(() => sendStream.closeWithError(500, 'Test error')).not.toThrow();
 			expect(mockWriter.cancel).toHaveBeenCalledWith(expect.any(StreamError));
 		});
 	});

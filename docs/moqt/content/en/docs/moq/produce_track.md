@@ -8,7 +8,7 @@ Producing a track involves writing media data to a `moqt.TrackWriter`, which man
 `moqt.TrackWriter` is responsible for handling the track's lifecycle, including opening and closing groups.
 `moqt.TrackWriter` is created when being subscribed to a track from the peer on the session. Created `moqt.TrackWriter` is then routed via the session's `moqt.TrackMux` and can be used to publish media data.
 
-**Overview**
+{{% details title="Overview" closed="true" %}}
 
 ```go
     mux := moqt.NewTrackMux()
@@ -39,6 +39,8 @@ Producing a track involves writing media data to a `moqt.TrackWriter`, which man
         }
     })
 ```
+
+{{% /details %}}
 
 ## Handle Track Subscriptions
 

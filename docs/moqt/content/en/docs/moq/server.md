@@ -3,7 +3,7 @@ title: Server
 weight: 2
 ---
 
-Server manages server-side operations for the MoQ protocol. It listens for incoming connections, establishes sessions, relays data, and manages their lifecycle.
+`moqt.Server` manages server-side operations for the MoQ protocol. It listens for incoming QUIC connections, establishes MoQ sessions, relays data, and manages their lifecycle.
 
 {{% details title="Overview" closed="true" %}}
 
@@ -92,7 +92,7 @@ The following table describes the public fields of the `Server` struct:
 {{< tabs items="Using Default QUIC, Using Custom QUIC" >}}
 {{< tab >}}
 
-`quic-go/quic-go` is used internally as the default QUIC implementation when relevant fields which is set for customization are not set or `nil`.
+[`quic-go/quic-go`](https://github.com/quic-go/quic-go) is used internally as the default QUIC implementation when relevant fields which is set for customization are not set or `nil`.
 
 {{<github-readme-stats user="quic-go" repo="quic-go" >}}
 
@@ -115,7 +115,7 @@ type Server struct {
 {{< tabs items="Using Default WebTransport, Using Custom WebTransport" >}}
 {{< tab >}}
 
-`quic-go/webtransport-go` is used internally as the default WebTransport implementation when relevant fields which is set for customization are not set or `nil`.
+[`quic-go/webtransport-go`](https://github.com/quic-go/webtransport-go) is used internally as the default WebTransport implementation when relevant fields which is set for customization are not set or `nil`.
 
 {{<github-readme-stats user="quic-go" repo="webtransport-go" >}}
 

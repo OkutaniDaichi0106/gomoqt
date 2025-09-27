@@ -6,7 +6,8 @@ weight: 6
 Consuming a track involves reading media data from a `moqt.TrackReader`, which provides access to groups and frames as they are received. This is typically done by the subscriber or receiver.
 `moqt.TrackReader` is created when calling `(moqt.Session).Subscribe` method.
 
-**Overview**
+{{% details title="Overview" closed="true" %}}
+
 ```go
     // Create a new session
     // This differs from if it is client-side or server-side
@@ -43,9 +44,11 @@ Consuming a track involves reading media data from a `moqt.TrackReader`, which p
     }
 ```
 
+{{% /details %}}
+
 ## Subscribe to a Track
 
-By subscribing to a track, a moqt.TrackReader is created, allowing the receiver to read media data from the track.
+By subscribing to a track, a `moqt.TrackReader` is created, allowing the receiver to read media data from the track.
 
 {{< cards >}}
     {{< card link="../subscribe/#subscribe-to-a-track" title="Subscribe to a Track" icon="external-link">}}
@@ -84,9 +87,21 @@ To read frames from a group, use `(moqt.GroupReader).ReadFrame` method. Each cal
 
 ### Clone Frame
 
+To clone a frame, use `(moqt.Frame).Clone` method. This creates a deep copy of the frame, including its data, allowing you to retain the frame data even after reading the next frame.
+
 ```go
     var frame *moqt.Frame
-    clone = frame.Clone()
+    clone := frame.Clone()
+```
+
+### Copy and Cache Frame Data
+
+To copy the frame data into a provided buffer, use `(moqt.Frame).WriteTo` method, implementing the `io.WriterTo` interface. It is useful for efficiently caching the frame data.
+
+```go
+    var frame *moqt.Frame
+    buf := bytes.NewBuffer(nil)
+    io.Copy(buf, frame) // or frame.WriteTo(buf)
 ```
 
 ## Cancel Group Reading

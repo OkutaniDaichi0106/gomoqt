@@ -3,8 +3,7 @@ title: Client
 weight: 1
 ---
 
-Client manages client-side operations for the MoQ protocol. It establishes and maintains sessions, handling the lifecycle and communication between the client and server.
-
+`moqt.Client` manages client-side operations for the MoQ protocol. It establishes and maintains sessions, handling the lifecycle.
 
 {{% details title="Overview" closed="true" %}}
 
@@ -47,7 +46,7 @@ Users define the struct directly and assign values to its fields as needed.
 
 ### Configuration
 
-The following table describes the public fields of the `Client` struct:
+The following table describes the public fields of the `moqt.Client` struct:
 
 | Field                  | Type                        | Description                                 |
 |------------------------|-----------------------------|---------------------------------------------|
@@ -61,7 +60,7 @@ The following table describes the public fields of the `Client` struct:
 {{< tabs items="Using Default QUIC, Using Custom QUIC" >}}
 {{< tab >}}
 
-`quic-go/quic-go` is used internally as the default QUIC implementation when relevant fields which is set for customization are not set or `nil`.
+[`quic-go/quic-go`](https://github.com/quic-go/quic-go) is used internally as the default QUIC implementation when relevant fields which is set for customization are not set or `nil`.
 
 {{<github-readme-stats user="quic-go" repo="quic-go" >}}
 
@@ -84,7 +83,7 @@ type Client struct {
 {{< tabs items="Using Default WebTransport, Using Custom WebTransport" >}}
 {{< tab >}}
 
-`quic-go/webtransport-go` is used internally as the default WebTransport implementation when relevant fields which is set for customization are not set or `nil`.
+[`quic-go/webtransport-go`](https://github.com/quic-go/webtransport-go) is used internally as the default WebTransport implementation when relevant fields which is set for customization are not set or `nil`.
 
 {{<github-readme-stats user="quic-go" repo="webtransport-go" >}}
 
@@ -106,7 +105,7 @@ type Client struct {
 
 ## Dial and Establish Session
 
-Clients can initiate a connection and establish a session with a server using the `(*moqt.Client).Dial` method.
+Clients can initiate a QUIC connection and establish a MOQ session with a server using the `(*moqt.Client).Dial` method.
 
 ```go
 	var mux *TrackMux
@@ -120,7 +119,7 @@ Clients can initiate a connection and establish a session with a server using th
 ```
 
 > [!NOTE] Note: Nil TrackMux
-> When set nil for `mux`, the `DefaultTrackMux` will be used by default.
+> When `mux` is set to `nil`, the `moqt.DefaultTrackMux` will be used by default.
 > Ensure that the `mux` is properly configured for your use case to avoid unexpected behavior.
 
 ## Shutting Down a Client

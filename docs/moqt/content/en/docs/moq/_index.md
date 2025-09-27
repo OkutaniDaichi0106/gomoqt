@@ -69,9 +69,20 @@ MoQ is designed as a general-purpose media protocol, addressing limitations foun
 - Interactive conferencing
 - Gaming/Interactive
 - Multi-layer video
-- CDN/Relay optimization
+
+## Specifications
+
+There are two different MoQ specifications: **[MoQ Transport(moqt)](https://datatracker.ietf.org/doc/draft-ietf-moq-transport)** and **[MoQ Lite(moql)](https://datatracker.ietf.org/doc/draft-lcurley-moq-lite/)**.
+
+**MoQ Lite** is a lightweight MoQ protocol designed simple to build something easier that you can use now, even if it’s not a standard yet.
+`gomoqt` is an implementation of MoQ Lite.
+MoQ Transport is the standardizing MoQ protocol under the IETF. It is more complex than MoQ Lite.
+`gomoqt` does not yet support MoQ Transport.
 
 ## References
-- IETF Drafts (moq-transport, moq-lite, use-cases)
-- MoQ WG, GitHub, Mailing List, Zulip, Blog
-- quic.video (Demo/Source/Discord)
+- MoQ WG: https://datatracker.ietf.org/wg/moq/about/
+- MoQ Lite: https://datatracker.ietf.org/doc/draft-lcurley-moq-lite/
+- MoQ Transport: https://datatracker.ietf.org/doc/draft-ietf-moq-transport/
+- WebTransport: https://www.rfc-editor.org/rfc/rfc9293.html
+- QUIC: https://www.rfc-editor.org/rfc/rfc9000.html
+- HTTP/3: https://www.rfc-editor.org/rfc/rfc9114.html

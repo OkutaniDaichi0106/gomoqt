@@ -107,6 +107,7 @@ func (*Frame) Bytes() []byte
 func (*Frame) Cap() int
 func (*Frame) Len() int
 func (*Frame) Clone() *Frame
+func (*Frame) WriteTo(w io.Writer) (int64, error)
 ```
 ### `moqt.FrameBuilder`
 

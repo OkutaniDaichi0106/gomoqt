@@ -28,7 +28,7 @@ To implement conferencing applications over MoQ, Hang protocol implementation is
 	{{< card link="hang" title="Hang" icon="external-link" subtitle="Hang protocol overview and setup." >}}
 {{< /cards >}}
 
-## Feedback
+## Feedback 📋
 
 If you find any mistakes, typos, or would like to contribute translations, please submit an Issue or Pull Request on our GitHub page.
 

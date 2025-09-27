@@ -64,7 +64,6 @@ func (f *Frame) Cap() int {
 
 func (f *Frame) encode(w io.Writer) error {
 	l := uint64(len(f.body))
-	// end := 8 - message.VarintLen(l)
 	header, size := message.WriteVarint(f.header[:0], l)
 	start := 8 - size
 	copy(f.buf[start:], header)
@@ -100,6 +99,14 @@ func (f *Frame) Clone() *Frame {
 	clone := newFrame(f.Cap())
 	clone.append(f.Bytes())
 	return clone
+}
+
+func (f *Frame) WriteTo(w io.Writer) (int64, error) {
+	n, err := w.Write(f.body)
+	if err != nil {
+		return 0, err
+	}
+	return int64(n), nil
 }
 
 func NewFrameBuilder(cap int) *FrameBuilder {

@@ -1,5 +1,5 @@
 // Test file for message/index.ts exports
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as MessageIndex from "./index";
 import * as SessionClient from "./session_client";
 import * as SessionServer from "./session_server";

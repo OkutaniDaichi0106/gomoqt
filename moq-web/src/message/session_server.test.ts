@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SessionServerMessage } from './session_server';
 import { Writer, Reader } from '../io';
 import { Version } from '../internal/version';

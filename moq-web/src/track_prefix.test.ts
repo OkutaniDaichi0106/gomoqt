@@ -1,5 +1,5 @@
 
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect } from 'vitest';
 import { isValidPrefix, validateTrackPrefix } from './track_prefix';
 
 describe('TrackPrefix', () => {

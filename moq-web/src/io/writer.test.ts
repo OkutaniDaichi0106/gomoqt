@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Writer } from './writer';
 import { StreamError } from './error';
 
@@ -52,7 +52,13 @@ describe('Writer', () => {
     });
 
     it('should throw error for data exceeding maximum length', () => {
-      const largeData = new Uint8Array(2 ** 32); // Exceeds MAX_BYTES_LENGTH
+      // MAX_BYTES_LENGTH is 1 << 30 (1 GiB)
+      // We can test with a mock object that has a length property exceeding the limit
+      // without actually allocating the memory
+      const largeData = {
+        length: (1 << 30) + 1, // Just over MAX_BYTES_LENGTH
+        // Add other Uint8Array-like properties if the implementation checks them
+      } as Uint8Array;
       
       expect(() => {
         writer.writeUint8Array(largeData);

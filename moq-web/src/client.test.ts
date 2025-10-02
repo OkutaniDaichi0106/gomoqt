@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Client } from "./client";
 import { Session } from "./session";
 import type { MOQOptions } from "./options";
@@ -37,16 +37,16 @@ class MockWebTransport {
 (globalThis as any).WebTransport = MockWebTransport;
 
 // Mock Session
-jest.mock("./session", () => ({
-    Session: jest.fn().mockImplementation((init: any) => ({
+vi.mock("./session", () => ({
+    Session: vi.fn().mockImplementation((init: any) => ({
         ready: init?.conn?.ready || Promise.resolve(),
-        close: jest.fn(),
+        close: vi.fn(),
     }))
 }));
 
 // Mock TrackMux
-jest.mock("./track_mux", () => ({
-    TrackMux: jest.fn().mockImplementation(() => ({
+vi.mock("./track_mux", () => ({
+    TrackMux: vi.fn().mockImplementation(() => ({
         // Mock implementation
     })),
     DefaultTrackMux: {}
@@ -57,7 +57,7 @@ describe("Client", () => {
     
     beforeEach(() => {
         client = new Client();
-        jest.clearAllMocks();
+        vi.clearAllMocks();
     });
     
     describe("constructor", () => {

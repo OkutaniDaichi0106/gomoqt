@@ -1,8 +1,8 @@
 import { GroupReader, GroupWriter } from "./group_stream";
 import type { Info } from "./info";
 import { Queue } from "./internal";
-import type { Context} from "./internal/context";
-import {ContextCancelledError,withCancel,withPromise } from "./internal/context";
+import type { Context} from "golikejs/context";
+import { ContextCancelledError, withCancel, watchPromise } from "golikejs/context";
 import type { ReceiveSubscribeStream, SendSubscribeStream, TrackConfig } from "./subscribe_stream";
 import type { Writer, Reader } from "./io";
 import { UniStreamTypes } from "./stream_type";
@@ -121,7 +121,7 @@ export class TrackReader {
             return [undefined, err];
         }
 
-        const ctx = withPromise(this.context, signal);
+        const ctx = watchPromise(this.context, signal);
 
         const dequeued = await this.#acceptFunc(ctx.done());
         if (dequeued === undefined) {

@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
-import type { MockedFunction } from 'jest-mock';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import type { MockedFunction } from 'vitest';
 import { Session } from "./session";
 import { Version, Versions } from "./internal";
 import { AnnouncePleaseMessage, AnnounceInitMessage, GroupMessage,
@@ -8,7 +8,7 @@ import { AnnouncePleaseMessage, AnnounceInitMessage, GroupMessage,
 import { Writer, Reader } from "./io";
 import { Extensions } from "./internal/extensions";
 import { SessionStream } from "./session_stream";
-import { background, Context, withPromise } from "./internal/context";
+import { background, Context, watchPromise } from "golikejs/context";
 import { AnnouncementReader, AnnouncementWriter } from "./announce_stream";
 import { TrackPrefix } from "./track_prefix";
 import { ReceiveSubscribeStream, SendSubscribeStream, TrackConfig } from "./subscribe_stream";
@@ -70,114 +70,114 @@ class MockWebTransport {
 }
 
 // Mock SessionStream
-jest.mock("./session_stream", () => ({
-    SessionStream: jest.fn().mockImplementation(() => ({
+vi.mock("./session_stream", () => ({
+    SessionStream: vi.fn().mockImplementation(() => ({
         context: { 
-            done: jest.fn().mockReturnValue(Promise.resolve()),
-            err: jest.fn().mockReturnValue(undefined)
+            done: vi.fn().mockReturnValue(Promise.resolve()),
+            err: vi.fn().mockReturnValue(undefined)
         },
-        update: jest.fn()
+        update: vi.fn()
     }))
 }));
 
 // Mock messages
-jest.mock("./message", () => ({
-    SessionClientMessage: jest.fn().mockImplementation((init: any = {}) => ({
+vi.mock("./message", () => ({
+    SessionClientMessage: vi.fn().mockImplementation((init: any = {}) => ({
         versions: init.versions ?? new Set([0xffffff00n]),
         extensions: init.extensions ?? {},
-        encode: jest.fn().mockImplementation(() => Promise.resolve(undefined)),
-        decode: jest.fn().mockImplementation(() => Promise.resolve(undefined))
+        encode: vi.fn().mockImplementation(() => Promise.resolve(undefined)),
+        decode: vi.fn().mockImplementation(() => Promise.resolve(undefined))
     })),
-    SessionServerMessage: jest.fn().mockImplementation((init: any = {}) => ({
+    SessionServerMessage: vi.fn().mockImplementation((init: any = {}) => ({
         version: init.version ?? 0xffffff00n,
         extensions: init.extensions ?? {},
-        encode: jest.fn().mockImplementation(() => Promise.resolve(undefined)),
-        decode: jest.fn().mockImplementation(function(this: any) {
+        encode: vi.fn().mockImplementation(() => Promise.resolve(undefined)),
+        decode: vi.fn().mockImplementation(function(this: any) {
             this.version = this.version ?? 0xffffff00n;
             return Promise.resolve(undefined);
         })
     })),
-    AnnouncePleaseMessage: jest.fn().mockImplementation((init: any = {}) => ({
+    AnnouncePleaseMessage: vi.fn().mockImplementation((init: any = {}) => ({
         prefix: init.prefix ?? "",
-        encode: jest.fn().mockImplementation(() => Promise.resolve(undefined)),
-        decode: jest.fn().mockImplementation(() => Promise.resolve(undefined))
+        encode: vi.fn().mockImplementation(() => Promise.resolve(undefined)),
+        decode: vi.fn().mockImplementation(() => Promise.resolve(undefined))
     })),
-    AnnounceInitMessage: jest.fn().mockImplementation((init: any = {}) => ({
+    AnnounceInitMessage: vi.fn().mockImplementation((init: any = {}) => ({
         suffixes: init.suffixes ?? [],
-        encode: jest.fn().mockImplementation(() => Promise.resolve(undefined)),
-        decode: jest.fn().mockImplementation(() => Promise.resolve(undefined))
+        encode: vi.fn().mockImplementation(() => Promise.resolve(undefined)),
+        decode: vi.fn().mockImplementation(() => Promise.resolve(undefined))
     })),
-    GroupMessage: jest.fn().mockImplementation((init: any = {}) => ({
+    GroupMessage: vi.fn().mockImplementation((init: any = {}) => ({
         subscribeId: init.subscribeId ?? 1n,
         sequence: init.sequence ?? 0n,
-        encode: jest.fn().mockImplementation(() => Promise.resolve(undefined)),
-        decode: jest.fn().mockImplementation(() => Promise.resolve(undefined))
+        encode: vi.fn().mockImplementation(() => Promise.resolve(undefined)),
+        decode: vi.fn().mockImplementation(() => Promise.resolve(undefined))
     })),
-    SubscribeMessage: jest.fn().mockImplementation((init: any = {}) => ({
+    SubscribeMessage: vi.fn().mockImplementation((init: any = {}) => ({
         subscribeId: init.subscribeId ?? 1n,
         broadcastPath: init.broadcastPath ?? {},
         trackName: init.trackName ?? "",
-        encode: jest.fn().mockImplementation(() => Promise.resolve(undefined)),
-        decode: jest.fn().mockImplementation(() => Promise.resolve(undefined))
+        encode: vi.fn().mockImplementation(() => Promise.resolve(undefined)),
+        decode: vi.fn().mockImplementation(() => Promise.resolve(undefined))
     })),
-    SubscribeOkMessage: jest.fn().mockImplementation((init: any = {}) => ({
+    SubscribeOkMessage: vi.fn().mockImplementation((init: any = {}) => ({
         groupPeriod: init.groupPeriod ?? 0,
-        encode: jest.fn().mockImplementation(() => Promise.resolve(undefined)),
-        decode: jest.fn().mockImplementation(() => Promise.resolve(undefined))
+        encode: vi.fn().mockImplementation(() => Promise.resolve(undefined)),
+        decode: vi.fn().mockImplementation(() => Promise.resolve(undefined))
     }))
 }));
 
 // Mock IO
-jest.mock("./io", () => ({
-    Writer: jest.fn().mockImplementation(() => ({
-        writeUint8: jest.fn(),
-        flush: jest.fn().mockImplementation(() => Promise.resolve(null))
+vi.mock("./io", () => ({
+    Writer: vi.fn().mockImplementation(() => ({
+        writeUint8: vi.fn(),
+        flush: vi.fn().mockImplementation(() => Promise.resolve(null))
     })),
-    Reader: jest.fn().mockImplementation(() => ({
-        readUint8: jest.fn().mockImplementation(() => Promise.resolve([1, null]))
+    Reader: vi.fn().mockImplementation(() => ({
+        readUint8: vi.fn().mockImplementation(() => Promise.resolve([1, null]))
     }))
 }));
 
 // Mock other dependencies
-jest.mock("./announce_stream", () => ({
-    AnnouncementReader: jest.fn(),
-    AnnouncementWriter: jest.fn()
+vi.mock("./announce_stream", () => ({
+    AnnouncementReader: vi.fn(),
+    AnnouncementWriter: vi.fn()
 }));
 
-jest.mock("./track_prefix", () => ({
-    TrackPrefix: jest.fn()
+vi.mock("./track_prefix", () => ({
+    TrackPrefix: vi.fn()
 }));
 
-jest.mock("./subscribe_stream", () => ({
-    ReceiveSubscribeStream: jest.fn(),
-    SendSubscribeStream: jest.fn(),
-    TrackConfig: jest.fn(),
-    SubscribeID: jest.fn()
+vi.mock("./subscribe_stream", () => ({
+    ReceiveSubscribeStream: vi.fn(),
+    SendSubscribeStream: vi.fn(),
+    TrackConfig: vi.fn(),
+    SubscribeID: vi.fn()
 }));
 
-jest.mock("./broadcast_path", () => ({
-    BroadcastPath: jest.fn()
+vi.mock("./broadcast_path", () => ({
+    BroadcastPath: vi.fn()
 }));
 
-jest.mock("./track", () => ({
-    TrackReader: jest.fn(),
-    TrackWriter: jest.fn()
+vi.mock("./track", () => ({
+    TrackReader: vi.fn(),
+    TrackWriter: vi.fn()
 }));
 
-jest.mock("./group_stream", () => ({
-    GroupReader: jest.fn(),
-    GroupWriter: jest.fn()
+vi.mock("./group_stream", () => ({
+    GroupReader: vi.fn(),
+    GroupWriter: vi.fn()
 }));
 
-jest.mock("./track_mux", () => ({
-    TrackMux: jest.fn().mockImplementation(() => ({
-        serveTrack: jest.fn(),
-        serveAnnouncement: jest.fn()
+vi.mock("./track_mux", () => ({
+    TrackMux: vi.fn().mockImplementation(() => ({
+        serveTrack: vi.fn(),
+        serveAnnouncement: vi.fn()
     })),
     DefaultTrackMux: {}
 }));
 
-jest.mock("./stream_type", () => ({
+vi.mock("./stream_type", () => ({
     BiStreamTypes: {
         SessionStreamType: 1,
         SubscribeStreamType: 2,
@@ -188,53 +188,53 @@ jest.mock("./stream_type", () => ({
     }
 }));
 
-jest.mock("./internal/queue", () => ({
-    Queue: jest.fn().mockImplementation(() => ({
-        enqueue: jest.fn(),
-        dequeue: jest.fn()
+vi.mock("./internal/queue", () => ({
+    Queue: vi.fn().mockImplementation(() => ({
+        enqueue: vi.fn(),
+        dequeue: vi.fn()
     }))
 }));
 
-jest.mock("./info", () => ({
-    Info: jest.fn()
+vi.mock("./info", () => ({
+    Info: vi.fn()
 }));
 
 // Mock protocol module
-jest.mock("./protocol", () => ({
-    TrackName: jest.fn(),
-    SubscribeID: jest.fn()
+vi.mock("./protocol", () => ({
+    TrackName: vi.fn(),
+    SubscribeID: vi.fn()
 }));
 
 // Mock context and background
-jest.mock("./internal/context", () => ({
-    background: jest.fn().mockReturnValue({
-        done: jest.fn().mockReturnValue(Promise.resolve()),
-        err: jest.fn().mockReturnValue(undefined)
+vi.mock("golikejs/context", () => ({
+    background: vi.fn().mockReturnValue({
+        done: vi.fn().mockReturnValue(Promise.resolve()),
+        err: vi.fn().mockReturnValue(undefined)
     }),
-    withPromise: jest.fn().mockImplementation((ctx, promise) => ({
-        done: jest.fn().mockReturnValue(Promise.resolve()),
-        err: jest.fn().mockReturnValue(undefined)
+    watchPromise: vi.fn().mockImplementation((ctx, promise) => ({
+        done: vi.fn().mockReturnValue(Promise.resolve()),
+        err: vi.fn().mockReturnValue(undefined)
     })),
-    Context: jest.fn()
+    Context: vi.fn()
 }));
 
 // Mock Extensions
-jest.mock("./internal/extensions", () => ({
-    Extensions: jest.fn().mockImplementation(() => ({
+vi.mock("./internal/extensions", () => ({
+    Extensions: vi.fn().mockImplementation(() => ({
         // Mock implementation
     }))
 }));
 
 // Mock internal index
-jest.mock("./internal", () => ({
-    Version: jest.fn(),
+vi.mock("./internal", () => ({
+    Version: vi.fn(),
     Versions: {
         DEVELOP: 0xffffff00n
     },
     DEFAULT_CLIENT_VERSIONS: new Set([0xffffff00n]),
-    Queue: jest.fn().mockImplementation(() => ({
-        enqueue: jest.fn(),
-        dequeue: jest.fn()
+    Queue: vi.fn().mockImplementation(() => ({
+        enqueue: vi.fn(),
+        dequeue: vi.fn()
     }))
 }));
 
@@ -244,7 +244,7 @@ describe("Session", () => {
 
     beforeEach(() => {
         mockConn = new MockWebTransport();
-        jest.clearAllMocks();
+        vi.clearAllMocks();
     });
 
     afterEach(() => {
@@ -275,8 +275,8 @@ describe("Session", () => {
         it("should create a session with custom mux", () => {
             const extensions = new Extensions();
             const mockMux = {
-                serveTrack: jest.fn(),
-                serveAnnouncement: jest.fn()
+                serveTrack: vi.fn(),
+                serveAnnouncement: vi.fn()
             };
             session = new Session({conn: mockConn as any, versions: new Set([Versions.DEVELOP]), extensions, mux: mockMux as any});
             expect(session).toBeDefined();
@@ -294,7 +294,7 @@ describe("Session", () => {
             const mockConnWithError = {
                 ...mockConn,
                 ready: Promise.reject(new Error("Connection failed")),
-                close: jest.fn() // Add close method to prevent the error
+                close: vi.fn() // Add close method to prevent the error
             };
 
             session = new Session({conn: mockConnWithError as any});
@@ -310,19 +310,19 @@ describe("Session", () => {
         it("should initialize session stream when ready", async () => {
             await session.ready;
             // Verify that SessionStream was created
-            const SessionStreamMock = jest.mocked(SessionStream);
+            const SessionStreamMock = vi.mocked(SessionStream);
             expect(SessionStreamMock).toHaveBeenCalled();
         });
 
         it("should send session client message", async () => {
             await session.ready;
-            const SessionClientMessageMock = jest.mocked(SessionClientMessage);
+            const SessionClientMessageMock = vi.mocked(SessionClientMessage);
             expect(SessionClientMessageMock).toHaveBeenCalled();
         });
 
         it("should receive session server message", async () => {
             await session.ready;
-            const SessionServerMessageMock = jest.mocked(SessionServerMessage);
+            const SessionServerMessageMock = vi.mocked(SessionServerMessage);
             expect(SessionServerMessageMock).toHaveBeenCalled();
         });
     });
@@ -383,11 +383,11 @@ describe("Session", () => {
         });
 
         it("should close connection with normal closure", async () => {
-            const closeSpy = jest.spyOn(mockConn, 'close');
+            const closeSpy = vi.spyOn(mockConn, 'close');
             
             // Mock Promise.allSettled to resolve immediately, avoiding background task wait
             const originalAllSettled = Promise.allSettled;
-            jest.spyOn(Promise, 'allSettled').mockResolvedValue([]);
+            vi.spyOn(Promise, 'allSettled').mockResolvedValue([]);
             
             try {
                 await session.close();
@@ -397,16 +397,16 @@ describe("Session", () => {
                 });
             } finally {
                 // Restore the original Promise.allSettled
-                (Promise.allSettled as jest.Mock).mockRestore();
+                (Promise.allSettled as any).mockRestore();
             }
         });
 
         it("should close connection with error", async () => {
-            const closeSpy = jest.spyOn(mockConn, 'close');
+            const closeSpy = vi.spyOn(mockConn, 'close');
             
             // Mock Promise.allSettled to resolve immediately, avoiding background task wait
             const originalAllSettled = Promise.allSettled;
-            jest.spyOn(Promise, 'allSettled').mockResolvedValue([]);
+            vi.spyOn(Promise, 'allSettled').mockResolvedValue([]);
             
             try {
                 await session.closeWithError(123, "Test error");
@@ -416,7 +416,7 @@ describe("Session", () => {
                 });
             } finally {
                 // Restore the original Promise.allSettled
-                (Promise.allSettled as jest.Mock).mockRestore();
+                (Promise.allSettled as any).mockRestore();
             }
         });
     });
@@ -430,10 +430,10 @@ describe("Session", () => {
         it("should handle errors gracefully during initialization", async () => {
             const errorMockConn = {
                 ...mockConn,
-                createBidirectionalStream: jest.fn().mockImplementation(() =>
+                createBidirectionalStream: vi.fn().mockImplementation(() =>
                     Promise.reject(new Error("Stream creation failed"))
                 ),
-                close: jest.fn()
+                close: vi.fn()
             };
 
             const errorSession = new Session({conn: errorMockConn as any});
@@ -443,19 +443,19 @@ describe("Session", () => {
         it("should handle invalid versions", async () => {
             // Create a separate mock for version testing
             const versionMockConn = new MockWebTransport();
-            versionMockConn.close = jest.fn();
+            versionMockConn.close = vi.fn();
 
             // Mock SessionServerMessage to return incompatible version
-            const SessionServerMessageMock = jest.mocked(SessionServerMessage);
+            const SessionServerMessageMock = vi.mocked(SessionServerMessage);
             // Mock the instance decode method to set the version property
-            const mockDecode = jest.fn().mockImplementation(function(this: any) {
+            const mockDecode = vi.fn().mockImplementation(function(this: any) {
                 this.version = 999n; // Set incompatible version on the instance
                 return Promise.resolve(undefined);
             });
             SessionServerMessageMock.mockImplementationOnce(() => ({
                 version: 0xffffff00n, // Initial version (will be overwritten by decode)
                 extensions: new Extensions(),
-                encode: jest.fn().mockImplementation(() => Promise.resolve(undefined)),
+                encode: vi.fn().mockImplementation(() => Promise.resolve(undefined)),
                 decode: mockDecode
             } as any));
 

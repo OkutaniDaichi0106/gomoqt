@@ -1,4 +1,4 @@
-import { Mutex } from "./mutex";
+import { Mutex } from "golikejs/sync";
 
 export class Queue<T> {
 	#items: T[] = [];
@@ -7,26 +7,29 @@ export class Queue<T> {
 	#closed: boolean = false;
 
 	async enqueue(item: T): Promise<void> {
-		const unlock = await this.#mutex.lock();
-		this.#items.push(item);
-		
-		if (this.#pending) {
-			const [resolve] = this.#pending;
-			this.#pending = undefined;
-			resolve();
+		await this.#mutex.lock();
+		try {
+			this.#items.push(item);
+			
+			if (this.#pending) {
+				const [resolve] = this.#pending;
+				this.#pending = undefined;
+				resolve();
+			}
+		} finally {
+			this.#mutex.unlock();
 		}
-
-		unlock();
 	}
 
 	async dequeue(): Promise<T | undefined> {
 		while (true) {
-			const unlock = await this.#mutex.lock();
+			await this.#mutex.lock();
 
+			try {
 				// If we have items, return the first one
 				if (this.#items.length > 0) {
 					const item = this.#items.shift();
-					unlock();
+					this.#mutex.unlock();
 
 					// item is guaranteed to be defined here
 					if (!item) {
@@ -36,7 +39,7 @@ export class Queue<T> {
 				}
 
 				if (this.#closed) {
-					unlock();
+					this.#mutex.unlock();
 					return undefined;
 				}
 				
@@ -52,9 +55,13 @@ export class Queue<T> {
 				const [, chan] = this.#pending;
 				
 				// Release lock before waiting
-				unlock();
+				this.#mutex.unlock();
 				
 				await chan;
+			} catch (e) {
+				this.#mutex.unlock();
+				throw e;
+			}
 		}
 	}
 
@@ -64,14 +71,16 @@ export class Queue<T> {
 		}
 		this.#closed = true;
 
-		this.#mutex.lock().then((unlock) => {
-			if (this.#pending) {
-				const [resolve] = this.#pending;
-				this.#pending = undefined;
-				resolve();
+		this.#mutex.lock().then(() => {
+			try {
+				if (this.#pending) {
+					const [resolve] = this.#pending;
+					this.#pending = undefined;
+					resolve();
+				}
+			} finally {
+				this.#mutex.unlock();
 			}
-
-			unlock();
 		});
 	}
 

@@ -4,8 +4,8 @@ import { AnnouncePleaseMessage, AnnounceInitMessage, GroupMessage, SessionClient
 import { Writer, Reader } from "./io";
 import { Extensions } from "./internal/extensions";
 import { SessionStream } from "./session_stream";
-import { background, withPromise } from "./internal/context";
-import type { Context } from "./internal/context";
+import { background, watchPromise } from "golikejs/context";
+import type { Context } from "golikejs/context";
 import { AnnouncementReader, AnnouncementWriter } from "./announce_stream";
 import type { TrackPrefix } from "./track_prefix";
 import { ReceiveSubscribeStream, SendSubscribeStream } from "./subscribe_stream";
@@ -101,7 +101,7 @@ export class Session {
 			throw new Error(`Incompatible session version: ${rsp.version}`);
 		}
 
-		const connCtx = withPromise(background(), this.#conn.closed); // TODO: Handle connection closure properly
+		const connCtx = watchPromise(background(), this.#conn.closed); // TODO: Handle connection closure properly
 
 		this.#sessionStream = new SessionStream(connCtx, writer, reader, req, rsp);
 

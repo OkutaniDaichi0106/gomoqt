@@ -1,4 +1,4 @@
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect } from 'vitest';
 import { Writer, Reader } from '../io';
 
 // Helper function to create isolated writer/reader pair

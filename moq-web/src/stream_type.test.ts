@@ -1,4 +1,4 @@
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect } from 'vitest';
 import { BiStreamTypes, UniStreamTypes } from './stream_type';
 
 describe('BiStreamTypes', () => {

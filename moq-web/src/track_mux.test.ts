@@ -1,4 +1,4 @@
-import { describe, it, expect, jest, beforeEach } from '@jest/globals';
+import { describe, it, expect, jest, beforeEach } from 'vitest';
 import type { TrackHandler } from './track_mux';
 import { TrackMux } from './track_mux';
 import type { AnnouncementWriter } from './announce_stream';
@@ -6,7 +6,7 @@ import { Announcement } from './announce_stream';
 import type { BroadcastPath } from './broadcast_path';
 import type { TrackPrefix} from './track_prefix';
 import { isValidPrefix } from './track_prefix';
-import { Context, background, withCancelCause } from './internal/context';
+import { Context, background, withCancelCause } from 'golikejs/context';
 import { SendSubscribeStream, ReceiveSubscribeStream } from './subscribe_stream';
 import type { TrackWriter } from './track';
 import { TrackNotFoundErrorCode } from ".";
@@ -23,14 +23,14 @@ describe('TrackMux', () => {
         trackMux = new TrackMux();
 
         mockHandler = {
-            serveTrack: jest.fn<(ctx: Promise<void>, trackWriter: TrackWriter) => Promise<void>>()
+            serveTrack: vi.fn<(ctx: Promise<void>, trackWriter: TrackWriter) => Promise<void>>()
         };
 
         mockTrackWriter = {
             broadcastPath: '/test/path' as BroadcastPath,
             trackName: 'test-track',
-            closeWithError: jest.fn(),
-            close: jest.fn()
+            closeWithError: vi.fn(),
+            close: vi.fn()
         } as any;
 
         const [ctx, _cancelFunc] = withCancelCause(background());
@@ -38,8 +38,8 @@ describe('TrackMux', () => {
         mockAnnouncement = new Announcement('/test/path' as BroadcastPath, ctx.done());
 
         mockAnnouncementWriter = {
-            send: jest.fn(() => Promise.resolve(undefined)),
-            init: jest.fn(() => Promise.resolve(undefined)),
+            send: vi.fn(() => Promise.resolve(undefined)),
+            init: vi.fn(() => Promise.resolve(undefined)),
             context: ctx
         } as any;
     });
@@ -90,13 +90,13 @@ describe('TrackMux', () => {
             await new Promise(resolve => setTimeout(resolve, 10)); // Wait for async cleanup
 
             // Handler should be removed, now reset mock and test with different path
-            (mockHandler.serveTrack as jest.Mock).mockClear();
+            (mockHandler.serveTrack as vi.mock).mockClear();
 
             const differentTrackWriter = {
                 broadcastPath: '/different/path' as BroadcastPath,
                 trackName: 'different-track',
-                closeWithError: jest.fn(),
-                close: jest.fn()
+                closeWithError: vi.fn(),
+                close: vi.fn()
             } as any;
 
             await trackMux.serveTrack(differentTrackWriter);
@@ -114,19 +114,19 @@ describe('TrackMux', () => {
             // Mock the Announcement constructor
             const mockAnnouncementInstance = {
                 broadcastPath: path,
-                ended: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
-                isActive: jest.fn().mockReturnValue(true),
-                end: jest.fn(),
-                fork: jest.fn().mockReturnValue({
+                ended: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+                isActive: vi.fn().mockReturnValue(true),
+                end: vi.fn(),
+                fork: vi.fn().mockReturnValue({
                     broadcastPath: path,
-                    ended: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
-                    isActive: jest.fn().mockReturnValue(true),
-                    end: jest.fn(),
+                    ended: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+                    isActive: vi.fn().mockReturnValue(true),
+                    end: vi.fn(),
                 })
             };
 
             // Create a spy on the Announcement constructor
-            const announcementSpy = jest.spyOn(Announcement.prototype, 'constructor' as any).mockImplementation(function(this: any) {
+            const announcementSpy = vi.spyOn(Announcement.prototype, 'constructor' as any).mockImplementation(function(this: any) {
                 Object.assign(this, mockAnnouncementInstance);
             });
 
@@ -154,8 +154,8 @@ describe('TrackMux', () => {
             const trackWriterWithDifferentPath = {
                 broadcastPath: '/different/path' as BroadcastPath,
                 trackName: 'different-track',
-                closeWithError: jest.fn(),
-                close: jest.fn()
+                closeWithError: vi.fn(),
+                close: vi.fn()
             } as any;
 
             await trackMux.serveTrack(trackWriterWithDifferentPath);
@@ -197,8 +197,8 @@ describe('TrackMux', () => {
             const [ctx, cancelFunc] = withCancelCause(background());
 
             const mockAnnouncementWriterWithContext = {
-                send: jest.fn(),
-                init: jest.fn(),
+                send: vi.fn(),
+                init: vi.fn(),
                 context: ctx
             } as any;
 
@@ -221,7 +221,7 @@ describe('TrackMux', () => {
 describe('TrackHandler', () => {
     it('should define the correct interface', () => {
         const handler: TrackHandler = {
-            serveTrack: jest.fn<(ctx: Promise<void>, trackWriter: TrackWriter) => Promise<void>>()
+            serveTrack: vi.fn<(ctx: Promise<void>, trackWriter: TrackWriter) => Promise<void>>()
         };
 
         expect(typeof handler.serveTrack).toBe('function');
@@ -229,8 +229,8 @@ describe('TrackHandler', () => {
         const mockTrackWriter = {
             broadcastPath: '/test/path' as BroadcastPath,
             trackName: 'test-track',
-            closeWithError: jest.fn(),
-            close: jest.fn()
+            closeWithError: vi.fn(),
+            close: vi.fn()
         } as any;
         handler.serveTrack(background().done(), mockTrackWriter);
 

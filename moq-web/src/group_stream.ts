@@ -1,6 +1,6 @@
 import type { Reader, Writer } from "./io";
-import { withCancelCause } from "./internal/context";
-import type { CancelCauseFunc, Context } from "./internal/context";
+import { withCancelCause } from "golikejs/context";
+import type { CancelCauseFunc, Context } from "golikejs/context";
 import type { Source } from "./io";
 import { StreamError } from "./io/error";
 import type { GroupMessage } from "./message";

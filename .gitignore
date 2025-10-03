@@ -5,7 +5,8 @@
 # Dev modules
 **/_vendor
 **/node_modules
-**/.jest-cache/
+**/.serena
+
 
 # Build staff
 **/docs/moqt/public

@@ -11,7 +11,7 @@
     "target": "esnext",
     "moduleResolution": "bundler",
     "rootDir": "./src",
-    // "types": [],
+    "types": ["vitest/globals"],
     // For nodejs:
     "lib": ["esnext", "dom"],
     // "types": ["node"],
@@ -52,8 +52,8 @@
     "node_modules",
     "dist",
     "examples",
-  "test.ts",
-  "**/*.test.ts",
+    "test.ts",
+    "**/*.test.ts",
     "**/*.test.tsx",
     "**/*.spec.ts",
     "**/*.spec.tsx"

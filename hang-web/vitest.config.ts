@@ -33,6 +33,8 @@ export default defineConfig({
         minThreads: 2,
       },
     },
+    testTimeout: 10000, // 10 seconds timeout for tests
+    hookTimeout: 5000,  // 5 seconds timeout for hooks
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

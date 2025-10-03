@@ -13,7 +13,7 @@
     "rootDir": "./src",
     "types": ["vitest/globals"],
     // For nodejs:
-    "lib": ["esnext", "dom"],
+    "lib": ["esnext", "dom", "dom.iterable", "webworker"],
     // "types": ["node"],
     // and npm install -D @types/node
 

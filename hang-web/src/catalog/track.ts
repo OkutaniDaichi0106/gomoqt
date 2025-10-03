@@ -11,4 +11,4 @@ export const TrackSchema = z.object({
 	dependencies: z.array(z.string().min(1)).optional(), // List of other track names this track depends on
 });
 
-export type Track = z.infer<typeof TrackSchema>;
+export type TrackDescriptor = z.infer<typeof TrackSchema>;

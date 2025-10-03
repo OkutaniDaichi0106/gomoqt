@@ -8,4 +8,4 @@ export const CaptionsTrackSchema = TrackSchema.extend({
 	dependencies: z.array(z.string().min(1)).min(1), // Must depend on a audio or video track
 });
 
-export type CaptionsTrack = z.infer<typeof CaptionsTrackSchema>;
+export type CaptionsTrackDescriptor = z.infer<typeof CaptionsTrackSchema>;

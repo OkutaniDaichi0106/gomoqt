@@ -30,5 +30,5 @@ export const TimeseriesTrackSchema = TrackSchema.extend({
 	}),
 });
 
-export type TimeseriesTrack = z.infer<typeof TimeseriesTrackSchema>;
+export type TimeseriesTrackDescriptor = z.infer<typeof TimeseriesTrackSchema>;
 

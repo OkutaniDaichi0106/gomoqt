@@ -1,8 +1,14 @@
+import { importWorkletUrl } from './audio_hijack_worklet';
+
+export interface AudioTrackProcessorOptions {
+    targetChannels?: number;
+}
+
 export class AudioTrackProcessor {
     readonly readable: ReadableStream<AudioData>;
     readonly gain: GainNode;
 
-    constructor(track: MediaStreamTrack) {
+    constructor(track: MediaStreamTrack, options: AudioTrackProcessorOptions = {}) {
         // @ts-expect-error No typescript types yet.
         if (self.MediaStreamTrackProcessor) {
             // @ts-expect-error No typescript types yet.
@@ -30,13 +36,18 @@ export class AudioTrackProcessor {
 
         this.readable = new ReadableStream<AudioData>({
             async start(controller) {
-                await context.audioWorklet.addModule(
-                    new URL("./audio_hijacker.js", import.meta.url)
-                );
-                const worklet = new AudioWorkletNode(context, "audio-hijacker", {
+                const workletUrl = importWorkletUrl();
+                console.debug("loading audio hijack worklet from", workletUrl);
+                await context.audioWorklet.addModule(workletUrl);
+
+                const worklet = new AudioWorkletNode(context, "AudioHijacker", {
                     numberOfInputs: 1,
                     numberOfOutputs: 0,
                     channelCount: settings.channelCount,
+                    processorOptions: {
+                        sampleRate: context.sampleRate,
+                        targetChannels: options.targetChannels || settings.channelCount || 1,
+                    },
                 });
 
                 gain.connect(worklet);

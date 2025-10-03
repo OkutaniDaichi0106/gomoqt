@@ -1,30 +1,34 @@
-import type { AudioDecodeStream } from "./internal";
+import { AudioTrackDecoder } from "./internal";
 import type {
     CancelCauseFunc,
     Context,
-} from "@okutanidaichi/moqt/internal";
+} from "golikejs/context";
 import {
     withCancelCause,
     background
-} from "@okutanidaichi/moqt/internal";
+} from "golikejs/context";
 
 import { DefaultVolume, DefaultMinGain, DefaultFadeTime } from './volume';
+import { importUrl as importWorkletUrl } from './internal/audio_offload_worklet';
 
 export interface AudioOffloaderInit {
-    source: AudioDecodeStream;
-    decoderConfig: AudioDecoderConfig;
     latency?: number; // Desired latency in milliseconds (default: 100)
+    audioContext?: AudioContext; // Optional external AudioContext to use
     initialVolume?: number; // Optional initial volume (0-1); defaults to 1.0
     volumeRampMs?: number; // Gain ramp duration in ms for user adjustments (default 80ms similar feel to YouTube)
+    sampleRate?: number; // Sample rate for audio context
+    numberOfChannels?: number; // Number of channels (default: 2)
 }
 
 export class AudioOffloader {
-    source: AudioDecodeStream;
+    #decoder?: AudioTrackDecoder;
     audioContext: AudioContext;
-    worklet?: AudioWorkletNode;
+    // worklet?: AudioWorkletNode;
     #muted: boolean = false;
     #unmuteVolume: number;
     #rampMs: number;
+
+    #initWorklet: () => Promise<AudioWorkletNode>;
 
     #cancelFunc: CancelCauseFunc
     #ctx: Context;
@@ -32,12 +36,11 @@ export class AudioOffloader {
     gainNode?: GainNode;
 
     constructor(init: AudioOffloaderInit) {
-        this.source = init.source;
         [this.#ctx, this.#cancelFunc] = withCancelCause(background());
-        const sampleRate = init.decoderConfig.sampleRate;
-        this.audioContext = new AudioContext({
+
+        this.audioContext = init.audioContext || new AudioContext({
             latencyHint: 'interactive',
-            sampleRate: sampleRate,
+            sampleRate: init.sampleRate,
         });
 
         this.#rampMs = init.volumeRampMs ?? DefaultFadeTime();
@@ -45,66 +48,70 @@ export class AudioOffloader {
         const clampedInitial = this.#clamp(desiredInitialVolume);
         this.#unmuteVolume = clampedInitial === 0 ? DefaultVolume() : clampedInitial;
 
-        this.audioContext.audioWorklet.addModule(
-            new URL('./internal/audio_renderer.ts', import.meta.url)
-        ).then(() => {
-            // Create AudioWorkletNode
-            const worklet = new AudioWorkletNode(
-                this.audioContext,
-                'audio-offloader',
-                {
-                    channelCount: init.decoderConfig.numberOfChannels || 2,
-                    numberOfInputs: 0,
-                    numberOfOutputs: 1,
-                    processorOptions: {
-                        sampleRate: sampleRate,
-                        latency: init.latency || 100, // Default to 100ms if not specified
-                    },
-                }
-            );
+        // Initialize worklet asynchronously (similar to VideoRenderer pattern)
+        this.#initWorklet = async () => {
+            try {
+                const workletUrl = importWorkletUrl();
+                console.debug("loading audio offload worklet from", workletUrl);
+                await this.audioContext.audioWorklet.addModule(workletUrl);
 
-            const gainNode = new GainNode(this.audioContext, { gain: clampedInitial });
-            worklet.connect(gainNode);
-            gainNode.connect(this.audioContext.destination);
+                // Create AudioWorkletNode
+                const worklet = new AudioWorkletNode(
+                    this.audioContext,
+                    'AudioOffloader',
+                    {
+                        channelCount: init.numberOfChannels || 2,
+                        numberOfInputs: 0,
+                        numberOfOutputs: 1,
+                        processorOptions: {
+                            sampleRate: init.sampleRate || this.audioContext.sampleRate,
+                            latency: init.latency || 100, // Default to 100ms if not specified
+                        },
+                    }
+                );
 
-            // Set the nodes to fields
-            this.worklet = worklet;
-            this.gainNode = gainNode;
+                const gainNode = new GainNode(this.audioContext, { gain: clampedInitial });
+                worklet.connect(gainNode);
+                gainNode.connect(this.audioContext.destination);
 
-            // Ensure clean up on context done
-            this.#ctx.done().then(async () => {
-                await Promise.all([
-                    gainNode.disconnect(),
-                    worklet.disconnect(),
-                ]);
-                this.audioContext.close();
-            });
-        }).catch((error) => {
-            console.error('failed to load AudioWorklet module:', error);
-        });
+                // Set the nodes to fields
+                this.gainNode = gainNode;
 
-        // Set up the decode callback to send audio data to worklet
-        this.source.decodeTo({
-            output: ({done, value: frame}) => {
-                if (done || !frame) {
-                    return;
-                }
+                // Ensure clean up on context done
+                this.#ctx.done().then(async () => {
+                    gainNode.disconnect();
+                    worklet.disconnect();
+                    if (!init.audioContext) { // Only close if we created the context
+                        await this.audioContext.close();
+                    }
+                });
 
-                this.#emitAudioData(frame);
-            },
-            error: (error) => {
-                // TODO: Handle decoding errors
-                console.error('audio decoding error:', error);
+                return worklet;
+            } catch (error) {
+                console.error('failed to load AudioWorklet module:', error);
+                throw error;
             }
-        });
+        }
     }
 
-    #emitAudioData(frame: AudioData): void {
-        if (!this.worklet) {
-            frame.close();
-            return;
+    async decoder(): Promise<AudioTrackDecoder> {
+        if (!this.#decoder) {
+            const worklet = await this.#initWorklet();
+
+            // Create new decoder (similar to VideoRenderer pattern)
+            this.#decoder = new AudioTrackDecoder({
+                destination: new WritableStream<AudioData>({
+                    write: (frame) => {
+                        this.#emitAudioData(frame, worklet);
+                    }
+                })
+            });
         }
 
+        return this.#decoder;
+    }
+
+    #emitAudioData(frame: AudioData, worklet: AudioWorkletNode): void {
         // No longer drops frames when muted; gain handles silence for continuity.
         const channels: Float32Array[] = [];
         for (let i = 0; i < frame.numberOfChannels; i++) {
@@ -114,7 +121,7 @@ export class AudioOffloader {
         }
 
         // Send AudioData to the worklet
-        this.worklet.port.postMessage(
+        worklet.port.postMessage(
             {
                 channels: channels,
                 timestamp: frame.timestamp,

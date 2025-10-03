@@ -10,4 +10,4 @@ export const RootSchema = z.object({
 	tracks: z.map(z.string(), TrackSchema), // Map of track names included in this catalog
 });
 
-export type Root = z.infer<typeof RootSchema>;
+export type CatalogRoot = z.infer<typeof RootSchema>;

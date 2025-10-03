@@ -44,7 +44,8 @@ export class EncodedContainer implements Source {
 }
 
 export interface EncodedChunk {
+    type: "key" | "delta"
     byteLength: number
-    timestamp: number
+    timestamp?: number
     copyTo(dest: AllowSharedBufferSource): void
 }

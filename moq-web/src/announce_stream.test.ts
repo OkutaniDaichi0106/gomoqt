@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
 import { AnnouncementWriter, AnnouncementReader, Announcement } from './announce_stream';
 import type { Writer, Reader } from './io';
-import type { Context} from 'golikejs/context';
+import type { Context } from 'golikejs/context';
 import { background, withCancelCause } from 'golikejs/context';
 import type { AnnouncePleaseMessage, AnnounceInitMessage } from './message';
 import { AnnounceMessage } from './message';

@@ -1,123 +1,137 @@
-import { 
-    type GroupSequence, 
-    type Frame,
-    type GroupWriter,
+import {
     ExpiredGroupErrorCode,
-    type GroupErrorCode,
-    PublishAbortedErrorCode 
+    PublishAbortedErrorCode,
+    TrackWriter,
+InternalGroupErrorCode
+} from "@okutanidaichi/moqt";
+import {
+    Mutex,
+    Cond,
+} from "golikejs/sync";
+import type {
+    GroupSequence,
+    Frame,
+    GroupWriter,
+    GroupErrorCode,
 } from "@okutanidaichi/moqt";
 import type { Source } from "@okutanidaichi/moqt/io";
 
-export class GroupCache implements TrackCache {
-    sequence: GroupSequence = 0n;
+export class GroupCache {
+    readonly sequence: GroupSequence;
+    readonly timestamp: number;
     frames: (Frame | Source)[] = [];
-    dests: Map<number, GroupWriter[]> = new Map();
+    // dests: Set<GroupWriter> = new Set();
+    closed: boolean = false;
+    expired: boolean = false;
+    #mutex = new Mutex()
+    #cond: Cond = new Cond(this.#mutex);
 
-    constructor() {}
+    constructor(sequence: GroupSequence, timestamp: number) {
+        this.sequence = sequence;
+        this.timestamp = timestamp;
+    }
 
-    append(sequence: GroupSequence, frame: Frame | Source): void {
-        if (sequence < this.sequence) {
+    async append(frame: Frame | Source): Promise<void> {
+        await this.#mutex.lock();
+
+        if (this.closed) {
+            this.#mutex.unlock();
             return;
         }
+
 
         this.frames.push(frame);
 
-        const frameCount = this.frames.length;
+        // await Promise.allSettled(
+        //     Array.from(this.dests, async (group) => {
+        //         const err = await group.writeFrame(frame)
+        //         if (err) {
+        //             this.dests.delete(group);
+        //         }
+        //     })
+        // );
 
-        const prevDests = this.dests.get(frameCount - 1) || [];
+        this.#mutex.unlock();
 
-        for (const gw of prevDests) {
-            try {
-                gw.writeFrame(frame);
-                // Shift the current group writers for the next frame
-                if (!this.dests.has(frameCount)) {
-                    this.dests.set(frameCount, []);
-                }
-                this.dests.get(frameCount)!.push(gw);
-            } catch (err) {
-                // Continue on error
-                continue;
-            }
-        }
-
-        // Clear the previous group writers
-        this.dests.set(frameCount - 1, []);
+        this.#cond.broadcast();
     }
 
-    expire(sequence: GroupSequence): void {
-        if (sequence < this.sequence) {
-            return;
-        }
+    async flush(group: GroupWriter): Promise<void> {
+        await this.#mutex.lock();
 
-        this.sequence = sequence;
-        const frameCount = this.frames.length;
-        for (const [k, groups] of this.dests) {
-            const last = k === frameCount;
-            for (const gw of groups) {
-                if (last) {
-                    gw.close();
-                } else {
-                    gw.cancel(ExpiredGroupErrorCode, "new group was arrived"); // TODO: Use more appropriate error code
-                }
-		    }
-	    }
-	    this.frames.length = 0;
-    }
-
-    async flush(gw: GroupWriter): Promise<void> {
-        if (gw.groupSequence !== this.sequence) {
-            return;
-        }
-
-        const frameCount = this.frames.length;
-
-        // Add gw to dests
-        if (!this.dests.has(frameCount)) {
-            this.dests.set(frameCount, []);
-        }
-        this.dests.get(frameCount)!.push(gw);
-
-        // Create a snapshot of current frames to avoid race conditions
-        // This is efficient - just copies the array reference, not the data
-        const frames = [...this.frames];
-
-        // Write frames to gw
-        for (const frame of frames) {
+        // Write current frames to group
+        let err: Error | undefined;
+        for (const frame of this.frames) {
             if (frame) {
-                gw.writeFrame(frame);
+                err = await group.writeFrame(frame);
+                if (err) {
+                    group.cancel(InternalGroupErrorCode, `failed to write frame: ${err.message}`); // TODO: Is this correct?
+                    this.#mutex.unlock();
+                    return;
+                }
+            }
+        }
+
+        let framesCount = this.frames.length;
+
+        this.#mutex.unlock();
+
+        while (true) {
+            while (framesCount < this.frames.length) {
+                const frame = this.frames[framesCount];
+                err = await group.writeFrame(frame!);
+                if (err) {
+                    group.cancel(InternalGroupErrorCode, `failed to write frame: ${err.message}`); // TODO: Is this correct?
+                    return;
+                }
+                framesCount++;
+            }
+            await this.#cond.wait();
+
+            if (this.closed) {
+                group.close();
+                return;
+            } else if (this.expired) {
+                group.cancel(ExpiredGroupErrorCode, `cache expired`);
+                return;
             }
         }
     }
 
-    close(): void {
-        for (const groups of this.dests.values()) {
-            for (const gw of groups) {
-                gw.close();
-            }
+    async close(): Promise<void> {
+        await this.#mutex.lock();
+
+        if (this.closed) {
+            this.#mutex.unlock();
+            return;
         }
 
-        this.frames.length = 0;
+        this.closed = true;
 
-        this.dests.clear();
+        this.#mutex.unlock();
+
+        this.#cond.broadcast();
     }
 
-    closeWithError(reason: string): void {
-        for (const groups of this.dests.values()) {
-            for (const gw of groups) {
-                gw.cancel(PublishAbortedErrorCode, `cache closed: ${reason}`);
-            }
+    async expire(): Promise<void> {
+        await this.#mutex.lock();
+
+        if (this.expired) {
+            this.#mutex.unlock();
+            return;
         }
+
+        this.expired = true;
 
         this.frames.length = 0;
 
-        this.dests.clear();
+        this.#mutex.unlock();
+
+        this.#cond.broadcast();
     }
 }
 
 export interface TrackCache {
-    append(sequence: GroupSequence, frame: Frame | Source): void;
-    flush(gw: GroupWriter): Promise<void>;
-    expire(sequence: GroupSequence): void;
-    close(): void;
-    closeWithError(reason: string): void;
+    store(group: GroupCache): void;
+    close(): Promise<void>;
 }

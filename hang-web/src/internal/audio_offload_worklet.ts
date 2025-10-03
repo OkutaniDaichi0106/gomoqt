@@ -1,6 +1,12 @@
-import { number } from "zod";
-// AudioWorkletProcessor for AudioEmitter
-class AudioOffloadProcessor extends AudioWorkletProcessor {
+// URL getter function for main thread import
+export function importUrl(): string {
+	return new URL('./audio_offload_worklet.js', import.meta.url).href;
+}
+
+// Check if we're in a worklet context
+if (typeof AudioWorkletProcessor !== 'undefined') {
+	// AudioWorkletProcessor for AudioEmitter
+	class AudioOffloadProcessor extends AudioWorkletProcessor {
 
     #channelsBuffer: Float32Array[] = [];
 
@@ -140,4 +146,5 @@ class AudioOffloadProcessor extends AudioWorkletProcessor {
     }
 }
 
-registerProcessor('audio-offloader', AudioOffloadProcessor);
+	registerProcessor('audio-offloader', AudioOffloadProcessor);
+}

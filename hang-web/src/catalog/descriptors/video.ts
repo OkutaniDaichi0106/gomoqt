@@ -3,6 +3,25 @@ import { uint8Schema, uint53Schema } from "../integers"
 import { ContainerSchema } from "../container"
 import { TrackSchema } from "../track"
 
+// Helper function to convert hex string to Uint8Array
+const hexStringToUint8Array = (hexString: string): Uint8Array => {
+	// Remove any whitespace or prefixes like '0x'
+	const cleanHex = hexString.replace(/\s+/g, '').replace(/^0x/i, '');
+	
+	// Validate hex string format
+	if (!/^[0-9a-fA-F]*$/.test(cleanHex)) {
+		throw new Error(`Invalid hex string: ${hexString}`);
+	}
+	
+	// Convert hex string to Uint8Array
+	const bytes = new Uint8Array(cleanHex.length / 2);
+	for (let i = 0; i < cleanHex.length; i += 2) {
+		bytes[i / 2] = parseInt(cleanHex.substr(i, 2), 16);
+	}
+	
+	return bytes;
+};
+
 // Based on VideoDecoderConfig
 // Copied and modified from https://github.com/kixelated/moq/tree/main/js/hang/src/catalog/video.ts
 // Original code is licensed under Apache 2.0 License (https://github.com/kixelated/moq/blob/main/LICENSE)
@@ -13,7 +32,11 @@ export const VideoConfigSchema = z.object({
 	// The description is used for some codecs.
 	// If provided, we can initialize the decoder based on the catalog alone.
 	// Otherwise, the initialization information is (repeated) before each key-frame.
-	description: z.string().optional(), // hex encoded TODO use base64
+	// Accept both string (hex) and Uint8Array, always output as Uint8Array
+	description: z.union([
+		z.string().transform(hexStringToUint8Array),
+		z.instanceof(Uint8Array)
+	]).optional(),
 
 	// The width and height of the video in pixels
 	codedWidth: uint53Schema.optional(),
@@ -56,4 +79,4 @@ export const VideoTrackSchema = TrackSchema.extend({
 	config: VideoConfigSchema,
 });
 
-export type VideoTrack = z.infer<typeof VideoTrackSchema>;
+export type VideoTrackDescriptor = z.infer<typeof VideoTrackSchema>;

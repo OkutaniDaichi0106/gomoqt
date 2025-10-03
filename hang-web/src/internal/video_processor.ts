@@ -6,9 +6,8 @@ export class VideoTrackProcessor {
 	readonly readable: ReadableStream<VideoFrame>;
 
 	constructor(track: MediaStreamTrack) {
-		// @ts-expect-error No typescript types yet.
 		if (self.MediaStreamTrackProcessor) {
-			// @ts-expect-error No typescript types yet.
+			// @ts-ignore
 			this.readable = new self.MediaStreamTrackProcessor({ track }).readable;
 			return;
 		}

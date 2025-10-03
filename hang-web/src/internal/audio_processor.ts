@@ -1,17 +1,12 @@
 import { importWorkletUrl } from './audio_hijack_worklet';
 
-export interface AudioTrackProcessorOptions {
-    targetChannels?: number;
-}
-
 export class AudioTrackProcessor {
     readonly readable: ReadableStream<AudioData>;
     readonly gain: GainNode;
 
-    constructor(track: MediaStreamTrack, options: AudioTrackProcessorOptions = {}) {
-        // @ts-expect-error No typescript types yet.
+    constructor(track: MediaStreamTrack) {
         if (self.MediaStreamTrackProcessor) {
-            // @ts-expect-error No typescript types yet.
+            // @ts-ignore
             this.readable = new self.MediaStreamTrackProcessor({ track }).readable;
         }
 
@@ -46,7 +41,7 @@ export class AudioTrackProcessor {
                     channelCount: settings.channelCount,
                     processorOptions: {
                         sampleRate: context.sampleRate,
-                        targetChannels: options.targetChannels || settings.channelCount || 1,
+                        targetChannels: settings.channelCount || 1,
                     },
                 });
 

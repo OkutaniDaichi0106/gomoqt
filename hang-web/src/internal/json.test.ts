@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach, jest } from 'vitest';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
     JsonEncoder,
     JsonDecoder,

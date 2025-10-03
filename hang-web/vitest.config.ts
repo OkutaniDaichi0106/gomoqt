@@ -27,6 +27,12 @@ export default defineConfig({
       inline: ['golikejs'],
     },
     include: ['src/**/*.test.ts'],
+    poolOptions: {
+      threads: {
+        maxThreads: 4,
+        minThreads: 2,
+      },
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

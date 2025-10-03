@@ -1,5 +1,4 @@
-// @ts-nocheck
-import { describe, test, expect, beforeEach, afterEach } from 'vitest';
+import { describe, test, expect, beforeEach, afterEach, vi, beforeAll, afterAll } from 'vitest';
 import { VideoRenderer, VideoRendererInit } from "./video_renderer";
 import { VideoTrackDecoder } from "./internal";
 
@@ -8,20 +7,32 @@ vi.mock("./internal", () => ({
     VideoTrackDecoder: vi.fn()
 }));
 
+// Test constants
+const DEFAULT_CANVAS_WIDTH = 320;
+const DEFAULT_CANVAS_HEIGHT = 240;
+const DEFAULT_INTERSECTION_THRESHOLD = 0.01;
+const ASYNC_FRAME_DELAY = 5; // Reduced delay for animation frame processing
+const RAPID_FRAME_DELAY = 10; // Reduced delay for multiple frame processing
+const MAX_ANIMATION_FRAME_ID = 1000; // Upper bound for random animation frame IDs
+
+// Mock canvas context
 const mockCanvasContext = {
     clearRect: vi.fn(),
     drawImage: vi.fn()
 } as any;
 
+// Mock canvas element
 const mockCanvas = {
-    width: 320,
-    height: 240,
+    width: DEFAULT_CANVAS_WIDTH,
+    height: DEFAULT_CANVAS_HEIGHT,
     getContext: vi.fn(() => mockCanvasContext)
 } as any;
 
+// Mock IntersectionObserver with proper typing
 const mockIntersectionObserver = {
     observe: vi.fn(),
     disconnect: vi.fn(),
+    unobserve: vi.fn(),
     takeRecords: vi.fn(() => []),
     root: null,
     rootMargin: '',
@@ -31,7 +42,7 @@ const mockIntersectionObserver = {
 } as any;
 
 let createElementSpy: any;
-let intersectionObserverConstructor: vi.mock;
+let intersectionObserverConstructor: any;
 
 const originalIntersectionObserver = global.IntersectionObserver;
 const originalRequestAnimationFrame = global.requestAnimationFrame;
@@ -70,16 +81,20 @@ afterAll(() => {
 
 describe("VideoRenderer", () => {
     beforeEach(() => {
+        // Reset all mocks to ensure test isolation
         vi.clearAllMocks();
 
-        mockCanvas.width = 320;
-        mockCanvas.height = 240;
+        // Reset canvas mock to default state
+        mockCanvas.width = DEFAULT_CANVAS_WIDTH;
+        mockCanvas.height = DEFAULT_CANVAS_HEIGHT;
         mockCanvas.getContext.mockReset();
         mockCanvas.getContext.mockImplementation(() => mockCanvasContext);
 
+        // Reset canvas context methods
         mockCanvasContext.clearRect.mockReset();
         mockCanvasContext.drawImage.mockReset();
 
+        // Setup document.createElement spy to return mock canvas
         createElementSpy.mockReset();
         createElementSpy.mockImplementation((tagName: string, options?: ElementCreationOptions) => {
             if (tagName === 'canvas') {
@@ -88,12 +103,14 @@ describe("VideoRenderer", () => {
             return nativeCreateElement(tagName, options);
         });
 
+        // Reset IntersectionObserver mock
         mockIntersectionObserver.observe.mockReset();
         mockIntersectionObserver.disconnect.mockReset();
         mockIntersectionObserver.takeRecords.mockReset();
         mockIntersectionObserver.callback = undefined;
         mockIntersectionObserver.options = undefined;
 
+        // Create fresh IntersectionObserver constructor mock
         intersectionObserverConstructor = vi.fn((callback, options) => {
             mockIntersectionObserver.callback = callback as IntersectionObserverCallback;
             mockIntersectionObserver.options = options as IntersectionObserverInit | undefined;
@@ -101,14 +118,18 @@ describe("VideoRenderer", () => {
         });
         global.IntersectionObserver = intersectionObserverConstructor as unknown as typeof IntersectionObserver;
 
+        // Mock requestAnimationFrame to execute callbacks asynchronously
         global.requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
-            const id = Math.floor(Math.random() * 1000);
+            // Generate random ID to simulate browser behavior
+            const id = Math.floor(Math.random() * MAX_ANIMATION_FRAME_ID);
+            // Execute callback asynchronously
             setTimeout(() => callback(performance.now()), 0);
             return id;
         });
 
         global.cancelAnimationFrame = vi.fn();
 
+        // Spy on console methods to verify logging behavior
         console.log = vi.fn();
         console.warn = vi.fn();
     });
@@ -264,7 +285,7 @@ describe("VideoRenderer", () => {
     describe("decoder()", () => {
         test("creates and returns decoder on first call", async () => {
             const mockDecoderInstance = { decoder: 'mock' };
-            (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mockImplementation(() => mockDecoderInstance as any);
+            (VideoTrackDecoder as any).mockImplementation(() => mockDecoderInstance as any);
 
             const renderer = new VideoRenderer();
             const decoder = await renderer.decoder();
@@ -277,7 +298,7 @@ describe("VideoRenderer", () => {
 
         test("returns cached decoder on subsequent calls", async () => {
             const mockDecoderInstance = { decoder: 'mock' };
-            (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mockImplementation(() => mockDecoderInstance as any);
+            (VideoTrackDecoder as any).mockImplementation(() => mockDecoderInstance as any);
 
             const renderer = new VideoRenderer();
             
@@ -290,13 +311,13 @@ describe("VideoRenderer", () => {
 
         test("writable stream processes video frames", async () => {
             const mockDecoderInstance = { decoder: 'mock' };
-            (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mockImplementation(() => mockDecoderInstance as any);
+            (VideoTrackDecoder as any).mockImplementation(() => mockDecoderInstance as any);
 
             const renderer = new VideoRenderer();
             await renderer.decoder();
 
             // Get the WritableStream from the decoder constructor
-            const decoderCall = (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mock.calls[0][0];
+            const decoderCall = (VideoTrackDecoder as any).mock.calls[0][0];
             const writableStream = decoderCall.destination;
 
             // Mock VideoFrame
@@ -316,8 +337,8 @@ describe("VideoRenderer", () => {
     describe("Frame Rendering", () => {
         beforeEach(() => {
             // Reset requestAnimationFrame mock to control execution
-            (global.requestAnimationFrame as vi.mock).mockImplementation((callback) => {
-                const id = Math.floor(Math.random() * 1000);
+            (global.requestAnimationFrame as any).mockImplementation((callback) => {
+                const id = Math.floor(Math.random() * MAX_ANIMATION_FRAME_ID);
                 callback(); // Execute immediately for testing
                 return id;
             });
@@ -325,13 +346,13 @@ describe("VideoRenderer", () => {
 
         test("renders video frame when visible", async () => {
             const mockDecoderInstance = { decoder: 'mock' };
-            (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mockImplementation(() => mockDecoderInstance as any);
+            (VideoTrackDecoder as any).mockImplementation(() => mockDecoderInstance as any);
 
             const renderer = new VideoRenderer();
             renderer.isVisible = true;
             await renderer.decoder();
 
-            const decoderCall = (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mock.calls[0][0];
+            const decoderCall = (VideoTrackDecoder as any).mock.calls[0][0];
             const writableStream = decoderCall.destination;
 
             const mockVideoFrame = {
@@ -342,7 +363,7 @@ describe("VideoRenderer", () => {
             await writer.write(mockVideoFrame);
 
             // Wait for animation frame to process
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, ASYNC_FRAME_DELAY));
 
             expect(mockCanvasContext.clearRect).toHaveBeenCalledWith(0, 0, 320, 240);
             expect(mockCanvasContext.drawImage).toHaveBeenCalledWith(mockVideoFrame, 0, 0, 320, 240);
@@ -351,13 +372,13 @@ describe("VideoRenderer", () => {
 
         test("skips rendering when not visible", async () => {
             const mockDecoderInstance = { decoder: 'mock' };
-            (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mockImplementation(() => mockDecoderInstance as any);
+            (VideoTrackDecoder as any).mockImplementation(() => mockDecoderInstance as any);
 
             const renderer = new VideoRenderer();
             renderer.isVisible = false;
             await renderer.decoder();
 
-            const decoderCall = (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mock.calls[0][0];
+            const decoderCall = (VideoTrackDecoder as any).mock.calls[0][0];
             const writableStream = decoderCall.destination;
 
             const mockVideoFrame = {
@@ -367,7 +388,7 @@ describe("VideoRenderer", () => {
             const writer = writableStream.getWriter();
             await writer.write(mockVideoFrame);
 
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, ASYNC_FRAME_DELAY));
 
             expect(mockCanvasContext.clearRect).not.toHaveBeenCalled();
             expect(mockCanvasContext.drawImage).not.toHaveBeenCalled();
@@ -376,7 +397,7 @@ describe("VideoRenderer", () => {
 
         test("handles custom delay function", async () => {
             const mockDecoderInstance = { decoder: 'mock' };
-            (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mockImplementation(() => mockDecoderInstance as any);
+            (VideoTrackDecoder as any).mockImplementation(() => mockDecoderInstance as any);
 
             const delayFunc = vi.fn(() => Promise.resolve());
             const renderer = new VideoRenderer();
@@ -384,7 +405,7 @@ describe("VideoRenderer", () => {
             renderer.isVisible = true;
             await renderer.decoder();
 
-            const decoderCall = (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mock.calls[0][0];
+            const decoderCall = (VideoTrackDecoder as any).mock.calls[0][0];
             const writableStream = decoderCall.destination;
 
             const mockVideoFrame = {
@@ -394,7 +415,7 @@ describe("VideoRenderer", () => {
             const writer = writableStream.getWriter();
             await writer.write(mockVideoFrame);
 
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, ASYNC_FRAME_DELAY));
 
             expect(delayFunc).toHaveBeenCalledTimes(1);
             expect(console.log).toHaveBeenCalledWith('Rendering delayed');
@@ -403,11 +424,11 @@ describe("VideoRenderer", () => {
 
         test("cancels previous animation frame when new frame arrives", async () => {
             const mockDecoderInstance = { decoder: 'mock' };
-            (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mockImplementation(() => mockDecoderInstance as any);
+            (VideoTrackDecoder as any).mockImplementation(() => mockDecoderInstance as any);
 
             const animationIds: number[] = [];
-            (global.requestAnimationFrame as vi.mock).mockImplementation((callback) => {
-                const id = Math.floor(Math.random() * 1000);
+            (global.requestAnimationFrame as any).mockImplementation((callback) => {
+                const id = Math.floor(Math.random() * MAX_ANIMATION_FRAME_ID);
                 animationIds.push(id);
                 setTimeout(() => callback(performance.now()), 0);
                 return id;
@@ -416,7 +437,7 @@ describe("VideoRenderer", () => {
             const renderer = new VideoRenderer();
             await renderer.decoder();
 
-            const decoderCall = (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mock.calls[0][0];
+            const decoderCall = (VideoTrackDecoder as any).mock.calls[0][0];
             const writableStream = decoderCall.destination;
 
             const mockVideoFrame1 = { close: vi.fn() } as unknown as VideoFrame;
@@ -438,24 +459,24 @@ describe("VideoRenderer", () => {
 
         test("handles undefined frame gracefully", async () => {
             const mockDecoderInstance = { decoder: 'mock' };
-            (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mockImplementation(() => mockDecoderInstance as any);
+            (VideoTrackDecoder as any).mockImplementation(() => mockDecoderInstance as any);
 
             const renderer = new VideoRenderer();
             await renderer.decoder();
 
-            const decoderCall = (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mock.calls[0][0];
+            const decoderCall = (VideoTrackDecoder as any).mock.calls[0][0];
             const writableStream = decoderCall.destination;
 
             const writer = writableStream.getWriter();
 
             // Allow any pending animation frames from previous operations to flush
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, ASYNC_FRAME_DELAY));
             mockCanvasContext.clearRect.mockClear();
             mockCanvasContext.drawImage.mockClear();
 
             await writer.write(undefined as any);
 
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, ASYNC_FRAME_DELAY));
 
             // Should not perform any rendering for undefined frames
             expect(mockCanvasContext.clearRect).not.toHaveBeenCalled();
@@ -521,7 +542,7 @@ describe("VideoRenderer", () => {
                     throw new Error("Decoder close failed");
                 })
             };
-            (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mockImplementation(() => mockDecoder as any);
+            (VideoTrackDecoder as any).mockImplementation(() => mockDecoder as any);
 
             const renderer = new VideoRenderer();
             await renderer.decoder(); // Initialize decoder
@@ -536,7 +557,7 @@ describe("VideoRenderer", () => {
             const mockDecoder = {
                 close: vi.fn()
             };
-            (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mockImplementation(() => mockDecoder as any);
+            (VideoTrackDecoder as any).mockImplementation(() => mockDecoder as any);
 
             const renderer = new VideoRenderer();
             await renderer.decoder();
@@ -564,7 +585,7 @@ describe("VideoRenderer", () => {
     describe("Integration Scenarios", () => {
         test("complete video rendering pipeline", async () => {
             const mockDecoderInstance = { decoder: 'mock' };
-            (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mockImplementation(() => mockDecoderInstance as any);
+            (VideoTrackDecoder as any).mockImplementation(() => mockDecoderInstance as any);
 
             // Create renderer with custom settings
             const init: VideoRendererInit = {
@@ -594,14 +615,14 @@ describe("VideoRenderer", () => {
             expect(renderer.isVisible).toBe(false);
 
             // Process video frame
-            const decoderCall = (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mock.calls[0][0];
+            const decoderCall = (VideoTrackDecoder as any).mock.calls[0][0];
             const writableStream = decoderCall.destination;
 
             const mockVideoFrame = { close: vi.fn() } as unknown as VideoFrame;
             const writer = writableStream.getWriter();
             await writer.write(mockVideoFrame);
 
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, ASYNC_FRAME_DELAY));
 
             // Should skip rendering due to invisibility
             expect(mockCanvasContext.drawImage).not.toHaveBeenCalled();
@@ -614,7 +635,7 @@ describe("VideoRenderer", () => {
             const mockVideoFrame2 = { close: vi.fn() } as unknown as VideoFrame;
             await writer.write(mockVideoFrame2);
 
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, ASYNC_FRAME_DELAY));
 
             // Should render this time
             expect(mockCanvasContext.clearRect).toHaveBeenCalledWith(0, 0, 640, 480);
@@ -628,7 +649,7 @@ describe("VideoRenderer", () => {
 
         test("background rendering workflow", async () => {
             const mockDecoderInstance = { decoder: 'mock' };
-            (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mockImplementation(() => mockDecoderInstance as any);
+            (VideoTrackDecoder as any).mockImplementation(() => mockDecoderInstance as any);
 
             const renderer = new VideoRenderer({ backgroundRendering: true });
 
@@ -638,14 +659,14 @@ describe("VideoRenderer", () => {
 
             // Get decoder and process frame
             await renderer.decoder();
-            const decoderCall = (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mock.calls[0][0];
+            const decoderCall = (VideoTrackDecoder as any).mock.calls[0][0];
             const writableStream = decoderCall.destination;
 
             const mockVideoFrame = { close: vi.fn() } as unknown as VideoFrame;
             const writer = writableStream.getWriter();
             await writer.write(mockVideoFrame);
 
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, ASYNC_FRAME_DELAY));
 
             // Should always render
             expect(mockCanvasContext.drawImage).toHaveBeenCalledWith(mockVideoFrame, 0, 0, 320, 240);
@@ -654,12 +675,12 @@ describe("VideoRenderer", () => {
 
         test("handles rapid frame processing", async () => {
             const mockDecoderInstance = { decoder: 'mock' };
-            (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mockImplementation(() => mockDecoderInstance as any);
+            (VideoTrackDecoder as any).mockImplementation(() => mockDecoderInstance as any);
 
             const renderer = new VideoRenderer();
             await renderer.decoder();
 
-            const decoderCall = (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mock.calls[0][0];
+            const decoderCall = (VideoTrackDecoder as any).mock.calls[0][0];
             const writableStream = decoderCall.destination;
             const writer = writableStream.getWriter();
 
@@ -673,7 +694,7 @@ describe("VideoRenderer", () => {
                 await writer.write(frame);
             }
 
-            await new Promise(resolve => setTimeout(resolve, 50));
+            await new Promise(resolve => setTimeout(resolve, RAPID_FRAME_DELAY));
 
             // All frames should be closed
             frames.forEach(frame => {
@@ -686,7 +707,7 @@ describe("VideoRenderer", () => {
 
         test("delay function integration", async () => {
             const mockDecoderInstance = { decoder: 'mock' };
-            (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mockImplementation(() => mockDecoderInstance as any);
+            (VideoTrackDecoder as any).mockImplementation(() => mockDecoderInstance as any);
 
             let delayResolve: () => void;
             const delayPromise = new Promise<void>(resolve => {
@@ -698,14 +719,14 @@ describe("VideoRenderer", () => {
             renderer.delay(delayFunc);
             await renderer.decoder();
 
-            const decoderCall = (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mock.calls[0][0];
+            const decoderCall = (VideoTrackDecoder as any).mock.calls[0][0];
             const writableStream = decoderCall.destination;
 
             const mockVideoFrame = { close: vi.fn() } as unknown as VideoFrame;
             const writer = writableStream.getWriter();
             await writer.write(mockVideoFrame);
 
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, ASYNC_FRAME_DELAY));
 
             // Should call delay function but not render yet
             expect(delayFunc).toHaveBeenCalledTimes(1);
@@ -713,7 +734,7 @@ describe("VideoRenderer", () => {
 
             // Resolve delay
             delayResolve!();
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, ASYNC_FRAME_DELAY));
 
             // Now should render
             expect(mockCanvasContext.drawImage).toHaveBeenCalledWith(mockVideoFrame, 0, 0, 320, 240);
@@ -746,19 +767,19 @@ describe("VideoRenderer", () => {
 
         test("handles rendering with invalid canvas dimensions", async () => {
             const mockDecoderInstance = { decoder: 'mock' };
-            (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mockImplementation(() => mockDecoderInstance as any);
+            (VideoTrackDecoder as any).mockImplementation(() => mockDecoderInstance as any);
 
             const renderer = new VideoRenderer({ width: 0, height: 0 });
             await renderer.decoder();
 
-            const decoderCall = (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mock.calls[0][0];
+            const decoderCall = (VideoTrackDecoder as any).mock.calls[0][0];
             const writableStream = decoderCall.destination;
 
             const mockVideoFrame = { close: vi.fn() } as unknown as VideoFrame;
             const writer = writableStream.getWriter();
             await writer.write(mockVideoFrame);
 
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, ASYNC_FRAME_DELAY));
 
             // Should still attempt to render
             expect(mockCanvasContext.clearRect).toHaveBeenCalledWith(0, 0, 0, 0);
@@ -767,14 +788,14 @@ describe("VideoRenderer", () => {
 
         test("handles delay function that throws error", async () => {
             const mockDecoderInstance = { decoder: 'mock' };
-            (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mockImplementation(() => mockDecoderInstance as any);
+            (VideoTrackDecoder as any).mockImplementation(() => mockDecoderInstance as any);
 
             const delayFunc = vi.fn(() => Promise.reject(new Error("Delay failed")));
             const renderer = new VideoRenderer();
             renderer.delay(delayFunc);
             await renderer.decoder();
 
-            const decoderCall = (VideoTrackDecoder as vi.mockedClass<typeof VideoTrackDecoder>).mock.calls[0][0];
+            const decoderCall = (VideoTrackDecoder as any).mock.calls[0][0];
             const writableStream = decoderCall.destination;
 
             const mockVideoFrame = { close: vi.fn() } as unknown as VideoFrame;
@@ -783,7 +804,7 @@ describe("VideoRenderer", () => {
             // Should handle delay error gracefully
             await expect(writer.write(mockVideoFrame)).resolves.toBeUndefined();
             
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, ASYNC_FRAME_DELAY));
             
             expect(delayFunc).toHaveBeenCalledTimes(1);
             expect(mockVideoFrame.close).toHaveBeenCalledTimes(1);

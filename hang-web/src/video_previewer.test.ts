@@ -188,6 +188,7 @@ describe('VideoPreviewer', () => {
         
         // Reset VideoTrackEncoder mock
         vi.mocked(VideoTrackEncoder).mockClear();
+        mockVideoTrackEncoder.close.mockClear().mockResolvedValue(undefined);
     });
 
     afterEach(() => {

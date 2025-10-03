@@ -434,7 +434,7 @@ describe("Device", () => {
             // Mock a slow getUserMedia that exceeds timeout
             mockGetUserMedia.mockImplementation(() => 
                 new Promise((resolve, reject) => {
-                    setTimeout(() => reject(new Error("Timeout")), 100);
+                    setTimeout(() => reject(new Error("Timeout")), 10);
                 })
             );
 

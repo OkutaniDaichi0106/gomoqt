@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach, jest } from 'vitest';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 // Mock the external dependencies before importing the module under test
 vi.mock("@okutanidaichi/moqt", () => ({
     PublishAbortedErrorCode: 100,
@@ -306,12 +306,12 @@ describe("CatalogTrackEncoder", () => {
             const configurePromise = encoder.configure(config);
             
             // Close the encoder to ensure the configure method doesn't hang indefinitely
-            setTimeout(() => encoder.close(), 100);
+            setTimeout(() => encoder.close(), 10);
             
             try {
                 await Promise.race([
                     configurePromise,
-                    new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 1000))
+                    new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 100))
                 ]);
             } catch (error) {
                 // Expected to timeout or throw error when encoder is closed
@@ -563,7 +563,7 @@ describe("CatalogTrackEncoder and CatalogTrackDecoder Integration", () => {
 describe("Error Handling", () => {
     test("encoder handles encoding errors gracefully", async () => {
         const encoder = new CatalogTrackEncoder({});
-        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation();
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
         // This should trigger error handling in the encoder
         await encoder.close(new Error("Test encoding error"));
@@ -574,7 +574,7 @@ describe("Error Handling", () => {
 
     test("decoder handles decoding errors gracefully", async () => {
         const decoder = new CatalogTrackDecoder({});
-        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation();
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
         await decoder.close(new Error("Test decoding error"));
 

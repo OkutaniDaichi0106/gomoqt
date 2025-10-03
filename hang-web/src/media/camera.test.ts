@@ -1,8 +1,9 @@
-import { describe, test, expect, beforeEach, jest } from 'vitest';
+import { describe, test, expect, beforeEach, vi, type Mock, type MockedClass } from 'vitest';
+import type { Mocked } from 'vitest';
 import { Camera, CameraProps } from "./camera";
 import { Device } from "./device";
 
-// Mock the Device class
+// Mock the Device class to isolate Camera behavior from actual device access
 vi.mock("./device", () => ({
     Device: vi.fn().mockImplementation(() => ({
         getTrack: vi.fn(),
@@ -11,7 +12,7 @@ vi.mock("./device", () => ({
 }));
 
 describe("Camera", () => {
-    let mockDevice: vi.mocked<Device>;
+    let mockDevice: Mocked<Device>;
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -20,8 +21,8 @@ describe("Camera", () => {
             getTrack: vi.fn(),
             close: vi.fn(),
         } as any;
-        
-        (Device as vi.mockedClass<typeof Device>).mockReturnValue(mockDevice);
+
+        (Device as MockedClass<typeof Device>).mockReturnValue(mockDevice);
     });
 
     describe("Constructor", () => {

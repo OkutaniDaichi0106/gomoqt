@@ -1,4 +1,5 @@
-import { describe, test, expect, beforeEach, afterEach, jest } from 'vitest';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
+import type { MockedFunction } from 'vitest';
 
 // Mock the external dependencies before importing the module under test
 vi.mock("@okutanidaichi/moqt/io", () => ({
@@ -18,6 +19,16 @@ vi.mock("@okutanidaichi/moqt/io", () => ({
 import { EncodedContainer } from "./container";
 import type { EncodedChunk } from "./container";
 import { writeVarint, varintLen } from "@okutanidaichi/moqt/io";
+
+// Type-safe mock functions
+const mockWriteVarint = writeVarint as MockedFunction<typeof writeVarint>;
+const mockVarintLen = varintLen as MockedFunction<typeof varintLen>;
+
+// Test constants
+const SMALL_BUFFER_SIZE = 4;
+const MEDIUM_BUFFER_SIZE = 10;
+const LARGE_CHUNK_SIZE = 10000;
+const STRESS_TEST_ITERATIONS = 1000;
 
 // Mock implementation of EncodedChunk for testing
 class MockEncodedChunk implements EncodedChunk {
@@ -57,13 +68,15 @@ class MockEncodedChunk implements EncodedChunk {
 
 describe("EncodedContainer", () => {
     beforeEach(() => {
-        // Reset mocks before each test
+        // Reset mocks before each test to ensure isolation
         vi.clearAllMocks();
-        (writeVarint as vi.mock).mockImplementation((dest: Uint8Array, value: number) => {
+        
+        // Set up default mock behavior
+        mockWriteVarint.mockImplementation((dest: Uint8Array, value: number) => {
             dest[0] = value & 0xFF;
             return 1;
         });
-        (varintLen as vi.mock).mockImplementation((value: number) => 1);
+        mockVarintLen.mockImplementation((value: number | bigint) => 1);
     });
 
     describe("constructor", () => {
@@ -124,16 +137,20 @@ describe("EncodedContainer", () => {
     });
 
     describe("copyTo", () => {
-        test("copies to Uint8Array destination", () => {
+        test("copies to Uint8Array destination with correct format", () => {
             const sourceData = new Uint8Array([1, 2, 3]);
             const mockChunk = new MockEncodedChunk(sourceData);
             const container = new EncodedContainer(mockChunk);
 
-            const dest = new Uint8Array(10);
+            const dest = new Uint8Array(MEDIUM_BUFFER_SIZE);
             container.copyTo(dest);
 
-            expect(writeVarint).toHaveBeenCalledWith(dest, 3);
-            expect(varintLen).toHaveBeenCalledWith(3);
+            // Verify varint encoding is called with correct length
+            expect(mockWriteVarint).toHaveBeenCalledWith(dest, 3);
+            expect(mockVarintLen).toHaveBeenCalledWith(3);
+            
+            // Verify actual data is written after varint (starting at index 1)
+            expect(dest.subarray(1, 4)).toEqual(sourceData);
         });
 
         test("copies to ArrayBuffer destination", () => {
@@ -178,10 +195,10 @@ describe("EncodedContainer", () => {
             const mockChunk = new MockEncodedChunk(sourceData);
             const container = new EncodedContainer(mockChunk);
 
-            // Mock varintLen to return 1, so total required is 6 bytes
-            (varintLen as vi.mock).mockReturnValue(1);
+            // Mock varintLen to return 1, so total required is 6 bytes (1 + 5)
+            mockVarintLen.mockReturnValue(1);
 
-            const dest = new Uint8Array(4); // Too small
+            const dest = new Uint8Array(SMALL_BUFFER_SIZE); // Too small (4 bytes < 6 bytes needed)
             
             expect(() => container.copyTo(dest)).toThrow("Destination buffer is too small");
         });
@@ -201,10 +218,10 @@ describe("EncodedContainer", () => {
             const mockChunk = new MockEncodedChunk(sourceData);
             const container = new EncodedContainer(mockChunk);
 
-            // Mock varintLen to return 1, so total required is 4 bytes
-            (varintLen as vi.mock).mockReturnValue(1);
+            // Mock varintLen to return 1, so total required is 4 bytes (1 + 3)
+            mockVarintLen.mockReturnValue(1);
 
-            const dest = new Uint8Array(4); // Exact size
+            const dest = new Uint8Array(SMALL_BUFFER_SIZE); // Exact size (4 bytes)
             
             expect(() => container.copyTo(dest)).not.toThrow();
         });
@@ -215,29 +232,46 @@ describe("EncodedContainer", () => {
             const copyToSpy = vi.spyOn(mockChunk, 'copyTo');
             const container = new EncodedContainer(mockChunk);
 
-            // Mock varintLen to return 2
-            (varintLen as vi.mock).mockReturnValue(2);
+            // Mock varintLen to return 2 bytes for the length prefix
+            mockVarintLen.mockReturnValue(2);
 
-            const dest = new Uint8Array(10);
+            const dest = new Uint8Array(MEDIUM_BUFFER_SIZE);
             container.copyTo(dest);
 
+            // Verify chunk data is written after the 2-byte varint prefix
             expect(copyToSpy).toHaveBeenCalledWith(dest.subarray(2));
         });
     });
 
     describe("SharedArrayBuffer support", () => {
         test("handles SharedArrayBuffer when available", () => {
-            // Only test if SharedArrayBuffer is supported
+            // SharedArrayBuffer is used in multi-threaded scenarios
             if (typeof SharedArrayBuffer !== "undefined") {
                 const sourceData = new Uint8Array([1, 2, 3]);
                 const mockChunk = new MockEncodedChunk(sourceData);
                 const container = new EncodedContainer(mockChunk);
 
-                const dest = new SharedArrayBuffer(10);
+                const dest = new SharedArrayBuffer(MEDIUM_BUFFER_SIZE);
+                
+                expect(() => container.copyTo(dest)).not.toThrow();
+                expect(mockWriteVarint).toHaveBeenCalled();
+            } else {
+                expect(true).toBe(true);
+            }
+        });
+
+        test("handles SharedArrayBuffer with exact size", () => {
+            if (typeof SharedArrayBuffer !== "undefined") {
+                const sourceData = new Uint8Array([1, 2, 3]);
+                const mockChunk = new MockEncodedChunk(sourceData);
+                const container = new EncodedContainer(mockChunk);
+
+                mockVarintLen.mockReturnValue(1);
+                // Exact size: 1 byte varint + 3 bytes data = 4 bytes
+                const dest = new SharedArrayBuffer(SMALL_BUFFER_SIZE);
                 
                 expect(() => container.copyTo(dest)).not.toThrow();
             } else {
-                // Skip test if SharedArrayBuffer is not available
                 expect(true).toBe(true);
             }
         });
@@ -248,8 +282,9 @@ describe("EncodedContainer", () => {
             const mockChunk = new MockEncodedChunk(new Uint8Array(0));
             const container = new EncodedContainer(mockChunk);
 
-            const dest = new Uint8Array(10);
-            
+            expect(container.byteLength).toBe(0);
+
+            const dest = new Uint8Array(MEDIUM_BUFFER_SIZE);
             expect(() => container.copyTo(dest)).not.toThrow();
         });
 
@@ -260,7 +295,7 @@ describe("EncodedContainer", () => {
             });
             const container = new EncodedContainer(mockChunk);
 
-            const dest = new Uint8Array(10);
+            const dest = new Uint8Array(MEDIUM_BUFFER_SIZE);
             
             expect(() => container.copyTo(dest)).toThrow("Chunk copy error");
         });
@@ -269,18 +304,35 @@ describe("EncodedContainer", () => {
             const mockChunk = new MockEncodedChunk(new Uint8Array([1, 2, 3]));
             const container = new EncodedContainer(mockChunk);
 
-            (writeVarint as vi.mock).mockImplementationOnce(() => {
+            // Simulate writeVarint failure (e.g., invalid buffer state)
+            mockWriteVarint.mockImplementationOnce(() => {
                 throw new Error("Varint write error");
             });
 
-            const dest = new Uint8Array(10);
+            const dest = new Uint8Array(MEDIUM_BUFFER_SIZE);
             
             expect(() => container.copyTo(dest)).toThrow("Varint write error");
+        });
+
+        test("handles destination without byteLength property", () => {
+            const mockChunk = new MockEncodedChunk(new Uint8Array([1, 2, 3]));
+            const container = new EncodedContainer(mockChunk);
+
+            // Create object that looks like a buffer but has no byteLength
+            const fakeBuffer = new Uint8Array(MEDIUM_BUFFER_SIZE);
+            Object.defineProperty(fakeBuffer, 'byteLength', {
+                value: undefined,
+                configurable: true
+            });
+
+            // Should still work - code handles missing byteLength
+            expect(() => container.copyTo(fakeBuffer)).not.toThrow();
         });
     });
 
     describe("Boundary Value Tests", () => {
         test("handles maximum safe integer byte length", () => {
+            // Test theoretical maximum to ensure no overflow issues
             const mockChunk = {
                 type: "key" as const,
                 byteLength: Number.MAX_SAFE_INTEGER,
@@ -289,6 +341,16 @@ describe("EncodedContainer", () => {
             const container = new EncodedContainer(mockChunk);
 
             expect(container.byteLength).toBe(Number.MAX_SAFE_INTEGER);
+            
+            // varintLen is only called during copyTo operation
+            const largeBuffer = new Uint8Array(MEDIUM_BUFFER_SIZE);
+            // This will fail size check, but varintLen should be called first
+            try {
+                container.copyTo(largeBuffer);
+            } catch {
+                // Expected to throw due to buffer size
+            }
+            expect(mockVarintLen).toHaveBeenCalledWith(Number.MAX_SAFE_INTEGER);
         });
 
         test("handles single byte chunk", () => {
@@ -297,18 +359,23 @@ describe("EncodedContainer", () => {
 
             expect(container.byteLength).toBe(1);
             
-            const dest = new Uint8Array(10);
+            const dest = new Uint8Array(MEDIUM_BUFFER_SIZE);
             expect(() => container.copyTo(dest)).not.toThrow();
+            
+            // Verify the single byte is written correctly
+            expect(dest[1]).toBe(42);
         });
 
-        test("handles large chunk", () => {
-            // Create a larger chunk to test memory handling
-            const largeData = new Uint8Array(10000);
-            largeData.fill(42);
+        test("handles large chunk efficiently", () => {
+            // Test with 10KB chunk (typical for video frames)
+            const largeData = new Uint8Array(LARGE_CHUNK_SIZE).fill(42);
             const mockChunk = new MockEncodedChunk(largeData);
             const container = new EncodedContainer(mockChunk);
 
-            expect(container.byteLength).toBe(10000);
+            expect(container.byteLength).toBe(LARGE_CHUNK_SIZE);
+            
+            const dest = new Uint8Array(LARGE_CHUNK_SIZE + MEDIUM_BUFFER_SIZE);
+            expect(() => container.copyTo(dest)).not.toThrow();
         });
 
         test("handles chunk without timestamp", () => {
@@ -319,10 +386,24 @@ describe("EncodedContainer", () => {
         });
 
         test("handles chunk with zero timestamp", () => {
+            // Zero timestamp is valid (e.g., start of stream)
             const mockChunk = new MockEncodedChunk(new Uint8Array([1, 2, 3]), "key", 0);
             const container = new EncodedContainer(mockChunk);
 
             expect(container.chunk.timestamp).toBe(0);
+            expect(container.chunk.type).toBe("key");
+        });
+
+        test("handles varint length of zero", () => {
+            const mockChunk = new MockEncodedChunk(new Uint8Array([1, 2, 3]));
+            const container = new EncodedContainer(mockChunk);
+
+            // Edge case: varintLen returns 0 (shouldn't happen but test defensive coding)
+            mockVarintLen.mockReturnValue(0);
+
+            const dest = new Uint8Array(SMALL_BUFFER_SIZE);
+            // With 0-byte varint, only need 3 bytes for data
+            expect(() => container.copyTo(dest)).not.toThrow();
         });
     });
 
@@ -354,11 +435,11 @@ describe("EncodedContainer", () => {
             const mockChunk = new MockEncodedChunk(sourceData);
             const container = new EncodedContainer(mockChunk);
 
-            // Mock varintLen to return 3
-            (varintLen as vi.mock).mockReturnValue(3);
+            // Mock varintLen to return 3 bytes (simulating larger value encoding)
+            mockVarintLen.mockReturnValue(3);
 
-            // Should need 6 bytes total (3 for data + 3 for varint)
-            const dest = new Uint8Array(5); // Too small
+            // Should need 6 bytes total (3 for varint + 3 for data)
+            const dest = new Uint8Array(5); // Too small (5 < 6)
             
             expect(() => container.copyTo(dest)).toThrow("Destination buffer is too small");
         });
@@ -396,47 +477,47 @@ describe("EncodedChunk Interface", () => {
     });
 });
 
-describe("Performance and Memory Tests", () => {
-    test("handles multiple containers efficiently", () => {
-        const containers = Array(100).fill(0).map((_, i) => {
-            const data = new Uint8Array([i % 256]);
+describe("Stress and Stability Tests", () => {
+    test("handles multiple containers with different sizes", () => {
+        // Create containers with varying sizes to test consistency
+        const sizes = [1, 10, 100, 1000];
+        const containers = sizes.map(size => {
+            const data = new Uint8Array(size);
             const chunk = new MockEncodedChunk(data);
             return new EncodedContainer(chunk);
         });
 
         containers.forEach((container, i) => {
-            expect(container.byteLength).toBe(1);
+            expect(container.byteLength).toBe(sizes[i]);
         });
     });
 
-    test("memory usage is predictable for large chunks", () => {
-        const size = 50000;
-        const data = new Uint8Array(size);
+    test("handles large chunk data correctly", () => {
+        // Test with realistic large chunk size (10KB)
+        const data = new Uint8Array(LARGE_CHUNK_SIZE).fill(42);
         const chunk = new MockEncodedChunk(data);
         const container = new EncodedContainer(chunk);
 
-        expect(container.byteLength).toBe(size);
+        expect(container.byteLength).toBe(LARGE_CHUNK_SIZE);
         
-        // Should be able to create destination buffer
-        const dest = new Uint8Array(size + 10);
+        const dest = new Uint8Array(LARGE_CHUNK_SIZE + MEDIUM_BUFFER_SIZE);
         expect(() => container.copyTo(dest)).not.toThrow();
     });
 
-    test("handles rapid successive copyTo operations", () => {
+    test("handles repeated copyTo calls to different buffers", () => {
         const data = new Uint8Array([1, 2, 3, 4, 5]);
         const chunk = new MockEncodedChunk(data);
         const container = new EncodedContainer(chunk);
 
-        // Clear previous calls before counting
         vi.clearAllMocks();
 
-        // Perform many copy operations
-        for (let i = 0; i < 1000; i++) {
+        // Simulate repeated encoding operations (e.g., retransmissions)
+        for (let i = 0; i < STRESS_TEST_ITERATIONS; i++) {
             const dest = new Uint8Array(20);
             container.copyTo(dest);
         }
 
-        expect(writeVarint).toHaveBeenCalledTimes(1000);
+        expect(mockWriteVarint).toHaveBeenCalledTimes(STRESS_TEST_ITERATIONS);
     });
 });
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, jest, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NoOpTrackDecoder } from './track_decoder';
 
 vi.mock('@okutanidaichi/moqt', () => ({

@@ -5,8 +5,8 @@ import {
 InternalGroupErrorCode
 } from "@okutanidaichi/moqt";
 import {
-    Mutex,
     Cond,
+Mutex,
 } from "golikejs/sync";
 import type {
     GroupSequence,
@@ -23,8 +23,8 @@ export class GroupCache {
     // dests: Set<GroupWriter> = new Set();
     closed: boolean = false;
     expired: boolean = false;
-    #mutex = new Mutex()
-    #cond: Cond = new Cond(this.#mutex);
+    #mutex = new Mutex();
+    #cond = new Cond(this.#mutex);
 
     constructor(sequence: GroupSequence, timestamp: number) {
         this.sequence = sequence;
@@ -39,21 +39,12 @@ export class GroupCache {
             return;
         }
 
-
         this.frames.push(frame);
-
-        // await Promise.allSettled(
-        //     Array.from(this.dests, async (group) => {
-        //         const err = await group.writeFrame(frame)
-        //         if (err) {
-        //             this.dests.delete(group);
-        //         }
-        //     })
-        // );
+        
+        // Signal one waiting flush that a new frame is available
+        this.#cond.signal();
 
         this.#mutex.unlock();
-
-        this.#cond.broadcast();
     }
 
     async flush(group: GroupWriter): Promise<void> {
@@ -61,38 +52,47 @@ export class GroupCache {
 
         // Write current frames to group
         let err: Error | undefined;
+        let framesCount = 0;
         for (const frame of this.frames) {
             if (frame) {
                 err = await group.writeFrame(frame);
                 if (err) {
-                    group.cancel(InternalGroupErrorCode, `failed to write frame: ${err.message}`); // TODO: Is this correct?
+                    group.cancel(InternalGroupErrorCode, `failed to write frame: ${err.message}`);
                     this.#mutex.unlock();
-                    return;
-                }
-            }
-        }
-
-        let framesCount = this.frames.length;
-
-        this.#mutex.unlock();
-
-        while (true) {
-            while (framesCount < this.frames.length) {
-                const frame = this.frames[framesCount];
-                err = await group.writeFrame(frame!);
-                if (err) {
-                    group.cancel(InternalGroupErrorCode, `failed to write frame: ${err.message}`); // TODO: Is this correct?
                     return;
                 }
                 framesCount++;
             }
-            await this.#cond.wait();
+        }
 
+        // Release lock before entering the wait loop
+        this.#mutex.unlock();
+
+        // Wait for new frames or close/expire signals
+        while (true) {
+            // Write any new frames that arrived
+            while (framesCount < this.frames.length) {
+                const frame = this.frames[framesCount];
+                err = await group.writeFrame(frame!);
+                if (err) {
+                    group.cancel(InternalGroupErrorCode, `failed to write frame: ${err.message}`);
+                    return;
+                }
+                framesCount++;
+            }
+
+            // Lock and wait for signal
+            this.#mutex.lock();
+            await this.#cond.wait();
+            this.#mutex.unlock();
+
+            // Check termination conditions
             if (this.closed) {
                 group.close();
                 return;
-            } else if (this.expired) {
-                group.cancel(ExpiredGroupErrorCode, `cache expired`);
+            }
+            if (this.expired) {
+                group.cancel(ExpiredGroupErrorCode, 'cache expired');
                 return;
             }
         }
@@ -107,10 +107,11 @@ export class GroupCache {
         }
 
         this.closed = true;
+        
+        // Broadcast to all waiting flush operations
+        this.#cond.broadcast();
 
         this.#mutex.unlock();
-
-        this.#cond.broadcast();
     }
 
     async expire(): Promise<void> {
@@ -122,12 +123,12 @@ export class GroupCache {
         }
 
         this.expired = true;
-
         this.frames.length = 0;
+        
+        // Broadcast to all waiting flush operations
+        this.#cond.broadcast();
 
         this.#mutex.unlock();
-
-        this.#cond.broadcast();
     }
 }
 

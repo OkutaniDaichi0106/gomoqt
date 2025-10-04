@@ -64,8 +64,8 @@ export class Session {
 		const stream = await this.#conn.createBidirectionalStream();
 		const streamId = this.#biStreamCounter;
 		this.#biStreamCounter += 4n;
-		const writer = new Writer({stream: stream.writable, transfer: undefined, streamId});
-		const reader = new Reader({stream: stream.readable, transfer: undefined, streamId});
+		const writer = new Writer({stream: stream.writable, streamId});
+		const reader = new Reader({stream: stream.readable, streamId});
 
 		// Send STREAM_TYPE
 		writer.writeUint8(BiStreamTypes.SessionStreamType);

@@ -1,3 +1,5 @@
+version: 2
+
 linters:
   disable-all: true
   enable:
@@ -9,5 +11,5 @@ linters:
     - varcheck
     - misspell
     - lll
-    - gofumpt 
+    - gofumpt
     - structcheck

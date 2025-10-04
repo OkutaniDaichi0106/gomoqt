@@ -1,6 +1,6 @@
 {
   "name": "@okutanidaichi/moqt",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "description": "Media over QUIC package",
   "repository": {
     "type": "git",
@@ -29,7 +29,9 @@
     }
   },
   "files": [
-    "dist"
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "!dist/**/*.map"
   ],
   "scripts": {
     "build": "npm run build:main && npm run build:browser",

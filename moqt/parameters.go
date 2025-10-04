@@ -102,7 +102,6 @@ func (p Parameters) GetString(key ParameterType) (string, error) {
 
 	value, err := p.GetByteArray(key)
 	if err != nil {
-		slog.Error("failed to read a parameter as byte array")
 		return "", err
 	}
 

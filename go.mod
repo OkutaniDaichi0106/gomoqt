@@ -1,10 +1,10 @@
 module github.com/OkutaniDaichi0106/gomoqt
 
-go 1.24.1
+go 1.25.0
 
 require (
 	github.com/OkutaniDaichi0106/webtransport-go v0.9.1
-	github.com/quic-go/quic-go v0.53.0
+	github.com/quic-go/quic-go v0.54.1
 	github.com/stretchr/testify v1.10.0
 )
 

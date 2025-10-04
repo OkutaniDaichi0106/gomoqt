@@ -1,13 +1,12 @@
 package moqt
 
 import (
+	"context"
 	"errors"
-	"log/slog"
 	"sync"
-	"sync/atomic"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
 )
 
 func newTrackWriter(path BroadcastPath, name TrackName,
@@ -19,7 +18,7 @@ func newTrackWriter(path BroadcastPath, name TrackName,
 		BroadcastPath:          path,
 		TrackName:              name,
 		receiveSubscribeStream: subscribeStream,
-		activeGroups:           make(map[quic.StreamID]*sendGroupStream),
+		activeGroups:           make(map[*GroupWriter]struct{}),
 		openUniStreamFunc:      openUniStreamFunc,
 		onCloseTrackFunc:       onCloseTrackFunc,
 	}
@@ -33,10 +32,8 @@ type TrackWriter struct {
 
 	*receiveSubscribeStream
 
-	accepted atomic.Bool
-
 	groupMapMu   sync.Mutex
-	activeGroups map[quic.StreamID]*sendGroupStream
+	activeGroups map[*GroupWriter]struct{}
 
 	openUniStreamFunc func() (quic.SendStream, error)
 
@@ -47,17 +44,24 @@ func (s *TrackWriter) Close() error {
 	s.groupMapMu.Lock()
 
 	// Cancel all active groups first
-	for _, group := range s.activeGroups {
+	for group := range s.activeGroups {
 		group.CancelWrite(PublishAbortedErrorCode)
 	}
 	s.activeGroups = nil
 
 	s.groupMapMu.Unlock()
 
-	// Then close the subscribe stream
-	err := s.receiveSubscribeStream.close()
+	// Then close the subscribe stream if present
+	var err error
+	if s.receiveSubscribeStream != nil {
+		err = s.receiveSubscribeStream.close()
+		s.receiveSubscribeStream = nil
+	}
 
-	s.onCloseTrackFunc()
+	if s.onCloseTrackFunc != nil {
+		s.onCloseTrackFunc()
+		s.onCloseTrackFunc = nil
+	}
 
 	return err
 }
@@ -66,35 +70,36 @@ func (s *TrackWriter) CloseWithError(code SubscribeErrorCode) {
 	s.groupMapMu.Lock()
 
 	// Cancel all active groups first
-	for _, group := range s.activeGroups {
-		group.CancelWrite(SubscribeCanceledErrorCode)
+	for group := range s.activeGroups {
+		group.CancelWrite(PublishAbortedErrorCode)
 	}
 	s.activeGroups = nil
 
 	s.groupMapMu.Unlock()
 
-	// Then close the subscribe stream with the error code
-	s.receiveSubscribeStream.closeWithError(code)
+	if s.receiveSubscribeStream != nil {
+		s.receiveSubscribeStream.closeWithError(code)
+		s.receiveSubscribeStream = nil
+	}
 
-	s.onCloseTrackFunc()
+	if s.onCloseTrackFunc != nil {
+		s.onCloseTrackFunc()
+		s.onCloseTrackFunc = nil
+	}
 }
 
-func (s *TrackWriter) OpenGroup(seq GroupSequence) (GroupWriter, error) {
+func (s *TrackWriter) OpenGroup(seq GroupSequence) (*GroupWriter, error) {
 	if seq == 0 {
 		return nil, errors.New("group sequence must not be zero")
 	}
 
-	if err := s.ctx.Err(); err != nil {
-		return nil, err
+	if s.ctx.Err() != nil {
+		return nil, Cause(s.ctx)
 	}
 
-	if !s.accepted.Load() {
-		err := s.receiveSubscribeStream.writeInfo(Info{})
-		if err != nil {
-			return nil, err
-		}
-
-		s.accepted.Store(true)
+	err := s.receiveSubscribeStream.WriteInfo(Info{})
+	if err != nil {
+		return nil, err
 	}
 
 	stream, err := s.openUniStreamFunc()
@@ -143,27 +148,11 @@ func (s *TrackWriter) OpenGroup(seq GroupSequence) (GroupWriter, error) {
 		return nil, err
 	}
 
-	group := newSendGroupStream(s.ctx, stream, seq, func() {
-		s.removeGroup(stream.StreamID())
-	})
+	var group *GroupWriter
+	group = newGroupWriter(stream, seq, func() { s.removeGroup(group) })
 	s.addGroup(group)
 
-	slog.Debug("track writer opened group")
-
 	return group, nil
-}
-
-func (s *TrackWriter) WriteInfo(info Info) error {
-	if !s.accepted.Load() {
-		err := s.receiveSubscribeStream.writeInfo(info)
-		if err != nil {
-			return err
-		}
-
-		s.accepted.Store(true)
-	}
-
-	return nil
 }
 
 func (s *TrackWriter) TrackConfig() *TrackConfig {
@@ -173,16 +162,20 @@ func (s *TrackWriter) TrackConfig() *TrackConfig {
 	return s.receiveSubscribeStream.TrackConfig()
 }
 
-func (s *TrackWriter) addGroup(group *sendGroupStream) {
-	s.groupMapMu.Lock()
-	defer s.groupMapMu.Unlock()
-
-	s.activeGroups[group.stream.StreamID()] = group
+func (s *TrackWriter) Context() context.Context {
+	return s.ctx
 }
 
-func (s *TrackWriter) removeGroup(id quic.StreamID) {
+func (s *TrackWriter) addGroup(group *GroupWriter) {
 	s.groupMapMu.Lock()
 	defer s.groupMapMu.Unlock()
 
-	delete(s.activeGroups, id)
+	s.activeGroups[group] = struct{}{}
+}
+
+func (s *TrackWriter) removeGroup(group *GroupWriter) {
+	s.groupMapMu.Lock()
+	defer s.groupMapMu.Unlock()
+
+	delete(s.activeGroups, group)
 }

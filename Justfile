@@ -23,8 +23,8 @@ default: help
 help:
 	@echo "Available commands:"
 	@echo "  just dev-setup       Set up the development environment"
-	@echo "  just run-echo-server Start the echo server"
-	@echo "  just run-echo-client Start the echo client"
+	@echo "  just interop-server Start the interop server"
+	@echo "  just interop-client Start the interop client"
 	@echo "  just fmt             Format Go source code"
 	@echo "  just lint            Run linter"
 	@echo "  just test            Run tests"
@@ -62,25 +62,20 @@ dev-setup:
 	@echo "Generating development certificates..."
 	# (Add commands for generating certificates if necessary)
 
-# New command: run-broadcast-server
-run-broadcast-server:
-	@echo "Starting broadcast server..."
-	go run ./examples/broadcast/server/.
+# Run interop server:
+interop-server:
+	@echo "Starting interop server..."
+	cd ./interop/server && go run main.go
 
-# New command: run-broadcast-client
-run-broadcast-client:
-	@echo "Starting broadcast client..."
-	go run ./examples/broadcast/client/.
+# Run interop client:
+interop-client:
+	@echo "Starting interop client..."
+	cd ./interop/client && go run main.go
 
-# New command: run-chat-server
-run-chat-server:
-	@echo "Starting chat server..."
-	go run ./examples/chat/server/.
-
-# New command: run-chat-client
-run-chat-client:
-	@echo "Starting chat client..."
-	go run ./examples/chat/client/.
+# Run interop web:
+interop-web:
+	@echo "Starting interop web client..."
+	cd ./interop/web/examples && npm run dev
 
 # New command: fmt
 fmt:
@@ -101,5 +96,19 @@ clean:
 	@echo "Cleaning up generated files..."
 	# Remove binaries or other generated files as necessary (e.g., the ./bin directory)
 	rm -rf ./bin
+
+# Build moq-web package
+build-moq-web:
+	@echo "Building moq-web..."
+	cd moq-web && npm ci && npm run build
+
+# Build hang-web package (depends on moq-web)
+build-hang-web: build-moq-web
+	@echo "Building hang-web..."
+	cd hang-web && npm ci && npm run build
+
+# Build all web packages
+build-web: build-moq-web build-hang-web
+	@echo "All web packages built."
 
 set windows-shell := ["C:\\Program Files\\Git\\bin\\sh.exe","-c"]

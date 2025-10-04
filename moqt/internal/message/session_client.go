@@ -4,7 +4,6 @@ import (
 	"io"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
-	"github.com/quic-go/quic-go/quicvarint"
 )
 
 /*
@@ -22,44 +21,80 @@ type SessionClientMessage struct {
 	Parameters        Parameters
 }
 
-func (scm SessionClientMessage) Encode(w io.Writer) error {
-	// Serialize the payload
-	p := getBytes()
-	defer putBytes(p)
+func (scm SessionClientMessage) Len() int {
+	var l int
 
-	// Append the supported versions
-	p = AppendNumber(p, uint64(len(scm.SupportedVersions)))
+	l += VarintLen(uint64(len(scm.SupportedVersions)))
 	for _, version := range scm.SupportedVersions {
-		p = AppendNumber(p, uint64(version))
+		l += VarintLen(uint64(version))
+	}
+	l += ParametersLen(scm.Parameters)
+
+	return l
+}
+
+func (scm SessionClientMessage) Encode(w io.Writer) error {
+	msgLen := scm.Len()
+
+	// Allocate buffer for whole message
+	b := pool.Get(msgLen + VarintLen(uint64(msgLen)))
+	defer pool.Put(b)
+
+	b, _ = WriteVarint(b, uint64(msgLen))
+	b, _ = WriteVarint(b, uint64(len(scm.SupportedVersions)))
+	for _, version := range scm.SupportedVersions {
+		b, _ = WriteVarint(b, uint64(version))
 	}
 
-	// Append the parameters
-	p = AppendParameters(p, scm.Parameters)
+	// Append parameters
+	b, _ = WriteVarint(b, uint64(len(scm.Parameters)))
+	for key, value := range scm.Parameters {
+		b, _ = WriteVarint(b, key)
+		b, _ = WriteBytes(b, value)
+	}
 
-	_, err := w.Write(p)
+	_, err := w.Write(b)
 	return err
 }
 
-func (scm *SessionClientMessage) Decode(r io.Reader) error {
-	// Read version count
-	num, _, err := ReadNumber(quicvarint.NewReader(r))
+func (scm *SessionClientMessage) Decode(src io.Reader) error {
+	num, err := ReadMessageLength(src)
 	if err != nil {
 		return err
 	}
 
-	// Read versions
-	for i := uint64(0); i < num; i++ {
-		version, _, err := ReadNumber(quicvarint.NewReader(r))
+	b := pool.Get(int(num))[:num]
+	defer pool.Put(b)
+
+	_, err = io.ReadFull(src, b)
+	if err != nil {
+		return err
+	}
+
+	count, n, err := ReadVarint(b)
+	if err != nil {
+		return err
+	}
+	b = b[n:]
+
+	scm.SupportedVersions = make([]protocol.Version, count)
+	for i := range count {
+		num, n, err := ReadVarint(b)
 		if err != nil {
 			return err
 		}
-		scm.SupportedVersions = append(scm.SupportedVersions, protocol.Version(version))
+		scm.SupportedVersions[i] = protocol.Version(num)
+		b = b[n:]
 	}
 
-	// Read parameters
-	scm.Parameters, _, err = ReadParameters(quicvarint.NewReader(r))
+	scm.Parameters, n, err = ReadParameters(b)
 	if err != nil {
 		return err
+	}
+	b = b[n:]
+
+	if len(b) != 0 {
+		return ErrMessageTooShort
 	}
 
 	return nil

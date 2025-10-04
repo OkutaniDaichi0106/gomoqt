@@ -4,7 +4,7 @@ import (
 	"context"
 	"net"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -97,7 +97,7 @@ func (m *MockQUICConnection) RemoteAddr() net.Addr {
 	return args.Get(0).(net.Addr)
 }
 
-func (m *MockQUICConnection) CloseWithError(code quic.ConnectionErrorCode, reason string) error {
+func (m *MockQUICConnection) CloseWithError(code quic.ApplicationErrorCode, reason string) error {
 	args := m.Called(code, reason)
 	return args.Error(0)
 }

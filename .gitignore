@@ -1,6 +1,15 @@
-**.pem
-hextra-starter-template
+# IDE
+**/.vscode
+**/.github/prompts
 
-.github/prompts
+# Dev modules
+**/_vendor
 **/node_modules
+**/.serena
+
+# Build staff
+**/docs/moqt/public
 **/dist/
+
+# Local Environment
+**.pem

@@ -14,25 +14,8 @@ func TestSubscribeOkMessage_EncodeDecode(t *testing.T) {
 		input   message.SubscribeOkMessage
 		wantErr bool
 	}{
-		"valid message with default group order": {
-			input: message.SubscribeOkMessage{
-				GroupOrder: message.GroupOrderDefault,
-			},
-		},
-		"valid message with ascending group order": {
-			input: message.SubscribeOkMessage{
-				GroupOrder: message.GroupOrderAscending,
-			},
-		},
-		"valid message with descending group order": {
-			input: message.SubscribeOkMessage{
-				GroupOrder: message.GroupOrderDescending,
-			},
-		},
-		"zero value": {
-			input: message.SubscribeOkMessage{
-				GroupOrder: 0,
-			},
+		"valid message": {
+			input: message.SubscribeOkMessage{},
 		},
 	}
 

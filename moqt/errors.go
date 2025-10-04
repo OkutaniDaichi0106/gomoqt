@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
 )
 
 var (
@@ -26,27 +26,28 @@ const (
 	InternalAnnounceErrorCode AnnounceErrorCode = 0x0
 
 	// Subscriber
-	DuplicatedAnnounceErrorCode AnnounceErrorCode = 0x1
-	UninterestedErrorCode       AnnounceErrorCode = 0x3
+	DuplicatedAnnounceErrorCode    AnnounceErrorCode = 0x1
+	InvalidAnnounceStatusErrorCode AnnounceErrorCode = 0x2 // TODO: Is this necessary?
+	UninterestedErrorCode          AnnounceErrorCode = 0x3
 
 	// Publisher
 	BannedPrefixErrorCode  AnnounceErrorCode = 0x4 // TODO: Is this necessary?
 	InvalidPrefixErrorCode AnnounceErrorCode = 0x5 // TODO: Is this necessary?
 )
 
+var AnnounceErrorCodeTexts = map[AnnounceErrorCode]string{
+	InternalAnnounceErrorCode:      "moqt: internal error",
+	DuplicatedAnnounceErrorCode:    "moqt: duplicated broadcast path",
+	InvalidAnnounceStatusErrorCode: "moqt: invalid announce status",
+	UninterestedErrorCode:          "moqt: uninterested",
+	BannedPrefixErrorCode:          "moqt: banned prefix",
+	InvalidPrefixErrorCode:         "moqt: invalid prefix",
+}
+
 type AnnounceErrorCode quic.StreamErrorCode
 
 func (code AnnounceErrorCode) String() string {
-	switch code {
-	case InternalAnnounceErrorCode:
-		return "moqt: internal error"
-	case DuplicatedAnnounceErrorCode:
-		return "moqt: duplicated broadcast path"
-	case UninterestedErrorCode:
-		return "moqt: uninterested"
-	default:
-		return "moqt: unknown announce error"
-	}
+	return AnnounceErrorCodeTexts[code]
 }
 
 type AnnounceError struct{ *quic.StreamError }
@@ -85,25 +86,19 @@ const (
 	// These error codes are used after subscribe negotiation is completed.
 )
 
+var SubscribeErrorCodeTexts = map[SubscribeErrorCode]string{
+	InternalSubscribeErrorCode:     "moqt: internal error",
+	InvalidRangeErrorCode:          "moqt: invalid range",
+	DuplicateSubscribeIDErrorCode:  "moqt: duplicated id",
+	TrackNotFoundErrorCode:         "moqt: track does not exist",
+	UnauthorizedSubscribeErrorCode: "moqt: unauthorized",
+	SubscribeTimeoutErrorCode:      "moqt: timeout",
+}
+
 type SubscribeErrorCode quic.StreamErrorCode
 
 func (code SubscribeErrorCode) String() string {
-	switch code {
-	case InternalSubscribeErrorCode:
-		return "moqt: internal error"
-	case InvalidRangeErrorCode:
-		return "moqt: invalid range"
-	case DuplicateSubscribeIDErrorCode:
-		return "moqt: duplicated id"
-	case TrackNotFoundErrorCode:
-		return "moqt: track does not exist"
-	case UnauthorizedSubscribeErrorCode:
-		return "moqt: unauthorized"
-	case SubscribeTimeoutErrorCode:
-		return "moqt: timeout"
-	default:
-		return "moqt: unknown subscribe error"
-	}
+	return SubscribeErrorCodeTexts[code]
 }
 
 type SubscribeError struct{ *quic.StreamError }
@@ -129,31 +124,26 @@ const (
 	TooManySubscribeErrorCode        SessionErrorCode = 0x6
 	GoAwayTimeoutErrorCode           SessionErrorCode = 0x10
 	UnsupportedVersionErrorCode      SessionErrorCode = 0x12
+
+	SetupFailedErrorCode SessionErrorCode = 0x13
 )
+
+var SessionErrorCodeTexts = map[SessionErrorCode]string{
+	NoError:                          "moqt: no error",
+	InternalSessionErrorCode:         "moqt: internal error",
+	UnauthorizedSessionErrorCode:     "moqt: unauthorized",
+	ProtocolViolationErrorCode:       "moqt: protocol violation",
+	ParameterLengthMismatchErrorCode: "moqt: parameter length mismatch",
+	TooManySubscribeErrorCode:        "moqt: too many subscribes",
+	GoAwayTimeoutErrorCode:           "moqt: goaway timeout",
+	UnsupportedVersionErrorCode:      "moqt: unsupported version",
+	SetupFailedErrorCode:             "moqt: setup failed",
+}
 
 type SessionErrorCode quic.ApplicationErrorCode
 
 func (code SessionErrorCode) String() string {
-	switch code {
-	case NoError:
-		return "moqt: no error"
-	case InternalSessionErrorCode:
-		return "moqt: internal error"
-	case UnauthorizedSessionErrorCode:
-		return "moqt: unauthorized"
-	case ProtocolViolationErrorCode:
-		return "moqt: protocol violation"
-	case ParameterLengthMismatchErrorCode:
-		return "moqt: parameter length mismatch"
-	case TooManySubscribeErrorCode:
-		return "moqt: too many subscribes"
-	case GoAwayTimeoutErrorCode:
-		return "moqt: goaway timeout"
-	case UnsupportedVersionErrorCode:
-		return "moqt: unsupported version"
-	default:
-		return "moqt: unknown session error"
-	}
+	return SessionErrorCodeTexts[code]
 }
 
 type SessionError struct{ *quic.ApplicationError }
@@ -186,27 +176,20 @@ const (
 	InvalidSubscribeIDErrorCode GroupErrorCode = 0x07 // TODO: Is this necessary?
 )
 
+var GroupErrorCodeTexts = map[GroupErrorCode]string{
+	InternalGroupErrorCode:      "moqt: internal error",
+	OutOfRangeErrorCode:         "moqt: out of range",
+	ExpiredGroupErrorCode:       "moqt: group expires",
+	SubscribeCanceledErrorCode:  "moqt: subscribe canceled",
+	PublishAbortedErrorCode:     "moqt: publish aborted",
+	ClosedSessionGroupErrorCode: "moqt: session closed",
+	InvalidSubscribeIDErrorCode: "moqt: invalid subscribe id",
+}
+
 type GroupErrorCode quic.StreamErrorCode
 
 func (code GroupErrorCode) String() string {
-	switch code {
-	case InternalGroupErrorCode:
-		return "moqt: internal error"
-	case OutOfRangeErrorCode:
-		return "moqt: out of range"
-	case ExpiredGroupErrorCode:
-		return "moqt: group expires"
-	case SubscribeCanceledErrorCode:
-		return "moqt: subscribe canceled"
-	case PublishAbortedErrorCode:
-		return "moqt: publish aborted"
-	case ClosedSessionGroupErrorCode:
-		return "moqt: session closed"
-	case InvalidSubscribeIDErrorCode:
-		return "moqt: invalid subscribe id"
-	default:
-		return "moqt: unknown group error"
-	}
+	return GroupErrorCodeTexts[code]
 }
 
 type GroupError struct{ *quic.StreamError }
@@ -219,56 +202,56 @@ func (err GroupError) GroupErrorCode() GroupErrorCode {
 	return GroupErrorCode(err.ErrorCode)
 }
 
-/*
- * Internal Error
- */
-type InternalError struct {
-	Reason string
-}
+// /*
+//  * Internal Error
+//  */
+// type InternalError struct {
+// 	Reason string
+// }
 
-func (err InternalError) Error() string {
-	return fmt.Sprintf("moqt: internal error: %s", err.Reason)
-}
+// func (err InternalError) Error() string {
+// 	return fmt.Sprintf("moqt: internal error: %s", err.Reason)
+// }
 
-func (InternalError) Is(err error) bool {
-	_, ok := err.(InternalError)
-	return ok
-}
+// func (InternalError) Is(err error) bool {
+// 	_, ok := err.(InternalError)
+// 	return ok
+// }
 
-func (err InternalError) AnnounceErrorCode() AnnounceErrorCode {
-	return InternalAnnounceErrorCode
-}
+// func (err InternalError) AnnounceErrorCode() AnnounceErrorCode {
+// 	return InternalAnnounceErrorCode
+// }
 
-func (err InternalError) SubscribeErrorCode() SubscribeErrorCode {
-	return InternalSubscribeErrorCode
-}
+// func (err InternalError) SubscribeErrorCode() SubscribeErrorCode {
+// 	return InternalSubscribeErrorCode
+// }
 
-func (err InternalError) SessionErrorCode() SessionErrorCode {
-	return InternalSessionErrorCode
-}
+// func (err InternalError) SessionErrorCode() SessionErrorCode {
+// 	return InternalSessionErrorCode
+// }
 
-func (err InternalError) GroupErrorCode() GroupErrorCode {
-	return InternalGroupErrorCode
-}
+// func (err InternalError) GroupErrorCode() GroupErrorCode {
+// 	return InternalGroupErrorCode
+// }
 
-/*
- * Unauthorized Error
- */
-type UnauthorizedError struct{}
+// /*
+//  * Unauthorized Error
+//  */
+// type UnauthorizedError struct{}
 
-func (UnauthorizedError) Error() string {
-	return "moqt: unauthorized"
-}
+// func (UnauthorizedError) Error() string {
+// 	return "moqt: unauthorized"
+// }
 
-func (UnauthorizedError) Is(err error) bool {
-	_, ok := err.(UnauthorizedError)
-	return ok
-}
+// func (UnauthorizedError) Is(err error) bool {
+// 	_, ok := err.(UnauthorizedError)
+// 	return ok
+// }
 
-func (err UnauthorizedError) SubscribeErrorCode() SubscribeErrorCode {
-	return UnauthorizedSubscribeErrorCode
-}
+// func (err UnauthorizedError) SubscribeErrorCode() SubscribeErrorCode {
+// 	return UnauthorizedSubscribeErrorCode
+// }
 
-func (err UnauthorizedError) SessionErrorCode() SessionErrorCode {
-	return UnauthorizedSessionErrorCode
-}
+// func (err UnauthorizedError) SessionErrorCode() SessionErrorCode {
+// 	return UnauthorizedSessionErrorCode
+// }

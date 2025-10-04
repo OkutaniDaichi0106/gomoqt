@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
 )
 
 func main() {
@@ -27,9 +27,28 @@ func main() {
 		},
 		Logger: slog.Default(),
 	}
+
+	moqt.HandleFunc("/broadcast", func(w moqt.SetupResponseWriter, r *moqt.SetupRequest) {
+		_, err := moqt.Accept(w, r, nil)
+		if err != nil {
+			slog.Error("failed to accept session", "error", err)
+			return
+		}
+	})
+
+	// Serve moq over webtransport
+	http.HandleFunc("/broadcast", func(w http.ResponseWriter, r *http.Request) {
+		err := server.ServeWebTransport(w, r)
+		if err != nil {
+			slog.Error("failed to serve web transport", "error", err)
+			return
+		}
+	})
+
 	// Register the broadcast handler with the default mux
-	moqt.HandleFunc(context.Background(), "/server.broadcast", func(tw *moqt.TrackWriter) {
+	moqt.PublishFunc(context.Background(), "/server.broadcast", func(ctx context.Context, tw *moqt.TrackWriter) {
 		seq := moqt.GroupSequenceFirst
+		builder := moqt.NewFrameBuilder(1024)
 		for {
 			time.Sleep(100 * time.Millisecond)
 
@@ -39,8 +58,9 @@ func main() {
 				return
 			}
 
-			frame := moqt.NewFrame([]byte("FRAME " + seq.String()))
-			err = gw.WriteFrame(frame)
+			builder.Reset()
+			builder.Append([]byte("FRAME " + seq.String()))
+			err = gw.WriteFrame(builder.Frame())
 			if err != nil {
 				gw.CancelWrite(moqt.InternalGroupErrorCode) // TODO: Handle error properly
 				slog.Error("failed to write frame", "error", err)
@@ -49,19 +69,9 @@ func main() {
 
 			// TODO: Release the frame after writing
 			// This is important to avoid memory leaks
-			frame.Release()
 			gw.Close()
 
 			seq = seq.Next()
-		}
-	})
-
-	// Serve moq over webtransport
-	http.HandleFunc("/broadcast", func(w http.ResponseWriter, r *http.Request) {
-		_, err := server.AcceptWebTransport(w, r, nil)
-		if err != nil {
-			slog.Error("failed to serve web transport", "error", err)
-			return
 		}
 	})
 

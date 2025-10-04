@@ -2,10 +2,18 @@ package moqt
 
 import (
 	"context"
+	"runtime"
 	"strings"
+	"sync"
 )
 
-func NewAnnouncement(ctx context.Context, path BroadcastPath) *Announcement {
+type EndAnnouncementFunc func()
+
+func NewAnnouncement(ctx context.Context, path BroadcastPath) (*Announcement, EndAnnouncementFunc) {
+	if !isValidPath(path) {
+		panic("[Announcement] invalid track path: " + string(path))
+	}
+
 	ctx, cancel := context.WithCancel(ctx)
 
 	ann := Announcement{
@@ -14,14 +22,17 @@ func NewAnnouncement(ctx context.Context, path BroadcastPath) *Announcement {
 		cancel: cancel,
 	}
 
-	return &ann
+	return &ann, ann.end
 }
 
 type Announcement struct {
+	mu     sync.Mutex
 	ctx    context.Context
 	cancel context.CancelFunc
 
 	path BroadcastPath
+
+	onEndFuncs []func()
 }
 
 func (a *Announcement) String() string {
@@ -45,18 +56,57 @@ func (a *Announcement) BroadcastPath() BroadcastPath {
 	return a.path
 }
 
-func (a *Announcement) AwaitEnd() <-chan struct{} {
-	return a.ctx.Done()
+func (a *Announcement) Context() context.Context {
+	return a.ctx
+}
+
+func (a *Announcement) OnEnd(f func()) {
+	if a.ctx.Err() != nil {
+		f()
+		return
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	a.onEndFuncs = append(a.onEndFuncs, f)
 }
 
 func (a *Announcement) IsActive() bool {
 	return a.ctx.Err() == nil
 }
 
-func (a *Announcement) End() {
+func (a *Announcement) end() {
 	a.cancel()
-}
+	a.mu.Lock()
+	defer a.mu.Unlock()
 
-func (a *Announcement) Fork() *Announcement {
-	return NewAnnouncement(a.ctx, a.path)
+	workerCount := min(runtime.NumCPU(), len(a.onEndFuncs))
+	if workerCount == 0 {
+		workerCount = 1
+	}
+
+	// buffer jobs to avoid blocking producers when many workers are used
+	jobs := make(chan func(), len(a.onEndFuncs))
+
+	var wg sync.WaitGroup
+
+	// spawn workerCount goroutines
+	for i := 0; i < workerCount; i++ {
+		go func() {
+			for f := range jobs {
+				f()
+				wg.Done()
+			}
+		}()
+	}
+
+	for _, f := range a.onEndFuncs {
+		wg.Add(1)
+		jobs <- f
+	}
+
+	close(jobs)
+
+	wg.Wait()
 }

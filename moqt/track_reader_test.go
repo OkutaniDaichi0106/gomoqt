@@ -5,24 +5,28 @@ import (
 	"testing"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestNewTrackReceiver(t *testing.T) {
 	mockStream := &MockQUICStream{}
-	substr := newSendSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{})
+	mockStream.On("Context").Return(context.Background())
+	info := Info{}
+	substr := newSendSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{}, info)
 	receiver := newTrackReader("broadcastPath", "trackName", substr, func() {})
 
 	assert.NotNil(t, receiver, "newTrackReceiver should not return nil")
-	assert.NotNil(t, receiver.queue, "queue should be initialized")
+	// Verify info propagation
+	assert.Equal(t, info, substr.ReadInfo(), "sendSubscribeStream should return the Info passed at construction")
+	assert.NotNil(t, receiver.queueing, "queue should be initialized")
 	assert.NotNil(t, receiver.queuedCh, "queuedCh should be initialized")
 	assert.NotNil(t, receiver.dequeued, "dequeued should be initialized")
 }
 
 func TestTrackReceiver_AcceptGroup(t *testing.T) {
 	mockStream := &MockQUICStream{}
-	substr := newSendSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{})
+	mockStream.On("Context").Return(context.Background())
+	substr := newSendSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{}, Info{})
 	receiver := newTrackReader("broadcastPath", "trackName", substr, func() {})
 
 	// Test with a timeout to ensure we don't block forever when no groups are available
@@ -38,7 +42,7 @@ func TestTrackReceiver_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	mockStream := &MockQUICStream{}
 	mockStream.On("Context").Return(ctx)
-	substr := newSendSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{})
+	substr := newSendSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{}, Info{})
 	receiver := newTrackReader("broadcastPath", "trackName", substr, func() {})
 
 	// Cancel the context
@@ -55,13 +59,14 @@ func TestTrackReceiver_ContextCancellation(t *testing.T) {
 }
 
 func TestTrackReceiver_EnqueueGroup(t *testing.T) {
-	substr := newSendSubscribeStream(SubscribeID(1), &MockQUICStream{}, &TrackConfig{})
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	substr := newSendSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{}, Info{})
 	receiver := newTrackReader("broadcastPath", "trackName", substr, func() {})
 
 	// Mock receive stream
 	mockReceiveStream := &MockQUICReceiveStream{}
-	// StreamID() is not called during enqueue, only when needed
-	mockReceiveStream.On("StreamID").Return(quic.StreamID(1)).Maybe()
+	// StreamID() is not called during enqueue or accept
 
 	// Enqueue a group
 	receiver.enqueueGroup(GroupSequence(1), mockReceiveStream)
@@ -78,7 +83,9 @@ func TestTrackReceiver_EnqueueGroup(t *testing.T) {
 }
 
 func TestTrackReceiver_AcceptGroup_RealImplementation(t *testing.T) {
-	substr := newSendSubscribeStream(SubscribeID(1), &MockQUICStream{}, &TrackConfig{})
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	substr := newSendSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{}, Info{})
 	receiver := newTrackReader("broadcastPath", "trackName", substr, func() {})
 
 	// Test with a timeout to ensure we don't block forever

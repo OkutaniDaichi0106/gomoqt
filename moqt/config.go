@@ -8,7 +8,7 @@ import (
 type Config struct {
 	ClientSetupExtensions func() *Parameters
 
-	ServerSetupExtensions func(clientParams *Parameters) (serverParams *Parameters, err error)
+	// ServerSetupExtensions func(clientParams *Parameters) (serverParams *Parameters, err error)
 
 	// MaxSubscribeID SubscribeID // TODO:
 
@@ -22,7 +22,7 @@ type Config struct {
 func (c *Config) Clone() *Config {
 	return &Config{
 		ClientSetupExtensions: c.ClientSetupExtensions,
-		ServerSetupExtensions: c.ServerSetupExtensions,
+		// ServerSetupExtensions: c.ServerSetupExtensions,
 		// MaxSubscribeID: c.MaxSubscribeID,
 		// NewSessionURI:  c.NewSessionURI,
 		// CheckRoot:      c.CheckRoot,

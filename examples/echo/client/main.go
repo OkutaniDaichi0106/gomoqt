@@ -10,8 +10,9 @@ import (
 )
 
 func main() {
-	moqt.HandleFunc(context.Background(), "/client.echo", func(tw *moqt.TrackWriter) {
+	moqt.PublishFunc(context.Background(), "/client.echo", func(ctx context.Context, tw *moqt.TrackWriter) {
 		seq := moqt.GroupSequenceFirst
+		builder := moqt.NewFrameBuilder(1024)
 		for {
 			time.Sleep(100 * time.Millisecond)
 
@@ -21,7 +22,10 @@ func main() {
 				return
 			}
 
-			err = gw.WriteFrame(moqt.NewFrame([]byte("FRAME " + seq.String())))
+			builder.Reset()
+			builder.Append([]byte("FRAME " + seq.String()))
+
+			err = gw.WriteFrame(builder.Frame())
 			if err != nil {
 				gw.CancelWrite(moqt.InternalGroupErrorCode)
 				slog.Error("failed to write frame", "error", err)
@@ -46,7 +50,7 @@ func main() {
 		return
 	}
 
-	annstr, err := sess.OpenAnnounceStream("/")
+	ar, err := sess.AcceptAnnounce("/")
 	if err != nil {
 		slog.Error("failed to open announce stream",
 			"error", err,
@@ -55,7 +59,7 @@ func main() {
 	}
 
 	for {
-		ann, err := annstr.ReceiveAnnouncement(context.Background())
+		ann, err := ar.ReceiveAnnouncement(context.Background())
 		if err != nil {
 			slog.Error("failed to receive announcements",
 				"error", err,
@@ -68,7 +72,7 @@ func main() {
 				return
 			}
 
-			tr, err := sess.OpenTrackStream(ann.BroadcastPath(), "index", nil)
+			tr, err := sess.Subscribe(ann.BroadcastPath(), "index", nil)
 			if err != nil {
 				slog.Error("failed to open track stream", "error", err)
 				return
@@ -81,9 +85,7 @@ func main() {
 					return
 				}
 
-				go func(gr moqt.GroupReader) {
-					defer gr.CancelRead(moqt.InternalGroupErrorCode)
-
+				go func(gr *moqt.GroupReader) {
 					for {
 						frame, err := gr.ReadFrame()
 						if err != nil {
@@ -94,11 +96,10 @@ func main() {
 							return
 						}
 
-						slog.Info("received a frame", "frame", string(frame.CopyBytes()))
+						slog.Info("received a frame", "frame", string(frame.Bytes()))
 
 						// TODO: Release the frame after reading
 						// This is important to avoid memory leaks
-						frame.Release()
 					}
 				}(gr)
 

@@ -4,11 +4,11 @@ import (
 	"context"
 	"net"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
 	"github.com/stretchr/testify/mock"
 )
 
-var _ quic.EarlyListener = (*MockEarlyListener)(nil)
+var _ quic.Listener = (*MockEarlyListener)(nil)
 
 // MockEarlyListener implements a mock for quic.EarlyListener using mock.Mock
 type MockEarlyListener struct {

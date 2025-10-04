@@ -20,7 +20,7 @@ func main() {
 	}
 
 	//
-	annRecv, err := sess.OpenAnnounceStream("/")
+	annRecv, err := sess.AcceptAnnounce("/")
 	if err != nil {
 		slog.Error("failed to open announce stream", "error", err)
 		return
@@ -41,7 +41,7 @@ func main() {
 				return
 			}
 
-			tr, err := sess.OpenTrackStream(ann.BroadcastPath(), "", nil)
+			tr, err := sess.Subscribe(ann.BroadcastPath(), "", nil)
 			if err != nil {
 				slog.Error("failed to open track stream", "error", err)
 				return
@@ -55,7 +55,7 @@ func main() {
 					return
 				}
 
-				go func(gr moqt.GroupReader) {
+				go func(gr *moqt.GroupReader) {
 					for {
 						frame, err := gr.ReadFrame()
 						if err != nil {
@@ -67,11 +67,10 @@ func main() {
 							return
 						}
 
-						slog.Info("received a frame", "frame", string(frame.CopyBytes()))
+						slog.Info("received a frame", "frame", string(frame.Bytes()))
 
 						// TODO: Release the frame after processing
 						// This is important to avoid memory leaks
-						frame.Release()
 					}
 				}(gr)
 

@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/quic"
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
 )
 
 func main() {
@@ -28,15 +28,15 @@ func main() {
 		Logger: slog.Default(),
 	}
 
-	// Serve moq over webtransport
-	http.HandleFunc("/echo", func(w http.ResponseWriter, r *http.Request) {
+	moqt.HandleFunc("/echo", func(w moqt.SetupResponseWriter, r *moqt.SetupRequest) {
 		mux := moqt.NewTrackMux()
-		sess, err := server.AcceptWebTransport(w, r, mux)
+		sess, err := moqt.Accept(w, r, mux)
 		if err != nil {
-			slog.Error("failed to serve moq over webtransport", "error", err)
+			slog.Error("failed to accept session", "error", err)
+			return
 		}
 
-		anns, err := sess.OpenAnnounceStream("/")
+		anns, err := sess.AcceptAnnounce("/")
 		if err != nil {
 			slog.Error("failed to open announce stream", "error", err)
 		}
@@ -53,13 +53,13 @@ func main() {
 					return
 				}
 
-				tr, err := sess.OpenTrackStream(ann.BroadcastPath(), "index", nil)
+				tr, err := sess.Subscribe(ann.BroadcastPath(), "index", nil)
 				if err != nil {
 					slog.Error("failed to open track stream", "error", err)
 					return
 				}
 
-				mux.HandleFunc(context.Background(), ann.BroadcastPath(), func(tw *moqt.TrackWriter) {
+				mux.Announce(ann, moqt.TrackHandlerFunc(func(ctx context.Context, tw *moqt.TrackWriter) {
 					defer tr.Close()
 
 					for {
@@ -69,9 +69,7 @@ func main() {
 							return
 						}
 
-						go func(gr moqt.GroupReader) {
-							defer gr.CancelRead(moqt.InternalGroupErrorCode)
-
+						go func(gr *moqt.GroupReader) {
 							gw, err := tw.OpenGroup(gr.GroupSequence())
 							if err != nil {
 								slog.Error("failed to open group", "error", err)
@@ -97,15 +95,22 @@ func main() {
 
 								// TODO: Release the frame after writing
 								// This is important to avoid memory leaks
-								frame.Release()
 							}
 						}(gr)
 
 					}
-				})
+				}))
 			}(ann)
 		}
 
+	})
+
+	// Serve moq over webtransport
+	http.HandleFunc("/echo", func(w http.ResponseWriter, r *http.Request) {
+		err := server.ServeWebTransport(w, r)
+		if err != nil {
+			slog.Error("failed to serve moq over webtransport", "error", err)
+		}
 	})
 
 	err := server.ListenAndServeTLS("../../cert/localhost.pem", "../../cert/localhost-key.pem")

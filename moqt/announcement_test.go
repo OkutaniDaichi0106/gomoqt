@@ -14,28 +14,44 @@ func TestNewAnnouncement(t *testing.T) {
 		expected string
 	}{
 		"valid path": {
-			path:     BroadcastPath("test/path"),
-			expected: "test/path",
+			path:     BroadcastPath("/test/path"),
+			expected: "/test/path",
 		},
-		"empty path": {
-			path:     BroadcastPath(""),
-			expected: "",
+		"path with spaces and symbols": {
+			path:     BroadcastPath("/test/path with spaces/and-dashes_and.dots"),
+			expected: "/test/path with spaces/and-dashes_and.dots",
 		},
-		"path with special characters": {
-			path:     BroadcastPath("test/path with spaces/and-dashes_and.dots"),
-			expected: "test/path with spaces/and-dashes_and.dots",
+		"root path": {
+			path:     BroadcastPath("/"),
+			expected: "/",
 		},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
-			announcement := NewAnnouncement(ctx, tt.path)
+			announcement, end := NewAnnouncement(ctx, tt.path)
 
 			assert.NotNil(t, announcement)
+			assert.NotNil(t, end)
 			assert.Equal(t, tt.path, announcement.path)
 			assert.NotNil(t, announcement.ctx)
 			assert.NotNil(t, announcement.cancel)
+		})
+	}
+}
+
+func TestNewAnnouncement_InvalidPaths(t *testing.T) {
+	invalid := map[string]BroadcastPath{
+		"empty":            BroadcastPath(""),
+		"no leading slash": BroadcastPath("test/path"),
+		"only dots prefix": BroadcastPath("./test"),
+	}
+
+	for name, p := range invalid {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			assert.Panics(t, func() { _, _ = NewAnnouncement(ctx, p) })
 		})
 	}
 }
@@ -46,23 +62,23 @@ func TestAnnouncement_BroadcastPath(t *testing.T) {
 		expected BroadcastPath
 	}{
 		"standard path": {
-			path:     BroadcastPath("test/path"),
-			expected: BroadcastPath("test/path"),
+			path:     BroadcastPath("/test/path"),
+			expected: BroadcastPath("/test/path"),
 		},
-		"empty path": {
-			path:     BroadcastPath(""),
-			expected: BroadcastPath(""),
+		"root path": {
+			path:     BroadcastPath("/"),
+			expected: BroadcastPath("/"),
 		},
 		"complex path": {
-			path:     BroadcastPath("complex/path/with/multiple/segments"),
-			expected: BroadcastPath("complex/path/with/multiple/segments"),
+			path:     BroadcastPath("/complex/path/with/multiple/segments"),
+			expected: BroadcastPath("/complex/path/with/multiple/segments"),
 		},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
-			announcement := NewAnnouncement(ctx, tt.path)
+			announcement, _ := NewAnnouncement(ctx, tt.path)
 
 			result := announcement.BroadcastPath()
 			assert.Equal(t, tt.expected, result)
@@ -78,21 +94,21 @@ func TestAnnouncement_String(t *testing.T) {
 		expectedEnded  string
 	}{
 		"standard path": {
-			path:           BroadcastPath("test/path"),
+			path:           BroadcastPath("/test/path"),
 			shouldEnd:      true,
-			expectedActive: "{ announce_status: active, broadcast_path: test/path }",
-			expectedEnded:  "{ announce_status: ended, broadcast_path: test/path }",
+			expectedActive: "{ announce_status: active, broadcast_path: /test/path }",
+			expectedEnded:  "{ announce_status: ended, broadcast_path: /test/path }",
 		},
-		"empty path": {
-			path:           BroadcastPath(""),
+		"root path": {
+			path:           BroadcastPath("/"),
 			shouldEnd:      true,
-			expectedActive: "{ announce_status: active, broadcast_path:  }",
-			expectedEnded:  "{ announce_status: ended, broadcast_path:  }",
+			expectedActive: "{ announce_status: active, broadcast_path: / }",
+			expectedEnded:  "{ announce_status: ended, broadcast_path: / }",
 		},
 		"special characters": {
-			path:           BroadcastPath("test/path with spaces/and-dashes_and.dots"),
+			path:           BroadcastPath("/test/path with spaces/and-dashes_and.dots"),
 			shouldEnd:      false,
-			expectedActive: "{ announce_status: active, broadcast_path: test/path with spaces/and-dashes_and.dots }",
+			expectedActive: "{ announce_status: active, broadcast_path: /test/path with spaces/and-dashes_and.dots }",
 			expectedEnded:  "",
 		},
 	}
@@ -100,13 +116,13 @@ func TestAnnouncement_String(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
-			announcement := NewAnnouncement(ctx, tt.path)
+			announcement, end := NewAnnouncement(ctx, tt.path)
 
 			result := announcement.String()
 			assert.Equal(t, tt.expectedActive, result)
 
 			if tt.shouldEnd {
-				announcement.End()
+				end()
 				result = announcement.String()
 				assert.Equal(t, tt.expectedEnded, result)
 			}
@@ -122,19 +138,19 @@ func TestAnnouncement_IsActive(t *testing.T) {
 		expectedAfterEnd  bool
 	}{
 		"active announcement": {
-			path:              BroadcastPath("test/path"),
+			path:              BroadcastPath("/test/path"),
 			shouldEnd:         false,
 			expectedBeforeEnd: true,
 			expectedAfterEnd:  true,
 		},
 		"ended announcement": {
-			path:              BroadcastPath("test/path"),
+			path:              BroadcastPath("/test/path"),
 			shouldEnd:         true,
 			expectedBeforeEnd: true,
 			expectedAfterEnd:  false,
 		},
-		"empty path active": {
-			path:              BroadcastPath(""),
+		"root path active": {
+			path:              BroadcastPath("/"),
 			shouldEnd:         false,
 			expectedBeforeEnd: true,
 			expectedAfterEnd:  true,
@@ -144,12 +160,12 @@ func TestAnnouncement_IsActive(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
-			announcement := NewAnnouncement(ctx, tt.path)
+			announcement, end := NewAnnouncement(ctx, tt.path)
 
 			assert.Equal(t, tt.expectedBeforeEnd, announcement.IsActive())
 
 			if tt.shouldEnd {
-				announcement.End()
+				end()
 				assert.Equal(t, tt.expectedAfterEnd, announcement.IsActive())
 			}
 		})
@@ -163,17 +179,17 @@ func TestAnnouncement_End(t *testing.T) {
 		expectedAfterEnd bool
 	}{
 		"single end call": {
-			path:             BroadcastPath("test/path"),
+			path:             BroadcastPath("/test/path"),
 			multipleEndCalls: false,
 			expectedAfterEnd: false,
 		},
 		"multiple end calls": {
-			path:             BroadcastPath("test/path"),
+			path:             BroadcastPath("/test/path"),
 			multipleEndCalls: true,
 			expectedAfterEnd: false,
 		},
-		"empty path end": {
-			path:             BroadcastPath(""),
+		"root path end": {
+			path:             BroadcastPath("/"),
 			multipleEndCalls: false,
 			expectedAfterEnd: false,
 		},
@@ -182,14 +198,14 @@ func TestAnnouncement_End(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
-			announcement := NewAnnouncement(ctx, tt.path)
+			announcement, end := NewAnnouncement(ctx, tt.path)
 
 			assert.True(t, announcement.IsActive())
 
-			announcement.End()
+			end()
 			if tt.multipleEndCalls {
-				announcement.End()
-				announcement.End()
+				end()
+				end()
 			}
 
 			assert.Equal(t, tt.expectedAfterEnd, announcement.IsActive())
@@ -197,7 +213,7 @@ func TestAnnouncement_End(t *testing.T) {
 	}
 }
 
-func TestAnnouncement_AwaitEnd(t *testing.T) {
+func TestAnnouncement_ContextDone(t *testing.T) {
 	tests := map[string]struct {
 		path        BroadcastPath
 		endDelay    time.Duration
@@ -205,13 +221,13 @@ func TestAnnouncement_AwaitEnd(t *testing.T) {
 		expectClose bool
 	}{
 		"end after delay": {
-			path:        BroadcastPath("test/path"),
+			path:        BroadcastPath("/test/path"),
 			endDelay:    100 * time.Millisecond,
 			timeout:     200 * time.Millisecond,
 			expectClose: true,
 		},
 		"no end call": {
-			path:        BroadcastPath("test/path"),
+			path:        BroadcastPath("/test/path"),
 			endDelay:    0,
 			timeout:     50 * time.Millisecond,
 			expectClose: false,
@@ -221,13 +237,13 @@ func TestAnnouncement_AwaitEnd(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
-			announcement := NewAnnouncement(ctx, tt.path)
+			announcement, end := NewAnnouncement(ctx, tt.path)
 
-			// Test that AwaitEnd returns a channel that is not closed initially
+			// Test that Context().Done() is not closed initially
 			select {
-			case <-announcement.AwaitEnd():
+			case <-announcement.Context().Done():
 				if !tt.expectClose {
-					t.Error("Expected AwaitEnd() channel to not be closed initially")
+					t.Error("Expected Context().Done() channel to not be closed initially")
 				}
 			default:
 				// This is the expected behavior for non-closed channels
@@ -236,11 +252,11 @@ func TestAnnouncement_AwaitEnd(t *testing.T) {
 			if tt.endDelay > 0 {
 				go func() {
 					time.Sleep(tt.endDelay)
-					announcement.End()
+					end()
 				}()
 
 				select {
-				case <-announcement.AwaitEnd():
+				case <-announcement.Context().Done():
 					assert.True(t, tt.expectClose, "Channel closed when not expected")
 				case <-time.After(tt.timeout):
 					assert.False(t, tt.expectClose, "Expected channel to be closed but timeout occurred")
@@ -258,13 +274,13 @@ func TestAnnouncement_WithCancelledContext(t *testing.T) {
 		expectedActive    bool
 	}{
 		"cancel after creation": {
-			path:              BroadcastPath("test/path"),
+			path:              BroadcastPath("/test/path"),
 			cancelImmediately: false,
 			sleepDuration:     10 * time.Millisecond,
 			expectedActive:    false,
 		},
 		"already cancelled": {
-			path:              BroadcastPath("test/path"),
+			path:              BroadcastPath("/test/path"),
 			cancelImmediately: true,
 			sleepDuration:     0,
 			expectedActive:    false,
@@ -280,7 +296,7 @@ func TestAnnouncement_WithCancelledContext(t *testing.T) {
 				cancel()
 			}
 
-			announcement := NewAnnouncement(ctx, tt.path)
+			announcement, _ := NewAnnouncement(ctx, tt.path)
 
 			if !tt.cancelImmediately {
 				assert.True(t, announcement.IsActive())
@@ -295,87 +311,15 @@ func TestAnnouncement_WithCancelledContext(t *testing.T) {
 	}
 }
 
-func TestAnnouncement_Fork(t *testing.T) {
-	tests := map[string]struct {
-		path             BroadcastPath
-		endOriginal      bool
-		expectedOriginal bool
-		expectedForked   bool
-	}{
-		"fork active announcement": {
-			path:             BroadcastPath("test/path"),
-			endOriginal:      false,
-			expectedOriginal: true,
-			expectedForked:   true,
-		},
-		"fork then end original": {
-			path:             BroadcastPath("test/path"),
-			endOriginal:      true,
-			expectedOriginal: false,
-			expectedForked:   false,
-		},
-	}
-
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			ctx := context.Background()
-			original := NewAnnouncement(ctx, tt.path)
-
-			forked := original.Fork()
-			assert.Equal(t, original.path, forked.path)
-			assert.True(t, original.IsActive())
-			assert.True(t, forked.IsActive())
-
-			if tt.endOriginal {
-				original.End()
-			}
-
-			assert.Equal(t, tt.expectedOriginal, original.IsActive())
-			assert.Equal(t, tt.expectedForked, forked.IsActive())
-		})
-	}
-}
-
-func TestAnnouncement_ForkWithCancelledParent(t *testing.T) {
-	tests := map[string]struct {
-		path                   BroadcastPath
-		sleepDuration          time.Duration
-		expectedOriginalActive bool
-		expectedForkedActive   bool
-	}{
-		"fork from cancelled parent": {
-			path:                   BroadcastPath("test/path"),
-			sleepDuration:          10 * time.Millisecond,
-			expectedOriginalActive: false,
-			expectedForkedActive:   false,
-		},
-	}
-
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			ctx, cancel := context.WithCancel(context.Background())
-			original := NewAnnouncement(ctx, tt.path)
-
-			cancel()
-			time.Sleep(tt.sleepDuration)
-
-			assert.Equal(t, tt.expectedOriginalActive, original.IsActive())
-
-			forked := original.Fork()
-			assert.Equal(t, tt.expectedForkedActive, forked.IsActive())
-		})
-	}
-}
-
-func TestAnnouncement_ConcurrentAwaitEnd(t *testing.T) {
+func TestAnnouncement_ConcurrentContextDone(t *testing.T) {
 	tests := map[string]struct {
 		path          BroadcastPath
 		numGoroutines int
 		endDelay      time.Duration
 		timeout       time.Duration
 	}{
-		"concurrent await end": {
-			path:          BroadcastPath("test/path"),
+		"concurrent context done": {
+			path:          BroadcastPath("/test/path"),
 			numGoroutines: 10,
 			endDelay:      50 * time.Millisecond,
 			timeout:       500 * time.Millisecond,
@@ -385,14 +329,14 @@ func TestAnnouncement_ConcurrentAwaitEnd(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
-			announcement := NewAnnouncement(ctx, tt.path)
+			announcement, end := NewAnnouncement(ctx, tt.path)
 
 			results := make(chan bool, tt.numGoroutines)
 
 			for i := 0; i < tt.numGoroutines; i++ {
 				go func() {
 					select {
-					case <-announcement.AwaitEnd():
+					case <-announcement.Context().Done():
 						results <- true
 					case <-time.After(tt.timeout):
 						results <- false
@@ -401,7 +345,7 @@ func TestAnnouncement_ConcurrentAwaitEnd(t *testing.T) {
 			}
 
 			time.Sleep(tt.endDelay)
-			announcement.End()
+			end()
 
 			for i := 0; i < tt.numGoroutines; i++ {
 				select {

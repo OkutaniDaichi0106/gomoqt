@@ -312,11 +312,21 @@ func TestAnnouncementWriter_Init_DeadlockIssue(t *testing.T) {
 
 	assert.Len(t, sas.actives, 1)
 	assert.Contains(t, sas.actives, "stream1")
-	assert.Equal(t, ann2, sas.actives["stream1"])
 
-	// First announcement should be ended
-	assert.False(t, ann1.IsActive())
-	assert.True(t, ann2.IsActive())
+	// One announcement should remain active, the other should be ended
+	// (map iteration order is non-deterministic, so either could be kept)
+	activeAnn := sas.actives["stream1"]
+	assert.NotNil(t, activeAnn)
+
+	if activeAnn == ann1 {
+		assert.True(t, ann1.IsActive())
+		assert.False(t, ann2.IsActive())
+	} else if activeAnn == ann2 {
+		assert.False(t, ann1.IsActive())
+		assert.True(t, ann2.IsActive())
+	} else {
+		t.Fatalf("unexpected announcement: %v", activeAnn)
+	}
 
 	mockStream.AssertExpectations(t)
 }

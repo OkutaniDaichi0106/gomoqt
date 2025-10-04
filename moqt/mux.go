@@ -73,17 +73,18 @@ func (mux *TrackMux) registerHandler(ann *Announcement, handler TrackHandler) *a
 	mux.handlerMu.Lock()
 	announced, ok := mux.trackHandlerIndex[path]
 
-	mux.trackHandlerIndex[path] = &announcedTrackHandler{
+	newHandler := &announcedTrackHandler{
 		Announcement: ann,
 		TrackHandler: handler,
 	}
+	mux.trackHandlerIndex[path] = newHandler
 	mux.handlerMu.Unlock()
 
 	if ok {
 		announced.end()
 	}
 
-	return mux.trackHandlerIndex[path]
+	return newHandler
 }
 
 func (mux *TrackMux) removeHandler(handler *announcedTrackHandler) {

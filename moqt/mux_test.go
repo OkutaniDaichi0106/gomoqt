@@ -1033,6 +1033,8 @@ func TestMux_ServeAnnouncements_MultipleListeners_ReceiveAnnouncement(t *testing
 	ctx1, cancel1 := context.WithCancel(context.Background())
 	mock1.On("Context").Return(ctx1)
 	mock1.On("Write", mock.Anything).Return(0, nil)
+	mock1.On("CancelWrite", mock.Anything).Return().Maybe()
+	mock1.On("CancelRead", mock.Anything).Return().Maybe()
 	aw1 := newAnnouncementWriter(mock1, "/multi/")
 
 	// Second mock stream
@@ -1040,6 +1042,8 @@ func TestMux_ServeAnnouncements_MultipleListeners_ReceiveAnnouncement(t *testing
 	ctx2, cancel2 := context.WithCancel(context.Background())
 	mock2.On("Context").Return(ctx2)
 	mock2.On("Write", mock.Anything).Return(0, nil)
+	mock2.On("CancelWrite", mock.Anything).Return().Maybe()
+	mock2.On("CancelRead", mock.Anything).Return().Maybe()
 	aw2 := newAnnouncementWriter(mock2, "/multi/")
 
 	// Start two serveAnnouncements goroutines
@@ -1122,6 +1126,8 @@ func TestMux_ServeAnnouncements_ConcurrentAnnounce_NoDeadlock(t *testing.T) {
 		cancels = append(cancels, cancel)
 		ms.On("Context").Return(cctx)
 		ms.On("Write", mock.Anything).Return(0, nil)
+		ms.On("CancelWrite", mock.Anything).Return().Maybe()
+		ms.On("CancelRead", mock.Anything).Return().Maybe()
 		mocks = append(mocks, ms)
 		aw := newAnnouncementWriter(ms, "/race/")
 		aws = append(aws, aw)

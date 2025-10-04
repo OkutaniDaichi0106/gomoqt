@@ -1,13 +1,13 @@
 import { defineConfig } from 'vitest/config';
+import { resolve } from 'path';
 import type { Plugin } from 'vite';
 
-// Workaround for ESM packages missing .js extensions in relative imports
-const esmFixPlugin = (): Plugin => ({
-  name: 'esm-fix',
+// Workaround for golikejs missing .js extensions in ESM imports
+const golikejsFixPlugin = (): Plugin => ({
+  name: 'golikejs-fix',
   enforce: 'pre',
   resolveId(source, importer) {
-    // Fix relative imports in golikejs and @okutanidaichi/moqt packages
-    if (importer && (importer.includes('golikejs') || importer.includes('@okutanidaichi/moqt')) && source.startsWith('./')) {
+    if (importer?.includes('golikejs') && source.startsWith('./')) {
       // Add .js extension if missing
       if (!source.endsWith('.js') && !source.endsWith('.ts') && !source.endsWith('.json')) {
         return this.resolve(source + '.js', importer, { skipSelf: true });
@@ -18,17 +18,13 @@ const esmFixPlugin = (): Plugin => ({
 });
 
 export default defineConfig({
-  plugins: [esmFixPlugin()],
+  plugins: [golikejsFixPlugin()],
   test: {
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
     deps: {
-      optimizer: {
-        web: {
-          include: ['@okutanidaichi/moqt', 'golikejs'],
-        },
-      },
+      inline: ['golikejs'],
     },
     include: ['src/**/*.test.ts'],
     poolOptions: {
@@ -55,6 +51,10 @@ export default defineConfig({
     },
   },
   resolve: {
+    alias: {
+      '@okutanidaichi/moqt': resolve(__dirname, '../moq-web/src'),
+      '@okutanidaichi/moqt/io': resolve(__dirname, '../moq-web/src/io'),
+    },
     extensions: ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json'],
     // Allow resolving modules without explicit .js extension
     mainFields: ['module', 'jsnext:main', 'jsnext', 'main'],

@@ -10,8 +10,6 @@
     "build:main": "tsc",
     "build:browser": "tsc --project tsconfig.browser.json",
     "postbuild": "node ./scripts/copy-src-to-dist.cjs",
-    "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
     "test": "vitest run",
@@ -73,7 +71,7 @@
     "web-streams-polyfill": "^4.2.0"
   },
   "dependencies": {
-    "@okutanidaichi/moqt": "^0.6.9",
+    "@okutanidaichi/moqt": "^0.6.6",
     "zod": "^4.1.5"
   },
   "packageManager": "pnpm@10.15.0+sha512.486ebc259d3e999a4e8691ce03b5cac4a71cbeca39372a9b762cb500cfdf0873e2cb16abe3d951b1ee2cf012503f027b98b6584e4df22524e0c7450d9ec7aa7b"

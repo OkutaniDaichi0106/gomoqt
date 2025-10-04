@@ -1,5 +1,5 @@
 
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { BufferPool } from './';
 
 describe('BytesPool', () => {
@@ -26,16 +26,18 @@ describe('BytesPool', () => {
     expect(bytes2).not.toBe(bytes1);
   });
 
-  it('should clean up old bytes', (done) => {
-    const pool = new BufferPool({ min: 1, middle: 10, max: 100, options: { maxPerBucket: 10, maxTotalBytes: 10 } });
-    const bytes1 = pool.acquire(10);
-    pool.release(bytes1);
-    setTimeout(() => {
-      pool.cleanup();
-      const bytes2 = pool.acquire(10);
-      expect(bytes2).not.toBe(bytes1);
-      done();
-    }, 20);
+  it('should clean up old bytes', () => {
+    return new Promise<void>((resolve) => {
+      const pool = new BufferPool({ min: 1, middle: 10, max: 100, options: { maxPerBucket: 10, maxTotalBytes: 10 } });
+      const bytes1 = pool.acquire(10);
+      pool.release(bytes1);
+      setTimeout(() => {
+        pool.cleanup();
+        const bytes2 = pool.acquire(10);
+        expect(bytes2).not.toBe(bytes1);
+        resolve();
+      }, 20);
+    });
   });
 
   it('should acquire and release bytes', () => {

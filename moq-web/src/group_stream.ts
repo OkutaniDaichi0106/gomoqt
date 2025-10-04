@@ -1,6 +1,6 @@
 import type { Reader, Writer } from "./io";
-import { withCancelCause } from "./internal/context";
-import type { CancelCauseFunc, Context } from "./internal/context";
+import { withCancelCause } from "golikejs/context";
+import type { CancelCauseFunc, Context } from "golikejs/context";
 import type { Source } from "./io";
 import { StreamError } from "./io/error";
 import type { GroupMessage } from "./message";
@@ -13,10 +13,12 @@ export class GroupWriter {
     #writer: Writer;
     #ctx: Context;
     #cancelFunc: CancelCauseFunc;
+    readonly streamId: bigint;
 
     constructor(trackCtx: Context, writer: Writer, group: GroupMessage) {
         this.#group = group;
         this.#writer = writer;
+        this.streamId = writer.streamId ?? 0n;
         [this.#ctx, this.#cancelFunc] = withCancelCause(trackCtx);
 
         trackCtx.done().then(()=>{
@@ -71,10 +73,12 @@ export class GroupReader {
     #ctx: Context;
     #cancelFunc: CancelCauseFunc;
     #frame?: Frame;
+    readonly streamId: bigint;
 
     constructor(trackCtx: Context, reader: Reader, group: GroupMessage) {
         this.#group = group;
         this.#reader = reader;
+        this.streamId = reader.streamId ?? 0n;
         [this.#ctx, this.#cancelFunc] = withCancelCause(trackCtx);
 
         trackCtx.done().then(()=>{

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { BroadcastPath} from './broadcast_path';
 import { isValidBroadcastPath, validateBroadcastPath, extension } from './broadcast_path';
 

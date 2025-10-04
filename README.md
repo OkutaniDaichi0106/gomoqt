@@ -21,7 +21,7 @@ This implementation follows the [MOQ Lite specification](https://kixelated.githu
 
 ### moqt
 
-The core package implementing the MOQ Lite protocol interactions, including:
+The core Go package implementing the MOQ Lite protocol interactions, including:
 - Session establishment and management
 - Track publishing and subscription
 - Announcement handling
@@ -29,21 +29,27 @@ The core package implementing the MOQ Lite protocol interactions, including:
 
 This implementation is specifically designed for the MOQ Lite specification, focusing on simplicity and performance for real-time media streaming applications.
 
-### lomc (Coming Soon)
+### moq-web
 
-Implementation of the Low Overhead Media Container.
-**Note:** This package is currently under development.
+TypeScript/JavaScript implementation providing WebTransport support for browsers, including:
+- WebTransport session management
+- Stream ID calculation and tracking
+- Reader/Writer interfaces for QUIC streams
+- Integration with browser WebTransport API
 
-### catalog (Coming Soon)
+### catalog
 
 Implementation of the MOQ Catalog for content detection and management.
-**Note:** This package is currently under development.
+
+### interop
+
+Interoperability testing tools and examples for validating MOQ implementations across different platforms.
 
 ## Development
 
 ### Prerequisites
 
-- Go 1.22 or later
+- Go 1.25.0 or later
 - [just](https://github.com/casey/just) command runner
 
 ### Getting Started
@@ -74,11 +80,11 @@ This command will perform the following:
 
 #### Running Examples
 ```bash
-# Start the echo server
-just run-echo-server
+# Start the interop server
+just interop-server
 
-# In another terminal, run the echo client
-just run-echo-client
+# In another terminal, run the interop client
+just interop-client
 ```
 
 #### Code Quality
@@ -109,8 +115,11 @@ just clean
 
 The [examples](examples) directory includes sample applications demonstrating how to use gomoqt:
 
-- **Echo Server and Client** (`echo/`): A simple echo server and client implementation.
-- More samples coming soon…
+- **Interop Server and Client** (`interop/`): Interoperability testing between different MOQ implementations
+- **Broadcast Example** (`examples/broadcast/`): Broadcasting functionality demonstration
+- **Echo Example** (`examples/echo/`): Simple echo server and client implementation
+- **Native QUIC** (`examples/native_quic/`): Direct QUIC connection examples
+- **Relay** (`examples/relay/`): Relay functionality for media streaming
 
 ### Documentation
 

@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SessionStream } from './session_stream';
-import type { Context} from './internal/context';
-import { background, withCancelCause } from './internal/context';
+import type { Context} from 'golikejs/context';
+import { background, withCancelCause } from 'golikejs/context';
 import type { Writer, Reader } from './io';
 import { StreamError } from './io/error';
 import { SessionUpdateMessage } from './message/session_update';
@@ -9,9 +9,11 @@ import { SessionClientMessage } from './message/session_client';
 import { SessionServerMessage } from './message/session_server';
 import { Extensions } from './internal/extensions';
 import type { Version } from './internal/version';
+import { EOF } from './io';
 
 describe('SessionStream', () => {
     let ctx: Context;
+    let cancelCtx: (reason: Error | undefined) => void;
     let mockWriter: Writer;
     let mockReader: Reader;
     let mockClient: SessionClientMessage;
@@ -19,65 +21,56 @@ describe('SessionStream', () => {
     let sessionStream: SessionStream;
 
     beforeEach(() => {
-        ctx = background();
+        [ctx, cancelCtx] = withCancelCause(background());
         
         mockWriter = {
-            writeBoolean: jest.fn(),
-            writeBigVarint: jest.fn(),
-            writeString: jest.fn(),
-            writeUint8Array: jest.fn(),
-            writeUint8: jest.fn(),
-            flush: jest.fn(),
-            close: jest.fn(),
-            cancel: jest.fn(),
-            closed: jest.fn()
+            writeBoolean: vi.fn(),
+            writeBigVarint: vi.fn(),
+            writeString: vi.fn(),
+            writeUint8Array: vi.fn(),
+            writeUint8: vi.fn(),
+            writeVarint: vi.fn(),
+            flush: vi.fn(),
+            close: vi.fn(),
+            cancel: vi.fn(),
+            closed: vi.fn()
         } as any;
 
         mockReader = {
-            readBoolean: jest.fn(),
-            readBigVarint: jest.fn(),
-            readString: jest.fn(),
-            readStringArray: jest.fn(),
-            readUint8Array: jest.fn(),
-            readUint8: jest.fn(),
-            readVarint: jest.fn(),
-            copy: jest.fn(),
-            fill: jest.fn(),
-            cancel: jest.fn(),
-            closed: jest.fn()
+            readBoolean: vi.fn(),
+            readBigVarint: vi.fn(),
+            readString: vi.fn(),
+            readStringArray: vi.fn(),
+            readUint8Array: vi.fn(),
+            readUint8: vi.fn(),
+            readVarint: vi.fn(),
+            copy: vi.fn(),
+            fill: vi.fn(),
+            cancel: vi.fn(),
+            closed: vi.fn()
         } as any;
 
-        // Mock readVarint to return [number, Error | undefined]
-        (mockReader.readVarint as jest.MockedFunction<any>).mockResolvedValue([0, undefined]);
-        (mockReader.readBigVarint as jest.MockedFunction<any>).mockResolvedValue([0n, undefined]);
+        // Mock readVarint to return [number, Error | undefined] - return EOF to stop the loop
+        vi.mocked(mockReader.readVarint).mockResolvedValue([0, EOF]);
+        vi.mocked(mockReader.readBigVarint).mockResolvedValue([0n, undefined]);
 
         const versions = new Set<Version>([0xffffff00n]);
         const extensions = new Extensions();
 
         mockClient = new SessionClientMessage({ versions, extensions });
         mockServer = new SessionServerMessage({ version: 0xffffff00n, extensions });
-
-        // Mock SessionUpdateMessage.decode to prevent actual decoding
-        const originalDecode = SessionUpdateMessage.prototype.decode;
-        SessionUpdateMessage.prototype.decode = jest.fn(async () => new Error('Mock decode error to break loop'));
     });
 
     afterEach(async () => {
-        // Cancel context to clean up any background tasks
-        if (ctx) {
-            const [, cancel] = withCancelCause(ctx);
-            cancel(new Error('Test cleanup'));
+        // Cancel context to stop background operations
+        if (cancelCtx) {
+            cancelCtx(undefined);
         }
         
-        // Clean up session stream if it exists
-        if (sessionStream) {
-            try {
-                // Wait a bit for any ongoing operations to complete
-                await new Promise(resolve => setTimeout(resolve, 10));
-            } catch (error) {
-                // Ignore cleanup errors
-            }
-        }
+        // Give time for cleanup
+        await new Promise(resolve => setTimeout(resolve, 10));
+        
+        vi.restoreAllMocks();
     });
 
     describe('constructor', () => {
@@ -86,6 +79,7 @@ describe('SessionStream', () => {
         });
 
         it('should initialize with provided parameters', () => {
+            expect(sessionStream).toBeInstanceOf(SessionStream);
             expect(sessionStream.client).toBe(mockClient);
             expect(sessionStream.server).toBe(mockServer);
             expect(sessionStream.context).toBeDefined();
@@ -93,38 +87,23 @@ describe('SessionStream', () => {
 
         it('should use the provided context', () => {
             expect(sessionStream.context).toBe(ctx);
+            expect(typeof sessionStream.context.done).toBe('function');
+            expect(typeof sessionStream.context.err).toBe('function');
         });
     });
 
     describe('update', () => {
         beforeEach(() => {
             sessionStream = new SessionStream(ctx, mockWriter, mockReader, mockClient, mockServer);
-            // Mock the encode method on SessionUpdateMessage instances
-            const mockEncode = jest.fn().mockImplementation(async () => undefined);
-            jest.spyOn(SessionUpdateMessage.prototype, 'encode').mockImplementation(async () => undefined);
-        });
-
-        afterEach(async () => {
-            jest.restoreAllMocks();
-            
-            // Clean up session stream
-            if (sessionStream) {
-                try {
-                    const [, cancel] = withCancelCause(sessionStream.context);
-                    cancel(new Error('Test cleanup'));
-                    await new Promise(resolve => setTimeout(resolve, 10));
-                } catch (error) {
-                    // Ignore cleanup errors
-                }
-            }
         });
 
         it('should encode and send session update message', async () => {
             const bitrate = 1000n;
+            const encodeSpy = vi.spyOn(SessionUpdateMessage.prototype, 'encode').mockResolvedValue(undefined);
 
             await sessionStream.update(bitrate);
 
-            expect(SessionUpdateMessage.prototype.encode).toHaveBeenCalled();
+            expect(encodeSpy).toHaveBeenCalledWith(mockWriter);
             expect(sessionStream.clientInfo).toBeDefined();
             expect(sessionStream.clientInfo.bitrate).toBe(bitrate);
         });
@@ -133,35 +112,51 @@ describe('SessionStream', () => {
             const bitrate = 1000n;
             const error = new Error('Encoding failed');
             
-            // Mock encode to return error
-            jest.spyOn(SessionUpdateMessage.prototype, 'encode').mockImplementation(async () => error);
+            vi.spyOn(SessionUpdateMessage.prototype, 'encode').mockResolvedValue(error);
 
             await expect(sessionStream.update(bitrate)).rejects.toThrow('Failed to encode session update message: Error: Encoding failed');
         });
+
+        it('should update clientInfo with the sent message', async () => {
+            const bitrate = 2000n;
+            vi.spyOn(SessionUpdateMessage.prototype, 'encode').mockResolvedValue(undefined);
+
+            await sessionStream.update(bitrate);
+
+            const clientInfo = sessionStream.clientInfo;
+            expect(clientInfo).toBeInstanceOf(SessionUpdateMessage);
+            expect(clientInfo.bitrate).toBe(bitrate);
+        });
     });
 
-    describe('context cancellation', () => {
-        let ctxWithCancel: Context;
-        let cancel: (reason: Error) => void;
-
+    describe('context', () => {
         beforeEach(() => {
-            [ctxWithCancel, cancel] = withCancelCause(background());
-            sessionStream = new SessionStream(ctxWithCancel, mockWriter, mockReader, mockClient, mockServer);
+            sessionStream = new SessionStream(ctx, mockWriter, mockReader, mockClient, mockServer);
         });
 
-        it('should use the provided context that can be cancelled', () => {
+        it('should return the internal context', () => {
+            const context = sessionStream.context;
+            
+            expect(context).toBeDefined();
+            expect(typeof context.done).toBe('function');
+            expect(typeof context.err).toBe('function');
+        });
+
+        it('should use context cancellation to stop background operations', async () => {
             // The session stream should use the provided context
-            expect(sessionStream.context).toBeDefined();
-            expect(sessionStream.context).toBe(ctxWithCancel);
+            expect(sessionStream.context).toBe(ctx);
             
             // Initially the context should not be cancelled
-            expect(sessionStream.context.err()).toBeFalsy();
+            expect(sessionStream.context.err()).toBeUndefined();
             
             // Cancel the context
-            cancel(new Error("Context cancelled"));
+            cancelCtx(new Error("Context cancelled"));
+            
+            // Give minimal time for the background loop to detect cancellation
+            await new Promise(resolve => setTimeout(resolve, 5));
             
             // The session context should now be cancelled
-            expect(sessionStream.context.err()).toBeTruthy();
+            expect(sessionStream.context.err()).toBeInstanceOf(Error);
         });
     });
 
@@ -184,9 +179,10 @@ describe('SessionStream', () => {
         });
 
         it('should handle decode errors in background updates', async () => {
-            // Reset the mock to return an error after first call
+            // Spy on decode to track calls and return errors
             let callCount = 0;
-            (SessionUpdateMessage.prototype.decode as jest.MockedFunction<any>).mockImplementation(async () => {
+            const decodeSpy = vi.spyOn(SessionUpdateMessage.prototype, 'decode');
+            decodeSpy.mockImplementation(async () => {
                 callCount++;
                 if (callCount === 1) {
                     return undefined; // First call succeeds
@@ -194,27 +190,46 @@ describe('SessionStream', () => {
                 return new Error('Decode error'); // Subsequent calls fail
             });
 
-            // Wait a bit for the background handler to process
-            await new Promise(resolve => setTimeout(resolve, 50));
+            // Wait minimal time for the background handler to process
+            await new Promise(resolve => setTimeout(resolve, 10));
             
             // The session stream should still be functional
             expect(sessionStream.context).toBeDefined();
             expect(sessionStream.client).toBeDefined();
             expect(sessionStream.server).toBeDefined();
+            
+            decodeSpy.mockRestore();
         });
     });
 
-    describe('context getter', () => {
+    describe('serverInfo getter', () => {
         beforeEach(() => {
             sessionStream = new SessionStream(ctx, mockWriter, mockReader, mockClient, mockServer);
         });
 
-        it('should return the internal context', () => {
-            const contextResult = sessionStream.context;
+        it('should return the server information property', () => {
+            // serverInfo is initially undefined until the background handler
+            // receives a SessionUpdateMessage from the server
+            const serverInfoResult = sessionStream.serverInfo;
             
-            expect(contextResult).toBeDefined();
-            expect(typeof contextResult.done).toBe('function');
-            expect(typeof contextResult.err).toBe('function');
+            // We can only verify the getter exists and returns the internal state
+            // In a real scenario, this would be populated by decode()
+            expect(serverInfoResult).toBeUndefined();
+        });
+    });
+
+    describe('updated method', () => {
+        beforeEach(() => {
+            sessionStream = new SessionStream(ctx, mockWriter, mockReader, mockClient, mockServer);
+        });
+
+        it('should be a function that returns a promise', () => {
+            // Verify the method exists and has the correct signature
+            expect(typeof sessionStream.updated).toBe('function');
+            
+            // Note: We cannot easily test the actual waiting behavior without
+            // complex coordination with the background handler and proper mutex locking
+            // The method uses Cond.wait() which requires the caller to lock the mutex first
         });
     });
 
@@ -222,34 +237,45 @@ describe('SessionStream', () => {
         beforeEach(() => {
             sessionStream = new SessionStream(ctx, mockWriter, mockReader, mockClient, mockServer);
             // Mock the encode method on SessionUpdateMessage instances
-            jest.spyOn(SessionUpdateMessage.prototype, 'encode').mockImplementation(async () => undefined);
+            vi.spyOn(SessionUpdateMessage.prototype, 'encode').mockImplementation(async () => undefined);
         });
 
-        afterEach(async () => {
-            jest.restoreAllMocks();
-            
-            // Clean up session stream
-            if (sessionStream) {
-                try {
-                    const [, cancel] = withCancelCause(sessionStream.context);
-                    cancel(new Error('Test cleanup'));
-                    await new Promise(resolve => setTimeout(resolve, 10));
-                } catch (error) {
-                    // Ignore cleanup errors
-                }
-            }
+        afterEach(() => {
+            vi.restoreAllMocks();
         });
 
         it('should handle complete session lifecycle', async () => {
             const bitrate = 2000n;
+            const encodeSpy = vi.mocked(SessionUpdateMessage.prototype.encode);
+
+            // Verify initial state
+            expect(sessionStream.context).toBeDefined();
+            expect(sessionStream.client).toBe(mockClient);
+            expect(sessionStream.server).toBe(mockServer);
 
             // Update session
             await sessionStream.update(bitrate);
-            expect(sessionStream.clientInfo).toBeDefined();
+            
+            // Verify update was successful - clientInfo is a SessionUpdateMessage
+            expect(sessionStream.clientInfo).toBeInstanceOf(SessionUpdateMessage);
             expect(sessionStream.clientInfo.bitrate).toBe(bitrate);
+            
+            // Verify encode was called
+            expect(encodeSpy).toHaveBeenCalled();
+        });
 
-            // Close session
-            // expect(() => sessionStream.close()).not.toThrow();
+        it('should handle multiple sequential updates', async () => {
+            const bitrateValues = [1000n, 2000n, 3000n];
+            const encodeSpy = vi.mocked(SessionUpdateMessage.prototype.encode);
+
+            for (const bitrate of bitrateValues) {
+                await sessionStream.update(bitrate);
+                expect(sessionStream.clientInfo).toBeInstanceOf(SessionUpdateMessage);
+                expect(sessionStream.clientInfo.bitrate).toBe(bitrate);
+            }
+            
+            // Verify encode was called for each update
+            expect(encodeSpy).toHaveBeenCalledTimes(3);
         });
     });
 });

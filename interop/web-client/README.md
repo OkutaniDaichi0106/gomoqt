@@ -42,21 +42,21 @@ The project is configured to use the local MOQT TypeScript library located at `i
 2. **Subscribe Implementation**
    ```typescript
    import { Client } from '@okutanidaichi/moqt';
-   
+
    const client = new Client();
    const session = await client.dial("https://localhost:4469/broadcast");
-   const announceReader = await session.openAnnounceStream("/");
-   
+   const announceReader = await session.acceptAnnounce("/");
+
    // Process announcements and subscribe to tracks
    ```
 
 3. **Publish Implementation**
    ```typescript
    import { Client, TrackMux } from '@okutanidaichi/moqt';
-   
+
    const client = new Client();
    const session = await client.dial("https://localhost:4469/publish");
-   
+
    // Set up publication handling
    ```
 

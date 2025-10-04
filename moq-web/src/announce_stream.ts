@@ -2,9 +2,9 @@ import type { Reader, Writer } from "./io";
 import { EOF } from "./io";
 import type { AnnouncePleaseMessage } from "./message";
 import { AnnounceMessage } from "./message";
-import { withCancel, withCancelCause, withPromise, background, ContextCancelledError } from "./internal/context";
-import type { CancelCauseFunc, CancelFunc, Context } from "./internal/context";
-import { Cond } from "./internal/cond";
+import { withCancel, withCancelCause, watchPromise, background, ContextCancelledError } from "golikejs/context";
+import type { CancelCauseFunc, CancelFunc, Context } from "golikejs/context";
+import { Cond, Mutex } from "golikejs/sync";
 import type { TrackPrefix } from "./track_prefix";
 import { isValidPrefix, validateTrackPrefix } from "./track_prefix";
 import { validateBroadcastPath } from "./broadcast_path";
@@ -26,6 +26,7 @@ export class AnnouncementWriter {
     #cancelFunc: CancelCauseFunc;
     #ready: Promise<void>;
     #resolveInit?: () => void;
+    readonly streamId: bigint;
 
     constructor(
         sessCtx: Context,
@@ -38,7 +39,9 @@ export class AnnouncementWriter {
 
         this.prefix = validateTrackPrefix(req.prefix);
 
-        // const ctx = withPromise(sessCtx, reader.closed());
+        this.streamId = writer.streamId ?? reader.streamId ?? 0n;
+
+        // const ctx = watchPromise(sessCtx, reader.closed());
         [this.#ctx, this.#cancelFunc] = withCancelCause(sessCtx);
         this.#ready = new Promise<void>((resolve) => {
             this.#resolveInit = resolve;
@@ -203,7 +206,9 @@ export class AnnouncementReader {
     #queue: Queue<Announcement> = new Queue();
     #ctx: Context;
     #cancelFunc: CancelCauseFunc;
-    #cond: Cond = new Cond();
+    #mu: Mutex = new Mutex();
+    #cond: Cond = new Cond(this.#mu);
+    readonly streamId: bigint;
 
 
     constructor(sessCtx: Context, writer: Writer, reader: Reader,
@@ -215,6 +220,7 @@ export class AnnouncementReader {
             throw new Error(`[AnnouncementReader] invalid prefix: ${prefix}.`);
         }
         this.prefix = prefix;
+        this.streamId = writer.streamId ?? reader.streamId ?? 0n;
         [this.#ctx, this.#cancelFunc] = withCancelCause(sessCtx);
 
         // Set initial announcements
@@ -231,7 +237,7 @@ export class AnnouncementReader {
     }
 
     async receive(signal: Promise<void>): Promise<[Announcement, undefined] | [undefined, Error]> {
-        const ctx = withPromise(this.context, signal);
+        const ctx = watchPromise(this.context, signal);
 
         while (true) {
             const announcement = await this.#queue.dequeue();
@@ -348,7 +354,7 @@ export class Announcement {
 
     constructor(path: string, context: Promise<void>) {
         this.broadcastPath = validateBroadcastPath(path);
-        const ctx = withPromise(background(), context);
+        const ctx = watchPromise(background(), context);
         [this.#ctx, this.#cancelFunc] = withCancel(ctx);
     }
 

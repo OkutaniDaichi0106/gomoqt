@@ -38,26 +38,29 @@
     "postbuild": "node ./scripts/copy-src-to-dist.cjs",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
-    "test": "jest --passWithNoTests",
-    "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",
-    "test:fast": "jest --passWithNoTests --maxWorkers=75% --silent",
-    "test:quiet": "jest --passWithNoTests --silent --reporters=default",
-    "test:verbose": "VERBOSE_TESTS=true jest --passWithNoTests --verbose",
-    "test:ci": "jest --passWithNoTests --silent --ci --coverage --watchAll=false"
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage",
+    "test:fast": "vitest run --silent",
+    "test:quiet": "vitest run --silent --reporter=default",
+    "test:verbose": "VERBOSE_TESTS=true vitest run",
+    "test:ci": "vitest run --silent --coverage"
   },
   "devDependencies": {
-    "@types/jest": "^30.0.0",
     "@types/node": "^24.0.4",
     "@typescript-eslint/eslint-plugin": "^8.35.1",
     "@typescript-eslint/parser": "^8.35.1",
+    "@vitest/ui": "^3.2.4",
     "eslint": "^9.30.1",
-    "jest": "^30.1.3",
-    "jest-environment-jsdom": "^30.0.4",
-    "ts-jest": "^29.4.1",
+    "jsdom": "^27.0.0",
     "tslint": "^5.20.1",
     "tsup": "^8.5.0",
     "typescript": "^5.8.3",
+    "vitest": "^3.2.4",
     "web-streams-polyfill": "^4.1.0"
+  },
+  "dependencies": {
+    "golikejs": "^0.1.7"
   }
 }

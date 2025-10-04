@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { AnnounceMessage } from './announce';
 import { Writer, Reader } from '../io';
 import { createIsolatedStreams } from './test-utils.test';

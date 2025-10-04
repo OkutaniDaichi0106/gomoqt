@@ -1,8 +1,8 @@
 import type { Component } from 'solid-js';
 import { createSignal, onMount, onCleanup } from 'solid-js';
 import styles from '../App.module.css';
-import { DefaultTrackMux, MOQ, TrackWriter } from '@okutanidaichi/moqt';
-import { background } from '@okutanidaichi/moqt/internal';
+import { DefaultTrackMux, MOQ, TrackWriter,Frame } from '@okutanidaichi/moqt';
+import { background } from 'golikejs/sync';
 
 const Home: Component = () => {
   // Publish state
@@ -21,54 +21,56 @@ const Home: Component = () => {
   const startPublish = async () => {
     try {
       setPublishConnectionStatus('Connecting...');
-      
+
       if (!('WebTransport' in window)) {
         throw new Error('WebTransport is not supported in this browser');
       }
 
-      DefaultTrackMux.handleTrack(background(), "/interop.client", {serveTrack: async (trackWriter: TrackWriter)=>{
+      DefaultTrackMux.publishFunc(background().done(), "/interop.client", async (ctx: Promise<void>, trackWriter: TrackWriter)=>{
         const encoder = new TextEncoder()
         let sequence = 1n
         for (let i = 0; i < 10; i++) {
           const [group, err] = await trackWriter.openGroup(sequence)
-          if (err || !group) {
+          if (err) {
             console.log("Failed to open group")
             trackWriter.closeWithError(0, "unexpected error")
             return
           }
 
-          const err2 = await group.writeFrame(encoder.encode("Hello from interop web client!"))
+          const frame = new Frame(encoder.encode("Hello from interop web client!"))
+
+          const err2 = await group!.writeFrame(frame)
           if (err2) {
             console.log("Failed to write frame")
             trackWriter.closeWithError(0, "unexpected error")
             return
           }
 
-          group.close()
+          group!.close()
 
           sequence++
           await new Promise(resolve => setTimeout(resolve, 1000))
         }
         trackWriter.close()
-      }})
+      })
 
       const moq = new MOQ()
       const session = await moq.dial("https://moqt.example.com:9000/publish")
-      
+
       setIsPublishConnected(true);
       setPublishConnectionStatus('Connected (WebTransport ready)');
-      
+
       const interval = setInterval(() => {
         const count = publishCount() + 1;
         setPublishCount(count);
         const message = `Publishing frame ${count}: ${publishMessage()}`;
         console.log(message);
       }, 2000);
-      
+
       onCleanup(() => {
         clearInterval(interval);
       });
-      
+
     } catch (error) {
       console.error('Publish error:', error);
       setPublishConnectionStatus(`Error: ${error}`);
@@ -98,17 +100,21 @@ const Home: Component = () => {
       setIsSubscribeConnected(true);
       setSubscribeConnectionStatus('Connected (MOQT library loaded)');
 
-      const annstr = await session.openAnnounceStream("/");
+      const annstr = await session.acceptAnnounce("/");
 
       for (;;) {
-        const announcement = await annstr.receive()
-        if (!announcement.isActive()) {
+        const [announcement, err] = await annstr.receive()
+        if (err) {
+          continue;
+        }
+
+        if (!announcement!.isActive()) {
             continue
         }
 
         console.log("Announcement received:", announcement)
 
-        const trackReader = await session.openTrackStream(announcement.broadcastPath, "")
+        const trackReader = await session.subscribe(announcement!.broadcastPath, "")
         for (;;) {
             const [group, err] = await trackReader.acceptGroup()
             if (err || !group) {
@@ -118,11 +124,11 @@ const Home: Component = () => {
             let frameSequence = 0;
             for (;;) {
                 const [frame, err] = await group.readFrame();
-                if (err || !frame) {
+                if (err) {
                     break;
                 }
 
-                const frameText = new TextDecoder().decode(frame);
+                const frameText = new TextDecoder().decode(frame!.bytes);
                 const timestamp = new Date().toLocaleTimeString();
                 const message = `[${timestamp}] Group: ${group.groupSequence}, Frame: ${frameSequence} - ${frameText}`;
 
@@ -179,12 +185,12 @@ const Home: Component = () => {
       <header class={styles.header}>
         <h1>MOQT Web Client</h1>
         <p>MOQT (Media over QUIC Transport) client implementation using WebTransport</p>
-        
+
         <div style="display: flex; gap: 40px; margin-top: 40px; max-width: 1200px; margin-left: auto; margin-right: auto;">
           {/* Publish Section */}
           <div style="flex: 1; border: 1px solid #30363d; border-radius: 8px; padding: 20px; background: #0d1117;">
             <h2 style="color: #61dafb; margin-top: 0;">📤 Publish</h2>
-            
+
             <div style="margin: 20px 0;">
               <p>Status: <span style={`color: ${isPublishConnected() ? 'green' : 'red'}`}>{publishConnectionStatus()}</span></p>
               {isPublishConnected() && (
@@ -196,9 +202,9 @@ const Home: Component = () => {
               <label style="display: block; margin-bottom: 10px; color: #e6edf3;">
                 Message to publish:
                 <br />
-                <input 
-                  type="text" 
-                  value={publishMessage()} 
+                <input
+                  type="text"
+                  value={publishMessage()}
                   onInput={(e) => setPublishMessage(e.currentTarget.value)}
                   disabled={isPublishConnected()}
                   style="margin-top: 5px; padding: 8px; width: 100%; font-size: 14px; border: 1px solid #30363d; border-radius: 4px; background: #161b22; color: #e6edf3;"
@@ -208,14 +214,14 @@ const Home: Component = () => {
 
             <div style="margin: 20px 0;">
               {!isPublishConnected() ? (
-                <button 
+                <button
                   onClick={startPublish}
                   style="padding: 10px 20px; font-size: 16px; background: #61dafb; border: none; border-radius: 5px; cursor: pointer; color: #0d1117; font-weight: bold;"
                 >
                   Start Publish
                 </button>
               ) : (
-                <button 
+                <button
                   onClick={stopPublish}
                   style="padding: 10px 20px; font-size: 16px; background: #f56565; border: none; border-radius: 5px; cursor: pointer; color: white; font-weight: bold;"
                 >

@@ -1,10 +1,17 @@
-import type { BroadcastViewer } from "./broadcast";
+import type { BroadcastSubscriber } from "./broadcast";
 
-export interface JoinedMember {
-    remote: boolean;
+export interface JoinedLocalMember {
+    remote: false;
     name: string;
-    broadcast: BroadcastViewer;
 }
+
+export interface JoinedRemoteMember {
+    remote: true;
+    name: string;
+    broadcast: BroadcastSubscriber;
+}
+
+export type JoinedMember = JoinedLocalMember | JoinedRemoteMember;
 
 export interface LeftMember {
     remote: boolean;

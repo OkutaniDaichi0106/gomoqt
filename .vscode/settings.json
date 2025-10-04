@@ -1,4 +1,4 @@
 {
-    "CodeGPT.apiKey": "CodeGPT Plus Beta",
-    "typescript.experimental.useTsgo": true
+    "typescript.experimental.useTsgo": true,
+    "files.associations": { "*.json": "jsonc" }
 }

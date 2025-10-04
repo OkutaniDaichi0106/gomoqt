@@ -1,22 +1,24 @@
-import type { CancelCauseFunc, Context} from "./internal/context";
-import { withCancelCause } from "./internal/context";
+import type { CancelCauseFunc, Context} from "golikejs/context";
+import { withCancelCause } from "golikejs/context";
 import type { Reader, Writer, } from "./io";
 import { EOF } from "./io";
 import { StreamError } from "./io/error";
 import { SessionUpdateMessage } from "./message";
 import type { SessionClientMessage } from "./message/session_client";
 import type { SessionServerMessage } from "./message/session_server";
-import { Cond } from "./internal";
+import { Cond, Mutex } from "golikejs/sync";
 
 export class SessionStream {
     #writer: Writer;
     #reader: Reader;
     #ctx: Context;
-    #cond: Cond = new Cond();
+    #mu: Mutex = new Mutex();
+    #cond: Cond = new Cond(this.#mu);
 	readonly client: SessionClientMessage;
     readonly server: SessionServerMessage;
     #clientInfo!: SessionUpdateMessage;
     #serverInfo!: SessionUpdateMessage;
+    readonly streamId: bigint;
 
     constructor(connCtx: Context, writer: Writer, reader: Reader, client: SessionClientMessage, server: SessionServerMessage) {
         this.client = client;
@@ -24,6 +26,7 @@ export class SessionStream {
         this.#writer = writer;
         this.#reader = reader;
         this.#ctx = connCtx;
+        this.streamId = writer.streamId ?? reader.streamId ?? 0n;
 
         this.#handleUpdates()
     }

@@ -1,2 +1,2 @@
 // Browser-specific entry for internal subpath
-export * from '..';
+export * from '.';

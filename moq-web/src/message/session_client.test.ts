@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SessionClientMessage } from './session_client';
 import { Extensions } from '../internal/extensions';
 import type { Version } from '../internal/version';
@@ -80,7 +80,7 @@ describe('SessionClientMessage', () => {
         chunks.push(chunk);
       }
     });
-    const writer = new Writer(writableStream);
+    const writer = new Writer({stream: writableStream, transfer: undefined, streamId: 0n});
 
     // Encode
     const message = new SessionClientMessage({versions, extensions});
@@ -105,7 +105,7 @@ describe('SessionClientMessage', () => {
         controller.close();
       }
     });
-    const reader = new Reader(readableStream);
+    const reader = new Reader({stream: readableStream, transfer: undefined, streamId: 0n});
 
     // Decode
     const decodedMessage = new SessionClientMessage({});
@@ -132,7 +132,7 @@ describe('SessionClientMessage', () => {
         chunks.push(chunk);
       }
     });
-    const writer = new Writer(writableStream);
+    const writer = new Writer({stream: writableStream, transfer: undefined, streamId: 0n});
 
     // Encode
     const message = new SessionClientMessage({ versions, extensions });
@@ -155,7 +155,7 @@ describe('SessionClientMessage', () => {
         controller.close();
       }
     });
-    const reader = new Reader(readableStream);
+    const reader = new Reader({stream: readableStream, transfer: undefined, streamId: 0n});
 
     // Decode
     const decodedMessage = new SessionClientMessage({});
@@ -185,7 +185,7 @@ describe('SessionClientMessage', () => {
         chunks.push(chunk);
       }
     });
-    const writer = new Writer(writableStream);
+    const writer = new Writer({stream: writableStream, transfer: undefined, streamId: 0n});
 
     // Encode
     const message = new SessionClientMessage({ versions, extensions });
@@ -208,7 +208,7 @@ describe('SessionClientMessage', () => {
         controller.close();
       }
     });
-    const reader = new Reader(readableStream);
+    const reader = new Reader({stream: readableStream, transfer: undefined, streamId: 0n});
 
     // Decode
     const decodedMessage = new SessionClientMessage({});
@@ -235,7 +235,7 @@ describe('SessionClientMessage', () => {
         chunks.push(chunk);
       }
     });
-    const writer = new Writer(writableStream);
+    const writer = new Writer({stream: writableStream, transfer: undefined, streamId: 0n});
     // Encode
     const message = new SessionClientMessage({ versions, extensions });
     const encodeErr = await message.encode(writer);
@@ -257,7 +257,7 @@ describe('SessionClientMessage', () => {
         controller.close();
       }
     });
-    const reader = new Reader(readableStream);
+    const reader = new Reader({stream: readableStream, transfer: undefined, streamId: 0n});
 
     // Decode
     const decodedMessage = new SessionClientMessage({});
@@ -281,7 +281,7 @@ describe('SessionClientMessage', () => {
         chunks.push(chunk);
       }
     });
-    const writer = new Writer(writableStream);
+    const writer = new Writer({stream: writableStream, transfer: undefined, streamId: 0n});
 
     // Encode
     const message = new SessionClientMessage({ versions, extensions });
@@ -304,7 +304,7 @@ describe('SessionClientMessage', () => {
         controller.close();
       }
     });
-    const reader = new Reader(readableStream);
+    const reader = new Reader({stream: readableStream, transfer: undefined, streamId: 0n});
 
     // Decode
     const decodedMessage = new SessionClientMessage({});
@@ -329,7 +329,7 @@ describe('SessionClientMessage', () => {
         chunks.push(chunk);
       }
     });
-    const writer = new Writer(writableStream);
+    const writer = new Writer({stream: writableStream, transfer: undefined, streamId: 0n});
 
     // Encode
     const message = new SessionClientMessage({ versions, extensions });
@@ -352,7 +352,7 @@ describe('SessionClientMessage', () => {
         controller.close();
       }
     });
-    const reader = new Reader(readableStream);
+    const reader = new Reader({stream: readableStream, transfer: undefined, streamId: 0n});
 
     // Decode
     const decodedMessage = new SessionClientMessage({});

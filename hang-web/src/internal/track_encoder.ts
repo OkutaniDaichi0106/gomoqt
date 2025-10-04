@@ -8,161 +8,198 @@ import {
     InternalSubscribeErrorCode,
 } from "@okutanidaichi/moqt";
 import type { TrackCache } from "./cache";
-import { withCancelCause, background,ContextCancelledError } from "@okutanidaichi/moqt/internal";
-import type { Context, CancelCauseFunc } from "@okutanidaichi/moqt/internal";
-import type { GroupedFrame } from ".";
+import { GroupCache } from "./cache";
+import { withCancelCause, background,ContextCancelledError } from "golikejs/context";
+import type { Context, CancelCauseFunc } from "golikejs/context";
+// import type { EncodedChunk } from ".";
+import { EncodedContainer,type EncodedChunk } from "./container";
+import { EncodeErrorCode } from ".";
+import type { TrackDescriptor } from "../catalog";
 
-export interface TrackEncoder<T> {
-    encodeTo(dest: TrackWriter): Promise<Error | undefined>;
-    preview(dest?: WritableStreamDefaultWriter<T>): void;
-    close(): void;
-    closeWithError(code: SubscribeErrorCode, message: string): void;
+export interface TrackEncoder {
+    encodeTo(ctx: Promise<void>, dest: TrackWriter): Promise<Error | undefined>;
+    close(cause?: Error): Promise<void>;
+    encoding: boolean;
 }
 
 export interface TrackEncoderInit<T> {
-    source: ReadableStreamDefaultReader<T>;
+    source: ReadableStream<T>;
     startGroupSequence?: GroupSequence;
     cache?: new () => TrackCache;
 }
 
-export class NoOpTrackEncoder implements TrackEncoder<GroupedFrame> {
-    #source: ReadableStreamDefaultReader<GroupedFrame>;
+export class NoOpTrackEncoder implements TrackEncoder {
+    #source: ReadableStream<EncodedChunk>;
 
-    #latestGroupSequence: GroupSequence;
-    #currentGroups: Map<TrackWriter, GroupWriter | undefined> = new Map();
+    #latestGroup: GroupCache;
+    #tracks: Set<TrackWriter> = new Set();
     cache?: TrackCache;
 
-    #previewer?: WritableStreamDefaultWriter<GroupedFrame>;
+    // #previewer?: WritableStreamDefaultWriter<EncodedChunk>;
 
     #ctx: Context;
     #cancelCtx: CancelCauseFunc;
 
-    constructor(init: TrackEncoderInit<GroupedFrame>) {
+    constructor(init: TrackEncoderInit<EncodedChunk>) {
         this.#source = init.source;
-        this.#latestGroupSequence = init.startGroupSequence ?? 0n;
+        this.#latestGroup = new GroupCache(init.startGroupSequence ?? 0n, 0);
         this.cache = init.cache ? new init.cache() : undefined;
         [this.#ctx, this.#cancelCtx] = withCancelCause(background());// TODO: need?
     }
 
-    #next(): void {
-        if (this.#ctx.err() !== undefined) return;
+    get encoding(): boolean {
+        return this.#tracks.size > 0;
+    }
 
-        Promise.race<ReadableStreamReadResult<GroupedFrame> | void>([
-            this.#source.read(),
-            this.#ctx.done(),
-        ]).then(async (result) => {
-            if (result === undefined) {
-                // Context was cancelled
-                throw this.#ctx.err() || ContextCancelledError;
-            }
+    #next(reader: ReadableStreamDefaultReader<EncodedChunk>): void {
+        if (this.#ctx.err() !== undefined) {
+			return;
+		}
+        if (!this.encoding) {
+			// No active tracks to encode to
+            // Just release the lock and stop reading from the reader
+            reader.releaseLock();
+			return;
+		}
 
-            const { done, value: data } = result;
-            if (done) {
-                this.#previewer?.close();
-                return;
-            }
 
-            await this.#previewer?.write(data).catch(err => {
-                this.#previewer?.abort(err);
-                this.#previewer = undefined;
-            });
+		Promise.race([
+			reader.read(),
+			this.#ctx.done(),
+		]).then(async (result) => {
+			if (result === undefined) {
+				// Context was cancelled
+				return;
+			}
 
-            if (data.groupSequence > this.#latestGroupSequence) {
-                this.#latestGroupSequence = data.groupSequence;
-            }
+			const { done, value: chunk } = result;
+			if (done) {
+				return;
+			}
 
-            const promises: Promise<void>[] = [];
-            for (const [writer, group] of this.#currentGroups) {
-                if (!group) {
-                    const p = writer.openGroup(this.#latestGroupSequence).then(async ([g, err]) => {
-                        if (err) throw err;
-                        this.#currentGroups.set(writer, g);
-                        err = await g?.writeFrame(data.frame);
-                        if (err) console.error("Error writing frame:", err);
-                    });
-                    promises.push(p);
-                } else if (group.groupSequence === this.#latestGroupSequence) {
-                    const p = group.writeFrame(data.frame).then(err => { if (err) console.error("Error writing frame:", err); });
-                    promises.push(p);
-                } else if (this.#latestGroupSequence > group.groupSequence) {
-                    this.cache?.flush(group).then(() => group.close()).catch(err => group.cancel(InternalSubscribeErrorCode, err.message)).finally(() => {
-                        this.#currentGroups.set(writer, undefined);
-                    });
+            if (chunk.type === "key") {
+                // Close previous group and start a new one
+                this.#latestGroup.close();
+                const nextSequence = this.#latestGroup.sequence + 1n;
+                this.#latestGroup = new GroupCache(nextSequence, 0); // TODO: timestamp?
+
+                // Open new groups for all tracks asynchronously
+                for (const track of this.#tracks) {
+                    track.openGroup(this.#latestGroup.sequence).then(
+                        ([group, err]) => {
+                            if (err) {
+                                console.error("moq: failed to open group:", err);
+                                this.#tracks.delete(track);
+                                track.closeWithError(InternalSubscribeErrorCode, err.message);
+                                return;
+                            }
+
+                            // Send frames via latest group cache
+                            this.#latestGroup.flush(group!);
+                        }
+                    );
                 }
             }
 
-            this.cache?.append(this.#latestGroupSequence, data.frame);
-
-            await Promise.all(promises);
-
-            if (!this.#ctx.err()) {
-                queueMicrotask(() => this.#next());
+            // Skip encoding if no current groups
+            if (this.#tracks.size === 0) {
+                return;
             }
-        }).catch((err) => {
-            this.#previewer?.abort(err);
-            this.closeWithError(InternalSubscribeErrorCode, err.message ?? String(err));
-        });
+
+            const container = new EncodedContainer(cloneChunk(chunk));
+
+            await this.#latestGroup.append(container);
+
+			// Continue to the next frame
+			if (!this.#ctx.err()) {
+				queueMicrotask(() => this.#next(reader));
+			}
+		}).catch(err => {
+			console.error("video next error", err);
+			this.close(err);
+		});
     }
 
-    async encodeTo(dest: TrackWriter): Promise<Error | undefined> {
-        if (this.#ctx.err() !== undefined) {
-            return this.#ctx.err();
+    async encodeTo(ctx: Promise<void>, dest: TrackWriter): Promise<Error | undefined> {
+        const err = this.#ctx.err();
+        if (err !== undefined) {
+            return err;
         }
-        if (this.#currentGroups.has(dest)) {
+
+        if (this.#tracks.has(dest)) {
             console.warn("given TrackWriter is already being encoded to");
             return;
         }
 
-        this.#currentGroups.set(dest, undefined);
-        if (this.#currentGroups.size === 1) {
-            queueMicrotask(() => this.#next());
+        this.#tracks.add(dest);
+
+        if (this.#tracks.size === 1) {
+            const reader = this.#source.getReader();
+            queueMicrotask(() => this.#next(reader));
         }
 
         await Promise.race([
             dest.context.done(),
             this.#ctx.done(),
+            ctx,
         ]);
 
         return this.#ctx.err() || dest.context.err() || ContextCancelledError;
     }
 
-    preview(dest?: WritableStreamDefaultWriter<GroupedFrame>): void {
-        if (this.#ctx.err() !== undefined) {
-            return;
-        }
-        this.#previewer = dest;
-    }
-
     // close() and closeWithError() do not close the underlying source,
     // Callers should close the source to release resources.
-    close(): void {
+    async close(cause?: Error): Promise<void> {
         if (this.#ctx.err() !== undefined) {
             return;
         }
 
-        const cause = new Error("no-op encoder closed");
         this.#cancelCtx(cause);
-        for (const [tw] of this.#currentGroups) {
-            tw.close();
-        }
 
-        this.#currentGroups.clear();
+        await Promise.allSettled(Array.from(this.#tracks.keys()).map(
+            (tw) => {
+                if (cause) {
+                    return tw.closeWithError(InternalSubscribeErrorCode, cause.message);
+                } else {
+                    tw.close();
+                }
+            }
+        ));
+
+        this.#tracks.clear();
         this.cache?.close();
     }
+}
 
-    closeWithError(code: SubscribeErrorCode, message: string): void {
-        if (this.#ctx.err() !== undefined) {
-            return;
+export function cloneChunk(chunk: EncodedChunk): EncodedChunk {
+    const buffer = new Uint8Array(chunk.byteLength);
+    chunk.copyTo(buffer);
+
+    const clone = {
+        type: chunk.type,
+        byteLength: chunk.byteLength,
+        timestamp: chunk.timestamp,
+        buffer: buffer,
+        copyTo(dest: AllowSharedBufferSource): void {
+            if (dest.byteLength < this.byteLength) {
+                throw new RangeError("Destination buffer is too small");
+            }
+
+            let view: Uint8Array;
+            if (dest instanceof Uint8Array) {
+                view = dest;
+            } else if (dest instanceof ArrayBuffer || (typeof SharedArrayBuffer !== "undefined" && dest instanceof SharedArrayBuffer)) {
+                view = new Uint8Array(dest as ArrayBufferLike);
+            } else if (ArrayBuffer.isView(dest)) {
+                const v = dest as ArrayBufferView;
+                view = new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
+            } else {
+                throw new Error("Unsupported destination type");
+            }
+
+            view.set(this.buffer);
         }
+    };
 
-        const cause = new Error(`no-op encoder closed: [${code}] ${message}`);
-        this.#cancelCtx(cause);
-
-        for (const [tw] of this.#currentGroups) {
-            tw.closeWithError(code, message);
-        }
-
-        this.#currentGroups.clear();
-        this.cache?.closeWithError(message);
-    }
+    return clone;
 }

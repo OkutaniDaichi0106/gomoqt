@@ -1,24 +1,25 @@
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as index from './index';
+import { Mutex, Cond } from 'golikejs/sync';
+import { background, withCancel } from 'golikejs/context';
 
 describe('Internal Index Module', () => {
     describe('re-exports', () => {
-        it('should re-export mutex module', () => {
-            // Check that mutex exports are available
-            expect(index).toHaveProperty('Mutex');
+        it('should re-export extensions module', () => {
+            // Check that extensions exports are available
+            expect(index).toHaveProperty('Extensions');
         });
 
-        it('should re-export context module', () => {
-            // Check that context exports are available
-            expect(index).toHaveProperty('background');
-            expect(index).toHaveProperty('withCancel');
+        it('should re-export queue module', () => {
+            // Check that queue exports are available
+            expect(index).toHaveProperty('Queue');
         });
 
         it('should have all expected core exports', () => {
             const exports = Object.keys(index);
 
             // Should include key exports from each module
-            const expectedExports = ['Mutex', 'background', 'withCancel'];
+            const expectedExports = ['Extensions', 'Queue'];
 
             expectedExports.forEach(expectedExport => {
                 expect(exports).toContain(expectedExport);
@@ -39,22 +40,15 @@ describe('Internal Index Module', () => {
 
         it('should provide access to core internal utilities', () => {
             // Verify that key internal utilities are accessible
-            expect(index.Cond).toBeDefined();
-            // expect(index.Context).toBeDefined();
             expect(index.Extensions).toBeDefined();
-            expect(index.Mutex).toBeDefined();
-            // expect(index.Version).toBeDefined();
+            expect(index.Queue).toBeDefined();
         });
     });
 
     describe('export functionality', () => {
-        it('should provide working Mutex', async () => {
-            const mutex = new index.Mutex();
-            expect(mutex).toBeInstanceOf(index.Mutex);
-            
-            // Test basic functionality
-            const unlock = await mutex.lock();
-            unlock();
+        it('should provide working Queue', async () => {
+            const queue = new index.Queue();
+            expect(queue).toBeInstanceOf(index.Queue);
         });
     });
 
@@ -64,8 +58,7 @@ describe('Internal Index Module', () => {
             // If there were circular dependencies, the import would fail
             expect(() => {
                 const modules = {
-                    Mutex: index.Mutex,
-                    Cond: index.Cond,
+                    Queue: index.Queue,
                     Extensions: index.Extensions,
                 };
                 return modules;
@@ -74,7 +67,7 @@ describe('Internal Index Module', () => {
 
         it('should maintain proper module boundaries', () => {
             // Each exported class/function should be properly namespaced
-            expect(index.Mutex.name).toBe('Mutex');
+            expect(index.Queue.name).toBe('Queue');
         });
     });
 
@@ -82,37 +75,17 @@ describe('Internal Index Module', () => {
         it('should support TypeScript imports', () => {
             // Verify that TypeScript destructuring works
             expect(() => {
-                const { Cond, Mutex, Extensions } = index;
-                return { Cond, Mutex, Extensions };
+                const { Queue, Extensions } = index;
+                return { Queue, Extensions };
             }).not.toThrow();
         });
 
         it('should provide proper type information', () => {
             // Test that types are preserved through re-exports
-            const mutex = new index.Mutex();
+            const queue = new index.Queue();
             
             // These should have the correct types (implicit type checking)
-            expect(typeof mutex.lock).toBe('function');
-        });
-    });
-
-    describe('API consistency', () => {
-        it('should provide consistent API access', async () => {
-            // Compare direct import vs index import
-            const { Mutex: MutexDirect } = await import('./mutex');
-            
-            expect(index.Mutex).toBe(MutexDirect);
-        });
-
-        it('should not modify re-exported APIs', async () => {
-            // Ensure that re-exports maintain original functionality
-            const { Mutex: MutexDirect } = await import('./mutex');
-            const directMutex = new MutexDirect();
-            const indexMutex = new index.Mutex();
-            
-            // Both should have identical API
-            expect(Object.getOwnPropertyNames(Object.getPrototypeOf(directMutex)))
-                .toEqual(Object.getOwnPropertyNames(Object.getPrototypeOf(indexMutex)));
+            expect(typeof queue.enqueue).toBe('function');
         });
     });
 });

@@ -16,6 +16,7 @@
     "vinxi": "^0.5.7"
   },
   "devDependencies": {
+    "@kixelated/web-transport-ws": "^0.1.2",
     "@tailwindcss/vite": "^4.0.7",
     "@vitejs/plugin-basic-ssl": "^2.1.0",
     "tailwindcss": "^4.0.7"

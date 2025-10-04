@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { TrackReader, TrackWriter } from './track';
 import { GroupReader, GroupWriter } from './group_stream';
-import type { Context} from './internal/context';
-import { withCancelCause, background,ContextCancelledError } from './internal/context';
+import type { Context} from 'golikejs/context';
+import { withCancelCause, background,ContextCancelledError } from 'golikejs/context';
 import type { TrackConfig } from './subscribe_stream';
 import { ReceiveSubscribeStream, SendSubscribeStream } from './subscribe_stream';
 import { Writer, Reader } from './io';
@@ -12,10 +12,10 @@ import { GroupMessage } from './message';
 
 // Mock the GroupMessage module
 const mockGroupMessage = {
-    encode: jest.fn()
+    encode: vi.fn()
 };
-jest.mock('./message', () => ({
-    GroupMessage: jest.fn().mockImplementation(() => mockGroupMessage)
+vi.mock('./message', () => ({
+    GroupMessage: vi.fn().mockImplementation(() => mockGroupMessage)
 }));
 
 describe('TrackWriter', () => {
@@ -28,27 +28,27 @@ describe('TrackWriter', () => {
     beforeEach(() => {
         mockContext = background();
         mockWriter = {
-            writeUint8: jest.fn(),
-            flush: jest.fn(),
-            close: jest.fn(),
-            cancel: jest.fn(),
-            closed: jest.fn()
+            writeUint8: vi.fn(),
+            flush: vi.fn(),
+            close: vi.fn(),
+            cancel: vi.fn(),
+            closed: vi.fn()
         };
 
         mockSubscribeStream = {
             context: mockContext,
             subscribeId: 123n,
             trackConfig: {} as TrackConfig,
-            accept: jest.fn(),
-            writeInfo: jest.fn().mockImplementation(() => Promise.resolve(undefined)),
-            closeWithError: jest.fn(),
-            close: jest.fn(),
-            update: jest.fn(),
+            accept: vi.fn(),
+            writeInfo: vi.fn().mockImplementation(() => Promise.resolve(undefined)),
+            closeWithError: vi.fn(),
+            close: vi.fn(),
+            update: vi.fn(),
             info: {} as any,
             _infoWritten: false
         };
 
-        mockOpenUniStreamFunc = jest.fn();
+        mockOpenUniStreamFunc = vi.fn();
 
         trackWriter = new TrackWriter(
             '/test/path' as BroadcastPath,
@@ -70,7 +70,7 @@ describe('TrackWriter', () => {
     describe('openGroup', () => {
         beforeEach(() => {
             // Reset all mocks
-            jest.clearAllMocks();
+            vi.clearAllMocks();
             // Setup default successful returns
             mockSubscribeStream.accept.mockResolvedValue(undefined);
             mockOpenUniStreamFunc.mockResolvedValue([mockWriter, undefined]);
@@ -176,8 +176,8 @@ describe('TrackReader', () => {
     beforeEach(() => {
         mockContext = background();
         mockReader = {
-            cancel: jest.fn(),
-            closed: jest.fn()
+            cancel: vi.fn(),
+            closed: vi.fn()
         };
 
         mockGroupMessage = {} as GroupMessage;
@@ -186,14 +186,14 @@ describe('TrackReader', () => {
             context: mockContext,
             trackConfig: {} as TrackConfig,
             config: {} as TrackConfig,
-            update: jest.fn(),
-            cancel: jest.fn(),
-            closeWithError: jest.fn(),
+            update: vi.fn(),
+            cancel: vi.fn(),
+            closeWithError: vi.fn(),
             info: {} as any
         };
 
-        mockAcceptFunc = jest.fn();
-        mockOnCloseFunc = jest.fn();
+        mockAcceptFunc = vi.fn();
+        mockOnCloseFunc = vi.fn();
 
         trackReader = new TrackReader(mockSubscribeStream, mockAcceptFunc, mockOnCloseFunc);
     });

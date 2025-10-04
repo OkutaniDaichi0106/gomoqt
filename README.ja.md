@@ -16,23 +16,25 @@ MOQT (Media over QUIC Transfork) のGo言語による実装です。
 
 ### moqt
 
-MOQTransforkの主要なやり取りを実装しています。
+MOQ Liteの主要なやり取りを実装しています。
 
-### lomc (開発予定)
+### moq-web
 
-Low Overhead Media Container の実装です。
-**注意:** このパッケージは現在開発中です。
+ブラウザ向けWebTransportをサポートするTypeScript/JavaScript実装です。
 
-### catalog (開発予定)
+### catalog
 
 MOQ Catalogの実装で、コンテンツの検出と管理を行います。
-**注意:** このパッケージは現在開発中です。
+
+### interop
+
+異なるプラットフォーム間でのMOQ実装の相互運用性を検証するためのテストツールとサンプルです。
 
 ## 開発
 
 ### 前提条件
 
-- Go 1.22以降
+- Go 1.25.0以降
 - [just](https://github.com/casey/just) コマンドツール
 
 ### はじめ方
@@ -63,11 +65,11 @@ just dev-setup
 
 #### サンプルの実行
 ```bash
-# エコーサーバーの起動
-just run-echo-server
+# 相互運用性テスト用サーバーの起動
+just interop-server
 
-# 別のターミナルでエコークライアントを実行
-just run-echo-client
+# 別のターミナルで相互運用性テスト用クライアントを実行
+just interop-client
 ```
 
 #### コードの品質管理
@@ -98,8 +100,11 @@ just clean
 
 [examples](examples) ディレクトリには、gomoqtの使用方法を示すサンプルアプリケーションが含まれています:
 
-- **エコーサーバーとクライアント** `echo/`: シンプルなエコーサーバーとクライアントの実装
-- 追加予定...
+- **ブロードキャスト** `broadcast/`: ブロードキャスト機能のデモ
+- **証明書** `cert/`: 証明書管理のサンプル
+- **エコー** `echo/`: シンプルなエコーサーバーとクライアントの実装
+- **ネイティブQUIC** `native_quic/`: QUICプロトコルを使用した直接通信
+- **リレー** `relay/`: リレーサーバーの実装
 
 ### ドキュメント
 

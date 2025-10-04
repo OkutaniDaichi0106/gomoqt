@@ -1,4 +1,4 @@
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect } from 'vitest';
 import { Writer, Reader } from '../io';
 
 /**
@@ -26,7 +26,7 @@ export function createIsolatedStreams(): { writer: Writer; reader: Reader; clean
     size(chunk) { return chunk.byteLength; }
   });
   
-  const writer = new Writer(writableStream);
+  const writer = new Writer({stream: writableStream, transfer: undefined, streamId: 0n});
   
   let chunkIndex = 0;
   // Use a more efficient ReadableStream implementation
@@ -45,7 +45,7 @@ export function createIsolatedStreams(): { writer: Writer; reader: Reader; clean
     size(chunk) { return chunk.byteLength; }
   });
   
-  const reader = new Reader(readableStream);
+  const reader = new Reader({stream: readableStream, transfer: undefined, streamId: 0n});
   
   return {
     writer,

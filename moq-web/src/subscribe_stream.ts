@@ -2,9 +2,9 @@ import type { SubscribeMessage} from "./message";
 import { SubscribeOkMessage, SubscribeUpdateMessage } from "./message";
 import type { Writer, Reader } from "./io"
 import { EOF } from "./io"
-import { Cond } from "./internal/cond";
-import type { CancelCauseFunc, Context} from "./internal/context";
-import { withCancelCause } from "./internal/context";
+import { Cond, Mutex } from "golikejs/sync";
+import type { CancelCauseFunc, Context} from "golikejs/context";
+import { withCancelCause } from "golikejs/context";
 import { StreamError } from "./io/error";
 import type { Info } from "./info";
 import type { TrackPriority,GroupSequence,SubscribeID } from ".";
@@ -23,6 +23,7 @@ export class SendSubscribeStream {
 	#writer: Writer
 	#ctx: Context;
 	#cancelFunc: CancelCauseFunc;
+	readonly streamId: bigint;
 
 	constructor(sessCtx: Context, writer: Writer, reader: Reader, subscribe: SubscribeMessage, ok: SubscribeOkMessage) {
 		[this.#ctx, this.#cancelFunc] = withCancelCause(sessCtx);
@@ -31,6 +32,7 @@ export class SendSubscribeStream {
 		this.#config = subscribe;
 		this.#id = subscribe.subscribeId;
 		this.#info = ok;
+		this.streamId = writer.streamId ?? reader.streamId ?? 0n;
 	}
 
 	get subscribeId(): SubscribeID {
@@ -73,12 +75,14 @@ export class SendSubscribeStream {
 export class ReceiveSubscribeStream {
 	readonly subscribeId: SubscribeID;
 	#trackConfig: TrackConfig;
-	#cond: Cond = new Cond();
+	#mu: Mutex = new Mutex();
+	#cond: Cond = new Cond(this.#mu);
 	#reader: Reader
 	#writer: Writer
 	#info?: Info
 	#ctx: Context;
 	#cancelFunc: CancelCauseFunc;
+	readonly streamId: bigint;
 
 
 	constructor(
@@ -91,6 +95,7 @@ export class ReceiveSubscribeStream {
 		this.#writer = writer
 		this.subscribeId = subscribe.subscribeId;
 		this.#trackConfig = subscribe;
+		this.streamId = writer.streamId ?? reader.streamId ?? 0n;
 		[this.#ctx, this.#cancelFunc] = withCancelCause(sessCtx);
 
 		this.#handleUpdates();

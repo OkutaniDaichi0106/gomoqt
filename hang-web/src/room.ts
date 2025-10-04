@@ -1,11 +1,12 @@
 import type {
     Session,
     BroadcastPath,
-Announcement,
+    Announcement,
+    AnnouncementReader,
 } from "@okutanidaichi/moqt";
 import {
     validateBroadcastPath,
-InternalAnnounceErrorCode,
+    InternalAnnounceErrorCode,
 } from "@okutanidaichi/moqt";
 import {
     BroadcastPublisher,
@@ -15,164 +16,199 @@ import {
     background,
     type Context,
     type CancelCauseFunc,
-    withCancelCause
-} from "@okutanidaichi/moqt/internal";
-import type { JoinedMember,LeftMember } from "./member";
+    withCancelCause,
+} from "golikejs/context";
+import type {
+    JoinedMember,
+    LeftMember
+} from "./member";
 
 const HANG_EXTENSION = '.hang';
 
 export class Room {
     readonly roomID: string;
 
-    #ctx: Context;
-    #cancelCtx: CancelCauseFunc;
-
-    #local?: BroadcastPublisher;
-    #remotes: Map<BroadcastPath, BroadcastSubscriber> = new Map();
+    #remotes: Map<string, BroadcastSubscriber> = new Map();
+    #cancel?: CancelCauseFunc;
 
     #onmember: MemberHandler;
+
+    #wg: Promise<void>[] = [];
 
     constructor(init: RoomInit) {
         this.roomID = init.roomID;
         this.#onmember = init.onmember;
-        [this.#ctx, this.#cancelCtx] = withCancelCause(background());
     }
 
-    // get local(): BroadcastPublisher {
-    //     return this.#local!;
-    // }
-
-    // get remotes(): ReadonlyMap<BroadcastPath, BroadcastSubscriber> {
-    //     return this.#remotes;
-    // }
-
-    async join(session: Session, localName: string): Promise<BroadcastPublisher> {
-        if (this.#local) {
-            console.warn("Already joined the room. Leaving and rejoining.");
-            this.leave();
-
-            // Reset the context
-            [this.#ctx, this.#cancelCtx] = withCancelCause(background());
+    async join(session: Session, local: BroadcastPublisher): Promise<void> { // TODO: use session interface from moqt when available
+        if (this.#cancel) {
+            // If already joined, leave first
+            await this.leave();
         }
 
-        const path = validateBroadcastPath(`/${this.roomID}/${localName}${HANG_EXTENSION}`);
-        const local = new BroadcastPublisher(path, ""); // TODO: description
-        session.mux.publish(this.#ctx.done(), path, local);
+        let ctx: Context
+        [ctx, this.#cancel] = withCancelCause(background());
 
-        const announced = await session.acceptAnnounce(`/${this.roomID}/`);
-        // let err = this.#ctx.err();
-        // if (err !== undefined) {
-        //     // Context was cancelled
-        //     announced.closeWithError(InternalAnnounceErrorCode, err.message);
-        //     return err;
-        // }
+        const path = broadcastPath(this.roomID, local.name);
 
-        (async () => {
-            // Listen for further announcements until the context is done
-            while (true) {
-                const [announcement, err] = await announced.receive(this.#ctx.done());
+        // Publish the local broadcast to the track mux and make it available to others
+        // This broadcast will end when the local broadcast is closed
+        session.mux.publish(ctx.done(), path, local);
 
-                if (err) {
-                    // TODO: Handle specific errors
-                    this.#cancelCtx(err);
-                    break;
-                }
+        const [announcements, err] = await session.acceptAnnounce(`/${this.roomID}/`);
+        if (err) {
+            console.warn(`[Room] failed to accept announcements for room: ${this.roomID}: ${err}`);
+            throw err;
+        }
 
-                this.#addRemote(announcement!, session);
-            }
-        })();
-
-        this.#local = local;
-
-        // Call onJoin for the local member
-        this.#onmember.onJoin({
-            remote: false,
-            name: localName,
-            broadcast: local
+        let resolveAck: (() => void);
+        const ack = new Promise<void>((resolve) => {
+            resolveAck = resolve;
         });
 
-        return local;
+        this.#wg.push(
+            this.#handleAnnouncements(ctx.done(), announcements!, session, local, resolveAck!)
+        );
+
+        await ack;
+
+        return;
     }
 
-    leave(): void {
-        if (!this.#local) return;
+    async #handleAnnouncements(
+        signal: Promise<void>,
+        announcements: AnnouncementReader,
+        session: Session,
+        local: BroadcastPublisher,
+        resolveAck: () => void
+    ): Promise<void> {
+        const localPath = broadcastPath(this.roomID, local.name);
+        // Listen for further announcements until the context is done
+        while (true) {
+            const [announcement, err] = await announcements.receive(signal);
+            if (err) {
+                // TODO: Handle errors
+                break;
+            }
 
-        // Cancel the room context
-        // This will also stop all broadcasts and remote subscriptions
-        this.#cancelCtx(new Error("left the room"));
+            // Handle announcement for ourselves (e.g. re-announcement) as ACK
+            if (announcement!.broadcastPath === localPath) {
+                resolveAck();
 
-        this.#local = undefined;
+                this.#addLocal(local);
+
+                this.#wg.push(
+                    announcement!.ended().then(() => {
+                        this.#removeLocal(local);
+                    })
+                );
+
+                return;
+            }
+
+            // Try to subscribe to the announced broadcast
+            try {
+                const broadcast = new BroadcastSubscriber(announcement!.broadcastPath, this.roomID, session);
+                this.#addRemote(broadcast);
+                // Clean up the remote when the announcement ends
+                announcement!.ended().then(() => {
+                    this.#removeRemote(broadcast);
+                });
+            } catch (e) {
+                console.warn(`[Room] failed to subscribe to ${announcement}: ${e}`);
+            }
+        }
+
+        // Ensure announcements reader is closed
+        await announcements?.close();
     }
 
-    close(): void {
-        this.leave();
-        for (const remote of this.#remotes.values()) {
-            remote.close();
+    async leave(): Promise<void> {
+        if (this.#cancel) {
+            this.#cancel(new Error("hang: room left"));
+        }
+
+        for (const [path, remote] of this.#remotes) {
+            try {
+                this.#removeRemote(remote);
+            } catch (e) {
+                console.warn(`hang: Error removing remote broadcast for path ${path}: ${e}`);
+            }
         }
         this.#remotes.clear();
+
+        await Promise.all(this.#wg);
+        this.#wg = [];
     }
 
-    #addRemote(announcement: Announcement, session: Session): void {
-        const path = announcement.broadcastPath;
+    #addLocal(local: BroadcastPublisher): void {
+        this.#onmember.onJoin({
+            remote: false,
+            name: local.name,
+            // broadcast: local
+        });
+    }
 
-        const remote = new BroadcastSubscriber(path, session);
+    #removeLocal(local: BroadcastPublisher): void {
+        this.#onmember.onLeave({
+            remote: false,
+            name: local.name,
+        });
+    }
 
+    #removeRemote(remote: BroadcastSubscriber): void {
+        const got = this.#remotes.get(remote.name);
+
+        if (!got) {
+            return;
+        }
+
+        // Close the broadcast to clean up resources
+        remote.close();
+
+        if (got !== remote) {
+            return;
+        }
+
+        // Remove from map first to prevent re-entrancy issues
+        this.#remotes.delete(remote.name);
+
+        // Notify about remote member leaving
+        this.#onmember.onLeave({
+            remote: true,
+            name: remote.name,
+        });
+    }
+
+    #addRemote(remote: BroadcastSubscriber): void {
         // If the remote is the same as the existing one, do nothing
-        const got = this.#remotes.get(path)
+        const got = this.#remotes.get(remote.name);
+
+        // Ignore if already have this exact remote
         if (remote === got) {
             return;
         }
+
+        // If there is an existing remote with the same path, properly remove it first
         if (got) {
-            // Already have this remote.
-            // This must not be possible, but just in case, leave the existing one.
-            got.close();
+            // Properly remove the existing remote using #removeRemote
+            // This ensures onLeave notification is sent and cleanup is done correctly
+            this.#removeRemote(got);
         }
 
-        this.#remotes.set(path, remote);
+        this.#remotes.set(remote.name, remote);
+
+        // Notify about new remote member joining
         this.#onmember.onJoin({
             remote: true,
-            name: remoteName(this.roomID, path),
+            name: remote.name,
             broadcast: remote
         });
-
-        // Clean up the remote when the announcement ends
-        announcement!.ended().then(() => {
-            // Only remove if the remote matches the existing one
-            if (remote === this.#remotes.get(path)) {
-                this.#remotes.delete(path);
-                this.#onmember.onLeave({
-                    remote: true,
-                    name: remoteName(this.roomID, path),
-                });
-            }
-        });
     }
 
-    // handleMember(handler?: MemberHandler): void {
-    //     this.#memberHandler = handler;
-    //     // Call the handler for existing members
-    //     if (handler) {
-    //         // Call for the local member
-    //         handler.onJoin({
-    //             remote: false,
-    //             name: this.localName,
-    //             broadcast: this.#local
-    //         });
-
-    //         // Call for existing remote members
-    //         for (const [path, remote] of this.#remotes) {
-    //             handler.onJoin({
-    //                 remote: true,
-    //                 name: remoteName(this.roomID, path),
-    //                 broadcast: remote
-    //             });
-    //         }
-    //     }
+    // get isJoined(): boolean {
+    //     return this.#local !== undefined;
     // }
-
-    get remoteNames(): string[] {
-        return Array.from(this.#remotes.keys()).map(path => remoteName(this.roomID, path));
-    }
 }
 
 export interface RoomInit {
@@ -190,6 +226,13 @@ export interface MemberHandler {
     onLeave: (member: LeftMember) => void;
 }
 
-export function remoteName(roomID: string, broadcastPath: BroadcastPath): string {
-    return broadcastPath.substring(roomID.length + 2).replace(HANG_EXTENSION, '');
+export function participantName(roomID: string, broadcastPath: BroadcastPath): string {
+    // Extract the participant name from the broadcast path
+    // Assumes the path format is "/<roomID>/<name>.hang"
+    const name = broadcastPath.substring(roomID.length + 2).replace(HANG_EXTENSION, '');
+    return name;
+}
+
+export function broadcastPath(roomID: string, name: string): BroadcastPath {
+    return validateBroadcastPath(`/${roomID}/${name}${HANG_EXTENSION}`);
 }

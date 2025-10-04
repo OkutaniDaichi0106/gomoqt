@@ -9,7 +9,7 @@ export default function Home() {
     <main class="text-center mx-auto text-gray-700 p-4">
       <h1 class="max-6-xs text-6xl text-sky-700 font-thin uppercase my-16">Room Demo</h1>
       <div class="mb-8">
-        <HangRoom roomId="demo-room" localName="User1" fallback={
+        <HangRoom roomId="demo-room" fallback={
           <div class="hang-room-container" data-fallback></div>
         }/>
       </div>

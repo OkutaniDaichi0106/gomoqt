@@ -7,32 +7,42 @@ import type {
 import {
     InternalSubscribeErrorCode,
 } from "@okutanidaichi/moqt";
-import { withCancelCause, background } from "@okutanidaichi/moqt/internal";
-import type { Context, CancelCauseFunc } from "@okutanidaichi/moqt/internal";
+import { withCancelCause, background,ContextCancelledError } from "golikejs/context";
+import type { Context, CancelCauseFunc } from "golikejs/context";
 import type { TrackCache } from "./cache";
+import type { EncodedChunk } from "./container";
+import { fi } from "zod/v4/locales";
 
-export interface TrackDecoder<T> {
-    decodeTo(dest: WritableStreamDefaultWriter<T>): Promise<Error | undefined>;
-    close(): void;
-    closeWithError(code: SubscribeErrorCode, reason: string): void;
+export interface TrackDecoder {
+    decodeFrom(ctx: Promise<void>, source: TrackReader): Promise<Error | undefined>;
+    close(cause?: Error): Promise<void>;
+    decoding: boolean;
 }
 
-export class NoOpTrackDecoder implements TrackDecoder<GroupedFrame> {
-    #source: TrackReader;
-    #dests: Set<WritableStreamDefaultWriter<GroupedFrame>> = new Set();
+export class NoOpTrackDecoder implements TrackDecoder {
+    #source?: TrackReader;
+    #dests: Map<WritableStream<EncodedChunk>, WritableStreamDefaultWriter<EncodedChunk>> = new Map();
 
     #ctx: Context;
     #cancelCtx: CancelCauseFunc;
 
-    constructor(source: TrackReader) {
-        this.#source = source;
+    constructor(init: TrackDecoderInit<EncodedChunk>) {
+        this.#dests.set(init.destination, init.destination.getWriter());
         [this.#ctx, this.#cancelCtx] = withCancelCause(background());
+    }
 
-        queueMicrotask(() => this.#next());
+    get decoding(): boolean {
+        return this.#dests.size > 0;
     }
 
     #next(): void {
         if (this.#ctx.err() !== undefined) {
+            return;
+        }
+        if (this.#source === undefined) {
+            return;
+        }
+        if (!this.decoding) {
             return;
         }
 
@@ -44,12 +54,13 @@ export class NoOpTrackDecoder implements TrackDecoder<GroupedFrame> {
 
                 let [group, err] = result;
                 if (err) {
-                    this.closeWithError(InternalSubscribeErrorCode, err.message);
+                    this.close(err);
                     return;
                 }
 
                 let frame: Frame | undefined;
                 const groupSequence = group!.groupSequence;
+                const isKey = true;
                 while (true) {
                     const result = await Promise.race([
                         group!.readFrame(),
@@ -60,13 +71,19 @@ export class NoOpTrackDecoder implements TrackDecoder<GroupedFrame> {
                     }
 
                     [frame, err] = result;
-                    if (err || !frame) {
+                    if (err) {
                         break;
                     }
 
-                    for (const dest of this.#dests) {
-                        dest.write({ groupSequence, frame });
-                    }
+                    await Promise.allSettled(
+                        Array.from(this.#dests, ([, dest]) => {
+                            return dest.write({
+                                type: isKey ? "key" : "delta",
+                                byteLength: frame!.byteLength,
+                                copyTo: frame!.copyTo
+                            });
+                        })
+                    );
                 }
 
                 if (!this.#ctx.err()) {
@@ -76,57 +93,78 @@ export class NoOpTrackDecoder implements TrackDecoder<GroupedFrame> {
         );
     }
 
-    async decodeTo(dest: WritableStreamDefaultWriter<GroupedFrame>): Promise<Error | undefined> {
+    async decodeFrom(ctx: Promise<void>, source: TrackReader): Promise<Error | undefined> {
         const err = this.#ctx.err();
         if (err !== undefined) {
             return err;
         }
 
-        this.#dests.add(dest);
+        if (this.#source !== undefined) {
+            console.warn("[NoOpTrackDecoder] source already set. replacing...");
+
+            await this.#source.closeWithError(InternalSubscribeErrorCode, "source was overwritten");
+        }
+
+        this.#source = source;
+
+        queueMicrotask(() => this.#next());
+
+        await Promise.race([
+            source.context.done(),
+            this.#ctx.done(),
+            ctx,
+        ]);
+
+        return this.#ctx.err() || source.context.err() || ContextCancelledError;
     }
 
-    // close() and closeWithError() do not close the underlying source,
-    // Callers should close the source to release resources.
-    close(): void {
+    async tee(dest: WritableStream<EncodedChunk>): Promise<Error | undefined> {
+        const err = this.#ctx.err();
+        if (err !== undefined) {
+            return Promise.resolve(err);
+        }
+
+        if (this.#dests.has(dest)) {
+            return Promise.resolve(new Error("destination already set"));
+        }
+
+        const writer = dest.getWriter();
+        this.#dests.set(dest, writer);
+
+        try {
+            await Promise.race([
+                writer.closed,
+                this.#ctx.done(),
+            ]);
+        } catch (e) {
+            return new Error("destination closed with error");
+        } finally {
+            // Clean up the destination
+            this.#dests.delete(dest);
+        }
+
+        return this.#ctx.err() || ContextCancelledError;
+    }
+
+    async close(cause?: Error): Promise<void> {
         if (this.#ctx.err() !== undefined) {
             return;
         }
 
-        const cause = new Error("no-op decoder closed");
         this.#cancelCtx(cause);
 
-        const doneFrame: ReadableStreamReadResult<GroupedFrame> = {
-            value: undefined,
-            done: true,
-        };
+        await Promise.allSettled(Array.from(this.#dests,
+            ([dest, writer]) => {
+                // Just release the lock, do not close the stream
+                writer.releaseLock();
+            }
+        ));
 
-        for (const dest of this.#dests) {
-            dest.close();
-        }
-        this.#dests.clear();
-    }
-
-    closeWithError(code: SubscribeErrorCode, reason: string): void {
-        if (this.#ctx.err() !== undefined) {
-            return;
-        }
-
-        const cause = new Error(`no-op decoder closed: [${code}] ${reason}`);
-        this.#cancelCtx(cause);
-
-        const doneFrame: ReadableStreamReadResult<GroupedFrame> = {
-            value: undefined,
-            done: true,
-        };
-
-        for (const dest of this.#dests) {
-            dest.abort(cause);
-        }
         this.#dests.clear();
     }
 }
 
-export interface GroupedFrame {
-    groupSequence: GroupSequence;
-    frame: Frame;
+export interface TrackDecoderInit<T> {
+    destination: WritableStream<T>;
+    // cache?: TrackCache;
 }

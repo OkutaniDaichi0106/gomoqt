@@ -1,6 +1,6 @@
 {
   "name": "@okutanidaichi/moqt",
-  "version": "0.6.6",
+  "version": "0.6.9",
   "description": "Media over QUIC package",
   "repository": {
     "type": "git",
@@ -34,10 +34,11 @@
     "!dist/**/*.map"
   ],
   "scripts": {
-    "build": "npm run build:main && npm run build:browser",
+    "build": "tsup",
+    "build:tsc": "npm run build:main && npm run build:browser",
     "build:main": "tsc",
     "build:browser": "tsc --project tsconfig.browser.json",
-    "postbuild": "node ./scripts/copy-src-to-dist.cjs",
+    "postbuild:tsc": "node ./scripts/copy-src-to-dist.cjs",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
     "test": "vitest run",
@@ -62,8 +63,5 @@
     "typescript": "^5.8.3",
     "vitest": "^3.2.4",
     "web-streams-polyfill": "^4.1.0"
-  },
-  "dependencies": {
-    "golikejs": "^0.1.7"
   }
 }

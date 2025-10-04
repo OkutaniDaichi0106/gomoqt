@@ -27,6 +27,7 @@ jobs:
         working-directory: ./hang-web
         run: |
           rm -rf node_modules package-lock.json
+          npm cache clean --force
           npm install
 
       - name: Build

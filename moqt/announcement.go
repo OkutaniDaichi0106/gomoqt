@@ -105,6 +105,8 @@ func (a *Announcement) end() {
 		wg.Add(1)
 		jobs <- f
 	}
+
 	close(jobs)
+
 	wg.Wait()
 }

@@ -17,35 +17,32 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - name: Use Node.js
+      
+      - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
 
-      - name: Clean install dependencies
-        run: |
-          cd moq-web
-          rm -rf node_modules package-lock.json
-          npm install
+      - name: Install dependencies
+        working-directory: ./moq-web
+        run: npm ci || npm install
 
       - name: Build
-        run: |
-          cd moq-web
-          npm run build
+        working-directory: ./moq-web
+        run: npm run build
 
-      - name: Run tests
-        run: |
-          cd moq-web
-          npm run test:coverage
+      - name: Run tests with coverage
+        working-directory: ./moq-web
+        run: npm run test:coverage
 
-      - name: Upload coverage to CodeCov
+      - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./moq-web/coverage/lcov.info
           flags: moq-web
           name: moq-web-coverage
-          fail_ci_if_error: true
+          fail_ci_if_error: false
           verbose: true
 
       - name: Upload dist artifact

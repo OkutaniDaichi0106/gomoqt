@@ -17,46 +17,32 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - name: Use Node.js
+      
+      - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
 
-      - name: Clean install dependencies for moq-web
-        run: |
-          cd moq-web
-          rm -rf node_modules package-lock.json
-          npm install
+      - name: Install dependencies
+        working-directory: ./hang-web
+        run: npm ci || npm install
 
-      - name: Build moq-web
-        run: |
-          cd moq-web
-          npm run build
+      - name: Build
+        working-directory: ./hang-web
+        run: npm run build
 
-      - name: Clean install dependencies for hang-web
-        run: |
-          cd hang-web
-          rm -rf node_modules package-lock.json
-          npm install
+      - name: Run tests with coverage
+        working-directory: ./hang-web
+        run: npm run test:coverage
 
-      - name: Build hang-web
-        run: |
-          cd hang-web
-          npm run build
-
-      - name: Run tests for hang-web
-        run: |
-          cd hang-web
-          npm run test:coverage
-
-      - name: Upload coverage to CodeCov
+      - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./hang-web/coverage/lcov.info
           flags: hang-web
           name: hang-web-coverage
-          fail_ci_if_error: true
+          fail_ci_if_error: false
           verbose: true
 
       - name: Upload hang-web dist artifact

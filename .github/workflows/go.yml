@@ -34,5 +34,5 @@ jobs:
         files: ./coverage.out
         flags: go
         name: go-coverage
-        fail_ci_if_error: true
+        fail_ci_if_error: false
         verbose: true

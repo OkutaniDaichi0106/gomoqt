@@ -41,7 +41,8 @@ jobs:
       uses: codecov/codecov-action@v5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
-        slug: OkutaniDaichi0106/gomoqt
         files: ./coverage.out
         flags: go
         name: go-coverage
+        fail_ci_if_error: true
+        verbose: true

@@ -44,10 +44,11 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: OkutaniDaichi0106/gomoqt
           files: ./moq-web/coverage/lcov.info
           flags: moq-web
           name: moq-web-coverage
+          fail_ci_if_error: true
+          verbose: true
 
       - name: Upload dist artifact
         if: success() && steps

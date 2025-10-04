@@ -11,5 +11,10 @@
 **/docs/moqt/public
 **/dist/
 
+# Coverage
+coverage.out
+coverage.txt
+**/coverage/
+
 # Local Environment
 **.pem

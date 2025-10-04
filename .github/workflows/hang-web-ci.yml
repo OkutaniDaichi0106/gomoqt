@@ -55,10 +55,11 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: OkutaniDaichi0106/gomoqt
           files: ./hang-web/coverage/lcov.info
           flags: hang-web
           name: hang-web-coverage
+          fail_ci_if_error: true
+          verbose: true
 
       - name: Upload hang-web dist artifact
         if: success()

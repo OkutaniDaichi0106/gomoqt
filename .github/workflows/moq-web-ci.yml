@@ -25,7 +25,9 @@ jobs:
 
       - name: Install dependencies
         working-directory: ./moq-web
-        run: npm ci || npm install
+        run: |
+          rm -rf node_modules package-lock.json
+          npm install
 
       - name: Build
         working-directory: ./moq-web

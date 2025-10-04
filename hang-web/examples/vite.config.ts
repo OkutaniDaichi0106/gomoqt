@@ -3,5 +3,10 @@ import basicSsl from "@vitejs/plugin-basic-ssl";
 
 export default defineConfig({
   plugins: [],
-  server: {},
+  server: {
+    fs: {
+      // Allow serving files from parent directory
+      allow: ['..']
+    }
+  },
 });

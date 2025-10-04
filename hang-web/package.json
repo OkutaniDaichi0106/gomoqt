@@ -10,6 +10,8 @@
     "build:main": "tsc",
     "build:browser": "tsc --project tsconfig.browser.json",
     "postbuild": "node ./scripts/copy-src-to-dist.cjs",
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
     "test": "vitest run",
@@ -65,6 +67,7 @@
     "happy-dom": "^19.0.2",
     "jsdom": "^27.0.0",
     "tslint": "^5.20.1",
+    "tsx": "^4.20.6",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4",
     "web-streams-polyfill": "^4.2.0"

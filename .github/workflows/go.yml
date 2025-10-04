@@ -25,7 +25,7 @@ jobs:
       run: go test -v ./...
 
     - name: Test with coverage
-      run: go test ./... -coverprofile=coverage.out
+      run: go test ./moqt/... -coverprofile=coverage.out -covermode=atomic
 
     - name: Upload coverage report
       uses: codecov/codecov-action@v5

@@ -2,11 +2,9 @@ name: Moq Web CI
 
 on:
   push:
-    paths:
-      - 'moq-web/**'
+    branches: [ "main" ]
   pull_request:
-    paths:
-      - 'moq-web/**'
+    branches: [ "main" ]
   workflow_dispatch: {}
 
 jobs:

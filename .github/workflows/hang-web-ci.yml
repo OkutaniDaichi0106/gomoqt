@@ -2,11 +2,9 @@ name: Hang Web CI
 
 on:
   push:
-    paths:
-      - 'hang-web/**'
+    branches: [ "main" ]
   pull_request:
-    paths:
-      - 'hang-web/**'
+    branches: [ "main" ]
   workflow_dispatch: {}
 
 jobs:

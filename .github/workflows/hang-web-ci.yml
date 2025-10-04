@@ -51,7 +51,14 @@ jobs:
       - name: Run tests for hang-web
         run: |
           cd hang-web
-          npm test
+          npm run test:coverage
+
+      - name: Upload coverage to CodeCov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: OkutaniDaichi0106/gomoqt
+          files: ./hang-web/coverage/lcov.info
 
       - name: Upload hang-web dist artifact
         if: success()

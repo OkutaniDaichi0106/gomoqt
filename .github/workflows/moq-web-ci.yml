@@ -38,7 +38,14 @@ jobs:
       - name: Run tests
         run: |
           cd moq-web
-          npm test
+          npm run test:coverage
+
+      - name: Upload coverage to CodeCov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: OkutaniDaichi0106/gomoqt
+          files: ./moq-web/coverage/lcov.info
 
       - name: Upload dist artifact
         if: success() && steps

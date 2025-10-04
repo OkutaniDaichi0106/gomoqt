@@ -46,6 +46,8 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: OkutaniDaichi0106/gomoqt
           files: ./moq-web/coverage/lcov.info
+          flags: moq-web
+          name: moq-web-coverage
 
       - name: Upload dist artifact
         if: success() && steps

@@ -21,7 +21,6 @@ on:
   workflow_dispatch: {}
 
 jobs:
-
   build:
     runs-on: ubuntu-latest
     steps:
@@ -43,3 +42,6 @@ jobs:
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         slug: OkutaniDaichi0106/gomoqt
+        files: ./coverage.out
+        flags: go
+        name: go-coverage

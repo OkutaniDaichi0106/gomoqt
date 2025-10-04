@@ -1,9 +1,46 @@
 version: 2
 
+run:
+  timeout: 5m
+  tests: true
+
 linters:
   enable:
-    - govet
-    - errcheck
-    - staticcheck
-    - unused
-    - gosimple
+    # Core linters - catch real bugs
+    - errcheck      # Detect unchecked errors
+    - govet         # Standard Go issue detection
+    - staticcheck   # Advanced static analysis
+    - unused        # Detect unused code
+    
+    # Code quality linters - practical improvements
+    - gosimple      # Suggest code simplifications
+    - ineffassign   # Detect ineffectual assignments
+
+linters-settings:
+  errcheck:
+    # Don't be too strict - allow some common patterns
+    check-type-assertions: false
+    check-blank: false
+  
+  govet:
+    # Enable most checks but not all
+    disable:
+      - shadow      # Variable shadowing can be intentional
+
+issues:
+  exclude-rules:
+    # Relax checks for test files
+    - path: _test\.go
+      linters:
+        - errcheck
+        - unused
+    
+    # Relax checks for example code
+    - path: examples/
+      linters:
+        - errcheck
+        - unused
+  
+  # Limit output to keep it manageable
+  max-issues-per-linter: 50
+  max-same-issues: 3

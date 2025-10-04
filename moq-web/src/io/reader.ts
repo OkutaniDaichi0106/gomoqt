@@ -119,18 +119,26 @@ export const EOF = new Error("EOF");
 //     return { value: bytes, readLength: length + readLength };
 // }
 
+export interface ReaderInit {
+    stream: ReadableStream<Uint8Array>;
+    transfer?: ArrayBufferLike;
+    streamId: bigint;
+}
+
 export class Reader {
     // #byob?: ReadableStreamBYOBReader;
     #pull: ReadableStreamDefaultReader<Uint8Array>;
     #buf: BytesBuffer;
     #closed: Promise<void>;
+    readonly streamId: bigint;
 
-    constructor(readable: ReadableStream<Uint8Array>, transfer?: ArrayBufferLike) {
-        this.#pull = readable.getReader();
+    constructor(init: ReaderInit) {
+        this.#pull = init.stream.getReader();
 
-        this.#buf = new BytesBuffer(transfer || DefaultBufferPool.acquire(DefaultReadSize));
+        this.#buf = new BytesBuffer(init.transfer || DefaultBufferPool.acquire(DefaultReadSize));
 
         this.#closed = this.#pull.closed;
+        this.streamId = init.streamId;
     }
 
     async readUint8Array(transfer?: ArrayBufferLike): Promise<[Uint8Array, undefined]|[undefined, Error]> {

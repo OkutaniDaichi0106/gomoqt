@@ -18,6 +18,7 @@ export class TrackWriter {
     #subscribeStream: ReceiveSubscribeStream;
     #openUniStreamFunc: () => Promise<[Writer, undefined] | [undefined, Error]>;
     #groups: GroupWriter[] = [];
+    readonly streamId: bigint;
 
     constructor(
         broadcastPath: BroadcastPath,
@@ -29,6 +30,7 @@ export class TrackWriter {
         this.trackName = trackName;
         this.#subscribeStream = subscribeStream;
         this.#openUniStreamFunc = openUniStreamFunc;
+        this.streamId = subscribeStream.streamId;
     }
 
     get context(): Context {
@@ -103,6 +105,7 @@ export class TrackReader {
     #subscribeStream: SendSubscribeStream;
     #acceptFunc: (ctx: Promise<void>) => Promise<[Reader, GroupMessage] | undefined>;
     #onCloseFunc: () => void;
+    readonly streamId: bigint;
 
     constructor(
         subscribeStream: SendSubscribeStream,
@@ -112,6 +115,7 @@ export class TrackReader {
         this.#subscribeStream = subscribeStream;
         this.#acceptFunc = acceptFunc;
         this.#onCloseFunc = onCloseFunc;
+        this.streamId = subscribeStream.streamId;
     }
 
     async acceptGroup(signal: Promise<void>): Promise<[GroupReader, undefined]|[undefined, Error]> {

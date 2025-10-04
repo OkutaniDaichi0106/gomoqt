@@ -26,6 +26,7 @@ export class AnnouncementWriter {
     #cancelFunc: CancelCauseFunc;
     #ready: Promise<void>;
     #resolveInit?: () => void;
+    readonly streamId: bigint;
 
     constructor(
         sessCtx: Context,
@@ -37,6 +38,8 @@ export class AnnouncementWriter {
         this.#reader = reader;
 
         this.prefix = validateTrackPrefix(req.prefix);
+
+        this.streamId = writer.streamId ?? reader.streamId ?? 0n;
 
         // const ctx = watchPromise(sessCtx, reader.closed());
         [this.#ctx, this.#cancelFunc] = withCancelCause(sessCtx);
@@ -205,6 +208,7 @@ export class AnnouncementReader {
     #cancelFunc: CancelCauseFunc;
     #mu: Mutex = new Mutex();
     #cond: Cond = new Cond(this.#mu);
+    readonly streamId: bigint;
 
 
     constructor(sessCtx: Context, writer: Writer, reader: Reader,
@@ -216,6 +220,7 @@ export class AnnouncementReader {
             throw new Error(`[AnnouncementReader] invalid prefix: ${prefix}.`);
         }
         this.prefix = prefix;
+        this.streamId = writer.streamId ?? reader.streamId ?? 0n;
         [this.#ctx, this.#cancelFunc] = withCancelCause(sessCtx);
 
         // Set initial announcements

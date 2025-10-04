@@ -13,7 +13,7 @@ describe('Reader', () => {
         controller = ctrl;
       }
     });
-    reader = new Reader(readableStream);
+    reader = new Reader({stream: readableStream, streamId: 1n});
   });
 
   afterEach(() => {
@@ -33,7 +33,7 @@ describe('Reader', () => {
         }
       }
     });
-    return { reader: new Reader(stream), controller: ctrl! };
+    return { reader: new Reader({stream, streamId: 1n}), controller: ctrl! };
   };
 
   // Helper function to create a reader with data and immediately close
@@ -44,7 +44,7 @@ describe('Reader', () => {
         ctrl.close();
       }
     });
-    return new Reader(stream);
+    return new Reader({stream, transfer: undefined, streamId: 0n});
   };
 
   describe('readUint8Array', () => {

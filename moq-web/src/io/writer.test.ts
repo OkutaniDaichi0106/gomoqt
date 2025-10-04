@@ -19,7 +19,7 @@ describe('Writer', () => {
         streamClosed = true;
       }
     });
-    writer = new Writer(writableStream);
+    writer = new Writer({stream: writableStream, streamId: 1n});
   });
 
   afterEach(async () => {

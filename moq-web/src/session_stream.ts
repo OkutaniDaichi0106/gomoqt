@@ -18,6 +18,7 @@ export class SessionStream {
     readonly server: SessionServerMessage;
     #clientInfo!: SessionUpdateMessage;
     #serverInfo!: SessionUpdateMessage;
+    readonly streamId: bigint;
 
     constructor(connCtx: Context, writer: Writer, reader: Reader, client: SessionClientMessage, server: SessionServerMessage) {
         this.client = client;
@@ -25,6 +26,7 @@ export class SessionStream {
         this.#writer = writer;
         this.#reader = reader;
         this.#ctx = connCtx;
+        this.streamId = writer.streamId ?? reader.streamId ?? 0n;
 
         this.#handleUpdates()
     }

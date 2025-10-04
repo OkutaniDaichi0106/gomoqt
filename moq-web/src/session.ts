@@ -37,6 +37,14 @@ export class Session {
 
 	#subscribeIDCounter: bigint = 0n;
 
+	#biStreamCounter: bigint = 4n; // next after session stream (0)
+
+	#serverBiStreamCounter: bigint = 1n;
+
+	#uniStreamCounter: bigint = 2n;
+
+	#serverUniStreamCounter: bigint = 3n;
+
 	readonly mux: TrackMux;
 
 	#enqueueFuncs: Map<SubscribeID, (stream: Reader, msg: GroupMessage) => void> = new Map();
@@ -54,8 +62,9 @@ export class Session {
 		await this.#conn.ready;
 
 		const stream = await this.#conn.createBidirectionalStream();
-		const writer = new Writer(stream.writable);
-		const reader = new Reader(stream.readable);
+		const streamId = 0n;
+		const writer = new Writer({stream: stream.writable, transfer: undefined, streamId});
+		const reader = new Reader({stream: stream.readable, transfer: undefined, streamId});
 
 		// Send STREAM_TYPE
 		writer.writeUint8(BiStreamTypes.SessionStreamType);
@@ -79,6 +88,7 @@ export class Session {
 		console.debug("moq: SESSION_CLIENT message sent.",
 			{
 				"message": req,
+				"streamId": streamId,
 			}
 		);
 
@@ -120,8 +130,10 @@ export class Session {
 
 	async acceptAnnounce(prefix: TrackPrefix): Promise<[AnnouncementReader, undefined] | [undefined, Error]> {
 		const stream = await this.#conn.createBidirectionalStream()
-		const writer = new Writer(stream.writable);
-		const reader = new Reader(stream.readable);
+		const streamId = this.#biStreamCounter;
+		this.#biStreamCounter += 4n;
+		const writer = new Writer({stream: stream.writable, streamId});
+		const reader = new Reader({stream: stream.readable, streamId});
 
 		// Send STREAM_TYPE
 		writer.writeUint8(BiStreamTypes.AnnounceStreamType);
@@ -142,6 +154,7 @@ export class Session {
 		console.debug(`moq: ANNOUNCE_PLEASE message sent.`,
 			{
 				"message": req,
+				"streamId": streamId,
 			}
 		)
 
@@ -165,8 +178,10 @@ export class Session {
 
 	async subscribe(path: BroadcastPath, name: TrackName, config?: TrackConfig): Promise<[TrackReader, undefined] | [undefined, Error]> {
 		const stream = await this.#conn.createBidirectionalStream()
-		const writer = new Writer(stream.writable);
-		const reader = new Reader(stream.readable);
+		const streamId = this.#biStreamCounter;
+		this.#biStreamCounter += 4n;
+		const writer = new Writer({stream: stream.writable, transfer: undefined, streamId});
+		const reader = new Reader({stream: stream.readable, transfer: undefined, streamId});
 
 		// Send STREAM_TYPE
 		writer.writeUint8(BiStreamTypes.SubscribeStreamType);
@@ -194,6 +209,7 @@ export class Session {
 		console.debug(`moq: SUBSCRIBE message sent.`,
 			{
 				"message": req,
+				"streamId": streamId,
 			}
 		)
 
@@ -240,6 +256,7 @@ export class Session {
 		console.debug("moq: GROUP message received.",
 			{
 				"message": req,
+				"streamId": reader.streamId,
 			}
 		)
 
@@ -253,6 +270,8 @@ export class Session {
 	}
 
 	async #handleSubscribeStream(writer: Writer, reader: Reader): Promise<void> {
+		const streamId = this.#serverBiStreamCounter;
+		this.#serverBiStreamCounter += 4n;
 		const req = new SubscribeMessage({});
 		const reqErr = await req.decode(reader);
 		if (reqErr) {
@@ -263,6 +282,7 @@ export class Session {
 		console.debug("moq: SUBSCRIBE message received.",
 			{
 				"message": req,
+				"streamId": streamId,
 			}
 		);
 
@@ -270,7 +290,10 @@ export class Session {
 
 		const openUniStreamFunc = async (): Promise<[Writer, undefined] | [undefined, Error]> => {
 			try {
-				const writer = new Writer(await this.#conn.createUnidirectionalStream());
+				const streamId = this.#uniStreamCounter;
+				this.#uniStreamCounter += 4n;
+				const stream = await this.#conn.createUnidirectionalStream();
+				const writer = new Writer({stream, streamId});
 				return [writer, undefined];
 			} catch (err) {
 				console.error("moq: failed to create unidirectional stream:", err);
@@ -289,6 +312,8 @@ export class Session {
 	}
 
 	async #handleAnnounceStream(writer: Writer, reader: Reader): Promise<void> {
+		const streamId = this.#serverBiStreamCounter;
+		this.#serverBiStreamCounter += 4n;
 		const req = new AnnouncePleaseMessage({});
 		const err = await req.decode(reader);
 		if (err) {
@@ -296,9 +321,10 @@ export class Session {
 			return;
 		}
 
-		console.debug("moq: ANNOUNCE message received.",
+		console.debug("moq: ANNOUNCE_PLEASE message received.",
 			{
 				"message": req,
+				"streamId": streamId,
 			}
 		);
 
@@ -322,8 +348,10 @@ export class Session {
 					break;
 				}
 				const stream = value as WebTransportBidirectionalStream;
-				const writer = new Writer(stream.writable);
-				const reader = new Reader(stream.readable);
+				const streamId = this.#serverBiStreamCounter;
+				this.#serverBiStreamCounter += 4n;
+				const writer = new Writer({stream: stream.writable, transfer: undefined, streamId});
+				const reader = new Reader({stream: stream.readable, transfer: undefined, streamId});
 				[num, err] = await reader.readUint8();
 				if (err) {
 					console.error("Failed to read from bidirectional stream:", err);
@@ -361,7 +389,8 @@ export class Session {
 					break;
 				}
 
-				const reader = new Reader(value as ReadableStream<Uint8Array<ArrayBufferLike>>);
+				const reader = new Reader({stream: value as ReadableStream<Uint8Array<ArrayBufferLike>>, transfer: undefined, streamId: this.#serverUniStreamCounter});
+				this.#serverUniStreamCounter += 4n;
 
 
 				// Read the first byte to determine the stream type

@@ -23,6 +23,7 @@ export class SendSubscribeStream {
 	#writer: Writer
 	#ctx: Context;
 	#cancelFunc: CancelCauseFunc;
+	readonly streamId: bigint;
 
 	constructor(sessCtx: Context, writer: Writer, reader: Reader, subscribe: SubscribeMessage, ok: SubscribeOkMessage) {
 		[this.#ctx, this.#cancelFunc] = withCancelCause(sessCtx);
@@ -31,6 +32,7 @@ export class SendSubscribeStream {
 		this.#config = subscribe;
 		this.#id = subscribe.subscribeId;
 		this.#info = ok;
+		this.streamId = writer.streamId ?? reader.streamId ?? 0n;
 	}
 
 	get subscribeId(): SubscribeID {
@@ -80,6 +82,7 @@ export class ReceiveSubscribeStream {
 	#info?: Info
 	#ctx: Context;
 	#cancelFunc: CancelCauseFunc;
+	readonly streamId: bigint;
 
 
 	constructor(
@@ -92,6 +95,7 @@ export class ReceiveSubscribeStream {
 		this.#writer = writer
 		this.subscribeId = subscribe.subscribeId;
 		this.#trackConfig = subscribe;
+		this.streamId = writer.streamId ?? reader.streamId ?? 0n;
 		[this.#ctx, this.#cancelFunc] = withCancelCause(sessCtx);
 
 		this.#handleUpdates();

@@ -11,7 +11,7 @@ function createIsolatedStreams(): { writer: Writer; reader: Reader; cleanup: () 
     }
   });
   
-  const writer = new Writer(writableStream);
+  const writer = new Writer({stream: writableStream, transfer: undefined, streamId: 0n});
   
   let chunkIndex = 0;
   const readableStream = new ReadableStream<Uint8Array>({
@@ -24,7 +24,7 @@ function createIsolatedStreams(): { writer: Writer; reader: Reader; cleanup: () 
     }
   });
   
-  const reader = new Reader(readableStream);
+  const reader = new Reader({stream: readableStream, transfer: undefined, streamId: 0n});
   
   return {
     writer,

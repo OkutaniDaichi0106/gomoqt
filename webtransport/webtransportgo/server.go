@@ -71,10 +71,7 @@ func (w *serverWrapper) Shutdown(ctx context.Context) error {
 
 	// Close the server in a separate goroutine
 	go func() {
-		err := w.server.Close()
-		if err != nil {
-			// Log the error if needed
-		}
+		_ = w.server.Close() // Ignore close error as server is shutting down
 		close(closeCh)
 	}()
 

@@ -25,25 +25,23 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-          cache: 'npm'
-          cache-dependency-path: |
-            hang-web/package-lock.json
-            moq-web/package-lock.json
 
-      - name: Install dependencies for moq-web
+      - name: Clean install dependencies for moq-web
         run: |
           cd moq-web
-          npm ci
+          rm -rf node_modules package-lock.json
+          npm install
 
       - name: Build moq-web
         run: |
           cd moq-web
           npm run build
 
-      - name: Install dependencies for hang-web
+      - name: Clean install dependencies for hang-web
         run: |
           cd hang-web
-          npm ci
+          rm -rf node_modules package-lock.json
+          npm install
 
       - name: Build hang-web
         run: |

@@ -54,6 +54,7 @@ export default defineConfig({
     alias: {
       '@okutanidaichi/moqt': resolve(__dirname, '../moq-web/src'),
       '@okutanidaichi/moqt/io': resolve(__dirname, '../moq-web/src/io'),
+      'golikejs': resolve(__dirname, 'node_modules/golikejs/dist'),
     },
     extensions: ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json'],
     // Allow resolving modules without explicit .js extension

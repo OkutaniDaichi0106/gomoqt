@@ -308,17 +308,12 @@ func TestAnnouncementReader_AnnouncementTracking(t *testing.T) {
 	// Wait for the goroutine to start and process EOF (deterministic)
 	{
 		tctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-		done := false
 		select {
 		case <-ras.ctx.Done():
-			done = true
 		case <-tctx.Done():
-			done = false
 		}
 		cancel()
-		if !done {
-			// Not fatal; proceed — the goroutine may not cancel context on EOF, but this avoids blind sleeps
-		}
+		// Not fatal; proceed — the goroutine may not cancel context on EOF, but this avoids blind sleeps
 	}
 
 	// Test internal announcement tracking

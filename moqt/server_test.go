@@ -360,10 +360,7 @@ func TestServer_AcceptSession(t *testing.T) {
 				assert.NotNil(t, sessStream, "acceptSessionStream() should return session stream")
 			}
 
-			// Cleanup
-			if sessStream != nil {
-				// Note: sessStream doesn't have Terminate method, this cleanup may not be needed
-			}
+			// Cleanup not needed as sessStream doesn't have Terminate method
 		})
 	}
 }

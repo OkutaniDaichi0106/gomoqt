@@ -79,8 +79,6 @@ func TestSessionStream_updateSession_WriteError(t *testing.T) {
 
 	ss := newSessionStream(mockStream, req)
 
-	_ = ss.updateSession(uint64(1000000))
-
 	// Error handling depends on implementation, but should not panic
 	assert.NotPanics(t, func() {
 		ss.updateSession(uint64(1000000))

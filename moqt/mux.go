@@ -128,17 +128,31 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 		default:
 			// Channel is busy, start retry goroutine
 			go func(channel chan *Announcement) {
+				ctx := announcement.Context()
+				ticker := time.NewTicker(10 * time.Millisecond)
+				defer ticker.Stop()
+
 				for {
 					select {
-					case channel <- announcement:
-						// Successfully sent to channel
-						return
-					case <-time.After(100 * time.Millisecond):
-						// Timeout, retry
-						continue
-					case <-announcement.Context().Done():
+					case <-ctx.Done():
 						// Announcement ended, no need to send
 						return
+					default:
+						// Check if context is done before sending
+						if ctx.Err() != nil {
+							return
+						}
+						select {
+						case channel <- announcement:
+							// Successfully sent to channel
+							return
+						case <-ticker.C:
+							// Timeout, retry
+							continue
+						case <-ctx.Done():
+							// Announcement ended during send attempt
+							return
+						}
 					}
 				}
 			}(ch)

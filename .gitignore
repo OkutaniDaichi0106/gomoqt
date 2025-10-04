@@ -7,7 +7,6 @@
 **/node_modules
 **/.serena
 
-
 # Build staff
 **/docs/moqt/public
 **/dist/

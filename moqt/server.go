@@ -678,5 +678,9 @@ func (s *Server) acceptTimeout() time.Duration {
 }
 
 func (s *Server) goAway(sess *Session) {
-	// TODO: Implement go away
+	if sess == nil {
+		return
+	}
+
+	sess.goAway("") // TODO: specify URI if needed
 }

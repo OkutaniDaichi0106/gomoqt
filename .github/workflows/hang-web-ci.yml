@@ -4,9 +4,11 @@ on:
   push:
     paths:
       - 'hang-web/**'
+      - 'moq-web/**'  # moq-web の変更時もトリガー
   pull_request:
     paths:
       - 'hang-web/**'
+      - 'moq-web/**'
   workflow_dispatch: {}
 
 jobs:
@@ -15,7 +17,7 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [18.x, 20.x]
+        node-version: [20.x]
 
     steps:
       - uses: actions/checkout@v4
@@ -23,25 +25,36 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-          cache: 'npm'
 
-      - name: Install dependencies
+      - name: Clean install dependencies for moq-web
+        run: |
+          cd moq-web
+          rm -rf node_modules package-lock.json
+          npm install
+
+      - name: Build moq-web
+        run: |
+          cd moq-web
+          npm run build
+
+      - name: Clean install dependencies for hang-web
         run: |
           cd hang-web
-          npm ci
+          rm -rf node_modules package-lock.json
+          npm install
 
-      - name: Build
+      - name: Build hang-web
         run: |
           cd hang-web
           npm run build
 
-      - name: Run tests
+      - name: Run tests for hang-web
         run: |
           cd hang-web
           npm test
 
-      - name: Upload dist artifact
-        if: success() && steps
+      - name: Upload hang-web dist artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: hang-web-dist

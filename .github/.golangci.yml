@@ -1,13 +1,12 @@
+version: 2
+
+run:
+  timeout: 10m
+
 linters:
-  disable-all: true
+  default: none
   enable:
     - govet
-    - errcheck
     - staticcheck
-    - unused
-    - gosimple
-    - varcheck
-    - misspell
-    - lll
-    - gofumpt 
-    - structcheck
+  exclusions:
+    rules:

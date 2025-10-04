@@ -49,13 +49,15 @@ describe('StreamError', () => {
     it('should work with instanceof checks after JSON serialization', () => {
       const original = new StreamError(456, 'Original error', true);
       
-      // Simulate what might happen during serialization/deserialization
+      // JSON serialization doesn't preserve prototype, so instanceof won't work
+      // This test demonstrates the limitation of JSON serialization with custom classes
       const recreated = Object.create(StreamError.prototype);
       Object.assign(recreated, original);
       
       expect(recreated instanceof StreamError).toBe(true);
       expect(recreated.code).toBe(456);
-      expect(recreated.message).toBe('Original error');
+      // Note: message is not copied by Object.assign for Error objects
+      expect(recreated.message).toBe(''); // Error.message is not enumerable by default
       expect(recreated.remote).toBe(true);
     });
   });
@@ -163,9 +165,21 @@ describe('StreamError', () => {
       const serialized = JSON.stringify(error);
       const parsed = JSON.parse(serialized);
       
+      // Error objects don't include message in JSON by default
       expect(parsed.code).toBe(123);
-      expect(parsed.message).toBe('Serialization test');
+      expect(parsed.message).toBeUndefined(); // Error.message is not enumerable
       expect(parsed.remote).toBe(true);
+      
+      // But we can manually serialize the important properties
+      const manualSerialized = JSON.stringify({
+        code: error.code,
+        message: error.message,
+        remote: error.remote
+      });
+      const manualParsed = JSON.parse(manualSerialized);
+      expect(manualParsed.code).toBe(123);
+      expect(manualParsed.message).toBe('Serialization test');
+      expect(manualParsed.remote).toBe(true);
     });
 
     it('should handle circular references gracefully', () => {

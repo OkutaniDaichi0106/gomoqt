@@ -21,3 +21,25 @@ func TestGroupSequence(t *testing.T) {
 		})
 	}
 }
+
+func TestGroupSequenceNext(t *testing.T) {
+	tests := []struct {
+		name     string
+		seq      GroupSequence
+		expected GroupSequence
+	}{
+		{"not specified", GroupSequenceNotSpecified, 1},
+		{"first", GroupSequenceFirst, 2},
+		{"normal", GroupSequence(5), 6},
+		{"max", MaxGroupSequence, 1}, // wrap around
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.seq.Next()
+			if result != tt.expected {
+				t.Errorf("GroupSequence(%d).Next() = %d, want %d", tt.seq, result, tt.expected)
+			}
+		})
+	}
+}

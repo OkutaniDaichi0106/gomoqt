@@ -21,3 +21,24 @@ func TestSubscribeID(t *testing.T) {
 		})
 	}
 }
+
+func TestSubscribeIDString(t *testing.T) {
+	tests := []struct {
+		name     string
+		id       SubscribeID
+		expected string
+	}{
+		{"zero", SubscribeID(0), "0"},
+		{"one", SubscribeID(1), "1"},
+		{"large", SubscribeID(12345), "12345"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.id.String()
+			if result != tt.expected {
+				t.Errorf("SubscribeID(%d).String() = %s, want %s", tt.id, result, tt.expected)
+			}
+		})
+	}
+}

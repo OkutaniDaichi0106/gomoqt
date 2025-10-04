@@ -1,11 +1,5 @@
 import { describe, test, expect, beforeEach, vi, it } from 'vitest';
 
-// Mock browser detection
-vi.mock('./browser', () => ({
-    isChrome: true,
-    isFirefox: false,
-}));
-
 import { 
     DEFAULT_AUDIO_CODECS, 
     DEFAULT_AUDIO_CONFIG, 
@@ -31,6 +25,11 @@ global.console.debug = vi.fn();
 describe('Audio Config', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        // Set up navigator for browser detection
+        Object.defineProperty(navigator, 'userAgent', {
+            value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            writable: true,
+        });
     });
 
     describe('DEFAULT_AUDIO_CODECS', () => {
@@ -65,18 +64,20 @@ describe('Audio Config', () => {
     });
 
     describe('audioEncoderConfig', () => {
-        test('returns supported config for valid options', async () => {
-            const mockConfig = {
-                codec: 'opus',
-                sampleRate: 48000,
-                numberOfChannels: 2,
-                bitrate: 64000,
-            };
-
-            mockAudioEncoder.isConfigSupported.mockResolvedValue({
-                supported: true,
-                config: mockConfig,
+        beforeEach(() => {
+            vi.clearAllMocks();
+            // Set up navigator for browser detection
+            Object.defineProperty(navigator, 'userAgent', {
+                value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                writable: true,
             });
+            // Mock isConfigSupported to return the config as supported
+            mockAudioEncoder.isConfigSupported = vi.fn().mockImplementation((cfg) => 
+                Promise.resolve({ supported: true, config: cfg })
+            );
+        });
+
+        test('returns supported config for valid options', async () => {
 
             const options: AudioEncoderOptions = {
                 sampleRate: 48000,
@@ -85,24 +86,27 @@ describe('Audio Config', () => {
 
             const result = await audioEncoderConfig(options);
 
-            expect(result).toEqual(mockConfig);
-            expect(mockAudioEncoder.isConfigSupported).toHaveBeenCalledTimes(1);
-            expect(console.debug).toHaveBeenCalledWith('using audio encoding:', mockConfig);
+            expect(result.codec).toBe('opus');
+            expect(result.sampleRate).toBe(48000);
+            expect(result.numberOfChannels).toBe(2);
+            expect(result.bitrate).toBe(64000);
+            // Check that upgradeAudioEncoderConfig was called (Opus parameters added)
+            expect(mockAudioEncoder.isConfigSupported).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    opus: expect.objectContaining({
+                        application: 'audio',
+                        signal: 'music',
+                    }),
+                    parameters: expect.objectContaining({
+                        useinbandfec: 1,
+                        stereo: 1,
+                    }),
+                })
+            );
+            expect(console.debug).toHaveBeenCalledWith('using audio encoding:', result);
         });
 
         test('uses default bitrate when not provided', async () => {
-            const mockConfig = {
-                codec: 'opus',
-                sampleRate: 48000,
-                numberOfChannels: 2,
-                bitrate: DEFAULT_AUDIO_CONFIG.bitrate,
-            };
-
-            mockAudioEncoder.isConfigSupported.mockResolvedValue({
-                supported: true,
-                config: mockConfig,
-            });
-
             const options: AudioEncoderOptions = {
                 sampleRate: 48000,
                 channels: 2,
@@ -119,17 +123,6 @@ describe('Audio Config', () => {
 
         test('uses custom bitrate when provided', async () => {
             const customBitrate = 128000;
-            const mockConfig = {
-                codec: 'opus',
-                sampleRate: 48000,
-                numberOfChannels: 1,
-                bitrate: customBitrate,
-            };
-
-            mockAudioEncoder.isConfigSupported.mockResolvedValue({
-                supported: true,
-                config: mockConfig,
-            });
 
             const options: AudioEncoderOptions = {
                 sampleRate: 48000,
@@ -147,11 +140,6 @@ describe('Audio Config', () => {
         });
 
         test('uses default codecs when preferredCodecs not provided', async () => {
-            mockAudioEncoder.isConfigSupported.mockResolvedValue({
-                supported: true,
-                config: { codec: 'opus' },
-            });
-
             const options: AudioEncoderOptions = {
                 sampleRate: 48000,
                 channels: 2,
@@ -241,8 +229,8 @@ describe('Audio Config', () => {
         });
 
         test('handles isConfigSupported throwing error', async () => {
-            // Restore the mock function and set it to reject
-            mockAudioEncoder.isConfigSupported = vi.fn().mockRejectedValue(new Error('Config check failed'));
+            // Set it to reject
+            mockAudioEncoder.isConfigSupported.mockRejectedValue(new Error('Config check failed'));
 
             const options: AudioEncoderOptions = {
                 sampleRate: 48000,
@@ -253,19 +241,6 @@ describe('Audio Config', () => {
         });
 
         test('handles mono audio configuration', async () => {
-            const mockConfig = {
-                codec: 'opus',
-                sampleRate: 16000,
-                numberOfChannels: 1,
-                bitrate: 32000,
-            };
-
-            // Restore the mock function and set it to resolve
-            mockAudioEncoder.isConfigSupported = vi.fn().mockResolvedValue({
-                supported: true,
-                config: mockConfig,
-            });
-
             const options: AudioEncoderOptions = {
                 sampleRate: 16000,
                 channels: 1,
@@ -279,19 +254,6 @@ describe('Audio Config', () => {
         });
 
         test('handles high sample rate configuration', async () => {
-            const mockConfig = {
-                codec: 'opus',
-                sampleRate: 96000,
-                numberOfChannels: 2,
-                bitrate: 128000,
-            };
-
-            // Restore the mock function and set it to resolve
-            mockAudioEncoder.isConfigSupported = vi.fn().mockResolvedValue({
-                supported: true,
-                config: mockConfig,
-            });
-
             const options: AudioEncoderOptions = {
                 sampleRate: 96000,
                 channels: 2,

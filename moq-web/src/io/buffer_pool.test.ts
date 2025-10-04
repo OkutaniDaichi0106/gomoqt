@@ -1,4 +1,3 @@
-
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { BufferPool } from './';
 
@@ -40,10 +39,53 @@ describe('BytesPool', () => {
     });
   });
 
-  it('should acquire and release bytes', () => {
+  it('should create new buffer when capacity exceeds max', () => {
     const pool = new BufferPool({ min: 1, middle: 10, max: 100 });
+    const bytes = pool.acquire(200);
+    expect(bytes.byteLength).toBe(200);
+    // Cannot release since size doesn't match
+  });
+
+  it('should handle empty bucket', () => {
+    const pool = new BufferPool({ min: 1, middle: 10, max: 100 });
+    // Acquire all from bucket, but since maxPerBucket=5, and we acquire more than that
+    for (let i = 0; i < 6; i++) {
+      const bytes = pool.acquire(10);
+      if (i < 5) pool.release(bytes); // First 5 go to bucket
+    }
+    // Now bucket has 5, acquire again should get from bucket
     const bytes = pool.acquire(10);
     expect(bytes.byteLength).toBe(10);
+  });
+
+  it('should not release when maxTotalBytes exceeded', () => {
+    const pool = new BufferPool({ min: 1, middle: 10, max: 100, options: { maxTotalBytes: 10 } });
+    const bytes1 = pool.acquire(10);
+    pool.release(bytes1); // currentBytes = 10
+    const bytes2 = pool.acquire(10);
+    pool.release(bytes2); // currentBytes = 10
+    const bytes3 = new ArrayBuffer(10); // external buffer
+    pool.release(bytes3); // 10 + 10 = 20 > 10, not released
+    const bytes4 = pool.acquire(10);
+    expect(bytes4).toBe(bytes2); // bucket has bytes2
+    expect(bytes4).not.toBe(bytes3); // bytes3 not in pool
+  });
+
+  it('should not release buffers with non-matching sizes', () => {
+    const pool = new BufferPool({ min: 1, middle: 10, max: 100 });
+    const bytes = new ArrayBuffer(50); // Not matching any size
+    pool.release(bytes); // Should not be added to any bucket
+    const acquired = pool.acquire(10);
+    expect(acquired.byteLength).toBe(10);
+    // Since no buffers in bucket, it's new
+  });
+
+  it('should cleanup buckets', () => {
+    const pool = new BufferPool({ min: 1, middle: 10, max: 100 });
+    const bytes = pool.acquire(10);
     pool.release(bytes);
+    pool.cleanup();
+    const bytes2 = pool.acquire(10);
+    expect(bytes2).not.toBe(bytes);
   });
 });

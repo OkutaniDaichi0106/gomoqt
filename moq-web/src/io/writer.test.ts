@@ -275,4 +275,41 @@ describe('Writer', () => {
       expect(written[0]).toBe(1);
     });
   });
+
+  describe('writeStringArray', () => {
+    it('should write an array of strings with length prefix', async () => {
+      const arr = ['hello', 'world'];
+      
+      writer.writeStringArray(arr);
+      await writer.flush();
+
+      expect(writtenData).toHaveLength(1);
+      const written = writtenData[0];
+      
+      // First byte should be varint length of array (2)
+      expect(written[0]).toBe(2);
+      // Then each string with its own length prefix
+      let offset = 1;
+      for (const str of arr) {
+        const strBytes = new TextEncoder().encode(str);
+        expect(written[offset]).toBe(strBytes.length);
+        expect(written.slice(offset + 1, offset + 1 + strBytes.length)).toEqual(strBytes);
+        offset += 1 + strBytes.length;
+      }
+    });
+
+    it('should handle empty array', async () => {
+      const arr: string[] = [];
+      
+      writer.writeStringArray(arr);
+      await writer.flush();
+
+      expect(writtenData).toHaveLength(1);
+      const written = writtenData[0];
+      
+      // First byte should be varint length (0)
+      expect(written[0]).toBe(0);
+      expect(written.length).toBe(1);
+    });
+  });
 });

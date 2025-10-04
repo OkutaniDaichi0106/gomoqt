@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { BytesBuffer } from './bytes';
+import { BytesBuffer, writeVarint, writeBigVarint, writeUint8Array, writeString, readVarint, readBigVarint, readUint8Array, readString } from './bytes';
 
 describe('BytesBuffer', () => {
     it('should write and read data', () => {
@@ -115,6 +115,119 @@ describe('BytesBuffer', () => {
             expect(buffer.size).toBe(3);
             buffer.reset();
             expect(buffer.size).toBe(0);
+        });
+    });
+
+    describe('writeVarint', () => {
+        it('should write 1-byte varint', () => {
+            const buf = new Uint8Array(10);
+            const len = writeVarint(buf, 63);
+            expect(len).toBe(1);
+            expect(buf[0]).toBe(63);
+        });
+
+        it('should write 2-byte varint', () => {
+            const buf = new Uint8Array(10);
+            const len = writeVarint(buf, 100);
+            expect(len).toBe(2);
+            expect(buf[0]).toBe((100 >> 8) | 0x40);
+            expect(buf[1]).toBe(100 & 0xff);
+        });
+
+        it('should write 4-byte varint', () => {
+            const buf = new Uint8Array(10);
+            const len = writeVarint(buf, 100000);
+            expect(len).toBe(4);
+        });
+
+        it('should write 8-byte varint', () => {
+            const buf = new Uint8Array(10);
+            const len = writeVarint(buf, 10000000000);
+            expect(len).toBe(8);
+        });
+
+        it('should throw for negative numbers', () => {
+            const buf = new Uint8Array(10);
+            expect(() => writeVarint(buf, -1)).toThrow();
+        });
+
+        it('should throw for buffer too small', () => {
+            const buf = new Uint8Array(1);
+            expect(() => writeVarint(buf, 100)).toThrow();
+        });
+    });
+
+    describe('writeBigVarint', () => {
+    it('should write bigint varint', () => {
+        const buf = new Uint8Array(10);
+        const len = writeBigVarint(buf, 100n);
+        expect(len).toBe(2); // 100 > 63, so 2 bytes
+        expect(buf[0]).toBe((100 >> 8) | 0x40);
+        expect(buf[1]).toBe(100 & 0xff);
+    });        it('should throw for negative bigint', () => {
+            const buf = new Uint8Array(10);
+            expect(() => writeBigVarint(buf, -1n)).toThrow();
+        });
+    });
+
+    describe('writeUint8Array', () => {
+        it('should write uint8array with varint length', () => {
+            const buf = new Uint8Array(20);
+            const data = new Uint8Array([1, 2, 3]);
+            const len = writeUint8Array(buf, data);
+            expect(len).toBe(4); // 1 (varint) + 3
+            expect(buf.subarray(1, 4)).toEqual(data);
+        });
+    });
+
+    describe('writeString', () => {
+        it('should write string', () => {
+            const buf = new Uint8Array(20);
+            const len = writeString(buf, "abc");
+            expect(len).toBe(4); // 1 + 3
+        });
+    });
+
+    describe('readVarint', () => {
+        it('should read 1-byte varint', () => {
+            const buf = new Uint8Array([63]);
+            const [value, len] = readVarint(buf);
+            expect(value).toBe(63);
+            expect(len).toBe(1);
+        });
+
+        it('should read 2-byte varint', () => {
+            const buf = new Uint8Array([(100 >> 8) | 0x40, 100 & 0xff]);
+            const [value, len] = readVarint(buf);
+            expect(value).toBe(100);
+            expect(len).toBe(2);
+        });
+    });
+
+    describe('readBigVarint', () => {
+        it('should read bigint varint', () => {
+            const buf = new Uint8Array([(100 >> 8) | 0x40, 100 & 0xff]); // 2 bytes for 100
+            const [value, len] = readBigVarint(buf);
+            expect(value).toBe(100n);
+            expect(len).toBe(2);
+        });
+    });
+
+    describe('readUint8Array', () => {
+        it('should read uint8array', () => {
+            const buf = new Uint8Array([3, 1, 2, 3]); // len=3, data=1,2,3
+            const [data, len] = readUint8Array(buf);
+            expect(data).toEqual(new Uint8Array([1, 2, 3]));
+            expect(len).toBe(4);
+        });
+    });
+
+    describe('readString', () => {
+        it('should read string', () => {
+            const buf = new Uint8Array([3, 97, 98, 99]); // len=3, "abc"
+            const [str, len] = readString(buf);
+            expect(str).toBe("abc");
+            expect(len).toBe(4);
         });
     });
 });

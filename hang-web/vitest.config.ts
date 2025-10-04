@@ -1,30 +1,15 @@
 import { defineConfig } from 'vitest/config';
 import { resolve } from 'path';
-import type { Plugin } from 'vite';
-
-// Workaround for golikejs missing .js extensions in ESM imports
-const golikejsFixPlugin = (): Plugin => ({
-  name: 'golikejs-fix',
-  enforce: 'pre',
-  resolveId(source, importer) {
-    if (importer?.includes('golikejs') && source.startsWith('./')) {
-      // Add .js extension if missing
-      if (!source.endsWith('.js') && !source.endsWith('.ts') && !source.endsWith('.json')) {
-        return this.resolve(source + '.js', importer, { skipSelf: true });
-      }
-    }
-    return null;
-  },
-});
 
 export default defineConfig({
-  plugins: [golikejsFixPlugin()],
   test: {
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
-    deps: {
-      inline: ['golikejs'],
+    server: {
+      deps: {
+        inline: ['golikejs'],
+      },
     },
     include: ['src/**/*.test.ts'],
     poolOptions: {
@@ -38,6 +23,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
+      include: ['src/**/*.ts'],
       exclude: [
         'node_modules/',
         'dist/',

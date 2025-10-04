@@ -37,7 +37,7 @@ export class Session {
 
 	#subscribeIDCounter: bigint = 0n;
 
-	#biStreamCounter: bigint = 4n; // next after session stream (0)
+	#biStreamCounter: bigint = 0n; // client bidirectional stream counter
 
 	#serverBiStreamCounter: bigint = 1n;
 
@@ -62,7 +62,8 @@ export class Session {
 		await this.#conn.ready;
 
 		const stream = await this.#conn.createBidirectionalStream();
-		const streamId = 0n;
+		const streamId = this.#biStreamCounter;
+		this.#biStreamCounter += 4n;
 		const writer = new Writer({stream: stream.writable, transfer: undefined, streamId});
 		const reader = new Reader({stream: stream.readable, transfer: undefined, streamId});
 

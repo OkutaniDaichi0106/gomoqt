@@ -1,8 +1,15 @@
-name: linter
+name: Linter
 
 on:
   pull_request:
-   branches: [ "main" ]
+    branches: [ "main" ]
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/.golangci.yml'
+      - '.github/workflows/lint.yml'
+  workflow_dispatch: {}
 
 jobs:
   

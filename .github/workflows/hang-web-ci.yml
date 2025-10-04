@@ -4,11 +4,9 @@ on:
   push:
     paths:
       - 'hang-web/**'
-      - 'moq-web/**'  # moq-web の変更時もトリガー
   pull_request:
     paths:
       - 'hang-web/**'
-      - 'moq-web/**'
   workflow_dispatch: {}
 
 jobs:

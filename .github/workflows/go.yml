@@ -6,8 +6,19 @@ name: Go
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/go.yml'
   pull_request:
     branches: [ "main" ]
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/go.yml'
+  workflow_dispatch: {}
 
 jobs:
 
@@ -25,7 +36,7 @@ jobs:
       run: go test -v ./...
 
     - name: Test with coverage
-      run: go test ./moqt/... -coverprofile=coverage.out -covermode=atomic
+      run: go test -coverprofile=coverage.out -covermode=atomic ./...
 
     - name: Upload coverage report
       uses: codecov/codecov-action@v5

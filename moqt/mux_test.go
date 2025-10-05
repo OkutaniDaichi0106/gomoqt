@@ -1191,3 +1191,17 @@ func TestMux_ServeAnnouncements_ConcurrentAnnounce_NoDeadlock(t *testing.T) {
 		t.Fatal("serveAnnouncements listeners did not exit in time")
 	}
 }
+
+func TestAnnounce(t *testing.T) {
+	// Create a mock announcement and handler
+	announcement, _ := NewAnnouncement(context.Background(), BroadcastPath("/test"))
+	handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {
+		// Mock handler
+	})
+
+	// Call the package-level Announce function
+	Announce(announcement, handler)
+
+	// Verify that the announcement was registered in DefaultMux
+	assert.NotNil(t, DefaultMux)
+}

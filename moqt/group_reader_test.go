@@ -62,7 +62,7 @@ func TestReceiveGroupStream_GroupSequence(t *testing.T) {
 			sequence: GroupSequence(1000000),
 		},
 		"maximum uint64": {
-			sequence: GroupSequence(^uint64(0)),
+			sequence: GroupSequence(1<<(64-2) - 1), // maxVarInt8
 		},
 	}
 

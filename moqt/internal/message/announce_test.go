@@ -26,21 +26,12 @@ func TestAnnounceMessage_EncodeDecode(t *testing.T) {
 				TrackSuffix:    "",
 			},
 		},
-		// "max values": {
-		// 	input: message.AnnounceMessage{
-		// 		AnnounceStatus:  message.AnnounceStatus(^byte(0)),
-		// 		TrackPathSuffix: []string{"very", "long", "path"},
-		// 		Parameters: map[uint64][]byte{
-		// 			^uint64(0): bytes.Repeat([]byte("a"), 1024),
-		// 		},
-		// 	},
-		// },
-		// "nil wildcard parameters": {
-		// 	input: message.AnnounceMessage{
-		// 		AnnounceStatus:     message.AnnounceStatus(1),
-		// 		WildcardParameters: nil,
-		// 	},
-		// },
+		"max values": {
+			input: message.AnnounceMessage{
+				AnnounceStatus: message.AnnounceStatus(^byte(0)),
+				TrackSuffix:    "very/long/path",
+			},
+		},
 	}
 
 	for name, tc := range tests {

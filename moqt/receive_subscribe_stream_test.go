@@ -94,8 +94,8 @@ func TestReceiveSubscribeStream_SubscribeID(t *testing.T) {
 		"large value": {
 			subscribeID: SubscribeID(1000000),
 		},
-		"maximum uint64": {
-			subscribeID: SubscribeID(^uint64(0)),
+		"maximum uint62": {
+			subscribeID: SubscribeID(1<<(64-2) - 1), // maxVarInt8
 		},
 	}
 

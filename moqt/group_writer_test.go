@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -229,4 +230,16 @@ func TestGroupWriter_CloseWithStreamError(t *testing.T) {
 		assert.NoError(t, err) // Close still works even if context is cancelled
 		mockStream.AssertExpectations(t)
 	})
+}
+
+func TestGroupWriter_Context(t *testing.T) {
+	mockStream := &MockQUICSendStream{}
+	mockStream.On("Context").Return(context.Background())
+
+	sgs := newGroupWriter(mockStream, GroupSequence(123), func() {})
+
+	ctx := sgs.Context()
+	assert.NotNil(t, ctx)
+	assert.Equal(t, message.StreamTypeGroup, ctx.Value(&uniStreamTypeCtxKey))
+	mockStream.AssertExpectations(t)
 }

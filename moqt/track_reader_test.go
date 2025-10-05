@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 func TestNewTrackReceiver(t *testing.T) {
@@ -95,4 +96,49 @@ func TestTrackReceiver_AcceptGroup_RealImplementation(t *testing.T) {
 	_, err := receiver.AcceptGroup(testCtx)
 	assert.Error(t, err, "expected timeout error when no groups are available")
 	assert.Equal(t, context.DeadlineExceeded, err, "expected deadline exceeded error")
+}
+
+func TestTrackReader_Close(t *testing.T) {
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Close").Return(nil)
+	mockStream.On("CancelRead", mock.Anything).Return(nil)
+	substr := newSendSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{}, Info{})
+	receiver := newTrackReader("broadcastPath", "trackName", substr, func() {})
+
+	err := receiver.Close()
+	assert.NoError(t, err)
+
+	// Close again should not error
+	err = receiver.Close()
+	assert.NoError(t, err)
+}
+
+func TestTrackReader_Update(t *testing.T) {
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Write", mock.Anything).Return(0, nil)
+	substr := newSendSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{}, Info{})
+	receiver := newTrackReader("broadcastPath", "trackName", substr, func() {})
+
+	newTrackConfig := TrackConfig{}
+
+	receiver.Update(&newTrackConfig)
+
+	// Verify update
+	assert.Equal(t, &TrackConfig{}, receiver.TrackConfig())
+}
+
+func TestTrackReader_CloseWithError(t *testing.T) {
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Close").Return(nil)
+	mockStream.On("CancelRead", mock.Anything).Return(nil)
+	mockStream.On("CancelWrite", mock.Anything).Return(nil)
+	mockStream.On("Write", mock.Anything).Return(0, nil)
+	substr := newSendSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{}, Info{})
+	receiver := newTrackReader("broadcastPath", "trackName", substr, func() {})
+
+	err := receiver.CloseWithError(InternalSubscribeErrorCode)
+	assert.NoError(t, err)
 }

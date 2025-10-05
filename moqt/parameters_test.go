@@ -376,3 +376,34 @@ func TestParameters_NilMap(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, true, val5)
 }
+
+func TestParameters_Clone(t *testing.T) {
+	original := NewParameters()
+	original.SetString(1, "test")
+	original.SetUint(2, 42)
+	original.SetBool(3, true)
+
+	cloned := original.Clone()
+	assert.NotNil(t, cloned, "Clone should return a non-nil value")
+	assert.NotSame(t, original, cloned, "Clone should return a different instance")
+
+	// Check that the cloned parameters have the same values
+	val1, err := cloned.GetString(1)
+	assert.NoError(t, err)
+	assert.Equal(t, "test", val1)
+
+	val2, err := cloned.GetUint(2)
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(42), val2)
+
+	val3, err := cloned.GetBool(3)
+	assert.NoError(t, err)
+	assert.Equal(t, true, val3)
+
+	// Modify the original and ensure the clone is unaffected
+	original.SetString(1, "modified")
+	val1Original, _ := original.GetString(1)
+	val1Cloned, _ := cloned.GetString(1)
+	assert.Equal(t, "modified", val1Original)
+	assert.Equal(t, "test", val1Cloned)
+}

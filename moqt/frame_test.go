@@ -195,3 +195,39 @@ func TestFrame_EncodeDecode_RoundTrip(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, frame.Bytes(), f2.Bytes())
 }
+
+func TestFrame_WriteTo(t *testing.T) {
+	tests := map[string]struct {
+		data []byte
+	}{
+		"normal data": {
+			data: []byte("test frame data"),
+		},
+		"empty data": {
+			data: []byte{},
+		},
+		"binary data": {
+			data: []byte{0x00, 0x01, 0x02, 0xFF},
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			builder := NewFrameBuilder(len(tt.data))
+			if len(tt.data) > 0 {
+				builder.Append(tt.data)
+			}
+			frame := builder.Frame()
+
+			var buf bytes.Buffer
+			n, err := frame.WriteTo(&buf)
+			assert.NoError(t, err)
+			assert.Equal(t, int64(len(tt.data)), n)
+			if len(tt.data) == 0 {
+				assert.Nil(t, buf.Bytes())
+			} else {
+				assert.Equal(t, tt.data, buf.Bytes())
+			}
+		})
+	}
+}

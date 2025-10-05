@@ -20,12 +20,19 @@ func TestGroupMessage_EncodeDecode(t *testing.T) {
 				GroupSequence: 1,
 			},
 		},
-		// "max values": {
-		// 	input: message.GroupMessage{
-		// 		SubscribeID:   message.SubscribeID(^uint64(0)),
-		// 		GroupSequence: message.GroupSequence(^uint64(0)),
-		// 	},
-		// },
+		"max values": {
+			input: message.GroupMessage{
+				SubscribeID:   message.SubscribeID(1<<(64-2) - 1),   // maxVarInt8 (uint62 max)
+				GroupSequence: message.GroupSequence(1<<(64-2) - 1), // maxVarInt8 (uint62 max)
+			},
+		},
+		"too large number": {
+			input: message.GroupMessage{
+				SubscribeID:   message.SubscribeID(1<<64 - 1),   // uint64 max
+				GroupSequence: message.GroupSequence(1<<64 - 1), // uint64 max
+			},
+			wantErr: true,
+		},
 		"zero values": {
 			input: message.GroupMessage{
 				SubscribeID:   0,
@@ -40,16 +47,31 @@ func TestGroupMessage_EncodeDecode(t *testing.T) {
 			var buf bytes.Buffer
 
 			// Encode
-			err := tc.input.Encode(&buf)
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						if tc.wantErr {
+							// Expected panic, treat as error
+							return
+						}
+						panic(r) // Re-panic if not expected
+					}
+				}()
+				err := tc.input.Encode(&buf)
+				if tc.wantErr {
+					require.Error(t, err)
+					return
+				}
+				require.NoError(t, err)
+			}()
+
 			if tc.wantErr {
-				require.Error(t, err)
-				return
+				return // Skip decode for error cases
 			}
-			require.NoError(t, err)
 
 			// Decode
 			var decoded message.GroupMessage
-			err = decoded.Decode(&buf)
+			err := decoded.Decode(&buf)
 			require.NoError(t, err)
 
 			// Compare fields

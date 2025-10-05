@@ -258,3 +258,26 @@ func TestTrackWriter_Close(t *testing.T) {
 	sender.groupMapMu.Unlock()
 	assert.True(t, activeGroupsIsNil, "activeGroups should be nil after Close()")
 }
+
+func TestTrackWriter_Context(t *testing.T) {
+	openUniStreamFunc := func() (quic.SendStream, error) {
+		mockSendStream := &MockQUICSendStream{}
+		mockSendStream.On("Context").Return(context.Background())
+		mockSendStream.On("CancelWrite", mock.Anything).Return()
+		mockSendStream.On("StreamID").Return(quic.StreamID(1))
+		mockSendStream.On("Close").Return(nil)
+		mockSendStream.On("Write", mock.Anything).Return(0, nil)
+		return mockSendStream, nil
+	}
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Write", mock.Anything).Return(0, nil)
+	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{})
+	onCloseTrack := func() {}
+
+	sender := newTrackWriter("/broadcast/path", "track_name", substr, openUniStreamFunc, onCloseTrack)
+
+	ctx := sender.Context()
+	assert.NotNil(t, ctx)
+}

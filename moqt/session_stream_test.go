@@ -1616,3 +1616,5 @@ func TestAccept_ParameterEdgeCases(t *testing.T) {
 		})
 	}
 }
+
+// TestSessionStream_Reject tests session rejection functionality

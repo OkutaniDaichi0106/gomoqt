@@ -9,7 +9,6 @@
     "esModuleInterop": true
   },
   "include": [
-    "src/browser.ts",
     "src/index.ts",
     "src/elements/browser.ts"
   ],

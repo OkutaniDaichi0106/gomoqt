@@ -184,4 +184,203 @@ describe('AudioTrackProcessor', () => {
         // Clean up
         await reader.cancel();
     });
+
+    test('throws when AudioContext constructor fails', () => {
+        (globalThis as any).AudioContext = vi.fn(() => {
+            throw new Error('AudioContext creation failed');
+        });
+
+        const track = {
+            getSettings: vi.fn(() => ({
+                sampleRate: 44100,
+                channelCount: 2,
+            })),
+        } as unknown as MediaStreamTrack;
+
+        expect(() => new AudioTrackProcessor(track)).toThrow('AudioContext creation failed');
+    });
+
+    test('throws when audioWorklet.addModule fails', async () => {
+        const mockContext = {
+            audioWorklet: {
+                addModule: vi.fn().mockRejectedValue(new Error('Worklet load failed')),
+            },
+            close: vi.fn(),
+            sampleRate: 44100,
+        };
+
+        (globalThis as any).AudioContext = vi.fn(() => mockContext);
+        (globalThis as any).MediaStream = vi.fn(() => ({}));
+        (globalThis as any).MediaStreamAudioSourceNode = vi.fn(() => ({
+            connect: vi.fn(),
+            disconnect: vi.fn(),
+        }));
+        (globalThis as any).GainNode = vi.fn(() => ({
+            connect: vi.fn(),
+            disconnect: vi.fn(),
+        }));
+
+        const track = {
+            getSettings: vi.fn(() => ({
+                sampleRate: 44100,
+                channelCount: 2,
+            })),
+        } as unknown as MediaStreamTrack;
+
+        const processor = new AudioTrackProcessor(track);
+        const reader = processor.readable.getReader();
+
+        await expect(reader.read()).rejects.toThrow('Worklet load failed');
+    });
+
+    test('handles missing channelCount in settings', async () => {
+        const mockContext = {
+            audioWorklet: {
+                addModule: vi.fn().mockResolvedValue(undefined),
+            },
+            close: vi.fn(),
+            sampleRate: 44100,
+        };
+        const mockWorkletNode = {
+            port: {
+                onmessage: vi.fn(),
+            },
+        };
+        const mockGain = {
+            connect: vi.fn(),
+            disconnect: vi.fn(),
+        };
+        const mockSource = {
+            connect: vi.fn(),
+            disconnect: vi.fn(),
+        };
+
+        (globalThis as any).AudioContext = vi.fn(() => mockContext);
+        (globalThis as any).MediaStream = vi.fn(() => ({}));
+        (globalThis as any).MediaStreamAudioSourceNode = vi.fn(() => mockSource);
+        (globalThis as any).GainNode = vi.fn(() => mockGain);
+        (globalThis as any).AudioWorkletNode = vi.fn(() => mockWorkletNode);
+        (globalThis as any).AudioData = vi.fn(() => ({}));
+
+        const track = {
+            getSettings: vi.fn(() => ({
+                sampleRate: 44100,
+                // channelCount is undefined
+            })),
+        } as unknown as MediaStreamTrack;
+
+        const processor = new AudioTrackProcessor(track);
+
+        expect(processor.gain).toBe(mockGain);
+
+        // Start the stream to trigger worklet creation
+        const reader = processor.readable.getReader();
+        await new Promise(resolve => setTimeout(resolve, 0)); // Wait for async setup
+
+        expect((globalThis as any).AudioWorkletNode).toHaveBeenCalledWith(
+            mockContext,
+            "AudioHijacker",
+            expect.objectContaining({
+                processorOptions: expect.objectContaining({
+                    targetChannels: 1, // Should default to 1
+                }),
+            })
+        );
+
+        await reader.cancel();
+    });
+
+    test('logs debug message when loading worklet', async () => {
+        const mockContext = {
+            audioWorklet: {
+                addModule: vi.fn().mockResolvedValue(undefined),
+            },
+            close: vi.fn(),
+            sampleRate: 44100,
+        };
+        const mockWorkletNode = {
+            port: {
+                onmessage: vi.fn(),
+            },
+        };
+        const mockGain = {
+            connect: vi.fn(),
+            disconnect: vi.fn(),
+        };
+        const mockSource = {
+            connect: vi.fn(),
+            disconnect: vi.fn(),
+        };
+
+        (globalThis as any).AudioContext = vi.fn(() => mockContext);
+        (globalThis as any).MediaStream = vi.fn(() => ({}));
+        (globalThis as any).MediaStreamAudioSourceNode = vi.fn(() => mockSource);
+        (globalThis as any).GainNode = vi.fn(() => mockGain);
+        (globalThis as any).AudioWorkletNode = vi.fn(() => mockWorkletNode);
+        (globalThis as any).AudioData = vi.fn(() => ({}));
+
+        const track = {
+            getSettings: vi.fn(() => ({
+                sampleRate: 44100,
+                channelCount: 2,
+            })),
+        } as unknown as MediaStreamTrack;
+
+        const processor = new AudioTrackProcessor(track);
+        const reader = processor.readable.getReader();
+
+        // Wait for async operations
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(console.debug).toHaveBeenCalledWith('loading audio hijack worklet from', 'mock-worklet.js');
+
+        await reader.cancel();
+    });
+
+    test('handles multiple cancel calls gracefully', async () => {
+        const mockContext = {
+            audioWorklet: {
+                addModule: vi.fn().mockResolvedValue(undefined),
+            },
+            close: vi.fn(),
+            sampleRate: 44100,
+        };
+        const mockWorkletNode = {
+            port: {
+                onmessage: vi.fn(),
+            },
+        };
+        const mockGain = {
+            connect: vi.fn(),
+            disconnect: vi.fn(),
+        };
+        const mockSource = {
+            connect: vi.fn(),
+            disconnect: vi.fn(),
+        };
+
+        (globalThis as any).AudioContext = vi.fn(() => mockContext);
+        (globalThis as any).MediaStream = vi.fn(() => ({}));
+        (globalThis as any).MediaStreamAudioSourceNode = vi.fn(() => mockSource);
+        (globalThis as any).GainNode = vi.fn(() => mockGain);
+        (globalThis as any).AudioWorkletNode = vi.fn(() => mockWorkletNode);
+        (globalThis as any).AudioData = vi.fn(() => ({}));
+
+        const track = {
+            getSettings: vi.fn(() => ({
+                sampleRate: 44100,
+                channelCount: 2,
+            })),
+        } as unknown as MediaStreamTrack;
+
+        const processor = new AudioTrackProcessor(track);
+        const reader = processor.readable.getReader();
+
+        // First cancel
+        await reader.cancel();
+        expect(mockContext.close).toHaveBeenCalledTimes(1);
+
+        // Second cancel should not throw
+        await expect(reader.cancel()).resolves.toBeUndefined();
+    });
 });

@@ -184,4 +184,133 @@ describe('VideoTrackProcessor', () => {
         }
         (globalThis as any).ReadableStream = OriginalReadableStream;
     }, 30000);
+
+    test('throws when track settings are unavailable', () => {
+        const track = {
+            getSettings: vi.fn(() => undefined),
+        } as unknown as MediaStreamTrack;
+
+        expect(() => new VideoTrackProcessor(track)).toThrow('track has no settings');
+        expect(track.getSettings).toHaveBeenCalled();
+    });
+
+    test('throws when canvas context creation fails', async () => {
+        // Temporarily remove MediaStreamTrackProcessor to force polyfill usage
+        const originalProcessor = (self as any).MediaStreamTrackProcessor;
+        delete (self as any).MediaStreamTrackProcessor;
+
+        const mockVideo = {
+            play: vi.fn().mockResolvedValue(undefined),
+            srcObject: null,
+            set onloadedmetadata(callback: () => void) {
+                Promise.resolve().then(callback);
+            },
+            videoWidth: 640,
+            videoHeight: 480,
+        };
+        const mockCanvas = {
+            width: 0,
+            height: 0,
+            getContext: vi.fn(() => null), // Context creation fails
+        };
+
+        (globalThis as any).document.createElement.mockImplementation((tagName: string) => {
+            if (tagName === 'video') return mockVideo;
+            if (tagName === 'canvas') return mockCanvas;
+            return {};
+        });
+
+        let startPromise: Promise<void>;
+        const OriginalReadableStream = (globalThis as any).ReadableStream;
+        (globalThis as any).ReadableStream = class MockReadableStream {
+            constructor(underlyingSource: any) {
+                startPromise = underlyingSource.start();
+            }
+            getReader() {
+                return {
+                    read: vi.fn().mockResolvedValue({ done: true }),
+                };
+            }
+        };
+
+        const track = {
+            getSettings: vi.fn(() => ({ frameRate: 30 })),
+        } as unknown as MediaStreamTrack;
+
+        const processor = new VideoTrackProcessor(track);
+
+        await expect(startPromise!).rejects.toThrow('failed to create canvas context');
+
+        // Restore
+        if (originalProcessor) {
+            (self as any).MediaStreamTrackProcessor = originalProcessor;
+        }
+        (globalThis as any).ReadableStream = OriginalReadableStream;
+    });
+
+    test('handles missing frameRate in settings', () => {
+        // Temporarily remove MediaStreamTrackProcessor to force polyfill usage
+        const originalProcessor = (self as any).MediaStreamTrackProcessor;
+        delete (self as any).MediaStreamTrackProcessor;
+
+        const track = {
+            getSettings: vi.fn(() => ({ /* no frameRate */ })),
+        } as unknown as MediaStreamTrack;
+
+        const processor = new VideoTrackProcessor(track);
+        expect(processor.readable).toBeInstanceOf(ReadableStream);
+        expect(track.getSettings).toHaveBeenCalled();
+        expect(console.warn).toHaveBeenCalledWith('Using MediaStreamTrackProcessor polyfill; performance might suffer.');
+
+        // Restore
+        if (originalProcessor) {
+            (self as any).MediaStreamTrackProcessor = originalProcessor;
+        }
+    });
+
+    test('polyfill handles video play failure', async () => {
+        // Temporarily remove MediaStreamTrackProcessor to force polyfill usage
+        const originalProcessor = (self as any).MediaStreamTrackProcessor;
+        delete (self as any).MediaStreamTrackProcessor;
+
+        const mockVideo = {
+            play: vi.fn().mockRejectedValue(new Error('Video play failed')),
+            srcObject: null,
+            onloadedmetadata: null,
+            videoWidth: 640,
+            videoHeight: 480,
+        };
+
+        (globalThis as any).document.createElement.mockImplementation((tagName: string) => {
+            if (tagName === 'video') return mockVideo;
+            return {};
+        });
+
+        let startPromise: Promise<void>;
+        const OriginalReadableStream = (globalThis as any).ReadableStream;
+        (globalThis as any).ReadableStream = class MockReadableStream {
+            constructor(underlyingSource: any) {
+                startPromise = underlyingSource.start();
+            }
+            getReader() {
+                return {
+                    read: vi.fn().mockResolvedValue({ done: true }),
+                };
+            }
+        };
+
+        const track = {
+            getSettings: vi.fn(() => ({ frameRate: 30 })),
+        } as unknown as MediaStreamTrack;
+
+        const processor = new VideoTrackProcessor(track);
+
+        await expect(startPromise!).rejects.toThrow('Video play failed');
+
+        // Restore
+        if (originalProcessor) {
+            (self as any).MediaStreamTrackProcessor = originalProcessor;
+        }
+        (globalThis as any).ReadableStream = OriginalReadableStream;
+    });
 });

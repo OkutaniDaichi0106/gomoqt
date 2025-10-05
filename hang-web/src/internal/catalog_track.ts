@@ -462,7 +462,12 @@ export class CatalogTrackDecoder implements TrackDecoder {
 			this.#resolveNewTrack = resolve;
 		});
 
-		return [await newTrack, undefined];
+		const result = await Promise.race([
+			newTrack.then(track => [track, undefined] as const),
+			this.#ctx.done().then(() => [undefined, this.#ctx.err() || ContextCancelledError] as const)
+		]);
+
+		return result as [TrackDescriptor, undefined] | [undefined, Error];
 	}
 
 	hasTrack(name: string): boolean {
@@ -523,14 +528,14 @@ export class CatalogTrackDecoder implements TrackDecoder {
 			return;
 		}
 
-		this.#cancelCtx(cause);
-
-		// Reset state on close
+		// Reset state first to prevent #next() from accessing #source
+		this.#source = undefined;
 		this.#currentRoot = undefined;
 		this.#newTracks.clear();
 		this.#resolveRoot = undefined;
 		this.#resolveNewTrack = undefined;
-		this.#source = undefined;
+
+		this.#cancelCtx(cause);
 
 		this.#decoder.close();
 	}

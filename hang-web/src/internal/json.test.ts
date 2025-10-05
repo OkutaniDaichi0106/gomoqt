@@ -936,4 +936,29 @@ describe("Integration Tests", () => {
         expect(results[0].title).toBe("test");
         expect(errors).toHaveLength(0);
     });
+
+    describe("Error handling", () => {
+        test("throws error when encoding circular reference", () => {
+            const outputSpy = vi.fn();
+            const errorSpy = vi.fn();
+            const encoder = new JsonEncoder({ output: outputSpy, error: errorSpy });
+
+            const circular: any = { self: null };
+            circular.self = circular;
+
+            expect(() => encoder.encode(circular)).toThrow(TypeError);
+            expect(outputSpy).not.toHaveBeenCalled();
+        });
+
+        test("throws error when encoding BigInt without replacer", () => {
+            const outputSpy = vi.fn();
+            const errorSpy = vi.fn();
+            const encoder = new JsonEncoder({ output: outputSpy, error: errorSpy });
+
+            const value = { big: BigInt(123) };
+
+            expect(() => encoder.encode(value)).toThrow(TypeError);
+            expect(outputSpy).not.toHaveBeenCalled();
+        });
+    });
 });

@@ -165,6 +165,10 @@ export class NoOpTrackDecoder implements TrackDecoder {
         ));
 
         this.#dests.clear();
+
+        // Clear the source to avoid races where an in-flight acceptGroup
+        // resolves and tries to operate on a closed/overwritten source.
+        this.#source = undefined;
     }
 }
 

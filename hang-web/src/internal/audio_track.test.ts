@@ -288,4 +288,460 @@ describe("audio_track", () => {
         decoder.decodeFrom(Promise.resolve(), mockTrackReader);
         expect(decoder.decoding).toBe(true);
     });
+
+    it("AudioTrackEncoder handles encoder output with decoderConfig", async () => {
+        let outputCallback: ((chunk: EncodedAudioChunk, metadata?: any) => void) | undefined;
+        
+        class FakeAudioEncoder {
+            constructor(init: any) {
+                outputCallback = init.output;
+            }
+            configure(): void {}
+            encode(): void {}
+            close(): void {}
+        }
+
+        vi.stubGlobal('AudioEncoder', FakeAudioEncoder);
+
+        const reader = {
+            read: vi.fn(() => new Promise(() => {})),
+            releaseLock: vi.fn(),
+        };
+        const source = {
+            getReader: () => reader,
+        } as unknown as ReadableStream<AudioData>;
+
+        const encoder = new AudioTrackEncoder({
+            source,
+        });
+
+        // Trigger configure to set resolveConfig
+        const configPromise = encoder.configure({ 
+            codec: 'opus', 
+            sampleRate: 48000, 
+            numberOfChannels: 2 
+        });
+
+        // Simulate encoder calling output with metadata
+        const mockChunk = {
+            type: 'key',
+            timestamp: 0,
+            duration: 20000,
+            byteLength: 100,
+        } as EncodedAudioChunk;
+
+        const metadata = {
+            decoderConfig: {
+                codec: 'opus',
+                sampleRate: 48000,
+                numberOfChannels: 2,
+            }
+        };
+
+        await outputCallback!(mockChunk, metadata);
+
+        const decoderConfig = await configPromise;
+        expect(decoderConfig).toEqual(metadata.decoderConfig);
+    });
+
+    it("AudioTrackEncoder handles group rollover based on timestamp", async () => {
+        let outputCallback: ((chunk: EncodedAudioChunk, metadata?: any) => void) | undefined;
+        
+        class FakeAudioEncoder {
+            constructor(init: any) {
+                outputCallback = init.output;
+            }
+            configure(): void {}
+            encode(): void {}
+            close(): void {}
+        }
+
+        class FakeEncodedAudioChunk {
+            type: string;
+            timestamp: number;
+            constructor(init: any) {
+                this.type = init.type;
+                this.timestamp = init.timestamp;
+            }
+        }
+
+        vi.stubGlobal('AudioEncoder', FakeAudioEncoder);
+        vi.stubGlobal('EncodedAudioChunk', FakeEncodedAudioChunk);
+
+        const reader = {
+            read: vi.fn(() => new Promise(() => {})),
+            releaseLock: vi.fn(),
+        };
+        const source = {
+            getReader: () => reader,
+        } as unknown as ReadableStream<AudioData>;
+
+        const encoder = new AudioTrackEncoder({
+            source,
+            startGroupSequence: 1n,
+        });
+
+        const mockGroup = {
+            close: vi.fn().mockResolvedValue(undefined),
+        };
+
+        const openGroupMock = vi.fn().mockResolvedValue([mockGroup, undefined]);
+
+        const mockTrackWriter = {
+            openGroup: openGroupMock,
+            closeWithError: vi.fn(),
+            context: {
+                done: vi.fn(() => new Promise(() => {})),
+                err: vi.fn(() => undefined),
+            },
+        } as unknown as TrackWriter;
+
+        encoder.encodeTo(Promise.resolve(), mockTrackWriter);
+
+        // First chunk at timestamp 0
+        const chunk1 = new FakeEncodedAudioChunk({
+            type: 'key',
+            timestamp: 0,
+        }) as unknown as EncodedAudioChunk;
+
+        await outputCallback!(chunk1, {});
+
+        // Second chunk at timestamp 150ms (exceeds MAX_AUDIO_LATENCY of 100ms)
+        const chunk2 = new FakeEncodedAudioChunk({
+            type: 'key',
+            timestamp: 150,
+        }) as unknown as EncodedAudioChunk;
+
+        await outputCallback!(chunk2, {});
+
+        // Wait for async operations
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        // Should have opened a new group due to timestamp exceeding threshold
+        expect(openGroupMock).toHaveBeenCalledWith(2n);
+    });
+
+    it("AudioTrackEncoder handles non-key chunks", async () => {
+        let outputCallback: ((chunk: EncodedAudioChunk, metadata?: any) => void) | undefined;
+        const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        
+        class FakeAudioEncoder {
+            constructor(init: any) {
+                outputCallback = init.output;
+            }
+            configure(): void {}
+            encode(): void {}
+            close(): void {}
+        }
+
+        vi.stubGlobal('AudioEncoder', FakeAudioEncoder);
+
+        const reader = {
+            read: vi.fn(() => new Promise(() => {})),
+            releaseLock: vi.fn(),
+        };
+        const source = {
+            getReader: () => reader,
+        } as unknown as ReadableStream<AudioData>;
+
+        const encoder = new AudioTrackEncoder({
+            source,
+        });
+
+        const mockChunk = {
+            type: 'delta',
+            timestamp: 0,
+        } as EncodedAudioChunk;
+
+        await outputCallback!(mockChunk, {});
+
+        expect(consoleWarnSpy).toHaveBeenCalledWith("Ignoring non-key audio chunk");
+        consoleWarnSpy.mockRestore();
+    });
+
+    it("AudioTrackEncoder handles encoding errors", async () => {
+        let errorCallback: ((error: Error) => void) | undefined;
+        
+        class FakeAudioEncoder {
+            constructor(init: any) {
+                errorCallback = init.error;
+            }
+            configure(): void {}
+            encode(): void {}
+            close(): void {}
+        }
+
+        vi.stubGlobal('AudioEncoder', FakeAudioEncoder);
+
+        const reader = {
+            read: vi.fn(() => new Promise(() => {})),
+            releaseLock: vi.fn(),
+        };
+        const source = {
+            getReader: () => reader,
+        } as unknown as ReadableStream<AudioData>;
+
+        const encoder = new AudioTrackEncoder({
+            source,
+        });
+
+        const closeSpy = vi.spyOn(encoder, 'close');
+
+        const error = new Error("Encoding failed");
+        errorCallback!(error);
+
+        expect(closeSpy).toHaveBeenCalledWith(error);
+    });
+
+    it("AudioTrackDecoder handles frame decoding in #next", async () => {
+        let outputCallback: ((frame: AudioData) => void) | undefined;
+        
+        class FakeAudioDecoder {
+            constructor(init: any) {
+                outputCallback = init.output;
+            }
+            configure(): void {}
+            decode(): void {}
+            close(): void {}
+        }
+
+        class FakeEncodedAudioChunk {
+            constructor(_: any) {}
+        }
+
+        vi.stubGlobal('AudioDecoder', FakeAudioDecoder);
+        vi.stubGlobal('EncodedAudioChunk', FakeEncodedAudioChunk);
+
+        const writeMock = vi.fn().mockResolvedValue(undefined);
+        const destination = {
+            getWriter: () => ({
+                ready: Promise.resolve(),
+                write: writeMock,
+                releaseLock: vi.fn(),
+            }),
+        } as unknown as WritableStream<AudioData>;
+
+        const decoder = new AudioTrackDecoder({
+            destination,
+        });
+
+        const mockFrame = {
+            timestamp: 1000,
+        } as AudioData;
+
+        await outputCallback!(mockFrame);
+
+        expect(writeMock).toHaveBeenCalledWith(mockFrame);
+    });
+
+    it("AudioTrackDecoder handles write errors", async () => {
+        let outputCallback: ((frame: AudioData) => void) | undefined;
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        
+        class FakeAudioDecoder {
+            constructor(init: any) {
+                outputCallback = init.output;
+            }
+            configure(): void {}
+            decode(): void {}
+            close(): void {}
+        }
+
+        vi.stubGlobal('AudioDecoder', FakeAudioDecoder);
+
+        const releaseLockMock = vi.fn();
+        const destination = {
+            getWriter: () => ({
+                ready: Promise.resolve(),
+                write: vi.fn().mockRejectedValue(new Error("Write failed")),
+                releaseLock: releaseLockMock,
+            }),
+        } as unknown as WritableStream<AudioData>;
+
+        const decoder = new AudioTrackDecoder({
+            destination,
+        });
+
+        const mockFrame = {
+            timestamp: 1000,
+        } as AudioData;
+
+        await outputCallback!(mockFrame);
+
+        // Wait for error handling
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        expect(consoleErrorSpy).toHaveBeenCalled();
+        expect(releaseLockMock).toHaveBeenCalled();
+        
+        consoleErrorSpy.mockRestore();
+    });
+
+    it("AudioTrackDecoder handles decoding errors", async () => {
+        let errorCallback: ((error: Error) => void) | undefined;
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        
+        class FakeAudioDecoder {
+            constructor(init: any) {
+                errorCallback = init.error;
+            }
+            configure(): void {}
+            decode(): void {}
+            close(): void {}
+        }
+
+        vi.stubGlobal('AudioDecoder', FakeAudioDecoder);
+
+        const destination = {
+            getWriter: () => ({
+                ready: Promise.resolve(),
+                write: vi.fn(),
+                releaseLock: vi.fn(),
+            }),
+        } as unknown as WritableStream<AudioData>;
+
+        const decoder = new AudioTrackDecoder({
+            destination,
+        });
+
+        const error = new Error("Decoding failed");
+        errorCallback!(error);
+
+        expect(consoleErrorSpy).toHaveBeenCalledWith("Audio decoding error (no auto-close):", error);
+        
+        consoleErrorSpy.mockRestore();
+    });
+
+    it("AudioTrackEncoder skips encoding when no tracks", async () => {
+        let outputCallback: ((chunk: EncodedAudioChunk, metadata?: any) => void) | undefined;
+        
+        class FakeAudioEncoder {
+            constructor(init: any) {
+                outputCallback = init.output;
+            }
+            configure(): void {}
+            encode(): void {}
+            close(): void {}
+        }
+
+        vi.stubGlobal('AudioEncoder', FakeAudioEncoder);
+
+        const reader = {
+            read: vi.fn(() => new Promise(() => {})),
+            releaseLock: vi.fn(),
+        };
+        const source = {
+            getReader: () => reader,
+        } as unknown as ReadableStream<AudioData>;
+
+        const encoder = new AudioTrackEncoder({
+            source,
+        });
+
+        const mockChunk = {
+            type: 'key',
+            timestamp: 0,
+        } as EncodedAudioChunk;
+
+        // Should return immediately without error since no tracks
+        await expect(outputCallback!(mockChunk, {})).resolves.toBeUndefined();
+    });
+
+    it("AudioTrackEncoder handles openGroup errors", async () => {
+        let outputCallback: ((chunk: EncodedAudioChunk, metadata?: any) => void) | undefined;
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        
+        class FakeAudioEncoder {
+            constructor(init: any) {
+                outputCallback = init.output;
+            }
+            configure(): void {}
+            encode(): void {}
+            close(): void {}
+        }
+
+        class FakeEncodedAudioChunk {
+            type: string;
+            timestamp: number;
+            constructor(init: any) {
+                this.type = init.type;
+                this.timestamp = init.timestamp;
+            }
+        }
+
+        vi.stubGlobal('AudioEncoder', FakeAudioEncoder);
+        vi.stubGlobal('EncodedAudioChunk', FakeEncodedAudioChunk);
+
+        const reader = {
+            read: vi.fn(() => new Promise(() => {})),
+            releaseLock: vi.fn(),
+        };
+        const source = {
+            getReader: () => reader,
+        } as unknown as ReadableStream<AudioData>;
+
+        const encoder = new AudioTrackEncoder({
+            source,
+            startGroupSequence: 1n,
+        });
+
+        const error = new Error("Failed to open group");
+        const closeWithErrorMock = vi.fn();
+        const openGroupMock = vi.fn().mockResolvedValue([undefined, error]);
+
+        const mockTrackWriter = {
+            openGroup: openGroupMock,
+            closeWithError: closeWithErrorMock,
+            context: {
+                done: vi.fn(() => new Promise(() => {})),
+                err: vi.fn(() => undefined),
+            },
+        } as unknown as TrackWriter;
+
+        encoder.encodeTo(Promise.resolve(), mockTrackWriter);
+
+        // Trigger group rollover
+        const chunk = new FakeEncodedAudioChunk({
+            type: 'key',
+            timestamp: 150,
+        }) as unknown as EncodedAudioChunk;
+
+        await outputCallback!(chunk, {});
+
+        // Wait for async operations
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        expect(consoleErrorSpy).toHaveBeenCalledWith("moq: failed to open group:", error);
+        expect(closeWithErrorMock).toHaveBeenCalled();
+        
+        consoleErrorSpy.mockRestore();
+    });
+
+    it("AudioTrackDecoder close method", async () => {
+        class FakeAudioDecoder {
+            constructor(_: any) {}
+            configure(): void {}
+            decode(): void {}
+            close(): void {}
+        }
+
+        vi.stubGlobal('AudioDecoder', FakeAudioDecoder);
+
+        const releaseLockMock = vi.fn();
+        const destination = {
+            getWriter: () => ({
+                ready: Promise.resolve(),
+                write: vi.fn(),
+                releaseLock: releaseLockMock,
+            }),
+        } as unknown as WritableStream<AudioData>;
+
+        const decoder = new AudioTrackDecoder({
+            destination,
+        });
+
+        await decoder.close();
+
+        expect(releaseLockMock).toHaveBeenCalled();
+    });
 });

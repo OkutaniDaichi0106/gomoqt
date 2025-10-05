@@ -499,6 +499,9 @@ describe("Session", () => {
         });
 
         it("should handle incoming bidirectional subscribe and announce streams", async () => {
+            // Create a new mock connection for this test to avoid ReadableStream lock issues
+            const testMockConn = new MockWebTransport();
+            
             // Prepare a mock connection where incomingBidirectionalStreams.getReader
             // returns one stream (subscribe) and then closes.
             const subscribeReadable = new ReadableStream({ start(controller) { controller.close(); } });
@@ -525,7 +528,7 @@ describe("Session", () => {
                 releaseLock: vi.fn()
             } as any;
 
-            mockConn.incomingBidirectionalStreams = {
+            testMockConn.incomingBidirectionalStreams = {
                 getReader: () => biReader
             } as any;
 
@@ -550,7 +553,7 @@ describe("Session", () => {
             } as any;
 
             // Create a session which will start listeners
-            const listenSession = new Session({ conn: mockConn as any, mux: mockMux });
+            const listenSession = new Session({ conn: testMockConn as any, mux: mockMux });
             await listenSession.ready;
 
             // Give the background listeners a short tick to run through our mocked reads
@@ -562,6 +565,9 @@ describe("Session", () => {
         });
 
         it("should handle incoming unidirectional group stream and enqueue message", async () => {
+            // Create a new mock connection for this test to avoid ReadableStream lock issues
+            const testMockConn = new MockWebTransport();
+            
             // Prepare a mock unidirectional stream value that will be passed to Reader
             const uniValue = {} as any;
 
@@ -575,7 +581,7 @@ describe("Session", () => {
                 releaseLock: vi.fn()
             } as any;
 
-            mockConn.incomingUnidirectionalStreams = {
+            testMockConn.incomingUnidirectionalStreams = {
                 getReader: () => uniReaderObj
             } as any;
 
@@ -584,7 +590,7 @@ describe("Session", () => {
             ReaderMock2.mockImplementationOnce(() => ({ readUint8: async () => [1, null] } as any));
 
             // Prepare a session and subscribe to create an enqueue function
-            const s = new Session({ conn: mockConn as any });
+            const s = new Session({ conn: testMockConn as any });
             await s.ready;
 
             // Call subscribe to register an enqueue function

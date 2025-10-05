@@ -110,5 +110,57 @@ describe('NoOpTrackDecoder', () => {
             await expect(decoder.close()).resolves.toBeUndefined();
             expect(mockWriter.releaseLock).toHaveBeenCalled();
         });
+
+        it('should handle writer closed with error in tee', async () => {
+            const mockWriter = {
+                write: vi.fn(),
+                close: vi.fn(),
+                releaseLock: vi.fn(),
+                closed: Promise.reject(new Error('Writer closed with error')),
+            };
+            const mockDest = {
+                getWriter: vi.fn(() => mockWriter),
+            };
+
+            const result = await decoder.tee(mockDest as any);
+            expect(result).toBeInstanceOf(Error);
+            expect((result as Error).message).toBe('destination closed with error');
+        });
+
+        it('should handle decodeFrom replacing existing source', async () => {
+            const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+            
+            const mockSource1 = {
+                acceptGroup: vi.fn().mockResolvedValue(undefined),
+                context: {
+                    done: vi.fn(() => Promise.resolve()),
+                    err: vi.fn(() => undefined),
+                },
+                closeWithError: vi.fn(),
+            };
+
+            const mockSource2 = {
+                acceptGroup: vi.fn().mockResolvedValue(undefined),
+                context: {
+                    done: vi.fn(() => Promise.resolve()),
+                    err: vi.fn(() => undefined),
+                },
+                closeWithError: vi.fn(),
+            };
+
+            // First decode
+            const promise1 = decoder.decodeFrom(Promise.resolve(), mockSource1 as any);
+
+            // Second decode (should replace first)
+            const promise2 = decoder.decodeFrom(Promise.resolve(), mockSource2 as any);
+
+            await Promise.all([promise1, promise2]);
+
+            expect(consoleWarnSpy).toHaveBeenCalledWith('[NoOpTrackDecoder] source already set. replacing...');
+            expect(mockSource1.closeWithError).toHaveBeenCalled();
+            
+            consoleWarnSpy.mockRestore();
+        });
+
     });
 });

@@ -35,7 +35,6 @@ export class AudioTrackEncoder implements TrackEncoder {
 
     #ctx: Context;
     #cancelCtx: CancelCauseFunc;
-	#cancelled = false;
 
 	#mutex: Mutex = new Mutex();
 
@@ -47,10 +46,7 @@ export class AudioTrackEncoder implements TrackEncoder {
 
         const [ctx, cancelCtx] = withCancelCause(background());
 		this.#ctx = ctx;
-		this.#cancelCtx = (cause?: Error) => {
-			this.#cancelled = true;
-			cancelCtx(cause);
-		}
+		this.#cancelCtx = cancelCtx;
 
         this.#encoder = new AudioEncoder({
             output: async (chunk, metadata) => {
@@ -115,7 +111,7 @@ export class AudioTrackEncoder implements TrackEncoder {
 	}
 
     #next(reader: ReadableStreamDefaultReader<AudioData>): void {
-        if (this.#cancelled) {
+        if (this.#ctx.err()) {
 			reader.releaseLock();
             return;
         }
@@ -152,7 +148,7 @@ export class AudioTrackEncoder implements TrackEncoder {
 		await this.#mutex.lock();
 
 		try {
-			if (this.#cancelled) {
+			if (this.#ctx.err()) {
 				throw this.#ctx.err()!;
 				// TODO: return this.#ctx.err()!; ?
 			}
@@ -170,7 +166,7 @@ export class AudioTrackEncoder implements TrackEncoder {
     }
 
     async encodeTo(ctx: Promise<void>, dest: TrackWriter): Promise<Error | undefined> {
-		if (this.#cancelled) {
+		if (this.#ctx.err()) {
 			return this.#ctx.err()!;
 		}
 		if (this.#tracks.has(dest)) {
@@ -190,7 +186,7 @@ export class AudioTrackEncoder implements TrackEncoder {
     }
 
 	async close(cause?: Error): Promise<void> {
-		if (this.#cancelled) return;
+		if (this.#ctx.err()) return;
 
 		this.#cancelCtx(cause);
 
@@ -217,16 +213,12 @@ export class AudioTrackDecoder implements TrackDecoder {
 
     #ctx: Context;
     #cancelCtx: CancelCauseFunc;
-	#cancelled = false;
 
     constructor(init: TrackDecoderInit<AudioData>) {
 		this.#dests.add(init.destination.getWriter());
 		const [ctx, cancelCtx] = withCancelCause(background());
 		this.#ctx = ctx;
-		this.#cancelCtx = (cause?: Error) => {
-			this.#cancelled = true;
-			cancelCtx(cause);
-		};
+		this.#cancelCtx = cancelCtx;
 
         this.#decoder = new AudioDecoder({
             output: async (frame: AudioData) => {
@@ -235,9 +227,9 @@ export class AudioTrackDecoder implements TrackDecoder {
 						await dest.ready;
 						await dest.write(frame);
 					} catch (e) {
-						if (this.#ctx.err() !== undefined) {
-							return;
-						}
+						// if (!this.#ctx.err()) {
+						// 	return;
+						// }
 						console.error("Audio write error, closing writer:", e);
 						this.#dests.delete(dest);
 						dest.releaseLock();
@@ -251,11 +243,11 @@ export class AudioTrackDecoder implements TrackDecoder {
     }
 
     get decoding(): boolean {
-		return !this.#cancelled && this.#source !== undefined;
+		return this.#source !== undefined && !this.#ctx.err();
 	}
 
     #next(): void {
-        if (this.#cancelled) {
+        if (this.#ctx.err()) {
             return;
         }
 		if (this.#source === undefined) {
@@ -305,11 +297,11 @@ export class AudioTrackDecoder implements TrackDecoder {
 				this.#decoder.decode(chunk);
 			}
 
-			if (this.#cancelled) {
+			if (this.#ctx.err()) {
 				queueMicrotask(() => this.#next());
 			}
 		}).catch(err => {
-			if (this.#ctx.err() !== undefined) {
+			if (this.#ctx.err()) {
 				return;
 			}
 			console.error("Audio decode group error:", err);
@@ -321,7 +313,7 @@ export class AudioTrackDecoder implements TrackDecoder {
     }
 
 	async decodeFrom(ctx: Promise<void>, source: TrackReader): Promise<Error | undefined> {
-		if (this.#cancelled) {
+		if (this.#ctx.err()) {
 			return this.#ctx.err()!;
 		}
 
@@ -344,7 +336,7 @@ export class AudioTrackDecoder implements TrackDecoder {
     }
 
 	async close(cause?: Error): Promise<void> {
-		if (this.#cancelled) {
+		if (this.#ctx.err()) {
 			return;
 		}
 

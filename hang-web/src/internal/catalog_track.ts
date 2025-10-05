@@ -70,7 +70,6 @@ export class CatalogTrackEncoder implements TrackEncoder {
 
 	#ctx: Context;
 	#cancelCtx: CancelCauseFunc;
-    #cancelled: boolean = false;
 
 	#mutex: Mutex = new Mutex();
 
@@ -82,10 +81,7 @@ export class CatalogTrackEncoder implements TrackEncoder {
 		}
 		const [ctx, cancelCtx] = withCancelCause(background());
         this.#ctx = ctx;
-        this.#cancelCtx = (cause?: Error) => {
-            this.#cancelled = true;
-            cancelCtx(cause);
-        }
+        this.#cancelCtx = cancelCtx;
 
 		// Initialize encoder settings
 		this.#encoder = new JsonEncoder({
@@ -164,7 +160,7 @@ export class CatalogTrackEncoder implements TrackEncoder {
     }
 
     async encodeTo(ctx: Promise<void>, dest: TrackWriter): Promise<Error | undefined> {
-		if (this.#cancelled) {
+		if (this.#ctx.err()) {
 			return this.#ctx.err()!;
 		}
 		if (this.#tracks.has(dest)) {
@@ -192,7 +188,7 @@ export class CatalogTrackEncoder implements TrackEncoder {
      * @param track - The track descriptor to add or update
      */
     setTrack(track: TrackDescriptor): void {
-        if (this.#cancelled) {
+        if (this.#ctx.err()) {
 			return;
 		}
 
@@ -223,7 +219,7 @@ export class CatalogTrackEncoder implements TrackEncoder {
      * @param name - The name of the track to remove
      */
     removeTrack(name: string): void {
-		if (this.#cancelled) {
+		if (this.#ctx.err()) {
 			return;
 		}
 
@@ -240,7 +236,7 @@ export class CatalogTrackEncoder implements TrackEncoder {
 	}
 
     sync(): void {
-        if (this.#cancelled) {
+        if (this.#ctx.err()) {
             return;
         }
         if (this.#patches.length === 0) {
@@ -255,7 +251,9 @@ export class CatalogTrackEncoder implements TrackEncoder {
 	}
 
 	async close(cause?: Error): Promise<void> {
-		if (this.#ctx.err() !== undefined) return;
+		if (this.#ctx.err()) {
+			return;
+		}
 
 		this.#cancelCtx(cause);
 
@@ -299,7 +297,6 @@ export class CatalogTrackDecoder implements TrackDecoder {
 
 	#ctx: Context;
 	#cancelCtx: CancelCauseFunc;
-	#cancelled: boolean = false;
 
 	#mutex: Mutex = new Mutex();
 
@@ -316,10 +313,7 @@ export class CatalogTrackDecoder implements TrackDecoder {
 		this.version = init.version ?? DEFAULT_CATALOG_VERSION;
 		const [ctx, cancelCtx] = withCancelCause(background());
 		this.#ctx = ctx;
-		this.#cancelCtx = (cause?: Error) => {
-			this.#cancelled = true;
-			cancelCtx(cause);
-		};
+		this.#cancelCtx = cancelCtx;
 
 		this.#root = new Promise<CatalogRoot>((resolve) => {
 			this.#resolveRoot = resolve;
@@ -385,12 +379,10 @@ export class CatalogTrackDecoder implements TrackDecoder {
         });
     }
 
-	get decoding(): boolean {
-		return !this.#cancelled && this.#source !== undefined;
-	}
-
-	#next(): void {
-		if (this.#cancelled) {
+    get decoding(): boolean {
+		return !this.#ctx.err() && this.#source !== undefined;
+	}	#next(): void {
+		if (this.#ctx.err()) {
 			return;
 		}
 		if (this.#source === undefined) {
@@ -440,11 +432,11 @@ export class CatalogTrackDecoder implements TrackDecoder {
 				this.#decoder.decode(chunk);
 			}
 
-			if (!this.#cancelled) {
+			if (!this.#ctx.err()) {
 				queueMicrotask(() => this.#next());
 			}
 		}).catch(err => {
-			if (this.#cancelled) {
+			if (this.#ctx.err()) {
 				return;
 			}
 			console.error("Video decode group error:", err);
@@ -461,7 +453,7 @@ export class CatalogTrackDecoder implements TrackDecoder {
 	 * @throws Error if the decoder is cancelled
 	 */
 	async nextTrack(): Promise<[TrackDescriptor, undefined] | [undefined, Error]> {
-		if (this.#cancelled) {
+		if (this.#ctx.err()) {
 			return [undefined, this.#ctx.err()!];
 		}
 
@@ -482,7 +474,7 @@ export class CatalogTrackDecoder implements TrackDecoder {
 	}
 
     async configure(config: JsonDecoderConfig): Promise<void> {
-		if (this.#cancelled) {
+		if (this.#ctx.err()) {
 			return;
 		}
 
@@ -504,7 +496,7 @@ export class CatalogTrackDecoder implements TrackDecoder {
     }
 
     async decodeFrom(ctx: Promise<void>, source: TrackReader): Promise<Error | undefined> {
-		if (this.#cancelled) {
+		if (this.#ctx.err()) {
 			return this.#ctx.err()!;
 		}
 
@@ -527,7 +519,7 @@ export class CatalogTrackDecoder implements TrackDecoder {
     }
 
 	async close(cause?: Error): Promise<void> {
-		if (this.#cancelled) {
+		if (this.#ctx.err()) {
 			return;
 		}
 

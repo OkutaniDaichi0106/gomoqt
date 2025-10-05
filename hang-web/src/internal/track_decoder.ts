@@ -32,7 +32,9 @@ export class NoOpTrackDecoder implements TrackDecoder {
 
     constructor(init: TrackDecoderInit<EncodedChunk>) {
         this.#dests.set(init.destination, init.destination.getWriter());
-        [this.#ctx, this.#cancelCtx] = withCancelCause(background());
+        const [ctx, cancelCtx] = withCancelCause(background());
+        this.#ctx = ctx;
+        this.#cancelCtx = cancelCtx;
     }
 
     get decoding(): boolean {
@@ -40,7 +42,7 @@ export class NoOpTrackDecoder implements TrackDecoder {
     }
 
     #next(): void {
-        if (this.#ctx.err() !== undefined) {
+        if (this.#ctx.err()) {
             return;
         }
         if (this.#source === undefined) {
@@ -98,9 +100,8 @@ export class NoOpTrackDecoder implements TrackDecoder {
     }
 
     async decodeFrom(ctx: Promise<void>, source: TrackReader): Promise<Error | undefined> {
-        const err = this.#ctx.err();
-        if (err !== undefined) {
-            return err;
+        if (this.#ctx.err()) {
+            return this.#ctx.err()!;
         }
 
         if (this.#source !== undefined) {
@@ -152,11 +153,9 @@ export class NoOpTrackDecoder implements TrackDecoder {
     }
 
     async close(cause?: Error): Promise<void> {
-        if (this.#ctx.err() !== undefined) {
-            return;
+        if (!this.#ctx.err()) {
+            this.#cancelCtx(cause);
         }
-
-        this.#cancelCtx(cause);
 
         await Promise.allSettled(Array.from(this.#dests,
             ([dest, writer]) => {

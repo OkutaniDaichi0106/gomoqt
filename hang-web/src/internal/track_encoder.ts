@@ -44,7 +44,9 @@ export class NoOpTrackEncoder implements TrackEncoder {
         this.#source = init.source;
         this.#latestGroup = new GroupCache(init.startGroupSequence ?? 0n, 0);
         this.cache = init.cache ? new init.cache() : undefined;
-        [this.#ctx, this.#cancelCtx] = withCancelCause(background());// TODO: need?
+        const [ctx, cancelCtx] = withCancelCause(background());// TODO: need?
+        this.#ctx = ctx;
+        this.#cancelCtx = cancelCtx;
     }
 
     get encoding(): boolean {
@@ -52,7 +54,7 @@ export class NoOpTrackEncoder implements TrackEncoder {
     }
 
     #next(reader: ReadableStreamDefaultReader<EncodedChunk>): void {
-        if (this.#ctx.err() !== undefined) {
+        if (this.#ctx.err()) {
 			return;
 		}
         if (!this.encoding) {
@@ -121,9 +123,8 @@ export class NoOpTrackEncoder implements TrackEncoder {
     }
 
     async encodeTo(ctx: Promise<void>, dest: TrackWriter): Promise<Error | undefined> {
-        const err = this.#ctx.err();
-        if (err !== undefined) {
-            return err;
+        if (this.#ctx.err()) {
+            return this.#ctx.err()!;
         }
 
         if (this.#tracks.has(dest)) {
@@ -147,16 +148,13 @@ export class NoOpTrackEncoder implements TrackEncoder {
         return this.#ctx.err() || dest.context.err() || ContextCancelledError;
     }
 
-    // close() and closeWithError() do not close the underlying source,
-    // Callers should close the source to release resources.
     async close(cause?: Error): Promise<void> {
-        if (this.#ctx.err() !== undefined) {
-            return;
+        if (!this.#ctx.err()) {
+            this.#cancelCtx(cause);
         }
 
-        this.#cancelCtx(cause);
 
-        await Promise.allSettled(Array.from(this.#tracks.keys()).map(
+        await Promise.allSettled(Array.from(this.#tracks, 
             (tw) => {
                 if (cause) {
                     return tw.closeWithError(InternalSubscribeErrorCode, cause.message);

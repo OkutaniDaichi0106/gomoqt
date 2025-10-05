@@ -296,7 +296,28 @@ describe("audio_track", () => {
             constructor(init: any) {
                 outputCallback = init.output;
             }
-            configure(): void {}
+            configure(_config: any): void {
+                // Simulate encoder calling output with metadata after configure
+                queueMicrotask(() => {
+                    const mockChunk = {
+                        type: 'key',
+                        timestamp: 0,
+                        duration: 20000,
+                        byteLength: 100,
+                        copyTo: vi.fn(),
+                    } as unknown as EncodedAudioChunk;
+
+                    const metadata = {
+                        decoderConfig: {
+                            codec: 'opus',
+                            sampleRate: 48000,
+                            numberOfChannels: 2,
+                        }
+                    };
+
+                    outputCallback!(mockChunk, metadata);
+                });
+            }
             encode(): void {}
             close(): void {}
         }
@@ -322,26 +343,12 @@ describe("audio_track", () => {
             numberOfChannels: 2 
         });
 
-        // Simulate encoder calling output with metadata
-        const mockChunk = {
-            type: 'key',
-            timestamp: 0,
-            duration: 20000,
-            byteLength: 100,
-        } as EncodedAudioChunk;
-
-        const metadata = {
-            decoderConfig: {
-                codec: 'opus',
-                sampleRate: 48000,
-                numberOfChannels: 2,
-            }
-        };
-
-        await outputCallback!(mockChunk, metadata);
-
         const decoderConfig = await configPromise;
-        expect(decoderConfig).toEqual(metadata.decoderConfig);
+        expect(decoderConfig).toEqual({ 
+            codec: 'opus', 
+            sampleRate: 48000, 
+            numberOfChannels: 2 
+        });
     });
 
     it("AudioTrackEncoder handles group rollover based on timestamp", async () => {
@@ -363,6 +370,7 @@ describe("audio_track", () => {
                 this.type = init.type;
                 this.timestamp = init.timestamp;
             }
+            copyTo(_buffer: Uint8Array): void {}
         }
 
         vi.stubGlobal('AudioEncoder', FakeAudioEncoder);
@@ -383,6 +391,7 @@ describe("audio_track", () => {
 
         const mockGroup = {
             close: vi.fn().mockResolvedValue(undefined),
+            writeFrame: vi.fn().mockResolvedValue(undefined),
         };
 
         const openGroupMock = vi.fn().mockResolvedValue([mockGroup, undefined]);
@@ -667,6 +676,7 @@ describe("audio_track", () => {
                 this.type = init.type;
                 this.timestamp = init.timestamp;
             }
+            copyTo(_buffer: Uint8Array): void {}
         }
 
         vi.stubGlobal('AudioEncoder', FakeAudioEncoder);
@@ -743,5 +753,93 @@ describe("audio_track", () => {
         await decoder.close();
 
         expect(releaseLockMock).toHaveBeenCalled();
+    });
+
+    it("AudioTrackDecoder decodeFrom replaces existing source", async () => {
+        const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        
+        class FakeAudioDecoder {
+            constructor(_: any) {}
+            configure(): void {}
+            decode(): void {}
+            close(): void {}
+        }
+
+        vi.stubGlobal('AudioDecoder', FakeAudioDecoder);
+
+        const destination = {
+            getWriter: () => ({
+                ready: Promise.resolve(),
+                write: vi.fn(),
+                releaseLock: vi.fn(),
+            }),
+        } as unknown as WritableStream<AudioData>;
+
+        const decoder = new AudioTrackDecoder({
+            destination,
+        });
+
+        const closeWithErrorMock = vi.fn().mockResolvedValue(undefined);
+        const mockTrackReader1 = {
+            acceptGroup: vi.fn().mockResolvedValue(undefined),
+            closeWithError: closeWithErrorMock,
+            context: {
+                done: vi.fn(() => Promise.resolve()),
+                err: vi.fn(() => undefined),
+            },
+        } as unknown as TrackReader;
+
+        // Set first source
+        const promise1 = decoder.decodeFrom(Promise.resolve(), mockTrackReader1);
+
+        // Set second source (should replace the first)
+        const mockTrackReader2 = {
+            acceptGroup: vi.fn().mockResolvedValue(undefined),
+            context: {
+                done: vi.fn(() => Promise.resolve()),
+                err: vi.fn(() => undefined),
+            },
+        } as unknown as TrackReader;
+
+        const promise2 = decoder.decodeFrom(Promise.resolve(), mockTrackReader2);
+
+        await Promise.all([promise1, promise2]);
+
+        expect(consoleWarnSpy).toHaveBeenCalledWith("[AudioDecodeStream] source is already set, replacing");
+        expect(closeWithErrorMock).toHaveBeenCalled();
+        
+        consoleWarnSpy.mockRestore();
+    });
+
+    it("AudioTrackDecoder close does nothing when already cancelled", async () => {
+        class FakeAudioDecoder {
+            constructor(_: any) {}
+            configure(): void {}
+            decode(): void {}
+            close(): void {}
+        }
+
+        vi.stubGlobal('AudioDecoder', FakeAudioDecoder);
+
+        const releaseLockMock = vi.fn();
+        const destination = {
+            getWriter: () => ({
+                ready: Promise.resolve(),
+                write: vi.fn(),
+                releaseLock: releaseLockMock,
+            }),
+        } as unknown as WritableStream<AudioData>;
+
+        const decoder = new AudioTrackDecoder({
+            destination,
+        });
+
+        // Close once
+        await decoder.close();
+        expect(releaseLockMock).toHaveBeenCalledTimes(1);
+
+        // Close again - should not call releaseLock again
+        await decoder.close();
+        expect(releaseLockMock).toHaveBeenCalledTimes(1);
     });
 });

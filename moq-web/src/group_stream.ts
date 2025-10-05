@@ -45,7 +45,7 @@ export class GroupWriter {
     }
 
     async close(): Promise<void> {
-        if (this.#ctx.err() !== undefined) {
+        if (!this.#ctx.err()) {
             return;
         }
         this.#cancelFunc(undefined); // Notify the context about closure
@@ -53,7 +53,7 @@ export class GroupWriter {
     }
 
     async cancel(code: GroupErrorCode, message: string): Promise<void> {
-        if (this.#ctx.err() !== undefined) {
+        if (!this.#ctx.err()) {
             // Do nothing if already cancelled
             return;
         }
@@ -118,7 +118,7 @@ export class GroupReader {
     }
 
     async cancel(code: GroupErrorCode, message: string): Promise<void> {
-        if (this.#ctx.err() !== undefined) {
+        if (!this.#ctx.err()) {
             // Do nothing if already cancelled
             return;
         }

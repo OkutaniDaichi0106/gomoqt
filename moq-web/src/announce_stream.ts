@@ -171,7 +171,7 @@ export class AnnouncementWriter {
     }
 
     async close(): Promise<void> {
-        if (this.#ctx.err() !== undefined) {
+        if (!this.#ctx.err()) {
             // If already closed, do nothing
             return;
         }
@@ -183,7 +183,7 @@ export class AnnouncementWriter {
     }
 
     async closeWithError(code: AnnounceErrorCode, message: string): Promise<void> {
-        if (this.#ctx.err() !== undefined) {
+        if (!this.#ctx.err()) {
             // If already closed, do nothing
             return;
         }
@@ -323,7 +323,7 @@ export class AnnouncementReader {
     }
 
     async close(): Promise<void> {
-        if (this.#ctx.err() !== undefined) {
+        if (!this.#ctx.err()) {
             // If already closed, do nothing
             return;
         }
@@ -335,7 +335,7 @@ export class AnnouncementReader {
     }
 
     async closeWithError(code: AnnounceErrorCode, message: string): Promise<void> {
-        if (this.#ctx.err() !== undefined) {
+        if (!this.#ctx.err()) {
             // If already closed, do nothing
             return;
         }

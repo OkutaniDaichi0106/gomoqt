@@ -158,7 +158,9 @@ describe("CatalogTrackEncoder", () => {
                 config: {}
             };
 
-            await encoder.close();
+            await encoder.close(new Error("cancelled"));
+            // Wait for ctx to be cancelled
+            await new Promise(resolve => setTimeout(resolve, 0));
             encoder.setTrack(track);
             
             const root = await encoder.root();
@@ -202,7 +204,9 @@ describe("CatalogTrackEncoder", () => {
             };
 
             encoder.setTrack(track);
-            await encoder.close();
+            await encoder.close(new Error("cancelled"));
+            // Wait for ctx to be cancelled
+            await new Promise(resolve => setTimeout(resolve, 0));
             encoder.removeTrack("test-track");
             
             const root = await encoder.root();
@@ -457,11 +461,11 @@ describe("CatalogTrackDecoder", () => {
             const decoder = new CatalogTrackDecoder({});
             
             await decoder.close(new Error("Test cancellation"));
+            // Wait for ctx to be cancelled
+            await new Promise(resolve => setTimeout(resolve, 0));
             
             const result = await decoder.nextTrack();
-            // The result should be a tuple with error info when cancelled
-            expect(result).toBeDefined();
-            expect(Array.isArray(result)).toBe(true);
+            expect(result).toEqual([undefined, expect.any(Error)]);
         });
     });
 
@@ -788,6 +792,8 @@ describe("JSON Processing Tests", () => {
         
         // Close decoder first to ensure nextTrack returns immediately
         await decoder.close(new Error("Test cancellation"));
+        // Wait for ctx to be cancelled
+        await new Promise(resolve => setTimeout(resolve, 0));
         
         // nextTrack should return a tuple [track | undefined, error | undefined]
         const result = await decoder.nextTrack();
@@ -795,7 +801,7 @@ describe("JSON Processing Tests", () => {
         expect(result.length).toBe(2);
         // When cancelled, should return [undefined, Error]
         expect(result[0]).toBeUndefined();
-        // The error might be undefined due to mocking, but the structure should be correct
+        expect(result[1]).toBeInstanceOf(Error);
     });
 
     test("decoder configure resets state", async () => {
@@ -847,6 +853,8 @@ describe("Context and Cancellation Tests", () => {
         
         // Close decoder first
         await decoder.close(new Error("Manual cancellation"));
+        // Wait for ctx to be cancelled
+        await new Promise(resolve => setTimeout(resolve, 0));
         
         // Operations after close should handle cancellation gracefully
         const nextTrackResult = await decoder.nextTrack();
@@ -1152,6 +1160,8 @@ describe("Error Resilience Tests", () => {
         // Close both first
         await encoder.close(new Error("Test cancellation"));
         await decoder.close(new Error("Test cancellation"));
+        // Wait for ctx to be cancelled
+        await new Promise(resolve => setTimeout(resolve, 0));
         
         // All operations should be safe
         const track: TrackDescriptor = {

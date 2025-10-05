@@ -49,7 +49,6 @@ export class VideoTrackEncoder implements TrackEncoder {
 
 	#ctx: Context;
 	#cancelCtx: CancelCauseFunc;
-	#cancelled: boolean = false;
 
 	#mutex: Mutex = new Mutex();
 
@@ -61,10 +60,7 @@ export class VideoTrackEncoder implements TrackEncoder {
 
 		const [ctx, cancelCtx] = withCancelCause(background());
 		this.#ctx = ctx;
-		this.#cancelCtx = (cause?: Error) => {
-			this.#cancelled = true;
-			cancelCtx(cause);
-		};
+		this.#cancelCtx = cancelCtx;
 
 		// Initialize encoder settings
 		this.#encoder = new VideoEncoder({
@@ -120,7 +116,7 @@ export class VideoTrackEncoder implements TrackEncoder {
 	}
 
 	#next(reader: ReadableStreamDefaultReader<VideoFrame>): void {
-		if (this.#cancelled) {
+		if (this.#ctx.err()) {
 			return;
 		}
 		if (!this.encoding) {
@@ -150,7 +146,7 @@ export class VideoTrackEncoder implements TrackEncoder {
 			frame.close();
 
 			// Continue to the next frame
-			if (!this.#cancelled) {
+			if (!this.#ctx.err()) {
 				queueMicrotask(() => this.#next(reader));
 			}
 		}).catch(err => {
@@ -180,7 +176,7 @@ export class VideoTrackEncoder implements TrackEncoder {
     }
 
     async encodeTo(ctx: Promise<void>, dest: TrackWriter): Promise<Error | undefined> {
-		if (this.#cancelled) {
+		if (this.#ctx.err()) {
 			return this.#ctx.err()!;
 		}
 		if (this.#tracks.has(dest)) {
@@ -202,7 +198,7 @@ export class VideoTrackEncoder implements TrackEncoder {
     }
 
 	async close(cause?: Error): Promise<void> {
-		if (this.#cancelled) return;
+		if (this.#ctx.err()) return;
 
 		this.#cancelCtx(cause);
 
@@ -231,16 +227,12 @@ export class VideoTrackDecoder implements TrackDecoder {
 
 	#ctx: Context;
 	#cancelCtx: CancelCauseFunc;
-	#cancelled: boolean = false;
 
     constructor(init: TrackDecoderInit<VideoFrame>) {
 		this.#dests.add(init.destination.getWriter());
 		const [ctx, cancelCtx] = withCancelCause(background());
 		this.#ctx = ctx;
-		this.#cancelCtx = (cause?: Error) => {
-			this.#cancelled = true;
-			cancelCtx(cause);
-		};
+		this.#cancelCtx = cancelCtx;
 
         this.#decoder = new VideoDecoder({
             output: async (frame: VideoFrame) => {
@@ -262,12 +254,10 @@ export class VideoTrackDecoder implements TrackDecoder {
         });
     }
 
-	get decoding(): boolean {
-		return !this.#cancelled && this.#source !== undefined;
-	}
-
-	#next(): void {
-		if (this.#cancelled) {
+    get decoding(): boolean {
+		return this.#source !== undefined && !this.#ctx.err();
+	}	#next(): void {
+		if (this.#ctx.err()) {
 			return;
 		}
 		if (this.#source === undefined) {
@@ -317,11 +307,11 @@ export class VideoTrackDecoder implements TrackDecoder {
 				this.#decoder.decode(chunk);
 			}
 
-			if (!this.#cancelled) {
+			if (!this.#ctx.err()) {
 				queueMicrotask(() => this.#next());
 			}
 		}).catch(err => {
-			if (this.#cancelled) {
+			if (this.#ctx.err()) {
 				return;
 			}
 			console.error("Video decode group error:", err);
@@ -329,7 +319,7 @@ export class VideoTrackDecoder implements TrackDecoder {
 	}
 
     async configure(config: VideoDecoderConfig): Promise<void> {
-		if (this.#cancelled) {
+		if (this.#ctx.err()) {
 			return;
 		}
 
@@ -344,7 +334,7 @@ export class VideoTrackDecoder implements TrackDecoder {
     }
 
     async decodeFrom(ctx: Promise<void>, source: TrackReader): Promise<Error | undefined> {
-		if (this.#cancelled) {
+		if (this.#ctx.err()) {
 			return this.#ctx.err()!;
 		}
 
@@ -367,7 +357,7 @@ export class VideoTrackDecoder implements TrackDecoder {
     }
 
 	async close(cause?: Error): Promise<void> {
-		if (this.#cancelled) {
+		if (this.#ctx.err()) {
 			return;
 		}
 

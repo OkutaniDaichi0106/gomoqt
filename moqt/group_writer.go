@@ -41,7 +41,7 @@ func (sgs *GroupWriter) WriteFrame(frame *Frame) error {
 
 	err := frame.encode(sgs.stream)
 	if err != nil {
-		return Cause(sgs.ctx)
+		return err
 	}
 
 	sgs.frameCount++

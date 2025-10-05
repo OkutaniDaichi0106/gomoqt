@@ -417,10 +417,7 @@ func (c *Client) Shutdown(ctx context.Context) error {
 		logger.Info("shutting down client gracefully")
 	}
 
-	// Go away all active sessions
-	for sess := range c.activeSess {
-		c.goAway(sess)
-	}
+	c.goAway()
 
 	if logger != nil {
 		logger.Debug("sent go-away to all active sessions")
@@ -452,6 +449,11 @@ func (c *Client) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-func (c *Client) goAway(sess *Session) {
-	// TODO: Implement actual go-away logic
+func (c *Client) goAway() {
+	for sess := range c.activeSess {
+		if sess == nil {
+			continue
+		}
+		sess.goAway("")
+	}
 }

@@ -1,6 +1,7 @@
 package moqt
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -109,4 +110,12 @@ func TestPackageHandle(t *testing.T) {
 	Handle("/test2", h)
 	handler := DefaultRouter.Handler("/test2")
 	assert.NotNil(t, handler)
+}
+
+func TestSetupRequest_Context(t *testing.T) {
+	ctx := context.Background()
+	req := &SetupRequest{
+		ctx: ctx,
+	}
+	assert.Equal(t, ctx, req.Context())
 }

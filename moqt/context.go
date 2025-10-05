@@ -52,7 +52,7 @@ func Cause(ctx context.Context) error {
 
 	var appErr *quic.ApplicationError
 	if errors.As(reason, &appErr) {
-		return SessionError{
+		return &SessionError{
 			ApplicationError: appErr,
 		}
 	}

@@ -142,3 +142,19 @@ func TestTrackReader_CloseWithError(t *testing.T) {
 	err := receiver.CloseWithError(InternalSubscribeErrorCode)
 	assert.NoError(t, err)
 }
+
+func TestTrackReader_RemoveGroup(t *testing.T) {
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	substr := newSendSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{}, Info{})
+	receiver := newTrackReader("broadcastPath", "trackName", substr, func() {})
+
+	// Add a group to dequeued
+	group := &GroupReader{}
+	receiver.dequeued[group] = struct{}{}
+	assert.Contains(t, receiver.dequeued, group)
+
+	// Remove the group
+	receiver.removeGroup(group)
+	assert.NotContains(t, receiver.dequeued, group)
+}

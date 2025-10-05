@@ -477,3 +477,227 @@ func TestSession_WithRealMux(t *testing.T) {
 	// Cleanup
 	session.Terminate(NoError, "")
 }
+
+func TestSession_GoAway(t *testing.T) {
+	// Create a minimal session for testing
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(context.Background())
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
+
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Write", mock.Anything).Return(0, nil)
+
+	sessStream := newSessionStream(mockStream, &SetupRequest{
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
+	})
+	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
+
+	// Test goAway - now it calls updateSession
+	err := session.goAway("test-uri")
+	assert.NoError(t, err)
+
+	// Cleanup
+	session.Terminate(NoError, "")
+}
+
+func TestSession_AcceptAnnounce(t *testing.T) {
+	tests := map[string]struct {
+		prefix      string
+		setupMocks  func(*MockQUICConnection, interface{})
+		expectError bool
+	}{
+		"successful announce": {
+			prefix: "/test/prefix/",
+			setupMocks: func(mockConn *MockQUICConnection, mockStream interface{}) {
+				mockConn.On("OpenStream").Return(mockStream, nil).Once()
+				stream := mockStream.(*MockQUICStream)
+				stream.On("Context").Return(context.Background()).Once()
+				stream.On("StreamID").Return(quic.StreamID(1)).Once()
+				// Mock writes for StreamType and AnnouncePlease
+				stream.On("Write", mock.AnythingOfType("[]uint8")).Return(0, nil).Times(2)
+				// Mock read for AnnounceInitMessage
+				// Create a minimal AnnounceInitMessage with empty suffixes
+				aim := message.AnnounceInitMessage{Suffixes: []string{}}
+				var buf bytes.Buffer
+				err := aim.Encode(&buf)
+				if err != nil {
+					panic(err)
+				}
+				data := buf.Bytes()
+				stream.ReadFunc = func(p []byte) (int, error) {
+					if len(data) == 0 {
+						return 0, io.EOF
+					}
+					n := copy(p, data)
+					data = data[n:]
+					return n, nil
+				}
+			},
+			expectError: false,
+		},
+		"terminating session": {
+			prefix: "/test/prefix/",
+			setupMocks: func(mockConn *MockQUICConnection, mockStream interface{}) {
+				mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(errors.New("close error")).Once()
+				// No additional mocks needed, session is terminating
+			},
+			expectError: true,
+		},
+		"open stream error": {
+			prefix: "/test/prefix/",
+			setupMocks: func(mockConn *MockQUICConnection, mockStream interface{}) {
+				mockConn.On("OpenStream").Return(nil, errors.New("open stream error")).Once()
+			},
+			expectError: true,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			// Create a minimal session for testing
+			conn := &MockQUICConnection{}
+			conn.On("Context").Return(context.Background())
+			if name != "terminating session" {
+				conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+			}
+			conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+			conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
+			conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
+
+			mockStream := &MockQUICStream{}
+			mockStream.On("Context").Return(context.Background())
+			mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+
+			sessStream := newSessionStream(mockStream, &SetupRequest{
+				Path:             "test/path",
+				ClientExtensions: NewParameters(),
+			})
+			session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
+
+			announceStream := &MockQUICStream{}
+			tt.setupMocks(conn, announceStream)
+
+			if name == "terminating session" {
+				session.Terminate(NoError, "")
+			}
+
+			reader, err := session.AcceptAnnounce(tt.prefix)
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Nil(t, reader)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, reader)
+			}
+
+			// Cleanup
+			session.Terminate(NoError, "")
+		})
+	}
+}
+
+func TestSession_AddTrackWriter(t *testing.T) {
+	// Create a minimal session for testing
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(context.Background())
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
+
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+
+	sessStream := newSessionStream(mockStream, &SetupRequest{
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
+	})
+	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
+
+	writer := &TrackWriter{}
+	id := SubscribeID(1)
+	session.addTrackWriter(id, writer)
+	assert.Equal(t, writer, session.trackWriters[id])
+
+	// Cleanup
+	session.Terminate(NoError, "")
+}
+
+func TestSession_RemoveTrackWriter(t *testing.T) {
+	// Create a minimal session for testing
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(context.Background())
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
+
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+
+	sessStream := newSessionStream(mockStream, &SetupRequest{
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
+	})
+	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
+
+	writer := &TrackWriter{}
+	id := SubscribeID(1)
+	session.trackWriters[id] = writer
+	session.removeTrackWriter(id)
+	assert.NotContains(t, session.trackWriters, id)
+
+	// Cleanup
+	session.Terminate(NoError, "")
+}
+
+func TestSession_RemoveTrackReader(t *testing.T) {
+	// Create a minimal session for testing
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(context.Background())
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
+
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+
+	sessStream := newSessionStream(mockStream, &SetupRequest{
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
+	})
+	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
+
+	reader := &TrackReader{}
+	id := SubscribeID(1)
+	session.trackReaders[id] = reader
+	session.removeTrackReader(id)
+	assert.NotContains(t, session.trackReaders, id)
+
+	// Cleanup
+	session.Terminate(NoError, "")
+}
+
+func TestCancelStreamWithError(t *testing.T) {
+	mockStream := &MockQUICStream{}
+	mockStream.On("CancelRead", quic.StreamErrorCode(1)).Return()
+	mockStream.On("CancelWrite", quic.StreamErrorCode(1)).Return()
+
+	cancelStreamWithError(mockStream, quic.StreamErrorCode(1))
+
+	mockStream.AssertExpectations(t)
+}

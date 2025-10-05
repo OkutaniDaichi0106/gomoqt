@@ -231,3 +231,40 @@ func TestFrame_WriteTo(t *testing.T) {
 		})
 	}
 }
+
+func TestFrame_Decode(t *testing.T) {
+	tests := map[string]struct {
+		data []byte
+	}{
+		"normal data": {
+			data: []byte("test frame data"),
+		},
+		"empty data": {
+			data: []byte{},
+		},
+		"binary data": {
+			data: []byte{0x00, 0x01, 0x02, 0xFF},
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			// Create original frame
+			builder := NewFrameBuilder(len(tt.data))
+			if len(tt.data) > 0 {
+				builder.Append(tt.data)
+			}
+			originalFrame := builder.Frame()
+
+			// Encode to buffer
+			var buf bytes.Buffer
+			require.NoError(t, originalFrame.encode(&buf))
+
+			// Decode from buffer
+			newFrame := newFrame(0)
+			err := newFrame.decode(&buf)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.data, newFrame.Bytes())
+		})
+	}
+}

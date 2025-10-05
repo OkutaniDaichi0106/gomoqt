@@ -13,6 +13,7 @@ import (
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -1618,3 +1619,20 @@ func TestAccept_ParameterEdgeCases(t *testing.T) {
 }
 
 // TestSessionStream_Reject tests session rejection functionality
+func TestSessionStream_Reject(t *testing.T) {
+	mockStream := &MockQUICStream{}
+	mockStream.On("CancelWrite", quic.StreamErrorCode(SessionErrorCode(1))).Return()
+	mockStream.On("CancelRead", quic.StreamErrorCode(SessionErrorCode(1))).Return()
+
+	mockConn := &MockQUICConnection{}
+	mockConn.On("Context").Return(context.Background())
+
+	sessStr := &sessionStream{
+		stream: mockStream,
+	}
+	w := newResponseWriter(mockConn, sessStr, slog.Default(), nil)
+	err := w.Reject(SessionErrorCode(1))
+	assert.NoError(t, err)
+
+	mockStream.AssertExpectations(t)
+}

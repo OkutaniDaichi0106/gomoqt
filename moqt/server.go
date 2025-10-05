@@ -555,12 +555,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	// Set the shutdown flag
 	s.inShutdown.Store(true)
 
-	// Go away all active sessions
-	s.sessMu.Lock()
-	for sess := range s.activeSess {
-		s.goAway(sess)
-	}
-	s.sessMu.Unlock()
+	s.goAway()
 
 	// If there are no active sessions, signal done immediately so Shutdown
 	// returns without waiting for the context timeout.
@@ -677,10 +672,11 @@ func (s *Server) acceptTimeout() time.Duration {
 	return 5 * time.Second
 }
 
-func (s *Server) goAway(sess *Session) {
-	if sess == nil {
-		return
-	}
+func (s *Server) goAway() {
+	s.sessMu.Lock()
+	defer s.sessMu.Unlock()
 
-	sess.goAway("") // TODO: specify URI if needed
+	for sess := range s.activeSess {
+		sess.goAway("") // TODO: specify URI if needed
+	}
 }

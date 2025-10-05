@@ -367,8 +367,11 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 	return newAnnouncementReader(stream, prefix, aim.Suffixes), nil
 }
 
-func (sess *Session) goAway(uri string) {
-	// TODO
+func (sess *Session) goAway(uri string) error {
+	if sess.sessionStream == nil {
+		return nil
+	}
+	return sess.updateSession(0)
 }
 
 // listenBiStreams accepts bidirectional streams and handles them based on their type.

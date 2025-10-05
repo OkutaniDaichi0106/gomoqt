@@ -890,7 +890,7 @@ func TestServer_AddRemoveSession(t *testing.T) {
 	// Create mock session without using newSession to avoid goroutines
 	connCtx, cancelConn := context.WithCancelCause(context.Background())
 	streamCtx, cancelStream := context.WithCancelCause(connCtx)
-	defer cancelStream(nil)
+	defer cancelStream(nil) // Ensure stream context is cancelled
 
 	mockStream := &MockQUICStream{}
 	mockStream.On("Context").Return(streamCtx)
@@ -1753,4 +1753,13 @@ func TestServer_SetupHandlerEdgeCases(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestServer_GoAway(t *testing.T) {
+	server := &Server{}
+	server.init()
+	// Test goAway implementation
+	assert.NotPanics(t, func() {
+		server.goAway()
+	})
 }

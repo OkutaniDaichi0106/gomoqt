@@ -178,6 +178,10 @@ func TestTrackWriter_OpenGroup_Success(t *testing.T) {
 	assert.NotNil(t, group, "group should not be nil")
 	assert.True(t, acceptCalled, "accept function should be called")
 	assert.Equal(t, GroupSequence(1), group.GroupSequence(), "group sequence should match")
+
+	// Close the group to trigger removeGroup
+	err = group.Close()
+	assert.NoError(t, err)
 }
 
 func TestTrackWriter_ContextCancellation(t *testing.T) {
@@ -280,4 +284,61 @@ func TestTrackWriter_Context(t *testing.T) {
 
 	ctx := sender.Context()
 	assert.NotNil(t, ctx)
+}
+
+func TestTrackWriter_TrackConfig(t *testing.T) {
+	openUniStreamFunc := func() (quic.SendStream, error) {
+		mockSendStream := &MockQUICSendStream{}
+		mockSendStream.On("Context").Return(context.Background())
+		mockSendStream.On("CancelWrite", mock.Anything).Return()
+		mockSendStream.On("StreamID").Return(quic.StreamID(1))
+		mockSendStream.On("Close").Return(nil)
+		mockSendStream.On("Write", mock.Anything).Return(0, nil)
+		return mockSendStream, nil
+	}
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Write", mock.Anything).Return(0, nil)
+	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{})
+	onCloseTrack := func() {}
+
+	sender := newTrackWriter("/broadcast/path", "track_name", substr, openUniStreamFunc, onCloseTrack)
+
+	config := sender.TrackConfig()
+	assert.NotNil(t, config)
+
+	// Test with nil receiveSubscribeStream
+	sender.receiveSubscribeStream = nil
+	config = sender.TrackConfig()
+	assert.Nil(t, config)
+}
+
+func TestTrackWriter_RemoveGroup(t *testing.T) {
+	openUniStreamFunc := func() (quic.SendStream, error) {
+		mockSendStream := &MockQUICSendStream{}
+		mockSendStream.On("Context").Return(context.Background())
+		mockSendStream.On("CancelWrite", mock.Anything).Return()
+		mockSendStream.On("StreamID").Return(quic.StreamID(1))
+		mockSendStream.On("Close").Return(nil)
+		mockSendStream.On("Write", mock.Anything).Return(0, nil)
+		return mockSendStream, nil
+	}
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Write", mock.Anything).Return(0, nil)
+	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{})
+	onCloseTrack := func() {}
+
+	sender := newTrackWriter("/broadcast/path", "track_name", substr, openUniStreamFunc, onCloseTrack)
+
+	// Add a group
+	group := &GroupWriter{}
+	sender.activeGroups[group] = struct{}{}
+	assert.Contains(t, sender.activeGroups, group)
+
+	// Remove the group
+	sender.removeGroup(group)
+	assert.NotContains(t, sender.activeGroups, group)
 }

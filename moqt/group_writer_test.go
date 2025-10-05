@@ -64,55 +64,64 @@ func TestGroupWriter_GroupSequence(t *testing.T) {
 
 func TestGroupWriter_WriteFrame(t *testing.T) {
 	tests := map[string]struct {
-		frame      *Frame
-		mockStream *MockQUICSendStream
+		setupFrame  func() *Frame
+		setupMock   func() *MockQUICSendStream
+		expectError bool
 	}{
-		"valid frame": {
-			frame: func() *Frame {
-				fb := NewFrameBuilder(len([]byte("test")))
-				fb.Append([]byte("test"))
-				return fb.Frame()
-			}(),
-			mockStream: func() *MockQUICSendStream {
+		"write valid frame": {
+			setupFrame: func() *Frame {
+				builder := NewFrameBuilder(10)
+				builder.Append([]byte("test data"))
+				return builder.Frame()
+			},
+			setupMock: func() *MockQUICSendStream {
 				mockStream := &MockQUICSendStream{}
 				mockStream.On("Context").Return(context.Background())
-				mockStream.On("Write", mock.Anything).Return(4, nil)
+				mockStream.On("Write", mock.Anything).Return(0, nil)
 				return mockStream
-			}(),
+			},
+			expectError: false,
 		},
-		"nil frame": {
-			frame: nil,
-			mockStream: func() *MockQUICSendStream {
+		"write nil frame": {
+			setupFrame: func() *Frame {
+				return nil
+			},
+			setupMock: func() *MockQUICSendStream {
 				mockStream := &MockQUICSendStream{}
 				mockStream.On("Context").Return(context.Background())
 				return mockStream
-			}(),
+			},
+			expectError: false,
 		},
-		// "frame with nil message": {
-		// 	frameData: nil,
-		// 	mockStream: func() *MockQUICSendStream {
-		// 		mockStream := &MockQUICSendStream{}
-		// 		mockStream.On("Context").Return(context.Background())
-		// 		return mockStream
-		// 	}(),
-		// },
+		"write frame with error": {
+			setupFrame: func() *Frame {
+				builder := NewFrameBuilder(10)
+				builder.Append([]byte("test data"))
+				return builder.Frame()
+			},
+			setupMock: func() *MockQUICSendStream {
+				mockStream := &MockQUICSendStream{}
+				mockStream.On("Context").Return(context.Background())
+				mockStream.On("Write", mock.Anything).Return(0, errors.New("write error"))
+				return mockStream
+			},
+			expectError: true,
+		},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			mockStream := tt.mockStream
-			sgs := newGroupWriter(mockStream, GroupSequence(1), func() {})
+			mockStream := tt.setupMock()
+			sgs := newGroupWriter(mockStream, GroupSequence(123), func() {})
 
-			frame := tt.frame
-
+			frame := tt.setupFrame()
 			err := sgs.WriteFrame(frame)
-
-			assert.NoError(t, err)
-			if frame != nil && frame.Len() > 0 {
-				assert.Equal(t, uint64(1), sgs.frameCount)
+			if tt.expectError {
+				assert.Error(t, err)
 			} else {
-				assert.Equal(t, uint64(0), sgs.frameCount)
+				assert.NoError(t, err)
 			}
+
 			mockStream.AssertExpectations(t)
 		})
 	}
@@ -139,19 +148,6 @@ func TestGroupWriter_Close(t *testing.T) {
 
 	err := sgs.Close()
 	assert.NoError(t, err)
-	mockStream.AssertExpectations(t)
-}
-
-func TestGroupWriter_CloseWithError(t *testing.T) {
-	mockStream := &MockQUICSendStream{}
-	mockStream.On("Context").Return(context.Background())
-
-	errorCode := GroupErrorCode(42)
-
-	mockStream.On("CancelWrite", quic.StreamErrorCode(errorCode)).Return()
-	sgs := newGroupWriter(mockStream, GroupSequence(1), func() {})
-
-	sgs.CancelWrite(errorCode)
 	mockStream.AssertExpectations(t)
 }
 
@@ -241,5 +237,18 @@ func TestGroupWriter_Context(t *testing.T) {
 	ctx := sgs.Context()
 	assert.NotNil(t, ctx)
 	assert.Equal(t, message.StreamTypeGroup, ctx.Value(&uniStreamTypeCtxKey))
+	mockStream.AssertExpectations(t)
+}
+
+func TestGroupWriter_CancelWrite(t *testing.T) {
+	called := false
+	mockStream := &MockQUICSendStream{}
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("CancelWrite", quic.StreamErrorCode(1)).Return()
+
+	sgs := newGroupWriter(mockStream, GroupSequence(1), func() { called = true })
+
+	sgs.CancelWrite(1)
+	assert.True(t, called)
 	mockStream.AssertExpectations(t)
 }

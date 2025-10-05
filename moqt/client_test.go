@@ -117,6 +117,7 @@ func TestClient_ShutdownContextCancel(t *testing.T) {
 		},
 	}
 	mockStream.On("Read", mock.Anything)
+	mockStream.On("Write", mock.Anything).Return(0, nil)
 	mockStream.On("CancelRead", mock.Anything)
 	mockStream.On("CancelWrite", mock.Anything)
 	mockStream.On("Context").Return(context.Background())
@@ -378,25 +379,14 @@ func TestGenerateSessionID(t *testing.T) {
 
 // Test for Client.goAway method
 func TestClient_GoAway(t *testing.T) {
-	tests := map[string]struct {
-		sess *Session
-	}{
-		"valid session": {
-			sess: &Session{},
-		},
-		"nil session": {
-			sess: nil,
-		},
-	}
-
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			c := &Client{}
-			// Should not panic even with nil session - goAway is currently a TODO
-			c.goAway(tt.sess)
-			// No assertions needed as method is empty TODO implementation
-		})
-	}
+	c := &Client{}
+	c.init()
+	sess := &Session{}
+	c.addSession(sess)
+	// Test goAway implementation
+	assert.NotPanics(t, func() {
+		c.goAway()
+	})
 }
 
 // Test for Client.addSession with nil session
@@ -984,6 +974,7 @@ func TestClient_Shutdown_Timeout(t *testing.T) {
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 	mockStream.On("CancelRead", mock.Anything).Return()
 	mockStream.On("CancelWrite", mock.Anything).Return()
+	mockStream.On("Write", mock.Anything).Return(0, nil)
 	mockStream.On("Context").Return(context.Background())
 
 	mockConn := &MockQUICConnection{}

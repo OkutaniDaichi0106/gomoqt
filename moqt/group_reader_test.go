@@ -217,3 +217,72 @@ func TestReceiveGroupStream_ReadFrame_StreamError(t *testing.T) {
 	var groupErr *GroupError
 	assert.True(t, errors.As(err, &groupErr))
 }
+
+func TestGroupReader_ReadFrame(t *testing.T) {
+	tests := map[string]struct {
+		setupStream func() *MockQUICReceiveStream
+		expectError bool
+		expectFrame bool
+	}{
+		"successful read": {
+			setupStream: func() *MockQUICReceiveStream {
+				// Create a frame with some data
+				builder := NewFrameBuilder(10)
+				builder.Append([]byte("test data"))
+				frame := builder.Frame()
+				var buf bytes.Buffer
+				err := frame.encode(&buf)
+				if err != nil {
+					panic(err)
+				}
+				data := buf.Bytes()
+
+				mockStream := &MockQUICReceiveStream{
+					ReadFunc: func(p []byte) (int, error) {
+						if len(data) == 0 {
+							return 0, io.EOF
+						}
+						n := copy(p, data)
+						data = data[n:]
+						return n, nil
+					},
+				}
+				return mockStream
+			},
+			expectError: false,
+			expectFrame: true,
+		},
+		"EOF": {
+			setupStream: func() *MockQUICReceiveStream {
+				mockStream := &MockQUICReceiveStream{
+					ReadFunc: func(p []byte) (int, error) {
+						return 0, io.EOF
+					},
+				}
+				return mockStream
+			},
+			expectError: true,
+			expectFrame: false,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockStream := tt.setupStream()
+			rgs := newGroupReader(123, mockStream, func() {})
+
+			frame, err := rgs.ReadFrame()
+			if tt.expectError {
+				assert.Error(t, err)
+				if tt.expectFrame {
+					assert.NotNil(t, frame)
+				} else {
+					assert.Nil(t, frame)
+				}
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, frame)
+			}
+		})
+	}
+}

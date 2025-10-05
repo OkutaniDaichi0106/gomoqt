@@ -256,7 +256,9 @@ export class VideoTrackDecoder implements TrackDecoder {
 
     get decoding(): boolean {
 		return this.#source !== undefined && !this.#ctx.err();
-	}	#next(): void {
+	}	
+	
+	#next(): void {
 		if (this.#ctx.err()) {
 			return;
 		}
@@ -370,6 +372,7 @@ export class VideoTrackDecoder implements TrackDecoder {
 		));
 
 		this.#dests.clear();
+		this.#source = undefined;
 	}
 }
 

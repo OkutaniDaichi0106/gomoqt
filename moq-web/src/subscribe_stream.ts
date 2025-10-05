@@ -166,7 +166,7 @@ export class ReceiveSubscribeStream {
 	}
 
 	async close(): Promise<void> {
-		if (!this.#ctx.err()) {
+		if (this.#ctx.err()) {
 			return;
 		}
 		this.#cancelFunc(undefined);
@@ -176,7 +176,7 @@ export class ReceiveSubscribeStream {
 	}
 
 	async closeWithError(code: number, message: string): Promise<void> {
-		if (!this.#ctx.err()) {
+		if (this.#ctx.err()) {
 			return;
 		}
 		const cause = new StreamError(code, message);

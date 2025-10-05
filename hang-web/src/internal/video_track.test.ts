@@ -226,6 +226,7 @@ describe("video_track", () => {
         await decoder.decodeFrom(Promise.resolve(), mockTrackReader);
 
         await expect(decoder.close(new Error("test"))).resolves.toBeUndefined();
+        await new Promise<void>(resolve => queueMicrotask(() => resolve()));
         expect(decoder.decoding).toBe(false);
     });
 

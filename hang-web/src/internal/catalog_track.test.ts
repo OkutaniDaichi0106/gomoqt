@@ -160,7 +160,7 @@ describe("CatalogTrackEncoder", () => {
 
             await encoder.close(new Error("cancelled"));
             // Wait for ctx to be cancelled
-            await new Promise(resolve => setTimeout(resolve, 0));
+            await new Promise(resolve => setTimeout(resolve, 100));
             encoder.setTrack(track);
             
             const root = await encoder.root();
@@ -206,7 +206,7 @@ describe("CatalogTrackEncoder", () => {
             encoder.setTrack(track);
             await encoder.close(new Error("cancelled"));
             // Wait for ctx to be cancelled
-            await new Promise(resolve => setTimeout(resolve, 0));
+            await new Promise(resolve => setTimeout(resolve, 100));
             encoder.removeTrack("test-track");
             
             const root = await encoder.root();
@@ -462,7 +462,7 @@ describe("CatalogTrackDecoder", () => {
             
             await decoder.close(new Error("Test cancellation"));
             // Wait for ctx to be cancelled
-            await new Promise(resolve => setTimeout(resolve, 0));
+            await new Promise<void>(resolve => setTimeout(resolve, 100));
             
             const result = await decoder.nextTrack();
             expect(result).toEqual([undefined, expect.any(Error)]);
@@ -793,7 +793,7 @@ describe("JSON Processing Tests", () => {
         // Close decoder first to ensure nextTrack returns immediately
         await decoder.close(new Error("Test cancellation"));
         // Wait for ctx to be cancelled
-        await new Promise(resolve => setTimeout(resolve, 0));
+        await new Promise<void>(resolve => setTimeout(resolve, 100));
         
         // nextTrack should return a tuple [track | undefined, error | undefined]
         const result = await decoder.nextTrack();
@@ -854,7 +854,7 @@ describe("Context and Cancellation Tests", () => {
         // Close decoder first
         await decoder.close(new Error("Manual cancellation"));
         // Wait for ctx to be cancelled
-        await new Promise(resolve => setTimeout(resolve, 0));
+        await new Promise<void>(resolve => setTimeout(resolve, 100));
         
         // Operations after close should handle cancellation gracefully
         const nextTrackResult = await decoder.nextTrack();
@@ -1161,7 +1161,7 @@ describe("Error Resilience Tests", () => {
         await encoder.close(new Error("Test cancellation"));
         await decoder.close(new Error("Test cancellation"));
         // Wait for ctx to be cancelled
-        await new Promise(resolve => setTimeout(resolve, 0));
+        await new Promise<void>(resolve => setTimeout(resolve, 100));
         
         // All operations should be safe
         const track: TrackDescriptor = {

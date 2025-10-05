@@ -530,6 +530,7 @@ export class CatalogTrackDecoder implements TrackDecoder {
 		this.#newTracks.clear();
 		this.#resolveRoot = undefined;
 		this.#resolveNewTrack = undefined;
+		this.#source = undefined;
 
 		this.#decoder.close();
 	}

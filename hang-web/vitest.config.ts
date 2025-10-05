@@ -12,12 +12,6 @@ export default defineConfig({
       },
     },
     include: ['src/**/*.test.ts'],
-    poolOptions: {
-      threads: {
-        maxThreads: 4,
-        minThreads: 2,
-      },
-    },
     testTimeout: 10000, // 10 seconds timeout for tests
     hookTimeout: 5000,  // 5 seconds timeout for hooks
     coverage: {

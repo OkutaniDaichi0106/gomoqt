@@ -59,18 +59,18 @@ describe("RoomElement", () => {
     describe("connectedCallback", () => {
         it("should render the element", () => {
             document.body.appendChild(element);
-            expect(element.innerHTML).toContain("room-status-display");
-            expect(element.innerHTML).toContain("local-participant");
-            expect(element.innerHTML).toContain("remote-participants");
+            expect(element.querySelector('.room-status-display')).toBeTruthy();
+            expect(element.querySelector('.local-participant')).toBeTruthy();
+            expect(element.querySelector('.remote-participants')).toBeTruthy();
         });
     });
 
     describe("render", () => {
         it("should render the DOM structure", () => {
             element.render();
-            expect(element.innerHTML).toContain("room-status-display");
-            expect(element.innerHTML).toContain("local-participant");
-            expect(element.innerHTML).toContain("remote-participants");
+            expect(element.querySelector('.room-status-display')).toBeTruthy();
+            expect(element.querySelector('.local-participant')).toBeTruthy();
+            expect(element.querySelector('.remote-participants')).toBeTruthy();
         });
     });
 
@@ -174,6 +174,70 @@ describe("RoomElement", () => {
             element.room?.leave();
 
             expect(onleaveSpy).toHaveBeenCalledWith({ name: "test-member", remote: true });
+        });
+
+        it("dispatches 'join' event and adds DOM participant when member joins", async () => {
+            const mockSession = {};
+            const mockPublisher = { name: "test-publisher" };
+
+            element.setAttribute('room-id', 'test-room');
+
+            const joinListener = vi.fn((ev: Event) => {
+                // noop
+            });
+            element.addEventListener('join', joinListener as any);
+
+            await element.join(mockSession as any, mockPublisher as any);
+
+            // onjoin was called via mock Room; join event should be dispatched
+            expect(joinListener).toHaveBeenCalled();
+
+            // Participant DOM should be added
+            const participant = element.querySelector('.remote-member-test-member');
+            expect(participant).toBeTruthy();
+        });
+
+        it("dispatches 'leave' event and removes DOM participant when remote leaves", async () => {
+            const mockSession = {};
+            const mockPublisher = { name: "test-publisher" };
+
+            element.setAttribute('room-id', 'test-room');
+
+            const leaveListener = vi.fn();
+            element.addEventListener('leave', leaveListener as any);
+
+            await element.join(mockSession as any, mockPublisher as any);
+
+            // participant should be present
+            expect(element.querySelector('.remote-member-test-member')).toBeTruthy();
+
+            // Simulate leave by calling room.leave
+            element.room?.leave();
+
+            expect(leaveListener).toHaveBeenCalled();
+
+            // participant should be removed
+            expect(element.querySelector('.remote-member-test-member')).toBeFalsy();
+        });
+
+        it('sets error status when onjoin handler throws', async () => {
+            const mockSession = {};
+            const mockPublisher = { name: 'test-publisher' };
+
+            element.setAttribute('room-id', 'test-room');
+
+            element.onjoin = () => { throw new Error('handler fail'); };
+
+            const statusSpy = vi.fn();
+            element.onstatus = statusSpy;
+
+            await element.join(mockSession as any, mockPublisher as any);
+
+            // onstatus should have been called with an error status
+            expect(statusSpy).toHaveBeenCalled();
+            const last = statusSpy.mock.calls[statusSpy.mock.calls.length - 1][0];
+            expect(last.type).toBe('error');
+            expect(last.message).toMatch(/onjoin handler failed:/);
         });
     });
 

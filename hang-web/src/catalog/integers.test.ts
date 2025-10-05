@@ -9,6 +9,26 @@ import {
 import { z } from "zod";
 import { describe, test, expect, beforeEach, it } from 'vitest';
 
+describe('catalog integers', () => {
+  it('uint8 accepts 0..255', () => {
+    expect(uint8(0)).toBe(0);
+    expect(uint8(255)).toBe(255);
+    expect(() => uint8(256)).toThrow();
+  });
+
+  it('uint53 accepts safe integers', () => {
+    expect(uint53(0)).toBe(0);
+    expect(uint53(Number.MAX_SAFE_INTEGER)).toBe(Number.MAX_SAFE_INTEGER);
+    expect(() => uint53(Number.MAX_SAFE_INTEGER + 1)).toThrow();
+  });
+
+  it('uint62 accepts bigint up to 62 bits', () => {
+    expect(uint62(0)).toBe(0);
+    expect(uint62(123n)).toBe(123n);
+    expect(() => uint62(-1 as any)).toThrow();
+  });
+});
+
 describe("Integer Types", () => {
     describe("uint8", () => {
         describe("uint8Schema", () => {

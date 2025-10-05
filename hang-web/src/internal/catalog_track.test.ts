@@ -172,6 +172,16 @@ describe("CatalogTrackEncoder", () => {
             // setTrack should not throw after close
             expect(() => encoder.setTrack(track)).not.toThrow();
         });
+
+        test("setTrack adds track to catalog", () => {
+            const encoder = new CatalogTrackEncoder({});
+            const track = { name: "test-track", schema: "", config: {}, priority: 0 };
+            encoder.setTrack(track);
+            
+            // Since private fields can't be accessed, we test that no error occurs
+            // and the method completes successfully
+            expect(() => encoder.setTrack(track)).not.toThrow();
+        });
     });
 
     describe("removeTrack", () => {

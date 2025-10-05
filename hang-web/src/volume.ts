@@ -45,15 +45,15 @@ export function DefaultFadeTime(): number {
 }
 
 // Validation functions for compile-time checks
-function isValidMinGain(v: number): boolean {
+export function isValidMinGain(v: number): boolean {
   return typeof v === 'number' && Number.isFinite(v) && v > 0 && v < 0.01; // Reasonable range for min gain
 }
 
-function isValidFadeTime(v: number): boolean {
+export function isValidFadeTime(v: number): boolean {
   return typeof v === 'number' && Number.isFinite(v) && v > 0.01 && v < 1.0; // Reasonable range for fade time
 }
 
-function isValidVolume(v: unknown): v is number {
+export function isValidVolume(v: unknown): v is number {
     return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1;
 }
 

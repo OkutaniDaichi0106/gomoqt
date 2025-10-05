@@ -7,7 +7,7 @@ vi.mock('@okutanidaichi/moqt', () => ({
 
 vi.mock('golikejs/context', () => ({
     withCancelCause: vi.fn(() => [{
-        done: vi.fn(() => new Promise(() => {})),
+        done: vi.fn(() => Promise.resolve()),
         err: vi.fn(() => undefined),
     }, vi.fn()]),
     background: vi.fn(() => Promise.resolve()),
@@ -160,6 +160,41 @@ describe('NoOpTrackDecoder', () => {
             expect(mockSource1.closeWithError).toHaveBeenCalled();
             
             consoleWarnSpy.mockRestore();
+        });
+
+        it('should decode frames from accepted groups', async () => {
+            const mockFrame = {
+                type: 'key' as const,
+                byteLength: 4,
+                copyTo: vi.fn((dest) => {
+                    if (dest instanceof Uint8Array) {
+                        dest.set([1, 2, 3, 4]);
+                    }
+                }),
+            };
+
+            const mockGroup = {
+                readFrame: vi.fn()
+                    .mockResolvedValueOnce([mockFrame, null])
+                    .mockResolvedValueOnce([null, new Error('end')]), // Error to break the loop
+                close: vi.fn(),
+            };
+
+            const mockSource = {
+                acceptGroup: vi.fn()
+                    .mockResolvedValueOnce([mockGroup, null])
+                    .mockResolvedValueOnce([null, new Error('end')]),
+                context: {
+                    done: vi.fn(() => new Promise(() => {})),
+                    err: vi.fn(() => undefined),
+                },
+                closeWithError: vi.fn(),
+            };
+
+            await decoder.decodeFrom(Promise.resolve(), mockSource as any);
+
+            expect(mockSource.acceptGroup).toHaveBeenCalled();
+            expect(mockGroup.readFrame).toHaveBeenCalled();
         });
 
     });

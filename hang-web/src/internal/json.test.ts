@@ -962,3 +962,32 @@ describe("Integration Tests", () => {
         });
     });
 });
+
+// Helper function
+describe('json helpers', () => {
+  it('replaceBigInt converts bigint to string', () => {
+    expect(replaceBigInt('k', 123n)).toBe('123');
+    expect(replaceBigInt('k', 1)).toBe(1);
+  });
+
+  it('reviveBigInt converts numeric strings to BigInt', () => {
+    expect(reviveBigInt('k', '456')).toBe(456n);
+    // non-numeric strings remain as-is
+    expect(reviveBigInt('k', '12a')).toBe('12a');
+  });
+
+  it('replaceDate converts Date to ISO string', () => {
+    const d = new Date('2020-01-02T03:04:05.678Z');
+    expect(replaceDate('k', d)).toBe('2020-01-02T03:04:05.678Z');
+    expect(replaceDate('k', 'str')).toBe('str');
+  });
+
+  it('reviveDate converts ISO string to Date', () => {
+    const iso = '2020-01-02T03:04:05.678Z';
+    const res = reviveDate('k', iso);
+    expect(res).toBeInstanceOf(Date);
+    expect((res as Date).toISOString()).toBe(iso);
+
+    expect(reviveDate('k', 'not-a-date')).toBe('not-a-date');
+  });
+});

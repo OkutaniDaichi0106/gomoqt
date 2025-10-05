@@ -87,7 +87,14 @@ export class Room {
         while (true) {
             const [announcement, err] = await announcements.receive(signal);
             if (err) {
-                // TODO: Handle errors
+                // If the announcements reader returned an error, treat it as
+                // a signal to stop listening and ack the join so callers don't
+                // wait forever. The announcements reader will be closed below.
+                try {
+                    resolveAck();
+                } catch (e) {
+                    // ignore if ack already resolved
+                }
                 break;
             }
 

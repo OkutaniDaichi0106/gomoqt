@@ -27,9 +27,9 @@ export class BroadcastPublisher implements TrackHandler {
     #ctx: Context;
     #cancelCtx: CancelCauseFunc;
 
-    constructor(name: string, description?: string) {
+    constructor(name: string, description?: string, catalog?: CatalogTrackEncoder) {
         this.name = name;
-        this.#catalog = new CatalogTrackEncoder({ description });
+        this.#catalog = catalog ?? new CatalogTrackEncoder({ description });
         [this.#ctx, this.#cancelCtx] = withCancelCause(background());
 
         // Set up catalog track
@@ -111,11 +111,11 @@ export class BroadcastSubscriber {
 
     oncatalog?: CatalogCallbacks
 
-    constructor(path: BroadcastPath, roomID: string, session: Session) {
+    constructor(path: BroadcastPath, roomID: string, session: Session, catalog?: CatalogTrackDecoder) {
         this.#path = path;
         this.roomID = roomID;
         this.session = session;
-        this.#catalog = new CatalogTrackDecoder({});
+        this.#catalog = catalog ?? new CatalogTrackDecoder({});
         const [ctx, cancelCtx] = withCancelCause(background());
         this.#ctx = ctx;
         this.#cancelCtx = (cause?: Error) => {

@@ -128,4 +128,77 @@ describe('NoOpTrackEncoder', () => {
         const encoder = new NoOpTrackEncoder({ source });
         await expect(encoder.close()).resolves.toBeUndefined();
     });
+
+    test('encodeTo handles key chunks', async () => {
+        const chunks = [
+            createChunk([1, 2, 3]),
+            createChunk([4, 5, 6]),
+        ];
+        chunks[0].type = 'key';
+        chunks[1].type = 'delta';
+
+        const source = {
+            getReader: vi.fn(() => ({
+                read: vi.fn()
+                    .mockResolvedValueOnce({ done: false, value: chunks[0] })
+                    .mockResolvedValueOnce({ done: false, value: chunks[1] })
+                    .mockResolvedValueOnce({ done: true }),
+                releaseLock: vi.fn(),
+            })),
+        } as unknown as ReadableStream<EncodedChunk>;
+
+        const mockGroup = {
+            writeFrame: vi.fn().mockResolvedValue(undefined),
+        };
+        const mockWriter = {
+            createGroup: vi.fn(),
+            context: {
+                done: vi.fn(() => new Promise(() => {})),
+                err: vi.fn(() => undefined),
+            },
+            openGroup: vi.fn().mockResolvedValue([mockGroup, null]),
+            closeWithError: vi.fn(),
+            close: vi.fn(),
+        } as any;
+
+        const encoder = new NoOpTrackEncoder({ source });
+        const ctx = { done: () => Promise.resolve(), err: () => undefined };
+        await encoder.encodeTo(ctx as any, mockWriter);
+
+        // Should have called openGroup for key chunk
+        expect(mockWriter.openGroup).toHaveBeenCalled();
+    });
+});
+
+
+describe('cloneChunk', () => {
+  it('clones buffer and copyTo works', () => {
+    const data = new Uint8Array([1,2,3,4]);
+    const chunk = {
+      type: 'key' as const,
+      byteLength: data.byteLength,
+      timestamp: Date.now(),
+      copyTo(dest: Uint8Array) { dest.set(data); }
+    };
+
+    const cloned = cloneChunk(chunk as any);
+    expect(cloned.byteLength).toBe(4);
+    const target = new Uint8Array(4);
+    cloned.copyTo(target);
+    expect(Array.from(target)).toEqual([1,2,3,4]);
+  });
+
+  it('copyTo throws when dest too small', () => {
+    const data = new Uint8Array([1,2,3,4]);
+    const chunk = {
+      type: 'delta' as const,
+      byteLength: data.byteLength,
+      timestamp: Date.now(),
+      copyTo(dest: Uint8Array) { dest.set(data); }
+    };
+
+    const cloned = cloneChunk(chunk as any);
+    const small = new Uint8Array(2);
+    expect(() => cloned.copyTo(small)).toThrow();
+  });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { Room } from "./room";
+import { Room,participantName,broadcastPath } from "./room";
 
 vi.mock("@okutanidaichi/moqt", () => ({
     validateBroadcastPath: vi.fn((path: string) => path),
@@ -74,11 +74,51 @@ describe("Room", () => {
 
             await expect(room.join(mockSession as any, mockLocal as any)).resolves.not.toThrow();
         });
+
+        it("should handle join errors gracefully", async () => {
+            const mockAnnouncementReader = {
+                receive: vi.fn().mockResolvedValue([null, new Error("Network error")]),
+                close: vi.fn(),
+            };
+            mockSession.acceptAnnounce.mockResolvedValue([mockAnnouncementReader, null] as any);
+
+            // Should not throw even if announcement reader fails
+            await expect(room.join(mockSession as any, mockLocal as any)).resolves.not.toThrow();
+        });
     });
 
     describe("leave", () => {
         it("should leave the room", async () => {
             await expect(room.leave()).resolves.not.toThrow();
         });
+
+        it("should handle leave when not joined", async () => {
+            // Leave without joining first
+            await expect(room.leave()).resolves.not.toThrow();
+        });
     });
+});
+
+
+vi.mock('@okutanidaichi/moqt', () => ({
+  validateBroadcastPath: vi.fn((p: string) => p),
+}));
+
+import * as moqt from '@okutanidaichi/moqt';
+
+describe('room utils', () => {
+  it('broadcastPath calls validateBroadcastPath with constructed path', () => {
+    const res = broadcastPath('myroom', 'alice');
+    expect(res).toBe('/myroom/alice.hang');
+
+    const mocked = vi.mocked(moqt);
+    expect(mocked.validateBroadcastPath).toHaveBeenCalledWith('/myroom/alice.hang');
+  });
+
+  it('participantName extracts name from broadcast path', () => {
+    expect(participantName('myroom', '/myroom/alice.hang')).toBe('alice');
+    expect(participantName('r', '/r/bob.hang')).toBe('bob');
+    // when name contains dots or dashes
+    expect(participantName('room-x', '/room-x/john.doe.hang')).toBe('john.doe');
+  });
 });

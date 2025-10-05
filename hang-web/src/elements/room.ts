@@ -87,7 +87,10 @@ export class RoomElement extends HTMLElement {
             await room.join(session, local);
 
             this.room = room;
-            this.#setStatus({ type: 'success', message: `✓ Joined room ${room.roomID} as ${local.name}` });
+            // Do not overwrite an error status that may have been set by onjoin handler
+            if (this.#statusState.type !== 'error') {
+                this.#setStatus({ type: 'success', message: `✓ Joined room ${room.roomID} as ${local.name}` });
+            }
         } catch (e) {
             this.#setStatus({ type: 'error', message: `Failed to join: ${e instanceof Error ? e.message : String(e)}` });
         }

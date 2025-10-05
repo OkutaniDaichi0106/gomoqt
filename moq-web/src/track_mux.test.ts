@@ -1,4 +1,4 @@
-import { describe, it, expect, jest, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { TrackHandler } from './track_mux';
 import { TrackMux } from './track_mux';
 import type { AnnouncementWriter } from './announce_stream';
@@ -40,7 +40,8 @@ describe('TrackMux', () => {
         mockAnnouncementWriter = {
             send: vi.fn(() => Promise.resolve(undefined)),
             init: vi.fn(() => Promise.resolve(undefined)),
-            context: ctx
+            context: ctx,
+            close: vi.fn(() => Promise.resolve(undefined))
         } as any;
     });
 
@@ -90,7 +91,7 @@ describe('TrackMux', () => {
             await new Promise(resolve => setTimeout(resolve, 10)); // Wait for async cleanup
 
             // Handler should be removed, now reset mock and test with different path
-            (mockHandler.serveTrack as vi.mock).mockClear();
+            (mockHandler.serveTrack as any).mockClear();
 
             const differentTrackWriter = {
                 broadcastPath: '/different/path' as BroadcastPath,
@@ -214,6 +215,34 @@ describe('TrackMux', () => {
 
             // The send should not be called since the writer was cleaned up
             expect(mockAnnouncementWriterWithContext.send).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('close', () => {
+        it('should close all sessions', async () => {
+            const validPrefix = '/test' as TrackPrefix;
+            const handler: TrackHandler = {
+                serveTrack: vi.fn()
+            };
+
+            vi.spyOn(mockAnnouncementWriter, 'close').mockResolvedValue(undefined);
+
+            // Serve an announcement to add the writer to announcers
+            const servePromise = trackMux.serveAnnouncement(mockAnnouncementWriter, validPrefix);
+
+            // Announce a track to trigger sending to the writer
+            const path = '/test/path' as BroadcastPath;
+            await trackMux.announce(new Announcement(path, Promise.resolve()), handler);
+
+            // Close the trackMux
+            await trackMux.close();
+
+            // Expect the writer's close to be called
+            expect(mockAnnouncementWriter.close).toHaveBeenCalled();
+        });
+
+        it('should work with no sessions', async () => {
+            await expect(trackMux.close()).resolves.toBeUndefined();
         });
     });
 });

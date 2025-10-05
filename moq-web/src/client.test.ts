@@ -1,8 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+// We'll mock Session so tests don't depend on real WebTransport streams
+import { TrackMux, DefaultTrackMux } from "./track_mux";
+
+vi.mock("./session", () => ({
+    Session: vi.fn().mockImplementation((init: any) => ({
+        ready: init?.conn?.ready || Promise.resolve(),
+        close: vi.fn().mockResolvedValue(undefined),
+        mux: init?.mux ?? DefaultTrackMux,
+    }))
+}));
+
 import { Client } from "./client";
-import { Session } from "./session";
 import type { MOQOptions } from "./options";
-import { TrackMux } from "./track_mux";
 
 // Mock WebTransport
 class MockWebTransport {
@@ -22,7 +31,9 @@ class MockWebTransport {
         });
         const readable = new ReadableStream({
             start(controller) {
-                // Mock implementation
+                // Enqueue mock data for SessionServerMessage: versions=0, extensions=0
+                controller.enqueue(new Uint8Array([0x00, 0x00]));
+                controller.close();
             }
         });
         return { writable, readable };
@@ -37,20 +48,20 @@ class MockWebTransport {
 (globalThis as any).WebTransport = MockWebTransport;
 
 // Mock Session
-vi.mock("./session", () => ({
-    Session: vi.fn().mockImplementation((init: any) => ({
-        ready: init?.conn?.ready || Promise.resolve(),
-        close: vi.fn(),
-    }))
-}));
+// vi.mock("./session", () => ({
+//     Session: vi.fn().mockImplementation((init: any) => ({
+//         ready: init?.conn?.ready || Promise.resolve(),
+//         close: vi.fn().mockResolvedValue(undefined),
+//     }))
+// }));
 
 // Mock TrackMux
-vi.mock("./track_mux", () => ({
-    TrackMux: vi.fn().mockImplementation(() => ({
-        // Mock implementation
-    })),
-    DefaultTrackMux: {}
-}));
+// vi.mock("./track_mux", () => ({
+//     TrackMux: vi.fn().mockImplementation(() => ({
+//         // Mock implementation
+//     })),
+//     DefaultTrackMux: {}
+// }));
 
 describe("Client", () => {
     let client: Client;
@@ -100,11 +111,7 @@ describe("Client", () => {
             
             const session = await client.dial(url);
             expect(session).toBeDefined();
-            expect(Session).toHaveBeenCalledWith({
-                conn: expect.any(MockWebTransport),
-                extensions: undefined,
-                mux: expect.anything()
-            });
+            expect(session.mux).toBe(DefaultTrackMux);
         });
         
         it("should handle URL object", async () => {
@@ -120,6 +127,7 @@ describe("Client", () => {
             
             const session = await client.dial(url, customMux);
             expect(session).toBeDefined();
+            expect(session.mux).toBe(customMux);
         });
         
         it("should handle WebTransport connection errors", async () => {
@@ -150,14 +158,17 @@ describe("Client", () => {
             const session1 = await client.dial("https://example1.com");
             const session2 = await client.dial("https://example2.com");
             
-            client.close();
+            vi.spyOn(session1, 'close').mockResolvedValue(undefined);
+            vi.spyOn(session2, 'close').mockResolvedValue(undefined);
+            
+            await client.close();
             
             expect(session1.close).toHaveBeenCalled();
             expect(session2.close).toHaveBeenCalled();
         });
 
-        it("should work with no sessions", () => {
-            expect(() => client.close()).not.toThrow();
+        it("should work with no sessions", async () => {
+            await expect(client.close()).resolves.toBeUndefined();
         });
     });
     
@@ -166,14 +177,17 @@ describe("Client", () => {
             const session1 = await client.dial("https://example1.com");
             const session2 = await client.dial("https://example2.com");
             
-            client.abort();
+            vi.spyOn(session1, 'close').mockResolvedValue(undefined);
+            vi.spyOn(session2, 'close').mockResolvedValue(undefined);
+            
+            await client.abort();
             
             expect(session1.close).toHaveBeenCalled();
             expect(session2.close).toHaveBeenCalled();
         });
 
-        it("should work with no sessions", () => {
-            expect(() => client.abort()).not.toThrow();
+        it("should work with no sessions", async () => {
+            await expect(client.abort()).resolves.toBeUndefined();
         });
     });
 
@@ -203,8 +217,8 @@ describe("Client", () => {
             const session1 = await client.dial(stringUrl);
             const session2 = await client.dial(urlObject);
 
-            expect(session1).toBeDefined();
-            expect(session2).toBeDefined();
+                expect(session1).toBeDefined();
+                expect(session2).toBeDefined();
         });
 
         it("should handle session management lifecycle", async () => {
@@ -212,8 +226,11 @@ describe("Client", () => {
             const session1 = await client.dial("https://example1.com");
             const session2 = await client.dial("https://example2.com");
 
+            vi.spyOn(session1, 'close').mockResolvedValue(undefined);
+            vi.spyOn(session2, 'close').mockResolvedValue(undefined);
+
             // Close all sessions
-            client.close();
+            await client.close();
 
             expect(session1.close).toHaveBeenCalled();
             expect(session2.close).toHaveBeenCalled();

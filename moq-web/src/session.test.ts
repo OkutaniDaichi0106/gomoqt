@@ -497,5 +497,102 @@ describe("Session", () => {
             const [trackReader, error] = result;
             expect(error).toBeUndefined();
         });
+
+        it("should handle incoming bidirectional subscribe and announce streams", async () => {
+            // Prepare a mock connection where incomingBidirectionalStreams.getReader
+            // returns one stream (subscribe) and then closes.
+            const subscribeReadable = new ReadableStream({ start(controller) { controller.close(); } });
+            const announceReadable = new ReadableStream({ start(controller) { controller.close(); } });
+
+            const subscribeStream = {
+                writable: new WritableStream({ write() {} }),
+                readable: subscribeReadable
+            } as any;
+
+            const announceStream = {
+                writable: new WritableStream({ write() {} }),
+                readable: announceReadable
+            } as any;
+
+            let readCallCount = 0;
+            const biReader = {
+                read: vi.fn().mockImplementation(async () => {
+                    readCallCount++;
+                    if (readCallCount === 1) return { done: false, value: subscribeStream };
+                    if (readCallCount === 2) return { done: false, value: announceStream };
+                    return { done: true };
+                }),
+                releaseLock: vi.fn()
+            } as any;
+
+            mockConn.incomingBidirectionalStreams = {
+                getReader: () => biReader
+            } as any;
+
+            // Make Reader instances return SubscribeStreamType or AnnounceStreamType depending
+            // on the stream object passed in by the code under test.
+            const ReaderMock = vi.mocked(Reader);
+            ReaderMock.mockImplementation((opts: any) => {
+                const s = opts?.stream;
+                if (s === subscribeStream.readable) {
+                    return { readUint8: async () => [2, null] } as any;
+                }
+                if (s === announceStream.readable) {
+                    return { readUint8: async () => [3, null] } as any;
+                }
+                return { readUint8: async () => [1, null] } as any;
+            });
+
+            // Provide a mock mux so we can assert serveTrack/serveAnnouncement were called
+            const mockMux = {
+                serveTrack: vi.fn(),
+                serveAnnouncement: vi.fn()
+            } as any;
+
+            // Create a session which will start listeners
+            const listenSession = new Session({ conn: mockConn as any, mux: mockMux });
+            await listenSession.ready;
+
+            // Give the background listeners a short tick to run through our mocked reads
+            await new Promise((res) => setTimeout(res, 10));
+
+            // Verify that mux.serveTrack and serveAnnouncement were called
+            expect(mockMux.serveTrack).toHaveBeenCalled();
+            expect(mockMux.serveAnnouncement).toHaveBeenCalled();
+        });
+
+        it("should handle incoming unidirectional group stream and enqueue message", async () => {
+            // Prepare a mock unidirectional stream value that will be passed to Reader
+            const uniValue = {} as any;
+
+            let uniReadCount = 0;
+            const uniReaderObj = {
+                read: vi.fn().mockImplementation(async () => {
+                    uniReadCount++;
+                    if (uniReadCount === 1) return { done: false, value: uniValue };
+                    return { done: true };
+                }),
+                releaseLock: vi.fn()
+            } as any;
+
+            mockConn.incomingUnidirectionalStreams = {
+                getReader: () => uniReaderObj
+            } as any;
+
+            // Ensure Reader.readUint8 returns GroupStreamType for the uni stream
+            const ReaderMock2 = vi.mocked(Reader);
+            ReaderMock2.mockImplementationOnce(() => ({ readUint8: async () => [1, null] } as any));
+
+            // Prepare a session and subscribe to create an enqueue function
+            const s = new Session({ conn: mockConn as any });
+            await s.ready;
+
+            // Call subscribe to register an enqueue function
+            const [trackReader, subErr] = await s.subscribe({ segments: ['a'] } as any, 't' as any, { trackPriority: 0 } as any);
+            expect(subErr).toBeUndefined();
+
+            // Give the listeners a tick
+            await new Promise((res) => setTimeout(res, 10));
+        });
     });
 });

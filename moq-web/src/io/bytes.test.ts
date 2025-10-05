@@ -1,6 +1,42 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { BytesBuffer, writeVarint, writeBigVarint, writeUint8Array, writeString, readVarint, readBigVarint, readUint8Array, readString } from './bytes';
 
+describe('io bytes', () => {
+  it('varint roundtrip small values', () => {
+    const buf = new Uint8Array(8);
+    const len = writeVarint(buf, 42, 0);
+    const [v, n] = readVarint(buf, 0);
+    expect(n).toBe(len);
+    expect(v).toBe(42);
+  });
+
+  it('varint 2-byte roundtrip', () => {
+    const buf = new Uint8Array(8);
+    const len = writeVarint(buf, 0x123, 0);
+    const [v, n] = readVarint(buf, 0);
+    expect(n).toBe(len);
+    expect(v).toBe(0x123);
+  });
+
+  it('write/read bytes roundtrip', () => {
+    const data = new Uint8Array([1,2,3,4,5]);
+    const buf = new Uint8Array(16);
+    const wrote = writeUint8Array(buf, data, 0);
+    const [out, n] = readUint8Array(buf, 0);
+    expect(n).toBe(wrote);
+    expect(Array.from(out)).toEqual(Array.from(data));
+  });
+
+  it('write/read string roundtrip', () => {
+    const s = 'hello こんにちは';
+    const buf = new Uint8Array(64);
+    const w = writeString(buf, s, 0);
+    const [out, n] = readString(buf, 0);
+    expect(n).toBe(w);
+    expect(out).toBe(s);
+  });
+});
+
 describe('BytesBuffer', () => {
     it('should write and read data', () => {
         const buffer = new BytesBuffer(new ArrayBuffer(1024));

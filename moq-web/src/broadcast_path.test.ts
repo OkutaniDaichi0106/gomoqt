@@ -81,3 +81,24 @@ describe('BroadcastPath', () => {
         });
     });
 });
+
+
+describe('broadcast path utilities', () => {
+  it('isValidBroadcastPath works', () => {
+    expect(isValidBroadcastPath('/')).toBe(true);
+    expect(isValidBroadcastPath('/a')).toBe(true);
+    expect(isValidBroadcastPath('a')).toBe(false);
+  });
+
+  it('validateBroadcastPath throws on invalid', () => {
+    expect(() => validateBroadcastPath('no-slash')).toThrow();
+    expect(validateBroadcastPath('/ok')).toBe('/ok');
+  });
+
+  it('extension extraction', () => {
+    expect(extension('/alice.hang')).toBe('.hang');
+    expect(extension('/path/to/file')).toBe('');
+    expect(extension('/.hidden')).toBe('');
+    expect(extension('/dir.name/file.txt')).toBe('.txt');
+  });
+});

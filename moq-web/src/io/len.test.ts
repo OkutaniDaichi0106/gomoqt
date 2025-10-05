@@ -62,3 +62,24 @@ describe("len", () => {
         });
     });
 });
+
+
+describe('io len utilities', () => {
+  it('varintLen small values', () => {
+    expect(varintLen(0)).toBe(1);
+    expect(varintLen(63)).toBe(1);
+    expect(varintLen(64)).toBe(2);
+    expect(varintLen(16383)).toBe(2);
+    expect(varintLen(16384)).toBe(4);
+  });
+
+  it('stringLen includes varint header', () => {
+    const s = 'abcd';
+    expect(stringLen(s)).toBe(1 + s.length);
+  });
+
+  it('bytesLen includes varint header', () => {
+    const b = new Uint8Array(10);
+    expect(bytesLen(b)).toBe(1 + b.length);
+  });
+});

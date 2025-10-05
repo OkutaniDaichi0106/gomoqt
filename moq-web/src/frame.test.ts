@@ -38,4 +38,13 @@ describe('Frame', () => {
     dest.copyFrom(src);
     expect(dest.bytes).toEqual(srcData);
   });
+
+  it('clone creates a new Frame with copied data', () => {
+    const data = new Uint8Array([1, 2, 3]);
+    const f = new Frame(data);
+    const cloned = f.clone();
+    expect(cloned).toBeInstanceOf(Frame);
+    expect(cloned.bytes).toEqual(data);
+    expect(cloned.bytes).not.toBe(data); // Ensure it's a copy
+  });
 });

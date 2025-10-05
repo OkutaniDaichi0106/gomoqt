@@ -141,6 +141,18 @@ export class TrackMux {
             this.#announcers.delete(prefix);
         }
     }
+
+    async close(): Promise<void> {
+        const closePromises: Promise<void>[] = [];
+        for (const announcers of this.#announcers.values()) {
+            for (const announcer of announcers) {
+                closePromises.push(announcer.close());
+            }
+        }
+        await Promise.allSettled(closePromises);
+        this.#announcers.clear();
+        this.#handlers.clear();
+    }
 }
 
 export const DefaultTrackMux = new TrackMux();

@@ -103,6 +103,16 @@ describe('AnnouncementWriter', () => {
                 fork: vi.fn().mockReturnValue({} as Announcement),
                 end: vi.fn()
             } as any;
+
+            // Reset mocks
+            mockAnnounceMessage.encode.mockResolvedValue(undefined);
+            mockAnnounceInitMessage.encode.mockResolvedValue(undefined);
+            mockAnnounceMessage.encode.mockClear();
+            mockAnnounceInitMessage.encode.mockClear();
+            mockAnnouncement.isActive.mockClear();
+            mockAnnouncement.ended.mockClear();
+            mockAnnouncement.fork.mockClear();
+            mockAnnouncement.end.mockClear();
         });
 
         it('should send announcement when path matches prefix', async () => {
@@ -148,6 +158,72 @@ describe('AnnouncementWriter', () => {
             const result = await writer.send(mockAnnouncement);
             expect(result).toBeInstanceOf(Error);
             expect(result?.message).toBe('Encoding failed');
+        });
+
+        it('should return error when announcement for path already exists', async () => {
+            // Initialize the writer first
+            await writer.init([]);
+
+            // Keep the announcement active so it remains registered
+            mockAnnouncement.ended = vi.fn().mockReturnValue(new Promise(() => {}));
+            mockAnnouncement.isActive.mockClear();
+            mockAnnouncement.isActive.mockReturnValue(true);
+
+            // Send the first announcement
+            const result1 = await writer.send(mockAnnouncement);
+            expect(result1).toBeUndefined();
+
+            // Send the same announcement again (same path, active)
+            const result2 = await writer.send(mockAnnouncement);
+            // Do not assert on internal call counts (flaky across environments)
+            expect(result2).toBeInstanceOf(Error);
+            expect(result2?.message).toContain('already exists');
+        });
+
+        it('should replace inactive announcement with active one', async () => {
+            // Ensure writer is initialized
+            await writer.init([]);
+
+            // Keep the announcement active so it remains registered
+            mockAnnouncement.ended = vi.fn().mockReturnValue(new Promise(() => {}));
+
+            // First send active announcement
+            const result1 = await writer.send(mockAnnouncement);
+            expect(result1).toBeUndefined();
+
+            // Then send inactive announcement for the same path
+            const inactiveAnnouncement = {
+                broadcastPath: '/test/path' as BroadcastPath,
+                isActive: vi.fn().mockReturnValue(false),
+                ended: vi.fn().mockReturnValue(Promise.resolve()),
+                fork: vi.fn().mockReturnValue({} as Announcement),
+                end: vi.fn()
+            } as any;
+
+            const result2 = await writer.send(inactiveAnnouncement);
+            expect(result2).toBeUndefined();
+            expect(mockAnnouncement.end).toHaveBeenCalled();
+
+            // Now send active announcement again, should replace the inactive one
+            const result3 = await writer.send(mockAnnouncement);
+            expect(result3).toBeUndefined();
+        });
+
+        it('should send end message when announcement ends', async () => {
+            // Initialize the writer first
+            await writer.init([]);
+
+            // Mock ended to resolve immediately
+            mockAnnouncement.ended = vi.fn().mockReturnValue(Promise.resolve());
+
+            const result = await writer.send(mockAnnouncement);
+            expect(result).toBeUndefined();
+
+            // Wait for the ended promise to resolve and the then callback to execute
+            await new Promise(resolve => setTimeout(resolve, 0));
+
+            // Should have encoded the end message
+            expect(mockAnnounceMessage.encode).toHaveBeenCalledWith(mockWriter);
         });
     });
 

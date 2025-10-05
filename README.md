@@ -37,10 +37,6 @@ TypeScript/JavaScript implementation providing WebTransport support for browsers
 - Reader/Writer interfaces for QUIC streams
 - Integration with browser WebTransport API
 
-### catalog
-
-Implementation of the MOQ Catalog for content detection and management.
-
 ### interop
 
 Interoperability testing tools and examples for validating MOQ implementations across different platforms.

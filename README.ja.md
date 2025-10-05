@@ -22,10 +22,6 @@ MOQ Liteの主要なやり取りを実装しています。
 
 ブラウザ向けWebTransportをサポートするTypeScript/JavaScript実装です。
 
-### catalog
-
-MOQ Catalogの実装で、コンテンツの検出と管理を行います。
-
 ### interop
 
 異なるプラットフォーム間でのMOQ実装の相互運用性を検証するためのテストツールとサンプルです。

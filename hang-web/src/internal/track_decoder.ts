@@ -115,7 +115,7 @@ export class NoOpTrackDecoder implements TrackDecoder {
             ctx,
         ]);
 
-        return this.#ctx.err() || source.context.err() || ContextCancelledError;
+        return this.#ctx.err() || source.context.err() || undefined;
     }
 
     async tee(dest: WritableStream<EncodedChunk>): Promise<Error | undefined> {
@@ -137,13 +137,14 @@ export class NoOpTrackDecoder implements TrackDecoder {
                 this.#ctx.done(),
             ]);
         } catch (e) {
+            // Clean up the destination only on error
+            if (this.#dests.has(dest)) {
+                this.#dests.delete(dest);
+            }
             return new Error("destination closed with error");
-        } finally {
-            // Clean up the destination
-            this.#dests.delete(dest);
         }
 
-        return this.#ctx.err() || ContextCancelledError;
+        return this.#ctx.err();
     }
 
     async close(cause?: Error): Promise<void> {

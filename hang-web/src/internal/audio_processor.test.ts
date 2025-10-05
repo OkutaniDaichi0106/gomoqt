@@ -77,9 +77,7 @@ describe('AudioTrackProcessor', () => {
         expect(track.getSettings).toHaveBeenCalled();
     });
 
-    test('creates processor with worklet fallback', async () => {
-        // self is {} from beforeEach, MediaStreamTrackProcessor is undefined
-
+    test('creates processor with worklet', async () => {
         const mockContext = {
             audioWorklet: {
                 addModule: vi.fn().mockResolvedValue(undefined),
@@ -120,7 +118,7 @@ describe('AudioTrackProcessor', () => {
         expect(processor.gain).toBe(mockGain);
         expect(mockContext.audioWorklet.addModule).toHaveBeenCalledWith('mock-worklet.js');
         expect(mockSource.connect).toHaveBeenCalledWith(mockGain);
-        expect(console.warn).toHaveBeenCalledWith('Using MediaStreamTrackProcessor polyfill; performance might suffer.');
+        expect(console.warn).toHaveBeenCalledWith('Using AudioWorklet polyfill; performance might suffer.');
 
         // Test readable stream cancel
         const reader = processor.readable.getReader();
@@ -128,5 +126,62 @@ describe('AudioTrackProcessor', () => {
         expect(mockContext.close).toHaveBeenCalled();
         expect(mockGain.disconnect).toHaveBeenCalled();
         expect(mockSource.disconnect).toHaveBeenCalled();
+    });
+
+    test('handles worklet messages correctly', async () => {
+        const mockContext = {
+            audioWorklet: {
+                addModule: vi.fn().mockResolvedValue(undefined),
+            },
+            close: vi.fn(),
+            sampleRate: 44100,
+        };
+        const mockWorkletNode = {
+            port: {
+                onmessage: null as any,
+            },
+        };
+        const mockGain = {
+            connect: vi.fn(),
+            disconnect: vi.fn(),
+        };
+        const mockSource = {
+            connect: vi.fn(),
+            disconnect: vi.fn(),
+        };
+
+        (globalThis as any).AudioContext = vi.fn(() => mockContext);
+        (globalThis as any).MediaStream = vi.fn(() => ({}));
+        (globalThis as any).MediaStreamAudioSourceNode = vi.fn(() => mockSource);
+        (globalThis as any).GainNode = vi.fn(() => mockGain);
+        (globalThis as any).AudioWorkletNode = vi.fn(() => mockWorkletNode);
+        (globalThis as any).AudioData = vi.fn(() => 'mock-audio-data');
+
+        const track = {
+            getSettings: vi.fn(() => ({
+                sampleRate: 44100,
+                channelCount: 2,
+            })),
+        } as unknown as MediaStreamTrack;
+
+        const processor = new AudioTrackProcessor(track);
+
+        // Get the reader to start the stream and set up the worklet
+        const reader = processor.readable.getReader();
+
+        // Wait for the worklet to be set up (onmessage should be assigned)
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        // Simulate worklet message by calling the onmessage handler that was set
+        const mockMessageData = { format: 'f32' as const, sampleRate: 44100, numberOfFrames: 1024, numberOfChannels: 2, data: new Float32Array(2048), timestamp: 0 };
+        if (mockWorkletNode.port.onmessage) {
+            mockWorkletNode.port.onmessage({ data: mockMessageData });
+        }
+
+        // Check that AudioData was created with the message data
+        expect((globalThis as any).AudioData).toHaveBeenCalledWith(mockMessageData);
+
+        // Clean up
+        await reader.cancel();
     });
 });

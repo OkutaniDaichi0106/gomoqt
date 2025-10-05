@@ -30,6 +30,7 @@ export default defineConfig({
         '**/*.test.ts',
         '**/*.config.ts',
       ],
+      reportsDirectory: 'coverage',
     },
     // TypeScript support
     typecheck: {

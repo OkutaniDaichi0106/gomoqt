@@ -30,7 +30,7 @@
     "./catalog": {
       "import": "./dist/catalog/index.js",
       "types": "./dist/catalog/index.d.ts",
-      "browser": "./dist/catalog/browser.js"
+      "browser": "./dist/catalog/index.js"
     },
     "./elements": {
       "import": "./dist/elements/index.js",

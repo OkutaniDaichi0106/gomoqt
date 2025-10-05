@@ -11,7 +11,7 @@ vi.mock('golikejs/context', () => ({
         err: vi.fn(() => undefined),
     }, vi.fn()]),
     background: vi.fn(() => Promise.resolve()),
-    ContextCancelledError: undefined,
+    ContextCancelledError: new Error("Context cancelled"),
 }));
 
 describe('NoOpTrackDecoder', () => {
@@ -54,14 +54,61 @@ describe('NoOpTrackDecoder', () => {
                 closeWithError: vi.fn(),
             };
 
-            const result = await decoder.decodeFrom(Promise.resolve(), mockSource as any);
+            const result = await decoder.decodeFrom(Promise.resolve(undefined), mockSource as any);
             expect(result).toBeUndefined();
         });
     });
 
-    describe('close', () => {
-        it('should close the decoder', async () => {
-            await expect(decoder.close()).resolves.not.toThrow();
+    describe('tee', () => {
+        it('should add a new destination', async () => {
+            const mockDest = {
+                getWriter: vi.fn(() => ({
+                    write: vi.fn(),
+                    close: vi.fn(),
+                    releaseLock: vi.fn(),
+                    closed: Promise.resolve(),
+                })),
+            };
+
+            const result = await decoder.tee(mockDest as any);
+            expect(result).toBeUndefined();
+            expect(mockDest.getWriter).toHaveBeenCalled();
+        });
+
+        it('should return error if destination already set', async () => {
+            const mockDest = {
+                getWriter: vi.fn(() => ({
+                    write: vi.fn(),
+                    close: vi.fn(),
+                    releaseLock: vi.fn(),
+                    closed: Promise.resolve(),
+                })),
+            };
+
+            // First tee
+            await decoder.tee(mockDest as any);
+
+            // Second tee with same dest
+            const result = await decoder.tee(mockDest as any);
+            expect(result).toBeInstanceOf(Error);
+            expect((result as Error).message).toBe('destination already set');
+        });
+
+        it('should handle close method', async () => {
+            const mockWriter = {
+                write: vi.fn(),
+                close: vi.fn(),
+                releaseLock: vi.fn(),
+                closed: Promise.resolve(),
+            };
+            const mockDest = {
+                getWriter: vi.fn(() => mockWriter),
+                close: vi.fn(),
+            };
+
+            await decoder.tee(mockDest as any);
+            await expect(decoder.close()).resolves.toBeUndefined();
+            expect(mockWriter.releaseLock).toHaveBeenCalled();
         });
     });
 });

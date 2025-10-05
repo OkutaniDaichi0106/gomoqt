@@ -1,5 +1,33 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
-// Mock the external dependencies before importing the module under test
+
+vi.mock("./json", () => ({
+    JsonEncoder: vi.fn().mockImplementation((init) => {
+        const instance = {
+            configure: vi.fn((config) => {
+                // Simulate calling the output callback with decoder config
+                // This should trigger the resolveConfig in the encoder
+                setTimeout(() => {
+                    if (init.output) {
+                        // Call output with metadata containing decoderConfig
+                        init.output(
+                            { type: "key", data: new Uint8Array(0) },
+                            { decoderConfig: { space: 2 } }
+                        );
+                    }
+                }, 1);
+            }),
+            encode: vi.fn(),
+            close: vi.fn(),
+        };
+        return instance;
+    }),
+    JsonDecoder: vi.fn().mockImplementation(() => ({
+        configure: vi.fn(),
+        close: vi.fn(),
+        decode: vi.fn(),
+    })),
+    EncodedJsonChunk: vi.fn(),
+}));
 vi.mock("@okutanidaichi/moqt", () => ({
     PublishAbortedErrorCode: 100,
     InternalGroupErrorCode: 101,
@@ -10,26 +38,32 @@ vi.mock("@okutanidaichi/moqt/io", () => ({
     readVarint: vi.fn().mockReturnValue([BigInt(0), 0]),
 }));
 
-vi.mock("golikejs/context", () => ({
-    withCancelCause: vi.fn().mockReturnValue([
-        { 
+vi.mock("golikejs/context", () => {
+    const ContextCancelledError = new Error("Context cancelled");
+    return {
+        withCancelCause: vi.fn().mockReturnValue([
+            { 
+                done: () => Promise.resolve(),
+                err: () => undefined 
+            },
+            vi.fn()
+        ]),
+        withPromise: vi.fn(),
+        background: vi.fn().mockReturnValue({ 
             done: () => Promise.resolve(),
             err: () => undefined 
-        },
-        vi.fn()
-    ]),
-    withPromise: vi.fn(),
-    background: vi.fn().mockReturnValue({ 
-        done: () => Promise.resolve(),
-        err: () => undefined 
-    }),
-    ContextCancelledError: new Error("Context cancelled"),
-    Mutex: class MockMutex {
-        async lock() {
-            return () => {};
+        }),
+        ContextCancelledError,
+        Mutex: class MockMutex {
+            async lock() {
+                return () => {};
+            }
+            unlock() {}
         }
-    }
-}));
+    };
+});
+
+import { ContextCancelledError } from 'golikejs/context';
 
 import { CatalogTrackEncoder, CatalogTrackDecoder } from "./catalog_track";
 import type { CatalogTrackEncoderInit, CatalogTrackDecoderInit } from "./catalog_track";
@@ -237,6 +271,65 @@ describe("CatalogTrackEncoder", () => {
             // The method should return undefined or an error when cancelled
             // This test verifies the method completes without throwing
         });
+
+        test("encodes successfully when not cancelled", async () => {
+            const encoder = new CatalogTrackEncoder({});
+            
+            const mockWriter = {
+                context: { 
+                    done: () => new Promise(() => {}), // Never resolves
+                    err: () => undefined 
+                }
+            } as any;
+            
+            const ctx = new Promise<void>((resolve) => setTimeout(resolve, 10)); // Resolves quickly
+            
+            const result = await encoder.encodeTo(ctx, mockWriter);
+            
+            expect(result).toBe(ContextCancelledError);
+        });
+
+        test("returns undefined when TrackWriter is already being encoded to", async () => {
+            const encoder = new CatalogTrackEncoder({});
+            
+            const mockWriter = {
+                context: { 
+                    done: () => new Promise(() => {}), // Never resolves
+                    err: () => undefined 
+                }
+            } as any;
+            
+            const ctx = new Promise<void>((resolve) => setTimeout(resolve, 10));
+            
+            // Start two encodeTo calls simultaneously
+            const promise1 = encoder.encodeTo(ctx, mockWriter);
+            const promise2 = encoder.encodeTo(ctx, mockWriter);
+            
+            // Wait for both to complete
+            const [result1, result2] = await Promise.all([promise1, promise2]);
+            
+            // One should succeed (return ContextCancelledError), the other should return undefined
+            expect([result1, result2]).toContain(ContextCancelledError);
+            expect([result1, result2]).toContain(undefined);
+        });
+
+        test("returns error when dest context is cancelled", async () => {
+            const encoder = new CatalogTrackEncoder({});
+            
+            const mockWriter = {
+                context: { 
+                    done: () => Promise.resolve(),
+                    err: () => new Error("Dest context cancelled") 
+                }
+            } as any;
+            
+            const ctx = new Promise<void>((resolve) => setTimeout(resolve, 10));
+            
+            const result = await encoder.encodeTo(ctx, mockWriter);
+            
+            expect(result).toBeInstanceOf(Error);
+            expect(result?.message).toBe("Dest context cancelled");
+        });
     });
 
     describe("root", () => {
@@ -301,22 +394,9 @@ describe("CatalogTrackEncoder", () => {
                 replacer: [] as any[]
             };
 
-            // The configure method might hang waiting for decoder config resolution
-            // Let's test that it can be called without hanging
-            const configurePromise = encoder.configure(config);
+            const result = await encoder.configure(config);
             
-            // Close the encoder to ensure the configure method doesn't hang indefinitely
-            setTimeout(() => encoder.close(), 10);
-            
-            try {
-                await Promise.race([
-                    configurePromise,
-                    new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 100))
-                ]);
-            } catch (error) {
-                // Expected to timeout or throw error when encoder is closed
-                expect(error).toBeDefined();
-            }
+            expect(result).toEqual({ space: 2 });
         });
     });
 

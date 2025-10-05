@@ -31,5 +31,19 @@ if (typeof HTMLElement === 'undefined') {
   } as any;
 }
 
+// Polyfill for EncodedAudioChunk
+if (typeof EncodedAudioChunk === 'undefined') {
+  global.EncodedAudioChunk = class EncodedAudioChunk {
+    type: string;
+    timestamp: number;
+    data: Uint8Array;
+    constructor(options: { type: string; timestamp: number; data: Uint8Array }) {
+      this.type = options.type;
+      this.timestamp = options.timestamp;
+      this.data = options.data;
+    }
+  } as any;
+}
+
 // Make vi globally available (similar to jest)
 global.vi = vi;

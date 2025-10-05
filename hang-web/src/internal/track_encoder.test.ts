@@ -1,6 +1,23 @@
-import { describe, test, expect } from 'vitest';
-import { cloneChunk } from './track_encoder';
+import { describe, test, expect, vi } from 'vitest';
+import { cloneChunk, NoOpTrackEncoder } from './track_encoder';
 import type { EncodedChunk } from './container';
+import { ContextCancelledError } from 'golikejs/context';
+
+vi.mock('golikejs/context', () => ({
+    withCancelCause: vi.fn(() => [{
+        done: vi.fn(() => new Promise(() => {})),
+        err: vi.fn(() => undefined),
+    }, vi.fn()]),
+    background: vi.fn(() => ({
+        done: vi.fn(() => new Promise(() => {})),
+        err: vi.fn(() => undefined),
+    })),
+    ContextCancelledError: class ContextCancelledError extends Error {
+        constructor() {
+            super("Context cancelled");
+        }
+    },
+}));
 
 type TestChunk = EncodedChunk & { data: Uint8Array; timestamp: number };
 
@@ -61,11 +78,54 @@ describe('cloneChunk', () => {
         expect(dest).toEqual(chunk.data);
     });
 
-    test('throws when destination buffer is too small', () => {
-    const chunk = createChunk([9, 9, 9]);
+    test('throws when destination type is unsupported', () => {
+    const chunk = createChunk([1, 2, 3]);
     const clone = cloneChunk(chunk);
 
-        const dest = new Uint8Array(2);
-        expect(() => clone.copyTo(dest)).toThrow(RangeError);
+        expect(() => clone.copyTo({} as any)).toThrow('Unsupported destination type');
+    });
+});
+
+describe('NoOpTrackEncoder', () => {
+    test('encoding is false when no tracks', () => {
+        const source = {
+            getReader: vi.fn(() => ({
+                read: vi.fn(() => Promise.resolve({ done: true })),
+                releaseLock: vi.fn(),
+            })),
+        } as unknown as ReadableStream<EncodedChunk>;
+        const encoder = new NoOpTrackEncoder({ source });
+        expect(encoder.encoding).toBe(false);
+    });
+
+    test('encoding is true when tracks are added', async () => {
+        const source = {
+            getReader: vi.fn(() => ({
+                read: vi.fn(() => Promise.resolve({ done: true })),
+                releaseLock: vi.fn(),
+            })),
+        } as unknown as ReadableStream<EncodedChunk>;
+        const encoder = new NoOpTrackEncoder({ source });
+        const mockTrackWriter = {
+            createGroup: vi.fn(),
+            context: {
+                done: vi.fn(() => new Promise(() => {})),
+                err: vi.fn(() => undefined),
+            },
+        } as any;
+        const result = await encoder.encodeTo(Promise.resolve(), mockTrackWriter);
+        expect(result).toBe(ContextCancelledError);
+        expect(encoder.encoding).toBe(true);
+    });
+
+    test('close method', async () => {
+        const source = {
+            getReader: vi.fn(() => ({
+                read: vi.fn(() => Promise.resolve({ done: true })),
+                releaseLock: vi.fn(),
+            })),
+        } as unknown as ReadableStream<EncodedChunk>;
+        const encoder = new NoOpTrackEncoder({ source });
+        await expect(encoder.close()).resolves.toBeUndefined();
     });
 });

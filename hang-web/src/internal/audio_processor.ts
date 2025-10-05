@@ -5,12 +5,7 @@ export class AudioTrackProcessor {
     readonly gain: GainNode;
 
     constructor(track: MediaStreamTrack) {
-        if (self.MediaStreamTrackProcessor) {
-            // @ts-ignore
-            this.readable = new self.MediaStreamTrackProcessor({ track }).readable;
-        }
-
-        console.warn("Using MediaStreamTrackProcessor polyfill; performance might suffer.");
+        console.warn("Using AudioWorklet polyfill; performance might suffer.");
 
         const settings = track.getSettings();
         if (!settings) {

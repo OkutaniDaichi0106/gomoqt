@@ -8,6 +8,10 @@ describe('VideoTrackProcessor', () => {
     const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
     const originalConsoleWarn = console.warn;
 
+    const originalVideoFrame = globalThis.VideoFrame;
+    const originalMediaStream = globalThis.MediaStream;
+    const originalReadableStream = globalThis.ReadableStream;
+
     beforeEach(() => {
         (globalThis as any).self = {};
         (globalThis as any).document = {
@@ -23,6 +27,8 @@ describe('VideoTrackProcessor', () => {
             now: vi.fn(() => 0),
         };
         (globalThis as any).requestAnimationFrame = vi.fn();
+        (globalThis as any).VideoFrame = vi.fn();
+        (globalThis as any).MediaStream = vi.fn();
         console.warn = vi.fn();
     });
 
@@ -49,6 +55,24 @@ describe('VideoTrackProcessor', () => {
             delete (globalThis as any).requestAnimationFrame;
         } else {
             (globalThis as any).requestAnimationFrame = originalRequestAnimationFrame;
+        }
+
+        if (originalVideoFrame === undefined) {
+            delete (globalThis as any).VideoFrame;
+        } else {
+            (globalThis as any).VideoFrame = originalVideoFrame;
+        }
+
+        if (originalMediaStream === undefined) {
+            delete (globalThis as any).MediaStream;
+        } else {
+            (globalThis as any).MediaStream = originalMediaStream;
+        }
+
+        if (originalReadableStream === undefined) {
+            delete (globalThis as any).ReadableStream;
+        } else {
+            (globalThis as any).ReadableStream = originalReadableStream;
         }
 
         console.warn = originalConsoleWarn;
@@ -90,18 +114,26 @@ describe('VideoTrackProcessor', () => {
     });
 
     test('polyfill start method initializes video and canvas', async () => {
-        const track = {
-            getSettings: vi.fn(() => ({ frameRate: 30 })),
-        } as unknown as MediaStreamTrack;
-
-        const processor = new VideoTrackProcessor(track);
-        const reader = processor.readable.getReader();
+        // Temporarily remove MediaStreamTrackProcessor to force polyfill usage
+        const originalProcessor = (self as any).MediaStreamTrackProcessor;
+        delete (self as any).MediaStreamTrackProcessor;
 
         // Mock the start method's async operations
+        let loadedMetadataResolve: () => void;
+        const loadedMetadataPromise = new Promise<void>((resolve) => {
+            loadedMetadataResolve = resolve;
+        });
+
         const mockVideo = {
             play: vi.fn().mockResolvedValue(undefined),
             srcObject: null,
-            onloadedmetadata: null,
+            set onloadedmetadata(callback: () => void) {
+                // Simulate calling the callback immediately after setting
+                Promise.resolve().then(() => {
+                    callback();
+                    loadedMetadataResolve();
+                });
+            },
             videoWidth: 640,
             videoHeight: 480,
         };
@@ -109,7 +141,7 @@ describe('VideoTrackProcessor', () => {
             width: 0,
             height: 0,
             getContext: vi.fn(() => ({
-                // mock context
+                drawImage: vi.fn(),
             })),
         };
 
@@ -119,8 +151,37 @@ describe('VideoTrackProcessor', () => {
             return {};
         });
 
-        // Note: Testing the start method fully would require mocking the ReadableStream internals
-        // This is a basic test to ensure the structure is correct
-        expect(reader).toBeDefined();
-    });
+        let startPromise: Promise<void>;
+        const OriginalReadableStream = (globalThis as any).ReadableStream;
+        (globalThis as any).ReadableStream = class MockReadableStream {
+            constructor(underlyingSource: any) {
+                startPromise = underlyingSource.start();
+            }
+            getReader() {
+                return {
+                    read: vi.fn().mockResolvedValue({ done: true }),
+                };
+            }
+        };
+
+        const track = {
+            getSettings: vi.fn(() => ({ frameRate: 30 })),
+        } as unknown as MediaStreamTrack;
+
+        const processor = new VideoTrackProcessor(track);
+
+        // Wait for start to complete
+        await startPromise!;
+
+        expect(mockVideo.play).toHaveBeenCalled();
+        expect(mockCanvas.width).toBe(640);
+        expect(mockCanvas.height).toBe(480);
+        expect(mockCanvas.getContext).toHaveBeenCalledWith('2d', { desynchronized: true });
+
+        // Restore original MediaStreamTrackProcessor and ReadableStream
+        if (originalProcessor) {
+            (self as any).MediaStreamTrackProcessor = originalProcessor;
+        }
+        (globalThis as any).ReadableStream = OriginalReadableStream;
+    }, 30000);
 });

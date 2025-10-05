@@ -82,6 +82,8 @@ describe("video_track", () => {
             const decoder = new VideoTrackDecoder({
                 destination,
             });
+
+            expect(decoder.decoding).toBe(false);
         });
 
     it("VideoTrackEncoder encodeTo method", async () => {
@@ -142,6 +144,7 @@ describe("video_track", () => {
         });
 
         await expect(encoder.close()).resolves.toBeUndefined();
+        expect(encoder.encoding).toBe(false);
     });
 
     it("VideoTrackDecoder decodeFrom method", async () => {
@@ -223,6 +226,7 @@ describe("video_track", () => {
         await decoder.decodeFrom(Promise.resolve(), mockTrackReader);
 
         await expect(decoder.close()).resolves.toBeUndefined();
+        expect(decoder.decoding).toBe(false);
     });
 });
 

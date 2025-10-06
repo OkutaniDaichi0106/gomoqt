@@ -722,6 +722,132 @@ func TestServer_ServeQUICConn_ShuttingDown(t *testing.T) {
 	assert.Equal(t, ErrServerClosed, err)
 }
 
+func TestServer_ServeQUICConn_NativeQUIC(t *testing.T) {
+	server := &Server{
+		Addr:   ":8080",
+		Logger: slog.Default(),
+	}
+
+	mockStream := &MockQUICStream{}
+	mockStream.On("StreamID").Return(quic.StreamID(0))
+	mockStream.On("Context").Return(context.Background())
+
+	// Prepare session messages
+	var buf bytes.Buffer
+	require.NoError(t, message.StreamTypeSession.Encode(&buf))
+	scm := message.SessionClientMessage{
+		SupportedVersions: []protocol.Version{protocol.Version(0)},
+		Parameters:        make(message.Parameters),
+	}
+	require.NoError(t, scm.Encode(&buf))
+
+	data := buf.Bytes()
+	mockStream.ReadFunc = func(p []byte) (int, error) {
+		if len(data) == 0 {
+			return 0, io.EOF
+		}
+		n := copy(p, data)
+		data = data[n:]
+		return n, nil
+	}
+
+	mockConn := &MockQUICConnection{}
+	mockConn.On("ConnectionState").Return(quic.ConnectionState{
+		TLS: tls.ConnectionState{
+			NegotiatedProtocol: NextProtoMOQ,
+		},
+		Version: 1,
+	})
+	mockConn.On("LocalAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090})
+	mockConn.On("Context").Return(context.Background())
+	mockConn.On("AcceptStream", mock.Anything).Return(mockStream, nil).Once()
+
+	mockSetupHandler := &MockSetupHandler{}
+	mockSetupHandler.On("ServeMOQ", mock.Anything, mock.Anything).Return()
+
+	server.SetupHandler = mockSetupHandler
+
+	err := server.ServeQUICConn(mockConn)
+	assert.NoError(t, err)
+
+	mockSetupHandler.AssertExpectations(t)
+}
+
+func TestServer_HandleNativeQUIC_NilLogger(t *testing.T) {
+	server := &Server{
+		Addr: ":8080",
+	}
+
+	mockStream := &MockQUICStream{}
+	mockStream.On("StreamID").Return(quic.StreamID(0))
+	mockStream.On("Context").Return(context.Background())
+
+	// Prepare session messages
+	var buf bytes.Buffer
+	require.NoError(t, message.StreamTypeSession.Encode(&buf))
+	scm := message.SessionClientMessage{
+		SupportedVersions: []protocol.Version{protocol.Version(0)},
+		Parameters:        make(message.Parameters),
+	}
+	require.NoError(t, scm.Encode(&buf))
+
+	data := buf.Bytes()
+	mockStream.ReadFunc = func(p []byte) (int, error) {
+		if len(data) == 0 {
+			return 0, io.EOF
+		}
+		n := copy(p, data)
+		data = data[n:]
+		return n, nil
+	}
+
+	mockConn := &MockQUICConnection{}
+	mockConn.On("LocalAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090})
+	mockConn.On("ConnectionState").Return(quic.ConnectionState{
+		TLS: tls.ConnectionState{
+			NegotiatedProtocol: NextProtoMOQ,
+		},
+		Version: 1,
+	})
+	mockConn.On("Context").Return(context.Background())
+	mockConn.On("AcceptStream", mock.Anything).Return(mockStream, nil).Once()
+
+	mockSetupHandler := &MockSetupHandler{}
+	mockSetupHandler.On("ServeMOQ", mock.Anything, mock.Anything).Return()
+
+	server.SetupHandler = mockSetupHandler
+
+	err := server.handleNativeQUIC(mockConn)
+	assert.NoError(t, err)
+
+	mockSetupHandler.AssertExpectations(t)
+}
+
+func TestServer_HandleNativeQUIC_AcceptStreamError(t *testing.T) {
+	server := &Server{
+		Addr:   ":8080",
+		Logger: slog.Default(),
+	}
+
+	mockConn := &MockQUICConnection{}
+	mockConn.On("LocalAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090})
+	mockConn.On("ConnectionState").Return(quic.ConnectionState{
+		TLS: tls.ConnectionState{
+			NegotiatedProtocol: NextProtoMOQ,
+		},
+		Version: 1,
+	})
+	mockConn.On("Context").Return(context.Background())
+	mockConn.On("AcceptStream", mock.Anything).Return(nil, errors.New("accept error"))
+
+	err := server.handleNativeQUIC(mockConn)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "accept error")
+}
+
 func TestServer_ServeWebTransport(t *testing.T) {
 	tests := map[string]struct {
 		expectError  bool
@@ -779,6 +905,26 @@ func TestServer_ServeWebTransport_ShuttingDown(t *testing.T) {
 	err := server.ServeWebTransport(mockResponseWriter, req)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "server is shutting down")
+}
+
+func TestServer_ServeWebTransport_WithNilLogger(t *testing.T) {
+	server := &Server{
+		Addr: ":8080",
+	}
+
+	mockResponseWriter := &MockHTTPResponseWriter{}
+	req := &http.Request{
+		URL: &url.URL{Path: "/test"},
+	}
+
+	wtServer := &MockWebTransportServer{}
+	wtServer.On("Upgrade", mockResponseWriter, req).Return(nil, errors.New("upgrade failed"))
+
+	server.wtServer = wtServer
+
+	err := server.ServeWebTransport(mockResponseWriter, req)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to upgrade connection")
 }
 
 // func TestServer_Accept_EdgeCases(t *testing.T) {

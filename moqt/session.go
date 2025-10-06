@@ -47,7 +47,7 @@ func newSession(conn quic.Connection, sessStream *sessionStream, mux *TrackMux, 
 	sess := &Session{
 		sessionStream: sessStream,
 		ctx:           conn.Context(),
-		logger:        connLogger,
+		logger:        sessLogger,
 		conn:          conn,
 		mux:           mux,
 		trackReaders:  make(map[SubscribeID]*TrackReader),

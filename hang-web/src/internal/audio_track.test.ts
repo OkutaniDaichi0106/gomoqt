@@ -842,4 +842,135 @@ describe("audio_track", () => {
         await decoder.close();
         expect(releaseLockMock).toHaveBeenCalledTimes(1);
     });
+
+    it("AudioTrackDecoder handles acceptGroup returning undefined", async () => {
+        class FakeAudioDecoder {
+            constructor(_: any) {}
+            configure(): void {}
+            decode(): void {}
+            close(): void {}
+        }
+
+        vi.stubGlobal('AudioDecoder', FakeAudioDecoder);
+
+        const destination = {
+            getWriter: () => ({
+                ready: Promise.resolve(),
+                write: vi.fn(),
+                releaseLock: vi.fn(),
+            }),
+        } as unknown as WritableStream<AudioData>;
+
+        const decoder = new AudioTrackDecoder({
+            destination,
+        });
+
+        const mockTrackReader = {
+            acceptGroup: vi.fn().mockResolvedValue(undefined),
+            context: {
+                done: vi.fn(() => Promise.resolve()),
+                err: vi.fn(() => undefined),
+            },
+        } as unknown as TrackReader;
+
+        const result = await decoder.decodeFrom(Promise.resolve(), mockTrackReader);
+        
+        expect(result).toBe(ContextCancelledError);
+    });
+
+    it("AudioTrackEncoder configure handles context cancellation", async () => {
+        let outputCallback: ((chunk: EncodedAudioChunk, metadata?: any) => void) | undefined;
+        
+        class FakeAudioEncoder {
+            constructor(init: any) {
+                outputCallback = init.output;
+            }
+            configure(_config: any): void {
+                // Simulate encoder not calling output after cancellation
+            }
+            encode(): void {}
+            close(): void {}
+        }
+
+        vi.stubGlobal('AudioEncoder', FakeAudioEncoder);
+
+        const reader = {
+            read: vi.fn(() => Promise.resolve({ done: true })),
+            releaseLock: vi.fn(),
+        };
+        const source = {
+            getReader: () => reader,
+        } as unknown as ReadableStream<AudioData>;
+
+        const encoder = new AudioTrackEncoder({
+            source,
+        });
+
+        await encoder.close(new Error("Test cancellation"));
+
+        const config: AudioEncoderConfig = { codec: 'opus', sampleRate: 48000, numberOfChannels: 2 };
+        
+        // configure should not wait forever - it will be resolved via the cancellation
+        const configPromise = encoder.configure(config);
+        expect(configPromise).toBeInstanceOf(Promise);
+    });
+
+    it("AudioTrackDecoder decodeFrom warns and replaces existing source", async () => {
+        const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        
+        class FakeAudioDecoder {
+            constructor(_: any) {}
+            configure(): void {}
+            decode(): void {}
+            close(): void {}
+        }
+
+        vi.stubGlobal('AudioDecoder', FakeAudioDecoder);
+
+        const destination = {
+            getWriter: () => ({
+                ready: Promise.resolve(),
+                write: vi.fn(),
+                releaseLock: vi.fn(),
+            }),
+        } as unknown as WritableStream<AudioData>;
+
+        const decoder = new AudioTrackDecoder({
+            destination,
+        });
+
+        const closeWithErrorMock1 = vi.fn().mockResolvedValue(undefined);
+        const mockTrackReader1 = {
+            acceptGroup: vi.fn(() => new Promise(() => {})), // Never resolves to keep source active
+            closeWithError: closeWithErrorMock1,
+            context: {
+                done: vi.fn(() => new Promise(() => {})), // Never resolves
+                err: vi.fn(() => undefined),
+            },
+        } as unknown as TrackReader;
+
+        // Set first source
+        decoder.decodeFrom(new Promise(() => {}), mockTrackReader1);
+        
+        // Wait for microtask to execute
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        // Set second source (should warn and replace)
+        const mockTrackReader2 = {
+            acceptGroup: vi.fn().mockResolvedValue(undefined),
+            closeWithError: vi.fn().mockResolvedValue(undefined),
+            context: {
+                done: vi.fn(() => Promise.resolve()),
+                err: vi.fn(() => undefined),
+            },
+        } as unknown as TrackReader;
+
+        await decoder.decodeFrom(Promise.resolve(), mockTrackReader2);
+
+        expect(consoleWarnSpy).toHaveBeenCalledWith("[AudioDecodeStream] source is already set, replacing");
+        expect(closeWithErrorMock1).toHaveBeenCalled();
+        
+        consoleWarnSpy.mockRestore();
+    });
+
 });

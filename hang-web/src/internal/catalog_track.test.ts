@@ -1237,4 +1237,110 @@ describe("Error Resilience Tests", () => {
         expect(decoder.decoding).toBe(false);
         expect(nextTrackResult[0]).toBeUndefined(); // Track should be undefined
     });
+
+    test("CatalogTrackDecoder decodeFrom warns and replaces existing source", async () => {
+        const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        
+        const decoder = new CatalogTrackDecoder({});
+
+        const closeWithErrorMock1 = vi.fn().mockResolvedValue(undefined);
+        const mockTrackReader1 = {
+            acceptGroup: vi.fn(() => new Promise(() => {})), // Never resolves to keep source active
+            closeWithError: closeWithErrorMock1,
+            context: {
+                done: vi.fn(() => new Promise(() => {})), // Never resolves
+                err: vi.fn(() => undefined),
+            },
+        };
+
+        // Set first source
+        decoder.decodeFrom(new Promise(() => {}), mockTrackReader1 as any);
+        
+        // Wait for microtask to execute
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        // Set second source (should warn and replace)
+        const mockTrackReader2 = {
+            acceptGroup: vi.fn().mockResolvedValue(undefined),
+            closeWithError: vi.fn().mockResolvedValue(undefined),
+            context: {
+                done: vi.fn(() => Promise.resolve()),
+                err: vi.fn(() => undefined),
+            },
+        };
+
+        await decoder.decodeFrom(Promise.resolve(), mockTrackReader2 as any);
+
+        expect(consoleWarnSpy).toHaveBeenCalledWith("[JsonTrackDecoder] source already set. replacing...");
+        expect(closeWithErrorMock1).toHaveBeenCalled();
+        
+        consoleWarnSpy.mockRestore();
+        await decoder.close();
+    });
+
+    test("CatalogTrackDecoder close returns early when already cancelled", async () => {
+        const decoder = new CatalogTrackDecoder({});
+
+        // Close decoder first time
+        await decoder.close(new Error("First close"));
+        
+        // Verify decoding is false
+        expect(decoder.decoding).toBe(false);
+
+        // Try to close again - should return early (no error thrown)
+        await expect(decoder.close(new Error("Second close"))).resolves.toBeUndefined();
+        
+        expect(decoder.decoding).toBe(false);
+    });
+
+    test("CatalogTrackEncoder handles multiple track operations", async () => {
+        const encoder = new CatalogTrackEncoder({});
+
+        const track1: TrackDescriptor = {
+            name: "track1",
+            priority: 1,
+            schema: "video/h264",
+            config: { width: 1920, height: 1080 }
+        };
+
+        const track2: TrackDescriptor = {
+            name: "track2",
+            priority: 2,
+            schema: "audio/opus",
+            config: { sampleRate: 48000 }
+        };
+
+        // Add multiple tracks
+        encoder.setTrack(track1);
+        encoder.setTrack(track2);
+
+        expect(encoder.hasTrack("track1")).toBe(true);
+        expect(encoder.hasTrack("track2")).toBe(true);
+
+        // Remove one track
+        encoder.removeTrack("track1");
+        expect(encoder.hasTrack("track1")).toBe(false);
+        expect(encoder.hasTrack("track2")).toBe(true);
+
+        await encoder.close();
+    });
+
+    test("CatalogTrackDecoder handles multiple nextTrack calls", async () => {
+        const decoder = new CatalogTrackDecoder({});
+
+        // Call nextTrack multiple times without adding tracks
+        const result1Promise = decoder.nextTrack();
+        const result2Promise = decoder.nextTrack();
+
+        // Close decoder to resolve the promises
+        await decoder.close();
+
+        const [result1, error1] = await result1Promise;
+        const [result2, error2] = await result2Promise;
+
+        expect(result1).toBeUndefined();
+        expect(result2).toBeUndefined();
+        expect(error1).toBeDefined();
+        expect(error2).toBeDefined();
+    });
 });

@@ -614,7 +614,147 @@ describe("video_track", () => {
         
         consoleErrorSpy.mockRestore();
     });
+
+    it("VideoTrackDecoder handles acceptGroup returning undefined", async () => {
+        class FakeVideoDecoder {
+            constructor(_: any) {}
+            configure(): void {}
+            decode(): void {}
+            close(): void {}
+        }
+
+        vi.stubGlobal('VideoDecoder', FakeVideoDecoder);
+
+        const destination = {
+            getWriter: () => ({
+                ready: Promise.resolve(),
+                write: vi.fn(),
+                releaseLock: vi.fn(),
+            }),
+        } as unknown as WritableStream<VideoFrame>;
+
+        const decoder = new VideoTrackDecoder({
+            destination,
+        });
+
+        const mockTrackReader = {
+            acceptGroup: vi.fn().mockResolvedValue(undefined),
+            context: {
+                done: vi.fn(() => Promise.resolve()),
+                err: vi.fn(() => undefined),
+            },
+        } as unknown as TrackReader;
+
+        const result = await decoder.decodeFrom(Promise.resolve(), mockTrackReader);
+        
+        expect(result).toBe(ContextCancelledError);
+    });
+
+    it("VideoTrackDecoder configure replaces existing source", async () => {
+        const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        
+        class FakeVideoDecoder {
+            constructor(_: any) {}
+            configure(): void {}
+            decode(): void {}
+            close(): void {}
+        }
+
+        vi.stubGlobal('VideoDecoder', FakeVideoDecoder);
+
+        const destination = {
+            getWriter: () => ({
+                ready: Promise.resolve(),
+                write: vi.fn(),
+                releaseLock: vi.fn(),
+            }),
+        } as unknown as WritableStream<VideoFrame>;
+
+        const decoder = new VideoTrackDecoder({
+            destination,
+        });
+
+        const closeWithErrorMock = vi.fn().mockResolvedValue(undefined);
+        const mockTrackReader = {
+            acceptGroup: vi.fn().mockResolvedValue(undefined),
+            closeWithError: closeWithErrorMock,
+            context: {
+                done: vi.fn(() => Promise.resolve()),
+                err: vi.fn(() => undefined),
+            },
+        } as unknown as TrackReader;
+
+        // Set source first
+        await decoder.decodeFrom(Promise.resolve(), mockTrackReader);
+
+        // Configure (should close existing source)
+        await decoder.configure({ codec: 'vp09.00.10.08' });
+
+        expect(consoleWarnSpy).toHaveBeenCalledWith("[VideoTrackDecoder] source already set. cancelling...");
+        expect(closeWithErrorMock).toHaveBeenCalled();
+        
+        consoleWarnSpy.mockRestore();
+    });
+
+    it("VideoTrackDecoder decodeFrom replaces existing source", async () => {
+        const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        
+        class FakeVideoDecoder {
+            constructor(_: any) {}
+            configure(): void {}
+            decode(): void {}
+            close(): void {}
+        }
+
+        vi.stubGlobal('VideoDecoder', FakeVideoDecoder);
+
+        const destination = {
+            getWriter: () => ({
+                ready: Promise.resolve(),
+                write: vi.fn(),
+                releaseLock: vi.fn(),
+            }),
+        } as unknown as WritableStream<VideoFrame>;
+
+        const decoder = new VideoTrackDecoder({
+            destination,
+        });
+
+        const closeWithErrorMock = vi.fn().mockResolvedValue(undefined);
+        const mockTrackReader1 = {
+            acceptGroup: vi.fn().mockResolvedValue(undefined),
+            closeWithError: closeWithErrorMock,
+            context: {
+                done: vi.fn(() => Promise.resolve()),
+                err: vi.fn(() => undefined),
+            },
+        } as unknown as TrackReader;
+
+        // Set first source
+        const promise1 = decoder.decodeFrom(Promise.resolve(), mockTrackReader1);
+
+        // Set second source (should replace the first)
+        const mockTrackReader2 = {
+            acceptGroup: vi.fn().mockResolvedValue(undefined),
+            context: {
+                done: vi.fn(() => Promise.resolve()),
+                err: vi.fn(() => undefined),
+            },
+        } as unknown as TrackReader;
+
+        const promise2 = decoder.decodeFrom(Promise.resolve(), mockTrackReader2);
+
+        await Promise.all([promise1, promise2]);
+
+        expect(consoleWarnSpy).toHaveBeenCalledWith("[VideoDecodeStream] source already set. replacing...");
+        expect(closeWithErrorMock).toHaveBeenCalled();
+        
+        consoleWarnSpy.mockRestore();
+    });
 });
+
+
+
 
 
 

@@ -71,3 +71,47 @@ func TestAnnouncePleaseMessage_EncodeDecode(t *testing.T) {
 		})
 	}
 }
+
+func TestAnnouncePleaseMessage_DecodeErrors(t *testing.T) {
+	t.Run("read message length error", func(t *testing.T) {
+		var aim message.AnnouncePleaseMessage
+		src := bytes.NewReader([]byte{})
+		err := aim.Decode(src)
+		assert.Error(t, err)
+	})
+
+	t.Run("read full error", func(t *testing.T) {
+		var aim message.AnnouncePleaseMessage
+		var buf bytes.Buffer
+		buf.WriteByte(0x80 | 10)
+		buf.WriteByte(0x00)
+		src := bytes.NewReader(buf.Bytes()[:2])
+		err := aim.Decode(src)
+		assert.Error(t, err)
+	})
+
+	t.Run("read string error", func(t *testing.T) {
+		var aim message.AnnouncePleaseMessage
+		var buf bytes.Buffer
+		buf.WriteByte(0x80 | 1)
+		buf.WriteByte(0x00)
+		buf.WriteByte(0x80) // invalid string
+		src := bytes.NewReader(buf.Bytes())
+		err := aim.Decode(src)
+		assert.Error(t, err)
+	})
+
+	t.Run("extra data", func(t *testing.T) {
+		var aim message.AnnouncePleaseMessage
+		var buf bytes.Buffer
+		buf.WriteByte(0x04)
+		buf.WriteByte(0x00)
+		buf.WriteByte(0x01) // string length 1
+		buf.WriteByte('a')
+		buf.WriteByte(0x00) // extra
+		src := bytes.NewReader(buf.Bytes())
+		err := aim.Decode(src)
+		assert.Error(t, err)
+		assert.Equal(t, message.ErrMessageTooShort, err)
+	})
+}

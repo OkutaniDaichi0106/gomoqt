@@ -2,6 +2,7 @@ package message_test
 
 import (
 	"bytes"
+	"io"
 	"testing"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
@@ -73,4 +74,60 @@ func TestSessionServerMessage_EncodeDecode(t *testing.T) {
 			assert.Equal(t, tc.input.Parameters, decoded.Parameters, "Parameters should match")
 		})
 	}
+}
+
+func TestSessionServerMessage_DecodeErrors(t *testing.T) {
+	t.Run("read message length error", func(t *testing.T) {
+		var ssm message.SessionServerMessage
+		src := bytes.NewReader([]byte{})
+		err := ssm.Decode(src)
+		assert.Error(t, err)
+	})
+
+	t.Run("read full error", func(t *testing.T) {
+		var ssm message.SessionServerMessage
+		var buf bytes.Buffer
+		buf.WriteByte(0x80 | 10)
+		buf.WriteByte(0x00)
+		src := bytes.NewReader(buf.Bytes()[:2])
+		err := ssm.Decode(src)
+		assert.Error(t, err)
+	})
+
+	t.Run("read varint error for selected version", func(t *testing.T) {
+		var ssm message.SessionServerMessage
+		var buf bytes.Buffer
+		buf.WriteByte(0x80 | 1)
+		buf.WriteByte(0x00)
+		buf.WriteByte(0x80) // invalid varint
+		src := bytes.NewReader(buf.Bytes())
+		err := ssm.Decode(src)
+		assert.Error(t, err)
+	})
+
+	t.Run("read parameters error", func(t *testing.T) {
+		var ssm message.SessionServerMessage
+		var buf bytes.Buffer
+		buf.WriteByte(0x80 | 3)
+		buf.WriteByte(0x00)
+		buf.WriteByte(0x01) // selected version
+		buf.WriteByte(0x80) // invalid parameters
+		src := bytes.NewReader(buf.Bytes())
+		err := ssm.Decode(src)
+		assert.Error(t, err)
+	})
+
+	t.Run("extra data", func(t *testing.T) {
+		var ssm message.SessionServerMessage
+		var buf bytes.Buffer
+		buf.WriteByte(0x03) // length 3
+		buf.WriteByte(0x00)
+		buf.WriteByte(0x01) // selected version
+		buf.WriteByte(0x00) // parameters count 0
+		buf.WriteByte(0xFF) // extra byte
+		src := bytes.NewReader(buf.Bytes())
+		err := ssm.Decode(src)
+		assert.Error(t, err)
+		assert.Equal(t, io.EOF, err)
+	})
 }

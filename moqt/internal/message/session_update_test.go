@@ -54,3 +54,46 @@ func TestSessionUpdateMessage_EncodeDecode(t *testing.T) {
 		})
 	}
 }
+
+func TestSessionUpdateMessage_DecodeErrors(t *testing.T) {
+	t.Run("read message length error", func(t *testing.T) {
+		var sum message.SessionUpdateMessage
+		src := bytes.NewReader([]byte{})
+		err := sum.Decode(src)
+		assert.Error(t, err)
+	})
+
+	t.Run("read full error", func(t *testing.T) {
+		var sum message.SessionUpdateMessage
+		var buf bytes.Buffer
+		buf.WriteByte(0x80 | 10)
+		buf.WriteByte(0x00)
+		src := bytes.NewReader(buf.Bytes()[:2])
+		err := sum.Decode(src)
+		assert.Error(t, err)
+	})
+
+	t.Run("read varint error for bitrate", func(t *testing.T) {
+		var sum message.SessionUpdateMessage
+		var buf bytes.Buffer
+		buf.WriteByte(0x80 | 1)
+		buf.WriteByte(0x00)
+		buf.WriteByte(0x80) // invalid varint
+		src := bytes.NewReader(buf.Bytes())
+		err := sum.Decode(src)
+		assert.Error(t, err)
+	})
+
+	t.Run("extra data", func(t *testing.T) {
+		var sum message.SessionUpdateMessage
+		var buf bytes.Buffer
+		buf.WriteByte(0x03)
+		buf.WriteByte(0x00)
+		buf.WriteByte(0x01) // bitrate
+		buf.WriteByte(0x00) // extra
+		src := bytes.NewReader(buf.Bytes())
+		err := sum.Decode(src)
+		assert.Error(t, err)
+		assert.Equal(t, message.ErrMessageTooShort, err)
+	})
+}

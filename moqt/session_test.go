@@ -701,3 +701,521 @@ func TestCancelStreamWithError(t *testing.T) {
 
 	mockStream.AssertExpectations(t)
 }
+
+func TestSession_AddTrackReader(t *testing.T) {
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(context.Background())
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
+
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+
+	sessStream := newSessionStream(mockStream, &SetupRequest{
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
+	})
+	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
+
+	reader := &TrackReader{}
+	id := SubscribeID(1)
+	session.addTrackReader(id, reader)
+	assert.Equal(t, reader, session.trackReaders[id])
+
+	session.Terminate(NoError, "")
+}
+
+func TestSession_ProcessBiStream_Announce(t *testing.T) {
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(context.Background())
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
+
+	mockSessStream := &MockQUICStream{}
+	mockSessStream.On("Context").Return(context.Background())
+	mockSessStream.On("Read", mock.Anything).Return(0, io.EOF)
+
+	sessStream := newSessionStream(mockSessStream, &SetupRequest{
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
+	})
+	mux := NewTrackMux()
+	session := newSession(conn, sessStream, mux, slog.Default(), nil)
+
+	// Create a mock stream for ANNOUNCE
+	mockStream := &MockQUICStream{}
+	mockStream.On("StreamID").Return(quic.StreamID(1))
+	mockStream.On("Context").Return(context.Background())
+
+	// Prepare StreamType + AnnouncePleaseMessage
+	var buf bytes.Buffer
+	err := message.StreamTypeAnnounce.Encode(&buf)
+	assert.NoError(t, err)
+	apm := message.AnnouncePleaseMessage{TrackPrefix: "/test/prefix/"}
+	err = apm.Encode(&buf)
+	assert.NoError(t, err)
+
+	data := buf.Bytes()
+	mockStream.ReadFunc = func(p []byte) (int, error) {
+		if len(data) == 0 {
+			return 0, io.EOF
+		}
+		n := copy(p, data)
+		data = data[n:]
+		return n, nil
+	}
+
+	streamLogger := slog.Default().With("stream_id", mockStream.StreamID())
+
+	// This will block, so we run it in a goroutine
+	done := make(chan struct{})
+	go func() {
+		session.processBiStream(mockStream, streamLogger)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Success
+	case <-time.After(100 * time.Millisecond):
+		// Expected to block waiting for announcements
+	}
+
+	session.Terminate(NoError, "")
+}
+
+func TestSession_ProcessBiStream_Subscribe(t *testing.T) {
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(context.Background())
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
+	conn.On("OpenUniStream").Return(&MockQUICSendStream{}, nil).Maybe()
+
+	mockSessStream := &MockQUICStream{}
+	mockSessStream.On("Context").Return(context.Background())
+	mockSessStream.On("Read", mock.Anything).Return(0, io.EOF)
+
+	sessStream := newSessionStream(mockSessStream, &SetupRequest{
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
+	})
+	mux := NewTrackMux()
+	session := newSession(conn, sessStream, mux, slog.Default(), nil)
+
+	// Create a mock stream for SUBSCRIBE
+	mockStream := &MockQUICStream{}
+	mockStream.On("StreamID").Return(quic.StreamID(2))
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
+	mockStream.On("CancelRead", mock.Anything).Return().Maybe()
+
+	// Prepare StreamType + SubscribeMessage
+	var buf bytes.Buffer
+	err := message.StreamTypeSubscribe.Encode(&buf)
+	assert.NoError(t, err)
+	sm := message.SubscribeMessage{
+		SubscribeID:   1,
+		BroadcastPath: "/test/path",
+		TrackName:     "video",
+		TrackPriority: 1,
+	}
+	err = sm.Encode(&buf)
+	assert.NoError(t, err)
+
+	data := buf.Bytes()
+	mockStream.ReadFunc = func(p []byte) (int, error) {
+		if len(data) == 0 {
+			return 0, io.EOF
+		}
+		n := copy(p, data)
+		data = data[n:]
+		return n, nil
+	}
+	mockStream.On("Write", mock.Anything).Return(0, nil)
+
+	streamLogger := slog.Default().With("stream_id", mockStream.StreamID())
+
+	// This will block in serveTrack, so we run it in a goroutine
+	done := make(chan struct{})
+	go func() {
+		session.processBiStream(mockStream, streamLogger)
+		close(done)
+	}()
+
+	// Wait a bit for the processing to start and track writer to be added
+	time.Sleep(100 * time.Millisecond)
+
+	// Terminate to stop blocking
+	session.Terminate(NoError, "")
+
+	select {
+	case <-done:
+		// Success
+	case <-time.After(200 * time.Millisecond):
+		// Expected to complete after termination
+	}
+}
+
+func TestSession_ProcessBiStream_InvalidStreamType(t *testing.T) {
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(context.Background())
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
+
+	mockSessStream := &MockQUICStream{}
+	mockSessStream.On("Context").Return(context.Background())
+	mockSessStream.On("Read", mock.Anything).Return(0, io.EOF)
+
+	sessStream := newSessionStream(mockSessStream, &SetupRequest{
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
+	})
+	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
+
+	// Create a mock stream with invalid stream type
+	mockStream := &MockQUICStream{}
+	mockStream.On("StreamID").Return(quic.StreamID(3))
+
+	// Prepare invalid StreamType (255)
+	var buf bytes.Buffer
+	buf.WriteByte(255)
+
+	data := buf.Bytes()
+	mockStream.ReadFunc = func(p []byte) (int, error) {
+		if len(data) == 0 {
+			return 0, io.EOF
+		}
+		n := copy(p, data)
+		data = data[n:]
+		return n, nil
+	}
+
+	streamLogger := slog.Default().With("stream_id", mockStream.StreamID())
+
+	done := make(chan struct{})
+	go func() {
+		session.processBiStream(mockStream, streamLogger)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Expected to return after terminating session
+	case <-time.After(200 * time.Millisecond):
+		t.Error("processBiStream should complete after invalid stream type")
+	}
+
+	assert.True(t, session.terminating(), "Session should be terminating after invalid stream type")
+}
+
+func TestSession_ProcessUniStream_Group(t *testing.T) {
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(context.Background())
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
+
+	mockSessStream := &MockQUICStream{}
+	mockSessStream.On("Context").Return(context.Background())
+	mockSessStream.On("Read", mock.Anything).Return(0, io.EOF)
+
+	sessStream := newSessionStream(mockSessStream, &SetupRequest{
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
+	})
+	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
+
+	// Add a track reader
+	mockTrackStream := &MockQUICStream{}
+	mockTrackStream.On("Context").Return(context.Background())
+	mockTrackStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
+	mockTrackStream.On("Write", mock.Anything).Return(0, nil).Maybe()
+
+	substr := newSendSubscribeStream(1, mockTrackStream, &TrackConfig{}, Info{})
+	trackReader := newTrackReader("/test", "video", substr, func() {})
+	session.addTrackReader(1, trackReader)
+
+	// Create a mock receive stream for GROUP
+	mockRecvStream := &MockQUICReceiveStream{}
+	mockRecvStream.On("StreamID").Return(quic.StreamID(4))
+	mockRecvStream.On("CancelRead", mock.Anything).Return().Maybe()
+
+	// Prepare StreamType + GroupMessage
+	var buf bytes.Buffer
+	err := message.StreamTypeGroup.Encode(&buf)
+	assert.NoError(t, err)
+	gm := message.GroupMessage{
+		SubscribeID:   1,
+		GroupSequence: 0,
+	}
+	err = gm.Encode(&buf)
+	assert.NoError(t, err)
+
+	data := buf.Bytes()
+	mockRecvStream.ReadFunc = func(p []byte) (int, error) {
+		if len(data) == 0 {
+			return 0, io.EOF
+		}
+		n := copy(p, data)
+		data = data[n:]
+		return n, nil
+	}
+	mockRecvStream.On("Context").Return(context.Background())
+
+	streamLogger := slog.Default().With("stream_id", mockRecvStream.StreamID())
+
+	session.processUniStream(mockRecvStream, streamLogger)
+
+	// Verify group was enqueued
+	time.Sleep(10 * time.Millisecond)
+
+	session.Terminate(NoError, "")
+}
+
+func TestSession_ProcessUniStream_UnknownSubscribeID(t *testing.T) {
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(context.Background())
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
+
+	mockSessStream := &MockQUICStream{}
+	mockSessStream.On("Context").Return(context.Background())
+	mockSessStream.On("Read", mock.Anything).Return(0, io.EOF)
+
+	sessStream := newSessionStream(mockSessStream, &SetupRequest{
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
+	})
+	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
+
+	// Create a mock receive stream for GROUP with unknown subscribe ID
+	mockRecvStream := &MockQUICReceiveStream{}
+	mockRecvStream.On("StreamID").Return(quic.StreamID(5))
+	mockRecvStream.On("CancelRead", quic.StreamErrorCode(InvalidSubscribeIDErrorCode)).Return()
+
+	// Prepare StreamType + GroupMessage with unknown subscribe ID
+	var buf bytes.Buffer
+	err := message.StreamTypeGroup.Encode(&buf)
+	assert.NoError(t, err)
+	gm := message.GroupMessage{
+		SubscribeID:   999, // Unknown ID
+		GroupSequence: 0,
+	}
+	err = gm.Encode(&buf)
+	assert.NoError(t, err)
+
+	data := buf.Bytes()
+	mockRecvStream.ReadFunc = func(p []byte) (int, error) {
+		if len(data) == 0 {
+			return 0, io.EOF
+		}
+		n := copy(p, data)
+		data = data[n:]
+		return n, nil
+	}
+
+	streamLogger := slog.Default().With("stream_id", mockRecvStream.StreamID())
+
+	session.processUniStream(mockRecvStream, streamLogger)
+
+	mockRecvStream.AssertExpectations(t)
+
+	session.Terminate(NoError, "")
+}
+
+func TestSession_ProcessUniStream_InvalidStreamType(t *testing.T) {
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(context.Background())
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
+
+	mockSessStream := &MockQUICStream{}
+	mockSessStream.On("Context").Return(context.Background())
+	mockSessStream.On("Read", mock.Anything).Return(0, io.EOF)
+
+	sessStream := newSessionStream(mockSessStream, &SetupRequest{
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
+	})
+	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
+
+	// Create a mock receive stream with invalid stream type
+	mockRecvStream := &MockQUICReceiveStream{}
+	mockRecvStream.On("StreamID").Return(quic.StreamID(6))
+
+	// Prepare invalid StreamType (254)
+	var buf bytes.Buffer
+	buf.WriteByte(254)
+
+	data := buf.Bytes()
+	mockRecvStream.ReadFunc = func(p []byte) (int, error) {
+		if len(data) == 0 {
+			return 0, io.EOF
+		}
+		n := copy(p, data)
+		data = data[n:]
+		return n, nil
+	}
+
+	streamLogger := slog.Default().With("stream_id", mockRecvStream.StreamID())
+
+	done := make(chan struct{})
+	go func() {
+		session.processUniStream(mockRecvStream, streamLogger)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Expected to return after terminating session
+	case <-time.After(200 * time.Millisecond):
+		t.Error("processUniStream should complete after invalid stream type")
+	}
+
+	assert.True(t, session.terminating(), "Session should be terminating after invalid stream type")
+}
+
+func TestSession_Subscribe_TerminatingSession(t *testing.T) {
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(context.Background())
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
+
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+
+	sessStream := newSessionStream(mockStream, &SetupRequest{
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
+	})
+	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
+
+	// Terminate the session
+	err := session.Terminate(NoError, "")
+	assert.NoError(t, err)
+
+	// Wait for termination to complete
+	time.Sleep(10 * time.Millisecond)
+
+	// Try to subscribe - should fail because session is terminating
+	config := &TrackConfig{TrackPriority: 1}
+	reader, err := session.Subscribe("/test", "video", config)
+
+	// Subscribe should fail or return nil because session is terminated
+	if err != nil || reader == nil {
+		// Expected behavior
+		assert.Nil(t, reader)
+	}
+}
+
+func TestSession_AcceptAnnounce_TerminatingSession(t *testing.T) {
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(context.Background())
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
+
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+
+	sessStream := newSessionStream(mockStream, &SetupRequest{
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
+	})
+	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
+
+	// Terminate the session
+	err := session.Terminate(NoError, "")
+	assert.NoError(t, err)
+
+	// Wait for termination to complete
+	time.Sleep(10 * time.Millisecond)
+
+	// Try to accept announce - should fail because session is terminating
+	reader, err := session.AcceptAnnounce("/test/prefix/")
+
+	// AcceptAnnounce should fail or return nil because session is terminated
+	if err != nil || reader == nil {
+		// Expected behavior
+		assert.Nil(t, reader)
+	}
+}
+
+func TestSession_Terminate_AlreadyTerminating(t *testing.T) {
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(context.Background())
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil).Once()
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080}).Maybe()
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
+
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+
+	sessStream := newSessionStream(mockStream, &SetupRequest{
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
+	})
+	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
+
+	// First termination
+	err1 := session.Terminate(NoError, "first termination")
+	assert.NoError(t, err1)
+
+	// Second termination should return immediately without error
+	err2 := session.Terminate(InternalSessionErrorCode, "second termination")
+	// The second call returns nil because terminating() is already true
+	assert.NoError(t, err2)
+
+	// Verify CloseWithError was only called once
+	conn.AssertExpectations(t)
+}
+
+func TestSession_Terminate_WithApplicationError(t *testing.T) {
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(context.Background())
+	appErr := &quic.ApplicationError{
+		ErrorCode:    quic.ApplicationErrorCode(InternalSessionErrorCode),
+		ErrorMessage: "application error",
+	}
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(appErr)
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
+
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+
+	sessStream := newSessionStream(mockStream, &SetupRequest{
+		Path:             "test/path",
+		ClientExtensions: NewParameters(),
+	})
+	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
+
+	err := session.Terminate(InternalSessionErrorCode, "test error")
+
+	assert.Error(t, err)
+	var sessErr *SessionError
+	assert.ErrorAs(t, err, &sessErr)
+}

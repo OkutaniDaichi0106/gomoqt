@@ -77,3 +77,12 @@ func TestStreamType_Constants(t *testing.T) {
 		})
 	}
 }
+
+func TestStreamType_DecodeErrors(t *testing.T) {
+	t.Run("read error", func(t *testing.T) {
+		var stm message.StreamType
+		src := bytes.NewReader([]byte{})
+		err := stm.Decode(src)
+		assert.Error(t, err)
+	})
+}

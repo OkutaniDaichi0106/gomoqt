@@ -18,12 +18,12 @@ func ReadVarint(b []byte) (uint64, int, error) {
 	case 1:
 		i = uint64(b[0] & (0xff - 0xc0))
 	case 2:
-		i = uint64(b[1]) + uint64(b[0]&0x3f)<<8
+		i = uint64(b[0]&0x3f)<<8 | uint64(b[1])
 	case 4:
-		i = uint64(b[3]) + uint64(b[2])<<8 + uint64(b[1])<<16 + uint64(b[0]&0x3f)<<24
+		i = uint64(b[0]&0x3f)<<24 | uint64(b[1])<<16 | uint64(b[2])<<8 | uint64(b[3])
 	case 8:
-		i = uint64(b[7]) + uint64(b[6])<<8 + uint64(b[5])<<16 + uint64(b[4])<<24 +
-			uint64(b[3])<<32 + uint64(b[2])<<40 + uint64(b[1])<<48 + uint64(b[0]&0x3f)<<56
+		i = uint64(b[0]&0x3f)<<56 | uint64(b[1])<<48 | uint64(b[2])<<40 | uint64(b[3])<<32 |
+			uint64(b[4])<<24 | uint64(b[5])<<16 | uint64(b[6])<<8 | uint64(b[7])
 	}
 	return i, l, nil
 }
@@ -45,7 +45,7 @@ func ReadMessageLength(r io.Reader) (uint64, error) {
 	b2 := buf[0]
 
 	if l == 2 {
-		return uint64(b2) + uint64(b1)<<8, nil
+		return uint64(b1)<<8 | uint64(b2), nil
 	}
 
 	if _, err := r.Read(buf[:]); err != nil {
@@ -58,7 +58,7 @@ func ReadMessageLength(r io.Reader) (uint64, error) {
 	b4 := buf[0]
 
 	if l == 4 {
-		return uint64(b4) + uint64(b3)<<8 + uint64(b2)<<16 + uint64(b1)<<24, nil
+		return uint64(b1)<<24 | uint64(b2)<<16 | uint64(b3)<<8 | uint64(b4), nil
 	}
 
 	if _, err := r.Read(buf[:]); err != nil {
@@ -78,7 +78,7 @@ func ReadMessageLength(r io.Reader) (uint64, error) {
 	}
 	b8 := buf[0]
 
-	return uint64(b8) + uint64(b7)<<8 + uint64(b6)<<16 + uint64(b5)<<24 + uint64(b4)<<32 + uint64(b3)<<40 + uint64(b2)<<48 + uint64(b1)<<56, nil
+	return uint64(b1)<<56 | uint64(b2)<<48 | uint64(b3)<<40 | uint64(b4)<<32 | uint64(b5)<<24 | uint64(b6)<<16 | uint64(b7)<<8 | uint64(b8), nil
 }
 
 func ReadBytes(b []byte) ([]byte, int, error) {
@@ -118,13 +118,10 @@ func ReadStringArray(b []byte) ([]string, int, error) {
 
 	b = b[total:]
 
-	var arr []string
+	arr := make([]string, 0, count)
 	for range count {
 		str, n, err := ReadString(b)
 		if err != nil {
-			if err == io.EOF {
-				return arr, total, nil
-			}
 			return nil, 0, err
 		}
 		arr = append(arr, str)
@@ -159,9 +156,6 @@ func ReadParameters(b []byte) (Parameters, int, error) {
 
 		value, n, err := ReadBytes(b)
 		if err != nil {
-			if err == io.EOF {
-				return params, total, nil
-			}
 			return nil, 0, err
 		}
 		b = b[n:]

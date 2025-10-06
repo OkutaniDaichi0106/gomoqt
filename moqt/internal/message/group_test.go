@@ -79,3 +79,59 @@ func TestGroupMessage_EncodeDecode(t *testing.T) {
 		})
 	}
 }
+
+func TestGroupMessage_DecodeErrors(t *testing.T) {
+	t.Run("read message length error", func(t *testing.T) {
+		var g message.GroupMessage
+		src := bytes.NewReader([]byte{})
+		err := g.Decode(src)
+		assert.Error(t, err)
+	})
+
+	t.Run("read full error", func(t *testing.T) {
+		var g message.GroupMessage
+		var buf bytes.Buffer
+		buf.WriteByte(0x80 | 10)
+		buf.WriteByte(0x00)
+		src := bytes.NewReader(buf.Bytes()[:2])
+		err := g.Decode(src)
+		assert.Error(t, err)
+	})
+
+	t.Run("read varint error for subscribe id", func(t *testing.T) {
+		var g message.GroupMessage
+		var buf bytes.Buffer
+		buf.WriteByte(0x80 | 1)
+		buf.WriteByte(0x00)
+		buf.WriteByte(0x80) // invalid varint
+		src := bytes.NewReader(buf.Bytes())
+		err := g.Decode(src)
+		assert.Error(t, err)
+	})
+
+	t.Run("read varint error for group sequence", func(t *testing.T) {
+		var g message.GroupMessage
+		var buf bytes.Buffer
+		buf.WriteByte(0x80 | 3)
+		buf.WriteByte(0x00)
+		buf.WriteByte(0x01) // subscribe id
+		buf.WriteByte(0x80) // invalid varint for group sequence
+		src := bytes.NewReader(buf.Bytes())
+		err := g.Decode(src)
+		assert.Error(t, err)
+	})
+
+	t.Run("extra data", func(t *testing.T) {
+		var g message.GroupMessage
+		var buf bytes.Buffer
+		buf.WriteByte(0x03)
+		buf.WriteByte(0x00)
+		buf.WriteByte(0x01) // subscribe id
+		buf.WriteByte(0x01) // group sequence
+		buf.WriteByte(0x00) // extra
+		src := bytes.NewReader(buf.Bytes())
+		err := g.Decode(src)
+		assert.Error(t, err)
+		assert.Equal(t, message.ErrMessageTooShort, err)
+	})
+}

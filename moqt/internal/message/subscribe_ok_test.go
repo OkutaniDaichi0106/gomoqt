@@ -41,3 +41,34 @@ func TestSubscribeOkMessage_EncodeDecode(t *testing.T) {
 		})
 	}
 }
+
+func TestSubscribeOkMessage_DecodeErrors(t *testing.T) {
+	t.Run("read message length error", func(t *testing.T) {
+		var som message.SubscribeOkMessage
+		src := bytes.NewReader([]byte{})
+		err := som.Decode(src)
+		assert.Error(t, err)
+	})
+
+	t.Run("read full error", func(t *testing.T) {
+		var som message.SubscribeOkMessage
+		var buf bytes.Buffer
+		buf.WriteByte(0x80 | 10)
+		buf.WriteByte(0x00)
+		src := bytes.NewReader(buf.Bytes()[:2])
+		err := som.Decode(src)
+		assert.Error(t, err)
+	})
+
+	t.Run("extra data", func(t *testing.T) {
+		var som message.SubscribeOkMessage
+		var buf bytes.Buffer
+		buf.WriteByte(0x01)
+		buf.WriteByte(0x00)
+		buf.WriteByte(0x00) // extra
+		src := bytes.NewReader(buf.Bytes())
+		err := som.Decode(src)
+		assert.Error(t, err)
+		assert.Equal(t, message.ErrMessageTooShort, err)
+	})
+}

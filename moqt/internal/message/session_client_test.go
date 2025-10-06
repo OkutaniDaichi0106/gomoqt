@@ -74,3 +74,73 @@ func TestSessionClientMessage_EncodeDecode(t *testing.T) {
 		})
 	}
 }
+
+func TestSessionClientMessage_DecodeErrors(t *testing.T) {
+	t.Run("read message length error", func(t *testing.T) {
+		var scm message.SessionClientMessage
+		src := bytes.NewReader([]byte{})
+		err := scm.Decode(src)
+		assert.Error(t, err)
+	})
+
+	t.Run("read full error", func(t *testing.T) {
+		var scm message.SessionClientMessage
+		var buf bytes.Buffer
+		buf.WriteByte(0x80 | 10)
+		buf.WriteByte(0x00)
+		src := bytes.NewReader(buf.Bytes()[:2])
+		err := scm.Decode(src)
+		assert.Error(t, err)
+	})
+
+	t.Run("read varint error for count", func(t *testing.T) {
+		var scm message.SessionClientMessage
+		var buf bytes.Buffer
+		buf.WriteByte(0x80 | 1)
+		buf.WriteByte(0x00)
+		buf.WriteByte(0x80) // invalid varint
+		src := bytes.NewReader(buf.Bytes())
+		err := scm.Decode(src)
+		assert.Error(t, err)
+	})
+
+	t.Run("read varint error for version", func(t *testing.T) {
+		var scm message.SessionClientMessage
+		var buf bytes.Buffer
+		buf.WriteByte(0x80 | 3)
+		buf.WriteByte(0x00)
+		buf.WriteByte(0x01) // count 1
+		buf.WriteByte(0x80) // invalid varint for version
+		src := bytes.NewReader(buf.Bytes())
+		err := scm.Decode(src)
+		assert.Error(t, err)
+	})
+
+	t.Run("read parameters error", func(t *testing.T) {
+		var scm message.SessionClientMessage
+		var buf bytes.Buffer
+		buf.WriteByte(0x80 | 3)
+		buf.WriteByte(0x00)
+		buf.WriteByte(0x01) // count 1
+		buf.WriteByte(0x01) // version 1
+		buf.WriteByte(0x80) // invalid parameters
+		src := bytes.NewReader(buf.Bytes())
+		err := scm.Decode(src)
+		assert.Error(t, err)
+	})
+
+	t.Run("extra data", func(t *testing.T) {
+		var scm message.SessionClientMessage
+		var buf bytes.Buffer
+		buf.WriteByte(0x05)
+		buf.WriteByte(0x00)
+		buf.WriteByte(0x01) // count 1
+		buf.WriteByte(0x01) // version 1
+		buf.WriteByte(0x00) // parameters count 0
+		buf.WriteByte(0x00) // extra
+		src := bytes.NewReader(buf.Bytes())
+		err := scm.Decode(src)
+		assert.Error(t, err)
+		assert.Equal(t, message.ErrMessageTooShort, err)
+	})
+}

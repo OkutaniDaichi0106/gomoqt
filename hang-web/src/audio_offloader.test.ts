@@ -85,7 +85,7 @@ describe("AudioOffloader", () => {
         });
 
         test("creates audio offloader with custom AudioContext", () => {
-            const customAudioContext = mockAudioContext;
+            const customAudioContext = mockAudioContext as any as AudioContext;
             const offloader = new AudioOffloader({ audioContext: customAudioContext });
 
             expect(global.AudioContext).not.toHaveBeenCalled();
@@ -541,7 +541,7 @@ describe("AudioOffloader", () => {
         });
 
         test("context cleanup does not close external audio context", async () => {
-            const externalAudioContext = mockAudioContext;
+            const externalAudioContext = mockAudioContext as any as AudioContext;
             const mockDonePromise = Promise.resolve();
             const mockContext = { done: vi.fn(() => mockDonePromise) };
             vi.mocked(context.withCancelCause).mockReturnValue([

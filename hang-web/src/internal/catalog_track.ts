@@ -44,6 +44,12 @@ const GOP_DURATION = 2*1000*1000; // 2 seconds
 export interface CatalogTrackEncoderInit {
 	version?: string;
 	description?: string;
+	context: Context;
+}
+
+export interface CatalogTrackDecoderInit {
+	version?: string;
+	description?: string;
 }
 
 /**
@@ -69,7 +75,6 @@ export class CatalogTrackEncoder implements TrackEncoder {
 	#tracks: Map<TrackWriter, GroupWriter | undefined> = new Map();
 
 	#ctx: Context;
-	#cancelCtx: CancelCauseFunc;
 
 	#mutex: Mutex = new Mutex();
 
@@ -79,9 +84,7 @@ export class CatalogTrackEncoder implements TrackEncoder {
 			description: init.description ?? "",
 			tracks: new Map(),
 		}
-		const [ctx, cancelCtx] = withCancelCause(background());
-        this.#ctx = ctx;
-        this.#cancelCtx = cancelCtx;
+        this.#ctx = init.context;
 
 		// Initialize encoder settings
 		this.#encoder = new JsonEncoder({
@@ -160,9 +163,6 @@ export class CatalogTrackEncoder implements TrackEncoder {
     }
 
     async encodeTo(ctx: Promise<void>, dest: TrackWriter): Promise<Error | undefined> {
-		if (this.#ctx.err()) {
-			return this.#ctx.err()!;
-		}
 		if (this.#tracks.has(dest)) {
 			console.warn("given TrackWriter is already being encoded to");
 			return;
@@ -188,10 +188,6 @@ export class CatalogTrackEncoder implements TrackEncoder {
      * @param track - The track descriptor to add or update
      */
     setTrack(track: TrackDescriptor): void {
-        if (this.#ctx.err()) {
-			return;
-		}
-
 		const old = this.#root.tracks.get(track.name);
 		if (!old) {
 			this.#patches.push({
@@ -219,10 +215,6 @@ export class CatalogTrackEncoder implements TrackEncoder {
      * @param name - The name of the track to remove
      */
     removeTrack(name: string): void {
-		if (this.#ctx.err()) {
-			return;
-		}
-
 		this.#patches.push({
 			op: "remove",
 			path: `/tracks/${name}`
@@ -236,9 +228,6 @@ export class CatalogTrackEncoder implements TrackEncoder {
 	}
 
     sync(): void {
-        if (this.#ctx.err()) {
-            return;
-        }
         if (this.#patches.length === 0) {
             return;
         }
@@ -251,12 +240,6 @@ export class CatalogTrackEncoder implements TrackEncoder {
 	}
 
 	async close(cause?: Error): Promise<void> {
-		if (this.#ctx.err()) {
-			return;
-		}
-
-		this.#cancelCtx(cause);
-
 		await Promise.allSettled(Array.from(this.#tracks, async ([track, group]) => {
 			await group?.close();
 		}));
@@ -295,9 +278,6 @@ export class CatalogTrackDecoder implements TrackDecoder {
 
     #frameCount: number = 0;
 
-	#ctx: Context;
-	#cancelCtx: CancelCauseFunc;
-
 	#mutex: Mutex = new Mutex();
 
 	readonly version: string;
@@ -311,9 +291,6 @@ export class CatalogTrackDecoder implements TrackDecoder {
 
     constructor(init: CatalogTrackDecoderInit) {
 		this.version = init.version ?? DEFAULT_CATALOG_VERSION;
-		const [ctx, cancelCtx] = withCancelCause(background());
-		this.#ctx = ctx;
-		this.#cancelCtx = cancelCtx;
 
 		this.#root = new Promise<CatalogRoot>((resolve) => {
 			this.#resolveRoot = resolve;
@@ -380,22 +357,13 @@ export class CatalogTrackDecoder implements TrackDecoder {
     }
 
     get decoding(): boolean {
-		return !this.#ctx.err() && this.#source !== undefined;
+		return this.#source !== undefined;
 	}	#next(): void {
-		if (this.#ctx.err()) {
-			return;
-		}
 		if (this.#source === undefined) {
 			return;
 		}
 
-		this.#source.acceptGroup(this.#ctx.done()).then(async (result) => {
-			if (result === undefined) {
-				// Context was cancelled
-				//
-				return;
-			}
-
+		this.#source.acceptGroup(Promise.resolve()).then(async (result) => {
 			const [group, err] = result;
 			this.#frameCount = 0;
 			if (err) {
@@ -404,16 +372,7 @@ export class CatalogTrackDecoder implements TrackDecoder {
 			}
 
 			while (true) {
-				const result = await Promise.race([
-					group!.readFrame(),
-					this.#ctx.done(),
-				]);
-				if (result === undefined) {
-					// Context was cancelled
-					return;
-				}
-
-				const [frame, err] = result;
+				const [frame, err] = await group!.readFrame();
 				if (err || !frame) {
 					console.error("Error reading frame:", err);
 					break;
@@ -432,13 +391,8 @@ export class CatalogTrackDecoder implements TrackDecoder {
 				this.#decoder.decode(chunk);
 			}
 
-			if (!this.#ctx.err()) {
-				queueMicrotask(() => this.#next());
-			}
+			queueMicrotask(() => this.#next());
 		}).catch(err => {
-			if (this.#ctx.err()) {
-				return;
-			}
 			console.error("Video decode group error:", err);
 		});
 	}
@@ -453,21 +407,12 @@ export class CatalogTrackDecoder implements TrackDecoder {
 	 * @throws Error if the decoder is cancelled
 	 */
 	async nextTrack(): Promise<[TrackDescriptor, undefined] | [undefined, Error]> {
-		if (this.#ctx.err()) {
-			return [undefined, this.#ctx.err()!];
-		}
-
 		// Wait for the next new track to be added
 		const newTrack = new Promise<TrackDescriptor>((resolve) => {
 			this.#resolveNewTrack = resolve;
 		});
 
-		const result = await Promise.race([
-			newTrack.then(track => [track, undefined] as const),
-			this.#ctx.done().then(() => [undefined, this.#ctx.err() || ContextCancelledError] as const)
-		]);
-
-		return result as [TrackDescriptor, undefined] | [undefined, Error];
+		return newTrack.then(track => [track, undefined] as const);
 	}
 
 	hasTrack(name: string): boolean {
@@ -479,10 +424,6 @@ export class CatalogTrackDecoder implements TrackDecoder {
 	}
 
     async configure(config: JsonDecoderConfig): Promise<void> {
-		if (this.#ctx.err()) {
-			return;
-		}
-
 		// Reset source on configure
 		if (this.#source !== undefined) {
 			console.warn("[JsonTrackDecoder] source already set. cancelling...");
@@ -501,10 +442,6 @@ export class CatalogTrackDecoder implements TrackDecoder {
     }
 
     async decodeFrom(ctx: Promise<void>, source: TrackReader): Promise<Error | undefined> {
-		if (this.#ctx.err()) {
-			return this.#ctx.err()!;
-		}
-
         if (this.#source !== undefined) {
             console.warn("[JsonTrackDecoder] source already set. replacing...");
             await this.#source.closeWithError(InternalSubscribeErrorCode, "source already set");
@@ -516,18 +453,13 @@ export class CatalogTrackDecoder implements TrackDecoder {
 
 		await Promise.race([
             source.context.done(),
-            this.#ctx.done(),
             ctx,
         ]);
 
-        return this.#ctx.err() || source.context.err() || ContextCancelledError;
+        return source.context.err() || ContextCancelledError;
     }
 
 	async close(cause?: Error): Promise<void> {
-		if (this.#ctx.err()) {
-			return;
-		}
-
 		// Reset state first to prevent #next() from accessing #source
 		this.#source = undefined;
 		this.#currentRoot = undefined;
@@ -535,9 +467,6 @@ export class CatalogTrackDecoder implements TrackDecoder {
 		this.#resolveRoot = undefined;
 		this.#resolveNewTrack = undefined;
 
-		this.#cancelCtx(cause);
-
 		this.#decoder.close();
 	}
 }
-

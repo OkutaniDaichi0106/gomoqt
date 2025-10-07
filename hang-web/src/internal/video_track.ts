@@ -12,13 +12,7 @@ import {
 } from "@okutanidaichi/moqt";
 import { readVarint } from "@okutanidaichi/moqt/io";
 import {
-	withCancelCause,
-	background,
 	ContextCancelledError
-} from "golikejs/context";
-import type {
-	Context,
-	CancelCauseFunc,
 } from "golikejs/context";
 import {
 	Mutex,
@@ -47,9 +41,6 @@ export class VideoTrackEncoder implements TrackEncoder {
 	#latestGroup: GroupCache;
 	#trackCache?: TrackCache;
 
-	#ctx: Context;
-	#cancelCtx: CancelCauseFunc;
-
 	#mutex: Mutex = new Mutex();
 
 	constructor(init: TrackEncoderInit<VideoFrame>) {
@@ -57,10 +48,6 @@ export class VideoTrackEncoder implements TrackEncoder {
 		const latestSeq = init.startGroupSequence ?? 1n;
 		this.#latestGroup = new GroupCache(latestSeq, 0);
 		this.#trackCache = init.cache ? new init.cache() : undefined;
-
-		const [ctx, cancelCtx] = withCancelCause(background());
-		this.#ctx = ctx;
-		this.#cancelCtx = cancelCtx;
 
 		// Initialize encoder settings
 		this.#encoder = new VideoEncoder({
@@ -116,9 +103,6 @@ export class VideoTrackEncoder implements TrackEncoder {
 	}
 
 	#next(reader: ReadableStreamDefaultReader<VideoFrame>): void {
-		if (this.#ctx.err()) {
-			return;
-		}
 		if (!this.encoding) {
 			// No active tracks to encode to
 			// Just release the lock and stop reading from the reader
@@ -126,14 +110,7 @@ export class VideoTrackEncoder implements TrackEncoder {
 			return;
 		}
 
-		Promise.race([
-			reader.read(),
-			this.#ctx.done(),
-		]).then(async (result) => {
-			if (result === undefined) {
-				// Context was cancelled
-				return;
-			}
+		reader.read().then(async (result) => {
 
 			const { done, value: frame } = result;
 			if (done) {
@@ -146,9 +123,7 @@ export class VideoTrackEncoder implements TrackEncoder {
 			frame.close();
 
 			// Continue to the next frame
-			if (!this.#ctx.err()) {
-				queueMicrotask(() => this.#next(reader));
-			}
+			queueMicrotask(() => this.#next(reader));
 		}).catch(err => {
 			console.error("video next error", err);
 			this.close(err);
@@ -176,9 +151,6 @@ export class VideoTrackEncoder implements TrackEncoder {
     }
 
     async encodeTo(ctx: Promise<void>, dest: TrackWriter): Promise<Error | undefined> {
-		if (this.#ctx.err()) {
-			return this.#ctx.err()!;
-		}
 		if (this.#tracks.has(dest)) {
 			console.warn("given TrackWriter is already being encoded to");
 			return;
@@ -188,20 +160,15 @@ export class VideoTrackEncoder implements TrackEncoder {
 
 		await Promise.race([
 			dest.context.done(),
-			this.#ctx.done(),
 			ctx,
 		]);
 
 		this.#tracks.delete(dest);
 
-		return this.#ctx.err() || dest.context.err() || ContextCancelledError;
+		return dest.context.err() || ContextCancelledError;
     }
 
 	async close(cause?: Error): Promise<void> {
-		if (this.#ctx.err()) return;
-
-		this.#cancelCtx(cause);
-
 		await Promise.allSettled([
 			this.#trackCache?.close(),
 			this.#latestGroup.close(),
@@ -225,14 +192,8 @@ export class VideoTrackDecoder implements TrackDecoder {
     #frameCount: number = 0;
     #dests: Set<WritableStreamDefaultWriter<VideoFrame>> = new Set();
 
-	#ctx: Context;
-	#cancelCtx: CancelCauseFunc;
-
     constructor(init: TrackDecoderInit<VideoFrame>) {
 		this.#dests.add(init.destination.getWriter());
-		const [ctx, cancelCtx] = withCancelCause(background());
-		this.#ctx = ctx;
-		this.#cancelCtx = cancelCtx;
 
         this.#decoder = new VideoDecoder({
             output: async (frame: VideoFrame) => {
@@ -255,18 +216,15 @@ export class VideoTrackDecoder implements TrackDecoder {
     }
 
     get decoding(): boolean {
-		return this.#source !== undefined && !this.#ctx.err();
+		return this.#source !== undefined;
 	}	
 	
 	#next(): void {
-		if (this.#ctx.err()) {
-			return;
-		}
 		if (this.#source === undefined) {
 			return;
 		}
 
-		this.#source.acceptGroup(this.#ctx.done()).then(async (result) => {
+		this.#source.acceptGroup(new Promise(() => {})).then(async (result) => {
 			if (result === undefined) {
 				// Context was cancelled
 				//
@@ -281,16 +239,7 @@ export class VideoTrackDecoder implements TrackDecoder {
 			}
 
 			while (true) {
-				const result = await Promise.race([
-					group!.readFrame(),
-					this.#ctx.done(),
-				]);
-				if (result === undefined) {
-					// Context was cancelled
-					return;
-				}
-
-				const [frame, err] = result;
+				const [frame, err] = await group!.readFrame();
 				if (err || !frame) {
 					console.error("Error reading frame:", err);
 					break;
@@ -309,22 +258,13 @@ export class VideoTrackDecoder implements TrackDecoder {
 				this.#decoder.decode(chunk);
 			}
 
-			if (!this.#ctx.err()) {
-				queueMicrotask(() => this.#next());
-			}
+			queueMicrotask(() => this.#next());
 		}).catch(err => {
-			if (this.#ctx.err()) {
-				return;
-			}
 			console.error("Video decode group error:", err);
 		});
 	}
 
     async configure(config: VideoDecoderConfig): Promise<void> {
-		if (this.#ctx.err()) {
-			return;
-		}
-
 		// Reset source on configure
 		if (this.#source !== undefined) {
 			console.warn("[VideoTrackDecoder] source already set. cancelling...");
@@ -336,10 +276,6 @@ export class VideoTrackDecoder implements TrackDecoder {
     }
 
     async decodeFrom(ctx: Promise<void>, source: TrackReader): Promise<Error | undefined> {
-		if (this.#ctx.err()) {
-			return this.#ctx.err()!;
-		}
-
         if (this.#source !== undefined) {
             console.warn("[VideoDecodeStream] source already set. replacing...");
             await this.#source.closeWithError(InternalSubscribeErrorCode, "source already set");
@@ -351,20 +287,13 @@ export class VideoTrackDecoder implements TrackDecoder {
 
 		await Promise.race([
             source.context.done(),
-            this.#ctx.done(),
             ctx,
         ]);
 
-        return this.#ctx.err() || source.context.err() || ContextCancelledError;
+        return source.context.err() || ContextCancelledError;
     }
 
 	async close(cause?: Error): Promise<void> {
-		if (this.#ctx.err()) {
-			return;
-		}
-
-		this.#cancelCtx(cause);
-
 		this.#decoder.close();
 
 		await Promise.allSettled(Array.from(this.#dests,

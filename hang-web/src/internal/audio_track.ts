@@ -8,8 +8,7 @@ import {
     InternalSubscribeErrorCode,
 } from "@okutanidaichi/moqt";
 import { readVarint } from "@okutanidaichi/moqt/io";
-import { withCancelCause, background, ContextCancelledError } from "golikejs/context";
-import type {Context, CancelCauseFunc } from "golikejs/context";
+import { ContextCancelledError } from "golikejs/context";
 import { Mutex } from "golikejs/sync";
 import { EncodedContainer } from "./container";
 import { EncodeErrorCode } from "./error";
@@ -33,9 +32,6 @@ export class AudioTrackEncoder implements TrackEncoder {
 	#latestGroup: GroupCache;
 	#trackCache?: TrackCache;
 
-    #ctx: Context;
-    #cancelCtx: CancelCauseFunc;
-
 	#mutex: Mutex = new Mutex();
 
     constructor(init: TrackEncoderInit<AudioData>) {
@@ -43,10 +39,6 @@ export class AudioTrackEncoder implements TrackEncoder {
 		const latestSeq = init.startGroupSequence ?? 1n;
 		this.#latestGroup = new GroupCache(latestSeq, 0);
 		this.#trackCache = init.cache ? new init.cache() : undefined;
-
-        const [ctx, cancelCtx] = withCancelCause(background());
-		this.#ctx = ctx;
-		this.#cancelCtx = cancelCtx;
 
         this.#encoder = new AudioEncoder({
             output: async (chunk, metadata) => {
@@ -111,20 +103,7 @@ export class AudioTrackEncoder implements TrackEncoder {
 	}
 
     #next(reader: ReadableStreamDefaultReader<AudioData>): void {
-        if (this.#ctx.err()) {
-			reader.releaseLock();
-            return;
-        }
-
-        Promise.race([
-            reader.read(),
-            this.#ctx.done(),
-        ]).then(async (result) => {
-            // When context is done, result is undefined
-            if (result === undefined) {
-                // Context was cancelled
-                return;
-            }
+        reader.read().then(async (result) => {
 
             const { done, value: frame } = result;
             if (done) {
@@ -148,11 +127,6 @@ export class AudioTrackEncoder implements TrackEncoder {
 		await this.#mutex.lock();
 
 		try {
-			if (this.#ctx.err()) {
-				throw this.#ctx.err()!;
-				// TODO: return this.#ctx.err()!; ?
-			}
-
 			const decoderConfig = new Promise<AudioDecoderConfig>((resolve) => {
             	this.#resolveConfig = resolve;
         	});
@@ -166,9 +140,6 @@ export class AudioTrackEncoder implements TrackEncoder {
     }
 
     async encodeTo(ctx: Promise<void>, dest: TrackWriter): Promise<Error | undefined> {
-		if (this.#ctx.err()) {
-			return this.#ctx.err()!;
-		}
 		if (this.#tracks.has(dest)) {
 			console.warn("given TrackWriter is already being encoded to");
 			return;
@@ -178,18 +149,13 @@ export class AudioTrackEncoder implements TrackEncoder {
 
 		await Promise.race([
 			dest.context.done(),
-			this.#ctx.done(),
 			ctx,
 		]);
 
-		return this.#ctx.err() || dest.context.err() || ContextCancelledError;
+		return dest.context.err() || ContextCancelledError;
     }
 
 	async close(cause?: Error): Promise<void> {
-		if (this.#ctx.err()) return;
-
-		this.#cancelCtx(cause);
-
 		this.#trackCache?.close();
 
 		this.#encoder.close();
@@ -211,14 +177,8 @@ export class AudioTrackDecoder implements TrackDecoder {
     #frameCount = 0;
     #dests: Set<WritableStreamDefaultWriter<AudioData>> = new Set();
 
-    #ctx: Context;
-    #cancelCtx: CancelCauseFunc;
-
     constructor(init: TrackDecoderInit<AudioData>) {
 		this.#dests.add(init.destination.getWriter());
-		const [ctx, cancelCtx] = withCancelCause(background());
-		this.#ctx = ctx;
-		this.#cancelCtx = cancelCtx;
 
         this.#decoder = new AudioDecoder({
             output: async (frame: AudioData) => {
@@ -243,18 +203,15 @@ export class AudioTrackDecoder implements TrackDecoder {
     }
 
     get decoding(): boolean {
-		return this.#source !== undefined && !this.#ctx.err();
+		return this.#source !== undefined;
 	}
 
     #next(): void {
-        if (this.#ctx.err()) {
-            return;
-        }
 		if (this.#source === undefined) {
 			return;
 		}
 
-		this.#source.acceptGroup(this.#ctx.done()).then(async (result) => {
+		this.#source.acceptGroup(new Promise(() => {})).then(async (result) => {
 			if (result === undefined) {
 				// Context was cancelled
 				//
@@ -269,16 +226,7 @@ export class AudioTrackDecoder implements TrackDecoder {
 			}
 
 			while (true) {
-				const result = await Promise.race([
-					group!.readFrame(),
-					this.#ctx.done(),
-				]);
-				if (result === undefined) {
-					// Context was cancelled
-					return;
-				}
-
-				const [frame, err] = result;
+				const [frame, err] = await group!.readFrame();
 				if (err || !frame) {
 					console.error("Error reading frame:", err);
 					break;
@@ -297,13 +245,8 @@ export class AudioTrackDecoder implements TrackDecoder {
 				this.#decoder.decode(chunk);
 			}
 
-			if (this.#ctx.err()) {
-				queueMicrotask(() => this.#next());
-			}
+			queueMicrotask(() => this.#next());
 		}).catch(err => {
-			if (this.#ctx.err()) {
-				return;
-			}
 			console.error("Audio decode group error:", err);
 		});
     }
@@ -313,10 +256,6 @@ export class AudioTrackDecoder implements TrackDecoder {
     }
 
 	async decodeFrom(ctx: Promise<void>, source: TrackReader): Promise<Error | undefined> {
-		if (this.#ctx.err()) {
-			return this.#ctx.err()!;
-		}
-
         if (this.#source !== undefined) {
             console.warn("[AudioDecodeStream] source is already set, replacing");
             await this.#source.closeWithError(InternalSubscribeErrorCode, "source already set");
@@ -328,20 +267,13 @@ export class AudioTrackDecoder implements TrackDecoder {
 
 		await Promise.race([
             source.context.done(),
-            this.#ctx.done(),
             ctx,
         ]);
 
-        return this.#ctx.err() || source.context.err() || ContextCancelledError;
+        return source.context.err() || ContextCancelledError;
     }
 
 	async close(cause?: Error): Promise<void> {
-		if (this.#ctx.err()) {
-			return;
-		}
-
-		this.#cancelCtx(cause);
-
 		this.#decoder.close();
 
 		for (const writer of this.#dests) {

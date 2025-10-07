@@ -751,6 +751,272 @@ describe("video_track", () => {
         
         consoleWarnSpy.mockRestore();
     });
+
+    it("VideoTrackEncoder handles reader read errors gracefully", async () => {
+        class FakeVideoEncoder {
+            constructor(_: any) {}
+            configure(): void {}
+            encode(): void {}
+            close(): void {}
+        }
+
+        vi.stubGlobal('VideoEncoder', FakeVideoEncoder);
+
+        const readError = new Error("Read failed");
+        const reader = {
+            read: vi.fn(() => Promise.reject(readError)),
+            releaseLock: vi.fn(),
+        };
+        const source = {
+            getReader: () => reader,
+        } as unknown as ReadableStream<VideoFrame>;
+
+        const closeWithErrorMock = vi.fn();
+        const encoder = new VideoTrackEncoder({
+            source,
+        });
+        encoder.close = closeWithErrorMock;
+
+        // Start encoding to trigger #next
+        const trackWriter = {
+            writeGroup: vi.fn().mockResolvedValue(undefined),
+            writeFrame: vi.fn().mockResolvedValue(undefined),
+            close: vi.fn(),
+            context: {
+                done: vi.fn(() => Promise.resolve()),
+                err: vi.fn(() => undefined),
+            },
+        } as unknown as TrackWriter;
+        encoder.encodeTo(Promise.resolve(), trackWriter);
+
+        // Wait for the error to be handled
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        expect(closeWithErrorMock).toHaveBeenCalledWith(readError);
+    });
+
+    it("VideoTrackEncoder handles done stream correctly", async () => {
+        class FakeVideoEncoder {
+            constructor(_: any) {}
+            configure(): void {}
+            encode(): void {}
+            close(): void {}
+        }
+
+        vi.stubGlobal('VideoEncoder', FakeVideoEncoder);
+
+        const reader = {
+            read: vi.fn(() => Promise.resolve({ done: true })),
+            releaseLock: vi.fn(),
+        };
+        const source = {
+            getReader: () => reader,
+        } as unknown as ReadableStream<VideoFrame>;
+
+        const encoder = new VideoTrackEncoder({
+            source,
+        });
+
+        // Start encoding to trigger #next
+        const trackWriter = {
+            writeGroup: vi.fn().mockResolvedValue(undefined),
+            writeFrame: vi.fn().mockResolvedValue(undefined),
+            close: vi.fn(),
+            context: {
+                done: vi.fn(() => Promise.resolve()),
+                err: vi.fn(() => undefined),
+            },
+        } as unknown as TrackWriter;
+        encoder.encodeTo(Promise.resolve(), trackWriter);
+
+        // Wait for processing
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        expect(reader.releaseLock).not.toHaveBeenCalled(); // Should not release lock when done
+    });
+
+    it("VideoTrackDecoder close returns early when context has error", async () => {
+        class FakeVideoDecoder {
+            constructor(_: any) {}
+            configure(): void {}
+            close(): void {}
+        }
+
+        vi.stubGlobal('VideoDecoder', FakeVideoDecoder);
+
+        const destination = {
+            getWriter: () => ({
+                ready: Promise.resolve(),
+                write: vi.fn(),
+                releaseLock: vi.fn(),
+                close: vi.fn(),
+            }),
+        } as unknown as WritableStream<VideoFrame>;
+
+        const decoder = new VideoTrackDecoder({
+            destination,
+        });
+
+        // Mock context to have an error
+        const cancelCtxSpy = vi.fn();
+        decoder['#ctx'] = {
+            done: vi.fn(() => Promise.resolve()),
+            err: vi.fn(() => new Error("Context error")),
+        };
+        decoder['#cancelCtx'] = cancelCtxSpy;
+
+        // Mock the decoder close method
+        const decoderCloseSpy = vi.fn();
+        const originalDecoder = decoder['#decoder'];
+        if (originalDecoder) {
+            originalDecoder.close = decoderCloseSpy;
+        }
+
+        await decoder.close();
+
+        // Should not cancel context or close decoder since context has error
+        expect(cancelCtxSpy).not.toHaveBeenCalled();
+        expect(decoderCloseSpy).not.toHaveBeenCalled();
+    });
+
+    it("VideoTrackEncoder encodeTo returns early when destination already encoding (concurrent)", async () => {
+        class FakeVideoEncoder {
+            constructor(_: any) {}
+            configure(): void {}
+            encode(): void {}
+            close(): void {}
+        }
+
+        vi.stubGlobal('VideoEncoder', FakeVideoEncoder);
+
+        const reader = {
+            read: vi.fn(() => new Promise(() => {})),
+            releaseLock: vi.fn(),
+        };
+        const source = {
+            getReader: () => reader,
+        } as unknown as ReadableStream<VideoFrame>;
+
+        const encoder = new VideoTrackEncoder({ source });
+
+        const dest = {
+            context: {
+                done: vi.fn(() => new Promise(() => {})),
+                err: vi.fn(() => undefined),
+            },
+        } as unknown as TrackWriter;
+
+        // Start first encodeTo which will add dest and await
+        const pending = encoder.encodeTo(new Promise(() => {}), dest);
+
+        // Second call should return early because dest is already added
+        const res = await encoder.encodeTo(Promise.resolve(), dest);
+        expect(res).toBeUndefined();
+    });
+
+    it("VideoTrackEncoder processes a frame and calls encoder.encode", async () => {
+        const encodeSpy = vi.fn();
+        class FakeVideoEncoder {
+            constructor(_: any) {}
+            configure(): void {}
+            encode(frame: any, opts?: any): void { encodeSpy(frame, opts); }
+            close(): void {}
+        }
+
+        vi.stubGlobal('VideoEncoder', FakeVideoEncoder);
+
+        const frame = { timestamp: 1000000, close: vi.fn() } as unknown as VideoFrame;
+
+        const reader = {
+            read: vi.fn()
+                .mockResolvedValueOnce({ done: false, value: frame })
+                .mockResolvedValueOnce({ done: true }),
+            releaseLock: vi.fn(),
+        };
+
+        const source = { getReader: () => reader } as unknown as ReadableStream<VideoFrame>;
+
+        const encoder = new VideoTrackEncoder({ source });
+
+        const dest = { context: { done: () => new Promise(() => {}), err: () => undefined } } as unknown as TrackWriter;
+        // keep encoding active
+        encoder.encodeTo(new Promise(() => {}), dest);
+
+        // wait a tick for #next to run
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(encodeSpy).toHaveBeenCalled();
+        expect(frame.close).toHaveBeenCalled();
+    });
+
+    it("VideoTrackEncoder releases reader lock when not encoding", async () => {
+        class FakeVideoEncoder {
+            constructor(_: any) {}
+            configure(): void {}
+            encode(): void {}
+            close(): void {}
+        }
+
+        vi.stubGlobal('VideoEncoder', FakeVideoEncoder);
+
+        const releaseLockSpy = vi.fn();
+        const reader = {
+            read: vi.fn(() => Promise.resolve({ done: false, value: {} })),
+            releaseLock: releaseLockSpy,
+        };
+
+        const source = { getReader: () => reader } as unknown as ReadableStream<VideoFrame>;
+
+        // Create encoder without any active tracks (encoding = false)
+        const encoder = new VideoTrackEncoder({ source });
+
+        // Wait for #next to be called and releaseLock to be invoked
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        expect(releaseLockSpy).toHaveBeenCalled();
+    });
+
+    it("VideoTrackDecoder handles group acceptGroup error", async () => {
+        class FakeVideoDecoder {
+            constructor(_: any) {}
+            configure(): void {}
+            decode(): void {}
+            close(): void {}
+        }
+
+        vi.stubGlobal('VideoDecoder', FakeVideoDecoder);
+        
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        const destination = {
+            getWriter: () => ({
+                ready: Promise.resolve(),
+                write: vi.fn(),
+                releaseLock: vi.fn(),
+                close: vi.fn(),
+            }),
+        } as unknown as WritableStream<VideoFrame>;
+
+        const decoder = new VideoTrackDecoder({ destination });
+
+        const error = new Error("Accept group failed");
+        const mockTrackReader = {
+            acceptGroup: vi.fn().mockResolvedValue([undefined, error]),
+            context: {
+                done: vi.fn(() => Promise.resolve()),
+                err: vi.fn(() => undefined),
+            },
+        } as unknown as TrackReader;
+
+        await decoder.decodeFrom(Promise.resolve(), mockTrackReader);
+
+        // Allow time for error handling
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        expect(consoleErrorSpy).toHaveBeenCalledWith("Error accepting group:", error);
+        
+        consoleErrorSpy.mockRestore();
+    });
 });
 
 

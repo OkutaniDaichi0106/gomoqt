@@ -29,8 +29,8 @@ export class BroadcastPublisher implements TrackHandler {
 
     constructor(name: string, description?: string, catalog?: CatalogTrackEncoder) {
         this.name = name;
-        this.#catalog = catalog ?? new CatalogTrackEncoder({ description });
         [this.#ctx, this.#cancelCtx] = withCancelCause(background());
+        this.#catalog = catalog ?? new CatalogTrackEncoder({ context: this.#ctx, description });
 
         // Set up catalog track
         const self = this;
@@ -115,12 +115,12 @@ export class BroadcastSubscriber {
         this.#path = path;
         this.roomID = roomID;
         this.session = session;
-        this.#catalog = catalog ?? new CatalogTrackDecoder({});
         const [ctx, cancelCtx] = withCancelCause(background());
         this.#ctx = ctx;
         this.#cancelCtx = (cause?: Error) => {
             cancelCtx(cause);
         };
+        this.#catalog = catalog ?? new CatalogTrackDecoder({});
 
         this.subscribeTrack(CATALOG_TRACK_NAME, this.#catalog).then((err) => {
             // Ignore errors

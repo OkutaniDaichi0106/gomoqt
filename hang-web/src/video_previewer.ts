@@ -1,6 +1,3 @@
-import { VideoTrackEncoder } from "./internal";
-import { VideoTrackProcessor } from "./internal";
-
 export interface VirtualContent {
     backgroundColor?: string; // Default: 'black'
     textColor?: string; // Default: 'white'
@@ -26,7 +23,6 @@ export interface VideoPreviewerInit {
 export class VideoPreviewer {
     canvas: HTMLCanvasElement;
     context: CanvasRenderingContext2D;
-    #encoder?: VideoTrackEncoder;
     #source: Promise<MediaStreamTrack>;
     #isVirtual: boolean = true; // Start as virtual until real source is available
     animationId?: number;
@@ -84,7 +80,7 @@ export class VideoPreviewer {
         this.#source.then(realSource => {
             this.#isVirtual = false;
             console.log('Switched to real video source');
-        }).catch(error => {
+        }).catch((error: unknown) => {
             console.warn('Failed to get real video source, staying virtual:', error);
         });
     }
@@ -158,18 +154,6 @@ export class VideoPreviewer {
         animate();
     }
 
-    async encoder(): Promise<VideoTrackEncoder> {
-        if (!this.#encoder) {
-            const track = await this.#source
-
-            this.#encoder = new VideoTrackEncoder({
-                source: new VideoTrackProcessor(track).readable,
-            });
-        }
-
-        return this.#encoder;
-    }
-
     // Method to set custom delay function
     delay(func?: () => Promise<void>) {
         this.delayFunc = func;
@@ -197,13 +181,7 @@ export class VideoPreviewer {
             }
         }).catch(() => {}); // Ignore errors
         
-        // Cleanup encoder
-        if (this.#encoder) {
-            this.#encoder.close().catch(error =>
-                console.warn('Error closing previous encoder:', error)
-            );
-            this.#encoder = undefined;
-        }
+
     }
 }
 

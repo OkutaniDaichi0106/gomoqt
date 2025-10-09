@@ -4,10 +4,7 @@ import type { BroadcastPath, TrackName } from "@okutanidaichi/moqt";
 import {
     JsonEncoder,
     GroupCache,
-} from "./internal";
-import type {
-    TrackEncoder,
-    TrackDecoder,
+    type EncodedChunk,
 } from "./internal";
 import {
     CATALOG_TRACK_NAME,
@@ -18,19 +15,25 @@ import type { TrackDescriptor, CatalogRoot } from "./catalog";
 import type { Context, CancelCauseFunc } from "golikejs/context";
 import { withCancelCause, background } from "golikejs/context";
 import { participantName } from "./room";
-import { CatalogTrackEncoder,CatalogTrackDecoder } from "./internal/catalog_track";
+import { CatalogEncodeNode, CatalogDecodeNode} from "./internal/catalog_track";
+
+type EncodeCallback = (chunk: EncodedChunk) => Promise<void>;
+
+interface EncodeNode {
+    encodeTo(ctx: Promise<void>, dest: EncodeCallback): Promise<void>;
+}
 
 export class BroadcastPublisher implements TrackHandler {
     readonly name: string;
-    #encoders: Map<string, TrackEncoder> = new Map();
-    #catalog: CatalogTrackEncoder;
+    #encoders: Map<string, EncodeNode> = new Map();
+    #catalog: CatalogEncodeNode;
     #ctx: Context;
     #cancelCtx: CancelCauseFunc;
 
-    constructor(name: string, description?: string, catalog?: CatalogTrackEncoder) {
+    constructor(name: string, description?: string, catalog?: CatalogEncodeNode) {
         this.name = name;
         [this.#ctx, this.#cancelCtx] = withCancelCause(background());
-        this.#catalog = catalog ?? new CatalogTrackEncoder({ context: this.#ctx, description });
+        this.#catalog = catalog ?? new CatalogEncodeNode({ description });
 
         // Set up catalog track
         const self = this;
@@ -46,11 +49,11 @@ export class BroadcastPublisher implements TrackHandler {
         return this.#encoders.has(name);
     }
 
-    getTrack(name: string): TrackEncoder | undefined {
+    getTrack(name: string): EncodeNode | undefined {
         return this.#encoders.get(name);
     }
 
-    setTrack(track: TrackDescriptor, encoder: TrackEncoder): void {
+    setTrack(track: TrackDescriptor, encoder: EncodeNode): void {
         if (track.name === CATALOG_TRACK_NAME) {
             throw new Error("Cannot add catalog track");
         }
@@ -79,7 +82,9 @@ export class BroadcastPublisher implements TrackHandler {
             return;
         }
 
-        await encoder.encodeTo(ctx, track);
+        await encoder.encodeTo(ctx, async (chunk: EncodedChunk) => {
+
+        });
 
         await track.close(); // Ensure the track is closed after serving; Is this necessary?
     }
@@ -94,24 +99,24 @@ export class BroadcastPublisher implements TrackHandler {
     }
 }
 
-export interface CatalogCallbacks {
-    onroot?: (desc: CatalogRoot) => void;
-    onpatch?: (patch: unknown[]) => void;
-}
+// export interface CatalogCallbacks {
+//     onroot?: (desc: CatalogRoot) => void;
+//     onpatch?: (patch: unknown[]) => void;
+// }
 
 export class BroadcastSubscriber {
     #path: BroadcastPath;
     readonly roomID: string;
     readonly session: Session;
     #decoders: Map<string, TrackDecoder> = new Map();
-    #catalog: CatalogTrackDecoder;
+    #catalog: CatalogDecodeNode;
 
     #ctx: Context;
     #cancelCtx: CancelCauseFunc;
 
-    oncatalog?: CatalogCallbacks
+    // oncatalog?: CatalogCallbacks
 
-    constructor(path: BroadcastPath, roomID: string, session: Session, catalog?: CatalogTrackDecoder) {
+    constructor(path: BroadcastPath, roomID: string, session: Session, catalog?: CatalogDecodeNode) {
         this.#path = path;
         this.roomID = roomID;
         this.session = session;
@@ -120,7 +125,7 @@ export class BroadcastSubscriber {
         this.#cancelCtx = (cause?: Error) => {
             cancelCtx(cause);
         };
-        this.#catalog = catalog ?? new CatalogTrackDecoder({});
+        this.#catalog = catalog ?? new CatalogDecodeNode({});
 
         this.subscribeTrack(CATALOG_TRACK_NAME, this.#catalog).then((err) => {
             // Ignore errors

@@ -2,11 +2,11 @@ import {
     ExpiredGroupErrorCode,
     PublishAbortedErrorCode,
     TrackWriter,
-InternalGroupErrorCode
+    InternalGroupErrorCode
 } from "@okutanidaichi/moqt";
 import {
     Cond,
-Mutex,
+    Mutex,
 } from "golikejs/sync";
 import type {
     GroupSequence,
@@ -40,7 +40,7 @@ export class GroupCache {
         }
 
         this.frames.push(frame);
-        
+
         // Signal one waiting flush that a new frame is available
         this.#cond.signal();
 
@@ -107,7 +107,7 @@ export class GroupCache {
         }
 
         this.closed = true;
-        
+
         // Broadcast to all waiting flush operations
         this.#cond.broadcast();
 
@@ -124,7 +124,7 @@ export class GroupCache {
 
         this.expired = true;
         this.frames.length = 0;
-        
+
         // Broadcast to all waiting flush operations
         this.#cond.broadcast();
 

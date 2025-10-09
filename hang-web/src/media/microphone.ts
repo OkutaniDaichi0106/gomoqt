@@ -1,6 +1,5 @@
 import { Device } from "./device";
 import type { DeviceProps } from "./device";
-import { AudioTrackEncoder,AudioTrackProcessor } from "../internal";
 
 export interface MicrophoneProps {
     device?: DeviceProps;

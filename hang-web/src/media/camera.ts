@@ -1,6 +1,5 @@
 import type { DeviceProps } from "./device";
 import { Device } from "./device";
-import { VideoTrackEncoder,VideoTrackProcessor } from "../internal";
 
 export interface CameraProps {
     device?: DeviceProps;

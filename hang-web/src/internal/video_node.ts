@@ -2,7 +2,7 @@
 // Based on Web Audio API structure: https://developer.mozilla.org/en-US/docs/Web/API/AudioNode
 // https://developer.mozilla.org/en-US/docs/Web/API/AudioContext
 // https://developer.mozilla.org/en-US/docs/Web/API/AnalyserNode
-import { EncodedContainer } from './container';
+import { EncodedContainer,type EncodedChunk } from './container';
 import { cloneChunk } from './container';
 import { TrackWriter,TrackReader } from "@okutanidaichi/moqt";
 import { GroupCache } from ".";
@@ -163,7 +163,7 @@ export class VideoSourceNode extends VideoNode {
 export class MediaStreamVideoSourceNode extends VideoSourceNode {
 	readonly track: MediaStreamTrack;
 	#stream: ReadableStream<VideoFrame>;
-	
+
 	constructor(track: MediaStreamTrack) {
 		let stream: ReadableStream<VideoFrame>;
 		const context = new VideoContext({ frameRate: track.getSettings()?.frameRate ?? 30 });
@@ -769,6 +769,9 @@ export class VideoDestinationNode extends VideoNode {
 	resizeCallback: VideoRenderFunction;
 	canvas: HTMLCanvasElement;
 	#context: VideoContext;
+	#animateId?: number;
+	delayFunc?: () => Promise<void>;
+	#isVisible: boolean = true;
 
 	constructor(
 		context: VideoContext,
@@ -787,28 +790,82 @@ export class VideoDestinationNode extends VideoNode {
 	}
 
 	process(input: VideoFrame): void {
-		if (this.#context.state === 'running') {
-			// Calculate rendering dimensions using render function
-			const { x, y, width, height } = this.resizeCallback(
-				input.displayWidth, input.displayHeight, this.canvas.width, this.canvas.height
-			);
-
-			// Get 2D context
-			const ctx = this.canvas.getContext('2d');
-			if (!ctx) return;
-
-			// Draw frame to the provided context
-			ctx.drawImage(input, x, y, width, height);
-
-			// Close the frame after rendering
+		if (this.#context.state !== 'running') {
 			try {
 				input.close();
 			} catch (_) {
 				/* ignore */
 			}
+			return;
 		}
 
-		// VideoDestinationNode is a terminal node, no outputs to pass to
+		// Cancel any previously scheduled frame
+		if (this.#animateId) cancelAnimationFrame(this.#animateId);
+
+		// Schedule the next frame
+		this.#animateId = requestAnimationFrame(() => this.#renderVideoFrame(input));
+	}
+
+	async #renderVideoFrame(frame?: VideoFrame): Promise<void> {
+		if (!frame) {
+			return;
+		}
+
+		// Skip rendering if canvas is not visible
+		if (!this.#isVisible) {
+			try {
+				frame.close();
+			} catch (e) {
+				console.error('VideoDestinationNode frame close error:', e);
+			}
+			return;
+		}
+
+		// Check if delay function is defined
+		if (this.delayFunc) {
+			console.log('Rendering delayed');
+			try {
+				await this.delayFunc();
+			} catch (error) {
+				console.warn('Error during rendering delay:', error);
+			}
+		}
+
+		// Calculate rendering dimensions using render function
+		const { x, y, width, height } = this.resizeCallback(
+			frame.displayWidth, frame.displayHeight, this.canvas.width, this.canvas.height
+		);
+
+		// Get 2D context
+		const ctx = this.canvas.getContext('2d');
+		if (!ctx) return;
+
+		// Clear the canvas
+		ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+		// Draw frame to the provided context
+		ctx.drawImage(frame, x, y, width, height);
+
+		// Close the original frame after processing
+		try {
+			frame.close();
+		} catch (e) {
+			console.error('[VideoDestinationNode] frame close error:', e);
+		}
+	}
+
+	setVisible(visible: boolean): void {
+		this.#isVisible = visible;
+	}
+
+	dispose(): void {
+		// Cancel any scheduled animation
+		if (this.#animateId) {
+			cancelAnimationFrame(this.#animateId);
+			this.#animateId = undefined;
+		}
+		this.disconnect();
+		this.#context._unregister(this);
 	}
 }
 
@@ -816,9 +873,9 @@ export class VideoEncodeNode extends VideoNode {
 	#encoder: VideoEncoder;
 	#context: VideoContext;
 
-	#latestGroup: GroupCache = new GroupCache(0n, 0);
+	// #latestGroup: GroupCache = new GroupCache(0n, 0);
 
-	#tracks: Set<TrackWriter> = new Set();
+	#dests: Set<(frame: EncodedChunk) => Promise<void>> = new Set();
 
 	constructor(context: VideoContext, options?: { startSequence?: bigint; }) {
 		super({ numberOfInputs: 1, numberOfOutputs: 1 });
@@ -827,16 +884,8 @@ export class VideoEncodeNode extends VideoNode {
 
 		this.#encoder = new VideoEncoder({
 			output: async (chunk) => {
-				const container = new EncodedContainer(cloneChunk(chunk));
-
-				if (chunk.type === 'key') {
-					await this.#latestGroup.close(); // TODO: Cache if needed
-
-					const nextSeq = this.#latestGroup.sequence + 1n;
-					this.#latestGroup = new GroupCache(nextSeq, chunk.timestamp);
-				}
-
-				await this.#latestGroup.append(container);
+				// Pass encoded chunk to all registered destinations
+				await Promise.allSettled(Array.from(this.#dests, dest => dest(chunk)));
 			},
 			error: (e) => {
 				console.error('VideoEncoder error:', e);
@@ -877,15 +926,14 @@ export class VideoEncodeNode extends VideoNode {
 		this.#context._unregister(this);
 	}
 
-	async serveTrack(ctx: Promise<void>, track: TrackWriter): Promise<void> {
-		this.#tracks.add(track);
+	async encodeTo(ctx: Promise<void>, dest: (frame: EncodedChunk) => Promise<void>): Promise<void> {
+		this.#dests.add(dest);
 
 		await Promise.allSettled([
 			ctx,
-			track.context.done(),
 		]);
 
-		this.#tracks.delete(track);
+		this.#dests.delete(dest);
 	}
 }
 
@@ -988,5 +1036,57 @@ export class VideoDecodeNode extends VideoNode {
 	dispose(): void {
 		this.disconnect();
 		this.#context._unregister(this);
+	}
+}
+
+export class VideoObserveNode extends VideoNode {
+	#observer?: IntersectionObserver;
+	#isVisible: boolean = true;
+
+	constructor(context: VideoContext, options?: { threshold?: number; enableBackground?: boolean }) {
+		super({ numberOfInputs: 1, numberOfOutputs: 1 });
+		const threshold = options?.threshold ?? 0.01;
+		const enableBackground = options?.enableBackground ?? false;
+		if (!enableBackground) {
+			this.#observer = new IntersectionObserver(
+				(entries) => {
+					const entry = entries[0];
+					if (entry) {
+						this.#isVisible = entry.isIntersecting;
+					}
+				},
+				{ threshold }
+			);
+			// this.#observer.observe(context.destination.canvas);
+		} else {
+			this.#isVisible = true;
+		}
+		context._register(this);
+	}
+
+	observe(element: Element): void {
+		this.#observer?.observe(element);
+	}
+
+	get isVisible(): boolean {
+		return this.#isVisible;
+	}
+
+	process(input: VideoFrame): void {
+		// Only pass to next nodes if visible
+		if (this.#isVisible) {
+			for (const out of Array.from(this.outputs)) {
+				try {
+					void out.process(input);
+				} catch (e) {
+					console.error('VideoObserveNode process error:', e);
+				}
+			}
+		}
+	}
+
+	dispose(): void {
+		this.#observer?.disconnect();
+		this.disconnect();
 	}
 }

@@ -55,20 +55,34 @@ export const mockAudioContext = {
     close: mockAudioContextClose
 };
 
-// Mock gain node
+// Mock gain node - simplified to only provide GainNode interface
 export const mockGainNodeConnect = vi.fn();
 export const mockGainNodeDisconnect = vi.fn();
 
-export const mockGainNode = {
-    connect: mockGainNodeConnect,
-    disconnect: mockGainNodeDisconnect,
-    gain: {
-        value: 0.5,
-        cancelScheduledValues: vi.fn(),
-        setValueAtTime: vi.fn(),
-        exponentialRampToValueAtTime: vi.fn()
+export class MockGainNode {
+    connect = mockGainNodeConnect;
+    disconnect = mockGainNodeDisconnect;
+    gain: { value: number; cancelScheduledValues: any; setValueAtTime: any; exponentialRampToValueAtTime: any };
+    context: any;
+
+    constructor(audioContext?: any, options?: any) {
+        this.gain = {
+            value: options?.gain ?? 0.5,
+            cancelScheduledValues: vi.fn(),
+            setValueAtTime: vi.fn((value: number) => {
+                // For testing, immediately set the gain value
+                this.gain.value = value;
+            }),
+            exponentialRampToValueAtTime: vi.fn((value: number) => {
+                // For testing, immediately set the gain value
+                this.gain.value = value;
+            })
+        };
+        this.context = audioContext || { currentTime: 0 };
     }
-};
+}
+
+export const mockGainNode = new MockGainNode();
 
 // Mock audio worklet node
 export const mockWorkletConnect = vi.fn();
@@ -86,7 +100,7 @@ export const mockAudioWorkletNode = {
 // Global constructor mocks
 export function setupGlobalMocks() {
     global.AudioContext = vi.fn(() => mockAudioContext) as any;
-    global.GainNode = vi.fn(() => mockGainNode) as any;
+    global.GainNode = MockGainNode as any;
     global.AudioWorkletNode = vi.fn(() => mockAudioWorkletNode) as any;
     global.HTMLCanvasElement = vi.fn(() => mockCanvas) as any;
     global.HTMLVideoElement = vi.fn(() => mockVideo) as any;
@@ -95,7 +109,7 @@ export function setupGlobalMocks() {
 export function resetGlobalMocks() {
     vi.clearAllMocks();
     (global.AudioContext as any).mockImplementation(() => mockAudioContext);
-    (global.GainNode as any).mockImplementation(() => mockGainNode);
+    global.GainNode = MockGainNode as any;
     (global.AudioWorkletNode as any).mockImplementation(() => mockAudioWorkletNode);
     (global.HTMLCanvasElement as any).mockImplementation(() => mockCanvas);
     (global.HTMLVideoElement as any).mockImplementation(() => mockVideo);

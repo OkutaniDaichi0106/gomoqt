@@ -7,8 +7,8 @@ import {
 	VideoDestinationNode,
 	VideoEncodeNode,
 	VideoRenderFunctions,
-	type VideoContextState,
-VideoDecodeNode
+	VideoDecodeNode,
+	VideoObserveNode
 } from './video_node';
 import { EncodedContainer } from ".";
 
@@ -103,6 +103,7 @@ class MockHTMLCanvasElement {
 		if (type === '2d') {
 			return {
 				drawImage: vi.fn(),
+				clearRect: vi.fn(),
 				getImageData: vi.fn(() => ({
 					data: new Uint8ClampedArray(this.width * this.height * 4)
 				}))
@@ -119,12 +120,31 @@ class MockVideoNode extends VideoNode {
 	}
 }
 
+// Mock IntersectionObserver
+class MockIntersectionObserver {
+  observe = vi.fn();
+  disconnect = vi.fn();
+  constructor(callback: IntersectionObserverCallback) {
+    // Mock constructor
+  }
+}
+
 // Mock global constructors
 vi.stubGlobal('VideoFrame', MockVideoFrame);
 vi.stubGlobal('VideoEncoder', MockVideoEncoder);
 vi.stubGlobal('VideoDecoder', MockVideoDecoder);
 vi.stubGlobal('MediaStream', MockMediaStream);
 vi.stubGlobal('HTMLCanvasElement', MockHTMLCanvasElement);
+vi.stubGlobal('IntersectionObserver', MockIntersectionObserver);
+
+// Mock requestAnimationFrame to execute callbacks immediately
+vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => {
+  callback();
+  return 1;
+}));
+
+// Mock cancelAnimationFrame
+vi.stubGlobal('cancelAnimationFrame', vi.fn());
 
 // Mock document.createElement
 Object.defineProperty(document, 'createElement', {
@@ -313,6 +333,18 @@ describe('VideoSourceNode', () => {
 		await startPromise; // Should resolve after stop
 	}, 2000);
 
+	it('should handle start errors gracefully', async () => {
+		// Mock the stream reader to throw an error
+		const mockReader = {
+			read: vi.fn().mockRejectedValue(new Error('Stream read error')),
+			releaseLock: vi.fn()
+		};
+		vi.spyOn(stream, 'getReader').mockReturnValue(mockReader as any);
+
+		// Should not throw despite the error
+		await expect(sourceNode.start()).resolves.not.toThrow();
+	}, 2000);
+
 	it('should dispose and unregister', () => {
 		sourceNode.dispose();
 		expect(sourceNode.outputs.size).toBe(0);
@@ -477,6 +509,36 @@ describe('VideoAnalyserNode', () => {
 		analyserNode.process(frame);
 		expect(processSpy).toHaveBeenCalledWith(frame);
 	});
+
+	it('should handle frame close errors gracefully', () => {
+		const outputNode = new MockVideoNode();
+		analyserNode.connect(outputNode);
+
+		const frame = new MockVideoFrame();
+		// Mock VideoFrame.close to throw an error
+		const closeSpy = vi.spyOn(frame, 'close').mockImplementation(() => {
+			throw new Error('Close error');
+		});
+
+		// Should not throw despite the error
+		expect(() => analyserNode.process(frame)).not.toThrow();
+		expect(closeSpy).toHaveBeenCalled();
+	});
+
+	it('should handle output processing errors gracefully', () => {
+		const outputNode = new MockVideoNode();
+		analyserNode.connect(outputNode);
+
+		// Mock output node process to throw an error
+		const processSpy = vi.spyOn(outputNode, 'process').mockImplementation(() => {
+			throw new Error('Output processing error');
+		});
+
+		const frame = new MockVideoFrame();
+		// Should not throw despite the error
+		expect(() => analyserNode.process(frame)).not.toThrow();
+		expect(processSpy).toHaveBeenCalledWith(frame);
+	});
 });
 
 describe('VideoDestinationNode', () => {
@@ -513,6 +575,19 @@ describe('VideoDestinationNode', () => {
 
 		expect(() => destinationNode.process(frame)).not.toThrow();
 		expect(canvas.getContext).toHaveBeenCalledWith('2d');
+	});
+
+	it('should handle frame close errors gracefully', () => {
+		const frame = new MockVideoFrame(640, 480);
+
+		// Mock VideoFrame.close to throw an error
+		const closeSpy = vi.spyOn(frame, 'close').mockImplementation(() => {
+			throw new Error('Close error');
+		});
+
+		// Should not throw despite the error
+		expect(() => destinationNode.process(frame)).not.toThrow();
+		expect(closeSpy).toHaveBeenCalled();
 	});
 
 	it('should not draw when context is suspended', async () => {
@@ -710,19 +785,6 @@ class MockEncodedVideoChunk implements EncodedVideoChunk {
 //   reset = vi.fn();
 // }
 
-// Mock VideoDecoder
-class MockVideoDecoder {
-  configure = vi.fn();
-  decode = vi.fn();
-  flush = vi.fn();
-  close = vi.fn();
-  reset = vi.fn();
-
-  constructor(config: VideoDecoderInit) {
-    // Mock constructor
-  }
-}
-
 describe('VideoEncodeNode', () => {
   let context: VideoContext;
   let encoderNode: VideoEncodeNode;
@@ -782,7 +844,7 @@ describe('VideoEncodeNode', () => {
     expect(mockEncoder.encode).toHaveBeenCalledWith(frame);
   });
 
-  it('should call onChunk callback when encoder outputs chunk', async () => {
+  it('should handle encode errors gracefully', () => {
     const config: VideoEncoderConfig = {
       codec: 'vp8',
       width: 640,
@@ -792,12 +854,36 @@ describe('VideoEncodeNode', () => {
     };
     encoderNode.configure(config);
 
-    // Simulate encoder output
-    const mockChunk = new MockEncodedVideoChunk();
-    const outputCallback = (global as any).VideoEncoder.mock.calls[0][0].output;
-    await outputCallback(mockChunk);
+    // Mock encoder.encode to throw an error
+    mockEncoder.encode.mockImplementation(() => {
+      throw new Error('Encode error');
+    });
 
-    expect(onChunk).toHaveBeenCalledWith(expect.any(EncodedContainer));
+    const frame = new MockVideoFrame();
+    // Should not throw despite the error
+    expect(() => encoderNode.process(frame)).not.toThrow();
+    expect(mockEncoder.encode).toHaveBeenCalledWith(frame);
+  });
+
+  it('should handle frame close errors gracefully', () => {
+    const config: VideoEncoderConfig = {
+      codec: 'vp8',
+      width: 640,
+      height: 480,
+      bitrate: 1000000,
+      framerate: 30
+    };
+    encoderNode.configure(config);
+
+    // Mock VideoFrame.close to throw an error
+    const frame = new MockVideoFrame();
+    const closeSpy = vi.spyOn(frame, 'close').mockImplementation(() => {
+      throw new Error('Close error');
+    });
+
+    // Should not throw despite the error
+    expect(() => encoderNode.process(frame)).not.toThrow();
+    expect(closeSpy).toHaveBeenCalled();
   });
 
   it('should close encoder', async () => {
@@ -812,6 +898,33 @@ describe('VideoEncodeNode', () => {
 
     await encoderNode.close();
     expect(mockEncoder.close).toHaveBeenCalled();
+  });
+
+  it('should handle close errors gracefully', async () => {
+    const config: VideoEncoderConfig = {
+      codec: 'vp8',
+      width: 640,
+      height: 480,
+      bitrate: 1000000,
+      framerate: 30
+    };
+    encoderNode.configure(config);
+
+    // Mock encoder.close to throw an error
+    mockEncoder.close.mockImplementation(() => {
+      throw new Error('Close error');
+    });
+
+    // Should not throw despite the error
+    await expect(encoderNode.close()).resolves.not.toThrow();
+    expect(mockEncoder.close).toHaveBeenCalled();
+  });
+
+  it('should dispose encoder node', () => {
+    encoderNode.dispose();
+    // dispose should disconnect and unregister from context
+    expect(encoderNode.outputs.size).toBe(0);
+    expect(encoderNode.inputs.size).toBe(0);
   });
 });
 
@@ -856,7 +969,44 @@ describe('VideoDecodeNode', () => {
     expect(mockDecoder.configure).toHaveBeenCalledWith(config);
   });
 
-  it('should decode encoded container', () => {
+	it('should decode encoded container', () => {
+		const config: VideoDecoderConfig = {
+			codec: 'vp8',
+			codedWidth: 640,
+			codedHeight: 480
+		};
+		decoderNode.configure(config);
+
+		// VideoDecodeNode decodes in decodeFrom method, not in process
+		// process method passes decoded frames to next nodes
+		const frame = new MockVideoFrame();
+		const outputNode = new MockVideoNode();
+		decoderNode.connect(outputNode);
+		const processSpy = vi.spyOn(outputNode, 'process');
+
+		decoderNode.process(frame);
+
+		expect(processSpy).toHaveBeenCalledWith(frame);
+	});
+
+	it('should handle frame close errors gracefully', () => {
+		const config: VideoDecoderConfig = {
+			codec: 'vp8',
+			codedWidth: 640,
+			codedHeight: 480
+		};
+		decoderNode.configure(config);
+
+		// Mock VideoFrame.close to throw an error
+		const frame = new MockVideoFrame();
+		const closeSpy = vi.spyOn(frame, 'close').mockImplementation(() => {
+			throw new Error('Close error');
+		});
+
+		// Should not throw despite the error
+		expect(() => decoderNode.process(frame)).not.toThrow();
+		expect(closeSpy).toHaveBeenCalled();
+	});  it('should pass decoded frames to outputs when decoder outputs frame', async () => {
     const config: VideoDecoderConfig = {
       codec: 'vp8',
       codedWidth: 640,
@@ -864,30 +1014,38 @@ describe('VideoDecodeNode', () => {
     };
     decoderNode.configure(config);
 
-    const mockChunk = new MockEncodedVideoChunk();
-    const container = new EncodedContainer(mockChunk);
-    // Note: VideoDecodeNode.process expects VideoFrame, but test is passing EncodedContainer
-    // This seems to be a test error; process should be called with decoded frame
-    const frame = new MockVideoFrame();
-    decoderNode.process(frame);
-
-    expect(mockDecoder.decode).toHaveBeenCalledWith(mockChunk);
-  });
-
-  it('should call onFrame callback when decoder outputs frame', async () => {
-    const config: VideoDecoderConfig = {
-      codec: 'vp8',
-      codedWidth: 640,
-      codedHeight: 480
-    };
-    decoderNode.configure(config);
+    // Connect an output node
+    const outputNode = new MockVideoNode();
+    decoderNode.connect(outputNode);
+    const processSpy = vi.spyOn(outputNode, 'process');
 
     // Simulate decoder output
     const mockFrame = new MockVideoFrame();
     const outputCallback = (global as any).VideoDecoder.mock.calls[0][0].output;
     await outputCallback(mockFrame);
 
-    expect(onFrame).toHaveBeenCalledWith(mockFrame);
+    expect(processSpy).toHaveBeenCalledWith(mockFrame);
+  });
+
+  it('should handle output processing errors gracefully in process', () => {
+    const config: VideoDecoderConfig = {
+      codec: 'vp8',
+      codedWidth: 640,
+      codedHeight: 480
+    };
+    decoderNode.configure(config);
+
+    // Connect an output node that throws an error
+    const outputNode = new MockVideoNode();
+    decoderNode.connect(outputNode);
+    const processSpy = vi.spyOn(outputNode, 'process').mockImplementation(() => {
+      throw new Error('Output processing error');
+    });
+
+    const frame = new MockVideoFrame();
+    // Should not throw despite the error
+    expect(() => decoderNode.process(frame)).not.toThrow();
+    expect(processSpy).toHaveBeenCalledWith(frame);
   });
 
   it('should close decoder', async () => {
@@ -902,6 +1060,24 @@ describe('VideoDecodeNode', () => {
     expect(mockDecoder.close).toHaveBeenCalled();
   });
 
+  it('should handle close errors gracefully', async () => {
+    const config: VideoDecoderConfig = {
+      codec: 'vp8',
+      codedWidth: 640,
+      codedHeight: 480
+    };
+    decoderNode.configure(config);
+
+    // Mock decoder.close to throw an error
+    mockDecoder.close.mockImplementation(() => {
+      throw new Error('Close error');
+    });
+
+    // Should not throw despite the error
+    await expect(decoderNode.close()).resolves.not.toThrow();
+    expect(mockDecoder.close).toHaveBeenCalled();
+  });
+
   it('should flush decoder', async () => {
     const config: VideoDecoderConfig = {
       codec: 'vp8',
@@ -912,5 +1088,119 @@ describe('VideoDecodeNode', () => {
 
     await decoderNode.flush();
     expect(mockDecoder.flush).toHaveBeenCalled();
+  });
+
+  it('should handle flush errors gracefully', async () => {
+    const config: VideoDecoderConfig = {
+      codec: 'vp8',
+      codedWidth: 640,
+      codedHeight: 480
+    };
+    decoderNode.configure(config);
+
+    // Mock decoder.flush to throw an error
+    mockDecoder.flush.mockImplementation(() => {
+      throw new Error('Flush error');
+    });
+
+    // Should not throw despite the error
+    await expect(decoderNode.flush()).resolves.not.toThrow();
+    expect(mockDecoder.flush).toHaveBeenCalled();
+  });
+
+  it('should dispose decoder node', () => {
+    decoderNode.dispose();
+    // dispose should disconnect and unregister from context
+    expect(decoderNode.outputs.size).toBe(0);
+    expect(decoderNode.inputs.size).toBe(0);
+  });
+});
+
+describe('VideoObserveNode', () => {
+  let context: VideoContext;
+  let observeNode: VideoObserveNode;
+  let mockCanvas: MockHTMLCanvasElement;
+  let mockObserver: any;
+
+  beforeEach(() => {
+    mockCanvas = new MockHTMLCanvasElement();
+    context = new VideoContext({ canvas: mockCanvas as any });
+    
+    // Mock IntersectionObserver
+    mockObserver = {
+      observe: vi.fn(),
+      disconnect: vi.fn(),
+    };
+    vi.stubGlobal('IntersectionObserver', vi.fn((callback) => {
+      // Store callback for testing
+      (mockObserver as any).callback = callback;
+      return mockObserver;
+    }));
+    
+    observeNode = new VideoObserveNode(context); // enableBackground defaults to false
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should create VideoObserveNode', () => {
+    expect(observeNode.numberOfInputs).toBe(1);
+    expect(observeNode.numberOfOutputs).toBe(1);
+    expect(observeNode.isVisible).toBe(true);
+  });
+
+  it('should process frames and pass to outputs when visible', () => {
+    const outputNode = new MockVideoNode();
+    observeNode.connect(outputNode);
+
+    const frame = new MockVideoFrame();
+    const processSpy = vi.spyOn(outputNode, 'process');
+
+    observeNode.process(frame);
+    expect(processSpy).toHaveBeenCalledWith(frame);
+  });
+
+  it('should not process frames when not visible', () => {
+    const outputNode = new MockVideoNode();
+    observeNode.connect(outputNode);
+
+    // Simulate not intersecting by calling the observer callback
+    (mockObserver as any).callback([{ isIntersecting: false }]);
+
+    const frame = new MockVideoFrame();
+    const processSpy = vi.spyOn(outputNode, 'process');
+
+    observeNode.process(frame);
+    expect(processSpy).not.toHaveBeenCalled();
+  });
+
+  it('should handle process errors gracefully', () => {
+    const outputNode = new MockVideoNode();
+    const errorNode = new MockVideoNode();
+    
+    observeNode.connect(outputNode);
+    observeNode.connect(errorNode);
+
+    // Make one node throw an error
+    vi.spyOn(errorNode, 'process').mockImplementation(() => {
+      throw new Error('Process error');
+    });
+
+    const frame = new MockVideoFrame();
+    const processSpy = vi.spyOn(outputNode, 'process');
+
+    // Should not throw despite the error
+    expect(() => observeNode.process(frame)).not.toThrow();
+    expect(processSpy).toHaveBeenCalledWith(frame);
+  });
+
+  it('should dispose and disconnect observer', () => {
+    const outputNode = new MockVideoNode();
+    observeNode.connect(outputNode);
+
+    observeNode.dispose();
+    expect(observeNode.outputs.size).toBe(0);
+    expect(outputNode.inputs.has(observeNode)).toBe(false);
   });
 });

@@ -25,13 +25,11 @@ import type {
 import {
 	Mutex,
 } from "golikejs/sync";
-import { EncodedContainer } from "./container";
+import { EncodedContainer,type EncodedChunk } from "./container";
 import { EncodeErrorCode } from "./error";
-import type { TrackEncoder,TrackEncoderInit } from "./track_encoder";
-import { cloneChunk } from "./track_encoder";
+import { cloneChunk } from "./container";
 import type { TrackCache } from "./cache";
 import { GroupCache } from "./cache";
-import type { TrackDecoder,TrackDecoderInit } from "./track_decoder";
 import type { TrackDescriptor, VideoTrackDescriptor,CatalogRoot,TrackPatch } from "../catalog";
 import  { VideoTrackSchema,TrackSchema,isEqualTrack,DEFAULT_CATALOG_VERSION,RootSchema,TrackPatchSchema } from "../catalog";
 import { JsonEncoder,JsonDecoder,EncodedJsonChunk } from "./json";
@@ -54,17 +52,17 @@ export interface CatalogTrackDecoderInit {
 
 /**
  * CatalogTrackEncoder manages the catalog track for broadcasting track metadata.
- * 
+ *
  * API Design:
  * - setTrack(): Adds or updates tracks in the root catalog and creates patches
- * - removeTrack(): Removes tracks from the root catalog and creates patches  
+ * - removeTrack(): Removes tracks from the root catalog and creates patches
  * - sync(): Flushes pending patches to all connected track writers
- * 
+ *
  * This encoder only handles root catalog editing operations. The corresponding
  * CatalogTrackDecoder.nextTrack() will only be triggered by "add" operations,
  * maintaining the design where nextTrack exposes new tracks only.
  */
-export class CatalogTrackEncoder implements TrackEncoder {
+export class CatalogEncodeNode {
     #root: CatalogRoot;
     #patches: TrackPatch[] = [];
 
@@ -72,7 +70,7 @@ export class CatalogTrackEncoder implements TrackEncoder {
 
 	#resolveConfig?: (config: JsonDecoderConfig) => void;
 
-	#tracks: Map<TrackWriter, GroupWriter | undefined> = new Map();
+	#dests: Set<(chunk: EncodedChunk) => Promise<void>>= new Set();
 
 	#mutex: Mutex = new Mutex();
 
@@ -90,54 +88,12 @@ export class CatalogTrackEncoder implements TrackEncoder {
 					this.#resolveConfig?.(metadata.decoderConfig);
 				}
 
-				if (chunk.type === "key") {
-					// Close previous group and start a new one
-
-					// Open new groups for all tracks asynchronously
-                    await Promise.allSettled(
-                        Array.from(this.#tracks, async ([track, prevGroup]) => {
-                            await prevGroup?.close();
-
-                            const nextSequence = prevGroup ? prevGroup.groupSequence + 1n : 1n;
-
-                            const [nextGroup, err] = await track.openGroup(nextSequence);
-                            if (err) {
-                                console.error("moq: failed to open group:", err);
-                                this.#tracks.delete(track);
-                                await track.closeWithError(InternalSubscribeErrorCode, err.message);
-                                return;
-                            }
-
-                            this.#tracks.set(track, prevGroup!);
-                        })
-                    );
-				}
-
-				// Skip encoding if no current groups
-				if (this.#tracks.size === 0) {
-					return;
-				}
-
-				const container = new EncodedContainer(cloneChunk(chunk));
-
-				// Write to all current groups asynchronously
 				await Promise.allSettled(
-					Array.from(this.#tracks, async ([track, group]) => {
-						const err = await group?.writeFrame(container);
-						if (err) {
-							console.error("moq: failed to write frame:", err);
-							await group?.cancel(InternalGroupErrorCode, err.message);
-							this.#tracks.set(track, undefined);
-							return;
-						}
-					})
+					Array.from(this.#dests, (dest)=> dest(chunk))
 				);
 			},
 			error: (error) => {
-				console.error("Video encoding error:", error);
-
-				// Close with error to propagate cancellation
-				this.close(error);
+				console.error("catalog encoding error:", error);
 			}
 		});
 	}
@@ -159,28 +115,25 @@ export class CatalogTrackEncoder implements TrackEncoder {
 		}
     }
 
-    async encodeTo(ctx: Promise<void>, dest: TrackWriter): Promise<Error | undefined> {
-		if (this.#tracks.has(dest)) {
-			console.warn("given TrackWriter is already being encoded to");
+    async encodeTo(ctx: Promise<void>, dest: (chunk: EncodedChunk) => Promise<void>): Promise<void> {
+		if (this.#dests.has(dest)) {
+			console.warn("given function is already being encoded to");
 			return;
 		}
 
-		this.#tracks.set(dest, undefined);
+		this.#dests.add(dest);
 
-		const cause = await Promise.race([
-			dest.context.done().then(()=>{return dest.context.err();}),
-			ctx.then(()=>{return ContextCancelledError;}),
+		await Promise.race([
+			ctx,
 		]);
 
-		this.#tracks.delete(dest);
-
-		return cause;
+		this.#dests.delete(dest);
     }
 
     /**
      * Add or update a track in the catalog.
      * This modifies the root catalog and creates appropriate patches for streaming.
-     * 
+     *
      * @param track - The track descriptor to add or update
      */
     setTrack(track: TrackDescriptor): void {
@@ -205,9 +158,9 @@ export class CatalogTrackEncoder implements TrackEncoder {
     /**
      * Remove a track from the catalog.
      * This operation only edits the root catalog and creates remove patches for streaming.
-     * Unlike setTrack operations that may trigger nextTrack() for new tracks, 
+     * Unlike setTrack operations that may trigger nextTrack() for new tracks,
      * remove operations do not trigger any notifications in the decoder.
-     * 
+     *
      * @param name - The name of the track to remove
      */
     removeTrack(name: string): void {
@@ -234,20 +187,6 @@ export class CatalogTrackEncoder implements TrackEncoder {
 	async root(): Promise<CatalogRoot> {
 		return this.#root;
 	}
-
-	async close(cause?: Error): Promise<void> {
-		await Promise.allSettled(Array.from(this.#tracks, async ([track, group]) => {
-			await group?.close();
-		}));
-
-		this.#encoder.close();
-
-		this.#tracks.clear();
-	}
-
-	get encoding(): boolean {
-		return this.#tracks.size > 0;
-	}
 }
 
 export interface CatalogTrackDecoderInit {
@@ -256,18 +195,18 @@ export interface CatalogTrackDecoderInit {
 
 /**
  * CatalogTrackDecoder receives and processes catalog track updates.
- * 
+ *
  * API Design:
  * - nextTrack(): Only resolves when NEW tracks are added (via "add" patches)
  * - root(): Provides access to the complete catalog state
  * - hasTrack(): Checks if a track exists in the current catalog
- * 
+ *
  * This decoder implements the design where nextTrack() exposes only new tracks,
  * while remove/update operations only modify the root catalog without triggering
- * nextTrack() notifications. This maintains consistency with the encoder's 
+ * nextTrack() notifications. This maintains consistency with the encoder's
  * root catalog editing approach.
  */
-export class CatalogTrackDecoder implements TrackDecoder {
+export class CatalogDecodeNode {
     #source?: TrackReader;
 
 	#decoder: JsonDecoder;
@@ -309,7 +248,7 @@ export class CatalogTrackDecoder implements TrackDecoder {
 						for (const op of chunk) {
 							parsed = TrackPatchSchema.parse(op)
 							const trackName = parsed.path.split("/").pop()!;
-							
+
 							if (parsed.op === "add") {
 								this.#currentRoot.tracks.set(trackName, parsed.value);
 								// Notify new track - only "add" operations trigger nextTrack()
@@ -400,7 +339,7 @@ export class CatalogTrackDecoder implements TrackDecoder {
 	 * This method only resolves when a new track is added (via "add" operation),
 	 * not when tracks are removed or updated. This design exposes only new tracks
 	 * while keeping remove/update operations as root catalog editing only.
-	 * 
+	 *
 	 * @returns Promise that resolves with the newly added track descriptor
 	 * @throws Error if the decoder is cancelled
 	 */

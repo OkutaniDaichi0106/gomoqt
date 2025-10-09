@@ -1,6 +1,7 @@
 // Vitest setup file
 import 'web-streams-polyfill/polyfill';
 import { vi } from 'vitest';
+import { setupGlobalMocks } from './src/test-utils.test';
 
 // Set up navigator for browser detection
 Object.defineProperty(navigator, 'userAgent', {
@@ -47,3 +48,6 @@ if (typeof EncodedAudioChunk === 'undefined') {
 
 // Make vi globally available (similar to jest)
 global.vi = vi;
+
+// Set up global mocks for Web Audio API and other browser APIs
+setupGlobalMocks();

@@ -1,10 +1,3 @@
-import {
-    VideoTrackEncoder,
-    VideoTrackProcessor,
-    AudioTrackEncoder,
-    AudioTrackProcessor,
-} from "../internal";
-
 export interface ScreenProps {
     enabled?: boolean;
     constraints?: DisplayMediaStreamOptions;
@@ -71,43 +64,6 @@ export class Screen {
         this.#stream = await this.#getTracks();
         return this.#stream.audio; // May be undefined, which is valid
     }
-
-    // async videoEncoder(config: VideoEncoderConfig, onDecoderConfig: (config: VideoDecoderConfig) => void): Promise<VideoEncodeStream> {
-    //     if (!this.enabled) {
-    //         throw new Error("Screen capture is not enabled");
-    //     }
-
-    //     const video = await this.getVideoTrack();
-
-    //     const encoder = new VideoEncodeStream({
-    //         source: new VideoTrackProcessor(video).readable,
-    //         onDecoderConfig: onDecoderConfig,
-    //     });
-
-    //     encoder.configure(config);
-
-    //     return encoder;
-    // }
-
-    // async audioEncoder(config: AudioEncoderConfig, onDecoderConfig: (config: AudioDecoderConfig) => void): Promise<AudioEncodeStream> {
-    //     if (!this.enabled) {
-    //         throw new Error("Screen capture is not enabled");
-    //     }
-
-    //     const audio = await this.getAudioTrack();
-    //     if (!audio) {
-    //         throw new Error("No audio track available for screen capture");
-    //     }
-
-    //     const encoder = new AudioEncodeStream({
-    //         source: new AudioTrackProcessor(audio).readable,
-    //         onDecoderConfig: onDecoderConfig,
-    //     });
-
-    //     encoder.configure(config);
-
-    //     return encoder;
-    // }
 
     async close(): Promise<void> {
         if (!this.#stream) return;

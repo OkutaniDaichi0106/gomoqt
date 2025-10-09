@@ -47,5 +47,41 @@ export interface EncodedChunk {
     type: "key" | "delta"
     byteLength: number
     timestamp?: number
+    duration?: number | null
     copyTo(dest: AllowSharedBufferSource): void
+}
+
+
+export function cloneChunk(chunk: EncodedChunk): EncodedChunk {
+    const buffer = new Uint8Array(chunk.byteLength);
+    chunk.copyTo(buffer);
+
+    const clone = {
+        type: chunk.type,
+        byteLength: chunk.byteLength,
+        timestamp: chunk.timestamp,
+        duration: chunk.duration,
+        buffer: buffer,
+        copyTo(dest: AllowSharedBufferSource): void {
+            if (dest.byteLength < this.byteLength) {
+                throw new RangeError("Destination buffer is too small");
+            }
+
+            let view: Uint8Array;
+            if (dest instanceof Uint8Array) {
+                view = dest;
+            } else if (dest instanceof ArrayBuffer || (typeof SharedArrayBuffer !== "undefined" && dest instanceof SharedArrayBuffer)) {
+                view = new Uint8Array(dest as ArrayBufferLike);
+            } else if (ArrayBuffer.isView(dest)) {
+                const v = dest as ArrayBufferView;
+                view = new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
+            } else {
+                throw new Error("Unsupported destination type");
+            }
+
+            view.set(this.buffer);
+        }
+    };
+
+    return clone;
 }

@@ -19,14 +19,12 @@ vi.mock("golikejs/context", () => ({
     Mutex: class MockMutex { async lock() { return () => {}; } unlock() {} }
 }));
 
-import { background } from 'golikejs/context';
 import { CatalogTrackEncoder, CatalogTrackDecoder } from './catalog_track';
 import { DEFAULT_CATALOG_VERSION } from '../catalog';
 
 describe('CatalogTrack (minimal)', () => {
     test('encoder root default version', async () => {
-        const ctx = background();
-        const encoder = new CatalogTrackEncoder({ context: ctx });
+        const encoder = new CatalogTrackEncoder({});
         const root = await encoder.root();
         expect(root.version).toBe(DEFAULT_CATALOG_VERSION);
         await encoder.close();
@@ -38,8 +36,7 @@ describe('CatalogTrack (minimal)', () => {
     });
 
     test('set and remove track (encoder)', async () => {
-        const ctx = background();
-        const encoder = new CatalogTrackEncoder({ context: ctx });
+        const encoder = new CatalogTrackEncoder({});
         const t = { name: 't', priority: 1, schema: 'video/h264', config: {} } as any;
         encoder.setTrack(t);
         expect(encoder.hasTrack('t')).toBe(true);

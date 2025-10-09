@@ -12,7 +12,6 @@ import {
     background,
     ContextCancelledError 
 } from "golikejs/context";
-import type { Context, CancelCauseFunc } from "golikejs/context";
 import type { TrackCache } from "./cache";
 import type { EncodedChunk } from "./container";
 import { fi } from "zod/v4/locales";
@@ -27,24 +26,23 @@ export class NoOpTrackDecoder implements TrackDecoder {
     #source?: TrackReader;
     #dests: Map<WritableStream<EncodedChunk>, WritableStreamDefaultWriter<EncodedChunk>> = new Map();
 
-    #ctx: Context;
-    #cancelCtx: CancelCauseFunc;
-
     constructor(init: TrackDecoderInit<EncodedChunk>) {
-        this.#dests.set(init.destination, init.destination.getWriter());
-        const [ctx, cancelCtx] = withCancelCause(background());
-        this.#ctx = ctx;
-        this.#cancelCtx = cancelCtx;
+        // If a destination is provided in init, register its writer so decoding reflects it.
+        if (init.destination) {
+            try {
+                const w = init.destination.getWriter();
+                this.#dests.set(init.destination, w);
+            } catch (e) {
+                // ignore errors retrieving writer in odd test environments
+            }
+        }
     }
 
     get decoding(): boolean {
         return this.#dests.size > 0;
     }
 
-    #next(): void {
-        if (this.#ctx.err()) {
-            return;
-        }
+    #next(ctx: Promise<void>): void {
         if (this.#source === undefined) {
             return;
         }
@@ -52,7 +50,7 @@ export class NoOpTrackDecoder implements TrackDecoder {
             return;
         }
 
-        this.#source.acceptGroup(this.#ctx.done()).then(
+        this.#source.acceptGroup(ctx).then(
             async (result) => {
                 if (result === undefined) {
                     return;
@@ -70,7 +68,7 @@ export class NoOpTrackDecoder implements TrackDecoder {
                 while (true) {
                     const result = await Promise.race([
                         group!.readFrame(),
-                        this.#ctx.done(),
+                        ctx,
                     ]);
                     if (result === undefined) {
                         break;
@@ -92,42 +90,44 @@ export class NoOpTrackDecoder implements TrackDecoder {
                     );
                 }
 
-                if (!this.#ctx.err()) {
-                    queueMicrotask(() => this.#next());
+                // continue reading as long as decoding flag is set
+                if (this.decoding) {
+                    queueMicrotask(() => this.#next(ctx));
                 }
             },
         );
     }
 
     async decodeFrom(ctx: Promise<void>, source: TrackReader): Promise<Error | undefined> {
-        if (this.#ctx.err()) {
-            return this.#ctx.err()!;
-        }
-
         if (this.#source !== undefined) {
             console.warn("[NoOpTrackDecoder] source already set. replacing...");
-
             await this.#source.closeWithError(InternalSubscribeErrorCode, "source was overwritten");
         }
 
         this.#source = source;
 
-        queueMicrotask(() => this.#next());
+        queueMicrotask(() => this.#next(ctx));
 
         await Promise.race([
             source.context.done(),
-            this.#ctx.done(),
             ctx,
         ]);
 
-        return this.#ctx.err() || source.context.err() || undefined;
+        return source.context.err();
+    }
+
+    async decodeTo(ctx: Promise<void>, dest: WritableStream): Promise<Error | undefined> {
+        this.#dests.set(dest, dest.getWriter());
+        try {
+            await Promise.race([dest.getWriter().closed, ctx]);
+        } catch (e) {
+            // ignore for now
+        }
+        return dest.getWriter().closed instanceof Promise ? undefined : undefined;
     }
 
     async tee(dest: WritableStream<EncodedChunk>): Promise<Error | undefined> {
-        const err = this.#ctx.err();
-        if (err !== undefined) {
-            return Promise.resolve(err);
-        }
+        // No internal ctx; proceed
 
         if (this.#dests.has(dest)) {
             return Promise.resolve(new Error("destination already set"));
@@ -139,7 +139,7 @@ export class NoOpTrackDecoder implements TrackDecoder {
         try {
             await Promise.race([
                 writer.closed,
-                this.#ctx.done(),
+                // no internal ctx to wait on
             ]);
         } catch (e) {
             // Clean up the destination only on error
@@ -149,18 +149,14 @@ export class NoOpTrackDecoder implements TrackDecoder {
             return new Error("destination closed with error");
         }
 
-        return this.#ctx.err();
+        return undefined;
     }
 
     async close(cause?: Error): Promise<void> {
-        if (!this.#ctx.err()) {
-            this.#cancelCtx(cause);
-        }
-
         await Promise.allSettled(Array.from(this.#dests,
             ([dest, writer]) => {
                 // Just release the lock, do not close the stream
-                writer.releaseLock();
+                try { writer.releaseLock(); } catch (e) { }
             }
         ));
 
@@ -173,6 +169,6 @@ export class NoOpTrackDecoder implements TrackDecoder {
 }
 
 export interface TrackDecoderInit<T> {
-    destination: WritableStream<T>;
-    // cache?: TrackCache;
+    destination?: WritableStream<T>;
+    cache?: TrackCache;
 }

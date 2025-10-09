@@ -178,7 +178,9 @@ export class AudioTrackDecoder implements TrackDecoder {
     #dests: Set<WritableStreamDefaultWriter<AudioData>> = new Set();
 
     constructor(init: TrackDecoderInit<AudioData>) {
-		this.#dests.add(init.destination.getWriter());
+		if (init.destination) {
+			this.#dests.add(init.destination.getWriter());
+		}
 
         this.#decoder = new AudioDecoder({
             output: async (frame: AudioData) => {
@@ -206,12 +208,12 @@ export class AudioTrackDecoder implements TrackDecoder {
 		return this.#source !== undefined;
 	}
 
-    #next(): void {
+    #next(ctx: Promise<void>): void {
 		if (this.#source === undefined) {
 			return;
 		}
 
-		this.#source.acceptGroup(new Promise(() => {})).then(async (result) => {
+		this.#source.acceptGroup(ctx).then(async (result) => {
 			if (result === undefined) {
 				// Context was cancelled
 				//
@@ -245,7 +247,7 @@ export class AudioTrackDecoder implements TrackDecoder {
 				this.#decoder.decode(chunk);
 			}
 
-			queueMicrotask(() => this.#next());
+			queueMicrotask(() => this.#next(ctx));
 		}).catch(err => {
 			console.error("Audio decode group error:", err);
 		});
@@ -263,7 +265,7 @@ export class AudioTrackDecoder implements TrackDecoder {
 
         this.#source = source;
 
-        queueMicrotask(() => this.#next());
+        queueMicrotask(() => this.#next(ctx));
 
 		await Promise.race([
             source.context.done(),

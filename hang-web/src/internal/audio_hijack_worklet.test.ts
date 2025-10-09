@@ -1,4 +1,4 @@
-import { describe, test, expect, it, afterEach, vi } from 'vitest';
+import { describe, test, expect, it, afterEach, vi, beforeEach } from 'vitest';
 
 // Mock the worklet module to avoid expensive TypeScript compilation
 vi.mock('./audio_hijack_worklet', () => ({
@@ -27,9 +27,9 @@ describe("audio_hijack_worklet", () => {
         (globalThis as any).registerProcessor = registerProcessor;
 
         // Execute the worklet code directly
-        if (typeof AudioWorkletProcessor !== 'undefined') {
+        if (typeof (globalThis as any).AudioWorkletProcessor !== 'undefined') {
             // Worklet code
-            class AudioHijackProcessor extends AudioWorkletProcessor {
+            class AudioHijackProcessor extends (globalThis as any).AudioWorkletProcessor {
                 #currentFrame: number = 0;
                 #sampleRate: number;
                 #targetChannels: number;
@@ -131,9 +131,9 @@ describe("audio_hijack_worklet", () => {
             (globalThis as any).registerProcessor = vi.fn();
 
             // Import the worklet code by simulating the worklet context
-            if (typeof AudioWorkletProcessor !== 'undefined') {
+            if (typeof (globalThis as any).AudioWorkletProcessor !== 'undefined') {
                 // Simulate the worklet code execution
-                class AudioHijackProcessor extends AudioWorkletProcessor {
+                class AudioHijackProcessor extends (globalThis as any).AudioWorkletProcessor {
                     #currentFrame: number = 0;
                     #sampleRate: number;
                     #targetChannels: number;

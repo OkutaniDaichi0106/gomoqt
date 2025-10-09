@@ -1,4 +1,4 @@
-import { describe, test, expect, it, afterEach, vi } from 'vitest';
+import { describe, test, expect, it, afterEach, beforeEach, vi } from 'vitest';
 
 // Declare global types for AudioWorkletProcessor and registerProcessor
 declare global {
@@ -12,7 +12,7 @@ vi.mock('./audio_offload_worklet', () => ({
 }));
 
 // Import after mocking
-import { importUrl } from './audio_offload_worklet';
+import { importWorkletUrl } from './audio_offload_worklet';
 
 describe("audio_offload_worklet", () => {
     afterEach(() => {
@@ -22,7 +22,7 @@ describe("audio_offload_worklet", () => {
     });
 
     it("provides a URL for the offload worklet", () => {
-        const url = importUrl();
+        const url = importWorkletUrl();
         expect(url).toMatch(/audio_offload_worklet\.js$/);
         // For mocking purposes, we return a simple string, so URL validation is skipped
         // expect(() => new URL(url)).not.toThrow();
@@ -215,7 +215,7 @@ describe("audio_offload_worklet", () => {
         result = instance.process([], outputs);
         expect(result).toBe(true);
 
-        expect(importUrl).toBeDefined();
+        expect(importWorkletUrl).toBeDefined();
     });
 
     it("does not register the offload processor when AudioWorkletProcessor is not defined", () => {

@@ -38,13 +38,13 @@ import { JsonEncoder,JsonDecoder,EncodedJsonChunk } from "./json";
 import type { JsonEncoderConfig, JsonDecoderConfig } from "./json";
 import type { JsonPatch,JsonValue } from "./json_patch";
 import { JsonPatchSchema } from "./json_patch";
+import { de } from "zod/v4/locales";
 
 const GOP_DURATION = 2*1000*1000; // 2 seconds
 
 export interface CatalogTrackEncoderInit {
 	version?: string;
 	description?: string;
-	context: Context;
 }
 
 export interface CatalogTrackDecoderInit {
@@ -74,8 +74,6 @@ export class CatalogTrackEncoder implements TrackEncoder {
 
 	#tracks: Map<TrackWriter, GroupWriter | undefined> = new Map();
 
-	#ctx: Context;
-
 	#mutex: Mutex = new Mutex();
 
 	constructor(init: CatalogTrackEncoderInit) {
@@ -84,7 +82,6 @@ export class CatalogTrackEncoder implements TrackEncoder {
 			description: init.description ?? "",
 			tracks: new Map(),
 		}
-        this.#ctx = init.context;
 
 		// Initialize encoder settings
 		this.#encoder = new JsonEncoder({
@@ -170,15 +167,14 @@ export class CatalogTrackEncoder implements TrackEncoder {
 
 		this.#tracks.set(dest, undefined);
 
-		await Promise.race([
-			dest.context.done(),
-			this.#ctx.done(),
-			ctx,
+		const cause = await Promise.race([
+			dest.context.done().then(()=>{return dest.context.err();}),
+			ctx.then(()=>{return ContextCancelledError;}),
 		]);
 
 		this.#tracks.delete(dest);
 
-		return this.#ctx.err() || dest.context.err() || ContextCancelledError;
+		return cause;
     }
 
     /**
@@ -358,12 +354,14 @@ export class CatalogTrackDecoder implements TrackDecoder {
 
     get decoding(): boolean {
 		return this.#source !== undefined;
-	}	#next(): void {
+	}
+
+	#next(ctx: Promise<void>): void {
 		if (this.#source === undefined) {
 			return;
 		}
 
-		this.#source.acceptGroup(Promise.resolve()).then(async (result) => {
+		this.#source.acceptGroup(ctx).then(async (result) => {
 			const [group, err] = result;
 			this.#frameCount = 0;
 			if (err) {
@@ -391,7 +389,7 @@ export class CatalogTrackDecoder implements TrackDecoder {
 				this.#decoder.decode(chunk);
 			}
 
-			queueMicrotask(() => this.#next());
+			queueMicrotask(() => this.#next(ctx));
 		}).catch(err => {
 			console.error("Video decode group error:", err);
 		});
@@ -449,7 +447,7 @@ export class CatalogTrackDecoder implements TrackDecoder {
 
 		this.#source = source;
 
-        queueMicrotask(() => this.#next());
+        queueMicrotask(() => this.#next(ctx));
 
 		await Promise.race([
             source.context.done(),

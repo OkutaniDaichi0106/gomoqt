@@ -109,10 +109,9 @@ describe('AnnouncementWriter', () => {
             mockAnnounceInitMessage.encode.mockResolvedValue(undefined);
             mockAnnounceMessage.encode.mockClear();
             mockAnnounceInitMessage.encode.mockClear();
-            mockAnnouncement.isActive.mockClear();
-            mockAnnouncement.ended.mockClear();
-            mockAnnouncement.fork.mockClear();
-            mockAnnouncement.end.mockClear();
+            (mockAnnouncement.isActive as Mock).mockClear();
+            (mockAnnouncement.ended as Mock).mockClear();
+            (mockAnnouncement.end as Mock).mockClear();
         });
 
         it('should send announcement when path matches prefix', async () => {
@@ -166,8 +165,8 @@ describe('AnnouncementWriter', () => {
 
             // Keep the announcement active so it remains registered
             mockAnnouncement.ended = vi.fn().mockReturnValue(new Promise(() => {}));
-            mockAnnouncement.isActive.mockClear();
-            mockAnnouncement.isActive.mockReturnValue(true);
+            (mockAnnouncement.isActive as Mock).mockClear();
+            (mockAnnouncement.isActive as Mock).mockReturnValue(true);
 
             // Send the first announcement
             const result1 = await writer.send(mockAnnouncement);
@@ -358,7 +357,7 @@ describe('Announcement', () => {
 
     beforeEach(() => {
         [ctx, cancelFunc] = withCancelCause(background());
-        announcement = new Announcement('/test/path' as BroadcastPath, ctx.done());
+        announcement = new Announcement('/test/path', ctx.done());
     });
 
     afterEach(() => {
@@ -371,7 +370,7 @@ describe('Announcement', () => {
         });
 
         it('should validate broadcast path', () => {
-            expect(() => new Announcement('invalid-path' as BroadcastPath, ctx.done())).toThrow();
+            expect(() => new Announcement('invalid-path', ctx.done())).toThrow();
         });
     });
 

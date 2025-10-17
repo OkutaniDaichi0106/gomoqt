@@ -351,11 +351,20 @@ export class Announcement {
     readonly broadcastPath: BroadcastPath;
     #ctx: Context;
     #cancelFunc: CancelFunc;
+    #active: boolean = true;
 
-    constructor(path: string, context: Promise<void>) {
+    constructor(path: string, signal: Promise<void>) {
         this.broadcastPath = validateBroadcastPath(path);
-        const ctx = watchPromise(background(), context);
-        [this.#ctx, this.#cancelFunc] = withCancel(ctx);
+        const [ctx, cancelFunc] = withCancel(background());
+        this.#ctx = ctx;
+        this.#cancelFunc = () => {
+            this.#active = false;
+            cancelFunc();
+        }
+        // Cancel when the signal is done
+        signal.then(() => {
+            this.#cancelFunc();
+        });
     }
 
     end(): void {
@@ -363,7 +372,7 @@ export class Announcement {
     }
 
     isActive(): boolean {
-        return this.#ctx.err() === undefined;
+        return this.#active;
     }
 
     ended(): Promise<void>{

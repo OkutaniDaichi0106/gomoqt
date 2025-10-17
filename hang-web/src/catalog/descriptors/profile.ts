@@ -1,9 +1,9 @@
 import { z } from "zod"
 import { uint8Schema, uint53Schema } from "../integers"
 import { ContainerSchema } from "../container"
-import { TrackSchema } from "../track"
+import { TrackDescriptorSchema } from "../track"
 
-export const ProfileTrackSchema = TrackSchema.extend({
+export const ProfileTrackSchema = TrackDescriptorSchema.extend({
 	schema: z.literal('profile'),
 	config: z.object({
 		id: z.string(),

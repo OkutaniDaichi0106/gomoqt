@@ -45,19 +45,6 @@ export class Microphone {
         return track.getSettings();
     }
 
-    // async audioEncoder(config: AudioEncoderConfig, onDecoderConfig: (config: AudioDecoderConfig) => void): Promise<AudioEncodeStream> {
-    //     const track = await this.getAudioTrack();
-    //     const encoder = new AudioEncodeStream({
-    //         source: new AudioTrackProcessor(track).readable,
-    //         onDecoderConfig: onDecoderConfig,
-    //     });
-
-    //     encoder.configure(config);
-
-    //     return encoder;
-    // }
-
-
     close(): void {
         if (this.#stream) {
             try {

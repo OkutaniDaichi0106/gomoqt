@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { uint8Schema, uint53Schema } from "../integers"
 import { ContainerSchema } from "../container"
-import { TrackSchema } from "../track"
+import { TrackDescriptorSchema } from "../track"
 
 // Helper function to convert hex string to Uint8Array
 const hexStringToUint8Array = (hexString: string): Uint8Array => {
@@ -56,7 +56,7 @@ export const AudioConfigSchema = z.object({
 
 export type AudioConfig = z.infer<typeof AudioConfigSchema>;
 
-export const AudioTrackSchema = TrackSchema.extend({
+export const AudioTrackSchema = TrackDescriptorSchema.extend({
 	schema: z.literal('audio'),
 	config: AudioConfigSchema,
 });

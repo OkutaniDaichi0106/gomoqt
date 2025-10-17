@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { uint8Schema, uint53Schema } from "../integers"
 import { ContainerSchema } from "../container"
-import { TrackSchema } from "../track"
+import { TrackDescriptorSchema } from "../track"
 
 // Helper function to convert hex string to Uint8Array
 const hexStringToUint8Array = (hexString: string): Uint8Array => {
@@ -74,7 +74,7 @@ export const VideoConfigSchema = z.object({
 
 export type VideoConfig = z.infer<typeof VideoConfigSchema>;
 
-export const VideoTrackSchema = TrackSchema.extend({
+export const VideoTrackSchema = TrackDescriptorSchema.extend({
 	schema: z.literal('video'),
 	config: VideoConfigSchema,
 });

@@ -95,7 +95,7 @@ export abstract class VideoNode {
 		}
 	}
 
-	abstract process(input?: VideoFrame | EncodedContainer): void;
+	abstract process(input?: VideoFrame): void;
 
 	dispose(): void {
 		this.disconnect();
@@ -872,14 +872,14 @@ export class VideoDestinationNode extends VideoNode {
 export class VideoEncodeNode extends VideoNode {
 	#encoder: VideoEncoder;
 	#context: VideoContext;
-
-	// #latestGroup: GroupCache = new GroupCache(0n, 0);
+	#isKey: () => boolean;
 
 	#dests: Set<(frame: EncodedChunk) => Promise<void>> = new Set();
 
-	constructor(context: VideoContext, options?: { startSequence?: bigint; }) {
+	constructor(context: VideoContext, options?: { startSequence?: bigint, isKey?: () => boolean }) {
 		super({ numberOfInputs: 1, numberOfOutputs: 1 });
 		this.#context = context;
+		this.#isKey = options?.isKey ?? (() => false);
 		this.#context._register(this);
 
 		this.#encoder = new VideoEncoder({
@@ -899,7 +899,7 @@ export class VideoEncodeNode extends VideoNode {
 
 	process(input: VideoFrame): void {
 		try {
-			this.#encoder.encode(input);
+			this.#encoder.encode(input, { keyFrame: this.#isKey() });
 		} catch (e) {
 			console.error('encode error', e);
 		}

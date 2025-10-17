@@ -350,13 +350,13 @@ describe('Track', () => {
             // Type checking - this should compile without errors
             const track: TrackDescriptor = {
                 name: 'test',
-                priority: 0,
+                // priority: 0,
                 schema: 'test-schema',
                 config: {}
             };
 
             expect(typeof track.name).toBe('string');
-            expect(typeof track.priority).toBe('number');
+            // expect(typeof track.priority).toBe('number');
             expect(typeof track.schema).toBe('string');
             expect(typeof track.config).toBe('object');
         });

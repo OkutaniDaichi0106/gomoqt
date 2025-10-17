@@ -304,7 +304,7 @@ describe("Integer Types", () => {
         test("error messages are descriptive", () => {
             try {
                 uint8(256);
-                fail("Expected error to be thrown");
+                expect.fail("Expected error to be thrown");
             } catch (error) {
                 expect(error).toBeInstanceOf(z.ZodError);
                 expect((error as z.ZodError).issues).toHaveLength(1);
@@ -312,7 +312,7 @@ describe("Integer Types", () => {
 
             try {
                 uint53(-1);
-                fail("Expected error to be thrown");
+                expect.fail("Expected error to be thrown");
             } catch (error) {
                 expect(error).toBeInstanceOf(z.ZodError);
                 expect((error as z.ZodError).issues).toHaveLength(1);
@@ -320,7 +320,7 @@ describe("Integer Types", () => {
 
             try {
                 uint62(2n ** 62n);
-                fail("Expected error to be thrown");
+                expect.fail("Expected error to be thrown");
             } catch (error) {
                 expect(error).toBeInstanceOf(z.ZodError);
                 expect((error as z.ZodError).issues).toHaveLength(1);

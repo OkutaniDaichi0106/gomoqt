@@ -44,7 +44,7 @@ export class EncodedContainer implements Source {
 }
 
 export interface EncodedChunk {
-    type: "key" | "delta"
+    type: string
     byteLength: number
     timestamp?: number
     duration?: number | null

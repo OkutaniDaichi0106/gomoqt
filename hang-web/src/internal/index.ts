@@ -2,7 +2,6 @@ export * from "./json";
 export * from "./cache";
 export * from "./video_config";
 export * from "./audio_config";
-export * from "./json_patch";
 export * from "./error";
 export * from "./container";
 export * from "./video_node";

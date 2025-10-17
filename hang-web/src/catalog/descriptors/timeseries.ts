@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TrackSchema } from "../track"
+import { TrackDescriptorSchema } from "../track"
 import { uint53Schema } from "../integers";
 
 export const MeasurementSchema = z.object({
@@ -23,7 +23,7 @@ export const MeasurementSchema = z.object({
 	max: uint53Schema.optional(),
 });
 
-export const TimeseriesTrackSchema = TrackSchema.extend({
+export const TimeseriesTrackSchema = TrackDescriptorSchema.extend({
 	schema: z.literal('timeseries'),
 	config: z.object({
 		measurements: z.map(z.string(), MeasurementSchema),

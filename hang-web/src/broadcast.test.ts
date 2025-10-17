@@ -49,7 +49,7 @@ vi.mock("./internal", () => ({
 vi.mock("./catalog", () => ({
     CATALOG_TRACK_NAME: "catalog",
     RootSchema: {},
-    DEFAULT_CATALOG_VERSION: "1",
+    DEFAULT_CATALOG_VERSION: "@gomoqt/v1",
 }));
 
 vi.mock("golikejs/context", () => {

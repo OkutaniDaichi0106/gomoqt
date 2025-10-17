@@ -1,11 +1,6 @@
-import {
-    VideoTrackProcessor,
-    VideoTrackEncoder,
-    AudioTrackProcessor,
-    AudioTrackEncoder,
-} from "../internal";
 import type { TrackWriter } from "@okutanidaichi/moqt";
-import { Cond,Channel } from "golikejs/sync";
+import { Cond } from "golikejs/sync";
+import { Channel } from "golikejs/channel";
 
 export interface DeviceProps {
     preferred?: string;
@@ -225,7 +220,7 @@ export class Device {
         }
     }
 
-    updated(): Promise<void> {
+    updated(): Promise<[undefined, false] | [void, true]> {
         return this.#chan.receive();
     }
 }

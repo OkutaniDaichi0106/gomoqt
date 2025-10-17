@@ -136,6 +136,11 @@ vi.stubGlobal('VideoDecoder', MockVideoDecoder);
 vi.stubGlobal('MediaStream', MockMediaStream);
 vi.stubGlobal('HTMLCanvasElement', MockHTMLCanvasElement);
 vi.stubGlobal('IntersectionObserver', MockIntersectionObserver);
+vi.stubGlobal('EncodedVideoChunk', class EncodedVideoChunk {
+	constructor(init: any) {
+		Object.assign(this, init);
+	}
+});
 
 // Mock requestAnimationFrame to execute callbacks immediately
 vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => {
@@ -214,6 +219,21 @@ describe('VideoContext', () => {
 		context['_register'](node);
 		context['_unregister'](node);
 		// No direct assertions possible, but should not throw
+	});
+
+	it('should handle negative frameRate', () => {
+		const context = new VideoContext({ frameRate: -10 });
+		expect(context.frameRate).toBe(-10);
+	});
+
+	it('should handle zero frameRate', () => {
+		const context = new VideoContext({ frameRate: 0 });
+		expect(context.frameRate).toBe(0);
+	});
+
+	it('should handle very large frameRate', () => {
+		const context = new VideoContext({ frameRate: 10000 });
+		expect(context.frameRate).toBe(10000);
 	});
 });
 
@@ -599,6 +619,38 @@ describe('VideoDestinationNode', () => {
 
 		expect(ctx.drawImage).not.toHaveBeenCalled();
 	});
+
+	it('should dispose and cancel animation frame', () => {
+		const cancelSpy = vi.fn();
+		vi.stubGlobal('cancelAnimationFrame', cancelSpy);
+
+		const destinationNode = new VideoDestinationNode(context, canvas as any);
+		(destinationNode as any).animateId = 123;
+
+		destinationNode.dispose();
+
+		expect(cancelSpy).toHaveBeenCalledWith(123);
+	});
+
+	it('should handle frames with zero dimensions', () => {
+		const frame = new MockVideoFrame(0, 0);
+		expect(() => destinationNode.process(frame)).not.toThrow();
+	});
+
+	it('should handle frames with negative dimensions', () => {
+		const frame = new MockVideoFrame(-100, -100);
+		expect(() => destinationNode.process(frame)).not.toThrow();
+	});
+
+	it('should handle frames with very large dimensions', () => {
+		const frame = new MockVideoFrame(10000, 10000);
+		expect(() => destinationNode.process(frame)).not.toThrow();
+	});
+
+	it('should handle frames with negative timestamp', () => {
+		const frame = new MockVideoFrame(640, 480, -1000);
+		expect(() => destinationNode.process(frame)).not.toThrow();
+	});
 });
 
 describe('VideoEncodeNode', () => {
@@ -789,6 +841,7 @@ describe('VideoEncodeNode', () => {
   let context: VideoContext;
   let encoderNode: VideoEncodeNode;
   let mockEncoder: MockVideoEncoder;
+  let mockFrame: MockVideoFrame;
   let onChunk: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
@@ -801,6 +854,7 @@ describe('VideoEncodeNode', () => {
 
     context = new VideoContext();
     onChunk = vi.fn();
+    mockFrame = new MockVideoFrame();
     encoderNode = new VideoEncodeNode(context);
   });
 
@@ -925,6 +979,44 @@ describe('VideoEncodeNode', () => {
     // dispose should disconnect and unregister from context
     expect(encoderNode.outputs.size).toBe(0);
     expect(encoderNode.inputs.size).toBe(0);
+  });
+
+	it('should encode to destination', async () => {
+		const dest = vi.fn().mockResolvedValue(undefined);
+		const ctx = Promise.resolve();
+		const mockChunk = { type: 'key', timestamp: 0, data: new Uint8Array([1, 2, 3]) };
+
+		mockEncoder.encode.mockImplementation(() => {
+			if ((encoderNode as any).outputCallback) {
+				(encoderNode as any).outputCallback(mockChunk);
+			}
+		});
+
+		const encodePromise = encoderNode.encodeTo(ctx, dest);
+		encoderNode.process(mockFrame);
+
+		await encodePromise;
+
+		expect(dest).toHaveBeenCalledWith(mockChunk);
+	});  it('should handle destination errors gracefully in encodeTo', async () => {
+    const dest = vi.fn().mockRejectedValue(new Error('Destination error'));
+    const ctx = Promise.resolve();
+
+    const encodePromise = encoderNode.encodeTo(ctx, dest);
+
+    // Simulate encoder output
+    const mockChunk = { type: 'key', timestamp: 0, data: new Uint8Array([1, 2, 3]) };
+    let outputCallback: any;
+    (global as any).VideoEncoder = vi.fn((config) => {
+      outputCallback = config.output;
+      return mockEncoder;
+    });
+
+    encoderNode = new VideoEncodeNode(context);
+
+    // Should not throw despite destination error
+    await expect(outputCallback(mockChunk)).resolves.not.toThrow();
+    expect(dest).toHaveBeenCalledWith(mockChunk);
   });
 });
 
@@ -1114,6 +1206,33 @@ describe('VideoDecodeNode', () => {
     expect(decoderNode.outputs.size).toBe(0);
     expect(decoderNode.inputs.size).toBe(0);
   });
+
+  it('should decode from track reader', async () => {
+    const config: VideoDecoderConfig = {
+      codec: 'vp8',
+      codedWidth: 640,
+      codedHeight: 480
+    };
+    decoderNode.configure(config);
+
+    // Mock TrackReader
+    const mockGroup = {
+      readFrame: vi.fn().mockResolvedValue([{ bytes: new Uint8Array([0, 0, 0, 0, 1, 2, 3]) }, undefined])
+        .mockResolvedValueOnce([{ bytes: new Uint8Array([0, 0, 0, 0, 1, 2, 3]) }, undefined])
+        .mockResolvedValueOnce([undefined, new Error('end of frames')])
+    };
+    const mockReader = {
+      acceptGroup: vi.fn().mockResolvedValue([mockGroup, undefined])
+        .mockResolvedValueOnce([mockGroup, undefined])
+        .mockResolvedValueOnce([undefined, new Error('end of groups')])
+    };
+
+    const ctx = Promise.resolve();
+    await decoderNode.decodeFrom(ctx, mockReader as any);
+
+    expect(mockReader.acceptGroup).toHaveBeenCalled();
+    expect(mockDecoder.decode).toHaveBeenCalled();
+  });
 });
 
 describe('VideoObserveNode', () => {
@@ -1202,5 +1321,19 @@ describe('VideoObserveNode', () => {
     observeNode.dispose();
     expect(observeNode.outputs.size).toBe(0);
     expect(outputNode.inputs.has(observeNode)).toBe(false);
+    expect(mockObserver.disconnect).toHaveBeenCalled();
+  });
+
+  it('should observe element', () => {
+    const element = document.createElement('div');
+    observeNode.observe(element);
+    expect(mockObserver.observe).toHaveBeenCalledWith(element);
+  });
+
+  it('should get isVisible', () => {
+    expect(observeNode.isVisible).toBe(true);
+    // Simulate not visible
+    (mockObserver as any).callback([{ isIntersecting: false }]);
+    expect(observeNode.isVisible).toBe(false);
   });
 });

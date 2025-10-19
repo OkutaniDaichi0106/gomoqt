@@ -1,4 +1,6 @@
-import type { Frame } from "./io"
+import type { Source } from "./io"
+
+export type Frame = Source
 
 export class BytesFrame implements Frame {
     bytes: Uint8Array;

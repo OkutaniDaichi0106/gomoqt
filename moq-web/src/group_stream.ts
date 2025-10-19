@@ -1,10 +1,10 @@
 import type { Reader, Writer } from "./io";
 import { withCancelCause } from "golikejs/context";
 import type { CancelCauseFunc, Context } from "golikejs/context";
-import type { Frame } from "./io";
 import { StreamError } from "./io/error";
 import type { GroupMessage } from "./message";
 import { BytesFrame } from "./frame";
+import type { Frame } from "./frame";
 import type { GroupErrorCode } from "./error";
 import { PublishAbortedErrorCode,SubscribeCanceledErrorCode } from "./error";
 

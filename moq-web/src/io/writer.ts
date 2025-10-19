@@ -262,7 +262,7 @@ export class Writer {
         }
     }
 
-    copyFrom(src: Source): void {
+    copyFrom(src: Frame): void {
         this.writeVarint(src.byteLength);
         src.copyTo(this.#buf.reserve(src.byteLength));
     }
@@ -294,7 +294,7 @@ export class Writer {
     }
 }
 
-export interface Source {
+export interface Frame {
     byteLength: number;
     copyTo(target: ArrayBuffer | ArrayBufferView<ArrayBufferLike>): void;
 }

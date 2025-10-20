@@ -1,6 +1,7 @@
-import { writeVarint, varintLen, readVarint, type Source } from "@okutanidaichi/moqt/io";
+import { writeVarint, varintLen, readVarint } from "@okutanidaichi/moqt/io";
+import type { Frame } from "@okutanidaichi/moqt";
 
-export class EncodedContainer implements Source {
+export class EncodedContainer implements Frame {
     chunk: EncodedChunk
 
     constructor(chunk: EncodedChunk) {
@@ -84,4 +85,9 @@ export function cloneChunk(chunk: EncodedChunk): EncodedChunk {
     };
 
     return clone;
+}
+
+export interface EncodeDestination {
+    output: (chunk: EncodedChunk) => Promise<Error | undefined>;
+    done: Promise<void>;
 }

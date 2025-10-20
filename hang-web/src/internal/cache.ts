@@ -10,16 +10,15 @@ import {
 } from "golikejs/sync";
 import type {
     GroupSequence,
-    Frame,
     GroupWriter,
     GroupErrorCode,
 } from "@okutanidaichi/moqt";
-import type { Source } from "@okutanidaichi/moqt/io";
+import type { Frame } from "@okutanidaichi/moqt/io";
 
 export class GroupCache {
     readonly sequence: GroupSequence;
     readonly timestamp: number;
-    frames: (Frame | Source)[] = [];
+    frames: Frame[] = [];
     // dests: Set<GroupWriter> = new Set();
     closed: boolean = false;
     expired: boolean = false;
@@ -31,7 +30,7 @@ export class GroupCache {
         this.timestamp = timestamp;
     }
 
-    async append(frame: Frame | Source): Promise<void> {
+    async append(frame: Frame): Promise<void> {
         await this.#mutex.lock();
 
         if (this.closed) {
@@ -47,7 +46,7 @@ export class GroupCache {
         this.#mutex.unlock();
     }
 
-    async flush(group: GroupWriter): Promise<void> {
+    async connect(group: GroupWriter): Promise<void> {
         await this.#mutex.lock();
 
         // Write current frames to group

@@ -10,7 +10,7 @@ import {
 	VideoDecodeNode,
 	VideoObserveNode
 } from './video_node';
-import { EncodedContainer } from ".";
+import type { EncodedContainer, EncodeDestination } from "./container";
 
 // Mock implementations for Web APIs
 class MockVideoFrame implements VideoFrame {
@@ -67,13 +67,19 @@ class MockVideoFrame implements VideoFrame {
 class MockVideoEncoder {
 	state: 'unconfigured' | 'configured' | 'closed' = 'unconfigured';
 	configure = vi.fn();
-	encode = vi.fn();
+	encode = vi.fn((frame, options) => {
+		const mockChunk = new MockEncodedVideoChunk();
+		if (this.output) {
+			this.output(mockChunk);
+		}
+	});
 	reset = vi.fn();
 	flush = vi.fn();
 	close = vi.fn();
+	output?: (chunk: EncodedVideoChunk) => void;
 
 	constructor(config: VideoEncoderInit) {
-		// Mock constructor
+		this.output = config.output;
 	}
 }
 
@@ -622,10 +628,16 @@ describe('VideoDestinationNode', () => {
 
 	it('should dispose and cancel animation frame', () => {
 		const cancelSpy = vi.fn();
+		const requestSpy = vi.fn().mockReturnValue(123);
 		vi.stubGlobal('cancelAnimationFrame', cancelSpy);
+		vi.stubGlobal('requestAnimationFrame', requestSpy);
 
 		const destinationNode = new VideoDestinationNode(context, canvas as any);
-		(destinationNode as any).animateId = 123;
+
+		const frame = new MockVideoFrame(640, 480);
+		destinationNode.process(frame);
+
+		expect(requestSpy).toHaveBeenCalled();
 
 		destinationNode.dispose();
 
@@ -846,11 +858,17 @@ describe('VideoEncodeNode', () => {
 
   beforeEach(() => {
     // Mock the global VideoEncoder
-    mockEncoder = new MockVideoEncoder({
-      output: vi.fn(),
-      error: vi.fn()
-    });
-    (global as any).VideoEncoder = vi.fn(() => mockEncoder);
+		mockEncoder = new MockVideoEncoder({
+			output: vi.fn(),
+			error: vi.fn()
+		});
+		// When the code calls new VideoEncoder(init) we want the mock instance to receive
+		// the init callbacks (output/error) so the node's handlers are wired to the mock.
+		(global as any).VideoEncoder = vi.fn((init: any) => {
+			// copy the init handlers onto the existing mock instance
+			Object.assign(mockEncoder, init);
+			return mockEncoder;
+		});
 
     context = new VideoContext();
     onChunk = vi.fn();
@@ -895,7 +913,7 @@ describe('VideoEncodeNode', () => {
     const frame = new MockVideoFrame();
     encoderNode.process(frame);
 
-    expect(mockEncoder.encode).toHaveBeenCalledWith(frame);
+    expect(mockEncoder.encode).toHaveBeenCalledWith(frame, { keyFrame: false });
   });
 
   it('should handle encode errors gracefully', () => {
@@ -916,7 +934,7 @@ describe('VideoEncodeNode', () => {
     const frame = new MockVideoFrame();
     // Should not throw despite the error
     expect(() => encoderNode.process(frame)).not.toThrow();
-    expect(mockEncoder.encode).toHaveBeenCalledWith(frame);
+    expect(mockEncoder.encode).toHaveBeenCalledWith(frame, { keyFrame: false });
   });
 
   it('should handle frame close errors gracefully', () => {
@@ -982,42 +1000,65 @@ describe('VideoEncodeNode', () => {
   });
 
 	it('should encode to destination', async () => {
-		const dest = vi.fn().mockResolvedValue(undefined);
-		const ctx = Promise.resolve();
-		const mockChunk = { type: 'key', timestamp: 0, data: new Uint8Array([1, 2, 3]) };
+		const config: VideoEncoderConfig = {
+			codec: 'vp8',
+			width: 640,
+			height: 480,
+			bitrate: 1000000,
+			framerate: 30
+		};
+		encoderNode.configure(config);
 
-		mockEncoder.encode.mockImplementation(() => {
-			if ((encoderNode as any).outputCallback) {
-				(encoderNode as any).outputCallback(mockChunk);
-			}
-		});
+		let resolveDone!: (value?: any) => void;
+		const mockDestination: EncodeDestination = {
+			output: vi.fn().mockImplementation((chunk) => {
+				console.log('mockDestination.output called');
+				return Promise.resolve(undefined);
+			}),
+			done: new Promise(resolve => resolveDone = resolve),
+		};
 
-		const encodePromise = encoderNode.encodeTo(ctx, dest);
+		// Add destination first
+		const encodePromise = encoderNode.encodeTo(mockDestination);
+
+		// Simulate encoding a chunk
 		encoderNode.process(mockFrame);
 
-		await encodePromise;
+		console.log('encode calls:', (mockEncoder.encode as any).mock.calls);
 
-		expect(dest).toHaveBeenCalledWith(mockChunk);
-	});  it('should handle destination errors gracefully in encodeTo', async () => {
-    const dest = vi.fn().mockRejectedValue(new Error('Destination error'));
-    const ctx = Promise.resolve();
+		// Resolve done to complete the encodeTo
+		resolveDone();
 
-    const encodePromise = encoderNode.encodeTo(ctx, dest);
+		// Wait for the encode promise to resolve
+		await expect(encodePromise).resolves.not.toThrow();
 
-    // Simulate encoder output
-    const mockChunk = { type: 'key', timestamp: 0, data: new Uint8Array([1, 2, 3]) };
-    let outputCallback: any;
-    (global as any).VideoEncoder = vi.fn((config) => {
-      outputCallback = config.output;
-      return mockEncoder;
-    });
+		// Check that output was called
+		console.log('output calls:', (mockDestination.output as any).mock.calls);
+		expect(mockDestination.output).toHaveBeenCalled();
+	});	it('should handle destination errors gracefully in encodeTo', async () => {
+		const config: VideoEncoderConfig = {
+			codec: 'vp8',
+			width: 640,
+			height: 480,
+			bitrate: 1000000,
+			framerate: 30
+		};
+		encoderNode.configure(config);
 
-    encoderNode = new VideoEncodeNode(context);
+		const mockDestination: EncodeDestination = {
+			output: vi.fn().mockRejectedValue(new Error('Destination error')),
+			done: Promise.resolve(),
+		};
 
-    // Should not throw despite destination error
-    await expect(outputCallback(mockChunk)).resolves.not.toThrow();
-    expect(dest).toHaveBeenCalledWith(mockChunk);
-  });
+		const encodePromise = encoderNode.encodeTo(mockDestination);
+
+		// Simulate encoding a chunk
+		encoderNode.process(mockFrame);
+
+		// Should not throw despite destination error
+		await expect(encodePromise).resolves.not.toThrow();
+		expect(mockDestination.output).toHaveBeenCalled();
+	});
 });
 
 describe('VideoDecodeNode', () => {
@@ -1221,16 +1262,12 @@ describe('VideoDecodeNode', () => {
         .mockResolvedValueOnce([{ bytes: new Uint8Array([0, 0, 0, 0, 1, 2, 3]) }, undefined])
         .mockResolvedValueOnce([undefined, new Error('end of frames')])
     };
-    const mockReader = {
-      acceptGroup: vi.fn().mockResolvedValue([mockGroup, undefined])
-        .mockResolvedValueOnce([mockGroup, undefined])
-        .mockResolvedValueOnce([undefined, new Error('end of groups')])
-    };
+    const mockReader = new ReadableStream()
 
     const ctx = Promise.resolve();
-    await decoderNode.decodeFrom(ctx, mockReader as any);
+    await decoderNode.decodeFrom(mockReader);
 
-    expect(mockReader.acceptGroup).toHaveBeenCalled();
+    expect(mockReader.getReader).toHaveBeenCalled();
     expect(mockDecoder.decode).toHaveBeenCalled();
   });
 });

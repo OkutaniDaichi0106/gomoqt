@@ -15,61 +15,48 @@ import type { TrackDescriptor, CatalogInit } from "./catalog";
 import type { Context, CancelCauseFunc } from "golikejs/context";
 import { withCancelCause, background } from "golikejs/context";
 import { participantName } from "./room";
-import { CatalogEncoder,TrackCatalog } from "./internal/catalog_stream";
+import { CatalogEncoder,TrackCatalog,CatalogDecoder } from "./internal/catalog_stream";
+import type { EncodeDestination } from "./internal/container";
 
 type EncodeCallback = (chunk: EncodedChunk) => Promise<void>;
 
-interface EncodeNode {
-    encodeTo(ctx: Promise<void>, dest: EncodeCallback): Promise<void>;
+interface Track {
+    encodeTo(dest: EncodeDestination): Promise<void>;
 }
 
 export class BroadcastPublisher implements TrackHandler {
     readonly name: string;
-    #encoders: Map<string, EncodeNode> = new Map();
-    #descriptors: Map<string, TrackDescriptor> = new Map();
+    #encoders: Map<string, TrackEncoder> = new Map();
     #ctx: Context;
     #cancelCtx: CancelCauseFunc;
 
     #tracks: Map<string, TrackDescriptor> = new Map();
 
-    #catalogWriters: Set<CatalogEncoder> = new Set();
+    #catalog: CatalogEncoder;
 
     constructor(name: string, description?: string) {
         this.name = name;
         [this.#ctx, this.#cancelCtx] = withCancelCause(background());
+
+        this.#catalog = new CatalogEncoder({
+            version: DEFAULT_CATALOG_VERSION,
+        });
     }
 
-    hasTrack(name: string): boolean {
-        return this.#encoders.has(name);
-    }
-
-    getTrack(name: string): EncodeNode | undefined {
-        return this.#encoders.get(name);
-    }
-
-    setTrack(track: TrackDescriptor, encoder: EncodeNode): void {
-        if (track.name === CATALOG_TRACK_NAME) {
+    setTrack(tracks: {catalog: TrackCatalog}): void {
+        if (track.descriptor.name === CATALOG_TRACK_NAME) {
             throw new Error("Cannot add catalog track");
         }
 
-        this.#encoders.set(track.name, encoder);
-        this.#descriptors.set(track.name, track);
-    }
+        this.#encoders.set(track.descriptor.name, track.encoder);
 
-    removeTrack(name: string): void {
-        if (name === CATALOG_TRACK_NAME) {
-            throw new Error("Cannot remove catalog track");
-        }
-
-        this.#encoders.delete(name);
-
-        // Update catalog
-        this.#catalog.removeTrack(name);
+        this.#catalog.set()
     }
 
     async serveTrack(ctx: Promise<void>, track: TrackWriter): Promise<void> {
         if (track.trackName === CATALOG_TRACK_NAME) {
-            return await this.#serveCatalog(ctx, track);
+            await this.#catalog.encodeTo()
+            return;
         }
 
         const encoder = this.#encoders.get(track.trackName);
@@ -78,32 +65,14 @@ export class BroadcastPublisher implements TrackHandler {
             return;
         }
 
-        await encoder.encodeTo(ctx, async (chunk: EncodedChunk) => {
-
+        await encoder.encodeTo({
+            output: async (chunk: EncodedChunk): Promise<Error | undefined> => {
+                return await track.writeFrame(chunk);
+            },
+            done: ctx,
         });
 
         await track.close(); // Ensure the track is closed after serving; Is this necessary?
-    }
-
-    async #serveCatalog(ctx: Promise<void>, track: TrackWriter): Promise<void> {
-        if (track.trackName !== CATALOG_TRACK_NAME) {
-            return await this.serveTrack(ctx, track);
-        }
-
-        const writer = new CatalogEncoder({ version: DEFAULT_CATALOG_VERSION, writer: track });
-
-        this.#catalogWriters.push(writer);
-
-        // Send existing tracks
-        const descriptors = Array.from(this.#descriptors.values());
-        if (descriptors.length > 0) {
-            const err = await writer.set(descriptors);
-            if (err) {
-                console.error("Failed to send initial catalog:", err);
-                await track.closeWithError(0, "failed to send initial catalog");
-                return;
-            }
-        }
     }
 
     async close(cause?: Error): Promise<void> {
@@ -125,14 +94,14 @@ export class BroadcastSubscriber {
     readonly roomID: string;
     readonly session: Session;
     #decoders: Map<string, DecodeNode> = new Map();
-    #catalog: CatalogDecodeNode;
+    #catalog?: CatalogDecoder;
 
     #ctx: Context;
     #cancelCtx: CancelCauseFunc;
 
     // oncatalog?: CatalogCallbacks
 
-    constructor(path: BroadcastPath, roomID: string, session: Session, catalog?: CatalogDecodeNode) {
+    constructor(path: BroadcastPath, roomID: string, session: Session) {
         this.#path = path;
         this.roomID = roomID;
         this.session = session;
@@ -151,8 +120,22 @@ export class BroadcastSubscriber {
         });
     }
 
-    async nextTrack(): Promise<[TrackDescriptor, undefined] | [undefined, Error]> {
-        return await this.#catalog.nextTrack();
+    async catalog(): Promise<CatalogDecoder | Error> {
+        if (this.#catalog) {
+            return this.#catalog;
+        }
+
+        const [track, err] = await this.session.subscribe(this.#path, CATALOG_TRACK_NAME);
+        if (err) {
+            return err;
+        }
+
+        this.#catalog = new CatalogDecoder({
+            version: DEFAULT_CATALOG_VERSION,
+            reader: track,
+        });
+
+        return this.#catalog;
     }
 
     hasTrack(name: string): boolean {
@@ -161,10 +144,6 @@ export class BroadcastSubscriber {
 
     get name(): string {
         return participantName(this.roomID, this.#path);
-    }
-
-    async syncCatalog(): Promise<CatalogInit> {
-        return this.#catalog.root();
     }
 
     async subscribeTrack(name: TrackName, decoder: DecodeNode): Promise<Error | undefined> {
@@ -186,6 +165,6 @@ export class BroadcastSubscriber {
 
         // Cancel context to stop all decoders
         // This will also close all active subscriptions
-        this.#cancelCtx(undefined);
+        this.#cancelCtx(cause);
     }
 }

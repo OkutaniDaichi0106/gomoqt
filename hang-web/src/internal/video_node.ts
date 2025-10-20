@@ -2,11 +2,12 @@
 // Based on Web Audio API structure: https://developer.mozilla.org/en-US/docs/Web/API/AudioNode
 // https://developer.mozilla.org/en-US/docs/Web/API/AudioContext
 // https://developer.mozilla.org/en-US/docs/Web/API/AnalyserNode
-import { EncodedContainer,type EncodedChunk } from './container';
+import { EncodedContainer } from './container';
 import { cloneChunk } from './container';
 import { TrackWriter,TrackReader } from "@okutanidaichi/moqt";
 import { GroupCache } from ".";
 import { readVarint } from "@okutanidaichi/moqt/io";
+import type { EncodedChunk, EncodeDestination } from "./container";
 
 export type VideoContextState = 'running' | 'suspended' | 'closed';
 
@@ -874,7 +875,7 @@ export class VideoEncodeNode extends VideoNode {
 	#context: VideoContext;
 	#isKey: () => boolean;
 
-	#dests: Set<(frame: EncodedChunk) => Promise<void>> = new Set();
+	#dests: Set<EncodeDestination> = new Set();
 
 	constructor(context: VideoContext, options?: { startSequence?: bigint, isKey?: () => boolean }) {
 		super({ numberOfInputs: 1, numberOfOutputs: 1 });
@@ -885,7 +886,7 @@ export class VideoEncodeNode extends VideoNode {
 		this.#encoder = new VideoEncoder({
 			output: async (chunk) => {
 				// Pass encoded chunk to all registered destinations
-				await Promise.allSettled(Array.from(this.#dests, dest => dest(chunk)));
+				await Promise.allSettled(Array.from(this.#dests, dest => dest.output(chunk)));
 			},
 			error: (e) => {
 				console.error('VideoEncoder error:', e);
@@ -926,11 +927,11 @@ export class VideoEncodeNode extends VideoNode {
 		this.#context._unregister(this);
 	}
 
-	async encodeTo(ctx: Promise<void>, dest: (frame: EncodedChunk) => Promise<void>): Promise<void> {
+	async encodeTo(dest: EncodeDestination): Promise<void> {
 		this.#dests.add(dest);
 
 		await Promise.allSettled([
-			ctx,
+			dest.done,
 		]);
 
 		this.#dests.delete(dest);
@@ -961,37 +962,17 @@ export class VideoDecodeNode extends VideoNode {
 		this.#decoder.configure(config);
 	}
 
-	async decodeFrom(ctx: Promise<void>, reader: TrackReader): Promise<void> {
+	async decodeFrom(stream: ReadableStream<EncodedVideoChunk>): Promise<void> {
 		try {
+			const reader = stream.getReader();
 			while (this.#context.state === 'running') {
-				const [group, err] = await reader.acceptGroup(ctx);
-				if (err) {
+				const { done, value: chunk } = await reader.read();
+				if (done) {
+					reader.releaseLock();
 					break;
 				}
 
-				let isKey = true;
-				while (true) {
-					const [frame, err] = await group.readFrame();
-					if (err) {
-						break;
-					}
-
-					// Read varint timestamp from the header
-					const [timestamp, headerSize] = readVarint(frame.bytes);
-					const chunk = new EncodedVideoChunk({
-						type: isKey ? 'key' : 'delta',
-						timestamp: timestamp,
-						data: frame.bytes.subarray(headerSize),
-					});
-
-					// Decode the chunk
-					this.#decoder.decode(chunk);
-
-					if (isKey) isKey = false;
-
-					// Note: We don't pass the container to next nodes as it's consumed
-					// The decoded frame is passed in the decoder's output callback
-				}
+				this.#decoder.decode(chunk);
 			}
 		} catch (e) {
 			console.error('decodeFrom error:', e);

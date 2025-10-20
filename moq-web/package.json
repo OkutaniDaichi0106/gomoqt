@@ -1,13 +1,27 @@
 {
   "name": "@okutanidaichi/moqt",
-  "version": "0.6.9",
+  "version": "0.6.14",
   "description": "Media over QUIC package",
   "repository": {
     "type": "git",
-    "url": "https://github.com/OkutaniDaichi0106/gomoqt/web"
+    "url": "https://github.com/OkutaniDaichi0106/gomoqt",
+    "directory": "moq-web"
   },
   "license": "MIT",
   "author": "Okutani Daichi",
+  "keywords": [
+    "quic",
+    "media",
+    "streaming",
+    "webtransport"
+  ],
+  "homepage": "https://github.com/OkutaniDaichi0106/gomoqt#readme",
+  "bugs": {
+    "url": "https://github.com/OkutaniDaichi0106/gomoqt/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -38,6 +52,7 @@
     "build:main": "tsc",
     "build:browser": "tsc --project tsconfig.browser.json",
     "postbuild": "node ./scripts/copy-src-to-dist.cjs",
+    "prepublishOnly": "npm run build && npm run test:ci",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
     "test": "vitest run",

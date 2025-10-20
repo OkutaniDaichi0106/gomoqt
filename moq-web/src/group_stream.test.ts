@@ -5,7 +5,7 @@ import { background } from "golikejs/context";
 import type { Reader, Writer } from "./io";
 import { StreamError } from "./io/error";
 import type { GroupMessage } from "./message";
-import { Frame } from "./frame";
+import { BytesFrame } from "./frame";
 
 describe("GroupWriter", () => {
     let mockWriter: Writer;
@@ -53,12 +53,12 @@ describe("GroupWriter", () => {
     describe("writeFrame", () => {
         it("should write Frame data and flush successfully", async () => {
             const data = new Uint8Array([1, 2, 3, 4]);
-            const frame = new Frame(data);
+            const frame = new BytesFrame(data);
             vi.mocked(mockWriter.flush).mockResolvedValue(undefined);
 
             const error = await groupWriter.writeFrame(frame);
 
-            expect(mockWriter.writeUint8Array).toHaveBeenCalledWith(frame.bytes);
+            expect(mockWriter.copyFrom).toHaveBeenCalledWith(frame);
             expect(mockWriter.flush).toHaveBeenCalled();
             expect(error).toBeUndefined();
         });
@@ -78,13 +78,13 @@ describe("GroupWriter", () => {
 
         it("should return error if flush fails", async () => {
             const data = new Uint8Array([1, 2, 3, 4]);
-            const frame = new Frame(data);
+            const frame = new BytesFrame(data);
             const flushError = new Error("Flush failed");
             vi.mocked(mockWriter.flush).mockResolvedValue(flushError);
 
             const error = await groupWriter.writeFrame(frame);
 
-            expect(mockWriter.writeUint8Array).toHaveBeenCalledWith(frame.bytes);
+            expect(mockWriter.copyFrom).toHaveBeenCalledWith(frame);
             expect(mockWriter.flush).toHaveBeenCalled();
             expect(error).toBe(flushError);
         });

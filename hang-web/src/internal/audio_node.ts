@@ -3,7 +3,8 @@
 // Uses Web Audio API AudioEncoder/AudioDecoder for encoding/decoding
 import { GroupCache } from "./cache";
 import { EncodedContainer, cloneChunk } from "./container";
-import { TrackWriter, TrackReader } from "@okutanidaichi/moqt";
+import type { EncodedChunk, EncodeDestination } from "./container";
+import { TrackWriter, TrackReader,InternalSubscribeErrorCode } from "@okutanidaichi/moqt";
 import { readVarint } from "@okutanidaichi/moqt/io";
 import { importWorkletUrl as importOffloadWorkletUrl, workletName as offloadWorkletName} from "./audio_offload_worklet";
 import { workletName as hijackWorkletName, importWorkletUrl as importHijackWorkletUrl } from "./audio_hijack_worklet";
@@ -13,8 +14,7 @@ export class AudioEncodeNode implements AudioNode {
 	context: AudioContext;
 	#worklet?: AudioWorkletNode;
 
-	#latestGroup: GroupCache = new GroupCache(0n, 0);
-	readonly tracks: Set<TrackWriter> = new Set();
+	#dests: Set<EncodeDestination> = new Set();
 
 	// Event listeners storage
 	#eventListeners: Map<string, Set<EventListenerOrEventListenerObject>> = new Map();
@@ -25,16 +25,7 @@ export class AudioEncodeNode implements AudioNode {
 
 		this.#encoder = new AudioEncoder({
 			output: async (chunk) => {
-				const container = new EncodedContainer(cloneChunk(chunk));
-
-				if (chunk.type === 'key') {
-					await this.#latestGroup.close(); // TODO: Cache if needed
-
-					const nextSeq = this.#latestGroup.sequence + 1n;
-					this.#latestGroup = new GroupCache(nextSeq, chunk.timestamp);
-				}
-
-				await this.#latestGroup.append(container);
+				await Promise.all(Array.from(this.#dests, dest => dest.output(chunk)));
 			},
 			error: (e) => {
 				console.error('AudioEncoder error:', e);
@@ -194,15 +185,14 @@ export class AudioEncodeNode implements AudioNode {
 		return this.#worklet?.numberOfOutputs || 0;
 	}
 
-	async serveTrack(ctx: Promise<void>, track: TrackWriter): Promise<void> {
-		this.tracks.add(track);
+	async encodeTo(callbacks: EncodeDestination): Promise<void> {
+		this.#dests.add(callbacks);
 
-		await Promise.allSettled([
-			ctx,
-			track.context.done(),
+		await Promise.race([
+			callbacks.done,
 		]);
 
-		this.tracks.delete(track);
+		this.#dests.delete(callbacks);
 	}
 }
 
@@ -342,35 +332,17 @@ export class AudioDecodeNode implements AudioNode {
 		this.#decoder.configure(config);
 	}
 
-	async decodeFrom(ctx: Promise<void>, reader: TrackReader): Promise<void> {
+	async decodeFrom(stream: ReadableStream<EncodedAudioChunk>): Promise<void> {
 		try {
-			while (true) {
-				const [group, err] = await reader.acceptGroup(ctx);
-				if (err) {
-					break;
-				}
+			const reader = stream.getReader();
 
-				let isKey = true;
-				while (true) {
-					const [frame, err] = await group.readFrame();
-					if (err) {
-						break;
-					}
-
-					// Read varint timestamp
-					const [timestamp, headerSize] = readVarint(frame.bytes);
-					const chunk = new EncodedAudioChunk({
-						type: isKey ? 'key' : 'delta',
-						timestamp: timestamp,
-						data: frame.bytes.subarray(headerSize),
-					});
-
-					// Decode the chunk
-					this.#decoder.decode(chunk);
-
-					if (isKey) isKey = false;
-				}
+			const { done, value: chunk } = await reader.read();
+			if (done) {
+				reader.releaseLock();
+				return;
 			}
+
+			this.#decoder.decode(chunk);
 		} catch (e) {
 			console.error('AudioDecodeNode decodeFrom error:', e);
 		}

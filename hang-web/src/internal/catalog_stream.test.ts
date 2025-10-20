@@ -66,15 +66,16 @@ describe("CatalogEncoder", () => {
 
   describe("constructor", () => {
     it("should initialize with version and description", () => {
-      const encoder = new CatalogEncoder({ version: "1.0", description: "test" });
-      expect(encoder.version).toBe("1.0");
-      expect(encoder.description).toBe("test");
+  const encoder = new CatalogEncoder({ version: "1.0" });
+  expect(encoder.version).toBe("1.0");
+  // description is not part of the new API; ensure it's undefined
+  expect((encoder as any).description).toBeUndefined();
     });
 
     it("should handle missing description", () => {
       const encoder = new CatalogEncoder({ version: "1.0" });
       expect(encoder.version).toBe("1.0");
-      expect(encoder.description).toBeUndefined();
+      expect((encoder as any).description).toBeUndefined();
     });
   });
 
@@ -408,9 +409,10 @@ describe("CatalogEncoder - additional coverage", () => {
     expect(encoder1.version).toBe("2.0");
     expect(encoder1.description).toBeUndefined();
 
-    const encoder2 = new CatalogEncoder({ version: "1.0", description: "Video Catalog" });
-    expect(encoder2.version).toBe("1.0");
-    expect(encoder2.description).toBe("Video Catalog");
+  const encoder2 = new CatalogEncoder({ version: "1.0" });
+  expect(encoder2.version).toBe("1.0");
+  // description removed from constructor in the new design
+  expect((encoder2 as any).description).toBeUndefined();
   });
 
   it("should handle multiple consecutive set calls", async () => {

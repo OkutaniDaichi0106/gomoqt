@@ -1,10 +1,10 @@
 import type { Reader, Writer } from "./io";
 import { withCancelCause } from "golikejs/context";
 import type { CancelCauseFunc, Context } from "golikejs/context";
-import type { Source } from "./io";
 import { StreamError } from "./io/error";
 import type { GroupMessage } from "./message";
-import { Frame } from "./frame";
+import { BytesFrame } from "./frame";
+import type { Frame } from "./frame";
 import type { GroupErrorCode } from "./error";
 import { PublishAbortedErrorCode,SubscribeCanceledErrorCode } from "./error";
 
@@ -30,12 +30,8 @@ export class GroupWriter {
         return this.#group.sequence;
     }
 
-    async writeFrame(src: Frame | Source): Promise<Error | undefined> {
-        if (src instanceof Frame) {
-            this.#writer.writeUint8Array(src.bytes);
-        } else {
-            this.#writer.copyFrom(src);
-        }
+    async writeFrame(src: Frame): Promise<Error | undefined> {
+        this.#writer.copyFrom(src);
         const err = await this.#writer.flush();
         if (err) {
             return err;
@@ -72,7 +68,7 @@ export class GroupReader {
     #reader: Reader;
     #ctx: Context;
     #cancelFunc: CancelCauseFunc;
-    #frame?: Frame;
+    #frame?: BytesFrame;
     readonly streamId: bigint;
 
     constructor(trackCtx: Context, reader: Reader, group: GroupMessage) {
@@ -90,7 +86,7 @@ export class GroupReader {
         return this.#group.sequence;
     }
 
-    async readFrame(): Promise<[Frame, undefined] | [undefined, Error]> {
+    async readFrame(): Promise<[BytesFrame, undefined] | [undefined, Error]> {
         let err: Error | undefined;
         let len: number;
         [len, err] = await this.#reader.readVarint();
@@ -106,7 +102,7 @@ export class GroupReader {
             const currentSize = this.#frame?.bytes.byteLength || 0;
             const cap = Math.max(currentSize * 2, len);
             // Swap buffers
-            this.#frame = new Frame(new Uint8Array(cap));
+            this.#frame = new BytesFrame(new Uint8Array(cap));
         }
 
         err = await this.#reader.fillN(this.#frame.bytes, len);

@@ -2,27 +2,46 @@ import type { CatalogInit } from "../catalog/init";
 import { CatalogInitSchema } from "../catalog/init";
 import type { TrackDescriptor,CatalogLine } from "../catalog/track";
 import { TrackDescriptorSchema,TrackDescriptorsSchema,CatalogLineSchema } from "../catalog/track";
-import type { Context } from "golikejs/context";
-import { withCancelCause, background,withCancel,ContextCancelledError,watchPromise } from "golikejs/context";
-import { TrackWriter,TrackReader,GroupReader,Frame,GroupWriter,InternalSubscribeErrorCode } from "@okutanidaichi/moqt";
-import { Channel, select, send, default_ } from "golikejs/channel";
+import type { Context,CancelFunc } from "golikejs/context";
+import {
+    withCancelCause,
+    background,
+    withCancel,
+    ContextCancelledError,
+    watchPromise
+} from "golikejs/context";
+import {
+    TrackWriter,
+    TrackReader,
+    GroupReader,
+    GroupWriter,
+    InternalSubscribeErrorCode
+} from "@okutanidaichi/moqt";
+import type {
+    BytesFrame
+} from "@okutanidaichi/moqt";
+import { Channel } from "golikejs/channel";
 import { JsonLineDecoder, EncodedJsonChunk,JsonLineEncoder } from "../internal/json";
 import type { JsonObject } from "../internal/json";
-import type { EncodedChunk } from ".";
+import type { EncodedChunk, EncodeDestination } from "./container";
 
 export class TrackCatalog {
     readonly descriptor: TrackDescriptor;
-    #done: Promise<void>;
+    readonly done: Promise<void>;
     #end!: () => void;
     #active: boolean = true;
 
-    constructor(ctx: Context, descriptor: TrackDescriptor) {
+    constructor(ctx: Promise<void>, descriptor: TrackDescriptor) {
         this.descriptor = descriptor;
-        this.#done = new Promise<void>((resolve) => {
+        this.done = new Promise<void>((resolve) => {
             this.#end = () => {
                 this.#active = false;
                 resolve()
             };
+        });
+
+        ctx.then(() => {
+            this.#end();
         });
     }
 
@@ -33,20 +52,14 @@ export class TrackCatalog {
     end(): void {
         this.#end();
     }
-
-    async done(): Promise<void> {
-        return this.#done;
-    }
 }
 
 export interface CatalogEncoderInit {
     version: string;
-    description?: string;
 }
 
 export class CatalogEncoder {
     readonly version: string;
-    readonly description?: string;
 
     #tracks: Map<string, TrackCatalog> = new Map();
 
@@ -56,7 +69,6 @@ export class CatalogEncoder {
 
     constructor(init: CatalogEncoderInit) {
         this.version = init.version;
-        this.description = init.description;
 
         this.#encoder = new JsonLineEncoder();
     }
@@ -86,34 +98,24 @@ export class CatalogEncoder {
 
         await Promise.allSettled(
             Array.from(this.#channels, async chan => {
-                await send(chan, chunk);
+                await chan.send(chunk);
             })
         );
         
         return undefined;
     }
 
-    async encodeTo(ctx: Promise<void>, track: TrackWriter): Promise<Error | undefined> {
+    async encodeTo(dest: EncodeDestination): Promise<Error | undefined> {
         let err: Error | undefined;
         let group: GroupWriter | undefined;
 
-        [group, err] = await track.openGroup(1n)
-        if (err) {
-            return new Error("Failed to open catalog group: " + err.message);
-        }
-
-        if (!group) {
-            return new Error("No group returned from openGroup");
-        }
-
         const initChunk = this.#encoder.encode([{
             version: this.version,
-            description: this.description,
         }]);
 
-        err = await group.writeFrame(initChunk)
+        err = await dest.output(initChunk);
         if (err) {
-            return new Error("Failed to write catalog init: " + err.message);
+            return new Error("Failed to write init chunk: " + err.message);
         }
 
         let chunk: EncodedChunk | undefined;
@@ -123,7 +125,7 @@ export class CatalogEncoder {
         });
         if (existings.length > 0) {
             chunk = this.#encoder.encode(existings)
-            err = await group.writeFrame(chunk);
+            err = await dest.output(chunk);
             if (err) {
                 return new Error("Failed to write existing tracks: " + err.message);
             }
@@ -134,7 +136,7 @@ export class CatalogEncoder {
 
         // Integrated encode loop
         try {
-            const watchCtx = watchPromise(background(), ctx);
+            const watchCtx = watchPromise(background(), dest.done);
             let ok: boolean;
             while (true) {
                 // Check context cancellation before waiting
@@ -144,27 +146,21 @@ export class CatalogEncoder {
                 }
 
                 // Race between context cancellation and channel receive
-                let chunkOrErr: [EncodedChunk | undefined, boolean] | Error;
-                try {
-                    chunkOrErr = await Promise.race([
-                        chan.receive(),
-                        ctx.then(() => new Error("context cancelled"))
-                    ]);
-                } catch (e) {
-                    err = e instanceof Error ? e : new Error(String(e));
-                    return err;
+                const result = await Promise.race([
+                    chan.receive(),
+                    watchCtx.done().then(() => { return watchCtx.err()!; })
+                ]);
+
+                if (result instanceof Error) {
+                    return result;
                 }
 
-                if (chunkOrErr instanceof Error) {
-                    return chunkOrErr;
-                }
-
-                [chunk, ok] = chunkOrErr;
+                [chunk, ok] = result;
                 if (!ok) {
                     break;
                 }
 
-                err = await group.writeFrame(chunk!);
+                err = await dest.output(chunk!);
                 if (err) {
                     return new Error("Failed to write frame: " + err.message);
                 }
@@ -175,8 +171,6 @@ export class CatalogEncoder {
         } finally {
             this.#channels.delete(chan);
             chan.close();
-
-            await group.close();
         }
     }
 }
@@ -189,125 +183,128 @@ export interface CatalogReaderInit {
 export class CatalogDecoder {
     readonly version: string;
 
-    #source?: TrackReader;
+    #source: TrackReader;
 
     #tracks: Map<string, TrackCatalog> = new Map();
 
-    // #chan: Channel<TrackCatalog[]> = new Channel(2);
     #dests: Set<(tracks: TrackCatalog[]) => void> = new Set();
 
     #decoder: JsonLineDecoder = new JsonLineDecoder();
 
+    #cancelFunc: CancelFunc;
+
     constructor(init: CatalogReaderInit) {
         this.version = init.version;
+        this.#source = init.reader;
+
+        const [ctx, cancel] = withCancel(this.#source.context);
+        this.#cancelFunc = cancel;
+
+        this.#decodeFrom(ctx, this.#source)
     }
 
-    async decodeFrom(ctx: Promise<void>, track: TrackReader): Promise<Error | undefined> {
-        if (this.#source) {
-            this.#source.closeWithError(0, "replaced by new source"); // TODO: use proper error code
-            this.#source = undefined;
-        }
+    async #decodeFrom(ctx: Context, track: TrackReader): Promise<Error | undefined> {
+        while (true) {
+            let [group, err] = await track.acceptGroup(ctx.done());
 
-        const [group, err] = await track.acceptGroup(ctx)
-
-        if (err) {
-            return err;
-        }
-
-        this.#source = track;
-
-        // Integrated handle logic
-        let error: Error | undefined;
-        let frame: Frame | undefined;
-
-        try {
-            const watchCtx = watchPromise(background(), ctx);
-            error = watchCtx.err();
-            if (error) {
-                return error;
+            if (err) {
+                return err;
             }
 
-            let isInit = true;
+            // Integrated handle logic
+            let frame: BytesFrame | undefined;
 
-            while (true) {
-                error = watchCtx.err();
-                if (error) {
-                    return error;
+            try {
+                err = ctx.err();
+                if (err) {
+                    return err;
                 }
 
-                [frame, error] = await group!.readFrame();
-                if (error) {
-                    return error;
-                }
-                if (!frame) {
-                    // No more frames, exit loop
-                    break;
-                }
+                let isInit = true;
 
-                const chunk = new EncodedJsonChunk({
-                    type: "jsonl",
-                    data: frame.bytes,
-                });
-
-                let lines: any[];
-                try {
-                    lines = this.#decoder.decode(chunk);
-                } catch (e) {
-                    return e instanceof Error ? e : new Error(String(e));
-                }
-
-                if (isInit) {
-                    const { success, data: init } = CatalogInitSchema.safeParse(lines.pop());
-                    if (!success) {
-                        return new Error("Invalid catalog init data");
+                while (true) {
+                    err = ctx.err();
+                    if (err) {
+                        return err;
                     }
 
-                    if (this.version !== init.version) {
-                        return new Error(`Catalog version mismatch: expected ${this.version}, got ${init.version}`);
+                    [frame, err] = await group!.readFrame();
+                    if (err) {
+                        return err;
+                    }
+                    if (!frame) {
+                        // No more frames, exit loop
+                        break;
                     }
 
-                    isInit = false;
-                }
+                    const chunk = new EncodedJsonChunk({
+                        type: "jsonl",
+                        data: frame.bytes,
+                    });
 
-                const catalogs: TrackCatalog[] = [];
-                for (const line of lines) {
-                    const { success, data: track } = CatalogLineSchema.safeParse(line);
-                    if (!success) {
-                        continue;
+                    let lines: any[];
+                    try {
+                        lines = this.#decoder.decode(chunk);
+                    } catch (e) {
+                        err = e instanceof Error ? e : new Error(String(e));
+                        break;
                     }
 
-                    if (track.active) {
-                        const existing = this.#tracks.get(track.track.name);
-                        if (existing) {
-                            // End the old track since we're replacing it
-                            existing.end();
+                    if (isInit) {
+                        const { success, data: init } = CatalogInitSchema.safeParse(lines.pop());
+                        if (!success) {
+                            err = new Error("Invalid catalog init data");
+                            break;
                         }
-                        const trackCatalog = new TrackCatalog(group.context, track.track);
-                        this.#tracks.set(track.track.name, trackCatalog);
-                        catalogs.push(trackCatalog);
-                    } else {
-                        const existing = this.#tracks.get(track.name);
-                        if (existing) {
-                            existing.end();
-                            this.#tracks.delete(track.name);
+
+                        if (this.version !== init.version) {
+                            err = new Error(`Catalog version mismatch: expected ${this.version}, got ${init.version}`);
+                            break;
+                        }
+
+                        isInit = false;
+                    }
+
+                    const catalogs: TrackCatalog[] = [];
+                    for (const line of lines) {
+                        const { success, data: track } = CatalogLineSchema.safeParse(line);
+                        if (!success) {
+                            continue;
+                        }
+
+                        if (track.active) {
+                            const existing = this.#tracks.get(track.track.name);
+                            if (existing) {
+                                // End the old track since we're replacing it
+                                existing.end();
+                            }
+                            const trackCatalog = new TrackCatalog(ctx.done(), track.track);
+                            this.#tracks.set(track.track.name, trackCatalog);
+                            catalogs.push(trackCatalog);
+                        } else {
+                            const existing = this.#tracks.get(track.name);
+                            if (existing) {
+                                existing.end();
+                                this.#tracks.delete(track.name);
+                            }
+                        }
+                    }
+
+                    // Send if there are tracks (skip empty sends after init)
+                    if (catalogs.length > 0) {
+                        for (const dest of this.#dests) {
+                            dest(catalogs);
                         }
                     }
                 }
 
-                // Send if there are tracks (skip empty sends after init)
-                if (catalogs.length > 0) {
-                    for (const dest of this.#dests) {
-                        dest(catalogs);
-                    }
-                }
+                return undefined;
+            } catch (e) {
+                err = e instanceof Error ? e : new Error(String(e));
+                return err;
+            } finally {
+                await group!.cancel(InternalSubscribeErrorCode, "CatalogReader is closed");
             }
-            
-            return undefined;
-        } catch (e) {
-            error = e instanceof Error ? e : new Error(String(e));
-            return error;
-        } finally {
-            await group.cancel(InternalSubscribeErrorCode, "CatalogReader is closed");
         }
     }
 
@@ -320,20 +317,7 @@ export class CatalogDecoder {
         }
     }
 
-    // async accept(ctx: Promise<void>): Promise<TrackCatalog[] | Error> {
-    //     // Use select-like behavior: wait for either context cancellation or channel receive
-    //     try {
-    //         return await Promise.race([
-    //             ctx.then(() => ContextCancelledError),
-    //             this.#chan.receive().then(([desc, ok]) => {
-    //                 if (!ok) {
-    //                     return new Error("CatalogDecoder channel closed");
-    //                 }
-    //                 return desc;
-    //             })
-    //         ]);
-    //     } catch (e) {
-    //         return e instanceof Error ? e : new Error(String(e));
-    //     }
-    // }
+    cancel(): void {
+        this.#cancelFunc();
+    }
 }

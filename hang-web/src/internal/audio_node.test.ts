@@ -3,7 +3,7 @@ import {
 	AudioEncodeNode,
 	AudioDecodeNode,
 } from './audio_node';
-import { EncodedContainer } from ".";
+import type { EncodeDestination, EncodedContainer } from "./container";
 
 // Mock implementations for Web APIs
 class MockAudioData implements AudioData {
@@ -64,9 +64,20 @@ class MockEncodedAudioChunk implements EncodedAudioChunk {
 
 class MockAudioEncoder {
 	configure = vi.fn();
-	encode = vi.fn();
-	close = vi.fn();
+	encode = vi.fn((chunk) => {
+		// Simulate calling the output callback with a mock chunk
+		const mockChunk = new MockEncodedAudioChunk();
+		if (this.output) {
+			this.output(mockChunk);
+		}
+	});
 	flush = vi.fn();
+	close = vi.fn();
+	output?: (chunk: EncodedAudioChunk) => void;
+
+	constructor(config: AudioEncoderInit) {
+		this.output = config.output;
+	}
 }
 
 class MockAudioDecoder {
@@ -237,7 +248,7 @@ describe('AudioEncodeNode', () => {
 			destination: { channelCount: 2 },
 			sampleRate: 44100
 		} as any;
-		mockEncoder = new MockAudioEncoder();
+		mockEncoder = new MockAudioEncoder({} as any);
 		mockWorklet = new MockAudioWorkletNode();
 		(global as any).AudioEncoder = vi.fn(() => mockEncoder);
 		(global as any).AudioWorkletNode = vi.fn(() => mockWorklet);
@@ -252,7 +263,7 @@ describe('AudioEncodeNode', () => {
 	it('should create AudioEncodeNode', () => {
 		expect(encodeNode).toBeInstanceOf(AudioEncodeNode);
 		expect(encodeNode.numberOfInputs).toBe(1);
-		expect(encodeNode.numberOfOutputs).toBe(1);
+		expect(encodeNode.numberOfOutputs).toBe(0);
 		expect(encodeNode.context).toBe(mockContext);
 	});
 
@@ -374,7 +385,7 @@ describe('AudioEncodeNode', () => {
 
 	it('should return correct AudioNode properties', () => {
 		expect(encodeNode.numberOfInputs).toBe(1);
-		expect(encodeNode.numberOfOutputs).toBe(1);
+		expect(encodeNode.numberOfOutputs).toBe(0);
 		expect(encodeNode.channelCount).toBe(1);
 		expect(encodeNode.channelCountMode).toBe("explicit");
 		expect(encodeNode.channelInterpretation).toBe("speakers");
@@ -390,13 +401,28 @@ describe('AudioEncodeNode', () => {
 		await expect(encodeNode.close()).resolves.not.toThrow();
 	});
 
-	it('should serve track and manage tracks set', async () => {
-		const mockTrack = { context: { done: vi.fn().mockResolvedValue(undefined) } } as any;
-		const ctx = Promise.resolve();
+	it('should encode to destination and call encode', async () => {
+		let resolveDone: () => void;
+		const mockDestination: EncodeDestination = {
+			output: vi.fn().mockResolvedValue(undefined),
+			done: new Promise(resolve => resolveDone = resolve),
+		};
 
-		const servePromise = encodeNode.serveTrack(ctx, mockTrack);
-		await expect(servePromise).resolves.not.toThrow();
-		expect(encodeNode.tracks.has(mockTrack)).toBe(false); // should be removed after completion
+		// Add destination first
+		const encodePromise = encodeNode.encodeTo(mockDestination);
+
+		// Simulate encoding a chunk
+		const audioData = new MockAudioData();
+		encodeNode.process(audioData);
+
+		// Resolve done to complete the encodeTo
+		resolveDone!();
+
+		// Wait for the encode promise to resolve
+		await expect(encodePromise).resolves.not.toThrow();
+
+		// Check that encode was called
+		expect(mockEncoder.encode).toHaveBeenCalledWith(audioData);
 	});
 });
 
@@ -527,12 +553,10 @@ describe('AudioDecodeNode', () => {
 		};
 		decoderNode.configure(config);
 
-		const mockReader = {
-			acceptGroup: vi.fn().mockResolvedValueOnce([{ readFrame: vi.fn().mockResolvedValueOnce([{ bytes: new Uint8Array([0, 0, 0, 0, 1, 2, 3, 4]) }, null]).mockResolvedValueOnce([null, new Error('end')]) }, null]).mockResolvedValueOnce([null, new Error('end')])
-		} as any;
+		const mockReader = new ReadableStream<EncodedAudioChunk>();
 		const ctx = Promise.resolve();
 
-		await expect(decoderNode.decodeFrom(ctx, mockReader)).resolves.not.toThrow();
+		await expect(decoderNode.decodeFrom(mockReader)).resolves.not.toThrow();
 		expect(mockDecoder.decode).toHaveBeenCalled();
 	});
 
@@ -544,12 +568,10 @@ describe('AudioDecodeNode', () => {
 		};
 		decoderNode.configure(config);
 
-		const mockReader = {
-			acceptGroup: vi.fn().mockRejectedValue(new Error('acceptGroup error'))
-		} as any;
+		const mockReader = new ReadableStream<EncodedAudioChunk>();
 		const ctx = Promise.resolve();
 
-		await expect(decoderNode.decodeFrom(ctx, mockReader)).resolves.not.toThrow();
+		await expect(decoderNode.decodeFrom(mockReader)).resolves.not.toThrow();
 	});
 
 	it('should close decoder on close', async () => {

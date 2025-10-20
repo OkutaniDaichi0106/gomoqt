@@ -1,6 +1,8 @@
 import type { Source } from "./io"
 
-export class Frame implements Source {
+export type Frame = Source
+
+export class BytesFrame implements Frame {
     bytes: Uint8Array;
 
     constructor(bytes: Uint8Array) {
@@ -21,15 +23,15 @@ export class Frame implements Source {
         }
     }
 
-    clone(buffer?: Uint8Array<ArrayBufferLike>): Frame {
+    clone(buffer?: Uint8Array<ArrayBufferLike>): BytesFrame {
         if (buffer && buffer.byteLength >= this.bytes.byteLength) {
             buffer.set(this.bytes);
-            return new Frame(buffer.subarray(0, this.bytes.byteLength));
+            return new BytesFrame(buffer.subarray(0, this.bytes.byteLength));
         }
-        return new Frame(this.bytes.slice());
+        return new BytesFrame(this.bytes.slice());
     }
 
-    copyFrom(src: Source): void {
+    copyFrom(src: Frame): void {
         if (src.byteLength > this.bytes.byteLength) {
             this.bytes = new Uint8Array(src.byteLength);
         }

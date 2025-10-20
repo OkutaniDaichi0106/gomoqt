@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import { z } from 'zod';
-import { TrackSchema, TrackDescriptor } from './track';
+import { TrackDescriptorSchema, TrackDescriptor } from './track';
 
 describe('Track', () => {
     describe('TrackSchema', () => {
@@ -43,7 +43,7 @@ describe('Track', () => {
             ];
 
             validTracks.forEach(track => {
-                const result = TrackSchema.safeParse(track);
+                const result = TrackDescriptorSchema.safeParse(track);
                 expect(result.success).toBe(true);
                 if (result.success) {
                     expect(result.data).toEqual(track);
@@ -65,7 +65,7 @@ describe('Track', () => {
                 const invalidTrack = { ...baseTrack };
                 delete invalidTrack[field as keyof typeof invalidTrack];
                 
-                const result = TrackSchema.safeParse(invalidTrack);
+                const result = TrackDescriptorSchema.safeParse(invalidTrack);
                 expect(result.success).toBe(false);
                 
                 if (!result.success) {
@@ -85,14 +85,14 @@ describe('Track', () => {
             };
 
             // Empty string should fail
-            const emptyNameResult = TrackSchema.safeParse({
+            const emptyNameResult = TrackDescriptorSchema.safeParse({
                 ...baseTrack,
                 name: ''
             });
             expect(emptyNameResult.success).toBe(false);
 
             // Non-string should fail
-            const nonStringNameResult = TrackSchema.safeParse({
+            const nonStringNameResult = TrackDescriptorSchema.safeParse({
                 ...baseTrack,
                 name: 123
             });
@@ -101,7 +101,7 @@ describe('Track', () => {
             // Valid strings should pass
             const validNames = ['a', 'track-name', 'track_name', 'Track Name', '日本語'];
             validNames.forEach(name => {
-                const result = TrackSchema.safeParse({
+                const result = TrackDescriptorSchema.safeParse({
                     ...baseTrack,
                     name
                 });
@@ -118,7 +118,7 @@ describe('Track', () => {
             };
 
             // Description is optional
-            const noDescriptionResult = TrackSchema.safeParse(baseTrack);
+            const noDescriptionResult = TrackDescriptorSchema.safeParse(baseTrack);
             expect(noDescriptionResult.success).toBe(true);
 
             // Valid descriptions
@@ -130,7 +130,7 @@ describe('Track', () => {
             ];
 
             validDescriptions.forEach(description => {
-                const result = TrackSchema.safeParse({
+                const result = TrackDescriptorSchema.safeParse({
                     ...baseTrack,
                     description
                 });
@@ -138,14 +138,14 @@ describe('Track', () => {
             });
 
             // Too long description should fail
-            const tooLongDescriptionResult = TrackSchema.safeParse({
+            const tooLongDescriptionResult = TrackDescriptorSchema.safeParse({
                 ...baseTrack,
                 description: 'A'.repeat(501) // 501 characters
             });
             expect(tooLongDescriptionResult.success).toBe(false);
 
             // Non-string description should fail
-            const nonStringDescriptionResult = TrackSchema.safeParse({
+            const nonStringDescriptionResult = TrackDescriptorSchema.safeParse({
                 ...baseTrack,
                 description: 123
             });
@@ -163,7 +163,7 @@ describe('Track', () => {
             // Valid uint8 values (0-255)
             const validPriorities = [0, 1, 127, 128, 255];
             validPriorities.forEach(priority => {
-                const result = TrackSchema.safeParse({
+                const result = TrackDescriptorSchema.safeParse({
                     ...baseTrack,
                     priority
                 });
@@ -173,7 +173,7 @@ describe('Track', () => {
             // Invalid values
             const invalidPriorities = [-1, 256, 1000, 3.14, '100', null, undefined];
             invalidPriorities.forEach(priority => {
-                const result = TrackSchema.safeParse({
+                const result = TrackDescriptorSchema.safeParse({
                     ...baseTrack,
                     priority
                 });
@@ -190,14 +190,14 @@ describe('Track', () => {
             };
 
             // Empty string should fail
-            const emptySchemaResult = TrackSchema.safeParse({
+            const emptySchemaResult = TrackDescriptorSchema.safeParse({
                 ...baseTrack,
                 schema: ''
             });
             expect(emptySchemaResult.success).toBe(false);
 
             // Non-string should fail
-            const nonStringSchemaResult = TrackSchema.safeParse({
+            const nonStringSchemaResult = TrackDescriptorSchema.safeParse({
                 ...baseTrack,
                 schema: 123
             });
@@ -214,7 +214,7 @@ describe('Track', () => {
             ];
 
             validSchemas.forEach(schema => {
-                const result = TrackSchema.safeParse({
+                const result = TrackDescriptorSchema.safeParse({
                     ...baseTrack,
                     schema
                 });
@@ -231,7 +231,7 @@ describe('Track', () => {
             };
 
             // Config is required
-            const noConfigResult = TrackSchema.safeParse({
+            const noConfigResult = TrackDescriptorSchema.safeParse({
                 name: 'test',
                 priority: 0,
                 schema: 'test-schema'
@@ -241,7 +241,7 @@ describe('Track', () => {
             // Non-object config should fail
             const nonObjectConfigs = [null, 'string', 123, [], true];
             nonObjectConfigs.forEach(config => {
-                const result = TrackSchema.safeParse({
+                const result = TrackDescriptorSchema.safeParse({
                     ...baseTrack,
                     config
                 });
@@ -259,7 +259,7 @@ describe('Track', () => {
             ];
 
             validConfigs.forEach(config => {
-                const result = TrackSchema.safeParse({
+                const result = TrackDescriptorSchema.safeParse({
                     ...baseTrack,
                     config
                 });
@@ -276,7 +276,7 @@ describe('Track', () => {
             };
 
             // Dependencies is optional
-            const noDependenciesResult = TrackSchema.safeParse(baseTrack);
+            const noDependenciesResult = TrackDescriptorSchema.safeParse(baseTrack);
             expect(noDependenciesResult.success).toBe(true);
 
             // Valid dependencies arrays
@@ -290,7 +290,7 @@ describe('Track', () => {
             ];
 
             validDependencies.forEach(dependencies => {
-                const result = TrackSchema.safeParse({
+                const result = TrackDescriptorSchema.safeParse({
                     ...baseTrack,
                     dependencies
                 });
@@ -309,7 +309,7 @@ describe('Track', () => {
             ];
 
             invalidDependencies.forEach(dependencies => {
-                const result = TrackSchema.safeParse({
+                const result = TrackDescriptorSchema.safeParse({
                     ...baseTrack,
                     dependencies
                 });
@@ -327,8 +327,8 @@ describe('Track', () => {
                 dependencies: ['parent-track']
             };
 
-            expect(() => TrackSchema.parse(validTrack)).not.toThrow();
-            const parsed = TrackSchema.parse(validTrack);
+            expect(() => TrackDescriptorSchema.parse(validTrack)).not.toThrow();
+            const parsed = TrackDescriptorSchema.parse(validTrack);
             expect(parsed).toEqual(validTrack);
         });
 
@@ -342,7 +342,7 @@ describe('Track', () => {
             ];
 
             invalidTracks.forEach(track => {
-                expect(() => TrackSchema.parse(track)).toThrow(z.ZodError);
+                expect(() => TrackDescriptorSchema.parse(track)).toThrow(z.ZodError);
             });
         });
 
@@ -390,7 +390,7 @@ describe('Track', () => {
                 dependencies: ['base-video', 'base-audio', 'subtitle-track']
             };
 
-            const result = TrackSchema.safeParse(complexTrack);
+            const result = TrackDescriptorSchema.safeParse(complexTrack);
             expect(result.success).toBe(true);
             
             if (result.success) {
@@ -409,7 +409,7 @@ describe('Track', () => {
                 config: {}
             };
 
-            const minResult = TrackSchema.safeParse(minTrack);
+            const minResult = TrackDescriptorSchema.safeParse(minTrack);
             expect(minResult.success).toBe(true);
 
             // Maximum valid track
@@ -426,7 +426,7 @@ describe('Track', () => {
                 dependencies: Array.from({ length: 50 }, (_, i) => `dependency-${i}`)
             };
 
-            const maxResult = TrackSchema.safeParse(maxTrack);
+            const maxResult = TrackDescriptorSchema.safeParse(maxTrack);
             expect(maxResult.success).toBe(true);
         });
 
@@ -440,7 +440,7 @@ describe('Track', () => {
             };
 
             // Zod object schema strips unknown properties by default
-            const result = TrackSchema.safeParse(trackWithExtra);
+            const result = TrackDescriptorSchema.safeParse(trackWithExtra);
             expect(result.success).toBe(true);
             
             if (result.success) {

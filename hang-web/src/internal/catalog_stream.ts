@@ -8,7 +8,6 @@ import { TrackWriter,TrackReader,GroupReader,Frame,GroupWriter,InternalSubscribe
 import { Channel, select, send, default_ } from "golikejs/channel";
 import { JsonLineDecoder, EncodedJsonChunk,JsonLineEncoder } from "../internal/json";
 import type { JsonObject } from "../internal/json";
-import { track } from "happy-dom/lib/PropertySymbol";
 import type { EncodedChunk } from ".";
 
 export class TrackCatalog {

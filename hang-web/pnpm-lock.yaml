@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@okutanidaichi/moqt':
-        specifier: ^0.6.6
-        version: 0.6.9
+        specifier: ^0.6.13
+        version: 0.6.14
       golikejs:
         specifier: ^0.3.1
         version: 0.3.1
@@ -43,8 +43,8 @@ importers:
         specifier: ^9.30.1
         version: 9.37.0
       happy-dom:
-        specifier: ^19.0.2
-        version: 19.0.2
+        specifier: ^20.0.2
+        version: 20.0.2
       jsdom:
         specifier: ^27.0.0
         version: 27.0.0(postcss@8.5.6)
@@ -59,7 +59,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^3.2.4
-        version: 3.2.4(@types/node@24.8.0)(@vitest/ui@3.2.4)(happy-dom@19.0.2)(jsdom@27.0.0(postcss@8.5.6))(tsx@4.20.6)
+        version: 3.2.4(@types/node@24.8.0)(@vitest/ui@3.2.4)(happy-dom@20.0.2)(jsdom@27.0.0(postcss@8.5.6))(tsx@4.20.6)
       web-streams-polyfill:
         specifier: ^4.2.0
         version: 4.2.0
@@ -430,8 +430,9 @@ packages:
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
 
-  '@okutanidaichi/moqt@0.6.9':
-    resolution: {integrity: sha512-PYsFF507XrbCgPT9gk+k1he7a5uBKWBW5AK2zpMffmJGbx4DgTl+MJ6rOezSNViPHUq3TfSY4BWXkXQotVs4oQ==}
+  '@okutanidaichi/moqt@0.6.14':
+    resolution: {integrity: sha512-9z0vj320FKx26Sd+s4/gXJuMWKHm431uUrL5I5CJnBehfBOILQAEepBWJnURVzDVe/kKDpSWmeUsiW04dRBYlw==}
+    engines: {node: '>=18.0.0'}
 
   '@pkgjs/parseargs@0.11.0':
     resolution: {integrity: sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg==}
@@ -565,8 +566,8 @@ packages:
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
 
-  '@types/node@20.19.21':
-    resolution: {integrity: sha512-CsGG2P3I5y48RPMfprQGfy4JPRZ6csfC3ltBZSRItG3ngggmNY/qs2uZKp4p9VbrpqNNSMzUZNFZKzgOGnd/VA==}
+  '@types/node@20.19.22':
+    resolution: {integrity: sha512-hRnu+5qggKDSyWHlnmThnUqg62l29Aj/6vcYgUaSFL9oc7DVjeWEQN3PRgdSc6F8d9QRMWkf36CLMch1Do/+RQ==}
 
   '@types/node@24.8.0':
     resolution: {integrity: sha512-5x08bUtU8hfboMTrJ7mEO4CpepS9yBwAqcL52y86SWNmbPX8LVbNs3EP4cNrIZgdjk2NAlP2ahNihozpoZIxSg==}
@@ -1027,14 +1028,17 @@ packages:
     resolution: {integrity: sha512-oahGvuMGQlPw/ivIYBjVSrWAfWLBeku5tpPE2fOPLi+WHffIWbuh2tCjhyQhTBPMf5E9jDEH4FOmTYgYwbKwtQ==}
     engines: {node: '>=18'}
 
+  golikejs@0.1.9:
+    resolution: {integrity: sha512-TgzcGt2NveyeDDI/aKdq3+XioFHMH5Mi+vnO40EVy2HVve893lEOgw5GYzZzDxYsAStYnyyNoVfpeQ6M1QarhQ==}
+
   golikejs@0.3.1:
     resolution: {integrity: sha512-SrXFfa9ZUKcYbH2Ibo6nzG/Ibg6Aim9dbetu782RM1zMms7yeInCgAmlDDB0fNCF+4nkWbjNScjC+8g+JcaR2A==}
 
   graphemer@1.4.0:
     resolution: {integrity: sha512-EtKwoO6kxCL9WO5xipiHTZlSzBm7WLT627TqC/uVRd0HKmq8NXyebnNYxDoBi7wt8eTWrUrKXCOVaFq9x1kgag==}
 
-  happy-dom@19.0.2:
-    resolution: {integrity: sha512-831CLbgDyjRbd2lApHZFsBDe56onuFcjsCBPodzWpzedTpeDr8CGZjs7iEIdNW1DVwSFRecfwzLpVyGBPamwGA==}
+  happy-dom@20.0.2:
+    resolution: {integrity: sha512-pYOyu624+6HDbY+qkjILpQGnpvZOusItCk+rvF5/V+6NkcgTKnbOldpIy22tBnxoaLtlM9nXgoqAcW29/B7CIw==}
     engines: {node: '>=20.0.0'}
 
   has-flag@3.0.0:
@@ -2046,7 +2050,9 @@ snapshots:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.19.1
 
-  '@okutanidaichi/moqt@0.6.9': {}
+  '@okutanidaichi/moqt@0.6.14':
+    dependencies:
+      golikejs: 0.1.9
 
   '@pkgjs/parseargs@0.11.0':
     optional: true
@@ -2131,7 +2137,7 @@ snapshots:
 
   '@types/json-schema@7.0.15': {}
 
-  '@types/node@20.19.21':
+  '@types/node@20.19.22':
     dependencies:
       undici-types: 6.21.0
 
@@ -2246,7 +2252,7 @@ snapshots:
       magicast: 0.3.5
       test-exclude: 7.0.1
       tinyrainbow: 2.0.0
-      vitest: 3.2.4(@types/node@24.8.0)(@vitest/ui@3.2.4)(happy-dom@19.0.2)(jsdom@27.0.0(postcss@8.5.6))(tsx@4.20.6)
+      vitest: 3.2.4(@types/node@24.8.0)(@vitest/ui@3.2.4)(happy-dom@20.0.2)(jsdom@27.0.0(postcss@8.5.6))(tsx@4.20.6)
     transitivePeerDependencies:
       - supports-color
 
@@ -2265,7 +2271,7 @@ snapshots:
       std-env: 3.10.0
       test-exclude: 7.0.1
       tinyrainbow: 2.0.0
-      vitest: 3.2.4(@types/node@24.8.0)(@vitest/ui@3.2.4)(happy-dom@19.0.2)(jsdom@27.0.0(postcss@8.5.6))(tsx@4.20.6)
+      vitest: 3.2.4(@types/node@24.8.0)(@vitest/ui@3.2.4)(happy-dom@20.0.2)(jsdom@27.0.0(postcss@8.5.6))(tsx@4.20.6)
     transitivePeerDependencies:
       - supports-color
 
@@ -2314,7 +2320,7 @@ snapshots:
       sirv: 3.0.2
       tinyglobby: 0.2.15
       tinyrainbow: 2.0.0
-      vitest: 3.2.4(@types/node@24.8.0)(@vitest/ui@3.2.4)(happy-dom@19.0.2)(jsdom@27.0.0(postcss@8.5.6))(tsx@4.20.6)
+      vitest: 3.2.4(@types/node@24.8.0)(@vitest/ui@3.2.4)(happy-dom@20.0.2)(jsdom@27.0.0(postcss@8.5.6))(tsx@4.20.6)
 
   '@vitest/utils@3.2.4':
     dependencies:
@@ -2689,13 +2695,15 @@ snapshots:
 
   globals@14.0.0: {}
 
+  golikejs@0.1.9: {}
+
   golikejs@0.3.1: {}
 
   graphemer@1.4.0: {}
 
-  happy-dom@19.0.2:
+  happy-dom@20.0.2:
     dependencies:
-      '@types/node': 20.19.21
+      '@types/node': 20.19.22
       '@types/whatwg-mimetype': 3.0.2
       whatwg-mimetype: 3.0.0
 
@@ -3247,7 +3255,7 @@ snapshots:
       fsevents: 2.3.3
       tsx: 4.20.6
 
-  vitest@3.2.4(@types/node@24.8.0)(@vitest/ui@3.2.4)(happy-dom@19.0.2)(jsdom@27.0.0(postcss@8.5.6))(tsx@4.20.6):
+  vitest@3.2.4(@types/node@24.8.0)(@vitest/ui@3.2.4)(happy-dom@20.0.2)(jsdom@27.0.0(postcss@8.5.6))(tsx@4.20.6):
     dependencies:
       '@types/chai': 5.2.2
       '@vitest/expect': 3.2.4
@@ -3275,7 +3283,7 @@ snapshots:
     optionalDependencies:
       '@types/node': 24.8.0
       '@vitest/ui': 3.2.4(vitest@3.2.4)
-      happy-dom: 19.0.2
+      happy-dom: 20.0.2
       jsdom: 27.0.0(postcss@8.5.6)
     transitivePeerDependencies:
       - jiti

@@ -35,8 +35,7 @@ func TestNewAnnouncement(t *testing.T) {
 			assert.NotNil(t, announcement)
 			assert.NotNil(t, end)
 			assert.Equal(t, tt.path, announcement.path)
-			assert.NotNil(t, announcement.ctx)
-			assert.NotNil(t, announcement.cancel)
+			assert.True(t, announcement.IsActive())
 		})
 	}
 }
@@ -241,7 +240,7 @@ func TestAnnouncement_ContextDone(t *testing.T) {
 
 			// Test that Context().Done() is not closed initially
 			select {
-			case <-announcement.Context().Done():
+			case <-announcement.Done():
 				if !tt.expectClose {
 					t.Error("Expected Context().Done() channel to not be closed initially")
 				}
@@ -256,7 +255,7 @@ func TestAnnouncement_ContextDone(t *testing.T) {
 				}()
 
 				select {
-				case <-announcement.Context().Done():
+				case <-announcement.Done():
 					assert.True(t, tt.expectClose, "Channel closed when not expected")
 				case <-time.After(tt.timeout):
 					assert.False(t, tt.expectClose, "Expected channel to be closed but timeout occurred")
@@ -336,7 +335,7 @@ func TestAnnouncement_ConcurrentContextDone(t *testing.T) {
 			for i := 0; i < tt.numGoroutines; i++ {
 				go func() {
 					select {
-					case <-announcement.Context().Done():
+					case <-announcement.Done():
 						results <- true
 					case <-time.After(tt.timeout):
 						results <- false

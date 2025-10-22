@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 type EndAnnouncementFunc func()
@@ -14,25 +15,26 @@ func NewAnnouncement(ctx context.Context, path BroadcastPath) (*Announcement, En
 		panic("[Announcement] invalid track path: " + string(path))
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-
 	ann := Announcement{
-		path:   path,
-		ctx:    ctx,
-		cancel: cancel,
+		path: path,
+		ch:   make(chan struct{}),
 	}
+	endFunc := ann.end
 
-	return &ann, ann.end
+	context.AfterFunc(ctx, endFunc)
+
+	return &ann, endFunc
 }
 
 type Announcement struct {
-	mu     sync.Mutex
-	ctx    context.Context
-	cancel context.CancelFunc
+	mu sync.Mutex
+	ch chan struct{}
 
 	path BroadcastPath
 
-	onEndFuncs []func()
+	afterHandlers map[*afterHandler]struct{}
+
+	active atomic.Bool
 }
 
 func (a *Announcement) String() string {
@@ -56,12 +58,12 @@ func (a *Announcement) BroadcastPath() BroadcastPath {
 	return a.path
 }
 
-func (a *Announcement) Context() context.Context {
-	return a.ctx
+func (a *Announcement) Done() <-chan struct{} {
+	return a.ch
 }
 
-func (a *Announcement) OnEnd(f func()) {
-	if a.ctx.Err() != nil {
+func (a *Announcement) AfterFunc(f func()) (stop func() bool) {
+	if !a.active.Load() {
 		f()
 		return
 	}
@@ -69,25 +71,43 @@ func (a *Announcement) OnEnd(f func()) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	a.onEndFuncs = append(a.onEndFuncs, f)
+	handler := &afterHandler{op: f}
+	if a.afterHandlers == nil {
+		a.afterHandlers = make(map[*afterHandler]struct{})
+	}
+	a.afterHandlers[handler] = struct{}{}
+
+	stopFunc := func() bool {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		if _, exists := a.afterHandlers[handler]; exists {
+			delete(a.afterHandlers, handler)
+			return true
+		}
+		return false
+	}
+
+	return stopFunc
 }
 
 func (a *Announcement) IsActive() bool {
-	return a.ctx.Err() == nil
+	return a.active.Load()
 }
 
 func (a *Announcement) end() {
-	a.cancel()
+	// set active to false
+	a.active.Store(false)
+
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	workerCount := min(runtime.NumCPU(), len(a.onEndFuncs))
+	workerCount := min(runtime.NumCPU(), len(a.afterHandlers))
 	if workerCount == 0 {
 		workerCount = 1
 	}
 
 	// buffer jobs to avoid blocking producers when many workers are used
-	jobs := make(chan func(), len(a.onEndFuncs))
+	jobs := make(chan func(), len(a.afterHandlers))
 
 	var wg sync.WaitGroup
 
@@ -101,12 +121,16 @@ func (a *Announcement) end() {
 		}()
 	}
 
-	for _, f := range a.onEndFuncs {
+	for handler := range a.afterHandlers {
 		wg.Add(1)
-		jobs <- f
+		jobs <- handler.op
 	}
 
 	close(jobs)
 
 	wg.Wait()
+}
+
+type afterHandler struct {
+	op func()
 }

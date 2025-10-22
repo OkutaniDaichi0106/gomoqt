@@ -31,7 +31,7 @@ func Publish(ctx context.Context, path BroadcastPath, handler TrackHandler) {
 	DefaultMux.Publish(ctx, path, handler)
 }
 
-func PublishFunc(ctx context.Context, path BroadcastPath, f func(ctx context.Context, tw *TrackWriter)) {
+func PublishFunc(ctx context.Context, path BroadcastPath, f func(tw *TrackWriter)) {
 	DefaultMux.PublishFunc(ctx, path, f)
 }
 
@@ -50,7 +50,7 @@ type TrackMux struct {
 	treeMu           sync.RWMutex
 }
 
-func (mux *TrackMux) PublishFunc(ctx context.Context, path BroadcastPath, f func(ctx context.Context, tw *TrackWriter)) {
+func (mux *TrackMux) PublishFunc(ctx context.Context, path BroadcastPath, f func(tw *TrackWriter)) {
 	mux.Publish(ctx, path, TrackHandlerFunc(f))
 }
 
@@ -128,18 +128,17 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 		default:
 			// Channel is busy, start retry goroutine
 			go func(channel chan *Announcement) {
-				ctx := announcement.Context()
 				ticker := time.NewTicker(10 * time.Millisecond)
 				defer ticker.Stop()
 
 				for {
 					select {
-					case <-ctx.Done():
+					case <-announcement.Done():
 						// Announcement ended, no need to send
 						return
 					default:
 						// Check if context is done before sending
-						if ctx.Err() != nil {
+						if !announced.IsActive() {
 							return
 						}
 						select {
@@ -149,7 +148,7 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 						case <-ticker.C:
 							// Timeout, retry
 							continue
-						case <-ctx.Done():
+						case <-announcement.Done():
 							// Announcement ended during send attempt
 							return
 						}
@@ -161,7 +160,7 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 	lastNode.mu.RUnlock()
 
 	// Ensure the announcement is removed when it ends
-	announcement.OnEnd(func() {
+	announcement.AfterFunc(func() {
 		// Remove the announcement from the tree unconditionally
 		lastNode.removeAnnouncement(announcement)
 
@@ -215,21 +214,26 @@ func (mux *TrackMux) serveTrack(tw *TrackWriter) {
 	path := tw.BroadcastPath
 
 	mux.handlerMu.RLock()
-	ath, ok := mux.trackHandlerIndex[path]
+	announced, ok := mux.trackHandlerIndex[path]
 	mux.handlerMu.RUnlock()
-	if !ok || ath == nil || ath.Announcement == nil {
+	if !ok || announced == nil || announced.Announcement == nil {
 		slog.Warn("[TrackMux] no announcement found for path", "path", path)
 		tw.CloseWithError(TrackNotFoundErrorCode)
 		return
 	}
 
-	if ath.TrackHandler == nil {
+	if announced.TrackHandler == nil {
 		slog.Warn("mux: no handler found for path", "path", path)
 		tw.CloseWithError(TrackNotFoundErrorCode)
 		return
 	}
 
-	ath.TrackHandler.ServeTrack(ath.Announcement.ctx, tw)
+	// Ensure track is closed when announcement ends
+	announced.AfterFunc(func() {
+		tw.Close()
+	})
+
+	announced.TrackHandler.ServeTrack(tw)
 }
 
 // serveAnnouncements serves announcements for tracks matching the given pattern.
@@ -413,10 +417,10 @@ func isValidPrefix(prefix string) bool {
 }
 
 type TrackHandler interface {
-	ServeTrack(context.Context, *TrackWriter)
+	ServeTrack(*TrackWriter)
 }
 
-var NotFound = func(ctx context.Context, tw *TrackWriter) {
+var NotFound = func(tw *TrackWriter) {
 	if tw == nil {
 		return
 	}
@@ -426,10 +430,10 @@ var NotFound = func(ctx context.Context, tw *TrackWriter) {
 
 var NotFoundTrackHandler TrackHandler = TrackHandlerFunc(NotFound)
 
-type TrackHandlerFunc func(context.Context, *TrackWriter)
+type TrackHandlerFunc func(*TrackWriter)
 
-func (f TrackHandlerFunc) ServeTrack(ctx context.Context, tw *TrackWriter) {
-	f(ctx, tw)
+func (f TrackHandlerFunc) ServeTrack(tw *TrackWriter) {
+	f(tw)
 }
 
 var _ TrackHandler = (*announcedTrackHandler)(nil)

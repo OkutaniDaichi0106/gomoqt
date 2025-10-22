@@ -122,12 +122,13 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 	// Send announcement to all registered channels with retry mechanism
 	lastNode.mu.RLock()
 	for ch := range lastNode.channels {
-		select {
-		case ch <- announcement:
-			// Successfully sent to channel
-		default:
-			// Channel is busy, start retry goroutine
-			go func(channel chan *Announcement) {
+		go func(channel chan *Announcement) {
+			defer func() { recover() }() // ignore panic on closed channel
+			select {
+			case channel <- announcement:
+				// Successfully sent to channel
+			default:
+				// Channel is busy, start retry goroutine
 				ticker := time.NewTicker(10 * time.Millisecond)
 				defer ticker.Stop()
 
@@ -154,8 +155,8 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 						}
 					}
 				}
-			}(ch)
-		}
+			}
+		}(ch)
 	}
 	lastNode.mu.RUnlock()
 

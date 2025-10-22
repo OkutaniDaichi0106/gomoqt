@@ -19,7 +19,8 @@ func NewAnnouncement(ctx context.Context, path BroadcastPath) (*Announcement, En
 		path: path,
 		ch:   make(chan struct{}),
 	}
-	endFunc := ann.end
+	ann.active.Store(true)
+	endFunc := func() { ann.end() }
 
 	context.AfterFunc(ctx, endFunc)
 
@@ -35,6 +36,7 @@ type Announcement struct {
 	afterHandlers map[*afterHandler]struct{}
 
 	active atomic.Bool
+	once   sync.Once
 }
 
 func (a *Announcement) String() string {
@@ -129,6 +131,8 @@ func (a *Announcement) end() {
 	close(jobs)
 
 	wg.Wait()
+
+	a.once.Do(func() { close(a.ch) })
 }
 
 type afterHandler struct {

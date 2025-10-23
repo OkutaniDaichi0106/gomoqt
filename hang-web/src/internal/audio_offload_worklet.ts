@@ -1,4 +1,3 @@
-import { w } from "happy-dom/lib/PropertySymbol";
 // URL getter function for main thread import
 export function importWorkletUrl(): string {
 	return new URL('./audio_offload_worklet.js', import.meta.url).href;

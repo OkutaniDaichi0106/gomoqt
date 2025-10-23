@@ -1,12 +1,18 @@
 import type { Source } from "./io"
 
-export type Frame = Source
+export interface Frame extends Source {
+    data: Uint8Array;
+}
 
 export class BytesFrame implements Frame {
     bytes: Uint8Array;
 
     constructor(bytes: Uint8Array) {
         this.bytes = bytes;
+    }
+
+    get data(): Uint8Array {
+        return this.bytes;
     }
 
     get byteLength(): number {

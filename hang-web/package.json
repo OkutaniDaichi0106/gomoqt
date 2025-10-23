@@ -1,6 +1,6 @@
 {
   "name": "@okutanidaichi/hang",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "",
   "main": "dist/index.js",
   "module": "src/index.ts",
@@ -63,18 +63,16 @@
     "@vitest/coverage-v8": "^3.2.4",
     "@vitest/ui": "^3.2.4",
     "eslint": "^9.30.1",
-    "happy-dom": "^19.0.2",
     "jsdom": "^27.0.0",
-    "tslint": "^5.20.1",
     "tsx": "^4.20.6",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4",
     "web-streams-polyfill": "^4.2.0"
   },
   "dependencies": {
-    "@okutanidaichi/moqt": "^0.6.13",
-    "golikejs": "^0.3.1",
+    "@okutanidaichi/moqt": "^0.7.1",
+    "golikejs": "^0.4.0",
     "zod": "^4.1.5"
   },
-  "packageManager": "pnpm@10.15.0+sha512.486ebc259d3e999a4e8691ce03b5cac4a71cbeca39372a9b762cb500cfdf0873e2cb16abe3d951b1ee2cf012503f027b98b6584e4df22524e0c7450d9ec7aa7b"
+  "packageManager": "pnpm@10.18.3"
 }

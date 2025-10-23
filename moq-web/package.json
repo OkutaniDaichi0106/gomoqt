@@ -80,8 +80,7 @@
     "web-streams-polyfill": "^4.1.0"
   },
   "dependencies": {
-    "@octokit/core": "^7.0.5",
-    "golikejs": "^0.4.0",
-    "node-fetch": "^3.3.2"
-  }
+    "golikejs": "^0.4.0"
+  },
+  "packageManager": "pnpm@10.18.3"
 }

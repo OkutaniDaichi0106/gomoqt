@@ -47,7 +47,7 @@ export class EncodedContainer implements Frame {
 export interface EncodedChunk {
     type: string
     byteLength: number
-    timestamp?: number
+    timestamp: number
     duration?: number | null
     copyTo(dest: AllowSharedBufferSource): void
 }
@@ -90,4 +90,8 @@ export function cloneChunk(chunk: EncodedChunk): EncodedChunk {
 export interface EncodeDestination {
     output: (chunk: EncodedChunk) => Promise<Error | undefined>;
     done: Promise<void>;
+}
+
+function decodeContainer(frame: Frame): EncodedChunk {
+
 }

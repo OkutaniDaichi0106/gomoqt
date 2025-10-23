@@ -534,6 +534,8 @@ func TestAnnouncementReader_ActiveThenEnded(t *testing.T) {
 	}
 	mockStream.On("Read", mock.AnythingOfType("[]uint8")).Maybe()
 	mockStream.On("Context").Return(context.Background())
+	mockStream.On("CancelRead", mock.Anything).Return().Maybe()
+	mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
 
 	ras := newAnnouncementReader(mockStream, "/test/", []string{})
 
@@ -675,15 +677,17 @@ func TestAnnouncementReader_DuplicateActiveError(t *testing.T) {
 
 	// Wait for the reader's context to be cancelled due to error.
 	{
-		tctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 		closed := false
+		timer := time.AfterFunc(100*time.Millisecond, func() {
+			closed = false
+		})
 		select {
 		case <-ras.ctx.Done():
 			closed = true
-		case <-tctx.Done():
+			timer.Stop()
+		case <-timer.C:
 			closed = false
 		}
-		cancel()
 		if closed {
 			t.Log("Stream correctly closed due to duplicate announcement")
 		} else {
@@ -724,15 +728,17 @@ func TestAnnouncementReader_EndNonExistentStreamError(t *testing.T) {
 
 	// Wait for the reader's context to be cancelled due to error.
 	{
-		tctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 		closed := false
+		timer := time.AfterFunc(100*time.Millisecond, func() {
+			closed = false
+		})
 		select {
 		case <-ras.ctx.Done():
 			closed = true
-		case <-tctx.Done():
+			timer.Stop()
+		case <-timer.C:
 			closed = false
 		}
-		cancel()
 		if closed {
 			t.Log("Stream correctly closed due to ending non-existent stream")
 		} else {

@@ -30,7 +30,7 @@ func TestMux_Publish(t *testing.T) {
 	path := BroadcastPath("/test")
 
 	called := false
-	handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {
+	handler := TrackHandlerFunc(func(tw *TrackWriter) {
 		called = true
 	})
 
@@ -51,7 +51,7 @@ func TestMux_PublishFunc(t *testing.T) {
 	path := BroadcastPath("/test")
 
 	called := false
-	mux.PublishFunc(ctx, path, func(ctx context.Context, tw *TrackWriter) {
+	mux.PublishFunc(ctx, path, func(tw *TrackWriter) {
 		called = true
 		assert.Equal(t, path, tw.BroadcastPath)
 	})
@@ -67,7 +67,7 @@ func TestMux_PublishFunc(t *testing.T) {
 func TestMux_Publish_InvalidPath(t *testing.T) {
 	mux := NewTrackMux()
 	ctx := context.Background()
-	handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {})
+	handler := TrackHandlerFunc(func(tw *TrackWriter) {})
 
 	tests := []struct {
 		name string
@@ -94,7 +94,7 @@ func TestMux_ServeTrack(t *testing.T) {
 	path := BroadcastPath("/test/path")
 
 	receivedTW := make(chan *TrackWriter, 1)
-	handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {
+	handler := TrackHandlerFunc(func(tw *TrackWriter) {
 		receivedTW <- tw
 	})
 
@@ -153,7 +153,7 @@ func TestMux_Publishr(t *testing.T) {
 	assert.Equal(t, reflect.ValueOf(NotFoundTrackHandler), reflect.ValueOf(handler), "Handler should be NotFoundTrackHandler for unregistered path")
 
 	// Register handler
-	expectedHandler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {})
+	expectedHandler := TrackHandlerFunc(func(tw *TrackWriter) {})
 	mux.Publish(ctx, path, expectedHandler)
 
 	// Should return registered handler
@@ -181,7 +181,7 @@ func TestMux_NestedPaths(t *testing.T) {
 	// Register handlers for all paths
 	for _, path := range paths {
 		p := path // capture loop variable
-		mux.PublishFunc(ctx, p, func(ctx context.Context, tw *TrackWriter) {
+		mux.PublishFunc(ctx, p, func(tw *TrackWriter) {
 			mu.Lock()
 			calledPaths[p] = true
 			mu.Unlock()
@@ -220,7 +220,7 @@ func TestMux_ConcurrentAccess(t *testing.T) {
 				path := BroadcastPath(fmt.Sprintf("/test/%d/%d", id, j))
 
 				// Register handler
-				mux.PublishFunc(ctx, path, func(ctx context.Context, tw *TrackWriter) {
+				mux.PublishFunc(ctx, path, func(tw *TrackWriter) {
 					// Handler called
 				})
 
@@ -297,7 +297,7 @@ func TestDefaultMux(t *testing.T) {
 	path := BroadcastPath("/default/test")
 
 	called := false
-	Publish(ctx, path, TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {
+	Publish(ctx, path, TrackHandlerFunc(func(tw *TrackWriter) {
 		called = true
 	}))
 
@@ -315,7 +315,7 @@ func TestDefaultMux_PublishFunc(t *testing.T) {
 	path := BroadcastPath("/default/test2")
 
 	called := false
-	PublishFunc(ctx, path, func(ctx context.Context, tw *TrackWriter) {
+	PublishFunc(ctx, path, func(tw *TrackWriter) {
 		called = true
 	})
 
@@ -335,7 +335,7 @@ func TestMux_EdgeCases(t *testing.T) {
 	called := false
 
 	assert.NotPanics(t, func() {
-		mux.PublishFunc(ctx, specialPath, func(ctx context.Context, tw *TrackWriter) {
+		mux.PublishFunc(ctx, specialPath, func(tw *TrackWriter) {
 			called = true
 		})
 	}, "should handle special characters in path")
@@ -355,8 +355,8 @@ func TestMux_OverwriteHandler(t *testing.T) {
 	called1 := false
 	called2 := false
 
-	handler1 := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) { called1 = true })
-	handler2 := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) { called2 = true })
+	handler1 := TrackHandlerFunc(func(tw *TrackWriter) { called1 = true })
+	handler2 := TrackHandlerFunc(func(tw *TrackWriter) { called2 = true })
 
 	// Register first handler
 	mux.Publish(ctx, path, handler1)
@@ -390,7 +390,7 @@ func TestMux_Clear(t *testing.T) {
 	}
 
 	for _, path := range paths {
-		mux.PublishFunc(ctx, path, func(ctx context.Context, tw *TrackWriter) {})
+		mux.PublishFunc(ctx, path, func(tw *TrackWriter) {})
 	}
 
 	// Verify handlers are registered
@@ -418,7 +418,7 @@ func TestMux_Clear(t *testing.T) {
 	// Should be able to register new handlers after clear
 	newPath := BroadcastPath("/afterclear")
 	called := false
-	mux.PublishFunc(ctx, newPath, func(ctx context.Context, tw *TrackWriter) { called = true })
+	mux.PublishFunc(ctx, newPath, func(tw *TrackWriter) { called = true })
 
 	tw := &TrackWriter{BroadcastPath: newPath}
 	mux.serveTrack(tw)
@@ -435,7 +435,7 @@ func TestMux_Announce(t *testing.T) {
 	defer end() // Ensure cleanup
 
 	called := false
-	handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) { called = true })
+	handler := TrackHandlerFunc(func(tw *TrackWriter) { called = true })
 
 	// Test direct announce
 	mux.Announce(announcement, handler)
@@ -455,7 +455,7 @@ func TestMux_Announce_Inactive(t *testing.T) {
 	announcement, end := NewAnnouncement(ctx, path)
 	end() // Make it inactive immediately
 
-	handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {})
+	handler := TrackHandlerFunc(func(tw *TrackWriter) {})
 
 	// Should not register handler for inactive announcement
 	mux.Announce(announcement, handler)
@@ -501,7 +501,7 @@ func TestNotFound(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			// Should not panic in any case
-			NotFound(context.Background(), tt.trackWriter)
+			NotFound(tt.trackWriter)
 		})
 	}
 }
@@ -541,7 +541,7 @@ func TestNotFoundHandler(t *testing.T) {
 			trackWriter := tt.trackWriter
 
 			// Should not panic in any case
-			NotFoundTrackHandler.ServeTrack(context.Background(), trackWriter)
+			NotFoundTrackHandler.ServeTrack(trackWriter)
 		})
 	}
 }
@@ -550,7 +550,7 @@ func TestTrackHandlerFunc(t *testing.T) {
 	called := false
 	var receivedTrackWriter *TrackWriter
 
-	handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {
+	handler := TrackHandlerFunc(func(tw *TrackWriter) {
 		called = true
 		receivedTrackWriter = tw
 	})
@@ -567,7 +567,7 @@ func TestTrackHandlerFunc(t *testing.T) {
 			return &MockQUICSendStream{}, nil
 		}, func() {})
 
-	handler.ServeTrack(context.Background(), testTrackWriter)
+	handler.ServeTrack(testTrackWriter)
 
 	assert.True(t, called, "handler function was not called")
 	assert.Equal(t, testTrackWriter, receivedTrackWriter, "handler did not receive the correct track writer")
@@ -576,7 +576,7 @@ func TestTrackHandlerFunc(t *testing.T) {
 func TestTrackHandlerFuncServeTrack(t *testing.T) {
 	callCount := 0
 
-	handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {
+	handler := TrackHandlerFunc(func(tw *TrackWriter) {
 		callCount++
 	})
 
@@ -592,9 +592,9 @@ func TestTrackHandlerFuncServeTrack(t *testing.T) {
 			return &MockQUICSendStream{}, nil
 		}, func() {})
 
-	handler.ServeTrack(context.Background(), trackWriter)
-	handler.ServeTrack(context.Background(), trackWriter)
-	handler.ServeTrack(context.Background(), trackWriter)
+	handler.ServeTrack(trackWriter)
+	handler.ServeTrack(trackWriter)
+	handler.ServeTrack(trackWriter)
 
 	assert.Equal(t, 3, callCount, "expected handler to be called 3 times")
 }
@@ -609,7 +609,7 @@ func TestMux_AnnouncementDeliveryToMultipleListeners(t *testing.T) {
 	defer end()
 
 	received := make(chan *Announcement, 2)
-	handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {})
+	handler := TrackHandlerFunc(func(tw *TrackWriter) {})
 
 	// Register two listeners for the same path
 	mux.Announce(announcement, handler)
@@ -645,7 +645,7 @@ func TestMux_AnnouncementTreeCleanup(t *testing.T) {
 	announcement, end := NewAnnouncement(ctx, path)
 	defer end()
 
-	handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {})
+	handler := TrackHandlerFunc(func(tw *TrackWriter) {})
 	mux.Announce(announcement, handler)
 
 	// Simulate listener disconnect
@@ -666,7 +666,7 @@ func TestMux_AnnouncementDeliveryErrorPropagation(t *testing.T) {
 	defer end()
 
 	// Handler that simulates SendAnnouncement error
-	handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {
+	handler := TrackHandlerFunc(func(tw *TrackWriter) {
 		// Simulate error: do nothing, just ensure no panic
 	})
 	mux.Announce(announcement, handler)
@@ -694,7 +694,7 @@ func TestMux_SimultaneousAnnounceAndPublish(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {})
+	handler := TrackHandlerFunc(func(tw *TrackWriter) {})
 	announcement, end := NewAnnouncement(ctx, path)
 	defer end()
 
@@ -721,7 +721,7 @@ func TestMux_ServeAnnouncements_InitSendsExistingAnnouncements(t *testing.T) {
 	// Create an announcement under /test/stream1 and register it in the mux
 	ann, end := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
 	defer end()
-	mux.Announce(ann, TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {}))
+	mux.Announce(ann, TrackHandlerFunc(func(tw *TrackWriter) {}))
 
 	// Prepare mock stream for AnnouncementWriter
 	mockStream := &MockQUICStream{}
@@ -841,7 +841,7 @@ func TestMux_ServeAnnouncements_InitWriteError_ClosesWithInternalError(t *testin
 	// Create an announcement so that aw.init will attempt to write
 	ann, end := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
 	defer end()
-	mux.Announce(ann, TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {}))
+	mux.Announce(ann, TrackHandlerFunc(func(tw *TrackWriter) {}))
 
 	mockStream := &MockQUICStream{}
 	mockStream.On("Context").Return(context.Background())
@@ -933,7 +933,7 @@ func TestMux_ServeAnnouncements_SendAnnouncementWriteError_ClosesWithInternalErr
 	time.Sleep(50 * time.Millisecond)
 
 	// Announce the later announcement; this should trigger SendAnnouncement which will cause the second Write to fail
-	mux.Announce(annLater, TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {}))
+	mux.Announce(annLater, TrackHandlerFunc(func(tw *TrackWriter) {}))
 
 	// Wait for CancelWrite to be called
 	deadline := time.Now().Add(500 * time.Millisecond)
@@ -1059,7 +1059,7 @@ func TestMux_ServeAnnouncements_MultipleListeners_ReceiveAnnouncement(t *testing
 	time.Sleep(50 * time.Millisecond)
 
 	// Announce - should be delivered to both listeners
-	mux.Announce(ann, TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {}))
+	mux.Announce(ann, TrackHandlerFunc(func(tw *TrackWriter) {}))
 
 	// Wait a bit for SendAnnouncement to be called on both streams
 	deadline := time.Now().Add(500 * time.Millisecond)
@@ -1154,7 +1154,7 @@ func TestMux_ServeAnnouncements_ConcurrentAnnounce_NoDeadlock(t *testing.T) {
 			for j := 0; j < perProducer; j++ {
 				ann, end := NewAnnouncement(ctx, BroadcastPath(fmt.Sprintf("/race/stream-%d-%d", id, j)))
 				// announce and end quickly
-				mux.Announce(ann, TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {}))
+				mux.Announce(ann, TrackHandlerFunc(func(tw *TrackWriter) {}))
 				end()
 			}
 		}(p)
@@ -1176,7 +1176,7 @@ func TestMux_ServeAnnouncements_ConcurrentAnnounce_NoDeadlock(t *testing.T) {
 
 	// Try to stop listener goroutines by ending announcements on the tree: create a final announcement and end it
 	finalAnn, finalEnd := NewAnnouncement(ctx, BroadcastPath("/race/final"))
-	mux.Announce(finalAnn, TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {}))
+	mux.Announce(finalAnn, TrackHandlerFunc(func(tw *TrackWriter) {}))
 	finalEnd()
 
 	// Wait for listeners to exit (they should exit eventually)
@@ -1195,7 +1195,7 @@ func TestMux_ServeAnnouncements_ConcurrentAnnounce_NoDeadlock(t *testing.T) {
 func TestAnnounce(t *testing.T) {
 	// Create a mock announcement and handler
 	announcement, _ := NewAnnouncement(context.Background(), BroadcastPath("/test"))
-	handler := TrackHandlerFunc(func(ctx context.Context, tw *TrackWriter) {
+	handler := TrackHandlerFunc(func(tw *TrackWriter) {
 		// Mock handler
 	})
 

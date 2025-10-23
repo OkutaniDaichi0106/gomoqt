@@ -19,6 +19,7 @@ func newReceiveSubscribeStream(id SubscribeID, stream quic.Stream, config *Track
 		config:      config,
 		stream:      stream,
 		updatedCh:   make(chan struct{}, 1),
+		closeOnce:   make(chan struct{}, 1),
 		ctx:         context.WithValue(stream.Context(), &biStreamTypeCtxKey, message.StreamTypeSubscribe),
 	}
 
@@ -56,11 +57,13 @@ func newReceiveSubscribeStream(id SubscribeID, stream quic.Stream, config *Track
 
 		// Cleanup after loop ends
 		rss.configMu.Lock()
-		rss.updatedOnce.Do(func() {
+		select {
+		case rss.closeOnce <- struct{}{}:
 			if rss.updatedCh != nil {
 				close(rss.updatedCh)
 			}
-		})
+		default:
+		}
 		rss.configMu.Unlock()
 
 	}()
@@ -75,10 +78,11 @@ type receiveSubscribeStream struct {
 
 	acceptOnce sync.Once
 
-	configMu    sync.Mutex
-	config      *TrackConfig
-	updatedCh   chan struct{}
-	updatedOnce sync.Once
+	configMu  sync.Mutex
+	config    *TrackConfig
+	updatedCh chan struct{}
+
+	closeOnce chan struct{}
 
 	ctx context.Context
 }
@@ -136,11 +140,13 @@ func (rss *receiveSubscribeStream) close() error {
 	// Cancel the read-side stream
 	rss.stream.CancelRead(quic.StreamErrorCode(PublishAbortedErrorCode))
 
-	rss.updatedOnce.Do(func() {
+	select {
+	case rss.closeOnce <- struct{}{}:
 		if rss.updatedCh != nil {
 			close(rss.updatedCh)
 		}
-	})
+	default:
+	}
 
 	return err
 }
@@ -163,11 +169,13 @@ func (rss *receiveSubscribeStream) closeWithError(code SubscribeErrorCode) error
 	// Cancel the read-side stream
 	rss.stream.CancelRead(strErrCode)
 
-	rss.updatedOnce.Do(func() {
+	select {
+	case rss.closeOnce <- struct{}{}:
 		if rss.updatedCh != nil {
 			close(rss.updatedCh)
 		}
-	})
+	default:
+	}
 
 	return nil
 }

@@ -23,7 +23,6 @@ import type {
 import { Channel } from "golikejs/channel";
 import { JsonLineDecoder, EncodedJsonChunk,JsonLineEncoder } from "../internal/json";
 import type { JsonObject } from "../internal/json";
-import { track } from "happy-dom/lib/PropertySymbol";
 import type { EncodedChunk, EncodeDestination } from "./container";
 
 export class TrackCatalog {

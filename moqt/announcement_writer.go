@@ -136,9 +136,9 @@ func (aw *AnnouncementWriter) init(init map[*Announcement]struct{}) error {
 			}
 			aw.mu.Unlock()
 
-			// Register OnEnd handlers after we've set the maps so end handlers see maps populated
+			// Register AfterFunc handlers after we've set the maps so end handlers see maps populated
 			for _, v := range toSet {
-				v.ann.OnEnd(v.end)
+				v.ann.AfterFunc(v.end)
 			}
 		}
 
@@ -278,7 +278,7 @@ func (aw *AnnouncementWriter) SendAnnouncement(new *Announcement) error {
 	aw.mu.Unlock()
 
 	// Watch for announcement end in background
-	new.OnEnd(endFunc)
+	new.AfterFunc(endFunc)
 
 	return nil
 }

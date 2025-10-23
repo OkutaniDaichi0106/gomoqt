@@ -841,11 +841,12 @@ func TestSession_ContextCancellation(t *testing.T) {
 	session.Terminate(NoError, "test termination")
 
 	// Context should be cancelled after termination
+	timer := time.AfterFunc(100*time.Millisecond, func() {
+		t.Error("Context should be cancelled after termination")
+	})
 	select {
 	case <-ctx.Done():
-		// Expected
-	case <-time.After(100 * time.Millisecond):
-		t.Error("Context should be cancelled after termination")
+		timer.Stop()
 	}
 }
 

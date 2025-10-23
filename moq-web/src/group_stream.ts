@@ -56,7 +56,7 @@ export class GroupWriter {
 }
 
 export class GroupReader {
-    readonly groupSequence: bigint;
+    readonly sequence: bigint;
     #reader: Reader;
     readonly context: Context;
     #cancelFunc: CancelCauseFunc;
@@ -64,7 +64,7 @@ export class GroupReader {
     readonly streamId: bigint;
 
     constructor(trackCtx: Context, reader: Reader, group: GroupMessage) {
-        this.groupSequence = group.sequence;
+        this.sequence = group.sequence;
         this.#reader = reader;
         this.streamId = reader.streamId ?? 0n;
         [this.context, this.#cancelFunc] = withCancelCause(trackCtx);

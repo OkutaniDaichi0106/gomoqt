@@ -21,15 +21,19 @@ export class SendSubscribeStream {
 	#info: Info;
 	#reader: Reader
 	#writer: Writer
-	#ctx: Context;
+	readonly context: Context;
 	#cancelFunc: CancelCauseFunc;
 	readonly streamId: bigint;
 
 	constructor(sessCtx: Context, writer: Writer, reader: Reader, subscribe: SubscribeMessage, ok: SubscribeOkMessage) {
-		[this.#ctx, this.#cancelFunc] = withCancelCause(sessCtx);
+		[this.context, this.#cancelFunc] = withCancelCause(sessCtx);
 		this.#reader = reader;
 		this.#writer = writer;
-		this.#config = subscribe;
+		this.#config = {
+			trackPriority: subscribe.trackPriority,
+			minGroupSequence: subscribe.minGroupSequence,
+			maxGroupSequence: subscribe.maxGroupSequence,
+		};
 		this.#id = subscribe.subscribeId;
 		this.#info = ok;
 		this.streamId = writer.streamId ?? reader.streamId ?? 0n;
@@ -37,10 +41,6 @@ export class SendSubscribeStream {
 
 	get subscribeId(): SubscribeID {
 		return this.#id;
-	}
-
-	get context(): Context {
-		return this.#ctx;
 	}
 
 	get config(): TrackConfig {
@@ -80,7 +80,7 @@ export class ReceiveSubscribeStream {
 	#reader: Reader
 	#writer: Writer
 	#info?: Info
-	#ctx: Context;
+	readonly context: Context;
 	#cancelFunc: CancelCauseFunc;
 	readonly streamId: bigint;
 
@@ -94,9 +94,13 @@ export class ReceiveSubscribeStream {
 		this.#reader = reader
 		this.#writer = writer
 		this.subscribeId = subscribe.subscribeId;
-		this.#trackConfig = subscribe;
+		this.#trackConfig = {
+			trackPriority: subscribe.trackPriority,
+			minGroupSequence: subscribe.minGroupSequence,
+			maxGroupSequence: subscribe.maxGroupSequence,
+		};
 		this.streamId = writer.streamId ?? reader.streamId ?? 0n;
-		[this.#ctx, this.#cancelFunc] = withCancelCause(sessCtx);
+		[this.context, this.#cancelFunc] = withCancelCause(sessCtx);
 
 		this.#handleUpdates();
 	}
@@ -119,7 +123,11 @@ export class ReceiveSubscribeStream {
 				}
 			);
 
-			this.#trackConfig = msg;
+			this.#trackConfig = {
+				trackPriority: msg.trackPriority,
+				minGroupSequence: msg.minGroupSequence,
+				maxGroupSequence: msg.maxGroupSequence,
+			};
 
 			this.#cond.broadcast();
 		}
@@ -127,10 +135,6 @@ export class ReceiveSubscribeStream {
 
 	get trackConfig(): TrackConfig {
 		return this.#trackConfig;
-	}
-
-	get context(): Context {
-		return this.#ctx;
 	}
 
 	async updated(): Promise<void> {
@@ -143,7 +147,7 @@ export class ReceiveSubscribeStream {
 			return undefined; // Info already written
 		}
 
-		let err = this.#ctx.err();
+		let err = this.context.err();
 		if (err !== undefined) {
 			return err;
 		}
@@ -166,7 +170,7 @@ export class ReceiveSubscribeStream {
 	}
 
 	async close(): Promise<void> {
-		if (this.#ctx.err()) {
+		if (this.context.err()) {
 			return;
 		}
 		this.#cancelFunc(undefined);
@@ -176,7 +180,7 @@ export class ReceiveSubscribeStream {
 	}
 
 	async closeWithError(code: number, message: string): Promise<void> {
-		if (this.#ctx.err()) {
+		if (this.context.err()) {
 			return;
 		}
 		const cause = new StreamError(code, message);

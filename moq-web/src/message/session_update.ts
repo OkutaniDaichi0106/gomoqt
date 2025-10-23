@@ -2,14 +2,14 @@ import type { Writer, Reader } from "../io";
 import { varintLen } from "../io/len";
 
 export interface SessionUpdateMessageInit {
-    bitrate?: bigint;
+    bitrate?: number;
 }
 
 export class SessionUpdateMessage {
-    bitrate: bigint;
+    bitrate: number;
 
     constructor(init: SessionUpdateMessageInit) {
-        this.bitrate = init.bitrate ?? 0n;
+        this.bitrate = init.bitrate ?? 0;
     }
 
     get messageLength(): number {
@@ -18,7 +18,7 @@ export class SessionUpdateMessage {
 
     async encode(writer: Writer): Promise<Error | undefined> {
         writer.writeVarint(this.messageLength);
-        writer.writeBigVarint(this.bitrate);
+        writer.writeVarint(this.bitrate);
         return await writer.flush();
     }
 
@@ -27,7 +27,7 @@ export class SessionUpdateMessage {
         if (err) {
             return err;
         }
-        [this.bitrate, err] = await reader.readBigVarint();
+        [this.bitrate, err] = await reader.readVarint();
         if (err) {
             return err;
         }

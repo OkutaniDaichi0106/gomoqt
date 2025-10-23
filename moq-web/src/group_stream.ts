@@ -9,25 +9,21 @@ import type { GroupErrorCode } from "./error";
 import { PublishAbortedErrorCode,SubscribeCanceledErrorCode } from "./error";
 
 export class GroupWriter {
-    #group: GroupMessage;
+    readonly sequence: bigint;
     #writer: Writer;
-    #ctx: Context;
+    readonly context: Context;
     #cancelFunc: CancelCauseFunc;
     readonly streamId: bigint;
 
     constructor(trackCtx: Context, writer: Writer, group: GroupMessage) {
-        this.#group = group;
+        this.sequence = group.sequence;
         this.#writer = writer;
         this.streamId = writer.streamId ?? 0n;
-        [this.#ctx, this.#cancelFunc] = withCancelCause(trackCtx);
+        [this.context, this.#cancelFunc] = withCancelCause(trackCtx);
 
         trackCtx.done().then(()=>{
             this.cancel(SubscribeCanceledErrorCode, "track was closed");
         });
-    }
-
-    get groupSequence(): bigint {
-        return this.#group.sequence;
     }
 
     async writeFrame(src: Frame): Promise<Error | undefined> {
@@ -41,7 +37,7 @@ export class GroupWriter {
     }
 
     async close(): Promise<void> {
-        if (this.#ctx.err()) {
+        if (this.context.err()) {
             return;
         }
         this.#cancelFunc(undefined); // Notify the context about closure
@@ -49,7 +45,7 @@ export class GroupWriter {
     }
 
     async cancel(code: GroupErrorCode, message: string): Promise<void> {
-        if (this.#ctx.err()) {
+        if (this.context.err()) {
             // Do nothing if already cancelled
             return;
         }
@@ -57,33 +53,25 @@ export class GroupWriter {
         this.#cancelFunc(cause); // Notify the context about cancellation
         await this.#writer.cancel(cause);
     }
-
-    get context(): Context {
-        return this.#ctx;
-    }
 }
 
 export class GroupReader {
-    #group: GroupMessage;
+    readonly groupSequence: bigint;
     #reader: Reader;
-    #ctx: Context;
+    readonly context: Context;
     #cancelFunc: CancelCauseFunc;
     #frame?: BytesFrame;
     readonly streamId: bigint;
 
     constructor(trackCtx: Context, reader: Reader, group: GroupMessage) {
-        this.#group = group;
+        this.groupSequence = group.sequence;
         this.#reader = reader;
         this.streamId = reader.streamId ?? 0n;
-        [this.#ctx, this.#cancelFunc] = withCancelCause(trackCtx);
+        [this.context, this.#cancelFunc] = withCancelCause(trackCtx);
 
         trackCtx.done().then(()=>{
             this.cancel(PublishAbortedErrorCode, "track was closed");
         });
-    }
-
-    get groupSequence(): bigint {
-        return this.#group.sequence;
     }
 
     async readFrame(): Promise<[BytesFrame, undefined] | [undefined, Error]> {
@@ -114,16 +102,12 @@ export class GroupReader {
     }
 
     async cancel(code: GroupErrorCode, message: string): Promise<void> {
-        if (this.#ctx.err()) {
+        if (this.context.err()) {
             // Do nothing if already cancelled
             return;
         }
         const reason = new StreamError(code, message);
         this.#cancelFunc(reason);
         await this.#reader.cancel(reason);
-    }
-
-    get context(): Context {
-        return this.#ctx;
     }
 }

@@ -2,7 +2,14 @@ import type { Reader, Writer } from "./io";
 import { EOF } from "./io";
 import type { AnnouncePleaseMessage } from "./message";
 import { AnnounceMessage } from "./message";
-import { withCancel, withCancelCause, watchPromise, background, ContextCancelledError } from "golikejs/context";
+import { 
+    afterFunc,
+    withCancel, 
+    withCancelCause, 
+    watchPromise, 
+    background, 
+    ContextCancelledError 
+} from "golikejs/context";
 import type { CancelCauseFunc, CancelFunc, Context } from "golikejs/context";
 import { Cond, Mutex } from "golikejs/sync";
 import type { TrackPrefix } from "./track_prefix";
@@ -13,7 +20,7 @@ import { StreamError } from "./io/error";
 import { Queue } from "./internal";
 import { AnnounceInitMessage } from "./message/announce_init";
 import type { AnnounceErrorCode } from "./error";
-import { DuplicatedAnnounceErrorCode,InternalAnnounceErrorCode } from "./error";
+import { DuplicatedAnnounceErrorCode, InternalAnnounceErrorCode } from "./error";
 
 type suffix = string;
 
@@ -22,7 +29,7 @@ export class AnnouncementWriter {
     #reader: Reader;
     readonly prefix: TrackPrefix;
     #announcements: Map<suffix, Announcement> = new Map();
-    #ctx: Context;
+    readonly context: Context;
     #cancelFunc: CancelCauseFunc;
     #ready: Promise<void>;
     #resolveInit?: () => void;
@@ -42,7 +49,7 @@ export class AnnouncementWriter {
         this.streamId = writer.streamId ?? reader.streamId ?? 0n;
 
         // const ctx = watchPromise(sessCtx, reader.closed());
-        [this.#ctx, this.#cancelFunc] = withCancelCause(sessCtx);
+        [this.context, this.#cancelFunc] = withCancelCause(sessCtx);
         this.#ready = new Promise<void>((resolve) => {
             this.#resolveInit = resolve;
         });
@@ -166,12 +173,8 @@ export class AnnouncementWriter {
         }
     }
 
-    get context(): Context {
-        return this.#ctx;
-    }
-
     async close(): Promise<void> {
-        if (this.#ctx.err()) {
+        if (this.context.err()) {
             // If already closed, do nothing
             return;
         }
@@ -183,7 +186,7 @@ export class AnnouncementWriter {
     }
 
     async closeWithError(code: AnnounceErrorCode, message: string): Promise<void> {
-        if (this.#ctx.err()) {
+        if (this.context.err()) {
             // If already closed, do nothing
             return;
         }
@@ -204,7 +207,7 @@ export class AnnouncementReader {
     readonly prefix: string;
     #announcements: Map<string, Announcement> = new Map();
     #queue: Queue<Announcement> = new Queue();
-    #ctx: Context;
+    readonly context: Context;
     #cancelFunc: CancelCauseFunc;
     #mu: Mutex = new Mutex();
     #cond: Cond = new Cond(this.#mu);
@@ -221,12 +224,12 @@ export class AnnouncementReader {
         }
         this.prefix = prefix;
         this.streamId = writer.streamId ?? reader.streamId ?? 0n;
-        [this.#ctx, this.#cancelFunc] = withCancelCause(sessCtx);
+        [this.context, this.#cancelFunc] = withCancelCause(sessCtx);
 
         // Set initial announcements
         for (const suffix of aim.suffixes) {
             const path = validateBroadcastPath(prefix + suffix);
-            const announcement = new Announcement(path, this.#ctx.done());
+            const announcement = new Announcement(path, this.context.done());
             this.#announcements.set(suffix, announcement);
             this.#queue.enqueue(announcement);
         }
@@ -298,7 +301,7 @@ export class AnnouncementReader {
                 }
 
                 const fullPath = this.prefix + msg.suffix;
-                const announcement = new Announcement(validateBroadcastPath(fullPath), this.#ctx.done());
+                const announcement = new Announcement(validateBroadcastPath(fullPath), this.context.done());
                 this.#announcements.set(msg.suffix, announcement);
                 this.#queue.enqueue(announcement);
             } else {
@@ -318,12 +321,8 @@ export class AnnouncementReader {
         });
     }
 
-    get context(): Context {
-        return this.#ctx;
-    }
-
     async close(): Promise<void> {
-        if (this.#ctx.err()) {
+        if (this.context.err()) {
             // If already closed, do nothing
             return;
         }
@@ -335,7 +334,7 @@ export class AnnouncementReader {
     }
 
     async closeWithError(code: AnnounceErrorCode, message: string): Promise<void> {
-        if (this.#ctx.err()) {
+        if (this.context.err()) {
             // If already closed, do nothing
             return;
         }
@@ -349,26 +348,31 @@ export class AnnouncementReader {
 
 export class Announcement {
     readonly broadcastPath: BroadcastPath;
-    #ctx: Context;
-    #cancelFunc: CancelFunc;
+    #done: Promise<void>;
+    #notifyFunc: () => void;
     #active: boolean = true;
 
     constructor(path: string, signal: Promise<void>) {
         this.broadcastPath = validateBroadcastPath(path);
-        const [ctx, cancelFunc] = withCancel(background());
-        this.#ctx = ctx;
-        this.#cancelFunc = () => {
+
+        let resolveFunc: () => void;
+        this.#done = new Promise<void>((resolve) => {
+            resolveFunc = resolve;
+        });
+
+        this.#notifyFunc = () => {
             this.#active = false;
-            cancelFunc();
+            resolveFunc();
         }
+
         // Cancel when the signal is done
         signal.then(() => {
-            this.#cancelFunc();
+            this.end();
         });
     }
 
     end(): void {
-        this.#cancelFunc();
+        this.#notifyFunc();
     }
 
     isActive(): boolean {
@@ -376,6 +380,6 @@ export class Announcement {
     }
 
     ended(): Promise<void>{
-        return this.#ctx.done();
+        return this.#done;
     }
 }

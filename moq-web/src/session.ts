@@ -114,7 +114,19 @@ export class Session {
 
 		const connCtx = watchPromise(background(), this.#conn.closed); // TODO: Handle connection closure properly
 
-		this.#sessionStream = new SessionStream(connCtx, writer, reader, req, rsp);
+		this.#sessionStream = new SessionStream({
+			context: connCtx, 
+			writer, 
+			reader, 
+			client: req,
+			server: rsp,
+			detectFunc: async () => {
+				// Block until the connection is closed
+				// TODO: Implement actual bitrate detection logic
+				await connCtx.done();
+				return 0; // Placeholder for bitrate detection logic
+			}
+		});
 
 		this.#ctx = this.#sessionStream.context;
 
@@ -123,10 +135,6 @@ export class Session {
 		this.#wg.push(this.#listenUniStreams());
 
 		return;
-	}
-
-	update(bitrate: bigint) {
-		this.#sessionStream.update(bitrate);
 	}
 
 	async acceptAnnounce(prefix: TrackPrefix): Promise<[AnnouncementReader, undefined] | [undefined, Error]> {

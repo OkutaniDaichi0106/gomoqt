@@ -47,22 +47,6 @@ class MockWebTransport {
 // Mock global WebTransport
 (globalThis as any).WebTransport = MockWebTransport;
 
-// Mock Session
-// vi.mock("./session", () => ({
-//     Session: vi.fn().mockImplementation((init: any) => ({
-//         ready: init?.conn?.ready || Promise.resolve(),
-//         close: vi.fn().mockResolvedValue(undefined),
-//     }))
-// }));
-
-// Mock TrackMux
-// vi.mock("./track_mux", () => ({
-//     TrackMux: vi.fn().mockImplementation(() => ({
-//         // Mock implementation
-//     })),
-//     DefaultTrackMux: {}
-// }));
-
 describe("Client", () => {
     let client: Client;
     

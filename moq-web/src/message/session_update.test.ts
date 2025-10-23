@@ -5,7 +5,7 @@ import { createIsolatedStreams } from './test-utils.test';
 
 describe('SessionUpdateMessage', () => {
   it('should encode and decode', async () => {
-    const bitrate = 1000n;
+    const bitrate = 1000;
 
     const { writer, reader, cleanup } = createIsolatedStreams();
 

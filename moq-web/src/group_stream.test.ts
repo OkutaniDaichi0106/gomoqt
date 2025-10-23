@@ -39,14 +39,14 @@ describe("GroupWriter", () => {
     describe("constructor", () => {
         it("should initialize with provided parameters", () => {
             expect(groupWriter).toBeInstanceOf(GroupWriter);
-            expect(groupWriter.groupSequence).toBe(123n);
+            expect(groupWriter.sequence).toBe(123n);
             expect(groupWriter.context).toBeDefined();
         });
     });
 
-    describe("groupSequence", () => {
+    describe("sequence", () => {
         it("should return the group sequence number", () => {
-            expect(groupWriter.groupSequence).toBe(123n);
+            expect(groupWriter.sequence).toBe(123n);
         });
     });
 

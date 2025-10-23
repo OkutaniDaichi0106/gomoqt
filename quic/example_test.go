@@ -107,7 +107,7 @@ func ExampleListener() {
 			log.Printf("Accept error: %v", err)
 			continue
 		}
-		
+
 		// Handle connection in a goroutine
 		go func(c quic.Connection) {
 			defer func() {

@@ -13,10 +13,10 @@ type ListenAddrFunc func(addr string, tlsConfig *tls.Config, quicConfig *Config)
 type Listener interface {
 	// Accept waits for and returns the next incoming connection.
 	Accept(ctx context.Context) (Connection, error)
-	
+
 	// Addr returns the listener's network address.
 	Addr() net.Addr
-	
+
 	// Close closes the listener and stops accepting new connections.
 	Close() error
 }

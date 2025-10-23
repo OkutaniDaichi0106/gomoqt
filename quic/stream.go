@@ -23,7 +23,7 @@ type SendStream interface {
 
 	// StreamID returns the stream's unique identifier.
 	StreamID() StreamID
-	
+
 	// CancelWrite cancels writing with the given error code.
 	CancelWrite(StreamErrorCode)
 

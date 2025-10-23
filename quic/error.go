@@ -25,11 +25,11 @@ type HandshakeTimeoutError = quic.HandshakeTimeoutError
 // Error codes for QUIC transport, application, and stream operations.
 type (
 	// TransportErrorCode identifies transport-layer protocol errors.
-	TransportErrorCode   = quic.TransportErrorCode
+	TransportErrorCode = quic.TransportErrorCode
 	// ApplicationErrorCode identifies application-defined errors.
 	ApplicationErrorCode = quic.ApplicationErrorCode
 	// StreamErrorCode identifies stream-specific errors.
-	StreamErrorCode      = quic.StreamErrorCode
+	StreamErrorCode = quic.StreamErrorCode
 )
 
 const (

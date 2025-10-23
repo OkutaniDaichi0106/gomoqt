@@ -1,0 +1,17 @@
+blank_issues_enabled: false
+contact_links:
+  - name: "💬 Questions"
+    url: https://github.com/OkutaniDaichi0106/gomoqt/discussions
+    about: "Use Discussions for implementation and usage questions"
+
+  - name: "📚 Documentation"
+    url: https://github.com/OkutaniDaichi0106/gomoqt/tree/main/docs
+    about: "Project documentation"
+
+  - name: "🔐 Security Report"
+    url: https://github.com/OkutaniDaichi0106/gomoqt/security/advisories
+    about: "Report security vulnerabilities directly"
+
+  - name: "🤝 Contributing"
+    url: https://github.com/OkutaniDaichi0106/gomoqt/blob/main/CONTRIBUTING.md
+    about: "Please read our contributing guidelines"

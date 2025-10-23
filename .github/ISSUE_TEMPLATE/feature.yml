@@ -1,0 +1,62 @@
+name: "Feature Request"
+description: "Propose a new feature or improvement"
+title: "[FEATURE] "
+labels: ["type:feature", "status:triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for contributing! Please provide the following information.
+
+  - type: textarea
+    id: overview
+    attributes:
+      label: "Overview"
+      description: "Briefly describe the purpose of this request"
+      placeholder: |
+        Example: Add a new message type to the MoQ protocol
+    validations:
+      required: true
+
+  - type: textarea
+    id: use_case
+    attributes:
+      label: "Use Case"
+      description: "Describe how this feature would be used"
+      placeholder: |
+        Example: Used for latency optimization in live streaming scenarios
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed_solution
+    attributes:
+      label: "Proposed Solution"
+      description: "Share your ideas on how this could be implemented"
+      placeholder: |
+        Example: Add a new method `OptimizeLatency()` to the `moqt` package
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: "Alternatives Considered"
+      description: "Any other approaches you considered"
+      placeholder: "- Alternative 1\n- Alternative 2"
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: "Checklist"
+      options:
+        - label: "I have searched existing issues"
+          required: true
+        - label: "I have read relevant documentation"
+          required: false
+        - label: "I can contribute to this feature"
+          required: false

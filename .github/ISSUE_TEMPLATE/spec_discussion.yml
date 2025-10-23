@@ -1,0 +1,86 @@
+name: "Specification & Protocol Discussion"
+description: "Discuss protocol specifications and design"
+title: "[SPEC] "
+labels: ["type:discussion", "status:triage", "area:protocol"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Welcome to protocol and specification discussions.
+
+  - type: textarea
+    id: topic
+    attributes:
+      label: "Discussion Topic"
+      description: "What specification topic do you want to discuss?"
+      placeholder: |
+        Example) About sequence number handling in SUBSCRIBE frames
+    validations:
+      required: true
+
+  - type: textarea
+    id: current_behavior
+    attributes:
+      label: "Current Spec/Implementation"
+      description: "Describe the current specification or implementation"
+      placeholder: |
+        Example) RFC sections or current code implementation
+    validations:
+      required: true
+
+  - type: textarea
+    id: question_proposal
+    attributes:
+      label: "Question/Proposal"
+      description: "Your question or improvement proposal"
+      placeholder: |
+        Example) Is this approach feasible while maintaining compatibility?
+    validations:
+      required: true
+
+  - type: textarea
+    id: references
+    attributes:
+      label: "References"
+      description: "Links to RFCs, docs, or other specs"
+      placeholder: |
+        - [RFC 9000](https://datatracker.ietf.org/doc/html/rfc9000)
+        - [MoQ Draft](https://datatracker.ietf.org/doc/html/draft-ietf-moq-transport)
+    validations:
+      required: false
+
+  - type: textarea
+    id: implications
+    attributes:
+      label: "Implementation Implications"
+      description: "How this affects implementation or compatibility"
+      placeholder: |
+        - Compatibility impact
+        - Performance implications
+        - Impact on other components
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: tags
+    attributes:
+      label: "Related Areas"
+      options:
+        - label: "Frame Design"
+        - label: "Error Handling"
+        - label: "Flow Control"
+        - label: "Connection Management"
+        - label: "Security"
+        - label: "Interoperability"
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: "Checklist"
+      options:
+        - label: "I have read relevant specs"
+          required: true
+        - label: "I checked existing discussions"
+          required: false

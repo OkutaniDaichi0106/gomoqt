@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	moqt.PublishFunc(context.Background(), "/interop.client", func(ctx context.Context, tw *moqt.TrackWriter) {
+	moqt.PublishFunc(context.Background(), "/interop.client", func(tw *moqt.TrackWriter) {
 		seq := moqt.GroupSequenceFirst
 		builder := moqt.NewFrameBuilder(1024)
 		for range 10 {

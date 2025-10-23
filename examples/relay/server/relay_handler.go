@@ -26,7 +26,7 @@ type relayHandler struct {
 	relaying map[moqt.TrackName]*trackRelayer
 }
 
-func (h *relayHandler) ServeTrack(ctx context.Context, tw *moqt.TrackWriter) {
+func (h *relayHandler) ServeTrack(tw *moqt.TrackWriter) {
 	h.mu.Lock()
 	if h.relaying == nil {
 		h.relaying = make(map[moqt.TrackName]*trackRelayer)
@@ -45,7 +45,7 @@ func (h *relayHandler) ServeTrack(ctx context.Context, tw *moqt.TrackWriter) {
 
 	tr.addDestination(tw)
 
-	<-ctx.Done()
+	<-tw.Context().Done()
 
 	tw.Close()
 

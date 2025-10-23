@@ -8,14 +8,20 @@ import (
 )
 
 var (
+	// ErrInvalidScheme is returned when a URL scheme is not supported.
+	// Only "https" (for WebTransport) and "moqt" (for QUIC) schemes are valid.
 	ErrInvalidScheme = errors.New("moqt: invalid scheme")
 
+	// ErrInvalidRange is returned when a subscribe range is invalid.
 	ErrInvalidRange = errors.New("moqt: invalid range")
 
+	// ErrClosedSession is returned when attempting to use a closed session.
 	ErrClosedSession = errors.New("moqt: closed session")
 
+	// ErrServerClosed is returned when the server has been closed.
 	ErrServerClosed = errors.New("moqt: server closed")
 
+	// ErrClientClosed is returned when the client has been closed.
 	ErrClientClosed = errors.New("moqt: client closed")
 )
 
@@ -44,12 +50,15 @@ var AnnounceErrorCodeTexts = map[AnnounceErrorCode]string{
 	InvalidPrefixErrorCode:         "moqt: invalid prefix",
 }
 
+// AnnounceErrorCode represents error codes for track announcement operations.
+// These codes are used when an announcement is rejected or fails.
 type AnnounceErrorCode quic.StreamErrorCode
 
 func (code AnnounceErrorCode) String() string {
 	return AnnounceErrorCodeTexts[code]
 }
 
+// AnnounceError wraps a QUIC stream error with announcement-specific error codes.
 type AnnounceError struct{ *quic.StreamError }
 
 func (err AnnounceError) Error() string {
@@ -95,12 +104,15 @@ var SubscribeErrorCodeTexts = map[SubscribeErrorCode]string{
 	SubscribeTimeoutErrorCode:      "moqt: timeout",
 }
 
+// SubscribeErrorCode represents error codes for subscription operations.
+// These codes are used when a subscription request is rejected or fails.
 type SubscribeErrorCode quic.StreamErrorCode
 
 func (code SubscribeErrorCode) String() string {
 	return SubscribeErrorCodeTexts[code]
 }
 
+// SubscribeError wraps a QUIC stream error with subscription-specific error codes.
 type SubscribeError struct{ *quic.StreamError }
 
 func (err SubscribeError) Error() string {
@@ -140,12 +152,15 @@ var SessionErrorCodeTexts = map[SessionErrorCode]string{
 	SetupFailedErrorCode:             "moqt: setup failed",
 }
 
+// SessionErrorCode represents error codes for MOQ session operations.
+// These codes are used at the connection level for protocol errors.
 type SessionErrorCode quic.ApplicationErrorCode
 
 func (code SessionErrorCode) String() string {
 	return SessionErrorCodeTexts[code]
 }
 
+// SessionError wraps a QUIC application error with session-specific error codes.
 type SessionError struct{ *quic.ApplicationError }
 
 func (err SessionError) Error() string {

@@ -8,5 +8,19 @@ linters:
   enable:
     - govet
     - staticcheck
+    - revive
   exclusions:
     rules:
+
+linters-settings:
+  revive:
+    rules:
+      - name: exported
+        severity: warning
+        disabled: false
+        arguments:
+          - "checkPrivateReceivers"
+          - "disableStutteringCheck"
+      - name: package-comments
+        severity: warning
+        disabled: false

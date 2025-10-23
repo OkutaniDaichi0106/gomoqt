@@ -19,6 +19,12 @@ import (
 	"github.com/quic-go/quic-go/http3"
 )
 
+// Server is a MOQ server that accepts both WebTransport and raw QUIC connections.
+// It handles session setup, track announcements, and subscriptions according to
+// the MOQ Lite specification.
+//
+// The server maintains active sessions and listeners, providing graceful shutdown
+// capabilities. It can serve over multiple listeners simultaneously.
 type Server struct {
 	/*
 	 * Server's Address

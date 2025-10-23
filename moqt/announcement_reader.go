@@ -106,6 +106,9 @@ func newAnnouncementReader(stream quic.Stream, prefix prefix, initSuffixes []suf
 	return ar
 }
 
+// AnnouncementReader receives and manages track announcements from a remote peer.
+// It maintains a list of active announcements and notifies when new announcements
+// are received or existing ones are canceled.
 type AnnouncementReader struct {
 	stream quic.Stream
 	prefix prefix

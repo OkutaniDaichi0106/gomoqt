@@ -19,6 +19,12 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/webtransport/webtransportgo"
 )
 
+// Client is a MOQ client that can establish sessions with MOQ servers.
+// It supports both WebTransport (for browser compatibility) and raw QUIC connections.
+//
+// A Client can dial multiple servers and maintain multiple active sessions.
+// Sessions are tracked and managed automatically. When the client shuts down,
+// all active sessions are terminated gracefully.
 type Client struct {
 	/*
 	 * TLS configuration

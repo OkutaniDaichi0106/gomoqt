@@ -177,14 +177,14 @@ describe("GroupReader", () => {
     describe("constructor", () => {
         it("should initialize with provided parameters", () => {
             expect(groupReader).toBeInstanceOf(GroupReader);
-            expect(groupReader.groupSequence).toBe(456n);
+            expect(groupReader.sequence).toBe(456n);
             expect(groupReader.context).toBeDefined();
         });
     });
 
     describe("groupSequence", () => {
         it("should return the group sequence number", () => {
-            expect(groupReader.groupSequence).toBe(456n);
+            expect(groupReader.sequence).toBe(456n);
         });
     });
 

@@ -31,8 +31,8 @@ func NewAnnouncement(ctx context.Context, path BroadcastPath) (*Announcement, En
 	return &ann, endFunc
 }
 
-// Announcement represents an active track announcement.
-// It tracks the lifecycle of a published track and notifies subscribers
+// Announcement represents an active broadcast announcement.
+// It tracks the lifecycle of a publisher and notifies subscribers
 // when the announcement ends.
 type Announcement struct {
 	mu sync.Mutex

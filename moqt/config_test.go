@@ -13,10 +13,6 @@ func TestConfig_Clone(t *testing.T) {
 	}{
 		"config with all fields": {
 			config: &Config{
-				ClientSetupExtensions: func() *Parameters {
-					return &Parameters{}
-				},
-
 				SetupTimeout: 30 * time.Second,
 			},
 		},
@@ -38,7 +34,6 @@ func TestConfig_Clone(t *testing.T) {
 			assert.NotNil(t, cloned, "Cloned config should not be nil")
 
 			// Check if both are nil or both are non-nil for function fields
-			assert.Equal(t, original.ClientSetupExtensions == nil, cloned.ClientSetupExtensions == nil, "ClientSetupExtensions nil status should be equal")
 			assert.Equal(t, original.SetupTimeout, cloned.SetupTimeout, "Timeout should be equal")
 		})
 	}

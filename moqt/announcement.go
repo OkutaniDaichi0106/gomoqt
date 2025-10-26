@@ -8,8 +8,12 @@ import (
 	"sync/atomic"
 )
 
+// EndAnnouncementFunc is a function that ends an announcement.
 type EndAnnouncementFunc func()
 
+// NewAnnouncement creates a new announcement for the given broadcast path.
+// The announcement remains active until the context is canceled or the returned
+// EndAnnouncementFunc is called.
 func NewAnnouncement(ctx context.Context, path BroadcastPath) (*Announcement, EndAnnouncementFunc) {
 	if !isValidPath(path) {
 		panic("[Announcement] invalid track path: " + string(path))
@@ -31,6 +35,9 @@ func NewAnnouncement(ctx context.Context, path BroadcastPath) (*Announcement, En
 	return &ann, endFunc
 }
 
+// Announcement represents an active broadcast announcement.
+// It tracks the lifecycle of a publisher and notifies subscribers
+// when the announcement ends.
 type Announcement struct {
 	mu sync.Mutex
 	ch chan struct{}
@@ -43,6 +50,7 @@ type Announcement struct {
 	once   sync.Once
 }
 
+// String returns a string representation of the announcement for debugging.
 func (a *Announcement) String() string {
 	var sb strings.Builder
 	sb.WriteString("{")

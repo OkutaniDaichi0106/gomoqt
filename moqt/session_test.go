@@ -844,10 +844,10 @@ func TestSession_ContextCancellation(t *testing.T) {
 	timer := time.AfterFunc(100*time.Millisecond, func() {
 		t.Error("Context should be cancelled after termination")
 	})
-	select {
-	case <-ctx.Done():
-		timer.Stop()
-	}
+
+	<-ctx.Done()
+
+	timer.Stop()
 }
 
 func TestSession_WithRealMux(t *testing.T) {

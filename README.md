@@ -17,25 +17,30 @@ This implementation follows the [MOQ Lite specification](https://kixelated.githu
 - **Multiplexed Streaming**: Efficient multiplexing of multiple media tracks
 - **Sample Applications**: Complete examples demonstrating various use cases
 
+- **Real-Time Streaming**:
+	Minimized end-to-end latency for interactive use cases (live events, conferencing, low-latency monitoring). Suitable where responsiveness matters to user experience.
+
+- **Uninterrupted Streaming**:
+	Robust playback on varying network conditions. Built on QUIC/WebTransport primitives to reduce stalls and improve recovery from packet loss.
+
+- **Efficient Content Delivery**:
+	Protocol-level optimizations and multiplexing reduce connection overhead and infrastructure cost when serving many concurrent viewers or streams.
+
+- **Seamless Playback**:
+	Jitter and buffer management designed to reduce rebuffering and provide smooth continuous playback for viewers.
+
+- **Optimized Quality**:
+	Adaptive delivery patterns that prioritize usable quality under constrained bandwidth, enabling consistent UX across device classes.
+
 ## Components
 
 ### moqt
 
-The core Go package implementing the MOQ Lite protocol interactions, including:
-- Session establishment and management
-- Track publishing and subscription
-- Announcement handling
-- Stream multiplexing and routing
-
-This implementation is specifically designed for the MOQ Lite specification, focusing on simplicity and performance for real-time media streaming applications.
+The core Go package for implementing and handling the Media over QUIC (MOQ) protocol.
 
 ### moq-web
 
-TypeScript/JavaScript implementation providing WebTransport support for browsers, including:
-- WebTransport session management
-- Stream ID calculation and tracking
-- Reader/Writer interfaces for QUIC streams
-- Integration with browser WebTransport API
+TypeScript implementation of the MOQ protocol for the Web.
 
 ### interop
 
@@ -75,6 +80,7 @@ This command will perform the following:
 ### Development Commands
 
 #### Running Examples
+
 ```bash
 # Start the interop server
 just interop-server

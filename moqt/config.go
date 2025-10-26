@@ -7,9 +7,6 @@ import (
 
 // Config contains configuration options for MOQ sessions.
 type Config struct {
-	// ClientSetupExtensions returns additional parameters for client setup requests.
-	ClientSetupExtensions func() *Parameters
-
 	// ServerSetupExtensions func(clientParams *Parameters) (serverParams *Parameters, err error)
 
 	// MaxSubscribeID SubscribeID // TODO:
@@ -28,7 +25,6 @@ type Config struct {
 // Clone creates a copy of the Config.
 func (c *Config) Clone() *Config {
 	return &Config{
-		ClientSetupExtensions: c.ClientSetupExtensions,
 		// ServerSetupExtensions: c.ServerSetupExtensions,
 		// MaxSubscribeID: c.MaxSubscribeID,
 		// NewSessionURI:  c.NewSessionURI,

@@ -59,7 +59,7 @@ func main() {
 					return
 				}
 
-				mux.Announce(ann, moqt.TrackHandlerFunc(func(ctx context.Context, tw *moqt.TrackWriter) {
+				mux.Announce(ann, moqt.TrackHandlerFunc(func(tw *moqt.TrackWriter) {
 					defer tr.Close()
 
 					for {

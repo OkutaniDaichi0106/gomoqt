@@ -23,7 +23,11 @@ func NewAnnouncement(ctx context.Context, path BroadcastPath) (*Announcement, En
 		path: path,
 		ch:   make(chan struct{}),
 	}
-	ann.active.Store(true)
+	if ctx.Err() != nil {
+		ann.active.Store(false)
+	} else {
+		ann.active.Store(true)
+	}
 	endFunc := func() { ann.end() }
 
 	context.AfterFunc(ctx, endFunc)

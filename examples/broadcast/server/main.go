@@ -46,7 +46,7 @@ func main() {
 	})
 
 	// Register the broadcast handler with the default mux
-	moqt.PublishFunc(context.Background(), "/server.broadcast", func(ctx context.Context, tw *moqt.TrackWriter) {
+	moqt.PublishFunc(context.Background(), "/server.broadcast", func(tw *moqt.TrackWriter) {
 		seq := moqt.GroupSequenceFirst
 		builder := moqt.NewFrameBuilder(1024)
 		for {

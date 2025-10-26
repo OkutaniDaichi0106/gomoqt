@@ -1,5 +1,8 @@
-version: 2
+version: "2"
 
+# Minimal, modern golangci-lint config.
+# Keep the config simple: enable a few high-value linters and
+# keep revive rules for exported symbols and package comments.
 run:
   timeout: 10m
 
@@ -9,18 +12,6 @@ linters:
     - govet
     - staticcheck
     - revive
-  exclusions:
-    rules:
-
-linters-settings:
-  revive:
-    rules:
-      - name: exported
-        severity: warning
-        disabled: false
-        arguments:
-          - "checkPrivateReceivers"
-          - "disableStutteringCheck"
-      - name: package-comments
-        severity: warning
-        disabled: false
+# Note: keep any revive custom rules in a separate file if needed.
+# For simplicity we rely on revive's defaults here; add settings later
+# if you want stricter exported/package comment checks.

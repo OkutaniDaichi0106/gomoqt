@@ -1,76 +1,90 @@
-// Package moqt implements the MOQ Lite specification for Media over QUIC Transport.
+// Package moqt implements the protocol handling for Media over QUIC.
+// This follows the MOQ Lite specification (draft-lcurley-moq-lite).
 //
-// MOQ Lite is a simplified version of the Media over QUIC Transport protocol,
-// designed for lower latency and reduced complexity while maintaining the core
-// benefits of QUIC-based media delivery. This implementation follows the
-// MOQ Lite specification (draft-lcurley-moq-transfork).
+// # Clients
 //
-// # Key Features
+// Dial, DialWebTransport, DialQUIC create a new MOQ client session.
 //
-//   - Session establishment and management for both WebTransport and raw QUIC
-//   - Track publishing and subscription with the Publisher/Subscriber pattern
-//   - Announcement handling for track discovery
-//   - Stream multiplexing and routing for efficient media delivery
-//   - Group and frame-based media data transmission
+/*
+	client := &moqt.Client{}
+
+	sess, err := client.Dial(ctx, "https://example.com:4433", mux)
+	...
+	session, err := client.DialWebTransport(ctx, "example.com:4433", "/path", mux)
+	...
+	sess, err := client.DialQUIC(ctx, "example.com:4433", "/path", mux)
+*/
 //
-// # Basic Usage
+// # Servers
 //
-// To create a MOQ server:
+// Server listens for incoming connections and handles subscriptions.
+// ListenAndServe starts the server and routes incoming connections to a setup handler. The setup handler is usually nil, which means to use DefaultRouter.
+// Handle and HandleFunc register handlers to DefaultRouter for a URL paths.
 //
-//	server := &moqt.Server{
-//	    Addr:       ":4433",
-//	    TLSConfig:  tlsConfig,
-//	    SetupHandler: setupHandler,
-//	}
-//	if err := server.ListenAndServe(ctx); err != nil {
-//	    log.Fatal(err)
-//	}
+/*
+	moqt.Handle("/foo", fooHandler)
+
+	moqt.HandleFunc("/bar", func(w moqt.SetupResponseWriter, r *moqt.SetupRequest) {
+	    // handle setup request
+	})
+
+	err := moqt.ListenAndServe(":4433", tlsConfig)
+	if err != nil {
+	    log.Fatal(err)
+	}
+*/
 //
-// To create a MOQ client:
+// moqt.Accept accepts a new MOQ server session from a setup request within a setup handler.
 //
-//	client := &moqt.Client{
-//	    TLSConfig: tlsConfig,
-//	}
-//	session, err := client.DialWebTransport(ctx, "https://example.com:4433")
-//	if err != nil {
-//	    log.Fatal(err)
-//	}
+/*
+	moqt.HandleFunc("/broadcast", func(w moqt.SetupResponseWriter, r *moqt.SetupRequest) {
+	    sess, err := moqt.Accept(w, r, nil)
+		if err != nil {
+		    w.Reject(moqt.ProtocolViolationErrorCode)
+		    return
+		}
+		// handle session
+	})
+*/
 //
-// # Core Components
+// More control over the server can be achieved by creating a custom moqt.Server.
 //
-//   - Server: MOQ Lite server with WebTransport and QUIC support
-//   - Client: MOQ Lite client for establishing sessions
-//   - Session: Manages bidirectional communication between client and server
-//   - TrackWriter: Publishes media data to a track
-//   - TrackReader: Subscribes to and consumes media data from a track
-//   - Mux: Routes announcements and subscriptions to appropriate handlers
+/*
+	server := &moqt.Server{
+	    Addr:       	":4433",
+		TLSConfig:  	tlsConfig,
+		QUICConfig: 	quicConfig,
+		SetupHandler: 	myRouter,
+		Logger:     	myLogger,
+	}
+	err := server.ListenAndServe()
+	if err != nil {
+	    log.Fatal(err)
+	}
+*/
 //
-// # Specification Compliance
+// # Underlying Transport
 //
-// This package implements the MOQ Lite specification, which includes:
-//   - Session establishment via WebTransport or QUIC (Section 3)
-//   - Version and extension negotiation (Section 3.2)
-//   - Track announcement and subscription (Sections 5.1, 5.2)
-//   - Group and frame-based data transmission (Sections 8, 9)
-//   - Control messages for session and subscription management (Section 7)
+// MOQ supports both QUIC and WebTransport.
+// The package abstracts the underlying transports into the `quic` and `webtransport` subpackages.
+// By default it uses github.com/quic-go/quic-go for QUIC and github.com/quic-go/webtransport for WebTransport.
+// Custom transports can be provided by setting the client's `DialAddrFunc` and `DialWebTransportFunc`,
+// and the server's `ListenFunc` and `NewWebtransportServerFunc`.
 //
-// For detailed specification status and implementation progress, see the
-// package README.md file.
+// Client example:
+/*
+	client := &moqt.Client{
+	    DialAddrFunc: myDialQUICFunc,
+	    DialWebTransportFunc: myDialWebTransportFunc,
+	}
+*/
 //
-// # Performance Considerations
+// Server example:
 //
-// The implementation is optimized for real-time media streaming with:
-//   - Minimal latency for group and frame delivery
-//   - Efficient stream multiplexing for concurrent tracks
-//   - Resource pooling for reduced allocations
-//   - Support for track priority control (in development)
-//
-// # Examples
-//
-// See the examples/ directory for complete working examples including:
-//   - Echo server/client for basic request-response patterns
-//   - Broadcast server/client for one-to-many streaming
-//   - Relay server for multi-hop media delivery
-//
-// For more information, visit: https://github.com/OkutaniDaichi0106/gomoqt
+/*
+	server := &moqt.Server{
+	    ListenFunc: myListenQUICFunc,
+	    NewWebtransportServerFunc: myNewWebTransportServerFunc,
+	}
+*/
 package moqt

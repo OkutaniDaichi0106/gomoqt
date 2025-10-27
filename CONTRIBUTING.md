@@ -16,7 +16,7 @@ This project follows a code of conduct to ensure a welcoming environment for all
 
 Before you begin, ensure you have the following installed:
 - Go 1.25.0 or later
-- [just](https://github.com/casey/just) command runner
+- [Mage](https://magefile.org/) build tool (install with `go install github.com/magefile/mage@latest`)
 - Git
 
 ### Development Setup
@@ -32,15 +32,17 @@ Before you begin, ensure you have the following installed:
    go mod download
    ```
 
-3. Run the setup command:
+3. Install Mage build tool:
    ```bash
-   just dev-setup
+   go install github.com/magefile/mage@latest
    ```
 
 4. Verify your setup:
    ```bash
-   just test
+   mage test
    ```
+
+Note: Development setup commands (dev-setup, certificate generation, etc.) are still available via the Justfile if needed. The core build commands have been migrated to Mage.
 
 ## Development Workflow
 
@@ -71,7 +73,7 @@ git checkout -b fix/issue-number-description
 Run tests before submitting:
 ```bash
 # Run all tests
-just test
+mage test
 
 # Run specific package tests
 go test ./moqt/...
@@ -88,10 +90,10 @@ go test -bench=. ./...
 Ensure your code meets our standards:
 ```bash
 # Format code
-go fmt ./...
+mage fmt
 
-# Run linter
-golangci-lint run
+# Run linter (requires golangci-lint)
+mage lint
 ```
 
 ## Coding Standards

@@ -51,7 +51,7 @@ Interoperability testing tools and examples for validating MOQ implementations a
 ### Prerequisites
 
 - Go 1.25.0 or later
-- [just](https://github.com/casey/just) command runner
+- [Mage](https://magefile.org/) build tool (install with `go install github.com/magefile/mage@latest`)
 
 ### Getting Started
 
@@ -66,16 +66,12 @@ Interoperability testing tools and examples for validating MOQ implementations a
    go get github.com/OkutaniDaichi0106/gomoqt
    ```
 
-3. Set up the development environment:
+3. Install Mage build tool:
    ```bash
-   just dev-setup
+   go install github.com/magefile/mage@latest
    ```
 
-This command will perform the following:
-- Install the required certificate tools (mkcert).
-- Install development tools (goimports, golangci-lint).
-- Download project dependencies.
-- Generate development certificates.
+Note: Development setup commands (dev-setup, certificate generation, etc.) are still available via the Justfile. The core build commands (test, lint, fmt, build, clean) have been migrated to Mage.
 
 ### Development Commands
 
@@ -92,25 +88,25 @@ just interop-client
 #### Code Quality
 ```bash
 # Format code
-just fmt
+mage fmt
 
-# Run linter
-just lint
+# Run linter (requires golangci-lint: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)
+mage lint
 
 # Run tests
-just test
-
-# Perform overall quality checks (formatting and linting)
-just check
+mage test
 ```
 
 #### Build & Clean
 ```bash
 # Build the code
-just build
+mage build
 
 # Clean up generated files
-just clean
+mage clean
+
+# Show available commands
+mage help
 ```
 
 ### Examples
@@ -142,9 +138,9 @@ We welcome contributions! Here's how you can help:
 3. Make your changes.
 4. Verify code quality:
    ```bash
-   just fmt
-   just lint
-   just test
+   mage fmt
+   mage lint
+   mage test
    ```
 5. Commit your changes (`git commit -m 'Add amazing feature'`).
 6. Push your branch (`git push origin feature/amazing-feature`).

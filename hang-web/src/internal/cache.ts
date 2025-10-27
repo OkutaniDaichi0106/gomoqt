@@ -9,17 +9,19 @@ import {
     Mutex,
 } from "golikejs/sync";
 import type {
+GroupReader,
     GroupSequence,
     GroupWriter,
     GroupErrorCode,
 } from "@okutanidaichi/moqt";
-import type { Frame } from "@okutanidaichi/moqt/io";
+import type { Frame } from "@okutanidaichi/moqt";
+import { EOF } from "@okutanidaichi/moqt/io";
 
 export class GroupCache {
     readonly sequence: GroupSequence;
     readonly timestamp: number;
     frames: Frame[] = [];
-    // dests: Set<GroupWriter> = new Set();
+
     closed: boolean = false;
     expired: boolean = false;
     #mutex = new Mutex();
@@ -46,92 +48,97 @@ export class GroupCache {
         this.#mutex.unlock();
     }
 
-    async connect(group: GroupWriter): Promise<void> {
-        await this.#mutex.lock();
+    // async connect(group: GroupWriter): Promise<void> {
+    //     await this.#mutex.lock();
 
-        // Write current frames to group
-        let err: Error | undefined;
-        let framesCount = 0;
-        for (const frame of this.frames) {
-            if (frame) {
-                err = await group.writeFrame(frame);
-                if (err) {
-                    group.cancel(InternalGroupErrorCode, `failed to write frame: ${err.message}`);
-                    this.#mutex.unlock();
-                    return;
-                }
-                framesCount++;
-            }
-        }
+    //     // Write current frames to group
+    //     let err: Error | undefined;
+    //     let framesCount = 0;
+    //     for (const frame of this.frames) {
+    //         if (frame) {
+    //             err = await group.writeFrame(frame);
+    //             if (err) {
+    //                 group.cancel(InternalGroupErrorCode, `failed to write frame: ${err.message}`);
+    //                 this.#mutex.unlock();
+    //                 return;
+    //             }
+    //             framesCount++;
+    //         }
+    //     }
 
-        // Release lock before entering the wait loop
-        this.#mutex.unlock();
+    //     // Release lock before entering the wait loop
+    //     this.#mutex.unlock();
 
-        // Wait for new frames or close/expire signals
-        while (true) {
-            // Write any new frames that arrived
-            while (framesCount < this.frames.length) {
-                const frame = this.frames[framesCount];
-                err = await group.writeFrame(frame!);
-                if (err) {
-                    group.cancel(InternalGroupErrorCode, `failed to write frame: ${err.message}`);
-                    return;
-                }
-                framesCount++;
-            }
+    //     // Wait for new frames or close/expire signals
+    //     while (true) {
+    //         // Write any new frames that arrived
+    //         while (framesCount < this.frames.length) {
+    //             const frame = this.frames[framesCount];
+    //             err = await group.writeFrame(frame!);
+    //             if (err) {
+    //                 group.cancel(InternalGroupErrorCode, `failed to write frame: ${err.message}`);
+    //                 return;
+    //             }
+    //             framesCount++;
+    //         }
 
-            // Lock and wait for signal
-            this.#mutex.lock();
-            await this.#cond.wait();
-            this.#mutex.unlock();
+    //         // Lock and wait for signal
+    //         this.#mutex.lock();
+    //         await this.#cond.wait();
+    //         this.#mutex.unlock();
 
-            // Check termination conditions
-            if (this.closed) {
-                group.close();
-                return;
-            }
-            if (this.expired) {
-                group.cancel(ExpiredGroupErrorCode, 'cache expired');
-                return;
-            }
-        }
-    }
+    //         // Check termination conditions
+    //         if (this.closed) {
+    //             group.close();
+    //             return;
+    //         }
+    //         if (this.expired) {
+    //             group.cancel(ExpiredGroupErrorCode, 'cache expired');
+    //             return;
+    //         }
+    //     }
+    // }
 
-    async close(): Promise<void> {
-        await this.#mutex.lock();
+    // async close(): Promise<void> {
+    //     await this.#mutex.lock();
 
-        if (this.closed) {
-            this.#mutex.unlock();
-            return;
-        }
+    //     if (this.closed) {
+    //         this.#mutex.unlock();
+    //         return;
+    //     }
 
-        this.closed = true;
+    //     this.closed = true;
 
-        // Broadcast to all waiting flush operations
-        this.#cond.broadcast();
+    //     // Broadcast to all waiting flush operations
+    //     this.#cond.broadcast();
 
-        this.#mutex.unlock();
-    }
+    //     this.#mutex.unlock();
+    // }
 
-    async expire(): Promise<void> {
-        await this.#mutex.lock();
+    // async expire(): Promise<void> {
+    //     await this.#mutex.lock();
 
-        if (this.expired) {
-            this.#mutex.unlock();
-            return;
-        }
+    //     if (this.expired) {
+    //         this.#mutex.unlock();
+    //         return;
+    //     }
 
-        this.expired = true;
-        this.frames.length = 0;
+    //     this.expired = true;
+    //     this.frames.length = 0;
 
-        // Broadcast to all waiting flush operations
-        this.#cond.broadcast();
+    //     // Broadcast to all waiting flush operations
+    //     this.#cond.broadcast();
 
-        this.#mutex.unlock();
-    }
+    //     this.#mutex.unlock();
+    // }
 }
 
-export interface TrackCache {
-    store(group: GroupCache): void;
-    close(): Promise<void>;
+async function cacheFrom(group: GroupReader): Promise<GroupCache> {
+    const [frame, err] = await group.readFrame();
+    if (err) {
+        throw new Error(`failed to read first frame from group: ${err.message}`);
+    }
+
+    
+    return new GroupCache(group.sequence, group.timestamp);
 }

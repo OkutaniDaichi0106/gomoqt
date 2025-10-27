@@ -3,7 +3,7 @@ package message
 import (
 	"io"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
+	internal "github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 )
 
 /*
@@ -17,7 +17,7 @@ import (
  */
 
 type SessionClientMessage struct {
-	SupportedVersions []protocol.Version
+	SupportedVersions []internal.Version
 	Parameters        Parameters
 }
 
@@ -77,13 +77,13 @@ func (scm *SessionClientMessage) Decode(src io.Reader) error {
 	}
 	b = b[n:]
 
-	scm.SupportedVersions = make([]protocol.Version, count)
+	scm.SupportedVersions = make([]internal.Version, count)
 	for i := range count {
 		num, n, err := ReadVarint(b)
 		if err != nil {
 			return err
 		}
-		scm.SupportedVersions[i] = protocol.Version(num)
+		scm.SupportedVersions[i] = internal.Version(num)
 		b = b[n:]
 	}
 

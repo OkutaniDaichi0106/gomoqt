@@ -14,8 +14,8 @@ import (
 	"crypto/tls"
 	"net/http"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -450,7 +450,7 @@ func TestClient_DialWebTransport_CustomDialSuccess(t *testing.T) {
 	// Encode a proper SessionServerMessage using bytes.Buffer
 	var buf bytes.Buffer
 	ssm := message.SessionServerMessage{
-		SelectedVersion: protocol.Draft01,
+		SelectedVersion: internal.Draft01,
 		Parameters:      make(message.Parameters),
 	}
 	err := ssm.Encode(&buf)
@@ -516,7 +516,7 @@ func TestClient_DialQUIC_CustomDialSuccess(t *testing.T) {
 	// Encode a proper SessionServerMessage using bytes.Buffer
 	var buf bytes.Buffer
 	ssm := message.SessionServerMessage{
-		SelectedVersion: protocol.Draft01,
+		SelectedVersion: internal.Draft01,
 		Parameters:      make(message.Parameters),
 	}
 	err := ssm.Encode(&buf)
@@ -664,7 +664,7 @@ func TestClient_OpenSession_Success(t *testing.T) {
 	// Encode a proper SessionServerMessage using bytes.Buffer
 	var buf bytes.Buffer
 	ssm := message.SessionServerMessage{
-		SelectedVersion: protocol.Draft01,
+		SelectedVersion: internal.Draft01,
 		Parameters:      make(message.Parameters),
 	}
 	err := ssm.Encode(&buf)
@@ -786,7 +786,7 @@ func TestClient_Dial_URLSchemes(t *testing.T) {
 				mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
 				buffer := bytes.NewBuffer(nil)
 				message.SessionServerMessage{
-					SelectedVersion: protocol.Develop,
+					SelectedVersion: internal.Develop,
 				}.Encode(buffer)
 				mockStream := &MockQUICStream{
 					WriteFunc: func(p []byte) (int, error) {

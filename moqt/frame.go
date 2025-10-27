@@ -3,7 +3,7 @@ package moqt
 import (
 	"io"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
 )
 
 // NewFrame creates a new Frame with the specified bytes.

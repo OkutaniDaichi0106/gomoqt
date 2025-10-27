@@ -5,8 +5,8 @@ import (
 	"io"
 	"testing"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -18,7 +18,7 @@ func TestSessionServerMessage_EncodeDecode(t *testing.T) {
 	}{
 		"valid message": {
 			input: message.SessionServerMessage{
-				SelectedVersion: protocol.Version(0),
+				SelectedVersion: internal.Version(0),
 				Parameters: message.Parameters{
 					1: []byte("value1"),
 					2: []byte("value2"),
@@ -27,7 +27,7 @@ func TestSessionServerMessage_EncodeDecode(t *testing.T) {
 		},
 		"empty parameters": {
 			input: message.SessionServerMessage{
-				SelectedVersion: protocol.Version(0),
+				SelectedVersion: internal.Version(0),
 				Parameters:      message.Parameters{},
 			},
 		},
@@ -41,7 +41,7 @@ func TestSessionServerMessage_EncodeDecode(t *testing.T) {
 		// },
 		"nil parameters": {
 			input: message.SessionServerMessage{
-				SelectedVersion: protocol.Version(1),
+				SelectedVersion: internal.Version(1),
 			},
 		},
 	}

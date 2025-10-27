@@ -3,12 +3,12 @@ package message
 import (
 	"io"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-type SubscribeID = protocol.SubscribeID
-type TrackPriority = protocol.TrackPriority
+type SubscribeID = internal.SubscribeID
+type TrackPriority = internal.TrackPriority
 
 /*
 * SUBSCRIBE Message {

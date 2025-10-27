@@ -1,11 +1,11 @@
 package moqt
 
 import (
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 )
 
-var DefaultClientVersions []Version = []Version{protocol.Develop}
+var DefaultClientVersions []Version = []Version{internal.Develop}
 
-var DefaultServerVersion Version = protocol.Develop
+var DefaultServerVersion Version = internal.Develop
 
-type Version = protocol.Version
+type Version = internal.Version

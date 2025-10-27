@@ -4,10 +4,10 @@ import (
 	"errors"
 	"io"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
+	internal "github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 )
 
-type GroupSequence = protocol.GroupSequence
+type GroupSequence = internal.GroupSequence
 
 type GroupMessage struct {
 	SubscribeID   SubscribeID

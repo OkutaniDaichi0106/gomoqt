@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
 	"github.com/OkutaniDaichi0106/gomoqt/quic/quicgo"
 	"github.com/OkutaniDaichi0106/gomoqt/webtransport"

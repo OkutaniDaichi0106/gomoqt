@@ -1,4 +1,4 @@
-package protocol
+package internal
 
 type Version uint64
 

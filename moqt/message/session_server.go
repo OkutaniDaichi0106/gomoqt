@@ -3,14 +3,14 @@ package message
 import (
 	"io"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 )
 
 type SessionServerMessage struct {
 	/*
 	 * Versions selected by the server
 	 */
-	SelectedVersion protocol.Version
+	SelectedVersion internal.Version
 
 	/*
 	 * Setup Parameters
@@ -67,7 +67,7 @@ func (ssm *SessionServerMessage) Decode(src io.Reader) error {
 	if err != nil {
 		return err
 	}
-	ssm.SelectedVersion = protocol.Version(num)
+	ssm.SelectedVersion = internal.Version(num)
 	b = b[n:]
 
 	ssm.Parameters, n, err = ReadParameters(b)

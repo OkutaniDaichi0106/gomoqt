@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing" // Encode
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

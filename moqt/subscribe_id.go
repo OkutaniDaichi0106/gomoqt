@@ -1,7 +1,7 @@
 package moqt
 
 import (
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
 )
 
-type SubscribeID = protocol.SubscribeID
+type SubscribeID = internal.SubscribeID

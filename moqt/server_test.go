@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
 	"github.com/OkutaniDaichi0106/gomoqt/webtransport"
 	"github.com/stretchr/testify/assert"
@@ -324,7 +324,7 @@ func TestServer_AcceptSession(t *testing.T) {
 
 			// Then, encode SESSION_CLIENT message
 			scm := message.SessionClientMessage{
-				SupportedVersions: []protocol.Version{protocol.Version(1)},
+				SupportedVersions: []internal.Version{internal.Version(1)},
 				Parameters:        message.Parameters{},
 			}
 			err = scm.Encode(&buf)
@@ -736,7 +736,7 @@ func TestServer_ServeQUICConn_NativeQUIC(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, message.StreamTypeSession.Encode(&buf))
 	scm := message.SessionClientMessage{
-		SupportedVersions: []protocol.Version{protocol.Version(0)},
+		SupportedVersions: []internal.Version{internal.Version(0)},
 		Parameters:        make(message.Parameters),
 	}
 	require.NoError(t, scm.Encode(&buf))
@@ -787,7 +787,7 @@ func TestServer_HandleNativeQUIC_NilLogger(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, message.StreamTypeSession.Encode(&buf))
 	scm := message.SessionClientMessage{
-		SupportedVersions: []protocol.Version{protocol.Version(0)},
+		SupportedVersions: []internal.Version{internal.Version(0)},
 		Parameters:        make(message.Parameters),
 	}
 	require.NoError(t, scm.Encode(&buf))

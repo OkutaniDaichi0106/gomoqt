@@ -1,3 +1,3 @@
-package protocol
+package internal
 
 type TrackPriority byte

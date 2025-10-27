@@ -12,24 +12,31 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
+// ParameterType represents the type identifier for MOQ protocol parameters.
 type ParameterType uint64
 
+// NewParameters creates a new empty Parameters instance.
 func NewParameters() *Parameters {
 	return &Parameters{
 		paramMap: make(message.Parameters),
 	}
 }
 
+// Parameters holds key-value pairs for MOQ protocol negotiation.
+// Parameters are used during session setup and other protocol operations
+// to exchange configuration options between client and server.
 type Parameters struct {
 	paramMap message.Parameters
 }
 
+// Clone creates a deep copy of the Parameters.
 func (p *Parameters) Clone() *Parameters {
 	return &Parameters{
 		paramMap: maps.Clone(p.paramMap),
 	}
 }
 
+// String returns a string representation of the parameters for debugging.
 func (p Parameters) String() string {
 	var sb strings.Builder
 	sb.WriteString("{")
@@ -44,6 +51,7 @@ func (p Parameters) String() string {
 	return sb.String()
 }
 
+// SetByteArray sets a parameter with a byte array value.
 func (p *Parameters) SetByteArray(key ParameterType, value []byte) {
 	if p.paramMap == nil {
 		p.paramMap = make(message.Parameters)
@@ -51,6 +59,7 @@ func (p *Parameters) SetByteArray(key ParameterType, value []byte) {
 	p.paramMap[uint64(key)] = value
 }
 
+// SetString sets a parameter with a string value.
 func (p *Parameters) SetString(key ParameterType, value string) {
 	if p.paramMap == nil {
 		p.paramMap = make(message.Parameters)
@@ -58,6 +67,7 @@ func (p *Parameters) SetString(key ParameterType, value string) {
 	p.paramMap[uint64(key)] = []byte(value)
 }
 
+// SetUint sets a parameter with an unsigned integer value encoded as a varint.
 func (p *Parameters) SetUint(key ParameterType, value uint64) {
 	if p.paramMap == nil {
 		p.paramMap = make(message.Parameters)
@@ -65,6 +75,7 @@ func (p *Parameters) SetUint(key ParameterType, value uint64) {
 	p.paramMap[uint64(key)] = quicvarint.Append(make([]byte, 0), value)
 }
 
+// SetBool sets a parameter with a boolean value (1 for true, 0 for false).
 func (p *Parameters) SetBool(key ParameterType, value bool) {
 	if p.paramMap == nil {
 		p.paramMap = make(message.Parameters)
@@ -76,6 +87,7 @@ func (p *Parameters) SetBool(key ParameterType, value bool) {
 	}
 }
 
+// Remove removes a parameter by key.
 func (p *Parameters) Remove(key ParameterType) {
 	if p.paramMap == nil {
 		return
@@ -83,6 +95,8 @@ func (p *Parameters) Remove(key ParameterType) {
 	delete(p.paramMap, uint64(key))
 }
 
+// GetByteArray retrieves a parameter value as a byte array.
+// Returns ErrParameterNotFound if the parameter does not exist.
 func (p Parameters) GetByteArray(key ParameterType) ([]byte, error) {
 	if p.paramMap == nil {
 		return nil, ErrParameterNotFound
@@ -95,6 +109,8 @@ func (p Parameters) GetByteArray(key ParameterType) ([]byte, error) {
 	return value, nil
 }
 
+// GetString retrieves a parameter value as a string.
+// Returns ErrParameterNotFound if the parameter does not exist.
 func (p Parameters) GetString(key ParameterType) (string, error) {
 	if p.paramMap == nil {
 		return "", ErrParameterNotFound
@@ -108,6 +124,8 @@ func (p Parameters) GetString(key ParameterType) (string, error) {
 	return string(value), nil
 }
 
+// GetUint retrieves a parameter value as an unsigned integer decoded from a varint.
+// Returns ErrParameterNotFound if the parameter does not exist.
 func (p Parameters) GetUint(key ParameterType) (uint64, error) {
 	if p.paramMap == nil {
 		return 0, ErrParameterNotFound
@@ -127,6 +145,8 @@ func (p Parameters) GetUint(key ParameterType) (uint64, error) {
 	return num, nil
 }
 
+// GetBool retrieves a parameter value as a boolean (1=true, 0=false).
+// Returns ErrParameterNotFound if the parameter does not exist.
 func (p Parameters) GetBool(key ParameterType) (bool, error) {
 	if p.paramMap == nil {
 		return false, ErrParameterNotFound

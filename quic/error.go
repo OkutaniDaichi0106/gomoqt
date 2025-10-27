@@ -4,22 +4,32 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
+// TransportError represents a QUIC transport layer error.
 type TransportError = quic.TransportError
 
+// ApplicationError represents an application-level error in QUIC.
 type ApplicationError = quic.ApplicationError
 
+// VersionNegotiationError occurs when version negotiation fails.
 type VersionNegotiationError = quic.VersionNegotiationError
 
+// StatelessResetError indicates that a stateless reset was received.
 type StatelessResetError = quic.StatelessResetError
 
+// IdleTimeoutError indicates that the connection timed out due to inactivity.
 type IdleTimeoutError = quic.IdleTimeoutError
 
+// HandshakeTimeoutError indicates that the handshake did not complete in time.
 type HandshakeTimeoutError = quic.HandshakeTimeoutError
 
+// Error codes for QUIC transport, application, and stream operations.
 type (
-	TransportErrorCode   = quic.TransportErrorCode
+	// TransportErrorCode identifies transport-layer protocol errors.
+	TransportErrorCode = quic.TransportErrorCode
+	// ApplicationErrorCode identifies application-defined errors.
 	ApplicationErrorCode = quic.ApplicationErrorCode
-	StreamErrorCode      = quic.StreamErrorCode
+	// StreamErrorCode identifies stream-specific errors.
+	StreamErrorCode = quic.StreamErrorCode
 )
 
 const (

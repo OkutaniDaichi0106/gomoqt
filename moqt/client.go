@@ -19,6 +19,12 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/webtransport/webtransportgo"
 )
 
+// Client is a MOQ client that can establish sessions with MOQ servers.
+// It supports both WebTransport (for browser compatibility) and raw QUIC connections.
+//
+// A Client can dial multiple servers and maintain multiple active sessions.
+// Sessions are tracked and managed automatically. When the client shuts down,
+// all active sessions are terminated gracefully.
 type Client struct {
 	/*
 	 * TLS configuration
@@ -167,7 +173,7 @@ func (c *Client) DialWebTransport(ctx context.Context, host, path string, mux *T
 
 	connLogger.Info("WebTransport connection established")
 
-	sessStream, err := openSessionStream(conn, path, c.webTransportExtensions(), connLogger)
+	sessStream, err := openSessionStream(conn, path, webTransportExtensions(), connLogger)
 	if err != nil {
 		connLogger.Error("session establishment failed", "error", err)
 		return nil, err
@@ -228,7 +234,7 @@ func (c *Client) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux)
 
 	connLogger.Info("QUIC connection established")
 
-	sessStream, err := openSessionStream(conn, path, c.nativeQUICExtensions(path), connLogger)
+	sessStream, err := openSessionStream(conn, path, quicExtensions(path), connLogger)
 	if err != nil {
 		connLogger.Error("failed to open session stream", "error", err)
 		return nil, err
@@ -241,32 +247,16 @@ func (c *Client) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux)
 	return sess, nil
 }
 
-func (c *Client) nativeQUICExtensions(path string) *Parameters {
-	if c.Config == nil || c.Config.ClientSetupExtensions == nil {
-		params := NewParameters()
-		params.SetString(param_type_path, path)
-		return params
-	}
-
-	params := c.Config.ClientSetupExtensions()
-	if params == nil {
-		params = NewParameters()
-	}
+func quicExtensions(path string) *Parameters {
+	params := NewParameters()
 
 	params.SetString(param_type_path, path)
 
 	return params
 }
 
-func (c *Client) webTransportExtensions() *Parameters {
-	if c.Config == nil || c.Config.ClientSetupExtensions == nil {
-		return NewParameters()
-	}
-
-	params := c.Config.ClientSetupExtensions()
-	if params == nil {
-		params = NewParameters()
-	}
+func webTransportExtensions() *Parameters {
+	params := NewParameters()
 
 	return params
 }

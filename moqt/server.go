@@ -19,6 +19,21 @@ import (
 	"github.com/quic-go/quic-go/http3"
 )
 
+func ListenAndServe(addr string, tlsConfig *tls.Config) error {
+	server := &Server{
+		Addr:         addr,
+		TLSConfig:    tlsConfig,
+		SetupHandler: DefaultRouter,
+	}
+	return server.ListenAndServe()
+}
+
+// Server is a MOQ server that accepts both WebTransport and raw QUIC connections.
+// It handles session setup, track announcements, and subscriptions according to
+// the MOQ Lite specification.
+//
+// The server maintains active sessions and listeners, providing graceful shutdown
+// capabilities. It can serve over multiple listeners simultaneously.
 type Server struct {
 	/*
 	 * Server's Address
@@ -269,61 +284,6 @@ func (s *Server) handleNativeQUIC(conn quic.Connection) error {
 	return nil
 }
 
-// func (s *Server) Accept(w SetupResponseWriter, r *SetupRequest, mux *TrackMux) (*Session, error) {
-// 	if w == nil {
-// 		return nil, fmt.Errorf("response writer cannot be nil")
-// 	}
-
-// 	if s.shuttingDown() {
-// 		w.Reject(SetupFailedErrorCode)
-// 		return nil, ErrServerClosed
-// 	}
-
-// 	s.init()
-
-// 	if r == nil {
-// 		w.Reject(SetupFailedErrorCode)
-// 		return nil, fmt.Errorf("request cannot be nil")
-// 	}
-
-// 	rsp, ok := w.(*responseWriter)
-// 	if !ok {
-// 		return nil, fmt.Errorf("response writer is not of type *response")
-// 	}
-
-// 	// Accept the setup request with default version and no extensions
-// 	err := w.Accept(DefaultServerVersion, nil)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to accept setup request: %w", err)
-// 	}
-
-// 	conn := rsp.conn
-// 	if conn == nil {
-// 		return nil, fmt.Errorf("quic connection cannot be nil")
-// 	}
-
-// 	var connLogger *slog.Logger
-// 	if s.Logger != nil {
-// 		connLogger = s.Logger.With(
-// 			"local_address", conn.LocalAddr(),
-// 			"remote_address", conn.RemoteAddr(),
-// 			"alpn", conn.ConnectionState().TLS.NegotiatedProtocol,
-// 			"quic_version", conn.ConnectionState().Version,
-// 		)
-// 		// TODO: Add connection ID
-// 	} else {
-// 		connLogger = slog.New(slog.DiscardHandler)
-// 	}
-
-// 	// var sess *Session
-// 	// sess = newSession(conn, rsp.sessionStream, mux, connLogger, func() { s.removeSession(sess) })
-// 	// s.addSession(sess)
-
-// 	connLogger.Debug("accepted a new session")
-
-// 	return sess, nil
-// }
-
 func acceptSessionStream(acceptCtx context.Context, conn quic.Connection, connLogger *slog.Logger) (*sessionStream, error) {
 	sessionID := generateSessionID()
 
@@ -383,35 +343,6 @@ func acceptSessionStream(acceptCtx context.Context, conn quic.Connection, connLo
 
 	// Get the path parameter
 	path, _ := clientParams.GetString(param_type_path)
-
-	// serverParams, err := extensions(clientParams.Clone())
-	// if err != nil {
-	// 	sessLogger.Error("failed to process setup extensions",
-	// 		"error", err,
-	// 	)
-	// 	return nil, err
-	// }
-
-	// version := DefaultServerVersion
-
-	// // Send a SESSION_SERVER message
-	// ssm := message.SessionServerMessage{
-	// 	SelectedVersion: version,
-	// 	Parameters:      serverParams.paramMap,
-	// }
-	// err = ssm.Encode(stream)
-	// if err != nil {
-	// 	sessLogger.Error("failed to send SESSION_SERVER message",
-	// 		"error", err,
-	// 	)
-
-	// 	var appErr *quic.ApplicationError
-	// 	if errors.As(err, &appErr) {
-	// 		return nil, &SessionError{ApplicationError: appErr}
-	// 	}
-
-	// 	return nil, err
-	// }
 
 	req := &SetupRequest{
 		ctx:              stream.Context(),
@@ -476,7 +407,7 @@ func (s *Server) ListenAndServeTLS(certFile, keyFile string) error {
 	// Create TLS config with certificates
 	tlsConfig := &tls.Config{
 		Certificates: certs,
-		NextProtos:   []string{NextProtoMOQ, http3.NextProtoH3},
+		NextProtos:   []string{NextProtoMOQ, webtransport.NextProtoH3},
 	}
 
 	var ln quic.Listener

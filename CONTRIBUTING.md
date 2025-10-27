@@ -16,7 +16,7 @@ This project follows a code of conduct to ensure a welcoming environment for all
 
 Before you begin, ensure you have the following installed:
 - Go 1.25.0 or later
-- [just](https://github.com/casey/just) command runner
+- [Mage](https://magefile.org/) build tool (install with `go install github.com/magefile/mage@latest`)
 - Git
 
 ### Development Setup
@@ -32,15 +32,17 @@ Before you begin, ensure you have the following installed:
    go mod download
    ```
 
-3. Run the setup command:
+3. Install Mage build tool:
    ```bash
-   just dev-setup
+   go install github.com/magefile/mage@latest
    ```
 
 4. Verify your setup:
    ```bash
-   just test
+   mage test
    ```
+
+Note: Development setup commands (dev-setup, certificate generation, etc.) are still available via the Justfile if needed. The core build commands have been migrated to Mage.
 
 ## Development Workflow
 
@@ -71,7 +73,7 @@ git checkout -b fix/issue-number-description
 Run tests before submitting:
 ```bash
 # Run all tests
-just test
+mage test
 
 # Run specific package tests
 go test ./moqt/...
@@ -88,10 +90,10 @@ go test -bench=. ./...
 Ensure your code meets our standards:
 ```bash
 # Format code
-go fmt ./...
+mage fmt
 
-# Run linter
-golangci-lint run
+# Run linter (requires golangci-lint)
+mage lint
 ```
 
 ## Coding Standards
@@ -103,6 +105,52 @@ golangci-lint run
 - Write clear, concise function and variable names
 - Add comments for exported functions and types
 - Keep functions small and focused
+
+### Documentation Guidelines
+
+All exported symbols (functions, types, constants, variables) must be documented with godoc comments:
+
+- **Start with the symbol name**: Comments should begin with the name of the item being documented
+- **Use complete sentences**: Write clear, grammatically correct sentences
+- **Be concise but clear**: Explain what, not how (code shows how)
+- **Package documentation**: Add a `doc.go` file or package comment in any `.go` file
+
+Example:
+```go
+// Package example provides utilities for demonstration purposes.
+package example
+
+// Config holds configuration options for the service.
+type Config struct {
+    Timeout time.Duration
+}
+
+// NewConfig creates a new Config with default values.
+func NewConfig() *Config {
+    return &Config{
+        Timeout: 30 * time.Second,
+    }
+}
+```
+
+### Example Functions
+
+For key packages and common use cases, add `Example` functions in `*_test.go` files:
+
+```go
+package example_test
+
+import "fmt"
+
+// Example demonstrates basic usage of the package.
+func Example() {
+    config := example.NewConfig()
+    fmt.Printf("Default timeout: %v\n", config.Timeout)
+    // Output: Default timeout: 30s
+}
+```
+
+These examples will appear on pkg.go.dev and help users understand how to use your code.
 
 ### Commit Messages
 

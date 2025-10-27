@@ -17,25 +17,30 @@ This implementation follows the [MOQ Lite specification](https://kixelated.githu
 - **Multiplexed Streaming**: Efficient multiplexing of multiple media tracks
 - **Sample Applications**: Complete examples demonstrating various use cases
 
+- **Real-Time Streaming**:
+	Minimized end-to-end latency for interactive use cases (live events, conferencing, low-latency monitoring). Suitable where responsiveness matters to user experience.
+
+- **Uninterrupted Streaming**:
+	Robust playback on varying network conditions. Built on QUIC/WebTransport primitives to reduce stalls and improve recovery from packet loss.
+
+- **Efficient Content Delivery**:
+	Protocol-level optimizations and multiplexing reduce connection overhead and infrastructure cost when serving many concurrent viewers or streams.
+
+- **Seamless Playback**:
+	Jitter and buffer management designed to reduce rebuffering and provide smooth continuous playback for viewers.
+
+- **Optimized Quality**:
+	Adaptive delivery patterns that prioritize usable quality under constrained bandwidth, enabling consistent UX across device classes.
+
 ## Components
 
 ### moqt
 
-The core Go package implementing the MOQ Lite protocol interactions, including:
-- Session establishment and management
-- Track publishing and subscription
-- Announcement handling
-- Stream multiplexing and routing
-
-This implementation is specifically designed for the MOQ Lite specification, focusing on simplicity and performance for real-time media streaming applications.
+The core Go package for implementing and handling the Media over QUIC (MOQ) protocol.
 
 ### moq-web
 
-TypeScript/JavaScript implementation providing WebTransport support for browsers, including:
-- WebTransport session management
-- Stream ID calculation and tracking
-- Reader/Writer interfaces for QUIC streams
-- Integration with browser WebTransport API
+TypeScript implementation of the MOQ protocol for the Web.
 
 ### interop
 
@@ -46,7 +51,7 @@ Interoperability testing tools and examples for validating MOQ implementations a
 ### Prerequisites
 
 - Go 1.25.0 or later
-- [just](https://github.com/casey/just) command runner
+- [Mage](https://magefile.org/) build tool (install with `go install github.com/magefile/mage@latest`)
 
 ### Getting Started
 
@@ -61,20 +66,17 @@ Interoperability testing tools and examples for validating MOQ implementations a
    go get github.com/OkutaniDaichi0106/gomoqt
    ```
 
-3. Set up the development environment:
+3. Install Mage build tool:
    ```bash
-   just dev-setup
+   go install github.com/magefile/mage@latest
    ```
 
-This command will perform the following:
-- Install the required certificate tools (mkcert).
-- Install development tools (goimports, golangci-lint).
-- Download project dependencies.
-- Generate development certificates.
+Note: Development setup commands (dev-setup, certificate generation, etc.) are still available via the Justfile. The core build commands (test, lint, fmt, build, clean) have been migrated to Mage.
 
 ### Development Commands
 
 #### Running Examples
+
 ```bash
 # Start the interop server
 just interop-server
@@ -86,25 +88,25 @@ just interop-client
 #### Code Quality
 ```bash
 # Format code
-just fmt
+mage fmt
 
-# Run linter
-just lint
+# Run linter (requires golangci-lint: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)
+mage lint
 
 # Run tests
-just test
-
-# Perform overall quality checks (formatting and linting)
-just check
+mage test
 ```
 
 #### Build & Clean
 ```bash
 # Build the code
-just build
+mage build
 
 # Clean up generated files
-just clean
+mage clean
+
+# Show available commands
+mage help
 ```
 
 ### Examples
@@ -136,9 +138,9 @@ We welcome contributions! Here's how you can help:
 3. Make your changes.
 4. Verify code quality:
    ```bash
-   just fmt
-   just lint
-   just test
+   mage fmt
+   mage lint
+   mage test
    ```
 5. Commit your changes (`git commit -m 'Add amazing feature'`).
 6. Push your branch (`git push origin feature/amazing-feature`).

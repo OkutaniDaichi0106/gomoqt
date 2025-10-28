@@ -31,7 +31,11 @@
     ".vitest-cache",
     ".git",
     "temp",
-    "etc"
+    "etc",
+    ".pnp.cjs",
+    "package.json",
+    "package-lock.json",
+    "pnpm-lock.yaml"
   ],
   "test": {
     "include": ["src/**/*_test.ts"]

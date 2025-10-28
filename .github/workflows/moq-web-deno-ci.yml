@@ -24,7 +24,7 @@ jobs:
 
       - name: Run linter
         working-directory: ./moq-web
-        run: deno lint
+        run: deno lint src/ test-utils/
 
       - name: Run formatter check
         working-directory: ./moq-web

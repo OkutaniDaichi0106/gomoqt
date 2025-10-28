@@ -1,5 +1,5 @@
-import type { Writer, Reader } from "../io";
-import { varintLen } from "../io/len";
+import type { Writer, Reader } from "../internal/io";
+import { varintLen } from "../internal/io";
 
 export interface SessionUpdateMessageInit {
     bitrate?: number;

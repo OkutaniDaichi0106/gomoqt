@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SessionServerMessage } from './session_server';
-import { Writer, Reader } from '../io';
+import { Writer, Reader } from '../internal/io';
 import { Version } from '../internal/version';
 import { Extensions } from '../internal/extensions';
 import { createIsolatedStreams } from './test-utils.test';

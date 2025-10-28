@@ -1,4 +1,4 @@
-import { MAX_VARINT1, MAX_VARINT2, MAX_VARINT4, MAX_VARINT8 } from "../io/len";
+import { MAX_VARINT1, MAX_VARINT2, MAX_VARINT4, MAX_VARINT8 } from "./len";
 
 export const MAX_BYTES_LENGTH = 1 << 30; // 1 GiB, maximum length of bytes to read
 

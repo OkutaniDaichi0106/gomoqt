@@ -1,15 +1,15 @@
-import type { Writer, Reader } from "../io";
-import { varintLen } from "../io/len";
-import type { GroupSequence } from "../protocol";
+import type { Writer, Reader } from "../internal/io";
+import { varintLen } from "../internal/io";
+import type * as internal from "../internal";
 
 export interface GroupMessageInit {
     subscribeId?: bigint;
-    sequence?: GroupSequence;
+    sequence?: internal.GroupSequence;
 }
 
 export class GroupMessage {
     subscribeId: bigint;
-    sequence: GroupSequence;
+    sequence: internal.GroupSequence;
 
     constructor(init: GroupMessageInit) {
         this.subscribeId = init.subscribeId ?? 0n;

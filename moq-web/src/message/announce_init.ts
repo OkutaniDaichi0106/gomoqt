@@ -1,5 +1,5 @@
-import type { Writer, Reader } from "../io";
-import { varintLen, stringLen } from "../io/len";
+import type { Writer, Reader } from "../internal/io";
+import { varintLen, stringLen } from "../internal/io";
 
 export interface AnnounceInitMessageInit {
     suffixes?: string[];

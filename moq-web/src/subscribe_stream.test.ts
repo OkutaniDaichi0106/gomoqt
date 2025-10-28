@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { TrackConfig } from './subscribe_stream';
 import { SendSubscribeStream, ReceiveSubscribeStream } from './subscribe_stream';
-import type { SubscribeID } from './protocol';
+import type { SubscribeID } from './subscribe_id';
 import type { SubscribeMessage, SubscribeOkMessage} from './message';
 import type { Writer, Reader } from './io';
 import type { Context} from 'golikejs/context';

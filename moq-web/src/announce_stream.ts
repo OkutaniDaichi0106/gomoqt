@@ -1,5 +1,5 @@
 import type { Reader, Writer } from "./io";
-import { EOF } from "./io";
+import { EOF } from "golikejs/io";
 import type { AnnouncePleaseMessage } from "./message";
 import { AnnounceMessage } from "./message";
 import { 

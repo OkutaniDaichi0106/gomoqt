@@ -3,7 +3,7 @@ import { SessionClientMessage } from './session_client';
 import { Extensions } from '../internal/extensions';
 import type { Version } from '../internal/version';
 import { Versions } from '../internal/version';
-import { Writer, Reader } from '../io';
+import { Writer, Reader } from '../internal/io';
 
 describe('SessionClientMessage', () => {
   it('should be defined', () => {

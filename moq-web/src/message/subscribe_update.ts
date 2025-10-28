@@ -1,6 +1,6 @@
-import type { Writer, Reader } from "../io";
-import { varintLen } from "../io/len";
-import type { GroupSequence } from "../protocol";
+import type { Writer, Reader } from "../internal/io";
+import { varintLen } from "../internal/io";
+import type { GroupSequence } from "../internal";
 
 export interface SubscribeUpdateMessageInit {
     trackPriority?: number;

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SessionUpdateMessage } from './session_update';
-import { Writer, Reader } from '../io';
+import { Writer, Reader } from '../internal/io';
 import { createIsolatedStreams } from './test-utils.test';
 
 describe('SessionUpdateMessage', () => {

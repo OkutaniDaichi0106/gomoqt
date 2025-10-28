@@ -1,5 +1,5 @@
-import type { Writer, Reader} from "../io";
-import { varintLen } from "../io";
+import type { Writer, Reader} from "../internal/io";
+import { varintLen } from "../internal/io";
 
 export interface SubscribeOkMessageInit {}
 

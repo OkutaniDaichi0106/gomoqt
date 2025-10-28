@@ -18,7 +18,8 @@ import { DefaultTrackMux } from "./track_mux";
 import { BiStreamTypes, UniStreamTypes } from "./stream_type";
 import { Queue } from "./internal/queue";
 import type { Info } from "./info";
-import type { TrackName, SubscribeID } from "./protocol";
+import type { SubscribeID } from "./subscribe_id";
+import type { TrackName } from "./track_name";
 
 export interface SessionInit {
 	conn: WebTransport;

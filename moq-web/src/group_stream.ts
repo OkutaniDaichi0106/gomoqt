@@ -1,7 +1,7 @@
-import type { Reader, Writer } from "./io";
+import type { Reader, Source, Writer } from "./internal/io";
 import { withCancelCause } from "golikejs/context";
 import type { CancelCauseFunc, Context } from "golikejs/context";
-import { StreamError } from "./io/error";
+import { StreamError } from "./internal/io/error";
 import type { GroupMessage } from "./message";
 import { BytesFrame } from "./frame";
 import type { Frame } from "./frame";
@@ -26,7 +26,7 @@ export class GroupWriter {
         });
     }
 
-    async writeFrame(src: Frame): Promise<Error | undefined> {
+    async writeFrame(src: Source): Promise<Error | undefined> {
         this.#writer.copyFrom(src);
         const err = await this.#writer.flush();
         if (err) {

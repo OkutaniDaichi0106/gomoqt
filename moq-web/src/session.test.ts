@@ -4,8 +4,8 @@ import { Versions, DEFAULT_CLIENT_VERSIONS } from './internal';
 import { Extensions } from './internal/extensions';
 import { DefaultTrackMux, TrackMux } from './track_mux';
 import type { BroadcastPath } from './broadcast_path';
-import type { TrackName } from './protocol';
 import type { TrackPrefix } from './track_prefix';
+import { TrackName } from './track_name';
 
 // Mock WebTransport
 const mockWebTransport = {

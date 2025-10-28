@@ -25,6 +25,9 @@ export {
   afterAll,
 } from "https://deno.land/std@0.224.0/testing/bdd.ts";
 
+// Mock utilities for testing
+export { createMock, createSpy, type MockFunction } from "./test-utils/mock.ts";
+
 // External dependencies
 export { background, withCancelCause, type Context } from "npm:golikejs@0.4.0/context";
 export { Mutex, RWMutex, WaitGroup } from "npm:golikejs@0.4.0/sync";

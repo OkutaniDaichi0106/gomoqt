@@ -85,20 +85,50 @@ Vitest uses `expect()` style assertions, Deno uses function-based assertions:
 
 ### 4. Mocking
 
-Vitest mocking (`vi.mock()`, `vi.fn()`) needs to be replaced with Deno-compatible patterns:
+Vitest mocking (`vi.mock()`, `vi.fn()`) needs to be replaced with Deno-compatible patterns.
+
+For simple function mocks, use the custom `createMock` utility:
+
+**Before (Vitest)**:
+```typescript
+import { vi } from 'vitest';
+
+const mockFn = vi.fn().mockReturnValue(42);
+const mockAsync = vi.fn().mockResolvedValue('result');
+const mockImpl = vi.fn().mockImplementation((x) => x * 2);
+```
+
+**After (Deno)**:
+```typescript
+import { createMock } from "../deps.ts";
+
+const mockFn = createMock<() => number>().mockReturnValue(42);
+const mockAsync = createMock<() => Promise<string>>().mockResolvedValue("result");
+const mockImpl = createMock<(x: number) => number>().mockImplementation((x) => x * 2);
+```
+
+For module mocking (`vi.mock()`), use manual mocks by creating object literals with mock functions:
 
 **Before**:
 ```typescript
 vi.mock('./module');
-const mockFn = vi.fn();
 ```
 
 **After**:
 ```typescript
-// Use manual mocks or stub patterns
-// Deno doesn't have built-in mocking like Vitest
-// Consider using https://deno.land/x/mock for complex cases
+// Create manual mocks inline
+const mockModule = {
+  method1: createMock<() => void>(),
+  method2: createMock<(x: number) => number>().mockReturnValue(42),
+};
 ```
+
+Note: Deno doesn't have built-in module mocking like Vitest. For complex mocking scenarios, consider:
+- Dependency injection patterns
+- Manual mocks
+- Interface-based testing
+- [Deno Mock library](https://deno.land/x/mock) for advanced cases
+
 
 ### 5. Source File Imports
 

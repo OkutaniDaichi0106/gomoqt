@@ -1,6 +1,6 @@
-import type { Writer, Reader } from "../io";
-import { varintLen } from "../io/len";
-import type { GroupSequence } from "../protocol";
+import type { Writer, Reader } from "../io.ts";
+import { varintLen } from "../io/len.ts";
+import type { GroupSequence } from "../protocol.ts";
 
 export interface GroupMessageInit {
     subscribeId?: bigint;

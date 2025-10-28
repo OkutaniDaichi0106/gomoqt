@@ -1,12 +1,12 @@
-import type { SubscribeMessage} from "./message";
-import { SubscribeOkMessage, SubscribeUpdateMessage } from "./message";
-import type { Writer, Reader } from "./io"
-import { EOF } from "./io"
+import type { SubscribeMessage} from "./message.ts";
+import { SubscribeOkMessage, SubscribeUpdateMessage } from "./message.ts";
+import type { Writer, Reader } from "./io.ts"
+import { EOF } from "./io.ts"
 import { Cond, Mutex } from "golikejs/sync";
 import type { CancelCauseFunc, Context} from "golikejs/context";
 import { withCancelCause } from "golikejs/context";
-import { StreamError } from "./io/error";
-import type { Info } from "./info";
+import { StreamError } from "./io/error.ts";
+import type { Info } from "./info.ts";
 import type { TrackPriority,GroupSequence,SubscribeID } from ".";
 
 export interface TrackConfig {

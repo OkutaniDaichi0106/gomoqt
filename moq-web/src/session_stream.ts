@@ -1,13 +1,13 @@
 import type { CancelCauseFunc, Context} from "golikejs/context";
 import { withCancelCause } from "golikejs/context";
-import type { Reader, Writer, } from "./io";
-import { EOF } from "./io";
-import { StreamError } from "./io/error";
-import { SessionUpdateMessage } from "./message";
-import type { SessionClientMessage } from "./message/session_client";
-import type { SessionServerMessage } from "./message/session_server";
+import type { Reader, Writer, } from "./io.ts";
+import { EOF } from "./io.ts";
+import { StreamError } from "./io/error.ts";
+import { SessionUpdateMessage } from "./message.ts";
+import type { SessionClientMessage } from "./message/session_client.ts";
+import type { SessionServerMessage } from "./message/session_server.ts";
 import { Cond, Mutex } from "golikejs/sync";
-import type { Version,Extensions } from "./internal";
+import type { Version,Extensions } from "./internal.ts";
 
 interface SessionStreamInit {
     context: Context;

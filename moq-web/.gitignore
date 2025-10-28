@@ -8,9 +8,13 @@ temp/
 
 # Test coverage
 coverage/
+cov/
 
 # Vitest cache
 .vitest-cache/
+
+# Migration backups
+migration-backup-*/
 
 # OS files
 .DS_Store

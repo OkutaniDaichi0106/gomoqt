@@ -1,7 +1,7 @@
-import { Session } from "./session";
-import type { MOQOptions } from "./options";
-import { Extensions,DEFAULT_CLIENT_VERSIONS } from "./internal";
-import { DefaultTrackMux, TrackMux } from "./track_mux";
+import { Session } from "./session.ts";
+import type { MOQOptions } from "./options.ts";
+import { Extensions,DEFAULT_CLIENT_VERSIONS } from "./internal.ts";
+import { DefaultTrackMux, TrackMux } from "./track_mux.ts";
 
 const DefaultWebTransportOptions: WebTransportOptions = {
     allowPooling: false,

@@ -10,8 +10,10 @@ export {
   assertInstanceOf,
   assertStrictEquals,
   assertNotEquals,
+  assertNotStrictEquals,
   assertArrayIncludes,
   fail,
+  assertFalse,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 export {

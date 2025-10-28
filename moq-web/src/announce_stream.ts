@@ -1,7 +1,7 @@
-import type { Reader, Writer } from "./io";
-import { EOF } from "./io";
-import type { AnnouncePleaseMessage } from "./message";
-import { AnnounceMessage } from "./message";
+import type { Reader, Writer } from "./io.ts";
+import { EOF } from "./io.ts";
+import type { AnnouncePleaseMessage } from "./message.ts";
+import { AnnounceMessage } from "./message.ts";
 import { 
     afterFunc,
     withCancel, 
@@ -12,15 +12,15 @@ import {
 } from "golikejs/context";
 import type { CancelCauseFunc, CancelFunc, Context } from "golikejs/context";
 import { Cond, Mutex } from "golikejs/sync";
-import type { TrackPrefix } from "./track_prefix";
-import { isValidPrefix, validateTrackPrefix } from "./track_prefix";
-import { validateBroadcastPath } from "./broadcast_path";
-import type{  BroadcastPath } from "./broadcast_path";
-import { StreamError } from "./io/error";
-import { Queue } from "./internal";
-import { AnnounceInitMessage } from "./message/announce_init";
-import type { AnnounceErrorCode } from "./error";
-import { DuplicatedAnnounceErrorCode, InternalAnnounceErrorCode } from "./error";
+import type { TrackPrefix } from "./track_prefix.ts";
+import { isValidPrefix, validateTrackPrefix } from "./track_prefix.ts";
+import { validateBroadcastPath } from "./broadcast_path.ts";
+import type{  BroadcastPath } from "./broadcast_path.ts";
+import { StreamError } from "./io/error.ts";
+import { Queue } from "./internal.ts";
+import { AnnounceInitMessage } from "./message/announce_init.ts";
+import type { AnnounceErrorCode } from "./error.ts";
+import { DuplicatedAnnounceErrorCode, InternalAnnounceErrorCode } from "./error.ts";
 
 type suffix = string;
 

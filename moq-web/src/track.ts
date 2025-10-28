@@ -1,15 +1,15 @@
-import { GroupReader, GroupWriter } from "./group_stream";
-import type { Info } from "./info";
-import { Queue } from "./internal";
+import { GroupReader, GroupWriter } from "./group_stream.ts";
+import type { Info } from "./info.ts";
+import { Queue } from "./internal.ts";
 import type { Context} from "golikejs/context";
 import { ContextCancelledError, withCancel, watchPromise } from "golikejs/context";
-import type { ReceiveSubscribeStream, SendSubscribeStream, TrackConfig } from "./subscribe_stream";
-import type { Writer, Reader } from "./io";
-import { UniStreamTypes } from "./stream_type";
-import { GroupMessage } from "./message";
-import type { BroadcastPath } from "./broadcast_path";
-import type { SubscribeErrorCode } from "./error";
-import { PublishAbortedErrorCode } from "./error";
+import type { ReceiveSubscribeStream, SendSubscribeStream, TrackConfig } from "./subscribe_stream.ts";
+import type { Writer, Reader } from "./io.ts";
+import { UniStreamTypes } from "./stream_type.ts";
+import { GroupMessage } from "./message.ts";
+import type { BroadcastPath } from "./broadcast_path.ts";
+import type { SubscribeErrorCode } from "./error.ts";
+import { PublishAbortedErrorCode } from "./error.ts";
 import type { GroupSequence } from ".";
 
 export class TrackWriter {

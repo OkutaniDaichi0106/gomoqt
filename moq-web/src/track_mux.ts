@@ -1,10 +1,10 @@
-import type { AnnouncementWriter } from "./announce_stream";
-import { Announcement } from "./announce_stream";
-import type { BroadcastPath } from "./broadcast_path";
+import type { AnnouncementWriter } from "./announce_stream.ts";
+import { Announcement } from "./announce_stream.ts";
+import type { BroadcastPath } from "./broadcast_path.ts";
 
-import type { TrackWriter } from "./track";
-import type { TrackPrefix } from "./track_prefix";
-import { isValidPrefix } from "./track_prefix";
+import type { TrackWriter } from "./track.ts";
+import type { TrackPrefix } from "./track_prefix.ts";
+import { isValidPrefix } from "./track_prefix.ts";
 import { TrackNotFoundErrorCode } from ".";
 
 type AnnouncedTrackHandler = {

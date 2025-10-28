@@ -1,12 +1,12 @@
-import type { Reader, Writer } from "./io";
+import type { Reader, Writer } from "./io.ts";
 import { withCancelCause } from "golikejs/context";
 import type { CancelCauseFunc, Context } from "golikejs/context";
-import { StreamError } from "./io/error";
-import type { GroupMessage } from "./message";
-import { BytesFrame } from "./frame";
-import type { Frame } from "./frame";
-import type { GroupErrorCode } from "./error";
-import { PublishAbortedErrorCode,SubscribeCanceledErrorCode } from "./error";
+import { StreamError } from "./io/error.ts";
+import type { GroupMessage } from "./message.ts";
+import { BytesFrame } from "./frame.ts";
+import type { Frame } from "./frame.ts";
+import type { GroupErrorCode } from "./error.ts";
+import { PublishAbortedErrorCode,SubscribeCanceledErrorCode } from "./error.ts";
 
 export class GroupWriter {
     readonly sequence: bigint;

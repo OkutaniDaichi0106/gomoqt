@@ -1,4 +1,4 @@
-import type { Source } from "./io"
+import type { Source } from "./io.ts"
 
 export interface Frame extends Source {
     data: Uint8Array;

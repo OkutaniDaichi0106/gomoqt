@@ -1,3 +1,3 @@
-export * from "./extensions";
-export * from "./queue";
-export * from "./version";
+export * from "./extensions.ts";
+export * from "./queue.ts";
+export * from "./version.ts";

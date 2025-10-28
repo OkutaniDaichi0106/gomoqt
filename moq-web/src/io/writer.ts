@@ -1,7 +1,7 @@
-import { BytesBuffer, MAX_BYTES_LENGTH, MAX_UINT } from "./bytes";
-import { DefaultBufferPool } from "./buffer_pool";
-import type { StreamError } from "./error";
-import { MAX_VARINT1, MAX_VARINT2, MAX_VARINT4, MAX_VARINT8 } from "./len";
+import { BytesBuffer, MAX_BYTES_LENGTH, MAX_UINT } from "./bytes.ts";
+import { DefaultBufferPool } from "./buffer_pool.ts";
+import type { StreamError } from "./error.ts";
+import { MAX_VARINT1, MAX_VARINT2, MAX_VARINT4, MAX_VARINT8 } from "./len.ts";
 
 // /**
 //  * Grows the buffer if necessary to accommodate the required size

@@ -1,7 +1,7 @@
-import { Extensions, DEFAULT_CLIENT_VERSIONS } from "../internal";
-import type { Version } from "../internal";
-import type { Writer, Reader } from "../io";
-import { varintLen, bytesLen } from "../io/len";
+import { Extensions, DEFAULT_CLIENT_VERSIONS } from "../internal.ts";
+import type { Version } from "../internal.ts";
+import type { Writer, Reader } from "../io.ts";
+import { varintLen, bytesLen } from "../io/len.ts";
 
 export interface SessionClientInit {
     versions?: Set<Version>;

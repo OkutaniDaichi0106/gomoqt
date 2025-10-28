@@ -1,6 +1,6 @@
-import type { Writer, Reader } from "../io";
-import { varintLen, stringLen } from "../io/len";
-import type { GroupSequence, TrackPriority } from "../protocol";
+import type { Writer, Reader } from "../io.ts";
+import { varintLen, stringLen } from "../io/len.ts";
+import type { GroupSequence, TrackPriority } from "../protocol.ts";
 
 export interface SubscribeMessageInit {
     subscribeId?: bigint;

@@ -1,7 +1,7 @@
-import { BytesBuffer, MAX_BYTES_LENGTH } from "./bytes";
-import type { BufferPool} from "./buffer_pool";
-import { DefaultBufferPool } from "./buffer_pool";
-import type { StreamError, StreamErrorCode } from "./error";
+import { BytesBuffer, MAX_BYTES_LENGTH } from "./bytes.ts";
+import type { BufferPool} from "./buffer_pool.ts";
+import { DefaultBufferPool } from "./buffer_pool.ts";
+import type { StreamError, StreamErrorCode } from "./error.ts";
 
 let DefaultReadSize: number = 1024; // 1 KB
 

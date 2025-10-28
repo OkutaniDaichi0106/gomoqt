@@ -1,5 +1,5 @@
-import type { Writer, Reader } from "../internal/io";
-import { stringLen,varintLen } from "../internal/io";
+import type { Writer, Reader } from "../webtransport";
+import { stringLen,varintLen } from "../webtransport";
 
 export interface AnnounceMessageInit {
     suffix?: string;

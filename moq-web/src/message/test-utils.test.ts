@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Writer, Reader } from '../internal/io';
+import { Writer, Reader } from '../webtransport';
 
 /**
  * Helper function to create isolated writer/reader pair that avoids TransformStream deadlock

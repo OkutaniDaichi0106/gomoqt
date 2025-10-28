@@ -3,7 +3,7 @@ import { GroupWriter, GroupReader } from "./group_stream";
 import type { Context} from "golikejs/context";
 import { background } from "golikejs/context";
 import type { Reader, Writer } from "./io";
-import { StreamError } from "./io/error";
+import { StreamError } from "./webtransport/error";
 import type { GroupMessage } from "./message";
 import { BytesFrame } from "./frame";
 
@@ -100,7 +100,7 @@ describe("GroupWriter", () => {
 
         it("should handle multiple close calls", async () => {
             await groupWriter.close();
-            
+
             // Get the call count after first close
             const firstCallCount = vi.mocked(mockWriter.close).mock.calls.length;
 
@@ -127,7 +127,7 @@ describe("GroupWriter", () => {
             const message = "Not found";
 
             await groupWriter.cancel(code, message);
-            
+
             // Clear the mock to check it's not called again
             vi.mocked(mockWriter.cancel).mockClear();
 
@@ -286,7 +286,7 @@ describe("GroupReader", () => {
             const message = "Not found";
 
             await groupReader.cancel(code, message);
-            
+
             // Clear the mock to check it's not called again
             vi.mocked(mockReader.cancel).mockClear();
 

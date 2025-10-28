@@ -1,8 +1,8 @@
 import type { CancelCauseFunc, Context} from "golikejs/context";
 import { withCancelCause } from "golikejs/context";
-import type { Reader, Writer, } from "./io";
-import { EOF } from "./io";
-import { StreamError } from "./io/error";
+import type { Reader, Writer, } from "./webtransport";
+import { EOF } from "golikejs/io";
+import { StreamError } from "./webtransport/error";
 import { SessionUpdateMessage } from "./message";
 import type { SessionClientMessage } from "./message/session_client";
 import type { SessionServerMessage } from "./message/session_server";
@@ -65,7 +65,7 @@ export class SessionStream {
                 break;
             }
             await this.#update(bitrate);
-            
+
             // Yield control to the event loop to prevent blocking
             await new Promise(resolve => setTimeout(resolve, 0));
         }
@@ -90,7 +90,7 @@ export class SessionStream {
 
             this.#serverInfo.bitrate = msg.bitrate;
             this.#cond.broadcast();
-            
+
             // Yield control to the event loop to prevent blocking
             await new Promise(resolve => setTimeout(resolve, 0));
         }

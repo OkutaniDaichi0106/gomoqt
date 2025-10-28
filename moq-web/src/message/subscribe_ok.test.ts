@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SubscribeOkMessage } from './subscribe_ok';
-import { Writer, Reader } from '../internal/io';
+import { Writer, Reader } from '../webtransport';
 import { createIsolatedStreams } from './test-utils.test';
 
 describe('SubscribeOkMessage', () => {

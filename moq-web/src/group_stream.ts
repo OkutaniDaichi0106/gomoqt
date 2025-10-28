@@ -1,7 +1,7 @@
-import type { Reader, Source, Writer } from "./internal/io";
+import type { Reader, Source, Writer } from "./webtransport";
 import { withCancelCause } from "golikejs/context";
 import type { CancelCauseFunc, Context } from "golikejs/context";
-import { StreamError } from "./internal/io/error";
+import { StreamError } from "./webtransport/error";
 import type { GroupMessage } from "./message";
 import { BytesFrame } from "./frame";
 import type { Frame } from "./frame";

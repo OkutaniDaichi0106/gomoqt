@@ -1,7 +1,7 @@
 import { Versions,DEFAULT_CLIENT_VERSIONS } from "./internal";
 import type { Version } from "./internal";
 import { AnnouncePleaseMessage, AnnounceInitMessage, GroupMessage, SessionClientMessage, SessionServerMessage, SubscribeMessage, SubscribeOkMessage } from "./message";
-import { Writer, Reader } from "./io";
+import { Writer, Reader } from "./webtransport";
 import { Extensions } from "./internal/extensions";
 import { SessionStream } from "./session_stream";
 import { background, watchPromise } from "golikejs/context";
@@ -18,8 +18,8 @@ import { DefaultTrackMux } from "./track_mux";
 import { BiStreamTypes, UniStreamTypes } from "./stream_type";
 import { Queue } from "./internal/queue";
 import type { Info } from "./info";
-import type { SubscribeID } from "./subscribe_id";
-import type { TrackName } from "./track_name";
+import type { SubscribeID } from "./internal/subscribe_id";
+import type { TrackName } from "./internal/track_name";
 
 export interface SessionInit {
 	conn: WebTransport;

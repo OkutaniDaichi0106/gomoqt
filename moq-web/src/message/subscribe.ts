@@ -1,9 +1,9 @@
-import type { Writer, Reader } from "../internal/io";
-import { varintLen, stringLen } from "../internal/io";
-import type { GroupSequence, TrackPriority } from "../internal";
+import type { Writer, Reader } from "../webtransport";
+import { varintLen, stringLen } from "../webtransport";
+import type { GroupSequence, SubscribeID, TrackPriority } from "../internal";
 
 export interface SubscribeMessageInit {
-    subscribeId?: bigint;
+    subscribeId?: SubscribeID;
     broadcastPath?: string;
     trackName?: string;
     trackPriority?: TrackPriority;

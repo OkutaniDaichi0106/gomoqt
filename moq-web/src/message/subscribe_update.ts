@@ -1,5 +1,5 @@
-import type { Writer, Reader } from "../internal/io";
-import { varintLen } from "../internal/io";
+import type { Writer, Reader } from "../webtransport";
+import { varintLen } from "../webtransport";
 import type { GroupSequence } from "../internal";
 
 export interface SubscribeUpdateMessageInit {

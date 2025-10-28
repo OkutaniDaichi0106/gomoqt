@@ -7,7 +7,7 @@ import type { Writer, Reader } from './io';
 import type { Context} from 'golikejs/context';
 import { background } from 'golikejs/context';
 import type { Info } from './info';
-import { StreamError } from './io/error';
+import { StreamError } from './webtransport/error';
 
 describe('SendSubscribeStream', () => {
 	let mockWriter: Writer;
@@ -19,7 +19,7 @@ describe('SendSubscribeStream', () => {
 
 	beforeEach(() => {
 		ctx = background();
-		
+
 		mockWriter = {
 			writeVarint: vi.fn(),
 			writeBoolean: vi.fn(),
@@ -104,17 +104,17 @@ describe('SendSubscribeStream', () => {
 
 	describe('update', () => {
 		it('should update config and write to stream', async () => {
-			const newConfig = { 
-				trackPriority: 2, 
-				minGroupSequence: 10n, 
-				maxGroupSequence: 200n 
+			const newConfig = {
+				trackPriority: 2,
+				minGroupSequence: 10n,
+				maxGroupSequence: 200n
 			};
-			
+
 			const result = await sendStream.update(newConfig);
-			
+
 			expect(result).toBeUndefined();
 			expect(mockWriter.flush).toHaveBeenCalled();
-			
+
 			const config = sendStream.config;
 			expect(config.trackPriority).toBe(2);
 			expect(config.minGroupSequence).toBe(10n);
@@ -123,13 +123,13 @@ describe('SendSubscribeStream', () => {
 
 		it('should return error when flush fails', async () => {
 			vi.mocked(mockWriter.flush).mockResolvedValue(new Error('Flush failed'));
-			
-			const result = await sendStream.update({ 
-				trackPriority: 2, 
-				minGroupSequence: 10n, 
-				maxGroupSequence: 200n 
+
+			const result = await sendStream.update({
+				trackPriority: 2,
+				minGroupSequence: 10n,
+				maxGroupSequence: 200n
 			});
-			
+
 			expect(result).toBeInstanceOf(Error);
 			// The error could be from encode or flush
 			expect(result?.message).toMatch(/Failed to (write|flush) subscribe update/);
@@ -139,7 +139,7 @@ describe('SendSubscribeStream', () => {
 	describe('closeWithError', () => {
 		it('should close writer and context with StreamError', async () => {
 			await sendStream.closeWithError(500, 'Test error');
-			
+
 			expect(mockWriter.cancel).toHaveBeenCalledWith(expect.any(StreamError));
 			expect(sendStream.context.err()).toBeInstanceOf(StreamError);
 		});
@@ -163,7 +163,7 @@ describe('ReceiveSubscribeStream', () => {
 
 	beforeEach(() => {
 		ctx = background();
-		
+
 		mockWriter = {
 			writeVarint: vi.fn(),
 			writeBoolean: vi.fn(),
@@ -243,27 +243,27 @@ describe('ReceiveSubscribeStream', () => {
 	describe('writeInfo', () => {
 		it('should write info successfully', async () => {
 			const info: Info = { groupPeriod: 100 };
-			
+
 			const result = await receiveStream.writeInfo(info);
-			
+
 			expect(result).toBeUndefined();
 		});
 
 		it('should not write info twice', async () => {
 			const info: Info = { groupPeriod: 100 };
-			
+
 			await receiveStream.writeInfo(info);
 			const result = await receiveStream.writeInfo(info);
-			
+
 			expect(result).toBeUndefined();
 		});
 
 		it('should return error if context is cancelled', async () => {
 			await receiveStream.closeWithError(404, 'Test error');
-			
+
 			const info: Info = { groupPeriod: 100 };
 			const result = await receiveStream.writeInfo(info);
-			
+
 			expect(result).toBeInstanceOf(Error);
 		});
 	});
@@ -271,17 +271,17 @@ describe('ReceiveSubscribeStream', () => {
 	describe('close', () => {
 		it('should close writer and cancel context', async () => {
 			await receiveStream.close();
-			
+
 			expect(mockWriter.close).toHaveBeenCalled();
 			expect(receiveStream.context.err()).toBeUndefined();
 		});
 
 		it('should handle multiple close calls gracefully', async () => {
 			await receiveStream.close();
-			
+
 			const callCount = vi.mocked(mockWriter.close).mock.calls.length;
 			await receiveStream.close();
-			
+
 			// Multiple closes should be safe even if they call close again
 			expect(vi.mocked(mockWriter.close).mock.calls.length).toBeGreaterThanOrEqual(callCount);
 		});
@@ -290,7 +290,7 @@ describe('ReceiveSubscribeStream', () => {
 	describe('closeWithError', () => {
 		it('should cancel writer and context with StreamError', async () => {
 			await receiveStream.closeWithError(404, 'Not found');
-			
+
 			expect(mockWriter.cancel).toHaveBeenCalledWith(expect.any(StreamError));
 			expect(mockReader.cancel).toHaveBeenCalledWith(expect.any(StreamError));
 			expect(receiveStream.context.err()).toBeInstanceOf(StreamError);
@@ -298,12 +298,12 @@ describe('ReceiveSubscribeStream', () => {
 
 		it('should not cancel if already cancelled', async () => {
 			await receiveStream.closeWithError(404, 'Not found');
-			
+
 			vi.mocked(mockWriter.cancel).mockClear();
 			vi.mocked(mockReader.cancel).mockClear();
-			
+
 			await receiveStream.closeWithError(500, 'Another error');
-			
+
 			expect(mockWriter.cancel).not.toHaveBeenCalled();
 			expect(mockReader.cancel).not.toHaveBeenCalled();
 		});

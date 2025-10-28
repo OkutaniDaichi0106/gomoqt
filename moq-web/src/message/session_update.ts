@@ -1,5 +1,5 @@
-import type { Writer, Reader } from "../internal/io";
-import { varintLen } from "../internal/io";
+import type { Writer, Reader } from "../webtransport";
+import { varintLen } from "../webtransport";
 
 export interface SessionUpdateMessageInit {
     bitrate?: number;

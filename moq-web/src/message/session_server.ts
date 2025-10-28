@@ -1,7 +1,7 @@
 import type { Version} from "../internal";
 import { Extensions,DEFAULT_VERSION } from "../internal";
-import type { Reader, Writer } from "../internal/io";
-import { varintLen, bytesLen } from "../internal/io";
+import type { Reader, Writer } from "../webtransport";
+import { varintLen, bytesLen } from "../webtransport";
 
 export interface SessionServerMessageInit {
     version?: Version;

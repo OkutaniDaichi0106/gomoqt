@@ -1,4 +1,4 @@
-import type { Reader, Writer } from "./io";
+import type { Reader, Writer } from "./webtransport";
 import { EOF } from "golikejs/io";
 import type { AnnouncePleaseMessage } from "./message";
 import { AnnounceMessage } from "./message";
@@ -16,7 +16,7 @@ import type { TrackPrefix } from "./track_prefix";
 import { isValidPrefix, validateTrackPrefix } from "./track_prefix";
 import { validateBroadcastPath } from "./broadcast_path";
 import type{  BroadcastPath } from "./broadcast_path";
-import { StreamError } from "./io/error";
+import { StreamError } from "./webtransport/error";
 import { Queue } from "./internal";
 import { AnnounceInitMessage } from "./message/announce_init";
 import type { AnnounceErrorCode } from "./error";

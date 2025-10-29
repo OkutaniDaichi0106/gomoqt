@@ -26,12 +26,9 @@ type Frame struct {
 // NewFrame creates a new Frame with the specified payload capacity.
 // The frame is initialized with empty payload and ready for data to be appended.
 func NewFrame(cap int) *Frame {
-	buf := make([]byte, 8+cap)
-	return &Frame{
-		buf:    buf,
-		header: [8]byte{},
-		body:   buf[8:8], // Start with zero length
-	}
+	f := &Frame{}
+	f.init(cap)
+	return f
 }
 
 // Reset clears the frame payload while preserving the buffer capacity.
@@ -47,6 +44,16 @@ func (f *Frame) Body() []byte {
 	return f.body
 }
 
+func (f *Frame) init(cap int) {
+	f.buf = make([]byte, 8+cap)
+	body := f.buf[8:8]
+	if f.body != nil {
+		body = body[:len(f.body)]
+		copy(body, f.body)
+	}
+	f.body = body
+}
+
 // append appends bytes to the frame payload, growing the buffer if necessary.
 // If additional capacity is needed, the buffer is reallocated and data is copied.
 // This is an internal method used by Write() and Clone().
@@ -54,11 +61,7 @@ func (f *Frame) append(b []byte) {
 	if len(b)+len(f.body) > cap(f.body) {
 		// Reallocate the body buffer if necessary
 		cap := min(len(f.body)+len(b), 2*cap(f.body))
-		newBuf := make([]byte, 8+cap)
-		body := newBuf[8:]
-		body = body[:len(f.body)]
-		copy(body, f.body)
-		f.body = body
+		f.init(cap)
 	}
 
 	f.body = append(f.body, b...)

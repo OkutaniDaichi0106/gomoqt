@@ -64,7 +64,7 @@ body:
     id: related_issues
     attributes:
       label: "Related issues"
-      description: "関連する Issue の番号や URL を記載してください（任意）。例: #123, https://github.com/owner/repo/issues/123"
+      description: "Please provide the issue number or URL of related issues (optional). Example: #123, https://github.com/owner/repo/issues/123"
       placeholder: "#123, https://github.com/owner/repo/issues/123"
     validations:
       required: false

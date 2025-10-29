@@ -68,3 +68,18 @@ func (s *GroupReader) CancelRead(code GroupErrorCode) {
 func (s *GroupReader) SetReadDeadline(t time.Time) error {
 	return s.stream.SetReadDeadline(t)
 }
+
+func (s *GroupReader) Frames() func(yield func(*Frame) bool) {
+	return func(yield func(*Frame) bool) {
+		for {
+			frame, err := s.ReadFrame()
+			if err != nil {
+				return
+			}
+
+			if !yield(frame) {
+				return
+			}
+		}
+	}
+}

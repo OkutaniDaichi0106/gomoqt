@@ -70,9 +70,9 @@ func TestGroupWriter_WriteFrame(t *testing.T) {
 	}{
 		"write valid frame": {
 			setupFrame: func() *Frame {
-				builder := NewFrameBuilder(10)
-				builder.Append([]byte("test data"))
-				return builder.Frame()
+				frame := NewFrame(10)
+				frame.Write([]byte("test data"))
+				return frame
 			},
 			setupMock: func() *MockQUICSendStream {
 				mockStream := &MockQUICSendStream{}
@@ -95,9 +95,9 @@ func TestGroupWriter_WriteFrame(t *testing.T) {
 		},
 		"write frame with error": {
 			setupFrame: func() *Frame {
-				builder := NewFrameBuilder(10)
-				builder.Append([]byte("test data"))
-				return builder.Frame()
+				frame := NewFrame(10)
+				frame.Write([]byte("test data"))
+				return frame
 			},
 			setupMock: func() *MockQUICSendStream {
 				mockStream := &MockQUICSendStream{}
@@ -164,9 +164,9 @@ func TestGroupWriter_ContextCancellation(t *testing.T) {
 		cancel()
 
 		// Test that operations continue to work (they don't check context in current implementation)
-		frameLocal := NewFrameBuilder(len([]byte("test")))
-		frameLocal.Append([]byte("test"))
-		err := sgs.WriteFrame(frameLocal.Frame())
+		frameLocal := NewFrame(len([]byte("test")))
+		frameLocal.Write([]byte("test"))
+		err := sgs.WriteFrame(frameLocal)
 		assert.NoError(t, err)
 		assert.Equal(t, uint64(1), sgs.frameCount)
 		mockStream.AssertExpectations(t)

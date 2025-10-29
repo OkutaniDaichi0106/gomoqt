@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"io"
 	"log/slog"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt"
@@ -56,18 +55,10 @@ func main() {
 				}
 
 				go func(gr *moqt.GroupReader) {
-					for {
-						frame, err := gr.ReadFrame()
-						if err != nil {
-							if err == io.EOF {
-								return
-							}
-							slog.Error("failed to read frame", "error", err)
-							gr.CancelRead(moqt.InternalGroupErrorCode)
-							return
-						}
+					defer gr.CancelRead(moqt.InternalGroupErrorCode)
 
-						slog.Info("received a frame", "frame", string(frame.Bytes()))
+					for frame := range gr.Frames(nil) {
+						slog.Info("received a frame", "frame", string(frame.Body()))
 
 						// TODO: Release the frame after processing
 						// This is important to avoid memory leaks

@@ -2,29 +2,35 @@ package moqt
 
 import (
 	"bytes"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestNewFrame(t *testing.T) {
 	tests := map[string]struct {
+		capacity int
 		data     []byte
 		expected []byte
 	}{
 		"normal data": {
+			capacity: 100,
 			data:     []byte("test frame data"),
 			expected: []byte("test frame data"),
 		},
 		"empty data": {
+			capacity: 10,
 			data:     []byte{},
 			expected: []byte{},
 		},
 		"binary data": {
+			capacity: 50,
 			data:     []byte{0x00, 0x01, 0x02, 0xFF},
 			expected: []byte{0x00, 0x01, 0x02, 0xFF},
-		}, "nil data": {
+		},
+		"zero capacity": {
+			capacity: 0,
 			data:     nil,
 			expected: []byte{},
 		},
@@ -32,239 +38,208 @@ func TestNewFrame(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			// Create frame with capacity equal to len(data)
-			cap := len(tt.data)
-			builder := NewFrameBuilder(cap)
-			assert.NotNil(t, builder)
+			frame := NewFrame(tt.capacity)
+			assert.NotNil(t, frame)
 
 			if len(tt.data) > 0 {
-				builder.Append(tt.data)
+				frame.Write(tt.data)
 			}
 
-			frame := builder.Frame()
-			copiedBytes := frame.Bytes()
-			if len(tt.expected) == 0 {
-				assert.Empty(t, copiedBytes)
-			} else {
-				assert.Equal(t, tt.expected, copiedBytes)
-
-				// Verify it's a copy, not the same slice
-				if len(copiedBytes) > 0 {
-					copiedBytes[0] = 'X'
-					originalCopy := frame.Bytes()
-					assert.NotEqual(t, copiedBytes[0], originalCopy[0])
-				}
-			}
+			assert.Equal(t, tt.expected, frame.Body())
 		})
 	}
 }
 
-func TestFrame_CopyBytes(t *testing.T) {
-	tests := map[string]struct {
-		data []byte
-	}{
-		"normal data": {
-			data: []byte("hello world"),
-		},
-		"empty data": {
-			data: []byte{},
-		},
-		"binary data": {
-			data: []byte{0x00, 0x01, 0x02, 0xFF},
-		},
-		"nil data": {
-			data: nil,
-		},
-	}
-
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			cap := len(tt.data)
-			builder := NewFrameBuilder(cap)
-			builder.Append(tt.data)
-
-			frame := builder.Frame()
-			copiedBytes := frame.Bytes()
-
-			if len(tt.data) == 0 {
-				assert.Empty(t, copiedBytes)
-			} else {
-				assert.Equal(t, tt.data, copiedBytes)
-			}
-		})
-	}
-}
-
-func TestFrame_Size(t *testing.T) {
-	tests := map[string]struct {
-		data []byte
-		want int
-	}{
-		"normal data": {
-			data: []byte("hello"),
-			want: 5,
-		},
-		"empty data": {
-			data: []byte{},
-			want: 0,
-		},
-		"large data": {
-			data: make([]byte, 1024),
-			want: 1024,
-		},
-		"nil data": {
-			data: nil,
-			want: 0,
-		},
-	}
-
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			cap := len(tt.data)
-			builder := NewFrameBuilder(cap)
-			builder.Append(tt.data)
-			frame := builder.Frame()
-			size := frame.Len()
-			assert.Equal(t, tt.want, size)
-		})
-	}
-}
-
-func TestFrame_ResetAndAppendGrowth(t *testing.T) {
-	// Ensure reset clears length but keeps capacity, append grows buffer when needed
-	b := make([]byte, 512)
-	for i := range b {
-		b[i] = byte(i % 256)
-	}
-
-	builder := NewFrameBuilder(16)
-	// append small data first
-	builder.Append([]byte("small"))
-	frame := builder.Frame()
-	oldCap := frame.Cap()
-	oldLen := frame.Len()
-	assert.True(t, oldCap >= oldLen)
-
-	// append large data to force growth
-	builder.Append(b)
-	frame = builder.Frame()
-	assert.Equal(t, oldLen+len(b), frame.Len())
-	assert.True(t, frame.Cap() >= frame.Len())
-
-	// reset should set length to zero but preserve capacity
-	builder.Reset()
-	frame = builder.Frame()
+func TestFrame_WriteGrowth(t *testing.T) {
+	// Test that Write correctly grows the body buffer when needed
+	frame := NewFrame(5)
+	assert.Equal(t, 5, frame.Cap())
 	assert.Equal(t, 0, frame.Len())
-	assert.True(t, frame.Cap() >= 0)
+
+	// Write data within capacity
+	frame.Write([]byte("abc"))
+	assert.Equal(t, 3, frame.Len())
+	assert.Equal(t, []byte("abc"), frame.Body())
+
+	// Write more data to trigger growth
+	frame.Write([]byte("defghij"))
+	assert.Equal(t, 10, frame.Len())
+	assert.Equal(t, []byte("abcdefghij"), frame.Body())
+	assert.True(t, frame.Cap() >= 10)
 }
 
-func TestFrame_CloneIndependence(t *testing.T) {
-	data := []byte("original data")
-	builder := NewFrameBuilder(len(data))
-	builder.Append(data)
-	frame := builder.Frame()
+func TestFrame_Reset(t *testing.T) {
+	// Test that Reset clears the body while preserving capacity
+	frame := NewFrame(20)
+	frame.Write([]byte("some data"))
+	assert.Equal(t, 9, frame.Len())
+	originalCap := frame.Cap()
+
+	frame.Reset()
+	assert.Equal(t, 0, frame.Len())
+	assert.Equal(t, originalCap, frame.Cap())
+	assert.Len(t, frame.Body(), 0)
+
+	// Verify we can write again after reset
+	frame.Write([]byte("new data"))
+	assert.Equal(t, 8, frame.Len())
+	assert.Equal(t, []byte("new data"), frame.Body())
+}
+
+func TestFrame_Clone(t *testing.T) {
+	// Test that Clone creates an independent copy
+	originalData := []byte("original data")
+	frame := NewFrame(len(originalData))
+	frame.Write(originalData)
 
 	clone := frame.Clone()
-	// modify clone's returned bytes and ensure original not affected
-	cb := clone.Bytes()
-	require.NotNil(t, cb)
-	if len(cb) > 0 {
-		cb[0] = 'X'
-	}
+	assert.NotNil(t, clone)
+	assert.Equal(t, frame.Body(), clone.Body())
 
-	ob := frame.Bytes()
-	if len(ob) > 0 {
-		assert.NotEqual(t, cb[0], ob[0])
-	}
+	// Modify original and verify clone is unchanged
+	frame.Reset()
+	frame.Write([]byte("modified"))
+	assert.Equal(t, []byte("modified"), frame.Body())
+	assert.Equal(t, originalData, clone.Body())
+
+	// Verify bodies point to different underlying arrays
+	assert.NotSame(t, &frame.Body()[0], &clone.Body()[0])
 }
 
 func TestFrame_EncodeDecode_RoundTrip(t *testing.T) {
-	// round-trip encode/decode using an in-memory buffer
-	data := []byte("roundtrip payload")
-	builder := NewFrameBuilder(len(data))
-	builder.Append(data)
-	frame := builder.Frame()
+	// Test encode/decode round trip with various payloads
+	tests := []struct {
+		name    string
+		payload []byte
+	}{
+		{"empty", []byte{}},
+		{"small", []byte("test")},
+		{"medium", []byte("this is a medium-sized payload for testing")},
+		{"binary", []byte{0x00, 0x01, 0x02, 0xFF, 0xFE}},
+		{"large", make([]byte, 1024)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create and encode frame
+			frame := NewFrame(len(tt.payload) + 8)
+			frame.Write(tt.payload)
+
+			var buf bytes.Buffer
+			err := frame.encode(&buf)
+			assert.NoError(t, err)
+
+			// Decode into new frame
+			decodedFrame := NewFrame(0)
+			err = decodedFrame.decode(&buf)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.payload, decodedFrame.Body())
+		})
+	}
+}
+
+func TestFrame_WriteTo(t *testing.T) {
+	// Test WriteTo writes the payload to a writer
+	tests := []struct {
+		name    string
+		payload []byte
+	}{
+		{"empty", []byte{}},
+		{"text", []byte("hello world")},
+		{"binary", []byte{0x00, 0x01, 0x02, 0xFF}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			frame := NewFrame(len(tt.payload) + 8)
+			frame.Write(tt.payload)
+
+			var buf bytes.Buffer
+			n, err := frame.WriteTo(&buf)
+			assert.NoError(t, err)
+			assert.Equal(t, int64(len(tt.payload)), n)
+			// For empty payload, buf.Bytes() returns nil, not empty slice
+			if len(tt.payload) == 0 {
+				assert.Len(t, buf.Bytes(), 0)
+			} else {
+				assert.Equal(t, tt.payload, buf.Bytes())
+			}
+		})
+	}
+}
+
+func TestFrame_LenAndCap(t *testing.T) {
+	// Test Len and Cap methods reflect internal state correctly
+	frame := NewFrame(50)
+	assert.Equal(t, 0, frame.Len())
+	assert.Equal(t, 50, frame.Cap())
+
+	frame.Write([]byte("test"))
+	assert.Equal(t, 4, frame.Len())
+	assert.Equal(t, 50, frame.Cap())
+
+	// After growth
+	largeData := make([]byte, 100)
+	frame.Write(largeData)
+	assert.Equal(t, 104, frame.Len())
+	assert.True(t, frame.Cap() >= 104)
+}
+
+func TestFrame_EncodeHeaderLayout(t *testing.T) {
+	// Test that encode correctly uses the header buffer for length encoding
+	// This verifies the MOQ encoding optimization where header stores length varint
+	frame := NewFrame(10)
+	frame.Write([]byte("test"))
 
 	var buf bytes.Buffer
 	err := frame.encode(&buf)
 	assert.NoError(t, err)
 
-	// prepare a fresh frame with capacity 0 and decode
-	f2 := newFrame(0)
-	err = f2.decode(&buf)
+	encoded := buf.Bytes()
+	assert.NotEmpty(t, encoded)
+	// First byte(s) should be length header, followed by payload
+	assert.True(t, len(encoded) > len([]byte("test")))
+}
+
+func TestFrame_Write(t *testing.T) {
+	// Test Write implements io.Writer interface
+	tests := []struct {
+		name  string
+		data  [][]byte
+		total int
+	}{
+		{"single write", [][]byte{[]byte("hello")}, 5},
+		{"multiple writes", [][]byte{[]byte("hello"), []byte(" "), []byte("world")}, 11},
+		{"empty write", [][]byte{[]byte("")}, 0},
+		{"binary data", [][]byte{[]byte{0x00, 0x01, 0x02}}, 3},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			frame := NewFrame(100)
+			totalWritten := 0
+
+			for _, data := range tt.data {
+				n, err := frame.Write(data)
+				assert.NoError(t, err)
+				assert.Equal(t, len(data), n)
+				totalWritten += n
+			}
+
+			assert.Equal(t, tt.total, frame.Len())
+			assert.Equal(t, tt.total, totalWritten)
+		})
+	}
+}
+
+func TestFrame_Write_AsIOWriter(t *testing.T) {
+	// Test that Frame can be used as io.Writer with io.Copy
+	frame := NewFrame(100)
+
+	// Write to frame using io.Copy
+	source := bytes.NewReader([]byte("test data from reader"))
+	n, err := io.Copy(frame, source)
 	assert.NoError(t, err)
-	assert.Equal(t, frame.Bytes(), f2.Bytes())
-}
-
-func TestFrame_WriteTo(t *testing.T) {
-	tests := map[string]struct {
-		data []byte
-	}{
-		"normal data": {
-			data: []byte("test frame data"),
-		},
-		"empty data": {
-			data: []byte{},
-		},
-		"binary data": {
-			data: []byte{0x00, 0x01, 0x02, 0xFF},
-		},
-	}
-
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			builder := NewFrameBuilder(len(tt.data))
-			if len(tt.data) > 0 {
-				builder.Append(tt.data)
-			}
-			frame := builder.Frame()
-
-			var buf bytes.Buffer
-			n, err := frame.WriteTo(&buf)
-			assert.NoError(t, err)
-			assert.Equal(t, int64(len(tt.data)), n)
-			if len(tt.data) == 0 {
-				assert.Nil(t, buf.Bytes())
-			} else {
-				assert.Equal(t, tt.data, buf.Bytes())
-			}
-		})
-	}
-}
-
-func TestFrame_Decode(t *testing.T) {
-	tests := map[string]struct {
-		data []byte
-	}{
-		"normal data": {
-			data: []byte("test frame data"),
-		},
-		"empty data": {
-			data: []byte{},
-		},
-		"binary data": {
-			data: []byte{0x00, 0x01, 0x02, 0xFF},
-		},
-	}
-
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			// Create original frame
-			builder := NewFrameBuilder(len(tt.data))
-			if len(tt.data) > 0 {
-				builder.Append(tt.data)
-			}
-			originalFrame := builder.Frame()
-
-			// Encode to buffer
-			var buf bytes.Buffer
-			require.NoError(t, originalFrame.encode(&buf))
-
-			// Decode from buffer
-			newFrame := newFrame(0)
-			err := newFrame.decode(&buf)
-			assert.NoError(t, err)
-			assert.Equal(t, tt.data, newFrame.Bytes())
-		})
-	}
+	assert.Equal(t, int64(21), n)
+	assert.Equal(t, []byte("test data from reader"), frame.Body())
 }

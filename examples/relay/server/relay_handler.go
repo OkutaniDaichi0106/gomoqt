@@ -150,12 +150,7 @@ func (r *trackRelayer) relay(ctx context.Context) {
 		}
 		r.mu.RUnlock()
 
-		for {
-			frame, err := gr.ReadFrame()
-			if err != nil {
-				break
-			}
-
+		for frame := range gr.Frames(nil) {
 			for _, gw := range groups {
 				if err := gw.WriteFrame(frame); err != nil {
 					continue

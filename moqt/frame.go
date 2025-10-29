@@ -60,7 +60,7 @@ func (f *Frame) init(cap int) {
 func (f *Frame) append(b []byte) {
 	if len(b)+len(f.body) > cap(f.body) {
 		// Reallocate the body buffer if necessary
-		cap := min(len(f.body)+len(b), 2*cap(f.body))
+		cap := max(len(f.body)+len(b), 2*cap(f.body))
 		f.init(cap)
 	}
 
@@ -84,7 +84,8 @@ func (f *Frame) encode(w io.Writer) error {
 	header, size := message.WriteVarint(f.header[:0], l)
 	start := 8 - size
 	copy(f.buf[start:], header)
-	_, err := w.Write(f.buf[start:])
+	end := 8 + len(f.body)
+	_, err := w.Write(f.buf[start:end])
 	return err
 }
 

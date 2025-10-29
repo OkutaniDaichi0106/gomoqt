@@ -23,3 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Enhanced memory efficiency through optimized buffer reuse
 - Expanded test coverage for GroupReader iterator pattern
 
+### Fixed
+
+- Fixed a bug where `Frame.encode` could write extra zero bytes beyond the actual payload, causing clients to receive a large number of empty frames (`frame_length=0`). Now only the header and payload are written, ensuring protocol correctness and efficiency.
+

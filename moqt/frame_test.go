@@ -5,7 +5,9 @@ import (
 	"io"
 	"testing"
 
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewFrame(t *testing.T) {
@@ -121,19 +123,45 @@ func TestFrame_EncodeDecode_RoundTrip(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create and encode frame
-			frame := NewFrame(len(tt.payload) + 8)
-			frame.Write(tt.payload)
+			// Run two scenarios for each payload:
+			//  - preallocated: frame initialized with enough capacity to avoid realloc
+			//  - realloc: frame initialized with a tiny capacity to force growth/realloc
+			scenarios := []struct {
+				name    string
+				initalC int
+			}{
+				{"preallocated", len(tt.payload) + 8},
+				{"realloc", 2},
+			}
 
-			var buf bytes.Buffer
-			err := frame.encode(&buf)
-			assert.NoError(t, err)
+			for _, sc := range scenarios {
+				t.Run(sc.name, func(t *testing.T) {
+					// Create and encode frame
+					frame := NewFrame(sc.initalC)
+					frame.Write(tt.payload)
 
-			// Decode into new frame
-			decodedFrame := NewFrame(0)
-			err = decodedFrame.decode(&buf)
-			assert.NoError(t, err)
-			assert.Equal(t, tt.payload, decodedFrame.Body())
+					var buf bytes.Buffer
+					// encode must succeed (fatal for this subtest)
+					require.NoError(t, frame.encode(&buf))
+
+					// Use ReadMessageLength to ensure the encoded length equals payload
+					r := bytes.NewReader(buf.Bytes())
+					n, err := message.ReadMessageLength(r)
+					require.NoError(t, err)
+					require.Equal(t, uint64(len(tt.payload)), n)
+
+					// Read the payload and compare exact bytes
+					got := make([]byte, n)
+					_, err = io.ReadFull(r, got)
+					require.NoError(t, err)
+					assert.Equal(t, tt.payload, got)
+
+					// There must be no extra trailing bytes
+					rem := make([]byte, 1)
+					nn, _ := r.Read(rem)
+					assert.Equal(t, 0, nn)
+				})
+			}
 		})
 	}
 }
@@ -211,7 +239,7 @@ func TestFrame_Write(t *testing.T) {
 		{"single write", [][]byte{[]byte("hello")}, 5},
 		{"multiple writes", [][]byte{[]byte("hello"), []byte(" "), []byte("world")}, 11},
 		{"empty write", [][]byte{[]byte("")}, 0},
-		{"binary data", [][]byte{[]byte{0x00, 0x01, 0x02}}, 3},
+		{"binary data", [][]byte{{0x00, 0x01, 0x02}}, 3},
 	}
 
 	for _, tt := range tests {
@@ -242,4 +270,38 @@ func TestFrame_Write_AsIOWriter(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, int64(21), n)
 	assert.Equal(t, []byte("test data from reader"), frame.Body())
+}
+
+func TestFrame_Encode(t *testing.T) {
+	// Verify that encode writes exactly the varint length header followed by payload
+	tests := map[string]struct {
+		payload []byte
+	}{
+		"empty":             {payload: []byte{}},
+		"small":             {payload: []byte("a")},
+		"one-byte-boundary": {payload: make([]byte, 63)}, // 63 -> 1-byte varint
+		"two-byte-boundary": {payload: make([]byte, 64)}, // 64 -> 2-byte varint
+		"medium":            {payload: make([]byte, 1000)},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			frame := NewFrame(len(tt.payload) + 8)
+			if len(tt.payload) > 0 {
+				frame.Write(tt.payload)
+			}
+
+			var buf bytes.Buffer
+			require.NoError(t, frame.encode(&buf))
+
+			// Build expected bytes: varint(length) followed by payload
+			expectedHeader, _ := message.WriteVarint(nil, uint64(len(tt.payload)))
+			expected := append(expectedHeader, tt.payload...)
+
+			got := buf.Bytes()
+			// The encode implementation writes header right-aligned in an 8-byte area
+			// but the result should equal header+payload exactly (no extra zeros)
+			assert.Equal(t, expected, got)
+		})
+	}
 }

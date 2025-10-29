@@ -85,7 +85,8 @@ type GroupReader struct {
 }
 
 func (*GroupReader) GroupSequence() GroupSequence
-func (*GroupReader) ReadFrame() (*Frame, error)
+func (*GroupReader) ReadFrame(buf *Frame) error
+func (*GroupReader) Frames(buf *Frame) func(yield func(*Frame) bool)
 func (*GroupReader) CancelRead(GroupErrorCode)
 func (*GroupReader) SetReadDeadline(time.Time) error
 ```
@@ -96,31 +97,18 @@ Frames can be independent (like keyframes) or rely on other frames (like delta f
 
 ### `moqt.Frame`
 
-The Frame struct represents the smallest unit of media data. It ensures that data is stored immutably.
+The Frame struct represents the smallest unit of media data, optimized for efficient buffer reuse in MOQ protocol implementations.
 
 ```go
 type Frame struct {
 	// contains filtered or unexported fields
 }
 
-func (*Frame) Bytes() []byte
-func (*Frame) Cap() int
+func (*Frame) Write(p []byte) (int, error)
+func (*Frame) Body() []byte
+func (*Frame) Reset()
 func (*Frame) Len() int
+func (*Frame) Cap() int
 func (*Frame) Clone() *Frame
 func (*Frame) WriteTo(w io.Writer) (int64, error)
-```
-### `moqt.FrameBuilder`
-
-Constructs and reuses buffers for building frames efficiently.
-
-```go
-func NewFrameBuilder(int) *FrameBuilder
-
-type FrameBuilder struct {
-	// contains filtered or unexported fields
-}
-
-func (*FrameBuilder) Append([]byte)
-func (*FrameBuilder) Frame() *Frame
-func (*FrameBuilder) Reset()
 ```

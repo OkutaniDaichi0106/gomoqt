@@ -10,6 +10,8 @@ Diese Implementierung folgt der [MOQ Lite-Spezifikation](https://kixelated.githu
 
 ## Funktionen
 
+Diese Implementierung enthält:
+
 - **MOQ Lite-Protokoll**: Kernimplementierung der MOQ Lite-Spezifikation
 - **WebTransport-Unterstützung**: Volle Unterstützung für WebTransport-Verbindungen in Browsern
 - **Roh-QUIC-Unterstützung**: Direkte QUIC-Verbindungen für native Anwendungen
@@ -34,17 +36,11 @@ Diese Implementierung folgt der [MOQ Lite-Spezifikation](https://kixelated.githu
 
 ## Komponenten
 
-### moqt
-
-Das zentrale Go-Paket zur Implementierung und Handhabung des Media over QUIC (MOQ)-Protokolls.
-
-### moq-web
-
-TypeScript-Implementierung des MOQ-Protokolls für das Web.
-
-### interop
-
-Tools und Beispiele zur Interoperabilitätsprüfung verschiedener MOQ-Implementierungen über Plattformen hinweg.
+| Komponente | Beschreibung |
+|-----------|------|
+| **moqt** | Das zentrale Go-Paket zur Implementierung und Handhabung des Media over QUIC (MOQ)-Protokolls. |
+| **moq-web** | TypeScript-Implementierung des MOQ-Protokolls für das Web. |
+| **interop** | Tools und Beispiele zur Interoperabilitätsprüfung verschiedener MOQ-Implementierungen über Plattformen hinweg. |
 
 ## Entwicklung
 

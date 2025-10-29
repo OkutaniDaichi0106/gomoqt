@@ -30,15 +30,16 @@ Consuming a track involves reading media data from a `moqt.TrackReader`, which p
         go func(gr *moqt.GroupReader) { // Read frames in parallel
             defer gr.Close()
 
+            frame := moqt.NewFrame(0) // Create buffer for reuse
             for {
-                frame, err := gr.ReadFrame()
+                err := gr.ReadFrame(frame)
                 if err != nil {
                     // End of group or error
                     break
                 }
 
                 // Process the frame
-                // The raw payload data can be accessed with frame.Bytes()
+                // The raw payload data can be accessed with frame.Body()
             }
         }(gr)
     }
@@ -69,18 +70,36 @@ To receive the next available group from a track, use `(moqt.TrackReader).Accept
 
 ## Read Frames
 
-To read frames from a group, use `(moqt.GroupReader).ReadFrame` method. Each call decodes the next frame in the group into the internal `moqt.Frame` object. The frame is reused for each call. To cache the frame data, you have to clone it via `(moqt.Frame).Clone` before reading the next frame.
+There are two ways to read frames from a group: using `ReadFrame` for sequential reading, or using `Frames` for convenient iteration.
+
+### Read Frames Sequentially
+
+To read frames from a group one by one, use `(moqt.GroupReader).ReadFrame` method. Each call decodes the next frame into the provided `moqt.Frame` buffer. The frame buffer is reused for each call. To cache the frame data, you have to clone it via `(moqt.Frame).Clone` before reading the next frame.
 
 ```go
     var group *moqt.GroupReader
 
+    frame := moqt.NewFrame(0) // Create buffer for reuse
     for {
-        frame, err := group.ReadFrame()
+        err := group.ReadFrame(frame)
         if err != nil {
             // End of group or error
             break
         }
 
+        // Process the frame
+    }
+```
+
+### Iterate Frames
+
+Alternatively, use `(moqt.GroupReader).Frames` method to iterate over all frames in the group using Go's range-over-func (Go 1.22+). This handles the buffer reuse automatically.
+
+```go
+    var group *moqt.GroupReader
+
+    frame := moqt.NewFrame(0) // Create buffer for reuse
+    for frame := range group.Frames(frame) {
         // Process the frame
     }
 ```

@@ -1,16 +1,16 @@
-import { describe, it, beforeEach, afterEach, assertEquals, assertExists, assertThrows } from "../../deps.ts";
+import { assertEquals } from "../../deps.ts";
 import { SessionClientMessage } from './session_client.ts';
-import { Extensions } from '../internal/extensions';
-import type { Version } from '../internal/version';
-import { Versions } from '../internal/version';
-import { Writer, Reader } from '../io';
+import { Extensions } from '../internal/extensions.ts';
+import type { Version } from '../internal/version.ts';
+import { Versions } from '../internal/version.ts';
+import { Writer, Reader } from '../webtransport/mod.ts';
 
-describe('SessionClientMessage', () => {
-  it('should be defined', () => {
-    assertExists(SessionClientMessage);
+Deno.test('SessionClientMessage', async (t) => {
+  await t.step('should be defined', () => {
+    assertEquals(SessionClientMessage !== undefined, true);
   });
 
-  it('should create instance with versions and extensions', () => {
+  await t.step('should create instance with versions and extensions', () => {
     const versions = new Set<Version>([Versions.DEVELOP]);
     const extensions = new Extensions();
   extensions.addString(1, 'test');
@@ -21,17 +21,16 @@ describe('SessionClientMessage', () => {
     assertEquals(message.extensions, extensions);
   });
 
-  it('should create instance with versions only', () => {
+  await t.step('should create instance with versions only', () => {
     const versions = new Set<Version>([Versions.DEVELOP]);
 
     const message = new SessionClientMessage({versions});
 
     assertEquals(message.versions, versions);
-    assertInstanceOf(message.extensions, Extensions);
     assertEquals(message.extensions.entries.size, 0);
   });
 
-  it('should calculate correct length with single version and no extensions', () => {
+  await t.step('should calculate correct length with single version and no extensions', () => {
     const versions = new Set<Version>([Versions.DEVELOP]);
     const extensions = new Extensions();
 
@@ -41,22 +40,22 @@ describe('SessionClientMessage', () => {
     // Expected: varint(1) + varint(DEVELOP) + varint(0)
     // DEVELOP = 0xffffff00n, which needs 5 bytes in varint encoding
     // varint(1) = 1 byte, varint(0) = 1 byte
-    expect(length).toBeGreaterThan(0);
+    assertEquals(length > 0, true);
     assertEquals(typeof length, 'number');
   });
 
-  it('should calculate correct length with multiple versions', () => {
+  await t.step('should calculate correct length with multiple versions', () => {
     const versions = new Set<Version>([Versions.DEVELOP, 1n, 2n]);
     const extensions = new Extensions();
 
     const message = new SessionClientMessage({versions, extensions});
     const length = message.messageLength;
 
-    expect(length).toBeGreaterThan(0);
+    assertEquals(length > 0, true);
     assertEquals(typeof length, 'number');
   });
 
-  it('should calculate correct length with extensions', () => {
+  await t.step('should calculate correct length with extensions', () => {
     const versions = new Set<Version>([Versions.DEVELOP]);
     const extensions = new Extensions();
     extensions.addString(1, 'test');
@@ -65,11 +64,11 @@ describe('SessionClientMessage', () => {
     const message = new SessionClientMessage({versions, extensions});
     const length = message.messageLength;
 
-    expect(length).toBeGreaterThan(0);
+    assertEquals(length > 0, true);
     assertEquals(typeof length, 'number');
   });
 
-  it('should encode and decode with single version and no extensions', async () => {
+  await t.step('should encode and decode with single version and no extensions', async () => {
     const versions = new Set<Version>([Versions.DEVELOP]);
     const extensions = new Extensions();
 
@@ -111,7 +110,7 @@ describe('SessionClientMessage', () => {
     const decodedMessage = new SessionClientMessage({});
     const decodeErr = await decodedMessage.decode(reader);
     assertEquals(decodeErr, undefined);
-    assertInstanceOf(decodedMessage, SessionClientMessage);
+    assertEquals(decodedMessage instanceof SessionClientMessage, true);
 
     // Verify content
     assertEquals(decodedMessage?.versions.size, 1);
@@ -121,7 +120,7 @@ describe('SessionClientMessage', () => {
     assertEquals(decodedMessage?.extensions.entries.size, 0);
   });
 
-  it('should encode and decode with multiple versions', async () => {
+  await t.step('should encode and decode with multiple versions', async () => {
     const versions = new Set<Version>([Versions.DEVELOP, 1n, 2n, 100n]);
     const extensions = new Extensions();
 
@@ -164,14 +163,14 @@ describe('SessionClientMessage', () => {
 
     // Verify content
     assertEquals(decodedMessage.versions.size, 4);
-    expect(decodedMessage.versions.has(Versions.DEVELOP)).toBe(true);
-    expect(decodedMessage.versions.has(1n)).toBe(true);
-    expect(decodedMessage.versions.has(2n)).toBe(true);
-    expect(decodedMessage.versions.has(100n)).toBe(true);
+    assertEquals(decodedMessage.versions.has(Versions.DEVELOP), true);
+    assertEquals(decodedMessage.versions.has(1n), true);
+    assertEquals(decodedMessage.versions.has(2n), true);
+    assertEquals(decodedMessage.versions.has(100n), true);
     assertEquals(decodedMessage.extensions.entries.size, 0);
   });
 
-  it('should encode and decode with extensions', async () => {
+  await t.step('should encode and decode with extensions', async () => {
     const versions = new Set<Version>([Versions.DEVELOP]);
     const extensions = new Extensions();
   extensions.addString(1, 'test-string');
@@ -217,14 +216,14 @@ describe('SessionClientMessage', () => {
 
     // Verify content
     assertEquals(decodedMessage.versions.size, 1);
-    expect(decodedMessage.versions.has(Versions.DEVELOP)).toBe(true);
+    assertEquals(decodedMessage.versions.has(Versions.DEVELOP), true);
     assertEquals(decodedMessage.extensions.entries.size, 3);
-  expect(decodedMessage.extensions.getString(1)).toBe('test-string');
-  expect(decodedMessage.extensions.getBytes(2)).toEqual(new Uint8Array([1, 2, 3, 4, 5]));
-  expect(decodedMessage.extensions.getString(100)).toBe('another-extension');
+    assertEquals(decodedMessage.extensions.getString(1), 'test-string');
+    assertEquals(decodedMessage.extensions.getBytes(2), new Uint8Array([1, 2, 3, 4, 5]));
+    assertEquals(decodedMessage.extensions.getString(100), 'another-extension');
   });
 
-  it('should encode and decode with empty versions set', async () => {
+  await t.step('should encode and decode with empty versions set', async () => {
     const versions = new Set<Version>();
     const extensions = new Extensions();
 
@@ -269,7 +268,7 @@ describe('SessionClientMessage', () => {
     assertEquals(decodedMessage.extensions.entries.size, 0);
   });
 
-  it('should handle large version numbers', async () => {
+  await t.step('should handle large version numbers', async () => {
     const largeVersion = BigInt('0x1FFFFFFFFF'); // Within varint8 range
     const versions = new Set<Version>([largeVersion]);
     const extensions = new Extensions();
@@ -313,10 +312,10 @@ describe('SessionClientMessage', () => {
 
     // Verify content
     assertEquals(decodedMessage.versions.size, 1);
-    expect(decodedMessage.versions.has(largeVersion)).toBe(true);
+    assertEquals(decodedMessage.versions.has(largeVersion), true);
   });
 
-  it('should handle empty extension data', async () => {
+  await t.step('should handle empty extension data', async () => {
     const versions = new Set<Version>([Versions.DEVELOP]);
     const extensions = new Extensions();
     extensions.addBytes(1, new Uint8Array([])); // Empty bytes
@@ -361,7 +360,7 @@ describe('SessionClientMessage', () => {
 
     // Verify content
     assertEquals(decodedMessage.extensions.entries.size, 2);
-    expect(decodedMessage.extensions.getBytes(1)).toEqual(new Uint8Array([]));
-    expect(decodedMessage.extensions.getString(2)).toBe('');
+    assertEquals(decodedMessage.extensions.getBytes(1), new Uint8Array([]));
+    assertEquals(decodedMessage.extensions.getString(2), '');
   });
 });

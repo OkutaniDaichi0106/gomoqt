@@ -1,10 +1,9 @@
-import { describe, it, beforeEach, afterEach, assertEquals, assertExists, assertThrows } from "../../deps.ts";
+import { assertEquals } from "../../deps.ts";
 import { SubscribeOkMessage } from './subscribe_ok.ts';
-import { Writer, Reader } from '../io';
-import { createIsolatedStreams } from './test-utils.test';
+import { createIsolatedStreams } from './test-utils_test.ts';
 
-describe('SubscribeOkMessage', () => {
-  it('should encode and decode', async () => {
+Deno.test('SubscribeOkMessage', async (t) => {
+  await t.step('should encode and decode', async () => {
     const groupPeriod = 1;
 
     const { writer, reader, cleanup } = createIsolatedStreams();

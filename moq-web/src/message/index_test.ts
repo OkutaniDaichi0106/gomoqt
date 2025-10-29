@@ -1,5 +1,5 @@
 // Test file for message/index.ts exports
-import { describe, it, beforeEach, afterEach, assertEquals, assertExists, assertThrows } from "../../deps.ts";
+import { assertExists } from "../../deps.ts";
 import * as MessageIndex from "./index.ts";
 import * as SessionClient from "./session_client.ts";
 import * as SessionServer from "./session_server.ts";
@@ -11,51 +11,69 @@ import * as SubscribeOk from "./subscribe_ok.ts";
 import * as SubscribeUpdate from "./subscribe_update.ts";
 import * as Group from "./group.ts";
 
-describe("Message Index", () => {
-    it("should export all session client exports", () => {
-        assertEquals(MessageIndex, expect.objectContaining(SessionClient));
+Deno.test("Message Index", async (t) => {
+    await t.step("should export all session client exports", () => {
+        for (const key of Object.keys(SessionClient)) {
+            assertExists((MessageIndex as any)[key], `SessionClient.${key} should be exported`);
+        }
     });
     
-    it("should export all session server exports", () => {
-        assertEquals(MessageIndex, expect.objectContaining(SessionServer));
+    await t.step("should export all session server exports", () => {
+        for (const key of Object.keys(SessionServer)) {
+            assertExists((MessageIndex as any)[key], `SessionServer.${key} should be exported`);
+        }
     });
     
-    it("should export all session update exports", () => {
-        assertEquals(MessageIndex, expect.objectContaining(SessionUpdate));
+    await t.step("should export all session update exports", () => {
+        for (const key of Object.keys(SessionUpdate)) {
+            assertExists((MessageIndex as any)[key], `SessionUpdate.${key} should be exported`);
+        }
     });
     
-    it("should export all announce please exports", () => {
-        assertEquals(MessageIndex, expect.objectContaining(AnnouncePlease));
+    await t.step("should export all announce please exports", () => {
+        for (const key of Object.keys(AnnouncePlease)) {
+            assertExists((MessageIndex as any)[key], `AnnouncePlease.${key} should be exported`);
+        }
     });
     
-    it("should export all announce exports", () => {
-        assertEquals(MessageIndex, expect.objectContaining(Announce));
+    await t.step("should export all announce exports", () => {
+        for (const key of Object.keys(Announce)) {
+            assertExists((MessageIndex as any)[key], `Announce.${key} should be exported`);
+        }
     });
     
-    it("should export all subscribe exports", () => {
-        assertEquals(MessageIndex, expect.objectContaining(Subscribe));
+    await t.step("should export all subscribe exports", () => {
+        for (const key of Object.keys(Subscribe)) {
+            assertExists((MessageIndex as any)[key], `Subscribe.${key} should be exported`);
+        }
     });
     
-    it("should export all subscribe ok exports", () => {
-        assertEquals(MessageIndex, expect.objectContaining(SubscribeOk));
+    await t.step("should export all subscribe ok exports", () => {
+        for (const key of Object.keys(SubscribeOk)) {
+            assertExists((MessageIndex as any)[key], `SubscribeOk.${key} should be exported`);
+        }
     });
     
-    it("should export all subscribe update exports", () => {
-        assertEquals(MessageIndex, expect.objectContaining(SubscribeUpdate));
+    await t.step("should export all subscribe update exports", () => {
+        for (const key of Object.keys(SubscribeUpdate)) {
+            assertExists((MessageIndex as any)[key], `SubscribeUpdate.${key} should be exported`);
+        }
     });
     
-    it("should export all group exports", () => {
-        assertEquals(MessageIndex, expect.objectContaining(Group));
+    await t.step("should export all group exports", () => {
+        for (const key of Object.keys(Group)) {
+            assertExists((MessageIndex as any)[key], `Group.${key} should be exported`);
+        }
     });
 
-    it("should not have any undefined exports", () => {
+    await t.step("should not have any undefined exports", () => {
         const exports = Object.keys(MessageIndex);
         exports.forEach(key => {
-            expect((MessageIndex as any)[key]).toBeDefined();
+            assertExists((MessageIndex as any)[key], `Export ${key} should not be undefined`);
         });
     });
     
-    it("should have all expected module exports", () => {
+    await t.step("should have all expected module exports", () => {
         // Check that all modules we expect to be exported are actually exported
         const expectedExports = [
             ...Object.keys(SessionClient),
@@ -70,7 +88,7 @@ describe("Message Index", () => {
         ];
         
         expectedExports.forEach(exportName => {
-            expect((MessageIndex as any)[exportName]).toBeDefined();
+            assertExists((MessageIndex as any)[exportName], `${exportName} should be exported`);
         });
     });
 });

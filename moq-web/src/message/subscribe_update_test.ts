@@ -1,10 +1,9 @@
-import { describe, it, beforeEach, afterEach, assertEquals, assertExists, assertThrows } from "../../deps.ts";
+import { assertEquals } from "../../deps.ts";
 import { SubscribeUpdateMessage } from './subscribe_update.ts';
-import { Writer, Reader } from '../io';
-import { createIsolatedStreams } from './test-utils.test';
+import { createIsolatedStreams } from './test-utils_test.ts';
 
-describe('SubscribeUpdateMessage', () => {
-  it('should encode and decode', async () => {
+Deno.test('SubscribeUpdateMessage', async (t) => {
+  await t.step('should encode and decode', async () => {
     const trackPriority = 1;
     const minGroupSequence = 2n;
     const maxGroupSequence = 3n;

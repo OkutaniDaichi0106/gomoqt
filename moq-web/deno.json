@@ -1,7 +1,15 @@
 {
   "$schema": "https://deno.land/x/deno/cli/schemas/config-file.v1.json",
+  "name": "@golikejs/golikejs",
+  "version": "0.4.0",
+  "exports": {
+    ".": "./src/mod.ts",
+    "./sync": "./src/sync/mod.ts",
+    "./context": "./src/context/mod.ts",
+    "./channel": "./src/channel/mod.ts"
+  },
   "compilerOptions": {
-    "lib": ["deno.window", "dom", "dom.iterable", "dom.asynciterable"],
+    "lib": ["ESNext", "deno.ns", "DOM", "dom.iterable", "dom.asynciterable"],
     "strict": true,
     "noImplicitAny": true,
     "strictNullChecks": true,
@@ -9,7 +17,10 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "verbatimModuleSyntax": false
   },
   "imports": {
     "@std/assert": "jsr:@std/assert@1",
@@ -21,21 +32,30 @@
     "test": "deno test --allow-all",
     "test:watch": "deno test --allow-all --watch",
     "coverage": "deno test --allow-all --coverage=cov && deno coverage cov",
-    "coverage:html": "deno test --allow-all --coverage=cov && deno coverage --html cov"
+    "coverage:html": "deno test --allow-all --coverage=cov && deno coverage --html cov",
+    "fmt": "deno fmt",
+    "fmt:check": "deno fmt --check",
+    "lint": "deno lint",
+    "check": "deno check src/**/*.ts"
+  },
+  "fmt": {
+    "useTabs": true,
+    "lineWidth": 100,
+    "indentWidth": 4,
+    "semiColons": true,
+    "singleQuote": false,
+    "proseWrap": "preserve",
+    "include": ["src/"]
+  },
+  "lint": {
+    "include": ["src/"],
+    "rules": {
+      "tags": ["recommended"],
+      "exclude": ["require-await", "no-unused-vars", "no-explicit-any", "no-await-in-sync-fn", "no-redeclare"]
+    }
   },
   "exclude": [
-    "node_modules",
-    "dist",
-    "coverage",
-    "cov",
-    ".vitest-cache",
-    ".git",
-    "temp",
-    "etc",
-    ".pnp.cjs",
-    "package.json",
-    "package-lock.json",
-    "pnpm-lock.yaml"
+    ".git"
   ],
   "test": {
     "include": ["src/**/*_test.ts"]

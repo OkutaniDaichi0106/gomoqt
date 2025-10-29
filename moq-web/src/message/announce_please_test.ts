@@ -1,10 +1,9 @@
-import { describe, it, beforeEach, afterEach, assertEquals, assertExists, assertThrows } from "../../deps.ts";
+import { assertEquals } from "../../deps.ts";
 import { AnnouncePleaseMessage } from './announce_please.ts';
-import { Writer, Reader } from '../io';
-import { createIsolatedStreams } from './test-utils.test';
+import { createIsolatedStreams } from './test-utils_test.ts';
 
-describe('AnnouncePleaseMessage', () => {
-  it('should encode and decode', async () => {
+Deno.test('AnnouncePleaseMessage', async (t) => {
+  await t.step('should encode and decode', async () => {
     const prefix = 'test';
 
     const { writer, reader, cleanup } = createIsolatedStreams();

@@ -1,4 +1,4 @@
-import { BytesBuffer, MAX_BYTES_LENGTH, MAX_UINT } from "./bytes.ts";
+import { BytesBuffer, MAX_BYTES_LENGTH } from "./bytes.ts";
 import { DefaultBufferPool } from "./buffer_pool.ts";
 import type { StreamError } from "./error.ts";
 import { MAX_VARINT1, MAX_VARINT2, MAX_VARINT4, MAX_VARINT8 } from "./len.ts";
@@ -143,14 +143,12 @@ export interface WriterInit {
 export class Writer {
     #writer: WritableStreamDefaultWriter<Uint8Array>;
     #buf: BytesBuffer;
-    #closed: Promise<void>;
     readonly streamId: bigint;
 
     constructor(init: WriterInit) {
         this.#writer = init.stream.getWriter();
         this.#buf = new BytesBuffer(init.transfer || DefaultBufferPool.acquire(1024));
 
-        this.#closed = this.#writer.closed;
         this.streamId = init.streamId;
     }
 
@@ -272,7 +270,7 @@ export class Writer {
             try {
                 await this.#writer.write(this.#buf.bytes());
             } catch (error) {
-                return new Error("Failed to send data to stream");
+                return new Error(`Failed to write to stream: ${error}`);
             } finally {
                 this.#buf.reset();
             }

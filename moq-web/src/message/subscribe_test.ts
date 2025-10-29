@@ -1,10 +1,9 @@
-import { describe, it, beforeEach, afterEach, assertEquals, assertExists, assertThrows } from "../../deps.ts";
+import { assertEquals } from "../../deps.ts";
 import { SubscribeMessage } from './subscribe.ts';
-import { Writer, Reader } from '../io';
-import { createIsolatedStreams } from './test-utils.test';
+import { createIsolatedStreams } from './test-utils_test.ts';
 
-describe('SubscribeMessage', () => {
-  it('should encode and decode', async () => {
+Deno.test('SubscribeMessage', async (t) => {
+  await t.step('should encode and decode', async () => {
     const subscribeId = 123n;
     const broadcastPath = 'path';
     const trackName = 'track';

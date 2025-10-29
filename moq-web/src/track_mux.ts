@@ -4,8 +4,7 @@ import type { BroadcastPath } from "./broadcast_path.ts";
 
 import type { TrackWriter } from "./track.ts";
 import type { TrackPrefix } from "./track_prefix.ts";
-import { isValidPrefix } from "./track_prefix.ts";
-import { TrackNotFoundErrorCode } from ".";
+import { TrackNotFoundErrorCode } from "./error.ts";
 
 type AnnouncedTrackHandler = {
     announcement: Announcement;
@@ -162,7 +161,7 @@ export interface TrackHandler {
 }
 
 const NotFoundHandler: TrackHandler = {
-    async serveTrack(ctx: Promise<void>, trackWriter: TrackWriter): Promise<void> {
-        trackWriter.closeWithError(TrackNotFoundErrorCode, "Track not found");
+    async serveTrack(_: Promise<void>, trackWriter: TrackWriter): Promise<void> {
+        await trackWriter.closeWithError(TrackNotFoundErrorCode, "Track not found");
     }
 };

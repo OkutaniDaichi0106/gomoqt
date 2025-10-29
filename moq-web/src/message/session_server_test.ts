@@ -1,12 +1,10 @@
-import { describe, it, beforeEach, afterEach, assertEquals, assertExists, assertThrows } from "../../deps.ts";
+import { assertEquals } from "../../deps.ts";
 import { SessionServerMessage } from './session_server.ts';
-import { Writer, Reader } from '../io';
-import { Version } from '../internal/version';
-import { Extensions } from '../internal/extensions';
-import { createIsolatedStreams } from './test-utils.test';
+import { Extensions } from '../internal/extensions.ts';
+import { createIsolatedStreams } from './test-utils_test.ts';
 
-describe('SessionServerMessage', () => {
-  it('should encode and decode', async () => {
+Deno.test('SessionServerMessage', async (t) => {
+  await t.step('should encode and decode', async () => {
     const version = 1n;
     const extensions = new Extensions();
   extensions.addBytes(1, new Uint8Array([1, 2, 3]));

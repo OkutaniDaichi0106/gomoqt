@@ -1,10 +1,9 @@
-import { describe, it, beforeEach, afterEach, assertEquals, assertExists, assertThrows } from "../../deps.ts";
+import { assertEquals } from "../../deps.ts";
 import { AnnounceInitMessage } from './announce_init.ts';
-import { Writer, Reader } from '../io';
-import { createIsolatedStreams } from './test-utils.test';
+import { createIsolatedStreams } from './test-utils_test.ts';
 
-describe('AnnounceInitMessage', () => {
-  it('should encode and decode with empty suffixes array', async () => {
+Deno.test('AnnounceInitMessage', async (t) => {
+  await t.step('should encode and decode with empty suffixes array', async () => {
     const suffixes: string[] = [];
     const { writer, reader, cleanup } = createIsolatedStreams();
 
@@ -27,7 +26,7 @@ describe('AnnounceInitMessage', () => {
     }
   });
 
-  it('should encode and decode with single suffix', async () => {
+  await t.step('should encode and decode with single suffix', async () => {
     const suffixes = ['test-suffix'];
     const { writer, reader, cleanup } = createIsolatedStreams();
 
@@ -50,7 +49,7 @@ describe('AnnounceInitMessage', () => {
     }
   });
 
-  it('should encode and decode with multiple suffixes', async () => {
+  await t.step('should encode and decode with multiple suffixes', async () => {
     const suffixes = ['suffix1', 'suffix2', 'suffix3'];
     const { writer, reader, cleanup } = createIsolatedStreams();
 
@@ -73,7 +72,7 @@ describe('AnnounceInitMessage', () => {
     }
   });
 
-  it('should handle special characters in suffixes', async () => {
+  await t.step('should handle special characters in suffixes', async () => {
     const suffixes = ['suffix-with-dashes', 'suffix_with_underscores', 'suffix/with/slashes', 'suffix with spaces'];
     const { writer, reader, cleanup } = createIsolatedStreams();
 
@@ -96,14 +95,14 @@ describe('AnnounceInitMessage', () => {
     }
   });
 
-  it('should create instance with constructor', () => {
+  await t.step('should create instance with constructor', () => {
     const suffixes = ['test1', 'test2'];
     const message = new AnnounceInitMessage({ suffixes });
 
     assertEquals(message.suffixes, suffixes);
   });
 
-  it('should handle empty strings in suffixes array', async () => {
+  await t.step('should handle empty strings in suffixes array', async () => {
     const suffixes = ['', 'valid-suffix', ''];
     const { writer, reader, cleanup } = createIsolatedStreams();
 

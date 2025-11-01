@@ -1,4 +1,4 @@
-import type { Reader, Writer } from "../webtransport/mod.ts";
+import type { Reader, SendStream } from "../webtransport/mod.ts";
 import { stringLen } from "../webtransport/mod.ts";
 
 export interface AnnounceMessageInit {
@@ -19,7 +19,7 @@ export class AnnounceMessage {
 		return stringLen(this.suffix) + 1; // +1 for the boolean
 	}
 
-	async encode(writer: Writer): Promise<Error | undefined> {
+	async encode(writer: SendStream): Promise<Error | undefined> {
 		writer.writeVarint(this.messageLength);
 		writer.writeBoolean(this.active);
 		writer.writeString(this.suffix);

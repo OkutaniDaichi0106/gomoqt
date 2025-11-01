@@ -1,17 +1,17 @@
-import type { Reader, Writer } from "../webtransport/mod.ts";
+import type { Reader, SendStream } from "../webtransport/mod.ts";
 import { varintLen } from "../webtransport/mod.ts";
 
 export interface GroupMessageInit {
-	subscribeId?: bigint;
+	subscribeId?: number;
 	sequence?: bigint;
 }
 
 export class GroupMessage {
-	subscribeId: bigint;
+	subscribeId: number;
 	sequence: bigint;
 
 	constructor(init: GroupMessageInit) {
-		this.subscribeId = init.subscribeId ?? 0n;
+		this.subscribeId = init.subscribeId ?? 0;
 		this.sequence = init.sequence ?? 0n;
 	}
 
@@ -19,9 +19,9 @@ export class GroupMessage {
 		return varintLen(this.subscribeId) + varintLen(this.sequence);
 	}
 
-	async encode(writer: Writer): Promise<Error | undefined> {
+	async encode(writer: SendStream): Promise<Error | undefined> {
 		writer.writeVarint(this.messageLength);
-		writer.writeBigVarint(this.subscribeId);
+		writer.writeVarint(this.subscribeId);
 		writer.writeBigVarint(this.sequence);
 		return await writer.flush();
 	}
@@ -32,7 +32,7 @@ export class GroupMessage {
 			return err;
 		}
 
-		[this.subscribeId, err] = await reader.readBigVarint();
+		[this.subscribeId, err] = await reader.readVarint();
 		if (err) {
 			return err;
 		}

@@ -1,52 +1,47 @@
 import { assertEquals } from "@std/assert";
 import { GroupMessage } from "./group.ts";
-import { createIsolatedStreams } from "./test-utils.test.ts";
+import { createIsolatedStreams } from "./test-utils_test.ts";
 
-Deno.test("GroupMessage encode/decode roundtrip", async () => {
-	const subscribeId = 123n;
-	const sequence = 456n;
+Deno.test("GroupMessage - encode/decode roundtrip - multiple scenarios", async (t) => {
+	const testCases = {
+		"normal case": {
+			subscribeId: 123n,
+			sequence: 456n,
+		},
+		"zero values": {
+			subscribeId: 0n,
+			sequence: 0n,
+		},
+		"large numbers": {
+			subscribeId: 1000000n,
+			sequence: 2000000n,
+		},
+		"single values": {
+			subscribeId: 1n,
+			sequence: 1n,
+		},
+	};
 
-	const { writer, reader, cleanup } = createIsolatedStreams();
+	for (const [caseName, input] of Object.entries(testCases)) {
+		await t.step(caseName, async () => {
+			const { writer, reader, cleanup } = createIsolatedStreams();
 
-	try {
-		const msg = new GroupMessage({ subscribeId, sequence });
-		const encodeErr = await msg.encode(writer);
-		assertEquals(encodeErr, undefined);
+			try {
+				const msg = new GroupMessage(input);
+				const encodeErr = await msg.encode(writer);
+				assertEquals(encodeErr, undefined, `encode failed for ${caseName}`);
 
-		// Close writer to signal end of stream
-		await writer.close();
+				// Close writer to signal end of stream
+				await writer.close();
 
-		const decodedMsg = new GroupMessage({});
-		const decodeErr = await decodedMsg.decode(reader);
-		assertEquals(decodeErr, undefined);
-		assertEquals(decodedMsg.subscribeId, subscribeId);
-		assertEquals(decodedMsg.sequence, sequence);
-	} finally {
-		await cleanup();
+				const decodedMsg = new GroupMessage({});
+				const decodeErr = await decodedMsg.decode(reader);
+				assertEquals(decodeErr, undefined, `decode failed for ${caseName}`);
+				assertEquals(decodedMsg.subscribeId, input.subscribeId, `subscribeId mismatch for ${caseName}`);
+				assertEquals(decodedMsg.sequence, input.sequence, `sequence mismatch for ${caseName}`);
+			} finally {
+				await cleanup();
+			}
+		});
 	}
-});
-Deno.test("GroupMessage", async (t) => {
-	await t.step("should encode and decode", async () => {
-		const subscribeId = 123n;
-		const sequence = 456n;
-
-		const { writer, reader, cleanup } = createIsolatedStreams();
-
-		try {
-			const msg = new GroupMessage({ subscribeId, sequence });
-			const encodeErr = await msg.encode(writer);
-			assertEquals(encodeErr, undefined);
-
-			// Close writer to signal end of stream
-			await writer.close();
-
-			const decodedMsg = new GroupMessage({});
-			const decodeErr = await decodedMsg.decode(reader);
-			assertEquals(decodeErr, undefined);
-			assertEquals(decodedMsg.subscribeId, subscribeId);
-			assertEquals(decodedMsg.sequence, sequence);
-		} finally {
-			await cleanup();
-		}
-	});
 });

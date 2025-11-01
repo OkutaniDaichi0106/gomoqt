@@ -1,4 +1,4 @@
-import type { Reader, Writer } from "../webtransport/mod.ts";
+import type { Reader, SendStream } from "../webtransport/mod.ts";
 import { stringLen } from "../webtransport/mod.ts";
 
 export interface AnnouncePleaseMessageInit {
@@ -16,7 +16,7 @@ export class AnnouncePleaseMessage {
 		return stringLen(this.prefix);
 	}
 
-	async encode(writer: Writer): Promise<Error | undefined> {
+	async encode(writer: SendStream): Promise<Error | undefined> {
 		writer.writeVarint(this.messageLength);
 		writer.writeString(this.prefix);
 		return await writer.flush();

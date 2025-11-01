@@ -5,7 +5,7 @@ import { createIsolatedStreams } from "./test-utils_test.ts";
 Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", async (t) => {
 	const testCases = {
 		"normal case": {
-			subscribeId: 123n,
+			subscribeId: 123,
 			broadcastPath: "path",
 			trackName: "track",
 			trackPriority: 1,
@@ -13,7 +13,7 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 			maxGroupSequence: 3n,
 		},
 		"large sequence numbers": {
-			subscribeId: 1000000n,
+			subscribeId: 1000000,
 			broadcastPath: "long/path/to/resource",
 			trackName: "long-track-name-with-hyphens",
 			trackPriority: 255,
@@ -21,7 +21,7 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 			maxGroupSequence: 2000000n,
 		},
 		"zero values": {
-			subscribeId: 0n,
+			subscribeId: 0,
 			broadcastPath: "",
 			trackName: "",
 			trackPriority: 0,
@@ -29,7 +29,7 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 			maxGroupSequence: 0n,
 		},
 		"single character paths": {
-			subscribeId: 1n,
+			subscribeId: 1,
 			broadcastPath: "a",
 			trackName: "b",
 			trackPriority: 1,

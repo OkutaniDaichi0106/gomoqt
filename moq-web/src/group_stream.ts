@@ -1,4 +1,4 @@
-import type { Reader, Writer } from "./internal/webtransport/mod.ts";
+import type { ReceiveStream, SendStream } from "./internal/webtransport/mod.ts";
 import { withCancelCause } from "@okudai/golikejs/context";
 import type { CancelCauseFunc, Context } from "@okudai/golikejs/context";
 import { StreamError } from "./internal/webtransport/error.ts";
@@ -9,15 +9,13 @@ import { PublishAbortedErrorCode, SubscribeCanceledErrorCode } from "./error.ts"
 
 export class GroupWriter {
 	readonly sequence: bigint;
-	#writer: Writer;
+	#stream: SendStream;
 	readonly context: Context;
 	#cancelFunc: CancelCauseFunc;
-	readonly streamId: bigint;
 
-	constructor(trackCtx: Context, writer: Writer, group: GroupMessage) {
+	constructor(trackCtx: Context, writer: SendStream, group: GroupMessage) {
 		this.sequence = group.sequence;
-		this.#writer = writer;
-		this.streamId = writer.streamId ?? 0n;
+		this.#stream = writer;
 		[this.context, this.#cancelFunc] = withCancelCause(trackCtx);
 
 		trackCtx.done().then(() => {
@@ -26,8 +24,8 @@ export class GroupWriter {
 	}
 
 	async writeFrame(src: Frame): Promise<Error | undefined> {
-		this.#writer.copyFrom(src);
-		const err = await this.#writer.flush();
+		this.#stream.copyFrom(src);
+		const err = await this.#stream.flush();
 		if (err) {
 			return err;
 		}
@@ -40,7 +38,7 @@ export class GroupWriter {
 			return;
 		}
 		this.#cancelFunc(undefined); // Notify the context about closure
-		await this.#writer.close();
+		await this.#stream.close();
 	}
 
 	async cancel(code: GroupErrorCode, message: string): Promise<void> {
@@ -50,22 +48,20 @@ export class GroupWriter {
 		}
 		const cause = new StreamError(code, message);
 		this.#cancelFunc(cause); // Notify the context about cancellation
-		await this.#writer.cancel(cause);
+		await this.#stream.cancel(cause);
 	}
 }
 
 export class GroupReader {
 	readonly sequence: bigint;
-	#reader: Reader;
+	#reader: ReceiveStream;
 	readonly context: Context;
 	#cancelFunc: CancelCauseFunc;
 	// #frame?: BytesFrame;
-	readonly streamId: bigint;
 
-	constructor(trackCtx: Context, reader: Reader, group: GroupMessage) {
+	constructor(trackCtx: Context, reader: ReceiveStream, group: GroupMessage) {
 		this.sequence = group.sequence;
 		this.#reader = reader;
-		this.streamId = reader.streamId ?? 0n;
 		[this.context, this.#cancelFunc] = withCancelCause(trackCtx);
 
 		trackCtx.done().then(() => {

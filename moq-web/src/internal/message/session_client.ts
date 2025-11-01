@@ -1,20 +1,18 @@
-import { DEFAULT_CLIENT_VERSIONS, Extensions } from "../internal.ts";
-import type { Version } from "../internal.ts";
-import type { Reader, Writer } from "../internal/webtransport/mod.ts";
-import { bytesLen, varintLen } from "../io/len.ts";
+import type { Reader, Writer } from "../webtransport/mod.ts";
+import { bytesLen, varintLen } from "../webtransport/mod.ts";
 
 export interface SessionClientInit {
-	versions?: Set<Version>;
-	extensions?: Extensions;
+	versions?: Set<number>;
+	extensions?: Map<number, Uint8Array>;
 }
 
 export class SessionClientMessage {
-	versions: Set<Version>;
-	extensions: Extensions;
+	versions: Set<number>;
+	extensions: Map<number, Uint8Array>;
 
 	constructor(init: SessionClientInit) {
-		this.versions = init.versions ?? DEFAULT_CLIENT_VERSIONS;
-		this.extensions = init.extensions ?? new Extensions();
+		this.versions = init.versions ?? new Set();
+		this.extensions = init.extensions ?? new Map();
 	}
 
 	get messageLength(): number {
@@ -23,8 +21,8 @@ export class SessionClientMessage {
 		for (const version of this.versions) {
 			length += varintLen(version);
 		}
-		length += varintLen(this.extensions.entries.size);
-		for (const ext of this.extensions.entries) {
+		length += varintLen(this.extensions.size);
+		for (const ext of this.extensions.entries()) {
 			length += varintLen(ext[0]); // Extension ID length
 			length += bytesLen(ext[1]); // Extension data length (includes length prefix)
 		}
@@ -35,10 +33,10 @@ export class SessionClientMessage {
 		writer.writeVarint(this.messageLength);
 		writer.writeVarint(this.versions.size);
 		for (const version of this.versions) {
-			writer.writeBigVarint(version);
+			writer.writeVarint(version);
 		}
-		writer.writeVarint(this.extensions.entries.size);
-		for (const ext of this.extensions.entries) {
+		writer.writeVarint(this.extensions.size);
+		for (const ext of this.extensions.entries()) {
 			writer.writeVarint(ext[0]); // Write the extension ID
 			writer.writeUint8Array(ext[1]); // Write the extension data
 		}
@@ -61,10 +59,10 @@ export class SessionClientMessage {
 		if (numVersions > Number.MAX_SAFE_INTEGER) {
 			throw new Error("Number of versions exceeds maximum safe integer for SessionClient");
 		}
-		const versions = new Set<Version>();
+		const versions = new Set<number>();
 		for (let i = 0; i < numVersions; i++) {
-			let version: bigint;
-			[version, err] = await reader.readBigVarint();
+			let version: number;
+			[version, err] = await reader.readVarint();
 			if (err) {
 				return err;
 			}
@@ -84,7 +82,7 @@ export class SessionClientMessage {
 		if (numExtensions > Number.MAX_SAFE_INTEGER) {
 			throw new Error("Number of extensions exceeds maximum safe integer for SessionClient");
 		}
-		const extensions = new Extensions();
+		const extensions = new Map<number, Uint8Array>();
 
 		let extId: number;
 		for (let i = 0; i < numExtensions; i++) {
@@ -100,7 +98,7 @@ export class SessionClientMessage {
 			if (extData === undefined) {
 				throw new Error("read extData: Uint8Array is undefined");
 			}
-			extensions.addBytes(extId, extData);
+			extensions.set(extId, extData);
 		}
 
 		this.versions = versions;

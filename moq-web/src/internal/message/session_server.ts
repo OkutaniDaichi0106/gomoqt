@@ -1,9 +1,9 @@
-import type { Reader, Writer } from "../webtransport/mod.ts";
+import type { ReceiveStream, SendStream } from "../webtransport/mod.ts";
 import { bytesLen, varintLen } from "../webtransport/mod.ts";
 
 export interface SessionServerMessageInit {
-	version: number;
-	extensions: Map<number, Uint8Array>;
+	version?: number;
+	extensions?: Map<number, Uint8Array>;
 }
 
 export class SessionServerMessage {
@@ -11,8 +11,8 @@ export class SessionServerMessage {
 	extensions: Map<number, Uint8Array>;
 
 	constructor(init: SessionServerMessageInit) {
-		this.version = init.version;
-		this.extensions = init.extensions;
+		this.version = init.version ?? 0;
+		this.extensions = init.extensions ?? new Map();
 	}
 
 	get messageLength(): number {
@@ -26,7 +26,7 @@ export class SessionServerMessage {
 		return length;
 	}
 
-	async encode(writer: Writer): Promise<Error | undefined> {
+	async encode(writer: SendStream): Promise<Error | undefined> {
 		writer.writeVarint(this.messageLength);
 		writer.writeVarint(this.version);
 		writer.writeVarint(this.extensions.size); // Write the number of extensions
@@ -37,7 +37,7 @@ export class SessionServerMessage {
 		return await writer.flush();
 	}
 
-	async decode(reader: Reader): Promise<Error | undefined> {
+	async decode(reader: ReceiveStream): Promise<Error | undefined> {
 		let [len, err] = await reader.readVarint();
 		if (err) {
 			return err;

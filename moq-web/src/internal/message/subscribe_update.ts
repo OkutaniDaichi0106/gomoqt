@@ -1,4 +1,4 @@
-import type { Reader, Writer } from "../webtransport/mod.ts";
+import type { Reader, SendStream } from "../webtransport/mod.ts";
 import { varintLen } from "../webtransport/mod.ts";
 
 export interface SubscribeUpdateMessageInit {
@@ -26,7 +26,7 @@ export class SubscribeUpdateMessage {
 		);
 	}
 
-	async encode(writer: Writer): Promise<Error | undefined> {
+	async encode(writer: SendStream): Promise<Error | undefined> {
 		writer.writeVarint(this.messageLength);
 		writer.writeVarint(this.trackPriority);
 		writer.writeBigVarint(this.minGroupSequence);

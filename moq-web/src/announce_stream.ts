@@ -1,4 +1,3 @@
-import type { Reader, Writer } from "./internal/webtransport/mod.ts";
 import { EOF } from "./internal/webtransport/mod.ts";
 import type { AnnouncePleaseMessage } from "./internal/message/mod.ts";
 import { AnnounceMessage } from "./internal/message/mod.ts";
@@ -14,32 +13,27 @@ import { Queue } from "./internal/queue.ts";
 import { AnnounceInitMessage } from "./internal/message/announce_init.ts";
 import type { AnnounceErrorCode } from "./error.ts";
 import { DuplicatedAnnounceErrorCode } from "./error.ts";
+import { Stream } from "./internal/webtransport/stream.ts";
 
 type suffix = string;
 
 export class AnnouncementWriter {
-	#writer: Writer;
-	#reader: Reader;
+	#stream: Stream;
 	readonly prefix: TrackPrefix;
 	#announcements: Map<suffix, Announcement> = new Map();
 	readonly context: Context;
 	#cancelFunc: CancelCauseFunc;
 	#ready: Promise<void>;
 	#resolveInit?: () => void;
-	readonly streamId: bigint;
 
 	constructor(
 		sessCtx: Context,
-		writer: Writer,
-		reader: Reader,
+		stream: Stream,
 		req: AnnouncePleaseMessage,
 	) {
-		this.#writer = writer;
-		this.#reader = reader;
-
+		this.#stream = stream;
 		this.prefix = validateTrackPrefix(req.prefix);
 
-		this.streamId = writer.streamId ?? reader.streamId ?? 0n;
 
 		// const ctx = watchPromise(sessCtx, reader.closed());
 		[this.context, this.#cancelFunc] = withCancelCause(sessCtx);
@@ -76,7 +70,7 @@ export class AnnouncementWriter {
 					// When the announcement ends, we remove it from the map
 					this.#announcements.delete(suffix);
 					const msg = new AnnounceMessage({ suffix, active: false });
-					const err = await msg.encode(this.#writer);
+					const err = await msg.encode(this.#stream.writable);
 					if (err) {
 						return err;
 					}
@@ -99,7 +93,7 @@ export class AnnouncementWriter {
 		const msg = new AnnounceInitMessage({
 			suffixes: Array.from(this.#announcements.keys()),
 		});
-		const err = await msg.encode(this.#writer);
+		const err = await msg.encode(this.#stream.writable);
 		if (err) {
 			return err;
 		}
@@ -139,7 +133,7 @@ export class AnnouncementWriter {
 			}
 
 			const msg = new AnnounceMessage({ suffix, active });
-			let err = await msg.encode(this.#writer);
+			let err = await msg.encode(this.#stream.writable);
 			if (err) {
 				return err;
 			}
@@ -154,7 +148,7 @@ export class AnnouncementWriter {
 			announcement.ended().then(async () => {
 				this.#announcements.delete(suffix);
 				msg.active = false;
-				err = await msg.encode(this.#writer);
+				err = await msg.encode(this.#stream.writable);
 				if (err) {
 					return err;
 				}
@@ -182,7 +176,7 @@ export class AnnouncementWriter {
 			return;
 		}
 		this.#cancelFunc(undefined);
-		await this.#writer.close();
+		await this.#stream.writable.close();
 		this.#announcements.clear();
 		this.#resolveInit?.();
 		this.#resolveInit = undefined;
@@ -196,8 +190,8 @@ export class AnnouncementWriter {
 
 		const cause = new StreamError(code, message);
 		this.#cancelFunc(cause);
-		await this.#writer.cancel(cause);
-		await this.#reader.cancel(cause);
+		await this.#stream.writable.cancel(cause);
+		await this.#stream.readable.cancel(cause);
 		this.#announcements.clear();
 		this.#resolveInit?.();
 		this.#resolveInit = undefined;
@@ -205,8 +199,7 @@ export class AnnouncementWriter {
 }
 
 export class AnnouncementReader {
-	#writer: Writer;
-	#reader: Reader;
+	#stream: Stream;
 	readonly prefix: string;
 	#announcements: Map<string, Announcement> = new Map();
 	#queue: Queue<Announcement> = new Queue();
@@ -214,23 +207,19 @@ export class AnnouncementReader {
 	#cancelFunc: CancelCauseFunc;
 	#mu: Mutex = new Mutex();
 	#cond: Cond = new Cond(this.#mu);
-	readonly streamId: bigint;
 
 	constructor(
 		sessCtx: Context,
-		writer: Writer,
-		reader: Reader,
+		stream: Stream,
 		announcePlease: AnnouncePleaseMessage,
 		aim: AnnounceInitMessage,
 	) {
-		this.#writer = writer;
-		this.#reader = reader;
+		this.#stream = stream;
 		const prefix = announcePlease.prefix;
 		if (!isValidPrefix(prefix)) {
 			throw new Error(`[AnnouncementReader] invalid prefix: ${prefix}.`);
 		}
 		this.prefix = prefix;
-		this.streamId = writer.streamId ?? reader.streamId ?? 0n;
 		[this.context, this.#cancelFunc] = withCancelCause(sessCtx);
 
 		// Set initial announcements
@@ -281,7 +270,7 @@ export class AnnouncementReader {
 
 	#readNext(): void {
 		const msg = new AnnounceMessage({});
-		msg.decode(this.#reader).then(async (err) => {
+		msg.decode(this.#stream.readable).then(async (err) => {
 			if (err) {
 				if (err !== EOF) {
 					console.error(`moq: failed to read ANNOUNCE message: ${err}`);
@@ -342,7 +331,8 @@ export class AnnouncementReader {
 		}
 
 		this.#cancelFunc(undefined);
-		await this.#writer.close();
+		
+		await this.#stream.writable.close();
 		this.#announcements.clear();
 		this.#queue.close();
 	}
@@ -353,8 +343,8 @@ export class AnnouncementReader {
 			return;
 		}
 		const cause = new StreamError(code, message);
-		await this.#writer.cancel(cause);
-		await this.#reader.cancel(cause);
+		await this.#stream.writable.cancel(cause);
+		await this.#stream.readable.cancel(cause);
 		this.#announcements.clear();
 		this.#queue.close();
 	}

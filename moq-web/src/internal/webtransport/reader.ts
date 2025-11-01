@@ -1,9 +1,8 @@
 import { BytesBuffer, MAX_BYTES_LENGTH } from "./bytes.ts";
-import type { BufferPool } from "./buffer_pool.ts";
 import { DefaultBufferPool } from "./buffer_pool.ts";
-import type { StreamError, StreamErrorCode } from "./error.ts";
+import type { StreamError } from "./error.ts";
 
-let DefaultReadSize: number = 1024; // 1 KB
+const DefaultReadSize: number = 1024; // 1 KB
 
 export const EOF = new Error("EOF");
 
@@ -119,26 +118,26 @@ export const EOF = new Error("EOF");
 //     return { value: bytes, readLength: length + readLength };
 // }
 
-export interface ReaderInit {
+export interface ReceiveStreamInit {
 	stream: ReadableStream<Uint8Array>;
 	transfer?: ArrayBufferLike;
-	streamId: bigint;
+	streamId: number;
 }
 
-export class Reader {
+export class ReceiveStream {
 	// #byob?: ReadableStreamBYOBReader;
 	#pull: ReadableStreamDefaultReader<Uint8Array>;
 	#buf: BytesBuffer;
 	#closed: Promise<void>;
-	readonly streamId: bigint;
+	readonly id: number;
 
-	constructor(init: ReaderInit) {
+	constructor(init: ReceiveStreamInit) {
 		this.#pull = init.stream.getReader();
 
 		this.#buf = new BytesBuffer(init.transfer || DefaultBufferPool.acquire(DefaultReadSize));
 
 		this.#closed = this.#pull.closed;
-		this.streamId = init.streamId;
+		this.id = init.streamId;
 	}
 
 	async readUint8Array(
@@ -223,7 +222,6 @@ export class Reader {
 		let bigVarint = BigInt(firstByte & 0x3f);
 		const remaining = len - 1; // Remaining bytes to read
 		if (this.#buf.size < remaining) {
-			let filled = 0;
 			err = await this.pushN(remaining - this.#buf.size);
 			if (err) {
 				return [0n, err];
@@ -237,7 +235,6 @@ export class Reader {
 	}
 
 	async readUint8(): Promise<[number, Error | undefined]> {
-		let num: number;
 		if (this.#buf.size == 0) {
 			const err = await this.pushN(1);
 			if (err) {
@@ -245,7 +242,7 @@ export class Reader {
 			}
 		}
 
-		num = this.#buf.readUint8();
+		const num = this.#buf.readUint8();
 		return [num, undefined];
 	}
 

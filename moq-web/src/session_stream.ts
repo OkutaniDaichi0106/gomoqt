@@ -1,47 +1,42 @@
 import type { Context } from "@okudai/golikejs/context";
-import type { Reader, Writer } from "./internal/webtransport/mod.ts";
+import type { Stream } from "./internal/webtransport/mod.ts";
 import { SessionUpdateMessage } from "./internal/message/mod.ts";
 import type { SessionClientMessage, SessionServerMessage } from "./internal/message/mod.ts";
 import { Cond, Mutex } from "@okudai/golikejs/sync";
 import type { Version } from "./version.ts";
-import type { Extensions } from "./extensions.ts";
+import { Extensions } from "./extensions.ts";
 
 interface SessionStreamInit {
 	context: Context;
-	writer: Writer;
-	reader: Reader;
+	stream: Stream;
 	client: SessionClientMessage;
 	server: SessionServerMessage;
 	detectFunc: () => Promise<number>;
 }
 
 export class SessionStream {
-	#writer: Writer;
-	#reader: Reader;
+	#stream: Stream;
 	readonly context: Context;
 	#mu: Mutex = new Mutex();
 	#cond: Cond = new Cond(this.#mu);
 	#clientInfo: ClientInfo;
 	#serverInfo: ServerInfo;
-	readonly streamId: bigint;
 
 	#detectFunc: () => Promise<number>;
 
 	constructor(init: SessionStreamInit) {
+		this.#stream = init.stream;
 		this.#clientInfo = {
 			versions: init.client.versions,
-			extensions: init.client.extensions,
+			extensions: new Extensions(init.client.extensions),
 			bitrate: 0,
 		};
 		this.#serverInfo = {
 			version: init.server.version,
-			extensions: init.server.extensions,
+			extensions: new Extensions(init.server.extensions),
 			bitrate: 0,
 		};
-		this.#writer = init.writer;
-		this.#reader = init.reader;
 		this.context = init.context;
-		this.streamId = this.#writer.streamId ?? this.#reader.streamId ?? 0n;
 		this.#detectFunc = init.detectFunc;
 
 		// Start handling session updates (fire and forget)
@@ -71,7 +66,7 @@ export class SessionStream {
 	async #handleUpdates(): Promise<void> {
 		while (!this.context.err()) {
 			const msg = new SessionUpdateMessage({});
-			const err = await msg.decode(this.#reader);
+			const err = await msg.decode(this.#stream.readable);
 			if (err) {
 				// if (err !== EOF ) {
 				//     console.error(`moq: error reading SESSION_UPDATE message: ${err}`);
@@ -97,7 +92,7 @@ export class SessionStream {
 	// TODO: get bitrate from WebTransport API and detect significant changes.
 	async #update(bitrate: number): Promise<void> {
 		const msg = new SessionUpdateMessage({ bitrate });
-		const err = await msg.encode(this.#writer);
+		const err = await msg.encode(this.#stream.writable);
 		if (err) {
 			throw new Error(`Failed to encode session update message: ${err}`);
 		}

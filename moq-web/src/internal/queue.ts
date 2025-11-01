@@ -1,4 +1,4 @@
-import { Mutex } from "golikejs/sync";
+import { Mutex } from "@okudai/golikejs/sync";
 
 export class Queue<T> {
 	#items: T[] = [];

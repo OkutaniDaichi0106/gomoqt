@@ -1,8 +1,8 @@
-import type { Reader, Writer } from "../webtransport/mod.ts";
+import type { ReceiveStream, SendStream } from "../webtransport/mod.ts";
 import { stringLen, varintLen } from "../webtransport/mod.ts";
 
 export interface SubscribeMessageInit {
-	subscribeId?: bigint;
+	subscribeId?: number;
 	broadcastPath?: string;
 	trackName?: string;
 	trackPriority?: number;
@@ -11,7 +11,7 @@ export interface SubscribeMessageInit {
 }
 
 export class SubscribeMessage {
-	subscribeId: bigint;
+	subscribeId: number;
 	broadcastPath: string;
 	trackName: string;
 	trackPriority: number;
@@ -19,7 +19,7 @@ export class SubscribeMessage {
 	maxGroupSequence: bigint;
 
 	constructor(init: SubscribeMessageInit) {
-		this.subscribeId = init.subscribeId ?? 0n;
+		this.subscribeId = init.subscribeId ?? 0;
 		this.broadcastPath = init.broadcastPath ?? "";
 		this.trackName = init.trackName ?? "";
 		this.trackPriority = init.trackPriority ?? 0;
@@ -38,9 +38,9 @@ export class SubscribeMessage {
 		);
 	}
 
-	async encode(writer: Writer): Promise<Error | undefined> {
+	async encode(writer: SendStream): Promise<Error | undefined> {
 		writer.writeVarint(this.messageLength);
-		writer.writeBigVarint(this.subscribeId);
+		writer.writeVarint(this.subscribeId);
 		writer.writeString(this.broadcastPath);
 		writer.writeString(this.trackName);
 		writer.writeVarint(this.trackPriority);
@@ -49,12 +49,12 @@ export class SubscribeMessage {
 		return await writer.flush();
 	}
 
-	async decode(reader: Reader): Promise<Error | undefined> {
+	async decode(reader: ReceiveStream): Promise<Error | undefined> {
 		let [len, err] = await reader.readVarint();
 		if (err) {
 			return err;
 		}
-		[this.subscribeId, err] = await reader.readBigVarint();
+		[this.subscribeId, err] = await reader.readVarint();
 		if (err) {
 			return err;
 		}

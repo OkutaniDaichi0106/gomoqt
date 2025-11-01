@@ -134,22 +134,22 @@ import { MAX_VARINT1, MAX_VARINT2, MAX_VARINT4, MAX_VARINT8 } from "./len.ts";
 //     return { buf, wroteLength: bytes.length };
 // }
 
-export interface WriterInit {
+export interface SendStreamInit {
 	stream: WritableStream<Uint8Array>;
 	transfer?: ArrayBufferLike;
-	streamId: bigint;
+	streamId: number;
 }
 
-export class Writer {
+export class SendStream {
 	#writer: WritableStreamDefaultWriter<Uint8Array>;
 	#buf: BytesBuffer;
-	readonly streamId: bigint;
+	readonly id: number;
 
-	constructor(init: WriterInit) {
+	constructor(init: SendStreamInit) {
 		this.#writer = init.stream.getWriter();
 		this.#buf = new BytesBuffer(init.transfer || DefaultBufferPool.acquire(1024));
 
-		this.streamId = init.streamId;
+		this.id = init.streamId;
 	}
 
 	writeUint8(value: number): void {

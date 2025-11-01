@@ -1,4 +1,4 @@
-import { assertEquals } from "../deps.ts";
+import { assertEquals } from "@std/assert";
 import { isValidPrefix, validateTrackPrefix } from "./track_prefix.ts";
 
 Deno.test("TrackPrefix", async (t) => {

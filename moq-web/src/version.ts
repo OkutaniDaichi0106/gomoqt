@@ -1,7 +1,7 @@
-export type Version = bigint;
+export type Version = number;
 
 export const Versions = {
-	DEVELOP: 0xffffff00n as Version,
+	DEVELOP: 0xffffff00 as Version,
 } as const;
 
 export const DEFAULT_VERSION: Version = Versions.DEVELOP;

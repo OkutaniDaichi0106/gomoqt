@@ -1,100 +1,146 @@
-import { assertEquals, assertExists, describe, it } from "../deps.ts";
+import { assertEquals } from "@std/assert";
 import { BiStreamTypes, UniStreamTypes } from "./stream_type.ts";
 
-describe("BiStreamTypes", () => {
-	it("should have correct constant values", () => {
-		assertEquals(BiStreamTypes.SessionStreamType, 0x00);
-		assertEquals(BiStreamTypes.AnnounceStreamType, 0x01);
-		assertEquals(BiStreamTypes.SubscribeStreamType, 0x02);
-	});
+// Test BiStreamTypes constant values
+Deno.test("BiStreamTypes - Constant Values", async (t) => {
+	const cases = {
+		"SessionStreamType should be 0x00": {
+			actual: BiStreamTypes.SessionStreamType,
+			expected: 0x00,
+		},
+		"AnnounceStreamType should be 0x01": {
+			actual: BiStreamTypes.AnnounceStreamType,
+			expected: 0x01,
+		},
+		"SubscribeStreamType should be 0x02": {
+			actual: BiStreamTypes.SubscribeStreamType,
+			expected: 0x02,
+		},
+	};
 
-	it("should be readonly constants", () => {
-		// The constants should be defined
-		assertExists(BiStreamTypes);
+	for (const [name, c] of Object.entries(cases)) {
+		await t.step(name, () => {
+			assertEquals(c.actual, c.expected);
+		});
+	}
+});
+
+// Test BiStreamTypes properties
+Deno.test("BiStreamTypes - Properties", async (t) => {
+	await t.step("should be an object", () => {
 		assertEquals(typeof BiStreamTypes, "object");
-
-		// Verify all expected properties exist
-		expect(BiStreamTypes).toHaveProperty("SessionStreamType");
-		expect(BiStreamTypes).toHaveProperty("AnnounceStreamType");
-		expect(BiStreamTypes).toHaveProperty("SubscribeStreamType");
 	});
 
-	it("should have correct types", () => {
+	await t.step("should have all required properties", () => {
+		const properties = ["SessionStreamType", "AnnounceStreamType", "SubscribeStreamType"];
+		for (const prop of properties) {
+			assertEquals(prop in BiStreamTypes, true);
+		}
+	});
+
+	await t.step("all values should be numbers", () => {
 		assertEquals(typeof BiStreamTypes.SessionStreamType, "number");
 		assertEquals(typeof BiStreamTypes.AnnounceStreamType, "number");
 		assertEquals(typeof BiStreamTypes.SubscribeStreamType, "number");
 	});
 
-	it("should have unique values", () => {
+	await t.step("should have unique values", () => {
 		const values = Object.values(BiStreamTypes);
 		const uniqueValues = new Set(values);
 		assertEquals(uniqueValues.size, values.length);
 	});
 });
 
-describe("UniStreamTypes", () => {
-	it("should have correct constant values", () => {
-		assertEquals(UniStreamTypes.GroupStreamType, 0x00);
-	});
+// Test UniStreamTypes constant values
+Deno.test("UniStreamTypes - Constant Values", () => {
+	assertEquals(UniStreamTypes.GroupStreamType, 0x00);
+});
 
-	it("should be readonly constants", () => {
-		// The constants should be defined
-		assertExists(UniStreamTypes);
+// Test UniStreamTypes properties
+Deno.test("UniStreamTypes - Properties", async (t) => {
+	await t.step("should be an object", () => {
 		assertEquals(typeof UniStreamTypes, "object");
-
-		// Verify all expected properties exist
-		expect(UniStreamTypes).toHaveProperty("GroupStreamType");
 	});
 
-	it("should have correct types", () => {
+	await t.step("should have GroupStreamType property", () => {
+		assertEquals("GroupStreamType" in UniStreamTypes, true);
+	});
+
+	await t.step("GroupStreamType should be a number", () => {
 		assertEquals(typeof UniStreamTypes.GroupStreamType, "number");
 	});
 });
 
-describe("Stream Type Integration", () => {
-	it("should export both BiStreamTypes and UniStreamTypes", () => {
-		assertExists(BiStreamTypes);
-		assertExists(UniStreamTypes);
-	});
+// Test Stream Type Integration
+Deno.test("Stream Type Integration - Namespace Overlap", () => {
+	// BiStreamTypes and UniStreamTypes can have overlapping values
+	// since they represent different categories of streams
+	assertEquals(BiStreamTypes.SessionStreamType, 0x00);
+	assertEquals(UniStreamTypes.GroupStreamType, 0x00);
+	// This is expected and correct - they are in different namespaces
+});
 
-	it("should have different constant spaces for bi and uni streams", () => {
-		// BiStreamTypes and UniStreamTypes can have overlapping values
-		// since they represent different categories of streams
-		assertEquals(BiStreamTypes.SessionStreamType, 0x00);
-		assertEquals(UniStreamTypes.GroupStreamType, 0x00);
-		// This is expected and correct - they are in different namespaces
-	});
+// Test switch statement compatibility
+Deno.test("Stream Type Integration - Switch Statement Compatibility", async (t) => {
+	const testBiStreamType = (type: number): string => {
+		switch (type) {
+			case BiStreamTypes.SessionStreamType:
+				return "session";
+			case BiStreamTypes.AnnounceStreamType:
+				return "announce";
+			case BiStreamTypes.SubscribeStreamType:
+				return "subscribe";
+			default:
+				return "unknown";
+		}
+	};
 
-	it("should be usable in switch statements", () => {
-		// Test that the constants can be used in switch statements
-		const testBiStreamType = (type: number): string => {
-			switch (type) {
-				case BiStreamTypes.SessionStreamType:
-					return "session";
-				case BiStreamTypes.AnnounceStreamType:
-					return "announce";
-				case BiStreamTypes.SubscribeStreamType:
-					return "subscribe";
-				default:
-					return "unknown";
-			}
+	const testUniStreamType = (type: number): string => {
+		switch (type) {
+			case UniStreamTypes.GroupStreamType:
+				return "group";
+			default:
+				return "unknown";
+		}
+	};
+
+	await t.step("BiStreamTypes - switch statement cases", async (t) => {
+		const biCases = {
+			"SessionStreamType returns 'session'": {
+				input: BiStreamTypes.SessionStreamType,
+				expected: "session",
+			},
+			"AnnounceStreamType returns 'announce'": {
+				input: BiStreamTypes.AnnounceStreamType,
+				expected: "announce",
+			},
+			"SubscribeStreamType returns 'subscribe'": {
+				input: BiStreamTypes.SubscribeStreamType,
+				expected: "subscribe",
+			},
+			"unknown value returns 'unknown'": { input: 999, expected: "unknown" },
 		};
 
-		const testUniStreamType = (type: number): string => {
-			switch (type) {
-				case UniStreamTypes.GroupStreamType:
-					return "group";
-				default:
-					return "unknown";
-			}
+		for (const [name, c] of Object.entries(biCases)) {
+			await t.step(name, () => {
+				assertEquals(testBiStreamType(c.input), c.expected);
+			});
+		}
+	});
+
+	await t.step("UniStreamTypes - switch statement cases", async (t) => {
+		const uniCases = {
+			"GroupStreamType returns 'group'": {
+				input: UniStreamTypes.GroupStreamType,
+				expected: "group",
+			},
+			"unknown value returns 'unknown'": { input: 999, expected: "unknown" },
 		};
 
-		expect(testBiStreamType(BiStreamTypes.SessionStreamType)).toBe("session");
-		expect(testBiStreamType(BiStreamTypes.AnnounceStreamType)).toBe("announce");
-		expect(testBiStreamType(BiStreamTypes.SubscribeStreamType)).toBe("subscribe");
-		expect(testBiStreamType(999)).toBe("unknown");
-
-		expect(testUniStreamType(UniStreamTypes.GroupStreamType)).toBe("group");
-		expect(testUniStreamType(999)).toBe("unknown");
+		for (const [name, c] of Object.entries(uniCases)) {
+			await t.step(name, () => {
+				assertEquals(testUniStreamType(c.input), c.expected);
+			});
+		}
 	});
 });

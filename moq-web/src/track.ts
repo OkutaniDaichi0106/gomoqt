@@ -1,8 +1,7 @@
 import { GroupReader, GroupWriter } from "./group_stream.ts";
 import type { Info } from "./info.ts";
-import { Queue } from "./internal.ts";
-import type { Context } from "../deps.ts";
-import { ContextCancelledError, watchPromise, withCancel } from "../deps.ts";
+import type { Context } from "@okudai/golikejs/context";
+import { watchPromise } from "@okudai/golikejs/context";
 import type {
 	ReceiveSubscribeStream,
 	SendSubscribeStream,
@@ -14,7 +13,7 @@ import { GroupMessage } from "./internal/message/mod.ts";
 import type { BroadcastPath } from "./broadcast_path.ts";
 import type { SubscribeErrorCode } from "./error.ts";
 import { PublishAbortedErrorCode } from "./error.ts";
-import type { GroupSequence } from ".";
+import type { GroupSequence } from "./alias.ts";
 
 export class TrackWriter {
 	broadcastPath: BroadcastPath;
@@ -22,7 +21,6 @@ export class TrackWriter {
 	#subscribeStream: ReceiveSubscribeStream;
 	#openUniStreamFunc: () => Promise<[Writer, undefined] | [undefined, Error]>;
 	#groups: GroupWriter[] = [];
-	readonly streamId: bigint;
 
 	constructor(
 		broadcastPath: BroadcastPath,
@@ -34,14 +32,13 @@ export class TrackWriter {
 		this.trackName = trackName;
 		this.#subscribeStream = subscribeStream;
 		this.#openUniStreamFunc = openUniStreamFunc;
-		this.streamId = subscribeStream.streamId;
 	}
 
 	get context(): Context {
 		return this.#subscribeStream.context;
 	}
 
-	get subscribeId(): bigint {
+	get subscribeId(): number {
 		return this.#subscribeStream.subscribeId;
 	}
 
@@ -86,6 +83,8 @@ export class TrackWriter {
 		if (err) {
 			return err;
 		}
+
+		return undefined;
 	}
 
 	async closeWithError(code: SubscribeErrorCode, message: string): Promise<void> {
@@ -111,7 +110,6 @@ export class TrackReader {
 	#subscribeStream: SendSubscribeStream;
 	#acceptFunc: (ctx: Promise<void>) => Promise<[Reader, GroupMessage] | undefined>;
 	#onCloseFunc: () => void;
-	readonly streamId: bigint;
 
 	constructor(
 		subscribeStream: SendSubscribeStream,
@@ -121,7 +119,6 @@ export class TrackReader {
 		this.#subscribeStream = subscribeStream;
 		this.#acceptFunc = acceptFunc;
 		this.#onCloseFunc = onCloseFunc;
-		this.streamId = subscribeStream.streamId;
 	}
 
 	async acceptGroup(

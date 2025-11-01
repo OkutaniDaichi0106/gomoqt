@@ -1,8 +1,8 @@
 export class Extensions {
 	entries: Map<number, Uint8Array>;
 
-	constructor() {
-		this.entries = new Map<number, Uint8Array>();
+	constructor(entries?: Map<number, Uint8Array>) {
+		this.entries = entries ? new Map(entries) : new Map<number, Uint8Array>();
 	}
 
 	has(id: number): boolean {

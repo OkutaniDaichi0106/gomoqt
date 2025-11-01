@@ -1,9 +1,9 @@
 import { assertEquals } from "@std/assert";
-import { Writer } from "./writer.ts";
+import { SendStream } from "./writer.ts";
 import { Reader } from "./reader.ts";
 
 // Helper function to create isolated writer/reader pair
-function createIsolatedStreams(): { writer: Writer; reader: Reader; cleanup: () => Promise<void> } {
+function createIsolatedStreams(): { writer: SendStream; reader: Reader; cleanup: () => Promise<void> } {
 	const chunks: Uint8Array[] = [];
 
 	const writableStream = new WritableStream<Uint8Array>({
@@ -12,7 +12,7 @@ function createIsolatedStreams(): { writer: Writer; reader: Reader; cleanup: () 
 		},
 	});
 
-	const writer = new Writer({ stream: writableStream, transfer: undefined, streamId: 0n });
+	const writer = new SendStream({ stream: writableStream, transfer: undefined, streamId: 0n });
 
 	let chunkIndex = 0;
 	const readableStream = new ReadableStream<Uint8Array>({
@@ -200,14 +200,14 @@ Deno.test("Reader/Writer", async (t) => {
 	});
 });
 import { assertEquals } from "@std/assert";
-import { Writer } from "./writer.ts";
+import { SendStream } from "./writer.ts";
 import { Reader } from "./reader.ts";
 
 // Helper function to create isolated writer/reader pair
-function createIsolatedStreams(): { writer: Writer; reader: Reader; cleanup: () => Promise<void> } {
+function createIsolatedStreams(): { writer: SendStream; reader: Reader; cleanup: () => Promise<void> } {
 	// Use a TransformStream to connect writer -> reader synchronously
 	const ts = new TransformStream<Uint8Array, Uint8Array>();
-	const writer = new Writer({ stream: ts.writable, transfer: undefined, streamId: 0n });
+	const writer = new SendStream({ stream: ts.writable, transfer: undefined, streamId: 0n });
 	const reader = new Reader({ stream: ts.readable, transfer: undefined, streamId: 0n });
 
 	return {

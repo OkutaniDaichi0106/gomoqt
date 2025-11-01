@@ -3,15 +3,11 @@ package message
 import (
 	"errors"
 	"io"
-
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 )
 
-type GroupSequence = protocol.GroupSequence
-
 type GroupMessage struct {
-	SubscribeID   SubscribeID
-	GroupSequence GroupSequence
+	SubscribeID   uint64
+	GroupSequence uint64
 }
 
 func (g GroupMessage) Len() int {
@@ -29,8 +25,8 @@ func (g GroupMessage) Encode(w io.Writer) error {
 	defer pool.Put(b)
 
 	b, _ = WriteVarint(b, uint64(msgLen))
-	b, _ = WriteVarint(b, uint64(g.SubscribeID))
-	b, _ = WriteVarint(b, uint64(g.GroupSequence))
+	b, _ = WriteVarint(b, g.SubscribeID)
+	b, _ = WriteVarint(b, g.GroupSequence)
 
 	_, err := w.Write(b)
 
@@ -55,14 +51,14 @@ func (g *GroupMessage) Decode(src io.Reader) error {
 	if err != nil {
 		return err
 	}
-	g.SubscribeID = SubscribeID(num)
+	g.SubscribeID = num
 	b = b[n:]
 
 	num, n, err = ReadVarint(b)
 	if err != nil {
 		return err
 	}
-	g.GroupSequence = GroupSequence(num)
+	g.GroupSequence = num
 	b = b[n:]
 
 	if len(b) != 0 {

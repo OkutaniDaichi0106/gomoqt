@@ -339,15 +339,20 @@ func acceptSessionStream(acceptCtx context.Context, conn quic.Connection, connLo
 	}
 
 	// Get the client parameters
-	clientParams := &Parameters{scm.Parameters}
+	clientParams := &Extension{scm.Parameters}
 
 	// Get the path parameter
 	path, _ := clientParams.GetString(param_type_path)
 
+	versions := make([]Version, len(scm.SupportedVersions))
+	for i, v := range scm.SupportedVersions {
+		versions[i] = Version(v)
+	}
+
 	req := &SetupRequest{
 		ctx:              stream.Context(),
 		Path:             path,
-		Versions:         scm.SupportedVersions,
+		Versions:         versions,
 		ClientExtensions: clientParams,
 	}
 

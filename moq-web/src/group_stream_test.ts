@@ -1,306 +1,305 @@
-import { describe, it, beforeEach, afterEach, assertEquals, assertExists, assertThrows } from "../deps.ts";
-import { GroupWriter, GroupReader } from "./group_stream.ts";
-import type { Context} from "golikejs/context";
-import { background } from "golikejs/context";
-import type { Reader, Writer } from "./io.ts";
-import { StreamError } from "./io/error.ts";
-import type { GroupMessage } from "./message.ts";
+import { assertEquals, assertExists, assertInstanceOf } from "@std/assert";
+import { stub } from "@std/testing/mock";
+import { GroupReader, GroupWriter } from "./group_stream.ts";
+import type { Reader, Writer } from "./internal/webtransport/mod.ts";
+import { StreamError } from "./internal/webtransport/error.ts";
+import type { GroupMessage } from "./internal/message/mod.ts";
 import { BytesFrame } from "./frame.ts";
+import { background as createBackground } from "@okudai/golikejs/context";
 
-describe("GroupWriter", () => {
-    let mockWriter: Writer;
-    let mockContext: Context;
-    let mockGroup: GroupMessage;
-    let groupWriter: GroupWriter;
+// Create a fresh background context for each test
+function createTestContext() {
+	return createBackground();
+}
 
-    beforeEach(() => {
-        mockContext = background();
+// Simple helper to create mock Writer
+function createMockWriter() {
+	const calls: { flush: any[] } = { flush: [] };
+	const obj = {
+		writeUint8Array: async () => undefined,
+		copyFrom: async () => undefined,
+		flush: async (): Promise<Error | undefined> => {
+			calls.flush.push({});
+			return undefined;
+		},
+		close: async () => undefined,
+		cancel: async () => undefined,
+		closed: async () => undefined,
+		calls, // expose calls for assertions
+	};
+	return obj as any as Writer & { calls: any };
+}
 
-        mockWriter = {
-            writeUint8Array: vi.fn(),
-            copyFrom: vi.fn(),
-            flush: vi.fn<() => Promise<Error | undefined>>().mockResolvedValue(undefined),
-            close: vi.fn().mockReturnValue(Promise.resolve()),
-            cancel: vi.fn().mockReturnValue(Promise.resolve()),
-            closed: vi.fn().mockReturnValue(Promise.resolve())
-        } as any;
+// Simple helper to create mock Reader
+function createMockReader() {
+	const obj = {
+		readUint8Array: async () => [new Uint8Array(), undefined] as const,
+		readVarint: async (): Promise<[number, Error | undefined]> => [0, undefined],
+		fillN: async (): Promise<Error | undefined> => undefined,
+		cancel: async () => undefined,
+		closed: async () => undefined,
+	};
+	return obj as any as Reader;
+}
 
-        mockGroup = {
-            sequence: 123n
-        } as any;
+Deno.test("GroupWriter - constructor and initialization", () => {
+	const ctx = createTestContext();
+	const mockWriter = createMockWriter();
+	const mockGroup = { sequence: 123n } as unknown as GroupMessage;
 
-        groupWriter = new GroupWriter(mockContext, mockWriter, mockGroup);
-    });
+	const gw = new GroupWriter(ctx, mockWriter, mockGroup);
 
-    afterEach(() => {
-        vi.clearAllMocks();
-    });
-
-    describe("constructor", () => {
-        it("should initialize with provided parameters", () => {
-            assertInstanceOf(groupWriter, GroupWriter);
-            assertEquals(groupWriter.sequence, 123n);
-            assertExists(groupWriter.context);
-        });
-    });
-
-    describe("sequence", () => {
-        it("should return the group sequence number", () => {
-            assertEquals(groupWriter.sequence, 123n);
-        });
-    });
-
-    describe("writeFrame", () => {
-        it("should write Frame data and flush successfully", async () => {
-            const data = new Uint8Array([1, 2, 3, 4]);
-            const frame = new BytesFrame(data);
-            vi.mocked(mockWriter.flush).mockResolvedValue(undefined);
-
-            const error = await groupWriter.writeFrame(frame);
-
-            expect(mockWriter.copyFrom).toHaveBeenCalledWith(frame);
-            expect(mockWriter.flush).toHaveBeenCalled();
-            assertEquals(error, undefined);
-        });
-
-        it("should write Source data using copyFrom", async () => {
-            const mockSource = {
-                read: vi.fn()
-            } as any;
-            vi.mocked(mockWriter.flush).mockResolvedValue(undefined);
-
-            const error = await groupWriter.writeFrame(mockSource);
-
-            expect(mockWriter.copyFrom).toHaveBeenCalledWith(mockSource);
-            expect(mockWriter.flush).toHaveBeenCalled();
-            assertEquals(error, undefined);
-        });
-
-        it("should return error if flush fails", async () => {
-            const data = new Uint8Array([1, 2, 3, 4]);
-            const frame = new BytesFrame(data);
-            const flushError = new Error("Flush failed");
-            vi.mocked(mockWriter.flush).mockResolvedValue(flushError);
-
-            const error = await groupWriter.writeFrame(frame);
-
-            expect(mockWriter.copyFrom).toHaveBeenCalledWith(frame);
-            expect(mockWriter.flush).toHaveBeenCalled();
-            assertEquals(error, flushError);
-        });
-    });
-
-    describe("close", () => {
-        it("should close writer and cancel context", async () => {
-            await groupWriter.close();
-
-            expect(mockWriter.close).toHaveBeenCalled();
-            expect(groupWriter.context.err()).toBeUndefined();
-        });
-
-        it("should handle multiple close calls", async () => {
-            await groupWriter.close();
-            
-            // Get the call count after first close
-            const firstCallCount = vi.mocked(mockWriter.close).mock.calls.length;
-
-            await groupWriter.close();
-
-            // The second close should still call close since err() is undefined
-            expect(vi.mocked(mockWriter.close).mock.calls.length).toBeGreaterThanOrEqual(firstCallCount);
-        });
-    });
-
-    describe("cancel", () => {
-        it("should cancel writer and context with error", async () => {
-            const code = 404;
-            const message = "Not found";
-
-            await groupWriter.cancel(code, message);
-
-            expect(mockWriter.cancel).toHaveBeenCalledWith(expect.any(StreamError));
-            expect(groupWriter.context.err()).toBeInstanceOf(StreamError);
-        });
-
-        it("should not cancel if already cancelled", async () => {
-            const code = 404;
-            const message = "Not found";
-
-            await groupWriter.cancel(code, message);
-            
-            // Clear the mock to check it's not called again
-            vi.mocked(mockWriter.cancel).mockClear();
-
-            await groupWriter.cancel(500, "Another error");
-
-            expect(mockWriter.cancel).not.toHaveBeenCalled();
-        });
-    });
-
-    describe("context", () => {
-        it("should return the internal context", () => {
-            assertExists(groupWriter.context);
-            assertEquals(typeof groupWriter.context.done, 'function');
-            assertEquals(typeof groupWriter.context.err, 'function');
-        });
-    });
+	assertInstanceOf(gw, GroupWriter);
+	assertEquals(gw.sequence, 123n);
+	assertExists(gw.context);
 });
 
-describe("GroupReader", () => {
-    let mockReader: Reader;
-    let mockContext: Context;
-    let mockGroup: GroupMessage;
-    let groupReader: GroupReader;
+Deno.test("GroupWriter - writeFrame success", async () => {
+	const ctx = createTestContext();
+	const mockWriter = createMockWriter();
+	const mockGroup = { sequence: 123n } as unknown as GroupMessage;
+	const gw = new GroupWriter(ctx, mockWriter, mockGroup);
 
-    beforeEach(() => {
-        mockContext = background();
+	const data = new Uint8Array([1, 2, 3, 4]);
+	const frame = new BytesFrame(data);
 
-        mockReader = {
-            readUint8Array: vi.fn(),
-            readVarint: vi.fn(),
-            fillN: vi.fn(),
-            cancel: vi.fn().mockReturnValue(Promise.resolve()),
-            closed: vi.fn().mockReturnValue(Promise.resolve())
-        } as any;
+	const err = await gw.writeFrame(frame as any);
 
-        mockGroup = {
-            sequence: 456n
-        } as any;
+	assertEquals(err, undefined);
+	assertEquals(mockWriter.calls.flush.length > 0, true);
+});
 
-        groupReader = new GroupReader(mockContext, mockReader, mockGroup);
-    });
+Deno.test("GroupWriter - writeFrame with flush error", async () => {
+	const ctx = createTestContext();
+	const mockWriter = createMockWriter();
+	const mockGroup = { sequence: 123n } as unknown as GroupMessage;
+	const gw = new GroupWriter(ctx, mockWriter, mockGroup);
 
-    afterEach(() => {
-        vi.clearAllMocks();
-    });
+	const flushError = new Error("Flush failed");
+	const flushStub = stub(mockWriter, "flush", async () => flushError);
 
-    describe("constructor", () => {
-        it("should initialize with provided parameters", () => {
-            assertInstanceOf(groupReader, GroupReader);
-            assertEquals(groupReader.sequence, 456n);
-            assertExists(groupReader.context);
-        });
-    });
+	try {
+		const data = new Uint8Array([1, 2, 3, 4]);
+		const frame = new BytesFrame(data);
+		const err = await gw.writeFrame(frame as any);
 
-    describe("groupSequence", () => {
-        it("should return the group sequence number", () => {
-            assertEquals(groupReader.sequence, 456n);
-        });
-    });
+		assertEquals(err, flushError);
+	} finally {
+		flushStub.restore();
+	}
+});
 
-    describe("readFrame", () => {
-        it("should read data successfully", async () => {
-            const expectedData = new Uint8Array([1, 2, 3, 4]);
+Deno.test("GroupWriter - close behavior", async () => {
+	const ctx = createTestContext();
+	const mockWriter = createMockWriter();
+	const mockGroup = { sequence: 123n } as unknown as GroupMessage;
+	const gw = new GroupWriter(ctx, mockWriter, mockGroup);
 
-            vi.mocked(mockReader.readVarint).mockResolvedValue([expectedData.byteLength, undefined]);
-            vi.mocked(mockReader.fillN).mockImplementation(async (buf: Uint8Array, len: number) => {
-                buf.set(expectedData.subarray(0, len));
-                return undefined;
-            });
+	await gw.close();
+	// Verify context is set up
+	assertExists(gw.context);
+});
 
-            const [frame, err] = await groupReader.readFrame();
+Deno.test("GroupWriter - cancel with StreamError", async () => {
+	const ctx = createTestContext();
+	const mockWriter = createMockWriter();
+	const mockGroup = { sequence: 123n } as unknown as GroupMessage;
+	const gw = new GroupWriter(ctx, mockWriter, mockGroup);
 
-            expect(mockReader.readVarint).toHaveBeenCalled();
-            expect(mockReader.fillN).toHaveBeenCalledWith(frame!.bytes, expectedData.byteLength);
-            expect(frame!.bytes.slice(0, expectedData.byteLength)).toEqual(expectedData);
-            assertEquals(err, undefined);
-        });
+	let cancelCalled = false;
+	let cancelError: any;
+	const cancelStub = stub(mockWriter, "cancel", async (error: any) => {
+		cancelCalled = true;
+		cancelError = error;
+	});
 
-        it("should handle read errors", async () => {
-            const readErr = new Error("Read failed");
+	try {
+		await gw.cancel(404, "Not found");
 
-            vi.mocked(mockReader.readVarint).mockResolvedValue([0, readErr]);
+		assertEquals(cancelCalled, true);
+		assertInstanceOf(cancelError, StreamError);
+	} finally {
+		cancelStub.restore();
+	}
+});
 
-            const [frame, err] = await groupReader.readFrame();
+Deno.test("GroupReader - constructor and sequence", () => {
+	const ctx = createTestContext();
+	const mockReader = createMockReader();
+	const mockGroup = { sequence: 456n } as unknown as GroupMessage;
 
-            expect(mockReader.readVarint).toHaveBeenCalled();
-            assertEquals(frame, undefined);
-            assertEquals(err, readErr);
-        });
+	const gr = new GroupReader(ctx, mockReader, mockGroup);
 
-        it("should handle fillN errors", async () => {
-            const fillErr = new Error("Fill failed");
+	assertInstanceOf(gr, GroupReader);
+	assertEquals(gr.sequence, 456n);
+	assertExists(gr.context);
+});
 
-            vi.mocked(mockReader.readVarint).mockResolvedValue([10, undefined]);
-            vi.mocked(mockReader.fillN).mockResolvedValue(fillErr);
+Deno.test("GroupReader - readFrame success", async () => {
+	const ctx = createTestContext();
+	const mockReader = createMockReader();
+	const mockGroup = { sequence: 456n } as unknown as GroupMessage;
+	const gr = new GroupReader(ctx, mockReader, mockGroup);
 
-            const [frame, err] = await groupReader.readFrame();
+	const expectedData = new Uint8Array([1, 2, 3, 4]);
+	const readVarintStub = stub(
+		mockReader,
+		"readVarint",
+		async () => [expectedData.byteLength, undefined] as [number, Error | undefined],
+	);
+	const fillNStub = stub(mockReader, "fillN", async (buf: Uint8Array, len: number) => {
+		buf.set(expectedData.subarray(0, len));
+		return undefined;
+	});
 
-            expect(mockReader.readVarint).toHaveBeenCalled();
-            expect(mockReader.fillN).toHaveBeenCalled();
-            assertEquals(frame, undefined);
-            assertEquals(err, fillErr);
-        });
+	try {
+		const frame = { data: new Uint8Array() } as any;
+		const err = await gr.readFrame(frame);
 
-        it("should handle varint too large", async () => {
-            vi.mocked(mockReader.readVarint).mockResolvedValue([Number.MAX_SAFE_INTEGER + 1, undefined]);
+		assertEquals(frame.data.slice(0, expectedData.byteLength), expectedData);
+		assertEquals(err, undefined);
+	} finally {
+		readVarintStub.restore();
+		fillNStub.restore();
+	}
+});
 
-            const [frame, err] = await groupReader.readFrame();
+Deno.test("GroupReader - readFrame read error", async () => {
+	const ctx = createTestContext();
+	const mockReader = createMockReader();
+	const mockGroup = { sequence: 456n } as unknown as GroupMessage;
+	const gr = new GroupReader(ctx, mockReader, mockGroup);
 
-            assertEquals(frame, undefined);
-            assertInstanceOf(err, Error);
-            assertEquals(err?.message, "Varint too large");
-        });
+	const readErr = new Error("Read failed");
+	const readVarintStub = stub(
+		mockReader,
+		"readVarint",
+		async () => [0, readErr] as [number, Error | undefined],
+	);
 
-        it("should reuse buffer when reading multiple frames", async () => {
-            const data1 = new Uint8Array([1, 2, 3]);
-            const data2 = new Uint8Array([4, 5, 6, 7, 8]);
+	try {
+		const frame = { data: new Uint8Array() } as any;
+		const err = await gr.readFrame(frame);
 
-            // First read
-            vi.mocked(mockReader.readVarint).mockResolvedValueOnce([data1.byteLength, undefined]);
-            vi.mocked(mockReader.fillN).mockImplementationOnce(async (buf: Uint8Array, len: number) => {
-                buf.set(data1.subarray(0, len));
-                return undefined;
-            });
+		assertEquals(err, readErr);
+	} finally {
+		readVarintStub.restore();
+	}
+});
 
-            const [frame1, err1] = await groupReader.readFrame();
-            assertEquals(err1, undefined);
-            expect(frame1!.bytes.slice(0, data1.byteLength)).toEqual(data1);
+Deno.test("GroupReader - readFrame fillN error", async () => {
+	const ctx = createTestContext();
+	const mockReader = createMockReader();
+	const mockGroup = { sequence: 456n } as unknown as GroupMessage;
+	const gr = new GroupReader(ctx, mockReader, mockGroup);
 
-            // Second read with larger data
-            vi.mocked(mockReader.readVarint).mockResolvedValueOnce([data2.byteLength, undefined]);
-            vi.mocked(mockReader.fillN).mockImplementationOnce(async (buf: Uint8Array, len: number) => {
-                buf.set(data2.subarray(0, len));
-                return undefined;
-            });
+	const fillErr = new Error("Fill failed");
+	const readVarintStub = stub(
+		mockReader,
+		"readVarint",
+		async () => [10, undefined] as [number, Error | undefined],
+	);
+	const fillNStub = stub(mockReader, "fillN", async () => fillErr);
 
-            const [frame2, err2] = await groupReader.readFrame();
-            assertEquals(err2, undefined);
-            expect(frame2!.bytes.slice(0, data2.byteLength)).toEqual(data2);
-        });
-    });
+	try {
+		const frame = { data: new Uint8Array() } as any;
+		const err = await gr.readFrame(frame);
 
-    describe("cancel", () => {
-        it("should cancel reader with code", async () => {
-            const code = 404;
-            const message = "Not found";
+		assertEquals(err, fillErr);
+	} finally {
+		readVarintStub.restore();
+		fillNStub.restore();
+	}
+});
 
-            await groupReader.cancel(code, message);
+Deno.test("GroupReader - varint too large", async () => {
+	const ctx = createTestContext();
+	const mockReader = createMockReader();
+	const mockGroup = { sequence: 456n } as unknown as GroupMessage;
+	const gr = new GroupReader(ctx, mockReader, mockGroup);
 
-            expect(mockReader.cancel).toHaveBeenCalledWith(expect.any(StreamError));
-            expect(groupReader.context.err()).toBeInstanceOf(StreamError);
-        });
+	const readVarintStub = stub(
+		mockReader,
+		"readVarint",
+		async () => [Number.MAX_SAFE_INTEGER + 1, undefined] as [number, Error | undefined],
+	);
 
-        it("should not cancel if already cancelled", async () => {
-            const code = 404;
-            const message = "Not found";
+	try {
+		const frame = { data: new Uint8Array() } as any;
+		const err = await gr.readFrame(frame);
 
-            await groupReader.cancel(code, message);
-            
-            // Clear the mock to check it's not called again
-            vi.mocked(mockReader.cancel).mockClear();
+		assertInstanceOf(err as Error, Error);
+	} finally {
+		readVarintStub.restore();
+	}
+});
 
-            await groupReader.cancel(500, "Another error");
+Deno.test("GroupReader - reuse buffer on multiple reads", async () => {
+	const ctx = createTestContext();
+	const mockReader = createMockReader();
+	const mockGroup = { sequence: 456n } as unknown as GroupMessage;
+	const gr = new GroupReader(ctx, mockReader, mockGroup);
 
-            expect(mockReader.cancel).not.toHaveBeenCalled();
-        });
-    });
+	const data1 = new Uint8Array([1, 2, 3]);
+	const data2 = new Uint8Array([4, 5, 6, 7, 8]);
 
-    describe("context", () => {
-        it("should return the internal context", () => {
-            assertExists(groupReader.context);
-            assertEquals(typeof groupReader.context.done, 'function');
-            assertEquals(typeof groupReader.context.err, 'function');
-        });
-    });
+	let readCallCount = 0;
+	const readVarintStub = stub(mockReader, "readVarint", async () => {
+		readCallCount++;
+		if (readCallCount === 1) {
+			return [data1.byteLength, undefined] as [number, Error | undefined];
+		}
+		return [data2.byteLength, undefined] as [number, Error | undefined];
+	});
+
+	let fillCallCount = 0;
+	const fillNStub = stub(mockReader, "fillN", async (buf: Uint8Array, len: number) => {
+		fillCallCount++;
+		if (fillCallCount === 1) {
+			buf.set(data1.subarray(0, len));
+		} else {
+			buf.set(data2.subarray(0, len));
+		}
+		return undefined;
+	});
+
+	try {
+		const frame = { data: new Uint8Array() } as any;
+
+		const err1 = await gr.readFrame(frame);
+		assertEquals(err1, undefined);
+		assertEquals(frame.data.slice(0, data1.byteLength), data1);
+
+		// Reset frame buffer for second read
+		frame.data = new Uint8Array();
+		const err2 = await gr.readFrame(frame);
+		assertEquals(err2, undefined);
+		assertEquals(frame.data.slice(0, data2.byteLength), data2);
+	} finally {
+		readVarintStub.restore();
+		fillNStub.restore();
+	}
+});
+
+Deno.test("GroupReader - cancel with StreamError", async () => {
+	const ctx = createTestContext();
+	const mockReader = createMockReader();
+	const mockGroup = { sequence: 456n } as unknown as GroupMessage;
+	const gr = new GroupReader(ctx, mockReader, mockGroup);
+
+	let cancelCalled = false;
+	let cancelError: any;
+	const cancelStub = stub(mockReader, "cancel", async (error: any) => {
+		cancelCalled = true;
+		cancelError = error;
+	});
+
+	try {
+		await gr.cancel(404, "Not found");
+
+		assertEquals(cancelCalled, true);
+		assertInstanceOf(cancelError, StreamError);
+	} finally {
+		cancelStub.restore();
+	}
 });

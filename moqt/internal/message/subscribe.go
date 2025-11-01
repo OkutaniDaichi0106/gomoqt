@@ -3,12 +3,8 @@ package message
 import (
 	"io"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/quic-go/quic-go/quicvarint"
 )
-
-type SubscribeID = protocol.SubscribeID
-type TrackPriority = protocol.TrackPriority
 
 /*
 * SUBSCRIBE Message {
@@ -21,12 +17,12 @@ type TrackPriority = protocol.TrackPriority
 * }
  */
 type SubscribeMessage struct {
-	SubscribeID      SubscribeID
+	SubscribeID      uint64
 	BroadcastPath    string
 	TrackName        string
-	TrackPriority    TrackPriority
-	MinGroupSequence GroupSequence
-	MaxGroupSequence GroupSequence
+	TrackPriority    uint8
+	MinGroupSequence uint64
+	MaxGroupSequence uint64
 }
 
 func (s SubscribeMessage) Len() int {
@@ -79,7 +75,7 @@ func (s *SubscribeMessage) Decode(src io.Reader) error {
 	if err != nil {
 		return err
 	}
-	s.SubscribeID = SubscribeID(num)
+	s.SubscribeID = num
 	b = b[n:]
 
 	str, n, err := ReadString(b)
@@ -100,21 +96,21 @@ func (s *SubscribeMessage) Decode(src io.Reader) error {
 	if err != nil {
 		return err
 	}
-	s.TrackPriority = TrackPriority(num)
+	s.TrackPriority = uint8(num)
 	b = b[n:]
 
 	num, n, err = ReadVarint(b)
 	if err != nil {
 		return err
 	}
-	s.MinGroupSequence = GroupSequence(num)
+	s.MinGroupSequence = num
 	b = b[n:]
 
 	num, n, err = ReadVarint(b)
 	if err != nil {
 		return err
 	}
-	s.MaxGroupSequence = GroupSequence(num)
+	s.MaxGroupSequence = num
 	b = b[n:]
 
 	if len(b) != 0 {

@@ -277,31 +277,31 @@ func TestReadStringArray(t *testing.T) {
 func TestReadParameters(t *testing.T) {
 	tests := map[string]struct {
 		input    []byte
-		expected Parameters
+		expected map[uint64][]byte
 		n        int
 		wantErr  bool
 	}{
 		"empty parameters": {
 			input:    []byte{0x00},
-			expected: Parameters{},
+			expected: map[uint64][]byte{},
 			n:        1,
 			wantErr:  false,
 		},
 		"single parameter": {
 			input:    []byte{0x01, 0x01, 0x03, 0x61, 0x62, 0x63}, // {1: "abc"}
-			expected: Parameters{1: []byte("abc")},
+			expected: map[uint64][]byte{1: []byte("abc")},
 			n:        6,
 			wantErr:  false,
 		},
 		"multiple parameters": {
 			input:    []byte{0x02, 0x01, 0x03, 0x61, 0x62, 0x63, 0x02, 0x03, 0x64, 0x65, 0x66}, // {1: "abc", 2: "def"}
-			expected: Parameters{1: []byte("abc"), 2: []byte("def")},
+			expected: map[uint64][]byte{1: []byte("abc"), 2: []byte("def")},
 			n:        11,
 			wantErr:  false,
 		},
 		"empty value": {
 			input:    []byte{0x01, 0x01, 0x00}, // {1: ""}
-			expected: Parameters{1: []byte{}},
+			expected: map[uint64][]byte{1: []byte{}},
 			n:        3,
 			wantErr:  false,
 		},

@@ -30,9 +30,9 @@ func TestSubscribeUpdateMessage_EncodeDecode(t *testing.T) {
 		},
 		"max values": {
 			input: message.SubscribeUpdateMessage{
-				TrackPriority:    message.TrackPriority(^byte(0)),
-				MinGroupSequence: message.GroupSequence(1<<(64-2) - 1), // maxVarInt8
-				MaxGroupSequence: message.GroupSequence(1<<(64-2) - 1), // maxVarInt8
+				TrackPriority:    0,
+				MinGroupSequence: 1<<(64-2) - 1, // maxVarInt8
+				MaxGroupSequence: 1<<(64-2) - 1, // maxVarInt8
 			},
 		},
 		"zero values": {

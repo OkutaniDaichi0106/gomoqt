@@ -62,10 +62,10 @@ func ExampleClient() {
 	fmt.Println("Connected to MOQ server")
 }
 
-// ExampleParameters demonstrates how to work with MOQ protocol parameters.
-func ExampleParameters() {
+// ExampleExtension demonstrates how to work with MOQ protocol parameters.
+func ExampleExtension() {
 	// Create new parameters
-	params := moqt.NewParameters()
+	params := moqt.NewExtension()
 
 	// Set various parameter types
 	params.SetUint(1, 42)

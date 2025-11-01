@@ -86,7 +86,7 @@ type SetupHandler interface {
 type SetupRequest struct {
 	Path             string
 	Versions         []Version
-	ClientExtensions *Parameters
+	ClientExtensions *Extension
 
 	ctx context.Context
 }
@@ -97,7 +97,7 @@ func (r *SetupRequest) Context() context.Context {
 
 type SetupResponseWriter interface {
 	SelectVersion(v Version) error
-	SetExtensions(extensions *Parameters)
+	SetExtensions(extensions *Extension)
 	Reject(code SessionErrorCode) error
 }
 

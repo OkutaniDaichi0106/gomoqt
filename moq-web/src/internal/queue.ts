@@ -10,7 +10,7 @@ export class Queue<T> {
 		await this.#mutex.lock();
 		try {
 			this.#items.push(item);
-			
+
 			if (this.#pending) {
 				const [resolve] = this.#pending;
 				this.#pending = undefined;
@@ -42,7 +42,7 @@ export class Queue<T> {
 					this.#mutex.unlock();
 					return undefined;
 				}
-				
+
 				// No items available - set up waiting if not already waiting
 				if (!this.#pending) {
 					let resolve: () => void;
@@ -53,10 +53,10 @@ export class Queue<T> {
 				}
 
 				const [, chan] = this.#pending;
-				
+
 				// Release lock before waiting
 				this.#mutex.unlock();
-				
+
 				await chan;
 			} catch (e) {
 				this.#mutex.unlock();

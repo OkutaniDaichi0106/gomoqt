@@ -85,9 +85,9 @@ func (sss *sendSubscribeStream) UpdateSubscribe(newConfig *TrackConfig) error {
 
 	// Send the message first before updating config
 	sum := message.SubscribeUpdateMessage{
-		TrackPriority:    message.TrackPriority(newConfig.TrackPriority),
-		MinGroupSequence: message.GroupSequence(newConfig.MinGroupSequence),
-		MaxGroupSequence: message.GroupSequence(newConfig.MaxGroupSequence),
+		TrackPriority:    uint8(newConfig.TrackPriority),
+		MinGroupSequence: uint64(newConfig.MinGroupSequence),
+		MaxGroupSequence: uint64(newConfig.MaxGroupSequence),
 	}
 	err := sum.Encode(sss.stream)
 	if err != nil {

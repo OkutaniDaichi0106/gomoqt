@@ -133,7 +133,7 @@ func ReadStringArray(b []byte) ([]string, int, error) {
 }
 
 // Read parameters from the reader
-func ReadParameters(b []byte) (Parameters, int, error) {
+func ReadParameters(b []byte) (map[uint64][]byte, int, error) {
 	count, total, err := ReadVarint(b)
 	if err != nil {
 		return nil, 0, err
@@ -145,7 +145,7 @@ func ReadParameters(b []byte) (Parameters, int, error) {
 
 	b = b[total:]
 
-	params := make(Parameters, count)
+	params := make(map[uint64][]byte, count)
 	for range count {
 		key, n, err := ReadVarint(b)
 		if err != nil {

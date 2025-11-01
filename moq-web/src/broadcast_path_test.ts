@@ -1,104 +1,101 @@
-import { describe, it, beforeEach, afterEach, assertEquals, assertExists, assertThrows } from "../deps.ts";
-import type { BroadcastPath} from './broadcast_path.ts';
-import { isValidBroadcastPath, validateBroadcastPath, extension } from './broadcast_path.ts';
+import { assertEquals, assertExists, assertThrows } from "../deps.ts";
+import type { BroadcastPath } from "./broadcast_path.ts";
+import { extension, isValidBroadcastPath, validateBroadcastPath } from "./broadcast_path.ts";
 
-describe('BroadcastPath', () => {
-    describe('isValidBroadcastPath', () => {
-        it('should return true for valid paths', () => {
-            expect(isValidBroadcastPath('/')).toBe(true);
-            expect(isValidBroadcastPath('/test')).toBe(true);
-            expect(isValidBroadcastPath('/test/path')).toBe(true);
-            expect(isValidBroadcastPath('/alice.json')).toBe(true);
-            expect(isValidBroadcastPath('/video/stream')).toBe(true);
-            expect(isValidBroadcastPath('/path/with/multiple/segments')).toBe(true);
-        });
+Deno.test("BroadcastPath - isValidBroadcastPath", async (t) => {
+	await t.step("returns true for valid paths", () => {
+		assertEquals(isValidBroadcastPath("/"), true);
+		assertEquals(isValidBroadcastPath("/test"), true);
+		assertEquals(isValidBroadcastPath("/test/path"), true);
+		assertEquals(isValidBroadcastPath("/alice.json"), true);
+		assertEquals(isValidBroadcastPath("/video/stream"), true);
+		assertEquals(isValidBroadcastPath("/path/with/multiple/segments"), true);
+	});
 
-        it('should return false for invalid paths', () => {
-            expect(isValidBroadcastPath('')).toBe(false);
-            expect(isValidBroadcastPath('test')).toBe(false);
-            expect(isValidBroadcastPath('test/path')).toBe(false);
-            expect(isValidBroadcastPath('alice.json')).toBe(false);
-        });
-    });
-
-    describe('validateBroadcastPath', () => {
-        it('should return path for valid paths', () => {
-            expect(validateBroadcastPath('/')).toBe('/');
-            expect(validateBroadcastPath('/test')).toBe('/test');
-            expect(validateBroadcastPath('/test/path')).toBe('/test/path');
-            expect(validateBroadcastPath('/alice.json')).toBe('/alice.json');
-        });
-
-        it('should throw error for invalid paths', () => {
-            expect(() => validateBroadcastPath('')).toThrow('Invalid broadcast path: "". Must start with "/"');
-            expect(() => validateBroadcastPath('test')).toThrow('Invalid broadcast path: "test". Must start with "/"');
-            expect(() => validateBroadcastPath('test/path')).toThrow('Invalid broadcast path: "test/path". Must start with "/"');
-            expect(() => validateBroadcastPath('alice.json')).toThrow('Invalid broadcast path: "alice.json". Must start with "/"');
-        });
-    });
-
-
-    describe('extension', () => {
-        it('should return correct extension for paths with extensions', () => {
-            expect(extension('/alice.json' as BroadcastPath)).toBe('.json');
-            expect(extension('/video/stream.mp4' as BroadcastPath)).toBe('.mp4');
-            expect(extension('/file.min.js' as BroadcastPath)).toBe('.js');
-            expect(extension('/test/path.backup.mp4' as BroadcastPath)).toBe('.mp4');
-            expect(extension('/test/.hidden.txt' as BroadcastPath)).toBe('.txt');
-            expect(extension('/test/path.' as BroadcastPath)).toBe('.');
-            expect(extension('file.txt' as BroadcastPath)).toBe('.txt');
-        });
-
-        it('should return empty string for paths without extensions', () => {
-            expect(extension('/test/path' as BroadcastPath)).toBe('');
-            expect(extension('/video/stream' as BroadcastPath)).toBe('');
-            expect(extension('/' as BroadcastPath)).toBe('');
-            expect(extension('' as BroadcastPath)).toBe('');
-        });
-
-        it('should handle edge cases correctly', () => {
-            // Extension in directory name but not file
-            expect(extension('/test.dir/file' as BroadcastPath)).toBe('');
-            // Multiple dots in directory and file
-            expect(extension('/test.dir/file.ext' as BroadcastPath)).toBe('.ext');
-            // Hidden files
-            expect(extension('/.hidden' as BroadcastPath)).toBe('');
-        });
-    });
-
-    describe('type safety', () => {
-        it('should allow BroadcastPath to be used as string', () => {
-            const path: BroadcastPath = validateBroadcastPath('/test/path');
-            assertEquals(typeof path, 'string');
-            expect(path.startsWith('/')).toBe(true);
-            expect(path.length).toBeGreaterThan(0);
-        });
-
-        it('should allow assignment from validated paths', () => {
-            const validatedPath = validateBroadcastPath('/test/path');
-            const path: BroadcastPath = validatedPath;
-            assertEquals(path, '/test/path');
-        });
-    });
+	await t.step("returns false for invalid paths", () => {
+		assertEquals(isValidBroadcastPath(""), false);
+		assertEquals(isValidBroadcastPath("test"), false);
+		assertEquals(isValidBroadcastPath("test/path"), false);
+		assertEquals(isValidBroadcastPath("alice.json"), false);
+	});
 });
 
+Deno.test("BroadcastPath - validateBroadcastPath", async (t) => {
+	await t.step("returns path for valid paths", () => {
+		assertEquals(validateBroadcastPath("/"), "/");
+		assertEquals(validateBroadcastPath("/test"), "/test");
+		assertEquals(validateBroadcastPath("/test/path"), "/test/path");
+		assertEquals(validateBroadcastPath("/alice.json"), "/alice.json");
+	});
 
-describe('broadcast path utilities', () => {
-  it('isValidBroadcastPath works', () => {
-    expect(isValidBroadcastPath('/')).toBe(true);
-    expect(isValidBroadcastPath('/a')).toBe(true);
-    expect(isValidBroadcastPath('a')).toBe(false);
-  });
+	await t.step("throws error for invalid paths", () => {
+		assertThrows(
+			() => validateBroadcastPath(""),
+			Error,
+			'Invalid broadcast path: "". Must start with "/"',
+		);
+		assertThrows(
+			() => validateBroadcastPath("test"),
+			Error,
+			'Invalid broadcast path: "test". Must start with "/"',
+		);
+		assertThrows(
+			() => validateBroadcastPath("test/path"),
+			Error,
+			'Invalid broadcast path: "test/path". Must start with "/"',
+		);
+		assertThrows(
+			() => validateBroadcastPath("alice.json"),
+			Error,
+			'Invalid broadcast path: "alice.json". Must start with "/"',
+		);
+	});
+});
 
-  it('validateBroadcastPath throws on invalid', () => {
-    expect(() => validateBroadcastPath('no-slash')).toThrow();
-    expect(validateBroadcastPath('/ok')).toBe('/ok');
-  });
+Deno.test("BroadcastPath - extension", async (t) => {
+	await t.step("returns correct extension for paths with extensions", () => {
+		assertEquals(extension("/alice.json" as BroadcastPath), ".json");
+		assertEquals(extension("/video/stream.mp4" as BroadcastPath), ".mp4");
+		assertEquals(extension("/file.min.js" as BroadcastPath), ".js");
+		assertEquals(extension("/test/path.backup.mp4" as BroadcastPath), ".mp4");
+		assertEquals(extension("/test/.hidden.txt" as BroadcastPath), ".txt");
+		assertEquals(extension("/test/path." as BroadcastPath), ".");
+		assertEquals(extension("file.txt" as BroadcastPath), ".txt");
+	});
 
-  it('extension extraction', () => {
-    expect(extension('/alice.hang')).toBe('.hang');
-    expect(extension('/path/to/file')).toBe('');
-    expect(extension('/.hidden')).toBe('');
-    expect(extension('/dir.name/file.txt')).toBe('.txt');
-  });
+	await t.step("returns empty string for paths without extensions", () => {
+		assertEquals(extension("/test/path" as BroadcastPath), "");
+		assertEquals(extension("/video/stream" as BroadcastPath), "");
+		assertEquals(extension("/" as BroadcastPath), "");
+		assertEquals(extension("" as BroadcastPath), "");
+	});
+
+	await t.step("handles edge cases correctly", () => {
+		assertEquals(extension("/test.dir/file" as BroadcastPath), "");
+		assertEquals(extension("/test.dir/file.ext" as BroadcastPath), ".ext");
+		assertEquals(extension("/.hidden" as BroadcastPath), "");
+	});
+});
+
+Deno.test("BroadcastPath - type safety and utilities", async (t) => {
+	await t.step("BroadcastPath can be used as string and validated", () => {
+		const path: BroadcastPath = validateBroadcastPath("/test/path");
+		assertEquals(typeof path, "string");
+		// basic runtime checks
+		assertExists(path.startsWith);
+		assertEquals(path.startsWith("/"), true);
+		assertEquals(path.length > 0, true);
+	});
+
+	await t.step("validateBroadcastPath throws on invalid and returns on valid", () => {
+		assertThrows(() => validateBroadcastPath("no-slash"), Error);
+		assertEquals(validateBroadcastPath("/ok"), "/ok");
+	});
+
+	await t.step("extension extraction cases", () => {
+		assertEquals(extension("/alice.hang"), ".hang");
+		assertEquals(extension("/path/to/file"), "");
+		assertEquals(extension("/.hidden"), "");
+		assertEquals(extension("/dir.name/file.txt"), ".txt");
+	});
 });

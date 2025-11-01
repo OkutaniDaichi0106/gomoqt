@@ -1,31 +1,37 @@
-import type { SubscribeMessage} from "./message.ts";
-import { SubscribeOkMessage, SubscribeUpdateMessage } from "./message.ts";
-import type { Writer, Reader } from "./io.ts"
-import { EOF } from "./io.ts"
-import { Cond, Mutex } from "golikejs/sync";
-import type { CancelCauseFunc, Context} from "golikejs/context";
-import { withCancelCause } from "golikejs/context";
-import { StreamError } from "./io/error.ts";
+import type { SubscribeMessage } from "./internal/message/mod.ts";
+import { SubscribeOkMessage, SubscribeUpdateMessage } from "./internal/message/mod.ts";
+import type { Reader, Writer } from "./internal/webtransport/mod.ts";
+import { EOFError } from "@okudai/golikejs/io";
+import { Cond, Mutex } from "@okudai/golikejs/sync";
+import type { CancelCauseFunc, Context } from "@okudai/golikejs/context";
+import { withCancelCause } from "@okudai/golikejs/context";
+import { StreamError } from "./internal/webtransport/mod.ts";
 import type { Info } from "./info.ts";
-import type { TrackPriority,GroupSequence,SubscribeID } from ".";
+import type { GroupSequence, SubscribeID, TrackPriority } from "";
 
 export interface TrackConfig {
 	trackPriority: TrackPriority;
-    minGroupSequence: GroupSequence;
-    maxGroupSequence: GroupSequence;
+	minGroupSequence: GroupSequence;
+	maxGroupSequence: GroupSequence;
 }
 
 export class SendSubscribeStream {
 	#config: TrackConfig;
 	#id: SubscribeID;
 	#info: Info;
-	#reader: Reader
-	#writer: Writer
+	#reader: Reader;
+	#writer: Writer;
 	readonly context: Context;
 	#cancelFunc: CancelCauseFunc;
 	readonly streamId: bigint;
 
-	constructor(sessCtx: Context, writer: Writer, reader: Reader, subscribe: SubscribeMessage, ok: SubscribeOkMessage) {
+	constructor(
+		sessCtx: Context,
+		writer: Writer,
+		reader: Reader,
+		subscribe: SubscribeMessage,
+		ok: SubscribeOkMessage,
+	) {
 		[this.context, this.#cancelFunc] = withCancelCause(sessCtx);
 		this.#reader = reader;
 		this.#writer = writer;
@@ -63,10 +69,12 @@ export class SendSubscribeStream {
 		if (flushErr) {
 			return new Error(`Failed to flush subscribe update: ${flushErr}`);
 		}
+
+		return undefined;
 	}
 
 	async closeWithError(code: number, message: string): Promise<void> {
-        const err = new StreamError(code, message);
+		const err = new StreamError(code, message);
 		await this.#writer.cancel(err);
 		this.#cancelFunc(err);
 	}
@@ -77,22 +85,21 @@ export class ReceiveSubscribeStream {
 	#trackConfig: TrackConfig;
 	#mu: Mutex = new Mutex();
 	#cond: Cond = new Cond(this.#mu);
-	#reader: Reader
-	#writer: Writer
-	#info?: Info
+	#reader: Reader;
+	#writer: Writer;
+	#info?: Info;
 	readonly context: Context;
 	#cancelFunc: CancelCauseFunc;
 	readonly streamId: bigint;
-
 
 	constructor(
 		sessCtx: Context,
 		writer: Writer,
 		reader: Reader,
-		subscribe: SubscribeMessage
+		subscribe: SubscribeMessage,
 	) {
-		this.#reader = reader
-		this.#writer = writer
+		this.#reader = reader;
+		this.#writer = writer;
 		this.subscribeId = subscribe.subscribeId;
 		this.#trackConfig = {
 			trackPriority: subscribe.trackPriority,
@@ -110,18 +117,18 @@ export class ReceiveSubscribeStream {
 			const msg = new SubscribeUpdateMessage({});
 			const err = await msg.decode(this.#reader);
 			if (err) {
-				if (err !== EOF ) {
-					console.error(`moq: error reading SUBSCRIBE_UPDATE message for subscribe ID: ${this.subscribeId}: ${err}`);
+				if (err instanceof EOFError) {
+					console.error(
+						`moq: error reading SUBSCRIBE_UPDATE message for subscribe ID: ${this.subscribeId}: ${err}`,
+					);
 				}
 				return;
 			}
 
-			console.debug(`moq: SUBSCRIBE_UPDATE message received.`,
-				{
-					"subscribeId": this.subscribeId,
-					"message": msg
-				}
-			);
+			console.debug(`moq: SUBSCRIBE_UPDATE message received.`, {
+				"subscribeId": this.subscribeId,
+				"message": msg,
+			});
 
 			this.#trackConfig = {
 				trackPriority: msg.trackPriority,
@@ -141,7 +148,7 @@ export class ReceiveSubscribeStream {
 		return this.#cond.wait();
 	}
 
-	async writeInfo(info?: Info): Promise<Error | undefined> {
+	async writeInfo(_?: Info): Promise<Error | undefined> {
 		if (this.#info) {
 			console.warn(`Info already written for subscribe ID: ${this.subscribeId}`);
 			return undefined; // Info already written
@@ -159,14 +166,14 @@ export class ReceiveSubscribeStream {
 			return new Error(`moq: failed to encode SUBSCRIBE_OK message: ${err}`);
 		}
 
-		console.debug(`moq: SUBSCRIBE_OK message sent.`,
-			{
-				"subscribeId": this.subscribeId,
-				"message": msg
-			}
-		);
+		console.debug(`moq: SUBSCRIBE_OK message sent.`, {
+			"subscribeId": this.subscribeId,
+			"message": msg,
+		});
 
 		this.#info = msg;
+
+		return undefined;
 	}
 
 	async close(): Promise<void> {
@@ -191,4 +198,3 @@ export class ReceiveSubscribeStream {
 		this.#cond.broadcast();
 	}
 }
-

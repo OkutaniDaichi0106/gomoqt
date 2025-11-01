@@ -2,8 +2,6 @@ package message
 
 import (
 	"io"
-
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 )
 
 /*
@@ -17,8 +15,8 @@ import (
  */
 
 type SessionClientMessage struct {
-	SupportedVersions []protocol.Version
-	Parameters        Parameters
+	SupportedVersions []uint64
+	Parameters        map[uint64][]byte
 }
 
 func (scm SessionClientMessage) Len() int {
@@ -26,7 +24,7 @@ func (scm SessionClientMessage) Len() int {
 
 	l += VarintLen(uint64(len(scm.SupportedVersions)))
 	for _, version := range scm.SupportedVersions {
-		l += VarintLen(uint64(version))
+		l += VarintLen(version)
 	}
 	l += ParametersLen(scm.Parameters)
 
@@ -49,7 +47,7 @@ func (scm SessionClientMessage) Encode(w io.Writer) error {
 	// Append parameters
 	b, _ = WriteVarint(b, uint64(len(scm.Parameters)))
 	for key, value := range scm.Parameters {
-		b, _ = WriteVarint(b, key)
+		b, _ = WriteVarint(b, uint64(key))
 		b, _ = WriteBytes(b, value)
 	}
 
@@ -77,13 +75,13 @@ func (scm *SessionClientMessage) Decode(src io.Reader) error {
 	}
 	b = b[n:]
 
-	scm.SupportedVersions = make([]protocol.Version, count)
+	scm.SupportedVersions = make([]uint64, count)
 	for i := range count {
 		num, n, err := ReadVarint(b)
 		if err != nil {
 			return err
 		}
-		scm.SupportedVersions[i] = protocol.Version(num)
+		scm.SupportedVersions[i] = num
 		b = b[n:]
 	}
 

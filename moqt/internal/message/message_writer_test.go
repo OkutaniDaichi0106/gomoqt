@@ -111,12 +111,12 @@ func TestWriteStringArray(t *testing.T) {
 func TestWriteParameters(t *testing.T) {
 	tests := []struct {
 		dest     []byte
-		params   Parameters
+		params   map[uint64][]byte
 		expected []byte
 		n        int
 	}{
-		{[]byte{}, Parameters{}, []byte{0}, 1},
-		{[]byte{}, Parameters{1: []byte{1, 2}}, []byte{1, 1, 2, 1, 2}, 5},
+		{[]byte{}, map[uint64][]byte{}, []byte{0}, 1},
+		{[]byte{}, map[uint64][]byte{1: []byte{1, 2}}, []byte{1, 1, 2, 1, 2}, 5},
 	}
 
 	for _, tt := range tests {

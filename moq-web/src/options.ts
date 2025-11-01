@@ -1,4 +1,4 @@
-import type { Extensions } from './internal/extensions.ts';
+import type { Extensions } from "./internal/extensions.ts";
 
 export interface MOQOptions {
 	versions?: Set<bigint>;

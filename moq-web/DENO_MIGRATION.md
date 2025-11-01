@@ -137,13 +137,13 @@ All source files must use explicit `.ts` extensions:
 **Before**:
 ```typescript
 import { Reader } from './io';
-import type { Context } from 'golikejs/context';
+import type { Context } from '../deps.ts';
 ```
 
 **After**:
 ```typescript
 import { Reader } from './io/index.ts';
-import type { Context } from 'golikejs/context';  // npm: prefix handled in deno.json
+import type { Context } from '../deps.ts';  // npm: prefix handled in deno.json
 ```
 
 ## Running Tests
@@ -189,7 +189,7 @@ The following Node.js-specific files have been removed:
 ### External Dependencies
 
 The project uses `golikejs` for Go-like concurrency primitives:
-- `golikejs/context` - Context management
+- `../deps.ts` - Context management
 - `golikejs/sync` - Mutex, RWMutex, WaitGroup
 
 These are imported via npm: protocol in `deno.json`.

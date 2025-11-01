@@ -1,162 +1,170 @@
 import { GroupReader, GroupWriter } from "./group_stream.ts";
 import type { Info } from "./info.ts";
 import { Queue } from "./internal.ts";
-import type { Context} from "golikejs/context";
-import { ContextCancelledError, withCancel, watchPromise } from "golikejs/context";
-import type { ReceiveSubscribeStream, SendSubscribeStream, TrackConfig } from "./subscribe_stream.ts";
-import type { Writer, Reader } from "./io.ts";
+import type { Context } from "../deps.ts";
+import { ContextCancelledError, watchPromise, withCancel } from "../deps.ts";
+import type {
+	ReceiveSubscribeStream,
+	SendSubscribeStream,
+	TrackConfig,
+} from "./subscribe_stream.ts";
+import type { Reader, Writer } from "./internal/webtransport/mod.ts";
 import { UniStreamTypes } from "./stream_type.ts";
-import { GroupMessage } from "./message.ts";
+import { GroupMessage } from "./internal/message/mod.ts";
 import type { BroadcastPath } from "./broadcast_path.ts";
 import type { SubscribeErrorCode } from "./error.ts";
 import { PublishAbortedErrorCode } from "./error.ts";
 import type { GroupSequence } from ".";
 
 export class TrackWriter {
-    broadcastPath: BroadcastPath;
-    trackName: string;
-    #subscribeStream: ReceiveSubscribeStream;
-    #openUniStreamFunc: () => Promise<[Writer, undefined] | [undefined, Error]>;
-    #groups: GroupWriter[] = [];
-    readonly streamId: bigint;
+	broadcastPath: BroadcastPath;
+	trackName: string;
+	#subscribeStream: ReceiveSubscribeStream;
+	#openUniStreamFunc: () => Promise<[Writer, undefined] | [undefined, Error]>;
+	#groups: GroupWriter[] = [];
+	readonly streamId: bigint;
 
-    constructor(
-        broadcastPath: BroadcastPath,
-        trackName: string,
-        subscribeStream: ReceiveSubscribeStream,
-        openUniStreamFunc: () => Promise<[Writer, undefined] | [undefined, Error]>,
-    ) {
-        this.broadcastPath = broadcastPath;
-        this.trackName = trackName;
-        this.#subscribeStream = subscribeStream;
-        this.#openUniStreamFunc = openUniStreamFunc;
-        this.streamId = subscribeStream.streamId;
-    }
+	constructor(
+		broadcastPath: BroadcastPath,
+		trackName: string,
+		subscribeStream: ReceiveSubscribeStream,
+		openUniStreamFunc: () => Promise<[Writer, undefined] | [undefined, Error]>,
+	) {
+		this.broadcastPath = broadcastPath;
+		this.trackName = trackName;
+		this.#subscribeStream = subscribeStream;
+		this.#openUniStreamFunc = openUniStreamFunc;
+		this.streamId = subscribeStream.streamId;
+	}
 
-    get context(): Context {
-        return this.#subscribeStream.context;
-    }
+	get context(): Context {
+		return this.#subscribeStream.context;
+	}
 
-    get subscribeId(): bigint {
-        return this.#subscribeStream.subscribeId;
-    }
+	get subscribeId(): bigint {
+		return this.#subscribeStream.subscribeId;
+	}
 
-    get config(): TrackConfig {
-        return this.#subscribeStream.trackConfig;
-    }
+	get config(): TrackConfig {
+		return this.#subscribeStream.trackConfig;
+	}
 
-    async openGroup(groupSequence: GroupSequence): Promise<[GroupWriter, undefined] | [undefined, Error]> {
-        let err: Error | undefined;
-        err = await this.#subscribeStream.writeInfo()
-        if (err) {
-            return [undefined, err];
-        }
+	async openGroup(
+		groupSequence: GroupSequence,
+	): Promise<[GroupWriter, undefined] | [undefined, Error]> {
+		let err: Error | undefined;
+		err = await this.#subscribeStream.writeInfo();
+		if (err) {
+			return [undefined, err];
+		}
 
-        let writer: Writer | undefined;
-        [writer, err] = await this.#openUniStreamFunc();
-        if (err) {
-            return [undefined, err];
-        }
+		let writer: Writer | undefined;
+		[writer, err] = await this.#openUniStreamFunc();
+		if (err) {
+			return [undefined, err];
+		}
 
-        writer!.writeUint8(UniStreamTypes.GroupStreamType);
-        const msg = new GroupMessage({
-            subscribeId: this.subscribeId,
-            sequence: groupSequence
-        });
-        err = await msg.encode(writer!);
-        if (err) {
-            return [undefined, new Error("Failed to create group message")];
-        }
+		writer!.writeUint8(UniStreamTypes.GroupStreamType);
+		const msg = new GroupMessage({
+			subscribeId: this.subscribeId,
+			sequence: groupSequence,
+		});
+		err = await msg.encode(writer!);
+		if (err) {
+			return [undefined, new Error("Failed to create group message")];
+		}
 
-        const group = new GroupWriter(this.context, writer!, msg)
+		const group = new GroupWriter(this.context, writer!, msg);
 
-        this.#groups.push(group);
+		this.#groups.push(group);
 
-        return [group, undefined];
-    }
+		return [group, undefined];
+	}
 
-    async writeInfo(info: Info): Promise<Error | undefined> {
-        const err = await this.#subscribeStream.writeInfo(info);
-        if (err) {
-            return err;
-        }
-    }
+	async writeInfo(info: Info): Promise<Error | undefined> {
+		const err = await this.#subscribeStream.writeInfo(info);
+		if (err) {
+			return err;
+		}
+	}
 
-    async closeWithError(code: SubscribeErrorCode, message: string): Promise<void> {
-        // Cancel all groups with the error first
-        await Promise.allSettled(this.#groups.map(
-            (group) => group.cancel(PublishAbortedErrorCode, message)
-        ))
+	async closeWithError(code: SubscribeErrorCode, message: string): Promise<void> {
+		// Cancel all groups with the error first
+		await Promise.allSettled(this.#groups.map(
+			(group) => group.cancel(PublishAbortedErrorCode, message),
+		));
 
-        // Then close the subscribe stream with the error
-        await this.#subscribeStream.closeWithError(code, message);
-    }
+		// Then close the subscribe stream with the error
+		await this.#subscribeStream.closeWithError(code, message);
+	}
 
-    async close(): Promise<void> {
-        await Promise.allSettled(this.#groups.map(
-            (group) => group.close()
-        ))
+	async close(): Promise<void> {
+		await Promise.allSettled(this.#groups.map(
+			(group) => group.close(),
+		));
 
-        await this.#subscribeStream.close();
-    }
+		await this.#subscribeStream.close();
+	}
 }
 
 export class TrackReader {
-    #subscribeStream: SendSubscribeStream;
-    #acceptFunc: (ctx: Promise<void>) => Promise<[Reader, GroupMessage] | undefined>;
-    #onCloseFunc: () => void;
-    readonly streamId: bigint;
+	#subscribeStream: SendSubscribeStream;
+	#acceptFunc: (ctx: Promise<void>) => Promise<[Reader, GroupMessage] | undefined>;
+	#onCloseFunc: () => void;
+	readonly streamId: bigint;
 
-    constructor(
-        subscribeStream: SendSubscribeStream,
-        acceptFunc: (ctx: Promise<void>) => Promise<[Reader, GroupMessage] | undefined>,
-        onCloseFunc: () => void,
-    ) {
-        this.#subscribeStream = subscribeStream;
-        this.#acceptFunc = acceptFunc;
-        this.#onCloseFunc = onCloseFunc;
-        this.streamId = subscribeStream.streamId;
-    }
+	constructor(
+		subscribeStream: SendSubscribeStream,
+		acceptFunc: (ctx: Promise<void>) => Promise<[Reader, GroupMessage] | undefined>,
+		onCloseFunc: () => void,
+	) {
+		this.#subscribeStream = subscribeStream;
+		this.#acceptFunc = acceptFunc;
+		this.#onCloseFunc = onCloseFunc;
+		this.streamId = subscribeStream.streamId;
+	}
 
-    async acceptGroup(signal: Promise<void>): Promise<[GroupReader, undefined]|[undefined, Error]> {
-        // Check if context is already cancelled
-        const err = this.context.err();
-        if (err) {
-            return [undefined, err];
-        }
+	async acceptGroup(
+		signal: Promise<void>,
+	): Promise<[GroupReader, undefined] | [undefined, Error]> {
+		// Check if context is already cancelled
+		const err = this.context.err();
+		if (err) {
+			return [undefined, err];
+		}
 
-        const ctx = watchPromise(this.context, signal);
+		const ctx = watchPromise(this.context, signal);
 
-        const dequeued = await this.#acceptFunc(ctx.done());
-        if (dequeued === undefined) {
-            return [undefined, new Error("[TrackReader] failed to dequeue group message")];
-        }
+		const dequeued = await this.#acceptFunc(ctx.done());
+		if (dequeued === undefined) {
+			return [undefined, new Error("[TrackReader] failed to dequeue group message")];
+		}
 
-        const [reader, msg] = dequeued;
+		const [reader, msg] = dequeued;
 
-        const group = new GroupReader(this.context, reader, msg);
+		const group = new GroupReader(this.context, reader, msg);
 
-        return [group, undefined];
-    }
+		return [group, undefined];
+	}
 
-    async update(config: TrackConfig): Promise<Error | undefined> {
-        return this.#subscribeStream.update(config);
-    }
+	async update(config: TrackConfig): Promise<Error | undefined> {
+		return this.#subscribeStream.update(config);
+	}
 
-    readInfo(): Info {
-        return this.#subscribeStream.info;
-    }
+	readInfo(): Info {
+		return this.#subscribeStream.info;
+	}
 
-    async closeWithError(code: number, message: string): Promise<void> {
-        await this.#subscribeStream.closeWithError(code, message);
-        this.#onCloseFunc();
-    }
+	async closeWithError(code: number, message: string): Promise<void> {
+		await this.#subscribeStream.closeWithError(code, message);
+		this.#onCloseFunc();
+	}
 
-    get trackConfig(): TrackConfig {
-        return this.#subscribeStream.config;
-    }
+	get trackConfig(): TrackConfig {
+		return this.#subscribeStream.config;
+	}
 
-    get context(): Context {
-        return this.#subscribeStream.context;
-    }
+	get context(): Context {
+		return this.#subscribeStream.context;
+	}
 }

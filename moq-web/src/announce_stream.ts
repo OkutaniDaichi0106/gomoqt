@@ -1,385 +1,399 @@
-import type { Reader, Writer } from "./io.ts";
-import { EOF } from "./io.ts";
-import type { AnnouncePleaseMessage } from "./message.ts";
-import { AnnounceMessage } from "./message.ts";
-import { 
-    afterFunc,
-    withCancel, 
-    withCancelCause, 
-    watchPromise, 
-    background, 
-    ContextCancelledError 
-} from "golikejs/context";
-import type { CancelCauseFunc, CancelFunc, Context } from "golikejs/context";
-import { Cond, Mutex } from "golikejs/sync";
+import type { Reader, Writer } from "./internal/webtransport/mod.ts";
+import { EOF } from "./internal/webtransport/mod.ts";
+import type { AnnouncePleaseMessage } from "./internal/message/mod.ts";
+import { AnnounceMessage } from "./internal/message/mod.ts";
+import { ContextCancelledError, watchPromise, withCancelCause } from "@okudai/golikejs/context";
+import type { CancelCauseFunc, Context } from "@okudai/golikejs/context";
+import { Cond, Mutex } from "@okudai/golikejs/sync";
 import type { TrackPrefix } from "./track_prefix.ts";
 import { isValidPrefix, validateTrackPrefix } from "./track_prefix.ts";
 import { validateBroadcastPath } from "./broadcast_path.ts";
-import type{  BroadcastPath } from "./broadcast_path.ts";
-import { StreamError } from "./io/error.ts";
-import { Queue } from "./internal.ts";
-import { AnnounceInitMessage } from "./message/announce_init.ts";
+import type { BroadcastPath } from "./broadcast_path.ts";
+import { StreamError } from "./internal/webtransport/error.ts";
+import { Queue } from "./internal/queue.ts";
+import { AnnounceInitMessage } from "./internal/message/announce_init.ts";
 import type { AnnounceErrorCode } from "./error.ts";
-import { DuplicatedAnnounceErrorCode, InternalAnnounceErrorCode } from "./error.ts";
+import { DuplicatedAnnounceErrorCode } from "./error.ts";
 
 type suffix = string;
 
 export class AnnouncementWriter {
-    #writer: Writer;
-    #reader: Reader;
-    readonly prefix: TrackPrefix;
-    #announcements: Map<suffix, Announcement> = new Map();
-    readonly context: Context;
-    #cancelFunc: CancelCauseFunc;
-    #ready: Promise<void>;
-    #resolveInit?: () => void;
-    readonly streamId: bigint;
+	#writer: Writer;
+	#reader: Reader;
+	readonly prefix: TrackPrefix;
+	#announcements: Map<suffix, Announcement> = new Map();
+	readonly context: Context;
+	#cancelFunc: CancelCauseFunc;
+	#ready: Promise<void>;
+	#resolveInit?: () => void;
+	readonly streamId: bigint;
 
-    constructor(
-        sessCtx: Context,
-        writer: Writer,
-        reader: Reader,
-        req: AnnouncePleaseMessage
-    ) {
-        this.#writer = writer;
-        this.#reader = reader;
+	constructor(
+		sessCtx: Context,
+		writer: Writer,
+		reader: Reader,
+		req: AnnouncePleaseMessage,
+	) {
+		this.#writer = writer;
+		this.#reader = reader;
 
-        this.prefix = validateTrackPrefix(req.prefix);
+		this.prefix = validateTrackPrefix(req.prefix);
 
-        this.streamId = writer.streamId ?? reader.streamId ?? 0n;
+		this.streamId = writer.streamId ?? reader.streamId ?? 0n;
 
-        // const ctx = watchPromise(sessCtx, reader.closed());
-        [this.context, this.#cancelFunc] = withCancelCause(sessCtx);
-        this.#ready = new Promise<void>((resolve) => {
-            this.#resolveInit = resolve;
-        });
-    }
+		// const ctx = watchPromise(sessCtx, reader.closed());
+		[this.context, this.#cancelFunc] = withCancelCause(sessCtx);
+		this.#ready = new Promise<void>((resolve) => {
+			this.#resolveInit = resolve;
+		});
+	}
 
-    async init(anns: Announcement[]): Promise<Error | undefined> {
-        // const onEndFuncs:Map<suffix, () => void> = new Map();
-        for (const announcement of anns) {
-            const path = announcement.broadcastPath;
-            const active = announcement.isActive();
+	async init(anns: Announcement[]): Promise<Error | undefined> {
+		// const onEndFuncs:Map<suffix, () => void> = new Map();
+		for (const announcement of anns) {
+			const path = announcement.broadcastPath;
+			const active = announcement.isActive();
 
-            if (!path.startsWith(this.prefix)) {
-                return new Error(`Path ${path} does not start with prefix ${this.prefix}`);
-            }
+			if (!path.startsWith(this.prefix)) {
+				return new Error(`Path ${path} does not start with prefix ${this.prefix}`);
+			}
 
-            const suffix = path.substring(this.prefix.length);
-            const old = this.#announcements.get(suffix);
-            if (active) {
-                if (old && old.isActive()) {
-                    return new Error(`[AnnouncementWriter] announcement for path ${this.prefix}${suffix} already exists`);
-                } else if (old && !old.isActive()) {
-                    // Delete the old announcement if it is inactive
-                    this.#announcements.delete(suffix);
-                }
+			const suffix = path.substring(this.prefix.length);
+			const old = this.#announcements.get(suffix);
+			if (active) {
+				if (old && old.isActive()) {
+					return new Error(
+						`[AnnouncementWriter] announcement for path ${this.prefix}${suffix} already exists`,
+					);
+				} else if (old && !old.isActive()) {
+					// Delete the old announcement if it is inactive
+					this.#announcements.delete(suffix);
+				}
 
-                this.#announcements.set(suffix, announcement);
+				this.#announcements.set(suffix, announcement);
 
-                announcement.ended().then(async ()=>{
-                    // When the announcement ends, we remove it from the map
-                    this.#announcements.delete(suffix);
-                    const msg = new AnnounceMessage({ suffix, active: false });
-                    const err = await msg.encode(this.#writer);
-                    if (err) {
-                        return err;
-                    }
-                });
-            } else {
-                if (!old || (old && !old.isActive())) {
-                    return new Error(`[AnnouncementWriter] announcement to end for path ${this.prefix}${suffix} is not active.`);
-                }
+				announcement.ended().then(async () => {
+					// When the announcement ends, we remove it from the map
+					this.#announcements.delete(suffix);
+					const msg = new AnnounceMessage({ suffix, active: false });
+					const err = await msg.encode(this.#writer);
+					if (err) {
+						return err;
+					}
 
-                // End the old active announcement
-                old.end();
-                this.#announcements.delete(suffix);
-            }
-        }
+					return undefined;
+				});
+			} else {
+				if (!old || (old && !old.isActive())) {
+					return new Error(
+						`[AnnouncementWriter] announcement to end for path ${this.prefix}${suffix} is not active.`,
+					);
+				}
 
-        const msg = new AnnounceInitMessage({
-            suffixes: Array.from(this.#announcements.keys())
-        });
-        const err = await msg.encode(this.#writer);
-        if (err) {
-            return err;
-        }
+				// End the old active announcement
+				old.end();
+				this.#announcements.delete(suffix);
+			}
+		}
 
-        console.debug(`moq: ANNOUNCE_INIT message sent.`,
-            {
-                "prefix": this.prefix,
-                "message": msg
-            }
-        );
+		const msg = new AnnounceInitMessage({
+			suffixes: Array.from(this.#announcements.keys()),
+		});
+		const err = await msg.encode(this.#writer);
+		if (err) {
+			return err;
+		}
 
-        // Resolve the initialization promise
-        this.#resolveInit?.();
-        this.#resolveInit = undefined;
+		console.debug(`moq: ANNOUNCE_INIT message sent.`, {
+			"prefix": this.prefix,
+			"message": msg,
+		});
 
-        return undefined;
-    }
+		// Resolve the initialization promise
+		this.#resolveInit?.();
+		this.#resolveInit = undefined;
 
-    async send(announcement: Announcement): Promise<Error | undefined> {
-        await this.#ready; // Wait for initialization to complete
+		return undefined;
+	}
 
-        const path = announcement.broadcastPath;
-        const active = announcement.isActive();
+	async send(announcement: Announcement): Promise<Error | undefined> {
+		await this.#ready; // Wait for initialization to complete
 
-        if (!path.startsWith(this.prefix)) {
-            return new Error(`Path ${path} does not start with prefix ${this.prefix}`);
-        }
+		const path = announcement.broadcastPath;
+		const active = announcement.isActive();
 
-        const suffix = path.substring(this.prefix.length);
-        const old = this.#announcements.get(suffix);
-        if (active) {
-            if (old && old.isActive()) {
-                return new Error(`[AnnouncementWriter] announcement for path ${suffix} already exists`);
-            } else if (old && !old.isActive()) {
-                // Delete the old announcement if it is inactive
-                this.#announcements.delete(suffix);
-            }
+		if (!path.startsWith(this.prefix)) {
+			return new Error(`Path ${path} does not start with prefix ${this.prefix}`);
+		}
 
-            const msg = new AnnounceMessage({ suffix, active });
-            let err = await msg.encode(this.#writer);
-            if (err) {
-                return err;
-            }
+		const suffix = path.substring(this.prefix.length);
+		const old = this.#announcements.get(suffix);
+		if (active) {
+			if (old && old.isActive()) {
+				return new Error(
+					`[AnnouncementWriter] announcement for path ${suffix} already exists`,
+				);
+			} else if (old && !old.isActive()) {
+				// Delete the old announcement if it is inactive
+				this.#announcements.delete(suffix);
+			}
 
-            console.debug(`moq: ANNOUNCE message sent.`,
-                {
-                    "prefix": this.prefix,
-                    "message": msg
-                }
-            );
+			const msg = new AnnounceMessage({ suffix, active });
+			let err = await msg.encode(this.#writer);
+			if (err) {
+				return err;
+			}
 
-            this.#announcements.set(suffix, announcement);
+			console.debug(`moq: ANNOUNCE message sent.`, {
+				"prefix": this.prefix,
+				"message": msg,
+			});
 
-            announcement.ended().then(async () => {
-                this.#announcements.delete(suffix);
-                msg.active = false;
-                err = await msg.encode(this.#writer);
-                if (err) {
-                    return err;
-                }
-            });
-        } else {
-            if (!old || (old && !old.isActive())) {
-                return new Error(`[AnnouncementWriter] announcement to end for path ${this.prefix}${suffix} is not active`);
-            }
+			this.#announcements.set(suffix, announcement);
 
-            // End the old active announcement
-            old.end();
-            this.#announcements.delete(suffix);
-        }
-    }
+			announcement.ended().then(async () => {
+				this.#announcements.delete(suffix);
+				msg.active = false;
+				err = await msg.encode(this.#writer);
+				if (err) {
+					return err;
+				}
 
-    async close(): Promise<void> {
-        if (this.context.err()) {
-            // If already closed, do nothing
-            return;
-        }
-        this.#cancelFunc(undefined);
-        await this.#writer.close();
-        this.#announcements.clear();
-        this.#resolveInit?.();
-        this.#resolveInit = undefined;
-    }
+				return undefined;
+			});
+		} else {
+			if (!old || (old && !old.isActive())) {
+				return new Error(
+					`[AnnouncementWriter] announcement to end for path ${this.prefix}${suffix} is not active`,
+				);
+			}
 
-    async closeWithError(code: AnnounceErrorCode, message: string): Promise<void> {
-        if (this.context.err()) {
-            // If already closed, do nothing
-            return;
-        }
+			// End the old active announcement
+			old.end();
+			this.#announcements.delete(suffix);
+		}
 
-        const cause = new StreamError(code, message);
-        this.#cancelFunc(cause);
-        await this.#writer.cancel(cause);
-        await this.#reader.cancel(cause);
-        this.#announcements.clear();
-        this.#resolveInit?.();
-        this.#resolveInit = undefined;
-    }
+		return undefined;
+	}
+
+	async close(): Promise<void> {
+		if (this.context.err()) {
+			// If already closed, do nothing
+			return;
+		}
+		this.#cancelFunc(undefined);
+		await this.#writer.close();
+		this.#announcements.clear();
+		this.#resolveInit?.();
+		this.#resolveInit = undefined;
+	}
+
+	async closeWithError(code: AnnounceErrorCode, message: string): Promise<void> {
+		if (this.context.err()) {
+			// If already closed, do nothing
+			return;
+		}
+
+		const cause = new StreamError(code, message);
+		this.#cancelFunc(cause);
+		await this.#writer.cancel(cause);
+		await this.#reader.cancel(cause);
+		this.#announcements.clear();
+		this.#resolveInit?.();
+		this.#resolveInit = undefined;
+	}
 }
 
 export class AnnouncementReader {
-    #writer: Writer;
-    #reader: Reader;
-    readonly prefix: string;
-    #announcements: Map<string, Announcement> = new Map();
-    #queue: Queue<Announcement> = new Queue();
-    readonly context: Context;
-    #cancelFunc: CancelCauseFunc;
-    #mu: Mutex = new Mutex();
-    #cond: Cond = new Cond(this.#mu);
-    readonly streamId: bigint;
+	#writer: Writer;
+	#reader: Reader;
+	readonly prefix: string;
+	#announcements: Map<string, Announcement> = new Map();
+	#queue: Queue<Announcement> = new Queue();
+	readonly context: Context;
+	#cancelFunc: CancelCauseFunc;
+	#mu: Mutex = new Mutex();
+	#cond: Cond = new Cond(this.#mu);
+	readonly streamId: bigint;
 
+	constructor(
+		sessCtx: Context,
+		writer: Writer,
+		reader: Reader,
+		announcePlease: AnnouncePleaseMessage,
+		aim: AnnounceInitMessage,
+	) {
+		this.#writer = writer;
+		this.#reader = reader;
+		const prefix = announcePlease.prefix;
+		if (!isValidPrefix(prefix)) {
+			throw new Error(`[AnnouncementReader] invalid prefix: ${prefix}.`);
+		}
+		this.prefix = prefix;
+		this.streamId = writer.streamId ?? reader.streamId ?? 0n;
+		[this.context, this.#cancelFunc] = withCancelCause(sessCtx);
 
-    constructor(sessCtx: Context, writer: Writer, reader: Reader,
-        announcePlease: AnnouncePleaseMessage, aim: AnnounceInitMessage) {
-        this.#writer = writer;
-        this.#reader = reader;
-        const prefix = announcePlease.prefix;
-        if (!isValidPrefix(prefix)) {
-            throw new Error(`[AnnouncementReader] invalid prefix: ${prefix}.`);
-        }
-        this.prefix = prefix;
-        this.streamId = writer.streamId ?? reader.streamId ?? 0n;
-        [this.context, this.#cancelFunc] = withCancelCause(sessCtx);
+		// Set initial announcements
+		for (const suffix of aim.suffixes) {
+			const path = validateBroadcastPath(prefix + suffix);
+			const announcement = new Announcement(path, this.context.done());
+			this.#announcements.set(suffix, announcement);
+			this.#queue.enqueue(announcement);
+		}
 
-        // Set initial announcements
-        for (const suffix of aim.suffixes) {
-            const path = validateBroadcastPath(prefix + suffix);
-            const announcement = new Announcement(path, this.context.done());
-            this.#announcements.set(suffix, announcement);
-            this.#queue.enqueue(announcement);
-        }
+		// Listen for incoming announcements
+		// Start the reading loop
+		queueMicrotask(() => this.#readNext());
+	}
 
-        // Listen for incoming announcements
-        // Start the reading loop
-        queueMicrotask(() => this.#readNext());
-    }
+	async receive(signal: Promise<void>): Promise<[Announcement, undefined] | [undefined, Error]> {
+		const ctx = watchPromise(this.context, signal);
 
-    async receive(signal: Promise<void>): Promise<[Announcement, undefined] | [undefined, Error]> {
-        const ctx = watchPromise(this.context, signal);
+		while (true) {
+			const announcement = await this.#queue.dequeue();
+			if (announcement === undefined) {
+				return [undefined, new Error("Queue is closed and empty")];
+			}
 
-        while (true) {
-            const announcement = await this.#queue.dequeue();
-            if (announcement === undefined) {
-                return [undefined, new Error("Queue is closed and empty")];
-            }
+			if (announcement && announcement.isActive()) {
+				return [announcement, undefined];
+			}
 
-            if (announcement && announcement.isActive()) {
-                return [announcement, undefined];
-            }
+			const err = ctx.err();
+			if (err) {
+				return [undefined, err];
+			}
 
-            const err = ctx.err();
-            if (err) {
-                return [undefined, err];
-            }
+			// Wait for either context cancellation or a condition signal.
+			// Using Promise.race here is safe because `cond.wait()` is implemented such that
+			// it is a lightweight synchronization primitive and does not capture heavy resources.
+			// Even if `cond.wait()` loses the race, it does not keep large memory references alive.
+			const result = await Promise.race([
+				ctx.done().then(() => ctx.err() ?? ContextCancelledError),
+				this.#cond.wait(),
+			]);
 
-            // Wait for either context cancellation or a condition signal.
-            // Using Promise.race here is safe because `cond.wait()` is implemented such that
-            // it is a lightweight synchronization primitive and does not capture heavy resources.
-            // Even if `cond.wait()` loses the race, it does not keep large memory references alive.
-            const result = await Promise.race([
-                ctx.done().then(() => ctx.err() ?? ContextCancelledError),
-                this.#cond.wait(),
-            ]);
+			if (result instanceof Error) {
+				return [undefined, result];
+			}
+		}
+	}
 
-            if (result instanceof Error) {
-                return [undefined, result];
-            }
-        }
-    }
+	#readNext(): void {
+		const msg = new AnnounceMessage({});
+		msg.decode(this.#reader).then(async (err) => {
+			if (err) {
+				if (err !== EOF) {
+					console.error(`moq: failed to read ANNOUNCE message: ${err}`);
+				}
+				return;
+			}
 
-    #readNext(): void {
-        const msg = new AnnounceMessage({});
-        msg.decode(this.#reader).then(async (err) => {
-            if (err) {
-                if (err !== EOF ) {
-                    console.error(`moq: failed to read ANNOUNCE message: ${err}`);
-                }
-                return;
-            }
+			console.debug(`moq: ANNOUNCE message received.`, {
+				"prefix": this.prefix,
+				"message": msg,
+			});
 
-            console.debug(`moq: ANNOUNCE message received.`,
-                {
-                    "prefix": this.prefix,
-                    "message": msg
-                }
-            );
+			const old = this.#announcements.get(msg.suffix);
 
-            const old = this.#announcements.get(msg.suffix);
+			if (msg.active) {
+				if (old && old.isActive()) {
+					await this.closeWithError(
+						DuplicatedAnnounceErrorCode,
+						`duplicate announcement for path ${msg.suffix}`,
+					);
 
-            if (msg.active) {
-                if (old && old.isActive()) {
-                    await this.closeWithError(DuplicatedAnnounceErrorCode, `duplicate announcement for path ${msg.suffix}`);
+					return;
+				} else if (old && !old.isActive()) {
+					this.#announcements.delete(msg.suffix);
+				}
 
-                    return;
-                } else if (old && !old.isActive()) {
-                    this.#announcements.delete(msg.suffix);
-                }
+				const fullPath = this.prefix + msg.suffix;
+				const announcement = new Announcement(
+					validateBroadcastPath(fullPath),
+					this.context.done(),
+				);
+				this.#announcements.set(msg.suffix, announcement);
+				this.#queue.enqueue(announcement);
+			} else {
+				if (!old || (old && !old.isActive())) {
+					await this.closeWithError(
+						DuplicatedAnnounceErrorCode,
+						`trying to end non-existent announcement for path ${msg.suffix}`,
+					);
 
-                const fullPath = this.prefix + msg.suffix;
-                const announcement = new Announcement(validateBroadcastPath(fullPath), this.context.done());
-                this.#announcements.set(msg.suffix, announcement);
-                this.#queue.enqueue(announcement);
-            } else {
-                if (!old || (old && !old.isActive())) {
-                    await this.closeWithError(DuplicatedAnnounceErrorCode, `trying to end non-existent announcement for path ${msg.suffix}`);
+					return;
+				}
 
-                    return;
-                }
+				old.end();
+				this.#announcements.delete(msg.suffix);
+			}
 
-                old.end();
-                this.#announcements.delete(msg.suffix);
-            }
+			this.#cond.broadcast();
 
-            this.#cond.broadcast();
+			queueMicrotask(() => this.#readNext());
+		});
+	}
 
-            queueMicrotask(() => this.#readNext());
-        });
-    }
+	async close(): Promise<void> {
+		if (this.context.err()) {
+			// If already closed, do nothing
+			return;
+		}
 
-    async close(): Promise<void> {
-        if (this.context.err()) {
-            // If already closed, do nothing
-            return;
-        }
+		this.#cancelFunc(undefined);
+		await this.#writer.close();
+		this.#announcements.clear();
+		this.#queue.close();
+	}
 
-        this.#cancelFunc(undefined);
-        await this.#writer.close();
-        this.#announcements.clear();
-        this.#queue.close();
-    }
-
-    async closeWithError(code: AnnounceErrorCode, message: string): Promise<void> {
-        if (this.context.err()) {
-            // If already closed, do nothing
-            return;
-        }
-        const cause = new StreamError(code, message);
-        await this.#writer.cancel(cause);
-        await this.#reader.cancel(cause);
-        this.#announcements.clear();
-        this.#queue.close();
-    }
+	async closeWithError(code: AnnounceErrorCode, message: string): Promise<void> {
+		if (this.context.err()) {
+			// If already closed, do nothing
+			return;
+		}
+		const cause = new StreamError(code, message);
+		await this.#writer.cancel(cause);
+		await this.#reader.cancel(cause);
+		this.#announcements.clear();
+		this.#queue.close();
+	}
 }
 
 export class Announcement {
-    readonly broadcastPath: BroadcastPath;
-    #done: Promise<void>;
-    #notifyFunc: () => void;
-    #active: boolean = true;
+	readonly broadcastPath: BroadcastPath;
+	#done: Promise<void>;
+	#notifyFunc: () => void;
+	#active: boolean = true;
 
-    constructor(path: string, signal: Promise<void>) {
-        this.broadcastPath = validateBroadcastPath(path);
+	constructor(path: string, signal: Promise<void>) {
+		this.broadcastPath = validateBroadcastPath(path);
 
-        let resolveFunc: () => void;
-        this.#done = new Promise<void>((resolve) => {
-            resolveFunc = resolve;
-        });
+		let resolveFunc: () => void;
+		this.#done = new Promise<void>((resolve) => {
+			resolveFunc = resolve;
+		});
 
-        this.#notifyFunc = () => {
-            this.#active = false;
-            resolveFunc();
-        }
+		this.#notifyFunc = () => {
+			this.#active = false;
+			resolveFunc();
+		};
 
-        // Cancel when the signal is done
-        signal.then(() => {
-            this.end();
-        });
-    }
+		// Cancel when the signal is done
+		signal.then(() => {
+			this.end();
+		});
+	}
 
-    end(): void {
-        this.#notifyFunc();
-    }
+	end(): void {
+		this.#notifyFunc();
+	}
 
-    isActive(): boolean {
-        return this.#active;
-    }
+	isActive(): boolean {
+		return this.#active;
+	}
 
-    ended(): Promise<void>{
-        return this.#done;
-    }
+	ended(): Promise<void> {
+		return this.#done;
+	}
 }

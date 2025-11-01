@@ -15,7 +15,6 @@ import (
 	"net/http"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -124,7 +123,7 @@ func TestClient_ShutdownContextCancel(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	sess := newSession(mockConn, sessStream, nil, slog.Default(), nil)
 	c.addSession(sess)
@@ -241,7 +240,7 @@ func TestClient_DialQUIC(t *testing.T) {
 func TestClient_openSession(t *testing.T) {
 	tests := map[string]struct {
 		mockConn  func() *MockQUICConnection
-		extension func() *Parameters
+		extension func() *Extension
 		wantErr   bool
 	}{
 		"OpenStream error": {
@@ -266,7 +265,7 @@ func TestClient_openSession(t *testing.T) {
 				conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 				return conn
 			},
-			extension: func() *Parameters { return &Parameters{} },
+			extension: func() *Extension { return &Extension{} },
 			wantErr:   true,
 		}, "SESSION_CLIENT encode error": {
 			mockConn: func() *MockQUICConnection {
@@ -284,7 +283,7 @@ func TestClient_openSession(t *testing.T) {
 				conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 				return conn
 			},
-			extension: func() *Parameters { return &Parameters{} },
+			extension: func() *Extension { return &Extension{} },
 			wantErr:   true,
 		}, "SESSION_SERVER decode error": {
 			mockConn: func() *MockQUICConnection {
@@ -302,7 +301,7 @@ func TestClient_openSession(t *testing.T) {
 				conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 				return conn
 			},
-			extension: func() *Parameters { return &Parameters{} },
+			extension: func() *Extension { return &Extension{} },
 			wantErr:   true,
 		}, "path param error": {
 			mockConn: func() *MockQUICConnection {
@@ -336,7 +335,7 @@ func TestClient_openSession(t *testing.T) {
 				conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 				return conn
 			},
-			extension: func() *Parameters { return &Parameters{} },
+			extension: func() *Extension { return &Extension{} },
 			wantErr:   true,
 		},
 	}
@@ -348,7 +347,7 @@ func TestClient_openSession(t *testing.T) {
 			// Use a safe default extension provider when not specified
 			extProvider := tt.extension
 			if extProvider == nil {
-				extProvider = func() *Parameters { return &Parameters{} }
+				extProvider = func() *Extension { return &Extension{} }
 			}
 			_, err := openSessionStream(conn, "/path", extProvider(), slog.Default())
 			if tt.wantErr {
@@ -450,8 +449,8 @@ func TestClient_DialWebTransport_CustomDialSuccess(t *testing.T) {
 	// Encode a proper SessionServerMessage using bytes.Buffer
 	var buf bytes.Buffer
 	ssm := message.SessionServerMessage{
-		SelectedVersion: protocol.Draft01,
-		Parameters:      make(message.Parameters),
+		SelectedVersion: uint64(Draft01),
+		Parameters:      make(parameters),
 	}
 	err := ssm.Encode(&buf)
 	require.NoError(t, err)
@@ -516,8 +515,8 @@ func TestClient_DialQUIC_CustomDialSuccess(t *testing.T) {
 	// Encode a proper SessionServerMessage using bytes.Buffer
 	var buf bytes.Buffer
 	ssm := message.SessionServerMessage{
-		SelectedVersion: protocol.Draft01,
-		Parameters:      make(message.Parameters),
+		SelectedVersion: uint64(Draft01),
+		Parameters:      make(parameters),
 	}
 	err := ssm.Encode(&buf)
 	require.NoError(t, err)
@@ -664,8 +663,8 @@ func TestClient_OpenSession_Success(t *testing.T) {
 	// Encode a proper SessionServerMessage using bytes.Buffer
 	var buf bytes.Buffer
 	ssm := message.SessionServerMessage{
-		SelectedVersion: protocol.Draft01,
-		Parameters:      make(message.Parameters),
+		SelectedVersion: uint64(Draft01),
+		Parameters:      make(parameters),
 	}
 	err := ssm.Encode(&buf)
 	require.NoError(t, err)
@@ -702,8 +701,8 @@ func TestClient_OpenSession_Success(t *testing.T) {
 	mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 	mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
 
-	extensions := func() *Parameters {
-		return NewParameters()
+	extensions := func() *Extension {
+		return NewExtension()
 	}
 	sessStream, err := openSessionStream(mockConn, "/test", extensions(), slog.Default())
 	require.NoError(t, err)
@@ -786,7 +785,7 @@ func TestClient_Dial_URLSchemes(t *testing.T) {
 				mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
 				buffer := bytes.NewBuffer(nil)
 				message.SessionServerMessage{
-					SelectedVersion: protocol.Develop,
+					SelectedVersion: uint64(Develop),
 				}.Encode(buffer)
 				mockStream := &MockQUICStream{
 					WriteFunc: func(p []byte) (int, error) {
@@ -986,7 +985,7 @@ func TestClient_Shutdown_Timeout(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	sess := newSession(mockConn, sessStream, nil, slog.Default(), nil)
 	c.addSession(sess)

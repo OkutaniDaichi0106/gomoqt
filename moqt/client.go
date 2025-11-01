@@ -247,21 +247,21 @@ func (c *Client) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux)
 	return sess, nil
 }
 
-func quicExtensions(path string) *Parameters {
-	params := NewParameters()
+func quicExtensions(path string) *Extension {
+	params := NewExtension()
 
 	params.SetString(param_type_path, path)
 
 	return params
 }
 
-func webTransportExtensions() *Parameters {
-	params := NewParameters()
+func webTransportExtensions() *Extension {
+	params := NewExtension()
 
 	return params
 }
 
-func openSessionStream(conn quic.Connection, path string, extensions *Parameters, connLogger *slog.Logger) (*sessionStream, error) {
+func openSessionStream(conn quic.Connection, path string, extensions *Extension, connLogger *slog.Logger) (*sessionStream, error) {
 	connLogger.Debug("moq: opening session stream")
 
 	stream, err := conn.OpenStream()
@@ -285,12 +285,14 @@ func openSessionStream(conn quic.Connection, path string, extensions *Parameters
 
 	streamLogger.Debug("moq: opened session stream")
 
-	versions := DefaultClientVersions
-
+	versions := make([]uint64, len(DefaultClientVersions))
+	for i, v := range DefaultClientVersions {
+		versions[i] = uint64(v)
+	}
 	// Send a SESSION_CLIENT message
 	scm := message.SessionClientMessage{
 		SupportedVersions: versions,
-		Parameters:        extensions.paramMap,
+		Parameters:        extensions.parameters,
 	}
 	err = scm.Encode(stream)
 	if err != nil {
@@ -302,7 +304,7 @@ func openSessionStream(conn quic.Connection, path string, extensions *Parameters
 
 	req := &SetupRequest{
 		Path:             path,
-		Versions:         versions,
+		Versions:         DefaultClientVersions,
 		ClientExtensions: extensions,
 		ctx:              stream.Context(),
 	}

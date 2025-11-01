@@ -1,24 +1,30 @@
-import { Versions,DEFAULT_CLIENT_VERSIONS } from "./internal.ts";
-import type { Version } from "./internal.ts";
-import { AnnouncePleaseMessage, AnnounceInitMessage, GroupMessage, SessionClientMessage, SessionServerMessage, SubscribeMessage, SubscribeOkMessage } from "./message.ts";
-import { Writer, Reader } from "./io.ts";
+import { DEFAULT_CLIENT_VERSIONS } from "./version.ts";
+import type { Version } from "./version.ts";
+import {
+	AnnounceInitMessage,
+	AnnouncePleaseMessage,
+	GroupMessage,
+	SessionClientMessage,
+	SessionServerMessage,
+	SubscribeMessage,
+	SubscribeOkMessage,
+} from "./internal/message/mod.ts";
+import { Reader, Writer } from "./internal/webtransport/mod.ts";
 import { Extensions } from "./internal/extensions.ts";
 import { SessionStream } from "./session_stream.ts";
-import { background, watchPromise } from "golikejs/context";
-import type { Context } from "golikejs/context";
+import { background, watchPromise } from "@okudai/golikejs/context";
+import type { Context } from "@okudai/golikejs/context";
 import { AnnouncementReader, AnnouncementWriter } from "./announce_stream.ts";
 import type { TrackPrefix } from "./track_prefix.ts";
 import { ReceiveSubscribeStream, SendSubscribeStream } from "./subscribe_stream.ts";
 import type { TrackConfig } from "./subscribe_stream.ts";
 import type { BroadcastPath } from "./broadcast_path.ts";
 import { TrackReader, TrackWriter } from "./track.ts";
-import { GroupReader, GroupWriter } from "./group_stream.ts";
 import type { TrackMux } from "./track_mux.ts";
 import { DefaultTrackMux } from "./track_mux.ts";
 import { BiStreamTypes, UniStreamTypes } from "./stream_type.ts";
 import { Queue } from "./internal/queue.ts";
-import type { Info } from "./info.ts";
-import type { TrackName, SubscribeID } from "./protocol.ts";
+import type { SubscribeID, TrackName } from "./alias.ts";
 
 export interface SessionInit {
 	conn: WebTransport;
@@ -28,9 +34,9 @@ export interface SessionInit {
 }
 
 export class Session {
-	readonly ready: Promise<void>
-	#conn: WebTransport
-	#sessionStream!: SessionStream
+	readonly ready: Promise<void>;
+	#conn: WebTransport;
+	#sessionStream!: SessionStream;
 	#ctx!: Context;
 
 	#wg: Promise<void>[] = [];
@@ -54,7 +60,7 @@ export class Session {
 		this.mux = init.mux ?? DefaultTrackMux;
 		this.ready = this.#setup(
 			init.versions ?? DEFAULT_CLIENT_VERSIONS,
-			init.extensions ?? new Extensions()
+			init.extensions ?? new Extensions(),
 		);
 	}
 
@@ -64,8 +70,8 @@ export class Session {
 		const stream = await this.#conn.createBidirectionalStream();
 		const streamId = this.#biStreamCounter;
 		this.#biStreamCounter += 4n;
-		const writer = new Writer({stream: stream.writable, streamId});
-		const reader = new Reader({stream: stream.readable, streamId});
+		const writer = new Writer({ stream: stream.writable, streamId });
+		const reader = new Reader({ stream: stream.readable, streamId });
 
 		// Send STREAM_TYPE
 		writer.writeUint8(BiStreamTypes.SessionStreamType);
@@ -86,12 +92,10 @@ export class Session {
 			throw err;
 		}
 
-		console.debug("moq: SESSION_CLIENT message sent.",
-			{
-				"message": req,
-				"streamId": streamId,
-			}
-		);
+		console.debug("moq: SESSION_CLIENT message sent.", {
+			"message": req,
+			"streamId": streamId,
+		});
 
 		// Receive the session server message
 		const rsp = new SessionServerMessage({});
@@ -101,11 +105,9 @@ export class Session {
 			throw err;
 		}
 
-		console.debug("moq: SESSION_SERVER message received.",
-			{
-				"message": rsp,
-			}
-		);
+		console.debug("moq: SESSION_SERVER message received.", {
+			"message": rsp,
+		});
 
 		// TODO: Check the version compatibility
 		if (!versions.has(rsp.version)) {
@@ -115,9 +117,9 @@ export class Session {
 		const connCtx = watchPromise(background(), this.#conn.closed); // TODO: Handle connection closure properly
 
 		this.#sessionStream = new SessionStream({
-			context: connCtx, 
-			writer, 
-			reader, 
+			context: connCtx,
+			writer,
+			reader,
 			client: req,
 			server: rsp,
 			detectFunc: async () => {
@@ -125,7 +127,7 @@ export class Session {
 				// TODO: Implement actual bitrate detection logic
 				await connCtx.done();
 				return 0; // Placeholder for bitrate detection logic
-			}
+			},
 		});
 
 		this.#ctx = this.#sessionStream.context;
@@ -137,12 +139,14 @@ export class Session {
 		return;
 	}
 
-	async acceptAnnounce(prefix: TrackPrefix): Promise<[AnnouncementReader, undefined] | [undefined, Error]> {
-		const stream = await this.#conn.createBidirectionalStream()
+	async acceptAnnounce(
+		prefix: TrackPrefix,
+	): Promise<[AnnouncementReader, undefined] | [undefined, Error]> {
+		const stream = await this.#conn.createBidirectionalStream();
 		const streamId = this.#biStreamCounter;
 		this.#biStreamCounter += 4n;
-		const writer = new Writer({stream: stream.writable, streamId});
-		const reader = new Reader({stream: stream.readable, streamId});
+		const writer = new Writer({ stream: stream.writable, streamId });
+		const reader = new Reader({ stream: stream.readable, streamId });
 
 		// Send STREAM_TYPE
 		writer.writeUint8(BiStreamTypes.AnnounceStreamType);
@@ -160,12 +164,10 @@ export class Session {
 			return [undefined, err];
 		}
 
-		console.debug(`moq: ANNOUNCE_PLEASE message sent.`,
-			{
-				"message": req,
-				"streamId": streamId,
-			}
-		)
+		console.debug(`moq: ANNOUNCE_PLEASE message sent.`, {
+			"message": req,
+			"streamId": streamId,
+		});
 
 		// Receive AnnounceInitMessage
 		const rsp = new AnnounceInitMessage({});
@@ -175,22 +177,24 @@ export class Session {
 			return [undefined, err];
 		}
 
-		console.debug(`moq: ANNOUNCE_INIT message received.`,
-			{
-				"prefix": prefix,
-				"message": rsp,
-			}
-		)
+		console.debug(`moq: ANNOUNCE_INIT message received.`, {
+			"prefix": prefix,
+			"message": rsp,
+		});
 
 		return [new AnnouncementReader(this.#ctx, writer, reader, req, rsp), undefined];
 	}
 
-	async subscribe(path: BroadcastPath, name: TrackName, config?: TrackConfig): Promise<[TrackReader, undefined] | [undefined, Error]> {
-		const stream = await this.#conn.createBidirectionalStream()
+	async subscribe(
+		path: BroadcastPath,
+		name: TrackName,
+		config?: TrackConfig,
+	): Promise<[TrackReader, undefined] | [undefined, Error]> {
+		const stream = await this.#conn.createBidirectionalStream();
 		const streamId = this.#biStreamCounter;
 		this.#biStreamCounter += 4n;
-		const writer = new Writer({stream: stream.writable, transfer: undefined, streamId});
-		const reader = new Reader({stream: stream.readable, transfer: undefined, streamId});
+		const writer = new Writer({ stream: stream.writable, transfer: undefined, streamId });
+		const reader = new Reader({ stream: stream.readable, transfer: undefined, streamId });
 
 		// Send STREAM_TYPE
 		writer.writeUint8(BiStreamTypes.SubscribeStreamType);
@@ -207,7 +211,7 @@ export class Session {
 			trackName: name,
 			trackPriority: config?.trackPriority ?? 0,
 			minGroupSequence: config?.minGroupSequence ?? 0n,
-			maxGroupSequence: config?.maxGroupSequence ?? 0n
+			maxGroupSequence: config?.maxGroupSequence ?? 0n,
 		});
 		err = await req.encode(writer);
 		if (err) {
@@ -215,12 +219,10 @@ export class Session {
 			return [undefined, err];
 		}
 
-		console.debug(`moq: SUBSCRIBE message sent.`,
-			{
-				"message": req,
-				"streamId": streamId,
-			}
-		)
+		console.debug(`moq: SUBSCRIBE message sent.`, {
+			"message": req,
+			"streamId": streamId,
+		});
 
 		const rsp = new SubscribeOkMessage({});
 		err = await rsp.decode(reader);
@@ -229,12 +231,10 @@ export class Session {
 			return [undefined, err];
 		}
 
-		console.debug(`moq: SUBSCRIBE_OK message received.`,
-			{
-				"subscribeId": req.subscribeId,
-				"message": req,
-			}
-		)
+		console.debug(`moq: SUBSCRIBE_OK message received.`, {
+			"subscribeId": req.subscribeId,
+			"message": req,
+		});
 
 		const subscribeStream = new SendSubscribeStream(this.#ctx, writer, reader, req, rsp);
 
@@ -248,7 +248,9 @@ export class Session {
 		const track = new TrackReader(
 			subscribeStream,
 			queue.dequeue,
-			() => {this.#enqueueFuncs.delete(req.subscribeId);}
+			() => {
+				this.#enqueueFuncs.delete(req.subscribeId);
+			},
 		);
 
 		return [track, undefined];
@@ -262,12 +264,10 @@ export class Session {
 			return;
 		}
 
-		console.debug("moq: GROUP message received.",
-			{
-				"message": req,
-				"streamId": reader.streamId,
-			}
-		)
+		console.debug("moq: GROUP message received.", {
+			"message": req,
+			"streamId": reader.streamId,
+		});
 
 		const enqueueFunc = this.#enqueueFuncs.get(req.subscribeId);
 		if (!enqueueFunc) {
@@ -288,12 +288,10 @@ export class Session {
 			return;
 		}
 
-		console.debug("moq: SUBSCRIBE message received.",
-			{
-				"message": req,
-				"streamId": streamId,
-			}
-		);
+		console.debug("moq: SUBSCRIBE message received.", {
+			"message": req,
+			"streamId": streamId,
+		});
 
 		const subscribeStream = new ReceiveSubscribeStream(this.#ctx, writer, reader, req);
 
@@ -302,11 +300,14 @@ export class Session {
 				const streamId = this.#uniStreamCounter;
 				this.#uniStreamCounter += 4n;
 				const stream = await this.#conn.createUnidirectionalStream();
-				const writer = new Writer({stream, streamId});
+				const writer = new Writer({ stream, streamId });
 				return [writer, undefined];
 			} catch (err) {
 				console.error("moq: failed to create unidirectional stream:", err);
-				return [undefined, new Error(`moq: failed to create unidirectional stream: ${err}`)];
+				return [
+					undefined,
+					new Error(`moq: failed to create unidirectional stream: ${err}`),
+				];
 			}
 		};
 
@@ -330,12 +331,10 @@ export class Session {
 			return;
 		}
 
-		console.debug("moq: ANNOUNCE_PLEASE message received.",
-			{
-				"message": req,
-				"streamId": streamId,
-			}
-		);
+		console.debug("moq: ANNOUNCE_PLEASE message received.", {
+			"message": req,
+			"streamId": streamId,
+		});
 
 		const stream = new AnnouncementWriter(this.#ctx, writer, reader, req);
 
@@ -350,7 +349,7 @@ export class Session {
 			let num: number | undefined;
 			let err: Error | undefined;
 			while (true) {
-				const {done, value} = await biStreams.read();
+				const { done, value } = await biStreams.read();
 				// biStreams.releaseLock(); // Release the lock after reading
 				if (done) {
 					console.error("Bidirectional stream closed");
@@ -359,8 +358,16 @@ export class Session {
 				const stream = value as WebTransportBidirectionalStream;
 				const streamId = this.#serverBiStreamCounter;
 				this.#serverBiStreamCounter += 4n;
-				const writer = new Writer({stream: stream.writable, transfer: undefined, streamId});
-				const reader = new Reader({stream: stream.readable, transfer: undefined, streamId});
+				const writer = new Writer({
+					stream: stream.writable,
+					transfer: undefined,
+					streamId,
+				});
+				const reader = new Reader({
+					stream: stream.readable,
+					transfer: undefined,
+					streamId,
+				});
 				[num, err] = await reader.readUint8();
 				if (err) {
 					console.error("Failed to read from bidirectional stream:", err);
@@ -392,15 +399,18 @@ export class Session {
 			let num: number | undefined;
 			let err: Error | undefined;
 			while (true) {
-				const {done, value} = await uniStreams.read();
+				const { done, value } = await uniStreams.read();
 				if (done) {
 					console.log("Unidirectional stream reader closed");
 					break;
 				}
 
-				const reader = new Reader({stream: value as ReadableStream<Uint8Array<ArrayBufferLike>>, transfer: undefined, streamId: this.#serverUniStreamCounter});
+				const reader = new Reader({
+					stream: value as ReadableStream<Uint8Array<ArrayBufferLike>>,
+					transfer: undefined,
+					streamId: this.#serverUniStreamCounter,
+				});
 				this.#serverUniStreamCounter += 4n;
-
 
 				// Read the first byte to determine the stream type
 				[num, err] = await reader.readUint8();
@@ -432,7 +442,7 @@ export class Session {
 
 		this.#conn.close({
 			closeCode: 0x0, // Normal closure
-			reason: "No Error"
+			reason: "No Error",
 		});
 
 		await Promise.allSettled(this.#wg);

@@ -16,7 +16,7 @@ func (m *MockSetupResponseWriter) SelectVersion(v Version) error {
 	return args.Error(0)
 }
 
-func (m *MockSetupResponseWriter) SetExtensions(extensions *Parameters) {
+func (m *MockSetupResponseWriter) SetExtensions(extensions *Extension) {
 	m.Called(extensions)
 }
 

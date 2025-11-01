@@ -2,21 +2,19 @@ package message
 
 import (
 	"io"
-
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/protocol"
 )
 
 type SessionServerMessage struct {
 	/*
 	 * Versions selected by the server
 	 */
-	SelectedVersion protocol.Version
+	SelectedVersion uint64
 
 	/*
 	 * Setup Parameters
 	 * Keys of the maps should not be duplicated
 	 */
-	Parameters Parameters
+	Parameters map[uint64][]byte
 }
 
 func (ssm SessionServerMessage) Len() int {
@@ -41,7 +39,7 @@ func (ssm SessionServerMessage) Encode(w io.Writer) error {
 	// Append parameters
 	b, _ = WriteVarint(b, uint64(len(ssm.Parameters)))
 	for key, value := range ssm.Parameters {
-		b, _ = WriteVarint(b, key)
+		b, _ = WriteVarint(b, uint64(key))
 		b, _ = WriteBytes(b, value)
 	}
 
@@ -67,7 +65,7 @@ func (ssm *SessionServerMessage) Decode(src io.Reader) error {
 	if err != nil {
 		return err
 	}
-	ssm.SelectedVersion = protocol.Version(num)
+	ssm.SelectedVersion = num
 	b = b[n:]
 
 	ssm.Parameters, n, err = ReadParameters(b)

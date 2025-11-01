@@ -197,12 +197,12 @@ func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackCon
 
 	// Send a SUBSCRIBE message
 	sm := message.SubscribeMessage{
-		SubscribeID:      id,
+		SubscribeID:      uint64(id),
 		BroadcastPath:    string(path),
 		TrackName:        string(name),
-		TrackPriority:    config.TrackPriority,
-		MinGroupSequence: config.MinGroupSequence,
-		MaxGroupSequence: config.MaxGroupSequence,
+		TrackPriority:    uint8(config.TrackPriority),
+		MinGroupSequence: uint64(config.MinGroupSequence),
+		MaxGroupSequence: uint64(config.MaxGroupSequence),
 	}
 	err = sm.Encode(stream)
 	if err != nil {
@@ -446,9 +446,9 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 
 		// Create a receiveSubscribeStream
 		config := &TrackConfig{
-			TrackPriority:    sm.TrackPriority,
-			MinGroupSequence: sm.MinGroupSequence,
-			MaxGroupSequence: sm.MaxGroupSequence,
+			TrackPriority:    TrackPriority(sm.TrackPriority),
+			MinGroupSequence: GroupSequence(sm.MinGroupSequence),
+			MaxGroupSequence: GroupSequence(sm.MaxGroupSequence),
 		}
 		// Create a subscription-specific logger
 		subLogger := streamLogger.With(
@@ -458,15 +458,15 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 			"config", config.String(),
 		)
 
-		substr := newReceiveSubscribeStream(sm.SubscribeID, stream, config)
+		substr := newReceiveSubscribeStream(SubscribeID(sm.SubscribeID), stream, config)
 
 		subLogger.Debug("accepted a subscribe stream")
 
 		trackWriter := newTrackWriter(
 			BroadcastPath(sm.BroadcastPath), TrackName(sm.TrackName),
-			substr, sess.conn.OpenUniStream, func() { sess.removeTrackWriter(sm.SubscribeID) },
+			substr, sess.conn.OpenUniStream, func() { sess.removeTrackWriter(SubscribeID(sm.SubscribeID)) },
 		)
-		sess.addTrackWriter(sm.SubscribeID, trackWriter)
+		sess.addTrackWriter(SubscribeID(sm.SubscribeID), trackWriter)
 
 		sess.mux.serveTrack(trackWriter)
 	default:
@@ -529,7 +529,7 @@ func (sess *Session) processUniStream(stream quic.ReceiveStream, streamLogger *s
 			"group_sequence", gm.GroupSequence,
 		)
 
-		track, ok := sess.trackReaders[gm.SubscribeID]
+		track, ok := sess.trackReaders[SubscribeID(gm.SubscribeID)]
 		if !ok {
 			groupLogger.Warn("received group for unknown subscription")
 			stream.CancelRead(quic.StreamErrorCode(InvalidSubscribeIDErrorCode))
@@ -539,7 +539,7 @@ func (sess *Session) processUniStream(stream quic.ReceiveStream, streamLogger *s
 		groupLogger.Debug("accepted group stream")
 
 		// Enqueue the receiver
-		track.enqueueGroup(gm.GroupSequence, stream)
+		track.enqueueGroup(GroupSequence(gm.GroupSequence), stream)
 	default:
 		streamLogger.Error("unknown unidirectional stream type received",
 			"stream_type", streamType,

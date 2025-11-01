@@ -7,9 +7,7 @@ import (
 func TestNewPool(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
 		p := NewPool(64, 256, 1024)
-		if p == nil {
-			t.Error("NewPool should return a pool")
-		}
+
 		if p.min != 64 || p.middle != 256 || p.max != 1024 {
 			t.Errorf("Pool values incorrect: min=%d, middle=%d, max=%d", p.min, p.middle, p.max)
 		}

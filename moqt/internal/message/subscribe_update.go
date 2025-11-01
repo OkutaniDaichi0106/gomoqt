@@ -14,9 +14,9 @@ import (
  * }
  */
 type SubscribeUpdateMessage struct {
-	TrackPriority    TrackPriority
-	MinGroupSequence GroupSequence
-	MaxGroupSequence GroupSequence
+	TrackPriority    uint8
+	MinGroupSequence uint64
+	MaxGroupSequence uint64
 }
 
 func (su SubscribeUpdateMessage) Len() int {
@@ -62,21 +62,21 @@ func (sum *SubscribeUpdateMessage) Decode(src io.Reader) error {
 	if err != nil {
 		return err
 	}
-	sum.TrackPriority = TrackPriority(num)
+	sum.TrackPriority = uint8(num)
 	b = b[n:]
 
 	num, n, err = ReadVarint(b)
 	if err != nil {
 		return err
 	}
-	sum.MinGroupSequence = GroupSequence(num)
+	sum.MinGroupSequence = num
 	b = b[n:]
 
 	num, n, err = ReadVarint(b)
 	if err != nil {
 		return err
 	}
-	sum.MaxGroupSequence = GroupSequence(num)
+	sum.MaxGroupSequence = num
 	b = b[n:]
 
 	if len(b) != 0 {

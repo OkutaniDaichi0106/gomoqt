@@ -5,6 +5,7 @@
   "exports": {
     ".": "./src/mod.ts"
   },
+  "license": "MIT",
   "compilerOptions": {
     "lib": ["ESNext", "deno.ns", "DOM", "dom.iterable", "dom.asynciterable"],
     "strict": true,

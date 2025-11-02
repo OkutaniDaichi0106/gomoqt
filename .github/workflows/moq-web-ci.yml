@@ -63,7 +63,7 @@ jobs:
       - name: Run type check
         if: matrix.runtime.name == 'deno'
         working-directory: ./moq-web
-        run: deno check mod.ts
+        run: deno check src/mod.ts
 
       - name: Run tests with coverage (Deno)
         if: matrix.runtime.name == 'deno'

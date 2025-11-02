@@ -18,14 +18,6 @@ const (
 
 var DefaultClientVersions []Version = []Version{Develop}
 
-var defaultClientVersions = func() []uint64 {
-	versions := make([]uint64, len(DefaultClientVersions))
-	for i, v := range DefaultClientVersions {
-		versions[i] = uint64(v)
-	}
-	return versions
-}()
-
 var DefaultServerVersion Version = Develop
 
 type Version uint64

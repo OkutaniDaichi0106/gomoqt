@@ -1,4 +1,4 @@
-import type { Context } from "@okudai/golikejs/context";
+import { withCancelCause, type CancelCauseFunc, type Context } from "@okudai/golikejs/context";
 import type { Stream } from "./internal/webtransport/mod.ts";
 import { SessionUpdateMessage } from "./internal/message/mod.ts";
 import type { SessionClientMessage, SessionServerMessage } from "./internal/message/mod.ts";
@@ -17,6 +17,7 @@ interface SessionStreamInit {
 export class SessionStream {
 	#stream: Stream;
 	readonly context: Context;
+	#cancelFunc: CancelCauseFunc;
 	#mu: Mutex = new Mutex();
 	#cond: Cond = new Cond(this.#mu);
 	#clientInfo: ClientInfo;
@@ -36,7 +37,7 @@ export class SessionStream {
 			extensions: new Extensions(init.server.extensions),
 			bitrate: 0,
 		};
-		this.context = init.context;
+		[this.context, this.#cancelFunc] = withCancelCause(init.context);
 		this.#detectFunc = init.detectFunc;
 
 		// Start handling session updates (fire and forget)
@@ -68,9 +69,7 @@ export class SessionStream {
 			const msg = new SessionUpdateMessage({});
 			const err = await msg.decode(this.#stream.readable);
 			if (err) {
-				// if (err !== EOF ) {
-				//     console.error(`moq: error reading SESSION_UPDATE message: ${err}`);
-				// }
+				this.#cancelFunc(new Error(`moq: failed to decode session update message: ${err}`));
 				break;
 			}
 
@@ -94,7 +93,8 @@ export class SessionStream {
 		const msg = new SessionUpdateMessage({ bitrate });
 		const err = await msg.encode(this.#stream.writable);
 		if (err) {
-			throw new Error(`Failed to encode session update message: ${err}`);
+			this.#cancelFunc(new Error(`moq: failed to encode session update message: ${err}`));
+			return;
 		}
 
 		this.#clientInfo.bitrate = msg.bitrate;

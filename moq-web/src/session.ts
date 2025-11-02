@@ -12,8 +12,8 @@ import {
 import { Stream } from "./internal/webtransport/mod.ts";
 import { Extensions } from "./extensions.ts";
 import { SessionStream } from "./session_stream.ts";
-import { background, watchPromise } from "@okudai/golikejs/context";
-import type { Context } from "@okudai/golikejs/context";
+import { background, withCancelCause } from "@okudai/golikejs/context";
+import type { CancelCauseFunc, Context } from "@okudai/golikejs/context";
 import { AnnouncementReader, AnnouncementWriter } from "./announce_stream.ts";
 import type { TrackPrefix } from "./track_prefix.ts";
 import { ReceiveSubscribeStream, SendSubscribeStream } from "./subscribe_stream.ts";
@@ -39,7 +39,8 @@ export class Session {
 	readonly ready: Promise<void>;
 	#conn: Connection;
 	#sessionStream!: SessionStream;
-	#ctx!: Context;
+	#ctx: Context;
+	#cancelFunc: CancelCauseFunc;
 
 	#wg: Promise<void>[] = [];
 
@@ -60,6 +61,13 @@ export class Session {
 	constructor(init: SessionInit) {
 		this.#conn = new Connection(init.conn);
 		this.mux = init.mux ?? DefaultTrackMux;
+		const [ctx, cancel] = withCancelCause(background());
+		this.#conn.closed.finally(() => {
+			cancel(new Error("webtransport: connection closed"));
+		});
+		this.#ctx = ctx;
+		this.#cancelFunc = cancel;
+
 		this.ready = this.#setup(
 			init.versions ?? DEFAULT_CLIENT_VERSIONS,
 			init.extensions ?? new Extensions(),
@@ -115,22 +123,23 @@ export class Session {
 			throw new Error(`Incompatible session version: ${rsp.version}`);
 		}
 
-		const connCtx = watchPromise(background(), this.#conn.closed); // TODO: Handle connection closure properly
 
 		this.#sessionStream = new SessionStream({
-			context: connCtx,
+			context: this.#ctx,
 			stream: stream,
 			client: req,
 			server: rsp,
 			detectFunc: async () => {
 				// Block until the connection is closed
 				// TODO: Implement actual bitrate detection logic
-				await connCtx.done();
+				await this.#ctx.done();
 				return 0; // Placeholder for bitrate detection logic
 			},
 		});
 
-		this.#ctx = this.#sessionStream.context;
+		this.#sessionStream.context.done().then(()=>{
+			this.#cancelFunc(new Error("moq: session stream closed"));
+		});
 
 		// Start listening for incoming streams
 		this.#wg.push(this.#listenBiStreams());

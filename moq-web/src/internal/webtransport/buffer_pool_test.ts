@@ -94,4 +94,83 @@ Deno.test("webtransport/buffer_pool", async (t) => {
 		const bytes2 = pool.acquire(10);
 		assertNotStrictEquals(bytes2, bytes);
 	});
+
+	await t.step("constructor error cases", () => {
+		// min, middle, max not greater than 0
+		try {
+			new BufferPool({ min: 0, middle: 10, max: 100 });
+			throw new Error("Should have thrown");
+		} catch (e) {
+			assertEquals((e as Error).message, "min, middle, max must be greater than 0");
+		}
+
+		// not in ascending order
+		try {
+			new BufferPool({ min: 10, middle: 5, max: 100 });
+			throw new Error("Should have thrown");
+		} catch (e) {
+			assertEquals((e as Error).message, "min, middle, max must be in ascending order");
+		}
+	});
+
+	await t.step("acquire different capacity ranges", () => {
+		const pool = new BufferPool({ min: 1, middle: 10, max: 100 });
+		const bytes1 = pool.acquire(1); // min
+		assertEquals(bytes1.byteLength, 1);
+		const bytes2 = pool.acquire(5); // between min and middle
+		assertEquals(bytes2.byteLength, 10); // middle
+		const bytes3 = pool.acquire(50); // between middle and max
+		assertEquals(bytes3.byteLength, 100); // max
+	});
+
+	await t.step("release different sizes", () => {
+		const pool = new BufferPool({ min: 1, middle: 10, max: 100 });
+		const bytes1 = pool.acquire(1);
+		const bytes2 = pool.acquire(10);
+		const bytes3 = pool.acquire(100);
+		pool.release(bytes1); // size === min
+		pool.release(bytes2); // size === middle
+		pool.release(bytes3); // size === max
+		// Reuse
+		const reused1 = pool.acquire(1);
+		assertStrictEquals(reused1, bytes1);
+		const reused2 = pool.acquire(10);
+		assertStrictEquals(reused2, bytes2);
+		const reused3 = pool.acquire(100);
+		assertStrictEquals(reused3, bytes3);
+	});
+
+	await t.step("release when bucket full", () => {
+		const pool = new BufferPool({
+			min: 1,
+			middle: 10,
+			max: 100,
+			options: { maxPerBucket: 2 },
+		});
+		const bytes1 = pool.acquire(10);
+		const bytes2 = pool.acquire(10);
+		const bytes3 = pool.acquire(10);
+		pool.release(bytes1);
+		pool.release(bytes2);
+		pool.release(bytes3); // This should evict the oldest (bytes1)
+		const reused = pool.acquire(10);
+		assertStrictEquals(reused, bytes3); // bytes3 is the newest
+	});
+
+	await t.step("release when maxTotalBytes exceeded (not released)", () => {
+		const pool = new BufferPool({
+			min: 1,
+			middle: 10,
+			max: 100,
+			options: { maxTotalBytes: 9 },
+		});
+		const b1 = pool.acquire(10);
+		pool.release(b1); // 10 >9, not released
+		const b2 = pool.acquire(10);
+		pool.release(b2); // 10 >9, not released
+		const b3 = pool.acquire(10);
+		pool.release(b3); // 10 >9, not released
+		const b4 = pool.acquire(10);
+		assertNotStrictEquals(b4, b3);
+	});
 });

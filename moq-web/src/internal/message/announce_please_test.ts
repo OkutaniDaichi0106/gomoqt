@@ -65,4 +65,40 @@ Deno.test("AnnouncePleaseMessage - encode/decode roundtrip - multiple scenarios"
 			assertEquals(decodedMessage.prefix, input.prefix, `prefix mismatch for ${caseName}`);
 		});
 	}
+
+	await t.step("decode should return error when readVarint fails", async () => {
+		const readableStream = new ReadableStream({
+			start(controller) {
+				controller.close(); // Close immediately to cause read error
+			},
+		});
+		const reader = new ReceiveStream({
+			stream: readableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
+
+		const message = new AnnouncePleaseMessage({});
+		const err = await message.decode(reader);
+		assertEquals(err !== undefined, true);
+	});
+
+	await t.step("decode should return error when readString fails", async () => {
+		const buffer = new Uint8Array([5]); // message length = 5, but no string data
+		const readableStream = new ReadableStream({
+			start(controller) {
+				controller.enqueue(buffer);
+				controller.close();
+			},
+		});
+		const reader = new ReceiveStream({
+			stream: readableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
+
+		const message = new AnnouncePleaseMessage({});
+		const err = await message.decode(reader);
+		assertEquals(err !== undefined, true);
+	});
 });

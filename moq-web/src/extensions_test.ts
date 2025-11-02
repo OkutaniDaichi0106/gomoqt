@@ -90,4 +90,23 @@ Deno.test("internal/extensions - basic operations", async (t) => {
 		for (let i = 0; i < 50; i++) e.addString(i + 100, `val${i}`);
 		for (let i = 0; i < 50; i++) assertEquals(e.getString(i + 100), `val${i}`);
 	});
+
+	await t.step("constructor with initial entries", () => {
+		const initial = new Map<number, Uint8Array>();
+		initial.set(1, new Uint8Array([1, 2, 3]));
+		const e = new Extensions(initial);
+		assertEquals(e.getBytes(1), new Uint8Array([1, 2, 3]));
+		assertEquals(e.entries.size, 1);
+	});
+
+	await t.step("getBoolean with invalid data", () => {
+		const e = new Extensions();
+		// length !== 1
+		e.addBytes(30, new Uint8Array([1, 2]));
+		assertEquals(e.getBoolean(30), undefined);
+
+		// bytes[0] !== 0 and !== 1
+		e.addBytes(31, new Uint8Array([2]));
+		assertEquals(e.getBoolean(31), false); // since 2 !== 1, returns false
+	});
 });

@@ -1,6 +1,7 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import {
 	BytesBuffer,
+	MAX_BYTES_LENGTH,
 	readBigVarint,
 	readString,
 	readUint8Array,
@@ -238,5 +239,49 @@ Deno.test("webtransport/BytesBuffer behavior", async (t) => {
 		const [str, len] = readString(buf);
 		assertEquals(str, "abc");
 		assertEquals(len, 4);
+	});
+
+	await t.step("writeBigVarint 4/8 byte and errors", () => {
+		const buf4 = new Uint8Array(8);
+		const len4 = writeBigVarint(buf4, 100000n); // fits in 4 bytes
+		assertEquals(len4, 4);
+
+		const buf8 = new Uint8Array(8);
+		const len8 = writeBigVarint(buf8, 2000000000n); // requires 8 bytes
+		assertEquals(len8, 8);
+
+		const bufNeg = new Uint8Array(8);
+		assertThrows(() => writeBigVarint(bufNeg, -1n));
+
+		const smallBuf = new Uint8Array(1);
+		// require 2 bytes but buffer too small
+		assertThrows(() => writeBigVarint(smallBuf, 100n));
+	});
+
+	await t.step("readVarint/readBigVarint error paths", () => {
+		// offset out of bounds
+		assertThrows(() => readVarint(new Uint8Array(0)), RangeError);
+		assertThrows(() => readBigVarint(new Uint8Array(0)), RangeError);
+
+		// buffer too small for indicated varint length
+		const buf = new Uint8Array([0x80, 0x01]); // indicates 4-byte varint but only 2 bytes present
+		assertThrows(() => readVarint(buf), RangeError);
+		assertThrows(() => readBigVarint(buf), RangeError);
+	});
+
+	await t.step("readUint8Array throws on varint too large", () => {
+		// craft a header that encodes len = MAX_BYTES_LENGTH + 1 using writeBigVarint
+		const header = new Uint8Array(8);
+		const oversized = BigInt(MAX_BYTES_LENGTH) + 1n;
+		const wrote = writeBigVarint(header, oversized);
+		// place header into a buffer but without actual payload
+		const buf = new Uint8Array(wrote);
+		buf.set(header.subarray(0, wrote), 0);
+		assertThrows(() => readUint8Array(buf), RangeError);
+	});
+
+	await t.step("BytesBuffer readUint8 throws when empty", () => {
+		const buffer = new BytesBuffer(new ArrayBuffer(4));
+		assertThrows(() => buffer.readUint8());
 	});
 });

@@ -21,8 +21,21 @@ export class Client {
 	#sessions?: Set<Session> = new Set();
 	readonly options: MOQOptions;
 
-	constructor(options: MOQOptions = DefaultMOQOptions) {
-		this.options = options;
+	/**
+	 * Create a new Client.
+	 * The provided options are shallow-merged with safe defaults so the
+	 * shared default objects aren't accidentally mutated.
+	 */
+	constructor(options?: MOQOptions) {
+		this.options = {
+			versions: options?.versions ?? DefaultMOQOptions.versions,
+			extensions: options?.extensions ?? DefaultMOQOptions.extensions,
+			reconnect: options?.reconnect ?? DefaultMOQOptions.reconnect,
+			transportOptions: {
+				...DefaultWebTransportOptions,
+				...(options?.transportOptions ?? {}),
+			},
+		};
 	}
 
 	async dial(url: string | URL, mux: TrackMux = DefaultTrackMux): Promise<Session> {
@@ -30,7 +43,16 @@ export class Client {
 			return Promise.reject(new Error("Client is closed"));
 		}
 
-		const transport = new WebTransport(url, this.options.transportOptions);
+		// Normalize URL to string (WebTransport accepts a USVString).
+		const endpoint = typeof url === "string" ? url : String(url);
+
+		let transport: WebTransport;
+		try {
+			transport = new WebTransport(endpoint, this.options.transportOptions);
+		} catch (err) {
+			return Promise.reject(new Error(`failed to create WebTransport: ${err}`));
+		}
+
 		const session = new Session({
 			conn: transport,
 			extensions: this.options.extensions,
@@ -47,11 +69,10 @@ export class Client {
 		}
 
 		await Promise.allSettled(
-			Array.from(this.#sessions).map(
-				(session) => session.close(),
-			),
+			Array.from(this.#sessions).map((session) => session.close()),
 		);
-		this.#sessions = new Set();
+		// Mark client as closed so future dials fail fast.
+		this.#sessions = undefined;
 	}
 
 	async abort(): Promise<void> {
@@ -59,13 +80,13 @@ export class Client {
 			return;
 		}
 
+		// Try to close sessions with an error to indicate abort semantics.
 		await Promise.allSettled(
-			Array.from(this.#sessions).map(
-				(session) => session.close(),
-			),
+			Array.from(this.#sessions).map((session) => session.closeWithError(1, "client aborted")),
 		);
 
-		this.#sessions = new Set();
+		// Mark closed
+		this.#sessions = undefined;
 	}
 }
 

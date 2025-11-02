@@ -46,4 +46,28 @@ Deno.test("frame - BytesFrame basic operations", async (t) => {
 		f.bytes[0] = 99;
 		assertEquals(cloned.bytes[0], 1); // cloned should still have original value
 	});
+
+	await t.step("data getter returns bytes", () => {
+		const data = new Uint8Array([42, 43, 44]);
+		const f = new BytesFrame(data);
+		assertEquals(f.data, data);
+	});
+
+	await t.step("clone with provided buffer", () => {
+		const data = new Uint8Array([1, 2, 3]);
+		const f = new BytesFrame(data);
+		const buffer = new Uint8Array(5);
+		const cloned = f.clone(buffer);
+		assertEquals(cloned.bytes, data);
+		assertEquals(cloned.bytes.buffer, buffer.buffer); // should use the provided buffer
+	});
+
+	await t.step("copyFrom resizes when src is larger", () => {
+		const srcData = new Uint8Array([1, 2, 3, 4, 5]);
+		const src = new BytesFrame(srcData);
+		const dest = new BytesFrame(new Uint8Array(2)); // smaller than src
+		dest.copyFrom(src);
+		assertEquals(dest.bytes, srcData);
+		assertEquals(dest.byteLength, 5);
+	});
 });

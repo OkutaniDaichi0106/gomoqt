@@ -116,4 +116,78 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 			);
 		});
 	}
+
+	await t.step("decode should return error when readVarint fails for message length", async () => {
+		const readableStream = new ReadableStream({
+			start(controller) {
+				controller.close(); // Close immediately to cause read error
+			},
+		});
+		const reader = new ReceiveStream({
+			stream: readableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
+
+		const message = new SubscribeMessage({});
+		const err = await message.decode(reader);
+		assertEquals(err !== undefined, true);
+	});
+
+	await t.step("decode should return error when reading subscribeId fails", async () => {
+		const buffer = new Uint8Array([5]); // only message length
+		const readableStream = new ReadableStream({
+			start(controller) {
+				controller.enqueue(buffer);
+				controller.close();
+			},
+		});
+		const reader = new ReceiveStream({
+			stream: readableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
+
+		const message = new SubscribeMessage({});
+		const err = await message.decode(reader);
+		assertEquals(err !== undefined, true);
+	});
+
+	await t.step("decode should return error when reading broadcastPath fails", async () => {
+		const buffer = new Uint8Array([5, 1]); // message length, subscribeId, but no broadcastPath
+		const readableStream = new ReadableStream({
+			start(controller) {
+				controller.enqueue(buffer);
+				controller.close();
+			},
+		});
+		const reader = new ReceiveStream({
+			stream: readableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
+
+		const message = new SubscribeMessage({});
+		const err = await message.decode(reader);
+		assertEquals(err !== undefined, true);
+	});
+
+	await t.step("decode should return error when reading trackName fails", async () => {
+		const buffer = new Uint8Array([6, 1, 0]); // message length, subscribeId, empty broadcastPath, but no trackName
+		const readableStream = new ReadableStream({
+			start(controller) {
+				controller.enqueue(buffer);
+				controller.close();
+			},
+		});
+		const reader = new ReceiveStream({
+			stream: readableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
+
+		const message = new SubscribeMessage({});
+		const err = await message.decode(reader);
+		assertEquals(err !== undefined, true);
+	});
 });

@@ -1,4 +1,6 @@
 import { assertEquals, assertExists, assertInstanceOf, assertThrows } from "@std/assert";
+import { spy } from "@std/testing/mock";
+import { EOFError } from "@okudai/golikejs/io";
 import { Announcement, AnnouncementReader, AnnouncementWriter } from "./announce_stream.ts";
 import type { ReceiveStream, SendStream } from "./internal/webtransport/mod.ts";
 import { MockStream } from "./internal/webtransport/mock_stream_test.ts";
@@ -91,6 +93,17 @@ Deno.test("Announcement - Normal Cases", async (t) => {
 		await endedPromise; // Should not hang
 	});
 
+	await t.step("should handle multiple end() calls", () => {
+		const announcement = new Announcement("/test/path", new Promise(() => {}));
+		
+		announcement.end();
+		assertEquals(announcement.isActive(), false);
+		
+		// Second end() should be idempotent
+		announcement.end();
+		assertEquals(announcement.isActive(), false);
+	});
+
 	await t.step("should end on signal", async () => {
 		let resolveSignal: () => void;
 		const signal = new Promise<void>((resolve) => {
@@ -173,6 +186,61 @@ Deno.test("AnnouncementWriter - Init Method", async (t) => {
 		assertExists(result);
 		assertInstanceOf(result, Error);
 	});
+
+	await t.step("should handle ending active announcements", async () => {
+		const mockStream2 = new MockStream(43n);
+		const mockContext2 = new MockContext();
+		const mockRequest2 = new MockAnnouncePleaseMessage("/test/");
+
+		const writer2 = new AnnouncementWriter(
+			mockContext2 as any,
+			mockStream2 as any,
+			mockRequest2 as any,
+		);
+
+		const announcement1 = new Announcement("/test/path1", new Promise(() => {}));
+		const initResult = await writer2.init([announcement1]);
+		assertEquals(initResult, undefined);
+
+		// Now try to end the same announcement
+		const endAnnouncement = new Announcement("/test/path1", new Promise(() => {}));
+		endAnnouncement.end(); // Make it inactive
+		const endResult = await writer2.init([endAnnouncement]);
+		assertEquals(endResult, undefined);
+	});
+
+	await t.step("should reject ending non-existent announcement", async () => {
+		const endAnnouncement = new Announcement("/test/nonexistent", new Promise(() => {}));
+		endAnnouncement.end(); // Make it inactive
+		const result = await writer.init([endAnnouncement]);
+		assertExists(result);
+		assertInstanceOf(result, Error);
+	});
+
+	await t.step("should replace inactive announcement with active one in init", async () => {
+		const mockStream3 = new MockStream(44n);
+		const mockContext3 = new MockContext();
+		const mockRequest3 = new MockAnnouncePleaseMessage("/test/");
+
+		const writer3 = new AnnouncementWriter(
+			mockContext3 as any,
+			mockStream3 as any,
+			mockRequest3 as any,
+		);
+
+		const announcement1 = new Announcement("/test/path1", new Promise(() => {}));
+		await writer3.init([announcement1]);
+
+		// End it
+		const endAnn = new Announcement("/test/path1", new Promise(() => {}));
+		endAnn.end();
+		await writer3.init([endAnn]);
+
+		// Now add active announcement with same path
+		const announcement2 = new Announcement("/test/path1", new Promise(() => {}));
+		const result = await writer3.init([announcement2]);
+		assertEquals(result, undefined);
+	});
 });
 
 Deno.test("AnnouncementWriter - Send Method", async (t) => {
@@ -201,6 +269,53 @@ Deno.test("AnnouncementWriter - Send Method", async (t) => {
 		const result = await writer.send(announcement);
 		assertExists(result);
 		assertInstanceOf(result, Error);
+	});
+
+	await t.step("should handle ending announcements", async () => {
+		// First send an active announcement
+		const activeAnnouncement = new Announcement("/test/path3", new Promise(() => {}));
+		let sendResult = await writer.send(activeAnnouncement);
+		assertEquals(sendResult, undefined);
+
+		// Now send an inactive announcement to end it
+		const endAnnouncement = new Announcement("/test/path3", new Promise(() => {}));
+		endAnnouncement.end(); // Make it inactive
+		sendResult = await writer.send(endAnnouncement);
+		assertEquals(sendResult, undefined);
+	});
+
+	await t.step("should reject ending non-active announcement", async () => {
+		const endAnnouncement = new Announcement("/test/nonexistent", new Promise(() => {}));
+		endAnnouncement.end(); // Make it inactive
+		const result = await writer.send(endAnnouncement);
+		assertExists(result);
+		assertInstanceOf(result, Error);
+	});
+
+	await t.step("should reject duplicate active announcement in send", async () => {
+		const announcement1 = new Announcement("/test/path4", new Promise(() => {}));
+		await writer.send(announcement1);
+		
+		// Try to send the same path again
+		const announcement2 = new Announcement("/test/path4", new Promise(() => {}));
+		const result = await writer.send(announcement2);
+		assertExists(result);
+		assertInstanceOf(result, Error);
+	});
+
+	await t.step("should replace inactive announcement with active one", async () => {
+		const activeAnn = new Announcement("/test/path5", new Promise(() => {}));
+		await writer.send(activeAnn);
+		
+		// End it
+		const endAnn = new Announcement("/test/path5", new Promise(() => {}));
+		endAnn.end();
+		await writer.send(endAnn);
+		
+		// Now send a new active one with same path
+		const newActiveAnn = new Announcement("/test/path5", new Promise(() => {}));
+		const result = await writer.send(newActiveAnn);
+		assertEquals(result, undefined);
 	});
 });
 
@@ -346,6 +461,66 @@ Deno.test("AnnouncementReader - Receive Method", async (t) => {
 				clearTimeout(timerId);
 			}
 		}
+	});
+
+	await t.step("should handle incoming announce messages", async () => {
+		const mockStream = new MockStream(42n);
+		const mockContext = new MockContext();
+		const mockRequest = new MockAnnouncePleaseMessage("/test/");
+		const mockInit = new MockAnnounceInitMessage([]);
+
+		const reader = new AnnouncementReader(
+			mockContext as any,
+			mockStream as any,
+			mockRequest as any,
+			mockInit as any,
+		);
+
+		// Manually create the expected byte sequence for AnnounceMessage { suffix: "newpath", active: true }
+		// messageLength = 9 (stringLen("newpath") + 1 = 8 + 1)
+		// stringLen("newpath") = varintLen(7) + 7 = 1 + 7 = 8
+		let readIndex = 0;
+		const expectedData = [
+			9, // messageLength (varint for 9)
+			1, // active (boolean true)
+			7, // string length (varint for 7)
+			110, 101, 119, 112, 97, 116, 104, // "newpath" UTF-8 bytes
+		];
+
+		mockStream.readable.readVarint = spy(async (): Promise<[number, Error | undefined]> => {
+			if (readIndex < expectedData.length) {
+				return [expectedData[readIndex++]!, undefined];
+			}
+			return [0, new EOFError()];
+		});
+
+		mockStream.readable.readBoolean = spy(async (): Promise<[boolean, Error | undefined]> => {
+			if (readIndex < expectedData.length) {
+				return [expectedData[readIndex++]! === 1, undefined];
+			}
+			return [false, new EOFError()];
+		});
+
+		mockStream.readable.readString = spy(async (): Promise<[string, Error | undefined]> => {
+			if (readIndex < expectedData.length) {
+				const strLen = expectedData[readIndex++]!; // Read string length
+				if (readIndex + strLen <= expectedData.length) {
+					const strBytes = expectedData.slice(readIndex, readIndex + strLen);
+					readIndex += strLen;
+					return [new TextDecoder().decode(new Uint8Array(strBytes)), undefined];
+				}
+			}
+			return ["", new EOFError()];
+		});
+
+		// Wait a bit for the message to be processed
+		await new Promise((resolve) => setTimeout(resolve, 10));
+
+		// Try to receive the announcement
+		const [announcement, err] = await reader.receive(Promise.resolve());
+		assertExists(announcement);
+		assertEquals(err, undefined);
+		assertEquals(announcement?.broadcastPath, "/test/newpath");
 	});
 });
 

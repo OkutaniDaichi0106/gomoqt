@@ -7,6 +7,7 @@ import { ReceiveStream, type ReceiveStreamInit } from "./receive_stream.ts";
 import { Stream, type StreamInit } from "./stream.ts";
 import { SendStream, type SendStreamInit } from "./send_stream.ts";
 import type { StreamError } from "./error.ts";
+import { Connection } from "./connection.ts";
 
 /**
  * Mock implementation of ReadableStreamDefaultReader for bidirectional streams.
@@ -152,6 +153,8 @@ export class MockWebTransport implements WebTransport {
 	#clientBiCounter = 0;
 	#clientUniCounter = 2;
 
+	#shouldFailCreateStream = false;
+
 	constructor() {
 		this.ready = new Promise((resolve, reject) => {
 			this.#resolveReady = resolve;
@@ -207,6 +210,13 @@ export class MockWebTransport implements WebTransport {
 	}
 
 	/**
+	 * Set whether createBidirectionalStream should fail.
+	 */
+	setFailCreateStream(fail: boolean): void {
+		this.#shouldFailCreateStream = fail;
+	}
+
+	/**
 	 * Get the bidirectional stream reader for testing.
 	 */
 	getBiReader(): MockBidirectionalStreamReader {
@@ -221,6 +231,9 @@ export class MockWebTransport implements WebTransport {
 	}
 
 	async createBidirectionalStream(): Promise<WebTransportBidirectionalStream> {
+		if (this.#shouldFailCreateStream) {
+			throw new Error("Failed to create bidirectional stream");
+		}
 		this.#clientBiCounter += 4;
 
 		const { readable, writable } = new TransformStream<Uint8Array>();
@@ -439,11 +452,12 @@ export class MockReceiveStream {
  * Mock Connection implementation for testing.
  * This provides a test double for the Connection class.
  */
-export class MockConnection {
+export class MockConnection extends Connection {
 	#mockWebTransport: MockWebTransport;
 	#counter = new streamIDCounter();
 
 	constructor(mockWebTransport?: MockWebTransport) {
+		super(mockWebTransport || new MockWebTransport());
 		this.#mockWebTransport = mockWebTransport || new MockWebTransport();
 	}
 
@@ -454,7 +468,7 @@ export class MockConnection {
 		return this.#mockWebTransport;
 	}
 
-	async openStream(): Promise<[Stream, undefined] | [undefined, Error]> {
+	override async openStream(): Promise<[Stream, undefined] | [undefined, Error]> {
 		try {
 			const wtStream = await this.#mockWebTransport.createBidirectionalStream();
 			const stream = new Stream({
@@ -467,7 +481,7 @@ export class MockConnection {
 		}
 	}
 
-	async openUniStream(): Promise<[SendStream, undefined] | [undefined, Error]> {
+	override async openUniStream(): Promise<[SendStream, undefined] | [undefined, Error]> {
 		try {
 			const wtStream = await this.#mockWebTransport.createUnidirectionalStream();
 			const stream = new SendStream({
@@ -480,7 +494,7 @@ export class MockConnection {
 		}
 	}
 
-	async acceptStream(): Promise<[Stream, undefined] | [undefined, Error]> {
+	override async acceptStream(): Promise<[Stream, undefined] | [undefined, Error]> {
 		const biReader = this.#mockWebTransport.getBiReader();
 		const { done, value: wtStream } = await biReader.read();
 		if (done) {
@@ -493,7 +507,7 @@ export class MockConnection {
 		return [stream, undefined];
 	}
 
-	async acceptUniStream(): Promise<[ReceiveStream, undefined] | [undefined, Error]> {
+	override async acceptUniStream(): Promise<[ReceiveStream, undefined] | [undefined, Error]> {
 		const uniReader = this.#mockWebTransport.getUniReader();
 		const { done, value: wtStream } = await uniReader.read();
 		if (done) {
@@ -506,15 +520,15 @@ export class MockConnection {
 		return [stream, undefined];
 	}
 
-	close(closeInfo?: WebTransportCloseInfo): void {
+	override close(closeInfo?: WebTransportCloseInfo): void {
 		this.#mockWebTransport.close(closeInfo);
 	}
 
-	get ready(): Promise<void> {
+	override get ready(): Promise<void> {
 		return this.#mockWebTransport.ready;
 	}
 
-	get closed(): Promise<WebTransportCloseInfo> {
+	override get closed(): Promise<WebTransportCloseInfo> {
 		return this.#mockWebTransport.closed;
 	}
 
@@ -561,6 +575,20 @@ export class MockConnection {
 	 */
 	failReady(error: Error): void {
 		this.#mockWebTransport.failReady(error);
+	}
+
+	/**
+	 * Fail the next openStream call for testing.
+	 */
+	setFailOpenStream(fail: boolean): void {
+		this.#mockWebTransport.setFailCreateStream(fail);
+	}
+
+	/**
+	 * Fail the next openUniStream call for testing.
+	 */
+	setFailOpenUniStream(fail: boolean): void {
+		this.#mockWebTransport.setFailCreateStream(fail); // Assuming same method
 	}
 }
 

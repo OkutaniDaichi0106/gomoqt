@@ -77,4 +77,97 @@ Deno.test("SessionServerMessage - encode/decode roundtrip - multiple scenarios",
 			);
 		});
 	}
+
+	await t.step("decode should return error when readVarint fails for message length", async () => {
+		const readableStream = new ReadableStream({
+			start(controller) {
+				controller.close(); // Close immediately to cause read error
+			},
+		});
+		const reader = new ReceiveStream({
+			stream: readableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
+
+		const message = new SessionServerMessage({});
+		const err = await message.decode(reader);
+		assertEquals(err !== undefined, true);
+	});
+
+	await t.step("decode should return error when readVarint fails for version", async () => {
+		const buffer = new Uint8Array([1]); // only message length
+		const readableStream = new ReadableStream({
+			start(controller) {
+				controller.enqueue(buffer);
+				controller.close();
+			},
+		});
+		const reader = new ReceiveStream({
+			stream: readableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
+
+		const message = new SessionServerMessage({});
+		const err = await message.decode(reader);
+		assertEquals(err !== undefined, true);
+	});
+
+	await t.step("decode should return error when readVarint fails for extension count", async () => {
+		const buffer = new Uint8Array([2, 1]); // message length, version, but no extension count
+		const readableStream = new ReadableStream({
+			start(controller) {
+				controller.enqueue(buffer);
+				controller.close();
+			},
+		});
+		const reader = new ReceiveStream({
+			stream: readableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
+
+		const message = new SessionServerMessage({});
+		const err = await message.decode(reader);
+		assertEquals(err !== undefined, true);
+	});
+
+	await t.step("decode should return error when reading extension ID fails", async () => {
+		const buffer = new Uint8Array([3, 1, 1]); // message length, version, extensionCount=1, but no ID
+		const readableStream = new ReadableStream({
+			start(controller) {
+				controller.enqueue(buffer);
+				controller.close();
+			},
+		});
+		const reader = new ReceiveStream({
+			stream: readableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
+
+		const message = new SessionServerMessage({});
+		const err = await message.decode(reader);
+		assertEquals(err !== undefined, true);
+	});
+
+	await t.step("decode should return error when reading extension data fails", async () => {
+		const buffer = new Uint8Array([4, 1, 1, 1]); // message length, version, extensionCount=1, ID=1, but no data
+		const readableStream = new ReadableStream({
+			start(controller) {
+				controller.enqueue(buffer);
+				controller.close();
+			},
+		});
+		const reader = new ReceiveStream({
+			stream: readableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
+
+		const message = new SessionServerMessage({});
+		const err = await message.decode(reader);
+		assertEquals(err !== undefined, true);
+	});
 });

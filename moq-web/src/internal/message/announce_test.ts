@@ -70,4 +70,59 @@ Deno.test("AnnounceMessage - encode/decode roundtrip - multiple scenarios", asyn
 			assertEquals(decodedMessage.active, input.active, `active mismatch for ${caseName}`);
 		});
 	}
+
+	await t.step("decode should return error when readVarint fails for message length", async () => {
+		const readableStream = new ReadableStream({
+			start(controller) {
+				controller.close();
+			},
+		});
+		const reader = new ReceiveStream({
+			stream: readableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
+
+		const message = new AnnounceMessage({});
+		const err = await message.decode(reader);
+		assertEquals(err !== undefined, true);
+	});
+
+	await t.step("decode should return error when reading suffix fails", async () => {
+		const buffer = new Uint8Array([5]); // only message length
+		const readableStream = new ReadableStream({
+			start(controller) {
+				controller.enqueue(buffer);
+				controller.close();
+			},
+		});
+		const reader = new ReceiveStream({
+			stream: readableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
+
+		const message = new AnnounceMessage({});
+		const err = await message.decode(reader);
+		assertEquals(err !== undefined, true);
+	});
+
+	await t.step("decode should return error when reading active fails", async () => {
+		const buffer = new Uint8Array([1, 0]); // message length, empty suffix, but no active
+		const readableStream = new ReadableStream({
+			start(controller) {
+				controller.enqueue(buffer);
+				controller.close();
+			},
+		});
+		const reader = new ReceiveStream({
+			stream: readableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
+
+		const message = new AnnounceMessage({});
+		const err = await message.decode(reader);
+		assertEquals(err !== undefined, true);
+	});
 });

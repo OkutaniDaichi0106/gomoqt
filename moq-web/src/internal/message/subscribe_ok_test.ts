@@ -47,4 +47,50 @@ Deno.test("SubscribeOkMessage - encode/decode roundtrip", async (t) => {
 		const decodeErr = await decodedMessage.decode(reader);
 		assertEquals(decodeErr, undefined);
 	});
+
+	await t.step("messageLength should return 0", () => {
+		const message = new SubscribeOkMessage({});
+		assertEquals(message.messageLength, 0);
+	});
+
+	await t.step("decode should return error when readVarint fails", async () => {
+		const readableStream = new ReadableStream({
+			start(controller) {
+				controller.close(); // Close immediately to cause read error
+			},
+		});
+		const reader = new ReceiveStream({
+			stream: readableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
+
+		const message = new SubscribeOkMessage({});
+		const err = await message.decode(reader);
+		assertEquals(err !== undefined, true);
+	});
+
+	await t.step("decode should throw when length mismatch", async () => {
+		// Create a buffer with incorrect length (1 instead of 0)
+		const buffer = new Uint8Array([1]); // varint 1
+		const readableStream = new ReadableStream({
+			start(controller) {
+				controller.enqueue(buffer);
+				controller.close();
+			},
+		});
+		const reader = new ReceiveStream({
+			stream: readableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
+
+		const message = new SubscribeOkMessage({});
+		try {
+			await message.decode(reader);
+			throw new Error("Expected decode to throw");
+		} catch (error) {
+			assertEquals((error as Error).message.includes("message length mismatch"), true);
+		}
+	});
 });

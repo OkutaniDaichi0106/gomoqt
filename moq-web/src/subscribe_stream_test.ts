@@ -273,3 +273,48 @@ Deno.test("Type Definitions - TrackConfig and SubscribeID", async (t) => {
 		assertEquals(typeof id, "number");
 	});
 });
+
+Deno.test("ReceiveSubscribeStream - Additional Coverage", async (t) => {
+
+	await t.step("should return error when context is cancelled", async () => {
+		const { receiveStream, mockStream } = makeReceiveMocks();
+
+		await receiveStream.closeWithError(500, "Context cancelled");
+
+		const info: Info = { groupPeriod: 100 };
+		const result = await receiveStream.writeInfo(info);
+
+		assertExists(result);
+		assertInstanceOf(result, Error);
+
+		mockStream.reset();
+	});
+
+	await t.step("should return early when close is called with existing error", async () => {
+		const { receiveStream, mockWriter, mockStream } = makeReceiveMocks();
+
+		await receiveStream.closeWithError(500, "First error");
+
+		await receiveStream.close();
+
+		assertEquals((mockWriter.close as any).calls.length, 0);
+
+		mockStream.reset();
+	});
+
+	await t.step("should return early when closeWithError is called twice", async () => {
+		const { receiveStream, mockWriter, mockStream } = makeReceiveMocks();
+
+		await receiveStream.closeWithError(500, "First error");
+
+		const cancelCallsBefore = (mockWriter.cancel as any).calls.length;
+
+		await receiveStream.closeWithError(404, "Second error");
+
+		const cancelCallsAfter = (mockWriter.cancel as any).calls.length;
+
+		assertEquals(cancelCallsBefore, cancelCallsAfter);
+
+		mockStream.reset();
+	});
+});

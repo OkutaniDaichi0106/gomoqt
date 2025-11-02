@@ -81,8 +81,13 @@ export class TrackMux {
 		// Wait for the announcement to end
 		announcement.ended().then(() => {
 			console.debug(`[TrackMux] track ended for path: ${path}`);
-			// Remove the handler when the context is done
-			this.#handlers.delete(path);
+			// Only remove the handler if the stored announcement is the same
+			// instance that ended. This prevents a replaced announcement from
+			// causing the newly-registered handler to be removed.
+			const current = this.#handlers.get(path);
+			if (current && current.announcement === announcement) {
+				this.#handlers.delete(path);
+			}
 		});
 	}
 

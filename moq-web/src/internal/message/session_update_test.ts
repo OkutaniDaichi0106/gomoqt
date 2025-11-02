@@ -65,4 +65,40 @@ Deno.test("SessionUpdateMessage - encode/decode roundtrip - multiple scenarios",
 			assertEquals(decodedMessage.bitrate, input.bitrate, `bitrate mismatch for ${caseName}`);
 		});
 	}
+
+	await t.step("decode should return error when readVarint fails for message length", async () => {
+		const readableStream = new ReadableStream({
+			start(controller) {
+				controller.close();
+			},
+		});
+		const reader = new ReceiveStream({
+			stream: readableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
+
+		const message = new SessionUpdateMessage({});
+		const err = await message.decode(reader);
+		assertEquals(err !== undefined, true);
+	});
+
+	await t.step("decode should return error when reading bitrate fails", async () => {
+		const buffer = new Uint8Array([2]); // only message length
+		const readableStream = new ReadableStream({
+			start(controller) {
+				controller.enqueue(buffer);
+				controller.close();
+			},
+		});
+		const reader = new ReceiveStream({
+			stream: readableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
+
+		const message = new SessionUpdateMessage({});
+		const err = await message.decode(reader);
+		assertEquals(err !== undefined, true);
+	});
 });

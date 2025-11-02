@@ -350,3 +350,133 @@ Deno.test("TrackHandler - Interface", () => {
 	assertEquals(mockHandler.calls.length, 1);
 	assertEquals(mockHandler.calls[0]?.trackWriter, mockTrackWriter);
 });
+
+Deno.test("TrackMux - Additional Coverage", async (t) => {
+	await t.step("should handle inactive announcement", async () => {
+		const trackMux = new TrackMux();
+		const mockHandler = new MockTrackHandler();
+
+		// Create an announcement with already-resolved context (inactive)
+		const mockAnnouncement = new Announcement(
+			"/test/path" as BroadcastPath,
+			Promise.resolve(),
+		);
+
+		// Wait for the announcement to become inactive
+		await mockAnnouncement.ended();
+
+		await trackMux.announce(mockAnnouncement, mockHandler);
+
+		// Should not register the handler since announcement is inactive
+		const mockTrackWriter = createMockTrackWriter(
+			"/test/path" as BroadcastPath,
+			"test-track",
+		);
+		await trackMux.serveTrack(mockTrackWriter);
+
+		// Should call closeWithError since handler was not registered
+		assertEquals(mockTrackWriter.closeWithErrorCalls.length, 1);
+	});
+
+	await t.step("should replace existing announcement with different instance", async () => {
+		const trackMux = new TrackMux();
+		const mockHandler1 = new MockTrackHandler();
+		const mockHandler2 = new MockTrackHandler();
+
+		const [ctx1, cancelFunc1] = withCancelCause(background());
+		const mockAnnouncement1 = new Announcement("/test/path" as BroadcastPath, ctx1.done());
+
+		await trackMux.announce(mockAnnouncement1, mockHandler1);
+
+		// Announce again with different announcement
+		const [ctx2, cancelFunc2] = withCancelCause(background());
+		const mockAnnouncement2 = new Announcement("/test/path" as BroadcastPath, ctx2.done());
+
+		await trackMux.announce(mockAnnouncement2, mockHandler2);
+
+		// Should use the new handler
+		const mockTrackWriter = createMockTrackWriter(
+			"/test/path" as BroadcastPath,
+			"test-track",
+		);
+		await trackMux.serveTrack(mockTrackWriter);
+
+		assertEquals(mockHandler1.calls.length, 0);
+		assertEquals(mockHandler2.calls.length, 1);
+
+		cancelFunc1(undefined);
+		cancelFunc2(undefined);
+	});
+
+	await t.step("should handle send error and clean up failed announcer", async () => {
+		const trackMux = new TrackMux();
+		const mockHandler = new MockTrackHandler();
+
+		const [ctx, cancelFunc] = withCancelCause(background());
+		const mockAnnouncementWriter = createMockAnnouncementWriter(ctx);
+
+		// Override send to return an error
+		mockAnnouncementWriter.send = async (_: Announcement): Promise<Error | undefined> => {
+			return new Error("Send failed");
+		};
+
+		const prefix = "/test/" as TrackPrefix;
+		const servePromise = trackMux.serveAnnouncement(mockAnnouncementWriter, prefix);
+
+		// Announce a path that matches the prefix
+		const [ctx2, cancelFunc2] = withCancelCause(background());
+		const mockAnnouncement = new Announcement("/test/path" as BroadcastPath, ctx2.done());
+		await trackMux.announce(mockAnnouncement, mockHandler);
+
+		// Cancel the context to complete
+		cancelFunc(undefined);
+		await servePromise;
+
+		cancelFunc2(undefined);
+	});
+
+	await t.step("should use publishFunc to register handler", async () => {
+		const trackMux = new TrackMux();
+		const mockTrackWriter = createMockTrackWriter(
+			"/test/path" as BroadcastPath,
+			"test-track",
+		);
+
+		const [ctx, cancelFunc] = withCancelCause(background());
+		const path = "/test/path" as BroadcastPath;
+
+		let handlerCalled = false;
+		await trackMux.publishFunc(ctx.done(), path, async (_ctx, _trackWriter) => {
+			handlerCalled = true;
+		});
+
+		await trackMux.serveTrack(mockTrackWriter);
+
+		assertEquals(handlerCalled, true);
+
+		cancelFunc(undefined);
+	});
+
+	await t.step("should handle announcement to non-matching prefix", async () => {
+		const trackMux = new TrackMux();
+		const mockHandler = new MockTrackHandler();
+
+		const [ctx, cancelFunc] = withCancelCause(background());
+		const mockAnnouncementWriter = createMockAnnouncementWriter(ctx);
+
+		const prefix = "/other/" as TrackPrefix;
+		const servePromise = trackMux.serveAnnouncement(mockAnnouncementWriter, prefix);
+
+		// Announce a path that doesn't match the prefix
+		const [ctx2, cancelFunc2] = withCancelCause(background());
+		const mockAnnouncement = new Announcement("/test/path" as BroadcastPath, ctx2.done());
+		await trackMux.announce(mockAnnouncement, mockHandler);
+
+		// Should not send to the writer
+		assertEquals(mockAnnouncementWriter.sendCalls.length, 0);
+
+		cancelFunc(undefined);
+		await servePromise;
+		cancelFunc2(undefined);
+	});
+});

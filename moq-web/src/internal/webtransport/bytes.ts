@@ -48,7 +48,7 @@ export class BytesBuffer {
 			buf[bytesRead] = byte;
 			bytesRead++;
 		}
-		
+
 		return bytesRead;
 	}
 

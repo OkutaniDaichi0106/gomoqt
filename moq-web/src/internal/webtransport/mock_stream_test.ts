@@ -1,28 +1,28 @@
 /**
  * Mock implementations for WebTransport streams used in testing.
- * 
+ *
  * This module provides mock implementations of:
  * - MockSendStream: Mock for SendStream (write operations)
  * - MockReceiveStream: Mock for ReceiveStream (read operations)
  * - MockStream: Mock for bidirectional Stream (combines both)
- * 
+ *
  * All mocks use spy functionality from @std/testing/mock to track method calls
  * and allow customization of return values for testing various scenarios.
- * 
+ *
  * @example
  * ```ts
  * import { MockStream } from "./internal/webtransport/mock_stream_test.ts";
- * 
+ *
  * // Create a bidirectional mock stream
  * const mockStream = new MockStream(42n);
- * 
+ *
  * // Configure mock behavior
  * mockStream.writable.flushError = new Error("Flush failed");
  * mockStream.readable.data = [new Uint8Array([1, 2, 3])];
- * 
+ *
  * // Use in tests
  * await someFunction(mockStream);
- * 
+ *
  * // Verify calls
  * assertEquals(mockStream.writable.flushCalls > 0, true);
  * ```
@@ -82,7 +82,7 @@ export class MockSendStream {
 	/** Spy for copyFrom method */
 	public copyFrom = spy((_src: Source): void => {});
 
-	/** 
+	/**
 	 * Spy for flush method.
 	 * Returns undefined by default (no error).
 	 * Override flushError to simulate flush errors.
@@ -132,7 +132,7 @@ export class MockReceiveStream {
 	/** Track cancel method calls */
 	public cancelCalls: Array<StreamError> = [];
 
-	/** 
+	/**
 	 * Error to return from read operations.
 	 * If set, all read operations will return this error.
 	 */

@@ -35,7 +35,11 @@ Deno.test("SubscribeUpdateMessage - encode/decode roundtrip - multiple scenarios
 					chunks.push(chunk);
 				},
 			});
-			const writer = new SendStream({ stream: writableStream, transfer: undefined, streamId: 0n });
+			const writer = new SendStream({
+				stream: writableStream,
+				transfer: undefined,
+				streamId: 0n,
+			});
 
 			const message = new SubscribeUpdateMessage(input);
 			const encodeErr = await message.encode(writer);
@@ -57,14 +61,30 @@ Deno.test("SubscribeUpdateMessage - encode/decode roundtrip - multiple scenarios
 					controller.close();
 				},
 			});
-			const reader = new ReceiveStream({ stream: readableStream, transfer: undefined, streamId: 0n });
+			const reader = new ReceiveStream({
+				stream: readableStream,
+				transfer: undefined,
+				streamId: 0n,
+			});
 
 			const decodedMessage = new SubscribeUpdateMessage({});
 			const decodeErr = await decodedMessage.decode(reader);
 			assertEquals(decodeErr, undefined, `decode failed for ${caseName}`);
-			assertEquals(decodedMessage.trackPriority, input.trackPriority, `trackPriority mismatch for ${caseName}`);
-			assertEquals(decodedMessage.minGroupSequence, input.minGroupSequence, `minGroupSequence mismatch for ${caseName}`);
-			assertEquals(decodedMessage.maxGroupSequence, input.maxGroupSequence, `maxGroupSequence mismatch for ${caseName}`);
+			assertEquals(
+				decodedMessage.trackPriority,
+				input.trackPriority,
+				`trackPriority mismatch for ${caseName}`,
+			);
+			assertEquals(
+				decodedMessage.minGroupSequence,
+				input.minGroupSequence,
+				`minGroupSequence mismatch for ${caseName}`,
+			);
+			assertEquals(
+				decodedMessage.maxGroupSequence,
+				input.maxGroupSequence,
+				`maxGroupSequence mismatch for ${caseName}`,
+			);
 		});
 	}
 });

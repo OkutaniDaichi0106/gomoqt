@@ -57,17 +57,17 @@ Deno.test("SendSubscribeStream - Normal Cases", async (t) => {
 			mockSubscribe,
 			mockSubscribeOk,
 		);
-		
+
 		assertInstanceOf(sendStream, SendSubscribeStream);
 		assertExists(sendStream.context);
 		assertEquals(sendStream.subscribeId, 123);
-		
+
 		// Verify config matches subscribe message
 		const config = sendStream.config;
 		assertEquals(config.trackPriority, 1);
 		assertEquals(config.minGroupSequence, 0n);
 		assertEquals(config.maxGroupSequence, 100n);
-		
+
 		// Verify info matches subscribeOk message
 		assertEquals(sendStream.info, mockSubscribeOk);
 	});
@@ -94,28 +94,27 @@ Deno.test("SendSubscribeStream - Normal Cases", async (t) => {
 			mockSubscribeOk,
 		);
 		const mockWriter = mockStream.writable;
-		
+
 		const newConfig: TrackConfig = {
 			trackPriority: 2,
 			minGroupSequence: 10n,
 			maxGroupSequence: 200n,
 		};
-		
+
 		const result = await sendStream.update(newConfig);
-		
+
 		assertEquals(result, undefined);
 		assertEquals((mockWriter.flush as any).calls.length > 0, true);
-		
+
 		// Verify config was actually updated
 		const cfg = sendStream.config;
 		assertEquals(cfg.trackPriority, 2);
 		assertEquals(cfg.minGroupSequence, 10n);
 		assertEquals(cfg.maxGroupSequence, 200n);
-		
+
 		// Cleanup
 		mockStream.reset();
 	});
-
 });
 
 Deno.test("SendSubscribeStream - Error Cases", async (t) => {
@@ -136,19 +135,24 @@ Deno.test("SendSubscribeStream - Error Cases", async (t) => {
 			messageLength: 0,
 		});
 		const ctx = background();
-		const sendStream = new SendSubscribeStream(ctx, mockStream as any, mockSubscribe, mockSubscribeOk);
+		const sendStream = new SendSubscribeStream(
+			ctx,
+			mockStream as any,
+			mockSubscribe,
+			mockSubscribeOk,
+		);
 
 		const result = await sendStream.update({
 			trackPriority: 2,
 			minGroupSequence: 10n,
 			maxGroupSequence: 200n,
 		});
-		
+
 		// Verify error is returned
 		assertInstanceOf(result, Error);
 		const msg = (result as Error).message ?? "";
 		assertEquals(/Failed to (write|flush) subscribe update/.test(msg), true);
-		
+
 		// Cleanup
 		mockStream.reset();
 	});
@@ -175,12 +179,12 @@ Deno.test("SendSubscribeStream - Error Cases", async (t) => {
 			mockSubscribeOk,
 		);
 		const mockWriter = mockStream.writable;
-		
+
 		await sendStream.closeWithError(500, "Test error");
-		
+
 		// Verify cancel was called on writer
 		assertEquals((mockWriter.cancel as any).calls.length > 0, true);
-		
+
 		// Cleanup
 		mockStream.reset();
 	});
@@ -189,17 +193,17 @@ Deno.test("SendSubscribeStream - Error Cases", async (t) => {
 Deno.test("ReceiveSubscribeStream - Normal Cases", async (t) => {
 	await t.step("should create instance with correct properties", () => {
 		const { receiveStream, mockStream } = makeReceiveMocks();
-		
+
 		assertInstanceOf(receiveStream, ReceiveSubscribeStream);
 		assertExists(receiveStream.context);
 		assertEquals(receiveStream.subscribeId, 789);
-		
+
 		// Verify track config matches subscribe message
 		const cfg = receiveStream.trackConfig;
 		assertEquals(cfg.trackPriority, 3);
 		assertEquals(cfg.minGroupSequence, 5n);
 		assertEquals(cfg.maxGroupSequence, 150n);
-		
+
 		// Cleanup
 		mockStream.reset();
 	});
@@ -207,29 +211,29 @@ Deno.test("ReceiveSubscribeStream - Normal Cases", async (t) => {
 	await t.step("should write info successfully (idempotent)", async () => {
 		const { receiveStream, mockStream } = makeReceiveMocks();
 		const info: Info = { groupPeriod: 100 };
-		
+
 		// First write
 		const r1 = await receiveStream.writeInfo(info);
 		assertEquals(r1, undefined);
-		
+
 		// Second write should also succeed (idempotent)
 		const r2 = await receiveStream.writeInfo(info);
 		assertEquals(r2, undefined);
-		
+
 		// Cleanup
 		mockStream.reset();
 	});
 
 	await t.step("should close writer cleanly", async () => {
 		const { receiveStream, mockWriter, mockStream } = makeReceiveMocks();
-		
+
 		await receiveStream.close();
-		
+
 		// Verify close was called
 		assertEquals((mockWriter.close as any).calls.length > 0, true);
 		// Context should not have error
 		assertEquals(receiveStream.context.err(), undefined);
-		
+
 		// Cleanup
 		mockStream.reset();
 	});
@@ -238,13 +242,13 @@ Deno.test("ReceiveSubscribeStream - Normal Cases", async (t) => {
 Deno.test("ReceiveSubscribeStream - Error Cases", async (t) => {
 	await t.step("should cancel both streams when closed with error", async () => {
 		const { receiveStream, mockWriter, mockReader, mockStream } = makeReceiveMocks();
-		
+
 		await receiveStream.closeWithError(404, "Not found");
-		
+
 		// Verify both writer and reader were cancelled
 		assertEquals((mockWriter.cancel as any).calls.length > 0, true);
 		assertEquals((mockReader.cancel as any).calls.length > 0, true);
-		
+
 		// Cleanup
 		mockStream.reset();
 	});
@@ -257,7 +261,7 @@ Deno.test("Type Definitions - TrackConfig and SubscribeID", async (t) => {
 			minGroupSequence: 0n,
 			maxGroupSequence: 100n,
 		};
-		
+
 		// Verify all properties have correct types
 		assertEquals(typeof config.trackPriority, "number");
 		assertEquals(typeof config.minGroupSequence, "bigint");

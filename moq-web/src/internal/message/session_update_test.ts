@@ -27,7 +27,11 @@ Deno.test("SessionUpdateMessage - encode/decode roundtrip - multiple scenarios",
 					chunks.push(chunk);
 				},
 			});
-			const writer = new SendStream({ stream: writableStream, transfer: undefined, streamId: 0n });
+			const writer = new SendStream({
+				stream: writableStream,
+				transfer: undefined,
+				streamId: 0n,
+			});
 
 			const message = new SessionUpdateMessage(input);
 			const encodeErr = await message.encode(writer);
@@ -49,7 +53,11 @@ Deno.test("SessionUpdateMessage - encode/decode roundtrip - multiple scenarios",
 					controller.close();
 				},
 			});
-			const reader = new ReceiveStream({ stream: readableStream, transfer: undefined, streamId: 0n });
+			const reader = new ReceiveStream({
+				stream: readableStream,
+				transfer: undefined,
+				streamId: 0n,
+			});
 
 			const decodedMessage = new SessionUpdateMessage({});
 			const decodeErr = await decodedMessage.decode(reader);

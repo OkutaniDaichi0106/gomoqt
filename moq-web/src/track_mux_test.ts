@@ -65,7 +65,7 @@ function createMockAnnouncementWriter(
 } {
 	const sendCalls: Announcement[] = [];
 	const initCalls: Announcement[][] = [];
-	
+
 	const mock = {
 		context,
 		sendCalls,
@@ -93,7 +93,7 @@ function createMockAnnouncementWriter(
 		closeCalls: number;
 		reset: () => void;
 	};
-	
+
 	return mock;
 }
 

@@ -31,7 +31,11 @@ Deno.test("GroupMessage - encode/decode roundtrip - multiple scenarios", async (
 					chunks.push(chunk);
 				},
 			});
-			const writer = new SendStream({ stream: writableStream, transfer: undefined, streamId: 0n });
+			const writer = new SendStream({
+				stream: writableStream,
+				transfer: undefined,
+				streamId: 0n,
+			});
 
 			const msg = new GroupMessage(input);
 			const encodeErr = await msg.encode(writer);
@@ -53,12 +57,20 @@ Deno.test("GroupMessage - encode/decode roundtrip - multiple scenarios", async (
 					controller.close();
 				},
 			});
-			const reader = new ReceiveStream({ stream: readableStream, transfer: undefined, streamId: 0n });
+			const reader = new ReceiveStream({
+				stream: readableStream,
+				transfer: undefined,
+				streamId: 0n,
+			});
 
 			const decodedMsg = new GroupMessage({});
 			const decodeErr = await decodedMsg.decode(reader);
 			assertEquals(decodeErr, undefined, `decode failed for ${caseName}`);
-			assertEquals(decodedMsg.subscribeId, input.subscribeId, `subscribeId mismatch for ${caseName}`);
+			assertEquals(
+				decodedMsg.subscribeId,
+				input.subscribeId,
+				`subscribeId mismatch for ${caseName}`,
+			);
 			assertEquals(decodedMsg.sequence, input.sequence, `sequence mismatch for ${caseName}`);
 		});
 	}

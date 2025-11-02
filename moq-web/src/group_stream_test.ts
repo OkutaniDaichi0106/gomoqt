@@ -4,10 +4,7 @@ import { StreamError } from "./internal/webtransport/error.ts";
 import type { GroupMessage } from "./internal/message/mod.ts";
 import { BytesFrame } from "./frame.ts";
 import { background as createBackground } from "@okudai/golikejs/context";
-import {
-	MockReceiveStream,
-	MockSendStream,
-} from "./internal/webtransport/mock_stream_test.ts";
+import { MockReceiveStream, MockSendStream } from "./internal/webtransport/mock_stream_test.ts";
 
 /**
  * Creates a fresh background context for each test.
@@ -53,7 +50,7 @@ Deno.test("GroupWriter - Normal Cases", async (t) => {
 		const gw = new GroupWriter(ctx, mockWriter as any, mockGroup);
 
 		await gw.close();
-		
+
 		assertExists(gw.context);
 		assertEquals(mockWriter.closeCalls > 0, true);
 	});
@@ -110,11 +107,11 @@ Deno.test("GroupReader - Normal Cases", async (t) => {
 		const gr = new GroupReader(ctx, mockReader as any, mockGroup);
 
 		const expectedData = new Uint8Array([1, 2, 3, 4]);
-		
+
 		// Mock readVarint to return data length
 		mockReader.readVarintImpl = async () =>
 			[expectedData.byteLength, undefined] as [number, Error | undefined];
-		
+
 		// Mock fillN to copy expected data
 		mockReader.fillNImpl = async (buf: Uint8Array, len: number) => {
 			buf.set(expectedData.subarray(0, len));
@@ -142,7 +139,8 @@ Deno.test("GroupReader - Error Cases", async (t) => {
 		"fillN error": {
 			setup: (mockReader: MockReceiveStream) => {
 				const fillErr = new Error("Fill failed");
-				mockReader.readVarintImpl = async () => [10, undefined] as [number, Error | undefined];
+				mockReader.readVarintImpl = async () =>
+					[10, undefined] as [number, Error | undefined];
 				mockReader.fillNImpl = async () => fillErr;
 			},
 			expectedError: "Fill failed",

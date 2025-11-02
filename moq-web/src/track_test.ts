@@ -1,9 +1,6 @@
 import { assertEquals, assertExists } from "@std/assert";
 import { TrackReader, TrackWriter } from "./track.ts";
-import {
-	MockReceiveStream,
-	MockSendStream,
-} from "./internal/webtransport/mock_stream_test.ts";
+import { MockReceiveStream, MockSendStream } from "./internal/webtransport/mock_stream_test.ts";
 import type { ReceiveSubscribeStream, SendSubscribeStream } from "./subscribe_stream.ts";
 import { background, withCancel } from "@okudai/golikejs/context";
 import type { Context } from "@okudai/golikejs/context";

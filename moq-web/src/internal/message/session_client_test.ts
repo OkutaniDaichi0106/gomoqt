@@ -21,7 +21,10 @@ Deno.test("SessionClientMessage", async (t) => {
 	await t.step("should create instance with versions only", () => {
 		const versions = new Set<number>([1]);
 
-		const message = new SessionClientMessage({ versions, extensions: new Map<number, Uint8Array>() });
+		const message = new SessionClientMessage({
+			versions,
+			extensions: new Map<number, Uint8Array>(),
+		});
 
 		assertEquals(message.versions, versions);
 		assertEquals(message.extensions.size, 0);
@@ -76,7 +79,11 @@ Deno.test("SessionClientMessage", async (t) => {
 				chunks.push(chunk);
 			},
 		});
-		const writer = new SendStream({ stream: writableStream, transfer: undefined, streamId: 0n });
+		const writer = new SendStream({
+			stream: writableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
 
 		// Encode
 		const message = new SessionClientMessage({ versions, extensions });
@@ -99,10 +106,17 @@ Deno.test("SessionClientMessage", async (t) => {
 				controller.close();
 			},
 		});
-		const reader = new ReceiveStream({ stream: readableStream, transfer: undefined, streamId: 0n });
+		const reader = new ReceiveStream({
+			stream: readableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
 
 		// Decode
-		const decodedMessage = new SessionClientMessage({ versions: new Set<number>(), extensions: new Map<number, Uint8Array>() });
+		const decodedMessage = new SessionClientMessage({
+			versions: new Set<number>(),
+			extensions: new Map<number, Uint8Array>(),
+		});
 		const decodeErr = await decodedMessage.decode(reader);
 		assertEquals(decodeErr, undefined);
 		assertEquals(decodedMessage instanceof SessionClientMessage, true);
@@ -126,7 +140,11 @@ Deno.test("SessionClientMessage", async (t) => {
 				chunks.push(chunk);
 			},
 		});
-		const writer = new SendStream({ stream: writableStream, transfer: undefined, streamId: 0n });
+		const writer = new SendStream({
+			stream: writableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
 
 		// Encode
 		const message = new SessionClientMessage({ versions, extensions });
@@ -149,10 +167,17 @@ Deno.test("SessionClientMessage", async (t) => {
 				controller.close();
 			},
 		});
-		const reader = new ReceiveStream({ stream: readableStream, transfer: undefined, streamId: 0n });
+		const reader = new ReceiveStream({
+			stream: readableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
 
 		// Decode
-		const decodedMessage = new SessionClientMessage({ versions: new Set<number>(), extensions: new Map<number, Uint8Array>() });
+		const decodedMessage = new SessionClientMessage({
+			versions: new Set<number>(),
+			extensions: new Map<number, Uint8Array>(),
+		});
 		const decodeErr = await decodedMessage.decode(reader);
 		assertEquals(decodeErr, undefined);
 
@@ -178,7 +203,11 @@ Deno.test("SessionClientMessage", async (t) => {
 				chunks.push(chunk);
 			},
 		});
-		const writer = new SendStream({ stream: writableStream, transfer: undefined, streamId: 0n });
+		const writer = new SendStream({
+			stream: writableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
 
 		// Encode
 		const message = new SessionClientMessage({ versions, extensions });
@@ -201,10 +230,17 @@ Deno.test("SessionClientMessage", async (t) => {
 				controller.close();
 			},
 		});
-		const reader = new ReceiveStream({ stream: readableStream, transfer: undefined, streamId: 0n });
+		const reader = new ReceiveStream({
+			stream: readableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
 
 		// Decode
-		const decodedMessage = new SessionClientMessage({ versions: new Set<number>(), extensions: new Map<number, Uint8Array>() });
+		const decodedMessage = new SessionClientMessage({
+			versions: new Set<number>(),
+			extensions: new Map<number, Uint8Array>(),
+		});
 		const decodeErr = await decodedMessage.decode(reader);
 		assertEquals(decodeErr, undefined);
 
@@ -214,7 +250,10 @@ Deno.test("SessionClientMessage", async (t) => {
 		assertEquals(decodedMessage.extensions.size, 3);
 		assertEquals(new TextDecoder().decode(decodedMessage.extensions.get(1)!), "test-string");
 		assertEquals(decodedMessage.extensions.get(2), new Uint8Array([1, 2, 3, 4, 5]));
-		assertEquals(new TextDecoder().decode(decodedMessage.extensions.get(100)!), "another-extension");
+		assertEquals(
+			new TextDecoder().decode(decodedMessage.extensions.get(100)!),
+			"another-extension",
+		);
 	});
 
 	await t.step("should encode and decode with empty versions set", async () => {
@@ -228,7 +267,11 @@ Deno.test("SessionClientMessage", async (t) => {
 				chunks.push(chunk);
 			},
 		});
-		const writer = new SendStream({ stream: writableStream, transfer: undefined, streamId: 0n });
+		const writer = new SendStream({
+			stream: writableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
 		// Encode
 		const message = new SessionClientMessage({ versions, extensions });
 		const encodeErr = await message.encode(writer);
@@ -250,10 +293,17 @@ Deno.test("SessionClientMessage", async (t) => {
 				controller.close();
 			},
 		});
-		const reader = new ReceiveStream({ stream: readableStream, transfer: undefined, streamId: 0n });
+		const reader = new ReceiveStream({
+			stream: readableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
 
 		// Decode
-		const decodedMessage = new SessionClientMessage({ versions: new Set<number>(), extensions: new Map<number, Uint8Array>() });
+		const decodedMessage = new SessionClientMessage({
+			versions: new Set<number>(),
+			extensions: new Map<number, Uint8Array>(),
+		});
 		const decodeErr = await decodedMessage.decode(reader);
 		assertEquals(decodeErr, undefined);
 
@@ -275,7 +325,11 @@ Deno.test("SessionClientMessage", async (t) => {
 				chunks.push(chunk);
 			},
 		});
-		const writer = new SendStream({ stream: writableStream, transfer: undefined, streamId: 0n });
+		const writer = new SendStream({
+			stream: writableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
 
 		// Encode
 		const message = new SessionClientMessage({ versions, extensions });
@@ -298,10 +352,17 @@ Deno.test("SessionClientMessage", async (t) => {
 				controller.close();
 			},
 		});
-		const reader = new ReceiveStream({ stream: readableStream, transfer: undefined, streamId: 0n });
+		const reader = new ReceiveStream({
+			stream: readableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
 
 		// Decode
-		const decodedMessage = new SessionClientMessage({ versions: new Set<number>(), extensions: new Map<number, Uint8Array>() });
+		const decodedMessage = new SessionClientMessage({
+			versions: new Set<number>(),
+			extensions: new Map<number, Uint8Array>(),
+		});
 		const decodeErr = await decodedMessage.decode(reader);
 		assertEquals(decodeErr, undefined);
 

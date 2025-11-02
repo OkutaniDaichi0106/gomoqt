@@ -31,7 +31,11 @@ Deno.test("AnnounceMessage - encode/decode roundtrip - multiple scenarios", asyn
 					chunks.push(chunk);
 				},
 			});
-			const writer = new SendStream({ stream: writableStream, transfer: undefined, streamId: 0n });
+			const writer = new SendStream({
+				stream: writableStream,
+				transfer: undefined,
+				streamId: 0n,
+			});
 
 			const message = new AnnounceMessage(input);
 			const encodeErr = await message.encode(writer);
@@ -53,7 +57,11 @@ Deno.test("AnnounceMessage - encode/decode roundtrip - multiple scenarios", asyn
 					controller.close();
 				},
 			});
-			const reader = new ReceiveStream({ stream: readableStream, transfer: undefined, streamId: 0n });
+			const reader = new ReceiveStream({
+				stream: readableStream,
+				transfer: undefined,
+				streamId: 0n,
+			});
 
 			const decodedMessage = new AnnounceMessage({});
 			const decodeErr = await decodedMessage.decode(reader);

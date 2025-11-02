@@ -2,7 +2,6 @@ import { assertEquals, assertExists, assertThrows, fail } from "@std/assert";
 import { SendStream } from "./send_stream.ts";
 import { StreamError } from "./error.ts";
 
-
 function setupWriter() {
 	const writtenData: Uint8Array[] = [];
 	const state = { streamClosed: false };
@@ -70,7 +69,6 @@ Deno.test("Writer", async (t) => {
 		}
 	});
 });
-
 
 function createWriter(): { writer: SendStream; writtenData: Uint8Array[]; streamClosed: boolean } {
 	const writtenData: Uint8Array[] = [];

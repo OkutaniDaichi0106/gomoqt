@@ -4,8 +4,8 @@ import { Extensions } from "./extensions.ts";
 
 // Test configuration to ignore resource leaks from background operations
 const testOptions = {
-  sanitizeResources: false,
-  sanitizeOps: false,
+	sanitizeResources: false,
+	sanitizeOps: false,
 };
 
 Deno.test("MOQOptions", testOptions, async (t) => {

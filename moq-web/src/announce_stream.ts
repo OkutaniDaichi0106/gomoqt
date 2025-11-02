@@ -34,7 +34,6 @@ export class AnnouncementWriter {
 		this.#stream = stream;
 		this.prefix = validateTrackPrefix(req.prefix);
 
-
 		// const ctx = watchPromise(sessCtx, reader.closed());
 		[this.context, this.#cancelFunc] = withCancelCause(sessCtx);
 		this.#ready = new Promise<void>((resolve) => {
@@ -331,7 +330,7 @@ export class AnnouncementReader {
 		}
 
 		this.#cancelFunc(undefined);
-		
+
 		await this.#stream.writable.close();
 		this.#announcements.clear();
 		this.#queue.close();

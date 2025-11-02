@@ -9,8 +9,8 @@ import { EOFError } from "@okudai/golikejs/io";
 
 // Test configuration to ignore resource leaks from background operations
 const testOptions = {
-  sanitizeResources: false,
-  sanitizeOps: false,
+	sanitizeResources: false,
+	sanitizeOps: false,
 };
 
 // Mock Stream implementation for testing
@@ -726,8 +726,9 @@ Deno.test("SessionStream - Integration", testOptions, async (t) => {
 
 	await t.step("should coordinate multiple concurrent operations", async () => {
 		const [ctx, cancel] = withCancelCause(background());
-		const updates = Array.from({ length: 5 }, (_, i) =>
-			new SessionUpdateMessage({ bitrate: (i + 1) * 1000 })
+		const updates = Array.from(
+			{ length: 5 },
+			(_, i) => new SessionUpdateMessage({ bitrate: (i + 1) * 1000 }),
 		);
 		const readable = new MockReadable(updates);
 		const writable = new MockWritable();

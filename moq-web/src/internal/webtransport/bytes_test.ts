@@ -98,7 +98,11 @@ Deno.test("webtransport/BytesBuffer behavior", async (t) => {
 		assertEquals(buffer.size, 3);
 
 		const reservedBuffer = buffer.reserve(6);
-		assertEquals(reservedBuffer.length >= 6, true, `reserved length ${reservedBuffer.length} < 6`);
+		assertEquals(
+			reservedBuffer.length >= 6,
+			true,
+			`reserved length ${reservedBuffer.length} < 6`,
+		);
 		assertEquals(buffer.capacity >= 9, true, `capacity ${buffer.capacity} < 9`);
 	});
 

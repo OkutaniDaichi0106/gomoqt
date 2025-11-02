@@ -11,7 +11,11 @@ Deno.test("SubscribeOkMessage - encode/decode roundtrip", async (t) => {
 				chunks.push(chunk);
 			},
 		});
-		const writer = new SendStream({ stream: writableStream, transfer: undefined, streamId: 0n });
+		const writer = new SendStream({
+			stream: writableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
 
 		const message = new SubscribeOkMessage({});
 		const encodeErr = await message.encode(writer);
@@ -33,7 +37,11 @@ Deno.test("SubscribeOkMessage - encode/decode roundtrip", async (t) => {
 				controller.close();
 			},
 		});
-		const reader = new ReceiveStream({ stream: readableStream, transfer: undefined, streamId: 0n });
+		const reader = new ReceiveStream({
+			stream: readableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
 
 		const decodedMessage = new SubscribeOkMessage({});
 		const decodeErr = await decodedMessage.decode(reader);

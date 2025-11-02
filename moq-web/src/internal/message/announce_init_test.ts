@@ -13,7 +13,11 @@ Deno.test("AnnounceInitMessage", async (t) => {
 				chunks.push(chunk);
 			},
 		});
-		const writer = new SendStream({ stream: writableStream, transfer: undefined, streamId: 0n });
+		const writer = new SendStream({
+			stream: writableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
 
 		const message = new AnnounceInitMessage({ suffixes });
 		const encodeErr = await message.encode(writer);
@@ -35,7 +39,11 @@ Deno.test("AnnounceInitMessage", async (t) => {
 				controller.close();
 			},
 		});
-		const reader = new ReceiveStream({ stream: readableStream, transfer: undefined, streamId: 0n });
+		const reader = new ReceiveStream({
+			stream: readableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
 
 		const decodedMessage = new AnnounceInitMessage({});
 		const decodeErr = await decodedMessage.decode(reader);
@@ -51,7 +59,11 @@ Deno.test("AnnounceInitMessage", async (t) => {
 				chunks.push(chunk);
 			},
 		});
-		const writer = new SendStream({ stream: writableStream, transfer: undefined, streamId: 0n });
+		const writer = new SendStream({
+			stream: writableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
 
 		const message = new AnnounceInitMessage({});
 		const encodeErr = await message.encode(writer);
@@ -73,7 +85,11 @@ Deno.test("AnnounceInitMessage", async (t) => {
 				controller.close();
 			},
 		});
-		const reader = new ReceiveStream({ stream: readableStream, transfer: undefined, streamId: 0n });
+		const reader = new ReceiveStream({
+			stream: readableStream,
+			transfer: undefined,
+			streamId: 0n,
+		});
 
 		const decodedMessage = new AnnounceInitMessage({});
 		const decodeErr = await decodedMessage.decode(reader);

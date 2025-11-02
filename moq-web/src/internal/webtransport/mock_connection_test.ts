@@ -72,8 +72,7 @@ export class MockBidirectionalStreamReader
  * Mock implementation of ReadableStreamDefaultReader for unidirectional streams.
  */
 export class MockUnidirectionalStreamReader
-	implements
-		ReadableStreamDefaultReader<ReadableStream<Uint8Array<ArrayBufferLike>>> {
+	implements ReadableStreamDefaultReader<ReadableStream<Uint8Array<ArrayBufferLike>>> {
 	#queue: ReadableStream<Uint8Array>[] = [];
 	#closed = false;
 	readonly closed: Promise<undefined>;
@@ -327,7 +326,9 @@ export class MockSendStream {
 		this.#stream.writeStringArray(arr);
 	}
 
-	copyFrom(src: { byteLength: number; copyTo(target: ArrayBuffer | ArrayBufferView): void }): void {
+	copyFrom(
+		src: { byteLength: number; copyTo(target: ArrayBuffer | ArrayBufferView): void },
+	): void {
 		this.#stream.copyFrom(src);
 	}
 
@@ -415,7 +416,7 @@ export class MockReceiveStream {
 	 */
 	static create(streamId: bigint, data?: Uint8Array[]): MockReceiveStream {
 		const { readable, writable } = new TransformStream<Uint8Array>();
-		
+
 		// If data is provided, write it to the stream
 		if (data && data.length > 0) {
 			const writer = writable.getWriter();
@@ -532,7 +533,7 @@ export class MockConnection {
 	 */
 	simulateIncomingUniStream(data?: Uint8Array[]): ReadableStream<Uint8Array> {
 		const { readable, writable } = new TransformStream<Uint8Array>();
-		
+
 		// If data is provided, write it to the stream
 		if (data && data.length > 0) {
 			const writer = writable.getWriter();
@@ -543,7 +544,7 @@ export class MockConnection {
 				await writer.close();
 			})();
 		}
-		
+
 		this.#mockWebTransport.getUniReader().enqueue(readable);
 		return readable;
 	}

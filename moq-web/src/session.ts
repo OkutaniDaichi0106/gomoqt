@@ -287,7 +287,7 @@ export class Session {
 
 		enqueueFunc(reader, req);
 	}
-	
+
 	async #handleSubscribeStream(stream: Stream): Promise<void> {
 		const req = new SubscribeMessage({});
 		const reqErr = await req.decode(stream.readable);

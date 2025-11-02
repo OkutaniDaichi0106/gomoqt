@@ -16,14 +16,14 @@ class MockWebTransport {
 		this.closed = new Promise((resolve) => {
 			this.#closeResolve = resolve;
 		});
-		
+
 		// Mock incoming streams (empty for testing)
 		this.incomingBidirectionalStreams = new ReadableStream({
 			start(_controller) {
 				// No incoming bidirectional streams for basic tests
 			},
 		});
-		
+
 		this.incomingUnidirectionalStreams = new ReadableStream({
 			start(_controller) {
 				// No incoming unidirectional streams for basic tests
@@ -70,7 +70,7 @@ import type { MOQOptions } from "./options.ts";
 
 Deno.test("Client - Constructor with Default Options", () => {
 	const client = new Client();
-	
+
 	assertExists(client.options);
 	assertExists(client.options.versions);
 	assertEquals(client.options.versions instanceof Set, true);
@@ -88,9 +88,9 @@ Deno.test("Client - Constructor with Custom Options", () => {
 			requireUnreliable: false,
 		},
 	};
-	
+
 	const client = new Client(customOptions);
-	
+
 	assertEquals(client.options.versions, new Set([1]));
 	assertEquals(client.options.transportOptions?.allowPooling, true);
 	assertEquals(client.options.transportOptions?.congestionControl, "throughput");
@@ -112,7 +112,7 @@ Deno.test("Client - dial() attempts to create session", async () => {
 		// Expected to fail due to mock limitations
 		// In real usage, this would succeed with proper server
 	}
-	
+
 	await client.close();
 });
 
@@ -132,7 +132,7 @@ Deno.test("Client - dial() accepts URL types", () => {
 	const _test1: Promise<any> = client.dial(stringUrl);
 	const _test2: Promise<any> = client.dial(urlObject);
 	const _test3: Promise<any> = client.dial(stringUrl, customMux);
-	
+
 	// Prevent hanging promises
 	_test1.catch(() => {});
 	_test2.catch(() => {});
@@ -158,7 +158,7 @@ Deno.test("Client - dial() handles connection errors", async () => {
 		await assertRejects(
 			async () => await client.dial("https://example.com"),
 			Error,
-			"Connection failed"
+			"Connection failed",
 		);
 	} finally {
 		// Restore mock WebTransport
@@ -177,10 +177,10 @@ Deno.test("Client - close() with no sessions", async () => {
 
 Deno.test("Client - close() with empty sessions", async () => {
 	const client = new Client();
-	
+
 	// close() should work even without active sessions
 	await client.close();
-	
+
 	// Verify client can be reused after close
 	const options = client.options;
 	assertExists(options);
@@ -188,10 +188,10 @@ Deno.test("Client - close() with empty sessions", async () => {
 
 Deno.test("Client - abort() with no sessions", async () => {
 	const client = new Client();
-	
+
 	// abort() should work without active sessions
 	await client.abort();
-	
+
 	// Verify client state after abort
 	assertExists(client.options);
 });
@@ -203,7 +203,7 @@ Deno.test("Client - MOQ alias exports", () => {
 
 Deno.test("Client - MOQ alias instantiation", () => {
 	const moqClient = new MOQ();
-	
+
 	// Should be instance of Client
 	assertEquals(moqClient instanceof Client, true);
 	assertExists(moqClient.options);

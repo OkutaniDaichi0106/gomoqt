@@ -101,7 +101,7 @@ Deno.test("Announcement - Normal Cases", async (t) => {
 		assertEquals(announcement.isActive(), true);
 
 		resolveSignal!();
-		await new Promise(resolve => setTimeout(resolve, 10)); // Allow signal to propagate
+		await new Promise((resolve) => setTimeout(resolve, 10)); // Allow signal to propagate
 
 		assertEquals(announcement.isActive(), false);
 	});
@@ -109,13 +109,21 @@ Deno.test("Announcement - Normal Cases", async (t) => {
 
 Deno.test("Announcement - Error Cases", () => {
 	// Announcement constructor validates the path, so test invalid paths
-	assertThrows(() => {
-		new Announcement("", new Promise(() => {}));
-	}, Error, "Invalid broadcast path");
+	assertThrows(
+		() => {
+			new Announcement("", new Promise(() => {}));
+		},
+		Error,
+		"Invalid broadcast path",
+	);
 
-	assertThrows(() => {
-		new Announcement("test", new Promise(() => {}));
-	}, Error, "Invalid broadcast path");
+	assertThrows(
+		() => {
+			new Announcement("test", new Promise(() => {}));
+		},
+		Error,
+		"Invalid broadcast path",
+	);
 });
 
 // Test AnnouncementWriter class
@@ -127,7 +135,7 @@ Deno.test("AnnouncementWriter - Constructor", () => {
 	const writer = new AnnouncementWriter(
 		mockContext as any,
 		mockStream as any,
-		mockRequest as any
+		mockRequest as any,
 	);
 
 	assertEquals(writer.prefix, "/test/");
@@ -142,7 +150,7 @@ Deno.test("AnnouncementWriter - Init Method", async (t) => {
 	const writer = new AnnouncementWriter(
 		mockContext as any,
 		mockStream as any,
-		mockRequest as any
+		mockRequest as any,
 	);
 
 	await t.step("should initialize with valid announcements", async () => {
@@ -175,7 +183,7 @@ Deno.test("AnnouncementWriter - Send Method", async (t) => {
 	const writer = new AnnouncementWriter(
 		mockContext as any,
 		mockStream as any,
-		mockRequest as any
+		mockRequest as any,
 	);
 
 	// Initialize first
@@ -204,7 +212,7 @@ Deno.test("AnnouncementWriter - Close Methods", async (t) => {
 	const writer = new AnnouncementWriter(
 		mockContext as any,
 		mockStream as any,
-		mockRequest as any
+		mockRequest as any,
 	);
 
 	await t.step("should close normally", async () => {
@@ -220,7 +228,7 @@ Deno.test("AnnouncementWriter - Close Methods", async (t) => {
 		const writer2 = new AnnouncementWriter(
 			mockContext2 as any,
 			mockStream2 as any,
-			mockRequest2 as any
+			mockRequest2 as any,
 		);
 
 		await writer2.closeWithError(1, "test error");
@@ -240,7 +248,7 @@ Deno.test("AnnouncementReader - Constructor", () => {
 		mockContext as any,
 		mockStream as any,
 		mockRequest as any,
-		mockInit as any
+		mockInit as any,
 	);
 
 	assertEquals(reader.prefix, "/test/");
@@ -251,16 +259,20 @@ Deno.test("AnnouncementReader - Constructor Error Cases", () => {
 	const mockStream = new MockStream();
 	const mockContext = new MockContext();
 
-	assertThrows(() => {
-		const mockRequest = new MockAnnouncePleaseMessage("invalid prefix");
-		const mockInit = new MockAnnounceInitMessage([]);
-		new AnnouncementReader(
-			mockContext as any,
-			mockStream as any,
-			mockRequest as any,
-			mockInit as any
-		);
-	}, Error, "invalid prefix");
+	assertThrows(
+		() => {
+			const mockRequest = new MockAnnouncePleaseMessage("invalid prefix");
+			const mockInit = new MockAnnounceInitMessage([]);
+			new AnnouncementReader(
+				mockContext as any,
+				mockStream as any,
+				mockRequest as any,
+				mockInit as any,
+			);
+		},
+		Error,
+		"invalid prefix",
+	);
 });
 
 Deno.test("AnnouncementReader - Receive Method", async (t) => {
@@ -277,7 +289,7 @@ Deno.test("AnnouncementReader - Receive Method", async (t) => {
 			mockContext as any,
 			mockStream as any,
 			mockRequest as any,
-			mockInit as any
+			mockInit as any,
 		);
 
 		// Set timeout to prevent hanging
@@ -291,7 +303,7 @@ Deno.test("AnnouncementReader - Receive Method", async (t) => {
 			// Wait with timeout
 			await Promise.race([
 				receivePromise,
-				timeoutPromise.then(() => [undefined, new Error("timeout")] as const)
+				timeoutPromise.then(() => [undefined, new Error("timeout")] as const),
 			]);
 
 			// Should either get an announcement or an error
@@ -313,7 +325,7 @@ Deno.test("AnnouncementReader - Receive Method", async (t) => {
 			mockContext as any,
 			mockStream as any,
 			mockRequest as any,
-			mockInit as any
+			mockInit as any,
 		);
 
 		// Cancel the context
@@ -327,7 +339,7 @@ Deno.test("AnnouncementReader - Receive Method", async (t) => {
 		try {
 			await Promise.race([
 				reader.receive(timeoutPromise),
-				timeoutPromise
+				timeoutPromise,
 			]);
 		} finally {
 			if (timerId !== undefined) {
@@ -347,7 +359,7 @@ Deno.test("AnnouncementReader - Close Methods", async (t) => {
 		mockContext as any,
 		mockStream as any,
 		mockRequest as any,
-		mockInit as any
+		mockInit as any,
 	);
 
 	await t.step("should close normally", async () => {
@@ -365,7 +377,7 @@ Deno.test("AnnouncementReader - Close Methods", async (t) => {
 			mockContext2 as any,
 			mockStream2 as any,
 			mockRequest2 as any,
-			mockInit2 as any
+			mockInit2 as any,
 		);
 
 		await reader2.closeWithError(1, "test error");

@@ -1,6 +1,6 @@
 {
   "imports": {
-    "@octokit/core": "npm:@octokit/core@^6.1.2"
+    "octokit": "https://esm.sh/octokit?dts"
   },
   "tasks": {
     "translate": "deno run --allow-net --allow-env translate.ts"

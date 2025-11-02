@@ -11,7 +11,7 @@
  * - Environment variables: GITHUB_TOKEN, GITHUB_EVENT, GITHUB_REPOSITORY
  */
 
-import { Octokit } from "@octokit/core";
+import { Octokit } from "octokit";
 
 // Check required environment variables
 const GITHUB_TOKEN = Deno.env.get("GITHUB_TOKEN");

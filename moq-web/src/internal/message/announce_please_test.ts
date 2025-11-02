@@ -1,17 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { AnnouncePleaseMessage } from "./announce_please.ts";
-import { SendStream } from "../webtransport/send_stream.ts";
-import { ReceiveStream } from "../webtransport/receive_stream.ts";
-
-/**
- * Create a pair of connected streams for testing encode/decode roundtrip
- */
-function createTestStreams() {
-	const { readable, writable } = new TransformStream<Uint8Array>();
-	const writer = new SendStream({ stream: writable, transfer: undefined, streamId: 0n });
-	const reader = new ReceiveStream({ stream: readable, transfer: undefined, streamId: 0n });
-	return { writer, reader };
-}
+import { ReceiveStream, SendStream } from "../webtransport/mod.ts";
 
 Deno.test("AnnouncePleaseMessage - encode/decode roundtrip - multiple scenarios", async (t) => {
 	const testCases = {
@@ -31,14 +20,36 @@ Deno.test("AnnouncePleaseMessage - encode/decode roundtrip - multiple scenarios"
 
 	for (const [caseName, input] of Object.entries(testCases)) {
 		await t.step(caseName, async () => {
-			const { writer, reader } = createTestStreams();
+			// Create buffer for encoding
+			const chunks: Uint8Array[] = [];
+			const writableStream = new WritableStream({
+				write(chunk) {
+					chunks.push(chunk);
+				},
+			});
+			const writer = new SendStream({ stream: writableStream, transfer: undefined, streamId: 0n });
 
 			const message = new AnnouncePleaseMessage(input);
 			const encodeErr = await message.encode(writer);
 			assertEquals(encodeErr, undefined, `encode failed for ${caseName}`);
 
-			// Close writer to signal end of stream
-			await writer.close();
+			// Combine chunks into single buffer
+			const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+			const combinedBuffer = new Uint8Array(totalLength);
+			let offset = 0;
+			for (const chunk of chunks) {
+				combinedBuffer.set(chunk, offset);
+				offset += chunk.length;
+			}
+
+			// Create readable stream for decoding
+			const readableStream = new ReadableStream({
+				start(controller) {
+					controller.enqueue(combinedBuffer);
+					controller.close();
+				},
+			});
+			const reader = new ReceiveStream({ stream: readableStream, transfer: undefined, streamId: 0n });
 
 			const decodedMessage = new AnnouncePleaseMessage({});
 			const decodeErr = await decodedMessage.decode(reader);

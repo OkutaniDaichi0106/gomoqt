@@ -1,4 +1,5 @@
 // Main entry point for the MoQT web library
+export * from "./alias.ts";
 export * from "./session.ts";
 export * from "./broadcast_path.ts";
 export * from "./track_prefix.ts";
@@ -14,4 +15,3 @@ export * from "./track.ts";
 export * from "./track_mux.ts";
 export * from "./error.ts";
 export * from "./frame.ts";
-export * from "./protocol.ts";

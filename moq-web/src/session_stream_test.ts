@@ -5,6 +5,7 @@ import { SessionUpdateMessage } from "./internal/message/mod.ts";
 import type { SessionClientMessage, SessionServerMessage } from "./internal/message/mod.ts";
 import { Extensions } from "./extensions.ts";
 import type { Version } from "./version.ts";
+import { EOFError } from "@okudai/golikejs/io";
 
 // Test configuration to ignore resource leaks from background operations
 const testOptions = {
@@ -44,12 +45,12 @@ class MockReadable {
 		this.#readCount++;
 
 		if (msgIndex >= this.#messages.length) {
-			return [0, new Error("EOF")];
+			return [0, new EOFError()];
 		}
 
 		const msg = this.#messages[msgIndex];
 		if (!msg) {
-			return [0, new Error("EOF")];
+			return [0, new EOFError()];
 		}
 
 		if (isLength) {

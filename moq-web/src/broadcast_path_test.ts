@@ -1,4 +1,4 @@
-import { assertEquals, assertExists, assertThrows } from "../deps.ts";
+import { assertEquals, assertExists, assertThrows } from "@std/assert";
 import type { BroadcastPath } from "./broadcast_path.ts";
 import { extension, isValidBroadcastPath, validateBroadcastPath } from "./broadcast_path.ts";
 

@@ -12,14 +12,14 @@ Deno.test("MOQOptions", testOptions, async (t) => {
 	await t.step("should define the correct interface structure", () => {
 		// This is a type-only test to ensure the interface is correctly defined
 		const mockOptions: MOQOptions = {
-			versions: new Set([1n]),
+			versions: new Set([1]),
 			extensions: new Extensions(),
 		};
 
 		assertExists(mockOptions.extensions);
 		assertEquals(mockOptions.extensions instanceof Extensions, true);
 		assertEquals(mockOptions.versions instanceof Set, true);
-		assertEquals(mockOptions.versions?.has(1n), true);
+		assertEquals(mockOptions.versions?.has(1), true);
 	});
 
 	await t.step("should allow empty options", () => {
@@ -37,13 +37,13 @@ Deno.test("MOQOptions", testOptions, async (t) => {
 		extensions.addString(1, "test");
 
 		const options: MOQOptions = {
-			versions: new Set([1n]),
+			versions: new Set([1]),
 			extensions: extensions,
 		};
 
 		assertEquals(options.extensions, extensions);
 		assertEquals(options.extensions?.getString(1), "test");
-		assertEquals(options.versions?.has(1n), true);
+		assertEquals(options.versions?.has(1), true);
 	});
 
 	await t.step("should support partial assignment", () => {
@@ -69,14 +69,14 @@ Deno.test("MOQOptions", testOptions, async (t) => {
 		extensions2.addString(2, "test");
 		extensions2.addNumber(3, 42n);
 
-		const options1: MOQOptions = { versions: new Set([1n]), extensions: extensions1 };
-		const options2: MOQOptions = { versions: new Set([2n]), extensions: extensions2 };
+		const options1: MOQOptions = { versions: new Set([1]), extensions: extensions1 };
+		const options2: MOQOptions = { versions: new Set([2]), extensions: extensions2 };
 
 		assertEquals(options1.extensions?.getBytes(1), new Uint8Array([1, 2, 3]));
 		assertEquals(options2.extensions?.getString(2), "test");
 		assertEquals(options2.extensions?.getNumber(3), 42n);
-		assertEquals(options1.versions?.has(1n), true);
-		assertEquals(options2.versions?.has(2n), true);
+		assertEquals(options1.versions?.has(1), true);
+		assertEquals(options2.versions?.has(2), true);
 	});
 
 	await t.step("should support transportOptions", () => {
@@ -86,7 +86,7 @@ Deno.test("MOQOptions", testOptions, async (t) => {
 		};
 
 		const options: MOQOptions = {
-			versions: new Set([1n]),
+			versions: new Set([1]),
 			transportOptions: transportOptions,
 		};
 

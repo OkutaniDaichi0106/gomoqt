@@ -65,13 +65,12 @@ function createMockAnnouncementWriter(
 } {
 	const sendCalls: Announcement[] = [];
 	const initCalls: Announcement[][] = [];
-	let closeCalls = 0;
-
-	return {
+	
+	const mock = {
 		context,
 		sendCalls,
 		initCalls,
-		closeCalls,
+		closeCalls: 0,
 		async send(announcement: Announcement): Promise<Error | undefined> {
 			sendCalls.push(announcement);
 			return undefined;
@@ -81,12 +80,12 @@ function createMockAnnouncementWriter(
 			return undefined;
 		},
 		async close(): Promise<void> {
-			closeCalls++;
+			mock.closeCalls++;
 		},
 		reset() {
 			sendCalls.length = 0;
 			initCalls.length = 0;
-			closeCalls = 0;
+			mock.closeCalls = 0;
 		},
 	} as AnnouncementWriter & {
 		sendCalls: Announcement[];
@@ -94,6 +93,8 @@ function createMockAnnouncementWriter(
 		closeCalls: number;
 		reset: () => void;
 	};
+	
+	return mock;
 }
 
 Deno.test("TrackMux - Constructor", () => {

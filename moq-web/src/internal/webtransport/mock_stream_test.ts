@@ -32,6 +32,7 @@
 
 import { spy } from "@std/testing/mock";
 import type { StreamError } from "./error.ts";
+import { EOFError } from "@okudai/golikejs/io";
 
 // Define the minimal interface we need to mock (duck typing approach)
 // We don't need to match the full class structure, just the public API
@@ -146,7 +147,7 @@ export class MockReceiveStream {
 			return [0, this.readError];
 		}
 		if (this.dataIndex >= this.data.length) {
-			return [0, new Error("EOF")];
+			return [0, new EOFError()];
 		}
 		const data = this.data[this.dataIndex++];
 		// Simple varint decoding (first byte only for testing)
@@ -167,7 +168,7 @@ export class MockReceiveStream {
 			return [false, this.readError];
 		}
 		if (this.dataIndex >= this.data.length) {
-			return [false, new Error("EOF")];
+			return [false, new EOFError()];
 		}
 		const data = this.data[this.dataIndex++];
 		return [(data?.[0]) === 1, undefined];
@@ -179,7 +180,7 @@ export class MockReceiveStream {
 			return [0n, this.readError];
 		}
 		if (this.dataIndex >= this.data.length) {
-			return [0n, new Error("EOF")];
+			return [0n, new EOFError()];
 		}
 		const data = this.data[this.dataIndex++];
 		return [BigInt((data?.[0]) || 0), undefined];
@@ -191,11 +192,11 @@ export class MockReceiveStream {
 			return ["", this.readError];
 		}
 		if (this.dataIndex >= this.data.length) {
-			return ["", new Error("EOF")];
+			return ["", new EOFError()];
 		}
 		const data = this.data[this.dataIndex++];
 		if (!data) {
-			return ["", new Error("EOF")];
+			return ["", new EOFError()];
 		}
 		const decoder = new TextDecoder();
 		return [decoder.decode(data), undefined];
@@ -218,11 +219,11 @@ export class MockReceiveStream {
 				return [undefined, this.readError];
 			}
 			if (this.dataIndex >= this.data.length) {
-				return [undefined, new Error("EOF")];
+				return [undefined, new EOFError()];
 			}
 			const data = this.data[this.dataIndex++];
 			if (!data) {
-				return [undefined, new Error("EOF")];
+				return [undefined, new EOFError()];
 			}
 			return [data, undefined];
 		},
@@ -234,7 +235,7 @@ export class MockReceiveStream {
 			return [0, this.readError];
 		}
 		if (this.dataIndex >= this.data.length) {
-			return [0, new Error("EOF")];
+			return [0, new EOFError()];
 		}
 		const data = this.data[this.dataIndex++];
 		return [(data?.[0]) || 0, undefined];

@@ -5,7 +5,7 @@ import { EOFError } from "@okudai/golikejs/io";
 
 const DefaultReadSize: number = 1024; // 1 KB
 
-// export const EOF = new Error("EOF");
+// export const EOF = new EOFError();
 
 // /**
 //  * Reads a varint-encoded number from the byte array at the specified offset

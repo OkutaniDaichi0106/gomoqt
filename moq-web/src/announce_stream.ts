@@ -1,4 +1,4 @@
-import { EOF } from "./internal/webtransport/mod.ts";
+import { EOFError } from "@okudai/golikejs/io";
 import type { AnnouncePleaseMessage } from "./internal/message/mod.ts";
 import { AnnounceMessage } from "./internal/message/mod.ts";
 import { ContextCancelledError, watchPromise, withCancelCause } from "@okudai/golikejs/context";
@@ -272,7 +272,7 @@ export class AnnouncementReader {
 		const msg = new AnnounceMessage({});
 		msg.decode(this.#stream.readable).then(async (err) => {
 			if (err) {
-				if (err !== EOF) {
+				if (!(err instanceof EOFError)) {
 					console.error(`moq: failed to read ANNOUNCE message: ${err}`);
 				}
 				return;

@@ -1,30 +1,41 @@
 import { assertEquals } from "@std/assert";
 import { AnnounceInitMessage } from "./announce_init.ts";
-import { SendStream } from "../webtransport/send_stream.ts";
-import { ReceiveStream } from "../webtransport/receive_stream.ts";
-
-/**
- * Helper to create connected send/receive streams for testing encode/decode
- */
-function createTestStreams() {
-	const { writable, readable } = new TransformStream<Uint8Array>();
-	const writer = new SendStream({ stream: writable, transfer: undefined, streamId: 0n });
-	const reader = new ReceiveStream({ stream: readable, transfer: undefined, streamId: 0n });
-	return { writer, reader };
-}
+import { ReceiveStream, SendStream } from "../webtransport/mod.ts";
 
 Deno.test("AnnounceInitMessage", async (t) => {
 	await t.step("should encode and decode with suffixes", async () => {
 		const suffixes = ["suffix1", "suffix2", "suffix3"];
 
-		const { writer, reader } = createTestStreams();
+		// Create buffer for encoding
+		const chunks: Uint8Array[] = [];
+		const writableStream = new WritableStream({
+			write(chunk) {
+				chunks.push(chunk);
+			},
+		});
+		const writer = new SendStream({ stream: writableStream, transfer: undefined, streamId: 0n });
 
 		const message = new AnnounceInitMessage({ suffixes });
 		const encodeErr = await message.encode(writer);
 		assertEquals(encodeErr, undefined);
 
-		// Close writer to signal end of stream
-		await writer.close();
+		// Combine chunks into single buffer
+		const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+		const combinedBuffer = new Uint8Array(totalLength);
+		let offset = 0;
+		for (const chunk of chunks) {
+			combinedBuffer.set(chunk, offset);
+			offset += chunk.length;
+		}
+
+		// Create readable stream for decoding
+		const readableStream = new ReadableStream({
+			start(controller) {
+				controller.enqueue(combinedBuffer);
+				controller.close();
+			},
+		});
+		const reader = new ReceiveStream({ stream: readableStream, transfer: undefined, streamId: 0n });
 
 		const decodedMessage = new AnnounceInitMessage({});
 		const decodeErr = await decodedMessage.decode(reader);
@@ -33,14 +44,36 @@ Deno.test("AnnounceInitMessage", async (t) => {
 	});
 
 	await t.step("should encode and decode without suffixes", async () => {
-		const { writer, reader } = createTestStreams();
+		// Create buffer for encoding
+		const chunks: Uint8Array[] = [];
+		const writableStream = new WritableStream({
+			write(chunk) {
+				chunks.push(chunk);
+			},
+		});
+		const writer = new SendStream({ stream: writableStream, transfer: undefined, streamId: 0n });
 
 		const message = new AnnounceInitMessage({});
 		const encodeErr = await message.encode(writer);
 		assertEquals(encodeErr, undefined);
 
-		// Close writer to signal end of stream
-		await writer.close();
+		// Combine chunks into single buffer
+		const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+		const combinedBuffer = new Uint8Array(totalLength);
+		let offset = 0;
+		for (const chunk of chunks) {
+			combinedBuffer.set(chunk, offset);
+			offset += chunk.length;
+		}
+
+		// Create readable stream for decoding
+		const readableStream = new ReadableStream({
+			start(controller) {
+				controller.enqueue(combinedBuffer);
+				controller.close();
+			},
+		});
+		const reader = new ReceiveStream({ stream: readableStream, transfer: undefined, streamId: 0n });
 
 		const decodedMessage = new AnnounceInitMessage({});
 		const decodeErr = await decodedMessage.decode(reader);

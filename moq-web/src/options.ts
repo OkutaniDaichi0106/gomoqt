@@ -1,7 +1,8 @@
-import type { Extensions } from "./internal/extensions.ts";
+import type { Extensions } from "./extensions.ts";
+import { Version } from "./version.ts";
 
 export interface MOQOptions {
-	versions?: Set<bigint>;
+	versions?: Set<Version>;
 	extensions?: Extensions;
 	reconnect?: boolean;
 	// migrate?: (url: URL) => boolean;

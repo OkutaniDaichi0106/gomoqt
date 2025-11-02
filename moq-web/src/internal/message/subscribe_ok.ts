@@ -1,5 +1,6 @@
-import type { Reader, SendStream } from "../webtransport/mod.ts";
+import type { ReceiveStream, SendStream } from "../webtransport/mod.ts";
 
+// deno-lint-ignore no-empty-interface
 export interface SubscribeOkMessageInit {}
 
 export class SubscribeOkMessage {
@@ -10,12 +11,12 @@ export class SubscribeOkMessage {
 		return 0;
 	}
 
-	async encode(writer: Writer): Promise<Error | undefined> {
+	async encode(writer: SendStream): Promise<Error | undefined> {
 		writer.writeVarint(this.messageLength);
 		return await writer.flush();
 	}
 
-	async decode(reader: Reader): Promise<Error | undefined> {
+	async decode(reader: ReceiveStream): Promise<Error | undefined> {
 		const [len, err] = await reader.readVarint();
 		if (err) {
 			return err;

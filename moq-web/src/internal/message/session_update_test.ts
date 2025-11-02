@@ -1,27 +1,49 @@
 import { assertEquals } from "@std/assert";
 import { SessionUpdateMessage } from "./session_update.ts";
-import { createIsolatedStreams } from "./test-utils_test.ts";
+import { SendStream } from "../webtransport/send_stream.ts";
+import { ReceiveStream } from "../webtransport/receive_stream.ts";
 
-Deno.test("SessionUpdateMessage", async (t) => {
-	await t.step("should encode and decode", async () => {
-		const bitrate = 1000;
+/**
+ * Create a pair of connected streams for testing encode/decode roundtrip
+ */
+function createTestStreams() {
+	const { readable, writable } = new TransformStream<Uint8Array>();
+	const writer = new SendStream({ stream: writable, transfer: undefined, streamId: 0n });
+	const reader = new ReceiveStream({ stream: readable, transfer: undefined, streamId: 0n });
+	return { writer, reader };
+}
 
-		const { writer, reader, cleanup } = createIsolatedStreams();
+Deno.test("SessionUpdateMessage - encode/decode roundtrip - multiple scenarios", async (t) => {
+	const testCases = {
+		"normal bitrate": {
+			bitrate: 1000,
+		},
+		"zero bitrate": {
+			bitrate: 0,
+		},
+		"high bitrate": {
+			bitrate: 10000000,
+		},
+		"low bitrate": {
+			bitrate: 1,
+		},
+	};
 
-		try {
-			const message = new SessionUpdateMessage({ bitrate });
+	for (const [caseName, input] of Object.entries(testCases)) {
+		await t.step(caseName, async () => {
+			const { writer, reader } = createTestStreams();
+
+			const message = new SessionUpdateMessage(input);
 			const encodeErr = await message.encode(writer);
-			assertEquals(encodeErr, undefined);
+			assertEquals(encodeErr, undefined, `encode failed for ${caseName}`);
 
 			// Close writer to signal end of stream
 			await writer.close();
 
 			const decodedMessage = new SessionUpdateMessage({});
 			const decodeErr = await decodedMessage.decode(reader);
-			assertEquals(decodeErr, undefined);
-			assertEquals(decodedMessage.bitrate, bitrate);
-		} finally {
-			await cleanup();
-		}
-	});
+			assertEquals(decodeErr, undefined, `decode failed for ${caseName}`);
+			assertEquals(decodedMessage.bitrate, input.bitrate, `bitrate mismatch for ${caseName}`);
+		});
+	}
 });

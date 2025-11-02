@@ -1,4 +1,4 @@
-import type { Reader, SendStream } from "../webtransport/mod.ts";
+import type { ReceiveStream, SendStream } from "../webtransport/mod.ts";
 import { stringLen } from "../webtransport/mod.ts";
 
 export interface AnnounceMessageInit {
@@ -26,7 +26,7 @@ export class AnnounceMessage {
 		return await writer.flush();
 	}
 
-	async decode(reader: Reader): Promise<Error | undefined> {
+	async decode(reader: ReceiveStream): Promise<Error | undefined> {
 		let [len, err] = await reader.readVarint();
 		if (err) {
 			return err;

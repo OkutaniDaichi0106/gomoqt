@@ -92,8 +92,6 @@ Deno.test("SessionClientMessage", async (t) => {
 			offset += chunk.length;
 		}
 
-		console.log("Encoded buffer:", Array.from(combinedBuffer).join(","));
-
 		// Create readable stream for decoding
 		const readableStream = new ReadableStream({
 			start(controller) {

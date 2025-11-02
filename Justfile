@@ -102,13 +102,13 @@ build-moq-web:
 	@echo "Building moq-web..."
 	cd moq-web && npm ci && npm run build
 
-# Build hang-web package (depends on moq-web)
-build-hang-web: build-moq-web
-	@echo "Building hang-web..."
-	cd hang-web && npm ci && npm run build
+# # Build hang-web package (depends on moq-web)
+# build-hang-web: build-moq-web
+# 	@echo "Building hang-web..."
+# 	cd hang-web && npm ci && npm run build
 
-# Build all web packages
-build-web: build-moq-web build-hang-web
-	@echo "All web packages built."
+# # Build all web packages
+# build-web: build-moq-web build-hang-web
+# 	@echo "All web packages built."
 
 set windows-shell := ["C:\\Program Files\\Git\\bin\\sh.exe","-c"]

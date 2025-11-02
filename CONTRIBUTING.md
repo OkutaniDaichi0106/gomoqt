@@ -207,8 +207,7 @@ gomoqt/
 ├── moq-web/        # WebTransport support for browsers
 ├── interop/        # Interoperability testing
 ├── examples/       # Usage examples
-├── docs/          # Documentation
-└── hang-web/      # Web-based demo application
+└── docs/          # Documentation
 ```
 
 ## Communication

@@ -1,4 +1,4 @@
-import { withCancelCause, type CancelCauseFunc, type Context } from "@okudai/golikejs/context";
+import { type CancelCauseFunc, type Context, withCancelCause } from "@okudai/golikejs/context";
 import type { Stream } from "./internal/webtransport/mod.ts";
 import { SessionUpdateMessage } from "./internal/message/mod.ts";
 import type { SessionClientMessage, SessionServerMessage } from "./internal/message/mod.ts";

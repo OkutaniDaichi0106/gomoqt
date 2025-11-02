@@ -87,7 +87,7 @@ Deno.test("internal/queue - basic enqueue/dequeue and close behavior", async (t)
 	await t.step("close can be called multiple times", async () => {
 		const q = new Queue<number>();
 		q.close();
-		await new Promise(resolve => setTimeout(resolve, 0)); // Ensure async close operations complete
+		await new Promise((resolve) => setTimeout(resolve, 0)); // Ensure async close operations complete
 		q.close(); // Second call should not error
 		assertEquals(q.closed, true);
 	});
@@ -139,7 +139,7 @@ Deno.test("internal/queue - basic enqueue/dequeue and close behavior", async (t)
 		q.close();
 		// Wait for async operations
 		await dequeuePromise;
-		await new Promise(resolve => setTimeout(resolve, 0)); // Ensure close's then() executes
+		await new Promise((resolve) => setTimeout(resolve, 0)); // Ensure close's then() executes
 		// Close again to test early return
 		q.close();
 		assertEquals(q.closed, true);

@@ -95,10 +95,10 @@ Deno.test("Announcement - Normal Cases", async (t) => {
 
 	await t.step("should handle multiple end() calls", () => {
 		const announcement = new Announcement("/test/path", new Promise(() => {}));
-		
+
 		announcement.end();
 		assertEquals(announcement.isActive(), false);
-		
+
 		// Second end() should be idempotent
 		announcement.end();
 		assertEquals(announcement.isActive(), false);
@@ -295,7 +295,7 @@ Deno.test("AnnouncementWriter - Send Method", async (t) => {
 	await t.step("should reject duplicate active announcement in send", async () => {
 		const announcement1 = new Announcement("/test/path4", new Promise(() => {}));
 		await writer.send(announcement1);
-		
+
 		// Try to send the same path again
 		const announcement2 = new Announcement("/test/path4", new Promise(() => {}));
 		const result = await writer.send(announcement2);
@@ -306,12 +306,12 @@ Deno.test("AnnouncementWriter - Send Method", async (t) => {
 	await t.step("should replace inactive announcement with active one", async () => {
 		const activeAnn = new Announcement("/test/path5", new Promise(() => {}));
 		await writer.send(activeAnn);
-		
+
 		// End it
 		const endAnn = new Announcement("/test/path5", new Promise(() => {}));
 		endAnn.end();
 		await writer.send(endAnn);
-		
+
 		// Now send a new active one with same path
 		const newActiveAnn = new Announcement("/test/path5", new Promise(() => {}));
 		const result = await writer.send(newActiveAnn);
@@ -484,7 +484,13 @@ Deno.test("AnnouncementReader - Receive Method", async (t) => {
 			9, // messageLength (varint for 9)
 			1, // active (boolean true)
 			7, // string length (varint for 7)
-			110, 101, 119, 112, 97, 116, 104, // "newpath" UTF-8 bytes
+			110,
+			101,
+			119,
+			112,
+			97,
+			116,
+			104, // "newpath" UTF-8 bytes
 		];
 
 		mockStream.readable.readVarint = spy(async (): Promise<[number, Error | undefined]> => {

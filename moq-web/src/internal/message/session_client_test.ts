@@ -26,7 +26,11 @@ Deno.test("SessionClientMessage", async (t) => {
 			},
 		} as unknown as ReceiveStream;
 
-		await assertRejects(() => message.decode(fakeReader), Error, "Invalid number of versions for SessionClient");
+		await assertRejects(
+			() => message.decode(fakeReader),
+			Error,
+			"Invalid number of versions for SessionClient",
+		);
 	});
 
 	await t.step("decode should throw when numVersions exceeds max safe integer", async () => {
@@ -49,7 +53,11 @@ Deno.test("SessionClientMessage", async (t) => {
 			},
 		} as unknown as ReceiveStream;
 
-		await assertRejects(() => message.decode(fakeReader), Error, "Number of versions exceeds maximum safe integer for SessionClient");
+		await assertRejects(
+			() => message.decode(fakeReader),
+			Error,
+			"Number of versions exceeds maximum safe integer for SessionClient",
+		);
 	});
 
 	await t.step("decode should throw when numExtensions is undefined", async () => {
@@ -72,7 +80,11 @@ Deno.test("SessionClientMessage", async (t) => {
 			},
 		} as unknown as ReceiveStream;
 
-		await assertRejects(() => message.decode(fakeReader), Error, "read numExtensions: number is undefined");
+		await assertRejects(
+			() => message.decode(fakeReader),
+			Error,
+			"read numExtensions: number is undefined",
+		);
 	});
 
 	await t.step("decode should throw when extData is undefined", async () => {
@@ -96,7 +108,11 @@ Deno.test("SessionClientMessage", async (t) => {
 			},
 		} as unknown as ReceiveStream;
 
-		await assertRejects(() => message.decode(fakeReader), Error, "read extData: Uint8Array is undefined");
+		await assertRejects(
+			() => message.decode(fakeReader),
+			Error,
+			"read extData: Uint8Array is undefined",
+		);
 	});
 
 	await t.step("decode should throw on message length mismatch", async () => {
@@ -487,25 +503,28 @@ Deno.test("SessionClientMessage", async (t) => {
 		assertEquals(new TextDecoder().decode(decodedMessage.extensions.get(2)!), "");
 	});
 
-	await t.step("decode should return error when readVarint fails for message length", async () => {
-		const readableStream = new ReadableStream({
-			start(controller) {
-				controller.close(); // Close immediately to cause read error
-			},
-		});
-		const reader = new ReceiveStream({
-			stream: readableStream,
-			transfer: undefined,
-			streamId: 0n,
-		});
+	await t.step(
+		"decode should return error when readVarint fails for message length",
+		async () => {
+			const readableStream = new ReadableStream({
+				start(controller) {
+					controller.close(); // Close immediately to cause read error
+				},
+			});
+			const reader = new ReceiveStream({
+				stream: readableStream,
+				transfer: undefined,
+				streamId: 0n,
+			});
 
-		const message = new SessionClientMessage({
-			versions: new Set<number>(),
-			extensions: new Map<number, Uint8Array>(),
-		});
-		const err = await message.decode(reader);
-		assertEquals(err !== undefined, true);
-	});
+			const message = new SessionClientMessage({
+				versions: new Set<number>(),
+				extensions: new Map<number, Uint8Array>(),
+			});
+			const err = await message.decode(reader);
+			assertEquals(err !== undefined, true);
+		},
+	);
 
 	await t.step("decode should return error when readVarint fails for versions", async () => {
 		// Create buffer with only message length, but no versions data
@@ -553,28 +572,31 @@ Deno.test("SessionClientMessage", async (t) => {
 		assertEquals(err !== undefined, true);
 	});
 
-	await t.step("decode should return error when readVarint fails for extensions count", async () => {
-		// Create buffer: message length, numVersions=0, but no extensions count
-		const buffer = new Uint8Array([1, 0]); // incomplete
-		const readableStream = new ReadableStream({
-			start(controller) {
-				controller.enqueue(buffer);
-				controller.close();
-			},
-		});
-		const reader = new ReceiveStream({
-			stream: readableStream,
-			transfer: undefined,
-			streamId: 0n,
-		});
+	await t.step(
+		"decode should return error when readVarint fails for extensions count",
+		async () => {
+			// Create buffer: message length, numVersions=0, but no extensions count
+			const buffer = new Uint8Array([1, 0]); // incomplete
+			const readableStream = new ReadableStream({
+				start(controller) {
+					controller.enqueue(buffer);
+					controller.close();
+				},
+			});
+			const reader = new ReceiveStream({
+				stream: readableStream,
+				transfer: undefined,
+				streamId: 0n,
+			});
 
-		const message = new SessionClientMessage({
-			versions: new Set<number>(),
-			extensions: new Map<number, Uint8Array>(),
-		});
-		const err = await message.decode(reader);
-		assertEquals(err !== undefined, true);
-	});
+			const message = new SessionClientMessage({
+				versions: new Set<number>(),
+				extensions: new Map<number, Uint8Array>(),
+			});
+			const err = await message.decode(reader);
+			assertEquals(err !== undefined, true);
+		},
+	);
 
 	await t.step("decode should return error when reading extension ID fails", async () => {
 		// Create buffer: message length, numVersions=0, numExtensions=1, but no extension ID

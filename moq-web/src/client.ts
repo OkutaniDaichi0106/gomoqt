@@ -82,7 +82,9 @@ export class Client {
 
 		// Try to close sessions with an error to indicate abort semantics.
 		await Promise.allSettled(
-			Array.from(this.#sessions).map((session) => session.closeWithError(1, "client aborted")),
+			Array.from(this.#sessions).map((session) =>
+				session.closeWithError(1, "client aborted")
+			),
 		);
 
 		// Mark closed

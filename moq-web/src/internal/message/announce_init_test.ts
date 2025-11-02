@@ -97,22 +97,25 @@ Deno.test("AnnounceInitMessage", async (t) => {
 		assertEquals(decodedMessage.suffixes, []);
 	});
 
-	await t.step("decode should return error when readVarint fails for message length", async () => {
-		const readableStream = new ReadableStream({
-			start(controller) {
-				controller.close();
-			},
-		});
-		const reader = new ReceiveStream({
-			stream: readableStream,
-			transfer: undefined,
-			streamId: 0n,
-		});
+	await t.step(
+		"decode should return error when readVarint fails for message length",
+		async () => {
+			const readableStream = new ReadableStream({
+				start(controller) {
+					controller.close();
+				},
+			});
+			const reader = new ReceiveStream({
+				stream: readableStream,
+				transfer: undefined,
+				streamId: 0n,
+			});
 
-		const message = new AnnounceInitMessage({});
-		const err = await message.decode(reader);
-		assertEquals(err !== undefined, true);
-	});
+			const message = new AnnounceInitMessage({});
+			const err = await message.decode(reader);
+			assertEquals(err !== undefined, true);
+		},
+	);
 
 	await t.step("decode should return error when reading suffix count fails", async () => {
 		const buffer = new Uint8Array([2]); // only message length

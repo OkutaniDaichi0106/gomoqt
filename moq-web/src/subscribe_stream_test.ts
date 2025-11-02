@@ -275,7 +275,6 @@ Deno.test("Type Definitions - TrackConfig and SubscribeID", async (t) => {
 });
 
 Deno.test("ReceiveSubscribeStream - Additional Coverage", async (t) => {
-
 	await t.step("should return error when context is cancelled", async () => {
 		const { receiveStream, mockStream } = makeReceiveMocks();
 

@@ -123,7 +123,6 @@ export class Session {
 			throw new Error(`Incompatible session version: ${rsp.version}`);
 		}
 
-
 		this.#sessionStream = new SessionStream({
 			context: this.#ctx,
 			stream: stream,
@@ -137,7 +136,7 @@ export class Session {
 			},
 		});
 
-		this.#sessionStream.context.done().then(()=>{
+		this.#sessionStream.context.done().then(() => {
 			this.#cancelFunc(new Error("moq: session stream closed"));
 		});
 

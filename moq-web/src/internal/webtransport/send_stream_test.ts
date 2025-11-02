@@ -484,14 +484,14 @@ Deno.test("webtransport/writer - additional coverage", async (t) => {
 		});
 		const writer = new SendStream({ stream: writableStream, streamId: 1n });
 		writer.writeUint8(42);
-		
+
 		// close should attempt to flush, fail, and then abort
 		try {
 			await writer.close();
 		} catch {
 			// close may throw an error
 		}
-		
+
 		// The stream should have attempted write
 		assertEquals(state.writeAttempted, true);
 	});

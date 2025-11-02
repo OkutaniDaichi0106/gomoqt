@@ -198,29 +198,29 @@ Deno.test("Client - abort() with no sessions", async () => {
 
 Deno.test("Client - close() is idempotent", async () => {
 	const client = new Client();
-	
+
 	// First close
 	await client.close();
-	
+
 	// Second close should not throw
 	await client.close();
 });
 
 Deno.test("Client - abort() is idempotent", async () => {
 	const client = new Client();
-	
+
 	// First abort
 	await client.abort();
-	
+
 	// Second abort should not throw
 	await client.abort();
 });
 
 Deno.test("Client - dial() rejects after close", async () => {
 	const client = new Client();
-	
+
 	await client.close();
-	
+
 	// dial() after close should reject
 	await assertRejects(
 		async () => await client.dial("https://example.com"),
@@ -231,9 +231,9 @@ Deno.test("Client - dial() rejects after close", async () => {
 
 Deno.test("Client - dial() rejects after abort", async () => {
 	const client = new Client();
-	
+
 	await client.abort();
-	
+
 	// dial() after abort should reject
 	await assertRejects(
 		async () => await client.dial("https://example.com"),

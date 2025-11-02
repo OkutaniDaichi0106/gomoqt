@@ -10,8 +10,6 @@ This implementation follows the [MOQ Lite specification](https://kixelated.githu
 
 ## Features
 
-This implementation includes:
-
 - **MOQ Lite Protocol**: Core implementation of the MOQ Lite specification
 - **WebTransport Support**: Full support for WebTransport connections in browsers
 - **Raw QUIC Support**: Direct QUIC connections for native applications
@@ -36,11 +34,17 @@ This implementation includes:
 
 ## Components
 
-| Component | Description |
-|-----------|-------------|
-| **moqt** | The core Go package for implementing and handling the Media over QUIC (MOQ) protocol. |
-| **moq-web** | TypeScript implementation of the MOQ protocol for the Web. |
-| **interop** | Interoperability testing tools and examples for validating MOQ implementations across different platforms. |
+### moqt
+
+The core Go package for implementing and handling the Media over QUIC (MOQ) protocol.
+
+### moq-web
+
+TypeScript implementation of the MOQ protocol for the Web.
+
+### interop
+
+Interoperability testing tools and examples for validating MOQ implementations across different platforms.
 
 ## Development
 

@@ -14,8 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
 	"github.com/OkutaniDaichi0106/gomoqt/webtransport"
 	"github.com/stretchr/testify/assert"
@@ -324,8 +323,8 @@ func TestServer_AcceptSession(t *testing.T) {
 
 			// Then, encode SESSION_CLIENT message
 			scm := message.SessionClientMessage{
-				SupportedVersions: []internal.Version{internal.Version(1)},
-				Parameters:        message.Parameters{},
+				SupportedVersions: []uint64{1},
+				Parameters:        parameters{},
 			}
 			err = scm.Encode(&buf)
 			require.NoError(t, err, "failed to encode SESSION_CLIENT message") // Create a mock connection with a session stream
@@ -553,7 +552,7 @@ func TestServer_SessionManagement(t *testing.T) {
 
 			req := &SetupRequest{
 				Path:             "/test",
-				ClientExtensions: NewParameters(),
+				ClientExtensions: NewExtension(),
 			}
 			sessStream := newSessionStream(mockStream, req)
 			session := newSession(mockConn, sessStream, nil, slog.Default(), nil)
@@ -736,8 +735,8 @@ func TestServer_ServeQUICConn_NativeQUIC(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, message.StreamTypeSession.Encode(&buf))
 	scm := message.SessionClientMessage{
-		SupportedVersions: []internal.Version{internal.Version(0)},
-		Parameters:        make(message.Parameters),
+		SupportedVersions: []uint64{0},
+		Parameters:        make(parameters),
 	}
 	require.NoError(t, scm.Encode(&buf))
 
@@ -787,8 +786,8 @@ func TestServer_HandleNativeQUIC_NilLogger(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, message.StreamTypeSession.Encode(&buf))
 	scm := message.SessionClientMessage{
-		SupportedVersions: []internal.Version{internal.Version(0)},
-		Parameters:        make(message.Parameters),
+		SupportedVersions: []uint64{0},
+		Parameters:        make(parameters),
 	}
 	require.NoError(t, scm.Encode(&buf))
 
@@ -1053,7 +1052,7 @@ func TestServer_AddRemoveSession(t *testing.T) {
 
 	req := &SetupRequest{
 		Path:             "/test",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	}
 	sessStream := newSessionStream(mockStream, req)
 
@@ -1148,7 +1147,7 @@ func TestServer_Shutdown(t *testing.T) {
 
 				req := &SetupRequest{
 					Path:             "/test",
-					ClientExtensions: NewParameters(),
+					ClientExtensions: NewExtension(),
 				}
 				sessStream := newSessionStream(mockStream, req)
 				session := newSession(mockConn, sessStream, nil, slog.Default(), nil)
@@ -1499,7 +1498,7 @@ func TestServer_SessionLifecycle(t *testing.T) {
 
 				req := &SetupRequest{
 					Path:             "/test",
-					ClientExtensions: NewParameters(),
+					ClientExtensions: NewExtension(),
 				}
 				sessStream := newSessionStream(mockStream, req)
 				session := newSession(mockConn, sessStream, nil, slog.Default(), nil)
@@ -1660,7 +1659,7 @@ func TestServer_EdgeCaseOperations(t *testing.T) {
 
 				req := &SetupRequest{
 					Path:             "/test",
-					ClientExtensions: NewParameters(),
+					ClientExtensions: NewExtension(),
 				}
 				sessStream := newSessionStream(mockStream, req)
 				session := newSession(mockConn, sessStream, nil, slog.Default(), nil)

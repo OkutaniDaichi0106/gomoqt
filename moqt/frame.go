@@ -3,7 +3,7 @@ package moqt
 import (
 	"io"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 )
 
 // Frame represents a MOQ frame with optimized encoding for MOQT protocol.

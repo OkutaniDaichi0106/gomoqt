@@ -8,7 +8,6 @@ export const UninterestedErrorCode: AnnounceErrorCode = 0x3;
 export const BannedPrefixErrorCode: AnnounceErrorCode = 0x4; // TODO: Is this necessary?
 export const InvalidPrefixErrorCode: AnnounceErrorCode = 0x5; // TODO: Is this necessary?
 
-
 export type SubscribeErrorCode = number;
 
 export const InternalSubscribeErrorCode: SubscribeErrorCode = 0x00;
@@ -17,8 +16,6 @@ export const DuplicateSubscribeIDErrorCode: SubscribeErrorCode = 0x02;
 export const TrackNotFoundErrorCode: SubscribeErrorCode = 0x03;
 export const UnauthorizedSubscribeErrorCode: SubscribeErrorCode = 0x04; // TODO: Is this necessary?
 export const SubscribeTimeoutErrorCode: SubscribeErrorCode = 0x05;
-
-
 
 export type GroupErrorCode = number;
 export const InternalGroupErrorCode: GroupErrorCode = 0x00;

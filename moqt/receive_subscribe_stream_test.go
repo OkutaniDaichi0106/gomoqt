@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -240,9 +240,9 @@ func TestReceiveSubscribeStream_ListenUpdates_WithSubscribeUpdateMessage(t *test
 
 	// Create a valid SubscribeUpdateMessage
 	updateMsg := message.SubscribeUpdateMessage{
-		TrackPriority:    message.TrackPriority(5),
-		MinGroupSequence: message.GroupSequence(10),
-		MaxGroupSequence: message.GroupSequence(50),
+		TrackPriority:    5,
+		MinGroupSequence: 10,
+		MaxGroupSequence: 50,
 	}
 
 	// Encode the message
@@ -492,14 +492,14 @@ func TestReceiveSubscribeStream_UpdateChannelBehavior(t *testing.T) {
 		// Create multiple update messages
 		updates := []message.SubscribeUpdateMessage{
 			{
-				TrackPriority:    message.TrackPriority(1),
-				MinGroupSequence: message.GroupSequence(0),
-				MaxGroupSequence: message.GroupSequence(10),
+				TrackPriority:    1,
+				MinGroupSequence: 0,
+				MaxGroupSequence: 10,
 			},
 			{
-				TrackPriority:    message.TrackPriority(2),
-				MinGroupSequence: message.GroupSequence(5),
-				MaxGroupSequence: message.GroupSequence(15),
+				TrackPriority:    2,
+				MinGroupSequence: 5,
+				MaxGroupSequence: 15,
 			},
 		}
 

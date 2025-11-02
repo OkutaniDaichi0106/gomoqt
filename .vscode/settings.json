@@ -1,4 +1,6 @@
 {
-    "typescript.experimental.useTsgo": true,
-    "files.associations": { "*.json": "jsonc" }
+    "files.associations": {
+        "*.json": "jsonc"
+    },
+    "deno.enable": true
 }

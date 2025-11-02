@@ -11,8 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -26,7 +25,7 @@ func TestNewSessionStream(t *testing.T) {
 
 	req := &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -50,7 +49,7 @@ func TestSessionStream_updateSession(t *testing.T) {
 
 	req := &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -75,7 +74,7 @@ func TestSessionStream_updateSession_WriteError(t *testing.T) {
 
 	req := &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -96,7 +95,7 @@ func TestSessionStream_SessionUpdated(t *testing.T) {
 
 	req := &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -122,7 +121,7 @@ func TestSessionStream_updateSession_ZeroBitrate(t *testing.T) {
 
 	req := &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -144,7 +143,7 @@ func TestSessionStream_updateSession_LargeBitrate(t *testing.T) {
 
 	req := &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -220,7 +219,7 @@ func TestSessionStream_listenUpdates(t *testing.T) {
 
 			req := &SetupRequest{
 				Path:             "test/path",
-				ClientExtensions: NewParameters(),
+				ClientExtensions: NewExtension(),
 			}
 
 			ss := newSessionStream(mockStream, req)
@@ -259,7 +258,7 @@ func TestSessionStream_listenUpdates_StreamClosed(t *testing.T) {
 
 	req := &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -290,7 +289,7 @@ func TestSessionStream_listenUpdates_ContextCancellation(t *testing.T) {
 
 	req := &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -324,7 +323,7 @@ func TestSessionStream_ConcurrentAccess(t *testing.T) {
 
 	req := &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -370,13 +369,13 @@ func TestSessionStream_ConcurrentAccess(t *testing.T) {
 func TestAccept(t *testing.T) {
 	tests := map[string]struct {
 		version     Version
-		extensions  *Parameters
+		extensions  *Extension
 		mockStream  func() *MockQUICStream
 		expectError bool
 	}{
 		"successful accept": {
-			version:    internal.Develop,
-			extensions: NewParameters(),
+			version:    Develop,
+			extensions: NewExtension(),
 			mockStream: func() *MockQUICStream {
 				mockStream := &MockQUICStream{}
 				mockStream.On("Context").Return(context.Background())
@@ -387,8 +386,8 @@ func TestAccept(t *testing.T) {
 			expectError: false,
 		},
 		"write error on accept": {
-			version:    internal.Develop,
-			extensions: NewParameters(),
+			version:    Develop,
+			extensions: NewExtension(),
 			mockStream: func() *MockQUICStream {
 				mockStream := &MockQUICStream{}
 				mockStream.On("Context").Return(context.Background())
@@ -405,8 +404,8 @@ func TestAccept(t *testing.T) {
 
 			req := &SetupRequest{
 				Path:             "test/path",
-				Versions:         []Version{internal.Develop},
-				ClientExtensions: NewParameters(),
+				Versions:         []Version{Develop},
+				ClientExtensions: NewExtension(),
 			}
 
 			ss := newSessionStream(mockStream, req)
@@ -456,8 +455,8 @@ func TestAccept_OnlyOnce(t *testing.T) {
 
 	req := &SetupRequest{
 		Path:             "test/path",
-		Versions:         []Version{internal.Develop},
-		ClientExtensions: NewParameters(),
+		Versions:         []Version{Develop},
+		ClientExtensions: NewExtension(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -473,8 +472,8 @@ func TestAccept_OnlyOnce(t *testing.T) {
 	mockServer.init() // Initialize the server properly
 	rw := newResponseWriter(mockConn, ss, slog.Default(), mockServer)
 
-	version := internal.Develop
-	extensions := NewParameters()
+	version := Develop
+	extensions := NewExtension()
 
 	// First call should succeed
 	err := rw.SelectVersion(version)
@@ -507,8 +506,8 @@ func TestAccept_ConcurrentCalls(t *testing.T) {
 
 	req := &SetupRequest{
 		Path:             "test/path",
-		Versions:         []Version{internal.Develop},
-		ClientExtensions: NewParameters(),
+		Versions:         []Version{Develop},
+		ClientExtensions: NewExtension(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -524,8 +523,8 @@ func TestAccept_ConcurrentCalls(t *testing.T) {
 	mockServer.init() // Initialize the server properly
 	rw := newResponseWriter(mockConn, ss, slog.Default(), mockServer)
 
-	version := internal.Develop
-	extensions := NewParameters()
+	version := Develop
+	extensions := NewExtension()
 
 	// Set version and extensions before concurrent calls
 	err := rw.SelectVersion(version)
@@ -578,7 +577,7 @@ func TestResponse_AwaitAccepted(t *testing.T) {
 			mockStream: func() *MockQUICStream {
 				// Create a valid SessionServerMessage
 				ssm := message.SessionServerMessage{
-					SelectedVersion: internal.Develop,
+					SelectedVersion: uint64(Develop),
 					Parameters:      map[uint64][]byte{1: []byte("test")},
 				}
 				var buf bytes.Buffer
@@ -592,7 +591,7 @@ func TestResponse_AwaitAccepted(t *testing.T) {
 			},
 			expectError: false,
 			checkResult: func(t *testing.T, r *response) {
-				assert.Equal(t, internal.Develop, r.Version, "version should be set correctly")
+				assert.Equal(t, Develop, r.Version, "version should be set correctly")
 				assert.NotNil(t, r.ServerExtensions, "server parameters should be set")
 			},
 		},
@@ -628,7 +627,7 @@ func TestResponse_AwaitAccepted(t *testing.T) {
 
 			req := &SetupRequest{
 				Path:             "test/path",
-				ClientExtensions: NewParameters(),
+				ClientExtensions: NewExtension(),
 			}
 
 			ss := newSessionStream(mockStream, req)
@@ -655,7 +654,7 @@ func TestResponse_AwaitAccepted_OnlyOnce(t *testing.T) {
 
 	// Create a valid SessionServerMessage
 	ssm := message.SessionServerMessage{
-		SelectedVersion: internal.Develop,
+		SelectedVersion: uint64(Develop),
 		Parameters:      map[uint64][]byte{1: []byte("test")},
 	}
 	var buf bytes.Buffer
@@ -666,7 +665,7 @@ func TestResponse_AwaitAccepted_OnlyOnce(t *testing.T) {
 
 	req := &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -675,12 +674,12 @@ func TestResponse_AwaitAccepted_OnlyOnce(t *testing.T) {
 	// First call should read from stream
 	err1 := r.AwaitAccepted()
 	assert.NoError(t, err1, "first AwaitAccepted call should succeed")
-	assert.Equal(t, internal.Develop, r.Version, "version should be set from first call")
+	assert.Equal(t, Develop, r.Version, "version should be set from first call")
 
 	// Second call should return immediately without reading from stream
 	err2 := r.AwaitAccepted()
 	assert.NoError(t, err2, "second AwaitAccepted call should succeed")
-	assert.Equal(t, internal.Develop, r.Version, "version should remain from first call")
+	assert.Equal(t, Develop, r.Version, "version should remain from first call")
 
 	mockStream.AssertExpectations(t)
 }
@@ -692,7 +691,7 @@ func TestResponse_AwaitAccepted_ConcurrentCalls(t *testing.T) {
 
 	// Create a valid SessionServerMessage
 	ssm := message.SessionServerMessage{
-		SelectedVersion: internal.Develop,
+		SelectedVersion: uint64(Develop),
 		Parameters:      map[uint64][]byte{1: []byte("test")},
 	}
 	var buf bytes.Buffer
@@ -703,7 +702,7 @@ func TestResponse_AwaitAccepted_ConcurrentCalls(t *testing.T) {
 
 	req := &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -730,7 +729,7 @@ func TestResponse_AwaitAccepted_ConcurrentCalls(t *testing.T) {
 	}
 
 	// Version should be set correctly
-	assert.Equal(t, internal.Develop, r.Version, "version should be set correctly")
+	assert.Equal(t, Develop, r.Version, "version should be set correctly")
 
 	// Only one Read call should have been made due to sync.Once
 	mockStream.AssertExpectations(t)
@@ -745,8 +744,8 @@ func TestAccept_NilParameters(t *testing.T) {
 
 	req := &SetupRequest{
 		Path:             "test/path",
-		Versions:         []Version{internal.Develop},
-		ClientExtensions: NewParameters(),
+		Versions:         []Version{Develop},
+		ClientExtensions: NewExtension(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -762,7 +761,7 @@ func TestAccept_NilParameters(t *testing.T) {
 	mockServer.init() // Initialize the server properly
 	rw := newResponseWriter(mockConn, ss, slog.Default(), mockServer)
 
-	version := internal.Develop
+	version := Develop
 
 	// Set version and extensions before Accept
 	err := rw.SelectVersion(version)
@@ -784,7 +783,7 @@ func TestAccept_MultipleVersions(t *testing.T) {
 	tests := map[string]struct {
 		version Version
 	}{
-		"develop version": {version: internal.Develop},
+		"develop version": {version: Develop},
 	}
 
 	for name, tt := range tests {
@@ -796,8 +795,8 @@ func TestAccept_MultipleVersions(t *testing.T) {
 
 			req := &SetupRequest{
 				Path:             "test/path",
-				Versions:         []Version{internal.Develop}, // Include supported version
-				ClientExtensions: NewParameters(),
+				Versions:         []Version{Develop}, // Include supported version
+				ClientExtensions: NewExtension(),
 			}
 
 			ss := newSessionStream(mockStream, req)
@@ -813,7 +812,7 @@ func TestAccept_MultipleVersions(t *testing.T) {
 			mockServer.init() // Initialize the server properly
 			rw := newResponseWriter(mockConn, ss, slog.Default(), mockServer)
 
-			extensions := NewParameters()
+			extensions := NewExtension()
 
 			// Set version and extensions before Accept
 			err := rw.SelectVersion(tt.version)
@@ -853,7 +852,7 @@ func TestResponse_AwaitAccepted_InvalidMessage(t *testing.T) {
 			mockStream: func() *MockQUICStream {
 				// Create a valid message first, then truncate it
 				ssm := message.SessionServerMessage{
-					SelectedVersion: internal.Develop,
+					SelectedVersion: uint64(Develop),
 					Parameters:      map[uint64][]byte{1: []byte("test")},
 				}
 				var fullBuf bytes.Buffer
@@ -879,7 +878,7 @@ func TestResponse_AwaitAccepted_InvalidMessage(t *testing.T) {
 
 			req := &SetupRequest{
 				Path:             "test/path",
-				ClientExtensions: NewParameters(),
+				ClientExtensions: NewExtension(),
 			}
 
 			ss := newSessionStream(mockStream, req)
@@ -900,7 +899,7 @@ func TestResponse_AwaitAccepted_DifferentVersions(t *testing.T) {
 		version Version
 	}{
 		"version 0":     {version: Version(0)},
-		"version 1":     {version: internal.Develop},
+		"version 1":     {version: Develop},
 		"version 255":   {version: Version(255)},
 		"large version": {version: Version(65535)},
 	}
@@ -912,7 +911,7 @@ func TestResponse_AwaitAccepted_DifferentVersions(t *testing.T) {
 
 			// Create a valid SessionServerMessage with specific version
 			ssm := message.SessionServerMessage{
-				SelectedVersion: tt.version,
+				SelectedVersion: uint64(tt.version),
 				Parameters:      map[uint64][]byte{1: []byte("test")},
 			}
 			var buf bytes.Buffer
@@ -923,7 +922,7 @@ func TestResponse_AwaitAccepted_DifferentVersions(t *testing.T) {
 
 			req := &SetupRequest{
 				Path:             "test/path",
-				ClientExtensions: NewParameters(),
+				ClientExtensions: NewExtension(),
 			}
 
 			ss := newSessionStream(mockStream, req)
@@ -948,7 +947,7 @@ func TestSessionStream_listenUpdates_InitialChannelState(t *testing.T) {
 
 	req := &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -974,7 +973,7 @@ func TestSessionStream_Context(t *testing.T) {
 
 	req := &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -993,7 +992,7 @@ func TestResponse_Interface(t *testing.T) {
 
 	req := &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -1034,7 +1033,7 @@ func TestResponse_AwaitAccepted_ErrorHandling(t *testing.T) {
 		"empty parameters": {
 			mockStream: func() *MockQUICStream {
 				ssm := message.SessionServerMessage{
-					SelectedVersion: Version(42),
+					SelectedVersion: 42,
 					Parameters:      map[uint64][]byte{},
 				}
 				var buf bytes.Buffer
@@ -1057,7 +1056,7 @@ func TestResponse_AwaitAccepted_ErrorHandling(t *testing.T) {
 
 			req := &SetupRequest{
 				Path:             "test/path",
-				ClientExtensions: NewParameters(),
+				ClientExtensions: NewExtension(),
 			}
 
 			ss := newSessionStream(mockStream, req)
@@ -1081,29 +1080,29 @@ func TestResponse_AwaitAccepted_ErrorHandling(t *testing.T) {
 func TestAccept_ErrorHandling(t *testing.T) {
 	tests := map[string]struct {
 		version     Version
-		extensions  *Parameters
+		extensions  *Extension
 		setupMock   func(*MockQUICStream)
 		expectError bool
 	}{
 		"network write error": {
-			version:    internal.Develop,
-			extensions: NewParameters(),
+			version:    Develop,
+			extensions: NewExtension(),
 			setupMock: func(mockStream *MockQUICStream) {
 				mockStream.On("Write", mock.Anything).Return(0, errors.New("network write error"))
 			},
 			expectError: true,
 		},
 		"stream closed error": {
-			version:    internal.Develop,
-			extensions: NewParameters(),
+			version:    Develop,
+			extensions: NewExtension(),
 			setupMock: func(mockStream *MockQUICStream) {
 				mockStream.On("Write", mock.Anything).Return(0, errors.New("stream closed"))
 			},
 			expectError: true,
 		},
 		"partial write": {
-			version:    internal.Develop,
-			extensions: NewParameters(),
+			version:    Develop,
+			extensions: NewExtension(),
 			setupMock: func(mockStream *MockQUICStream) {
 				mockStream.On("Write", mock.Anything).Return(5, nil) // Partial write
 				mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
@@ -1120,8 +1119,8 @@ func TestAccept_ErrorHandling(t *testing.T) {
 
 			req := &SetupRequest{
 				Path:             "test/path",
-				Versions:         []Version{internal.Develop}, // Include supported version
-				ClientExtensions: NewParameters(),
+				Versions:         []Version{Develop}, // Include supported version
+				ClientExtensions: NewExtension(),
 			}
 
 			ss := newSessionStream(mockStream, req)
@@ -1167,24 +1166,24 @@ func TestAccept_ErrorHandling(t *testing.T) {
 // TestAccept_ParameterHandling tests parameter handling
 func TestAccept_ParameterHandling(t *testing.T) {
 	tests := map[string]struct {
-		setupParam func() *Parameters
+		setupParam func() *Extension
 	}{
 		"empty parameters": {
-			setupParam: func() *Parameters { return NewParameters() },
+			setupParam: func() *Extension { return NewExtension() },
 		},
 		"parameters with values": {
-			setupParam: func() *Parameters {
-				params := NewParameters()
+			setupParam: func() *Extension {
+				params := NewExtension()
 				params.SetString(1, "test_value")
 				params.SetUint(2, 12345)
 				return params
 			},
 		},
 		"large parameters": {
-			setupParam: func() *Parameters {
-				params := NewParameters()
+			setupParam: func() *Extension {
+				params := NewExtension()
 				for i := uint64(0); i < 10; i++ {
-					params.SetUint(ParameterType(i), i*1000)
+					params.SetUint(ExtensionKey(i), i*1000)
 				}
 				return params
 			},
@@ -1200,8 +1199,8 @@ func TestAccept_ParameterHandling(t *testing.T) {
 
 			req := &SetupRequest{
 				Path:             "test/path",
-				Versions:         []Version{internal.Develop}, // Include supported version
-				ClientExtensions: NewParameters(),
+				Versions:         []Version{Develop}, // Include supported version
+				ClientExtensions: NewExtension(),
 			}
 
 			ss := newSessionStream(mockStream, req)
@@ -1220,7 +1219,7 @@ func TestAccept_ParameterHandling(t *testing.T) {
 			extensions := tt.setupParam()
 
 			// Set version and extensions before Accept
-			err := rw.SelectVersion(internal.Develop)
+			err := rw.SelectVersion(Develop)
 			assert.NoError(t, err, "SelectVersion should not return error")
 			rw.SetExtensions(extensions)
 
@@ -1228,7 +1227,7 @@ func TestAccept_ParameterHandling(t *testing.T) {
 			session, err := Accept(rw, ss.SetupRequest, mux)
 			assert.NoError(t, err, "Accept should handle parameters correctly")
 			assert.NotNil(t, session, "session should not be nil")
-			assert.Equal(t, internal.Develop, ss.Version, "version should be set correctly")
+			assert.Equal(t, Develop, ss.Version, "version should be set correctly")
 			assert.Equal(t, extensions, ss.ServerExtensions, "parameters should be set correctly")
 
 			mockStream.AssertExpectations(t)
@@ -1241,7 +1240,7 @@ func TestAccept_BoundaryVersions(t *testing.T) {
 	tests := map[string]struct {
 		version Version
 	}{
-		"minimum version":        {version: internal.Develop},
+		"minimum version":        {version: Develop},
 		"maximum uint8 version":  {version: Version(255)},
 		"maximum uint16 version": {version: Version(65535)},
 		"maximum uint32 version": {version: Version(4294967295)},
@@ -1256,8 +1255,8 @@ func TestAccept_BoundaryVersions(t *testing.T) {
 
 			req := &SetupRequest{
 				Path:             "test/path",
-				Versions:         []Version{internal.Develop, Version(255), Version(65535), Version(4294967295)},
-				ClientExtensions: NewParameters(),
+				Versions:         []Version{Develop, Version(255), Version(65535), Version(4294967295)},
+				ClientExtensions: NewExtension(),
 			}
 
 			ss := newSessionStream(mockStream, req)
@@ -1276,7 +1275,7 @@ func TestAccept_BoundaryVersions(t *testing.T) {
 			// Set version and extensions before Accept
 			err := rw.SelectVersion(tt.version)
 			assert.NoError(t, err, "SelectVersion should not return error")
-			rw.SetExtensions(NewParameters())
+			rw.SetExtensions(NewExtension())
 
 			mux := NewTrackMux()
 			session, err := Accept(rw, ss.SetupRequest, mux)
@@ -1307,7 +1306,7 @@ func TestResponse_AwaitAccepted_BoundaryVersions(t *testing.T) {
 
 			// Create a valid SessionServerMessage with boundary version
 			ssm := message.SessionServerMessage{
-				SelectedVersion: tt.version,
+				SelectedVersion: uint64(tt.version),
 				Parameters:      map[uint64][]byte{1: []byte("test")},
 			}
 			var buf bytes.Buffer
@@ -1318,7 +1317,7 @@ func TestResponse_AwaitAccepted_BoundaryVersions(t *testing.T) {
 
 			req := &SetupRequest{
 				Path:             "test/path",
-				ClientExtensions: NewParameters(),
+				ClientExtensions: NewExtension(),
 			}
 
 			ss := newSessionStream(mockStream, req)
@@ -1344,8 +1343,8 @@ func TestAccept_Race(t *testing.T) {
 
 	req := &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
-		Versions:         []Version{internal.Develop, Version(255), Version(65535), Version(4294967295)},
+		ClientExtensions: NewExtension(),
+		Versions:         []Version{Develop, Version(255), Version(65535), Version(4294967295)},
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -1367,9 +1366,9 @@ func TestAccept_Race(t *testing.T) {
 	sessions := make([]*Session, numGoroutines)
 
 	// Set version and extensions before concurrent calls
-	err := rw.SelectVersion(internal.Develop)
+	err := rw.SelectVersion(Develop)
 	assert.NoError(t, err, "SelectVersion should not return error")
-	rw.SetExtensions(NewParameters())
+	rw.SetExtensions(NewExtension())
 
 	// Start many goroutines calling Accept
 	for i := 0; i < numGoroutines; i++ {
@@ -1402,7 +1401,7 @@ func TestResponse_AwaitAccepted_Race(t *testing.T) {
 
 	// Create a valid SessionServerMessage
 	ssm := message.SessionServerMessage{
-		SelectedVersion: internal.Develop,
+		SelectedVersion: uint64(Develop),
 		Parameters:      map[uint64][]byte{1: []byte("test")},
 	}
 	var buf bytes.Buffer
@@ -1412,7 +1411,7 @@ func TestResponse_AwaitAccepted_Race(t *testing.T) {
 
 	req := &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -1439,7 +1438,7 @@ func TestResponse_AwaitAccepted_Race(t *testing.T) {
 	}
 
 	// Version should be set correctly from the first successful call
-	assert.Equal(t, internal.Develop, r.Version, "version should be set correctly")
+	assert.Equal(t, Develop, r.Version, "version should be set correctly")
 
 	// Only one Read call should have been made due to sync.Once
 	mockStream.AssertExpectations(t)
@@ -1454,8 +1453,8 @@ func TestResponseWriter_SessionStream_Sharing(t *testing.T) {
 
 	req := &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
-		Versions:         []Version{internal.Develop},
+		ClientExtensions: NewExtension(),
+		Versions:         []Version{Develop},
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -1471,8 +1470,8 @@ func TestResponseWriter_SessionStream_Sharing(t *testing.T) {
 	mockServer.init()
 	rw := newResponseWriter(mockConn, ss, slog.Default(), mockServer)
 
-	version := internal.Develop
-	extensions := NewParameters()
+	version := Develop
+	extensions := NewExtension()
 	extensions.SetString(1, "shared_state_test")
 
 	// Set version and extensions before Accept
@@ -1504,7 +1503,7 @@ func TestResponse_SessionStream_Sharing(t *testing.T) {
 	// Create a valid SessionServerMessage
 	version := Version(42)
 	ssm := message.SessionServerMessage{
-		SelectedVersion: version,
+		SelectedVersion: uint64(version),
 		Parameters:      map[uint64][]byte{1: []byte("shared_state_test")},
 	}
 	var buf bytes.Buffer
@@ -1515,7 +1514,7 @@ func TestResponse_SessionStream_Sharing(t *testing.T) {
 
 	req := &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	}
 
 	ss := newSessionStream(mockStream, req)
@@ -1538,28 +1537,28 @@ func TestResponse_SessionStream_Sharing(t *testing.T) {
 // TestAccept_ParameterEdgeCases tests parameter edge cases
 func TestAccept_ParameterEdgeCases(t *testing.T) {
 	tests := map[string]struct {
-		setupExtensions func() *Parameters
+		setupExtensions func() *Extension
 		expectError     bool
 	}{
 		"nil extensions": {
-			setupExtensions: func() *Parameters { return nil },
+			setupExtensions: func() *Extension { return nil },
 			expectError:     false,
 		},
 		"empty extensions": {
-			setupExtensions: func() *Parameters { return NewParameters() },
+			setupExtensions: func() *Extension { return NewExtension() },
 			expectError:     false,
 		},
 		"extensions with empty string": {
-			setupExtensions: func() *Parameters {
-				params := NewParameters()
+			setupExtensions: func() *Extension {
+				params := NewExtension()
 				params.SetString(1, "")
 				return params
 			},
 			expectError: false,
 		},
 		"extensions with zero values": {
-			setupExtensions: func() *Parameters {
-				params := NewParameters()
+			setupExtensions: func() *Extension {
+				params := NewExtension()
 				params.SetUint(1, 0)
 				params.SetString(2, "")
 				return params
@@ -1577,8 +1576,8 @@ func TestAccept_ParameterEdgeCases(t *testing.T) {
 
 			req := &SetupRequest{
 				Path:             "test/path",
-				Versions:         []Version{internal.Develop},
-				ClientExtensions: NewParameters(),
+				Versions:         []Version{Develop},
+				ClientExtensions: NewExtension(),
 			}
 
 			ss := newSessionStream(mockStream, req)
@@ -1597,7 +1596,7 @@ func TestAccept_ParameterEdgeCases(t *testing.T) {
 			extensions := tt.setupExtensions()
 
 			// Set version and extensions before Accept
-			err := rw.SelectVersion(internal.Develop)
+			err := rw.SelectVersion(Develop)
 			assert.NoError(t, err, "SelectVersion should not return error")
 			rw.SetExtensions(extensions)
 

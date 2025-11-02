@@ -15,7 +15,7 @@ export type BroadcastPath = `/${string}`;
  * @returns true if the path is a valid BroadcastPath
  */
 export function isValidBroadcastPath(path: string): boolean {
-    return path.startsWith('/') && path.length >= 1;
+	return path.startsWith("/") && path.length >= 1;
 }
 
 /**
@@ -25,10 +25,10 @@ export function isValidBroadcastPath(path: string): boolean {
  * @throws Error if the path is not a valid BroadcastPath
  */
 export function validateBroadcastPath(path: string): BroadcastPath {
-    if (!isValidBroadcastPath(path)) {
-        throw new Error(`Invalid broadcast path: "${path}". Must start with "/"`);
-    }
-    return path as BroadcastPath;
+	if (!isValidBroadcastPath(path)) {
+		throw new Error(`Invalid broadcast path: "${path}". Must start with "/"`);
+	}
+	return path as BroadcastPath;
 }
 
 /**
@@ -41,19 +41,18 @@ export function validateBroadcastPath(path: string): BroadcastPath {
  * getExtension("/file.min.js") // returns ".js"
  */
 export function extension(path: BroadcastPath): string {
-    const lastDot = path.lastIndexOf('.');
-    const lastSlash = path.lastIndexOf('/');
-    
-    // If no dot found or dot is before the last slash (part of directory name), no extension
-    if (lastDot === -1 || lastDot < lastSlash) {
-        return '';
-    }
-    
-    // If dot is immediately after the last slash, it's a hidden file, not an extension
-    if (lastDot === lastSlash + 1) {
-        return '';
-    }
-    
-    return path.substring(lastDot);
-}
+	const lastDot = path.lastIndexOf(".");
+	const lastSlash = path.lastIndexOf("/");
 
+	// If no dot found or dot is before the last slash (part of directory name), no extension
+	if (lastDot === -1 || lastDot < lastSlash) {
+		return "";
+	}
+
+	// If dot is immediately after the last slash, it's a hidden file, not an extension
+	if (lastDot === lastSlash + 1) {
+		return "";
+	}
+
+	return path.substring(lastDot);
+}

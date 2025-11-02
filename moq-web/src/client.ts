@@ -1,70 +1,95 @@
-import { Session } from "./session";
-import type { MOQOptions } from "./options";
-import { Extensions,DEFAULT_CLIENT_VERSIONS } from "./internal";
-import { DefaultTrackMux, TrackMux } from "./track_mux";
+import { Session } from "./session.ts";
+import type { MOQOptions } from "./options.ts";
+import { DEFAULT_CLIENT_VERSIONS } from "./version.ts";
+import { DefaultTrackMux, TrackMux } from "./track_mux.ts";
 
 const DefaultWebTransportOptions: WebTransportOptions = {
-    allowPooling: false,
-    congestionControl: "low-latency",
-    requireUnreliable: true,
+	allowPooling: false,
+	congestionControl: "low-latency",
+	requireUnreliable: true,
 };
 
 const DefaultMOQOptions: MOQOptions = {
-    versions: DEFAULT_CLIENT_VERSIONS,
-    extensions: undefined,
-    reconnect: false, // TODO: Implement reconnect logic
-    // migrate: (url: URL) => false,
-    transportOptions: DefaultWebTransportOptions,
+	versions: DEFAULT_CLIENT_VERSIONS,
+	extensions: undefined,
+	reconnect: false, // TODO: Implement reconnect logic
+	// migrate: (url: URL) => false,
+	transportOptions: DefaultWebTransportOptions,
 };
 
 export class Client {
-    #sessions?: Set<Session> = new Set();
-    readonly options: MOQOptions;
-    #mux: TrackMux;
+	#sessions?: Set<Session> = new Set();
+	readonly options: MOQOptions;
 
-    constructor(options: MOQOptions = DefaultMOQOptions, mux?: TrackMux) {
-        this.options = options;
-        this.#mux = mux || new TrackMux();
-    }
+	/**
+	 * Create a new Client.
+	 * The provided options are shallow-merged with safe defaults so the
+	 * shared default objects aren't accidentally mutated.
+	 */
+	constructor(options?: MOQOptions) {
+		this.options = {
+			versions: options?.versions ?? DefaultMOQOptions.versions,
+			extensions: options?.extensions ?? DefaultMOQOptions.extensions,
+			reconnect: options?.reconnect ?? DefaultMOQOptions.reconnect,
+			transportOptions: {
+				...DefaultWebTransportOptions,
+				...(options?.transportOptions ?? {}),
+			},
+		};
+	}
 
-    async dial(url: string | URL, mux: TrackMux = DefaultTrackMux): Promise<Session> {
-        if (this.#sessions === undefined) {
-            return Promise.reject(new Error("Client is closed"));
-        }
+	async dial(url: string | URL, mux: TrackMux = DefaultTrackMux): Promise<Session> {
+		if (this.#sessions === undefined) {
+			return Promise.reject(new Error("Client is closed"));
+		}
 
-        const transport = new WebTransport(url, this.options.transportOptions);
-        const session = new Session({
-            conn: transport,
-            extensions: this.options.extensions,
-            mux
-        });
-        await session.ready;
-        this.#sessions.add(session);
-        return session;
-    }
+		// Normalize URL to string (WebTransport accepts a USVString).
+		const endpoint = typeof url === "string" ? url : String(url);
 
-    async close(): Promise<void> {
-        if (this.#sessions === undefined) {
-            return Promise.resolve();
-        }
+		let transport: WebTransport;
+		try {
+			transport = new WebTransport(endpoint, this.options.transportOptions);
+		} catch (err) {
+			return Promise.reject(new Error(`failed to create WebTransport: ${err}`));
+		}
 
-        await Promise.allSettled(Array.from(this.#sessions).map(
-            session => session.close()
-        ));
-        this.#sessions = new Set();
-    }
+		const session = new Session({
+			conn: transport,
+			extensions: this.options.extensions,
+			mux,
+		});
+		await session.ready;
+		this.#sessions.add(session);
+		return session;
+	}
 
-    async abort(): Promise<void> {
-        if (this.#sessions === undefined) {
-            return;
-        }
+	async close(): Promise<void> {
+		if (this.#sessions === undefined) {
+			return Promise.resolve();
+		}
 
-        await Promise.allSettled(Array.from(this.#sessions).map(
-            session => session.close()
-        ));
+		await Promise.allSettled(
+			Array.from(this.#sessions).map((session) => session.close()),
+		);
+		// Mark client as closed so future dials fail fast.
+		this.#sessions = undefined;
+	}
 
-        this.#sessions = new Set();
-    }
+	async abort(): Promise<void> {
+		if (this.#sessions === undefined) {
+			return;
+		}
+
+		// Try to close sessions with an error to indicate abort semantics.
+		await Promise.allSettled(
+			Array.from(this.#sessions).map((session) =>
+				session.closeWithError(1, "client aborted")
+			),
+		);
+
+		// Mark closed
+		this.#sessions = undefined;
+	}
 }
 
 export const MOQ = Client;

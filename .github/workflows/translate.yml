@@ -13,17 +13,12 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
         with:
-          node-version: 20
-
-      - name: Install dependencies
-        run: |
-          cd .github/scripts
-          npm install
+          deno-version: v2.x
 
       - name: Run translator
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node .github/scripts/translate.js
+        run: deno run --allow-net --allow-env .github/scripts/translate.ts

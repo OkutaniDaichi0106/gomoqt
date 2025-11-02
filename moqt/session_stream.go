@@ -7,7 +7,7 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
 )
 
@@ -40,7 +40,7 @@ type sessionStream struct {
 	*SetupRequest
 
 	// Parameters specified by the server
-	ServerExtensions *Parameters
+	ServerExtensions *Extension
 
 	listenOnce sync.Once
 }
@@ -64,8 +64,8 @@ func (r *response) AwaitAccepted() error {
 		if err != nil {
 			return
 		}
-		r.Version = sum.SelectedVersion
-		r.ServerExtensions = &Parameters{sum.Parameters}
+		r.Version = Version(sum.SelectedVersion)
+		r.ServerExtensions = &Extension{sum.Parameters}
 
 		r.handleUpdates()
 	})
@@ -100,7 +100,7 @@ func (w *responseWriter) SelectVersion(v Version) error {
 	return nil
 }
 
-func (w *responseWriter) SetExtensions(extensions *Parameters) {
+func (w *responseWriter) SetExtensions(extensions *Extension) {
 	w.ServerExtensions = extensions
 }
 
@@ -108,13 +108,13 @@ func (w *responseWriter) accept(mux *TrackMux) (*Session, error) {
 	var err error
 	w.onceSetup.Do(func() {
 		// TODO: Implement setup logic if needed
-		var paramMsg message.Parameters
+		var params parameters
 		if w.ServerExtensions != nil {
-			paramMsg = w.ServerExtensions.paramMap
+			params = w.ServerExtensions.parameters
 		}
 		err = message.SessionServerMessage{
-			SelectedVersion: w.Version,
-			Parameters:      paramMsg,
+			SelectedVersion: uint64(w.Version),
+			Parameters:      params,
 		}.Encode(w.stream)
 		if err != nil {
 			return

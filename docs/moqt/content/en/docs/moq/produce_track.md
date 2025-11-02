@@ -120,17 +120,18 @@ To add media data to a group, use `(moqt.GroupWriter).WriteFrame` method. Each f
 
 ### Frame Creation
 
-To create a new frame, use `moqt.NewFrame()`. Frames support the `io.Writer` interface for efficient data addition.
+To create a new frame, use `moqt.FrameBuilder`. It provides a convenient way to build frames, allowing for efficient creation and reuse of frame data buffers.
 
 ```go
-    frame := moqt.NewFrame(1024)
+    builder := moqt.NewFrameBuilder(1024)
 
-    frame.Write([]byte("Good Morning"))
-    fmt.Println(string(frame.Body())) // "Good Morning"
+    builder.Append([]byte("Good Morning"))
+    frame := builder.Frame()
+    fmt.Println(string(frame.Bytes())) // "Good Morning"
 
-    frame.Reset() // Reset the frame for reuse
-    frame.Write([]byte("Good Evening"))
-    fmt.Println(string(frame.Body())) // "Good Evening"
+    builder.Reset() // Reset the builder for the next frame
+    builder.Append([]byte("Good Evening"))
+    fmt.Println(string(frame.Bytes())) // "Good Evening"
 ```
 
 Frame is designed to be immutable once after creation. This is intentional because MOQ does not allow modifications to the frame data.

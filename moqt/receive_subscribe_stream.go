@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
 )
 
@@ -43,9 +43,9 @@ func newReceiveSubscribeStream(id SubscribeID, stream quic.Stream, config *Track
 
 			rss.configMu.Lock()
 			rss.config = &TrackConfig{
-				TrackPriority:    sum.TrackPriority,
-				MinGroupSequence: sum.MinGroupSequence,
-				MaxGroupSequence: sum.MaxGroupSequence,
+				TrackPriority:    TrackPriority(sum.TrackPriority),
+				MinGroupSequence: GroupSequence(sum.MinGroupSequence),
+				MaxGroupSequence: GroupSequence(sum.MaxGroupSequence),
 			}
 
 			select {

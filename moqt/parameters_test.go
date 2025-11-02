@@ -8,31 +8,31 @@ import (
 )
 
 func TestNewParameters(t *testing.T) {
-	params := NewParameters()
+	params := NewExtension()
 	assert.NotNil(t, params, "NewParameters should return a non-nil value")
 }
 
 func TestParameters_String(t *testing.T) {
 	tests := map[string]struct {
-		setup    func() *Parameters
+		setup    func() *Extension
 		expected string
 	}{"empty parameters": {
-		setup: func() *Parameters {
-			return NewParameters()
+		setup: func() *Extension {
+			return NewExtension()
 		},
 		expected: "{ }",
 	},
 		"with one parameter": {
-			setup: func() *Parameters {
-				p := NewParameters()
+			setup: func() *Extension {
+				p := NewExtension()
 				p.SetString(1, "test")
 				return p
 			},
 			expected: "{ 1: [116 101 115 116], }",
 		},
 		"with multiple parameters": {
-			setup: func() *Parameters {
-				p := NewParameters()
+			setup: func() *Extension {
+				p := NewExtension()
 				p.SetString(1, "test1")
 				p.SetString(2, "test2")
 				p.SetUint(3, 42)
@@ -62,22 +62,22 @@ func TestParameters_String(t *testing.T) {
 
 func TestParameters_ByteArrayParameter(t *testing.T) {
 	tests := map[string]struct {
-		setup         func() *Parameters
-		key           ParameterType
+		setup         func() *Extension
+		key           ExtensionKey
 		value         []byte
 		expectedError bool
 	}{
 		"set and get byte array": {
-			setup: func() *Parameters {
-				return NewParameters()
+			setup: func() *Extension {
+				return NewExtension()
 			},
 			key:           1,
 			value:         []byte{1, 2, 3, 4},
 			expectedError: false,
 		},
 		"get non-existent key": {
-			setup: func() *Parameters {
-				return NewParameters()
+			setup: func() *Extension {
+				return NewExtension()
 			},
 			key:           1,
 			value:         nil,
@@ -108,22 +108,22 @@ func TestParameters_ByteArrayParameter(t *testing.T) {
 
 func TestParameters_StringParameter(t *testing.T) {
 	tests := map[string]struct {
-		setup         func() *Parameters
-		key           ParameterType
+		setup         func() *Extension
+		key           ExtensionKey
 		value         string
 		expectedError bool
 	}{
 		"set and get string": {
-			setup: func() *Parameters {
-				return NewParameters()
+			setup: func() *Extension {
+				return NewExtension()
 			},
 			key:           1,
 			value:         "test string",
 			expectedError: false,
 		},
 		"get non-existent key": {
-			setup: func() *Parameters {
-				return NewParameters()
+			setup: func() *Extension {
+				return NewExtension()
 			},
 			key:           1,
 			value:         "",
@@ -154,30 +154,30 @@ func TestParameters_StringParameter(t *testing.T) {
 
 func TestParameters_UintParameter(t *testing.T) {
 	tests := map[string]struct {
-		setup         func() *Parameters
-		key           ParameterType
+		setup         func() *Extension
+		key           ExtensionKey
 		value         uint64
 		expectedError bool
 	}{
 		"set and get uint": {
-			setup: func() *Parameters {
-				return NewParameters()
+			setup: func() *Extension {
+				return NewExtension()
 			},
 			key:           1,
 			value:         42,
 			expectedError: false,
 		},
 		"set and get large uint": {
-			setup: func() *Parameters {
-				return NewParameters()
+			setup: func() *Extension {
+				return NewExtension()
 			},
 			key:           1,
 			value:         1<<32 - 1, // max uint32
 			expectedError: false,
 		},
 		"get non-existent key": {
-			setup: func() *Parameters {
-				return NewParameters()
+			setup: func() *Extension {
+				return NewExtension()
 			},
 			key:           1,
 			value:         0,
@@ -208,30 +208,30 @@ func TestParameters_UintParameter(t *testing.T) {
 
 func TestParameters_BoolParameter(t *testing.T) {
 	tests := map[string]struct {
-		setup         func() *Parameters
-		key           ParameterType
+		setup         func() *Extension
+		key           ExtensionKey
 		value         bool
 		expectedError bool
 	}{
 		"set and get true": {
-			setup: func() *Parameters {
-				return NewParameters()
+			setup: func() *Extension {
+				return NewExtension()
 			},
 			key:           1,
 			value:         true,
 			expectedError: false,
 		},
 		"set and get false": {
-			setup: func() *Parameters {
-				return NewParameters()
+			setup: func() *Extension {
+				return NewExtension()
 			},
 			key:           1,
 			value:         false,
 			expectedError: false,
 		},
 		"get non-existent key": {
-			setup: func() *Parameters {
-				return NewParameters()
+			setup: func() *Extension {
+				return NewExtension()
 			},
 			key:           1,
 			value:         false,
@@ -262,13 +262,13 @@ func TestParameters_BoolParameter(t *testing.T) {
 
 func TestParameters_Remove(t *testing.T) {
 	tests := map[string]struct {
-		setup    func() *Parameters
-		key      ParameterType
+		setup    func() *Extension
+		key      ExtensionKey
 		expected bool
 	}{
 		"remove existing key": {
-			setup: func() *Parameters {
-				p := NewParameters()
+			setup: func() *Extension {
+				p := NewExtension()
 				p.SetString(1, "test")
 				return p
 			},
@@ -276,8 +276,8 @@ func TestParameters_Remove(t *testing.T) {
 			expected: true,
 		},
 		"remove non-existent key": {
-			setup: func() *Parameters {
-				return NewParameters()
+			setup: func() *Extension {
+				return NewExtension()
 			},
 			key:      1,
 			expected: false,
@@ -326,7 +326,7 @@ func TestParameters_GetBool_InvalidValue(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			params := NewParameters()
+			params := NewExtension()
 			params.SetUint(1, tt.value)
 
 			_, err := params.GetBool(1)
@@ -338,7 +338,7 @@ func TestParameters_GetBool_InvalidValue(t *testing.T) {
 
 func TestParameters_NilMap(t *testing.T) {
 	// Create a Parameters with nil map
-	var params Parameters
+	var params Extension
 
 	// Test all getters with nil map
 	_, err := params.GetByteArray(1)
@@ -378,7 +378,7 @@ func TestParameters_NilMap(t *testing.T) {
 }
 
 func TestParameters_Clone(t *testing.T) {
-	original := NewParameters()
+	original := NewExtension()
 	original.SetString(1, "test")
 	original.SetUint(2, 42)
 	original.SetBool(3, true)

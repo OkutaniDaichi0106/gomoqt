@@ -8,39 +8,166 @@ import (
 	"maps"
 	"strings"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-// ParameterType represents the type identifier for MOQ protocol parameters.
-type ParameterType uint64
+// ExtensionKey represents the type identifier for MOQ protocol parameters.
+type ExtensionKey uint64
 
-// NewParameters creates a new empty Parameters instance.
-func NewParameters() *Parameters {
-	return &Parameters{
-		paramMap: make(message.Parameters),
+type parameters map[uint64][]byte
+
+// // Clone creates a deep copy of the parameters.
+// func (p parameters) Clone() parameters {
+// 	if p == nil {
+// 		return nil
+// 	}
+
+// 	return maps.Clone(p)
+// }
+
+// // SetByteArray sets a parameter with a byte array value.
+// func (p parameters) SetByteArray(key uint64, value []byte) {
+// 	if p == nil {
+// 		p = make(parameters)
+// 	}
+// 	p[key] = value
+// }
+
+// // SetString sets a parameter with a string value.
+// func (p parameters) SetString(key uint64, value string) {
+// 	if p == nil {
+// 		p = make(parameters)
+// 	}
+// 	p[key] = []byte(value)
+// }
+
+// // SetUint sets a parameter with an unsigned integer value encoded as a varint.
+// func (p parameters) SetUint(key uint64, value uint64) {
+// 	if p == nil {
+// 		p = make(parameters)
+// 	}
+// 	p[key] = quicvarint.Append(make([]byte, 0), value)
+// }
+
+// // SetBool sets a parameter with a boolean value (1 for true, 0 for false).
+// func (p parameters) SetBool(key uint64, value bool) {
+// 	if p == nil {
+// 		p = make(parameters)
+// 	}
+// 	if value {
+// 		p[key] = quicvarint.Append(make([]byte, 0), 1)
+// 	} else {
+// 		p[key] = quicvarint.Append(make([]byte, 0), 0)
+// 	}
+// }
+
+// // Remove removes a parameter by key.
+// func (p parameters) Remove(key uint64) {
+// 	if p == nil {
+// 		return
+// 	}
+// 	delete(p, key)
+// }
+
+// // GetByteArray retrieves a parameter value as a byte array.
+// // Returns ErrParameterNotFound if the parameter does not exist.
+// func (p parameters) GetByteArray(key uint64) ([]byte, error) {
+// 	if p == nil {
+// 		return nil, ErrParameterNotFound
+// 	}
+// 	value, ok := p[key]
+// 	if !ok {
+// 		return nil, ErrParameterNotFound
+// 	}
+
+// 	return value, nil
+// }
+
+// // GetString retrieves a parameter value as a string.
+// // Returns ErrParameterNotFound if the parameter does not exist.
+// func (p parameters) GetString(key uint64) (string, error) {
+// 	if p == nil {
+// 		return "", ErrParameterNotFound
+// 	}
+
+// 	value, err := p.GetByteArray(key)
+// 	if err != nil {
+// 		return "", err
+// 	}
+
+// 	return string(value), nil
+// }
+
+// // GetUint retrieves a parameter value as an unsigned integer decoded from a varint.
+// // Returns ErrParameterNotFound if the parameter does not exist.
+// func (p parameters) GetUint(key uint64) (uint64, error) {
+// 	if p == nil {
+// 		return 0, ErrParameterNotFound
+// 	}
+
+// 	value, ok := p[key]
+// 	if !ok {
+// 		return 0, ErrParameterNotFound
+// 	}
+
+// 	num, err := quicvarint.Read(quicvarint.NewReader(bytes.NewReader(value)))
+// 	if err != nil {
+// 		slog.Error("failed to read the bytes as uint64")
+// 		return 0, err
+// 	}
+
+// 	return num, nil
+// }
+
+// // GetBool retrieves a parameter value as a boolean (1=true, 0=false).
+// // Returns ErrParameterNotFound if the parameter does not exist.
+// func (p parameters) GetBool(key uint64) (bool, error) {
+// 	if p == nil {
+// 		return false, ErrParameterNotFound
+// 	}
+
+// 	num, err := p.GetUint(key)
+// 	if err != nil {
+// 		slog.Error("failed to read a parameter as uint", "error", err)
+// 		return false, err
+// 	}
+
+// 	switch num {
+// 	case 0:
+// 		return false, nil
+// 	case 1:
+// 		return true, nil
+// 	default:
+// 		return false, errors.New("invalid value as bool")
+// 	}
+// }
+
+// NewExtension creates a new empty parameters instance.
+func NewExtension() *Extension {
+	return &Extension{
+		parameters: make(parameters),
 	}
 }
 
-// Parameters holds key-value pairs for MOQ protocol negotiation.
-// Parameters are used during session setup and other protocol operations
+// Extension holds key-value pairs for MOQ protocol negotiation.
+// Extension are used during session setup and other protocol operations
 // to exchange configuration options between client and server.
-type Parameters struct {
-	paramMap message.Parameters
+type Extension struct {
+	parameters
 }
 
-// Clone creates a deep copy of the Parameters.
-func (p *Parameters) Clone() *Parameters {
-	return &Parameters{
-		paramMap: maps.Clone(p.paramMap),
+// Clone creates a deep copy of the parameters.
+func (p *Extension) Clone() *Extension {
+	return &Extension{
+		parameters: maps.Clone(p.parameters),
 	}
 }
 
 // String returns a string representation of the parameters for debugging.
-func (p Parameters) String() string {
+func (p Extension) String() string {
 	var sb strings.Builder
 	sb.WriteString("{")
-	for key, value := range p.paramMap {
+	for key, value := range p.parameters {
 		sb.WriteString(" ")
 		sb.WriteString(fmt.Sprintf("%d", key))
 		sb.WriteString(": ")
@@ -52,56 +179,56 @@ func (p Parameters) String() string {
 }
 
 // SetByteArray sets a parameter with a byte array value.
-func (p *Parameters) SetByteArray(key ParameterType, value []byte) {
-	if p.paramMap == nil {
-		p.paramMap = make(message.Parameters)
+func (p *Extension) SetByteArray(key ExtensionKey, value []byte) {
+	if p.parameters == nil {
+		p.parameters = make(parameters)
 	}
-	p.paramMap[uint64(key)] = value
+	p.parameters[uint64(key)] = value
 }
 
 // SetString sets a parameter with a string value.
-func (p *Parameters) SetString(key ParameterType, value string) {
-	if p.paramMap == nil {
-		p.paramMap = make(message.Parameters)
+func (p *Extension) SetString(key ExtensionKey, value string) {
+	if p.parameters == nil {
+		p.parameters = make(parameters)
 	}
-	p.paramMap[uint64(key)] = []byte(value)
+	p.parameters[uint64(key)] = []byte(value)
 }
 
 // SetUint sets a parameter with an unsigned integer value encoded as a varint.
-func (p *Parameters) SetUint(key ParameterType, value uint64) {
-	if p.paramMap == nil {
-		p.paramMap = make(message.Parameters)
+func (p *Extension) SetUint(key ExtensionKey, value uint64) {
+	if p.parameters == nil {
+		p.parameters = make(parameters)
 	}
-	p.paramMap[uint64(key)] = quicvarint.Append(make([]byte, 0), value)
+	p.parameters[uint64(key)] = quicvarint.Append(make([]byte, 0), value)
 }
 
 // SetBool sets a parameter with a boolean value (1 for true, 0 for false).
-func (p *Parameters) SetBool(key ParameterType, value bool) {
-	if p.paramMap == nil {
-		p.paramMap = make(message.Parameters)
+func (p *Extension) SetBool(key ExtensionKey, value bool) {
+	if p.parameters == nil {
+		p.parameters = make(parameters)
 	}
 	if value {
-		p.paramMap[uint64(key)] = quicvarint.Append(make([]byte, 0), 1)
+		p.parameters[uint64(key)] = quicvarint.Append(make([]byte, 0), 1)
 	} else {
-		p.paramMap[uint64(key)] = quicvarint.Append(make([]byte, 0), 0)
+		p.parameters[uint64(key)] = quicvarint.Append(make([]byte, 0), 0)
 	}
 }
 
 // Remove removes a parameter by key.
-func (p *Parameters) Remove(key ParameterType) {
-	if p.paramMap == nil {
+func (p *Extension) Remove(key ExtensionKey) {
+	if p.parameters == nil {
 		return
 	}
-	delete(p.paramMap, uint64(key))
+	delete(p.parameters, uint64(key))
 }
 
 // GetByteArray retrieves a parameter value as a byte array.
 // Returns ErrParameterNotFound if the parameter does not exist.
-func (p Parameters) GetByteArray(key ParameterType) ([]byte, error) {
-	if p.paramMap == nil {
+func (p Extension) GetByteArray(key ExtensionKey) ([]byte, error) {
+	if p.parameters == nil {
 		return nil, ErrParameterNotFound
 	}
-	value, ok := p.paramMap[uint64(key)]
+	value, ok := p.parameters[uint64(key)]
 	if !ok {
 		return nil, ErrParameterNotFound
 	}
@@ -111,8 +238,8 @@ func (p Parameters) GetByteArray(key ParameterType) ([]byte, error) {
 
 // GetString retrieves a parameter value as a string.
 // Returns ErrParameterNotFound if the parameter does not exist.
-func (p Parameters) GetString(key ParameterType) (string, error) {
-	if p.paramMap == nil {
+func (p Extension) GetString(key ExtensionKey) (string, error) {
+	if p.parameters == nil {
 		return "", ErrParameterNotFound
 	}
 
@@ -126,12 +253,12 @@ func (p Parameters) GetString(key ParameterType) (string, error) {
 
 // GetUint retrieves a parameter value as an unsigned integer decoded from a varint.
 // Returns ErrParameterNotFound if the parameter does not exist.
-func (p Parameters) GetUint(key ParameterType) (uint64, error) {
-	if p.paramMap == nil {
+func (p Extension) GetUint(key ExtensionKey) (uint64, error) {
+	if p.parameters == nil {
 		return 0, ErrParameterNotFound
 	}
 
-	value, ok := p.paramMap[uint64(key)]
+	value, ok := p.parameters[uint64(key)]
 	if !ok {
 		return 0, ErrParameterNotFound
 	}
@@ -147,8 +274,8 @@ func (p Parameters) GetUint(key ParameterType) (uint64, error) {
 
 // GetBool retrieves a parameter value as a boolean (1=true, 0=false).
 // Returns ErrParameterNotFound if the parameter does not exist.
-func (p Parameters) GetBool(key ParameterType) (bool, error) {
-	if p.paramMap == nil {
+func (p Extension) GetBool(key ExtensionKey) (bool, error) {
+	if p.parameters == nil {
 		return false, ErrParameterNotFound
 	}
 
@@ -171,8 +298,8 @@ func (p Parameters) GetBool(key ParameterType) (bool, error) {
 var ErrParameterNotFound = errors.New("parameter not found")
 
 const (
-	param_type_path               ParameterType = 0x01
-	param_type_authorization_info ParameterType = 0x02
+	param_type_path               ExtensionKey = 0x01
+	param_type_authorization_info ExtensionKey = 0x02
 	// param_type_delivery_timeout   ParameterType = 0x03
 	// param_type_new_session_uri ParameterType = 0x04
 

@@ -14,19 +14,9 @@ body:
     id: overview
     attributes:
       label: "Overview"
-      description: "Briefly describe the purpose of this feature."
+      description: "Briefly describe the purpose of this request"
       placeholder: |
-        Example: A short summary of what this feature is intended to accomplish.
-    validations:
-      required: true
-
-  - type: textarea
-    id: motivation_benefits
-    attributes:
-      label: "Motivation & Benefits"
-      description: "Why is this feature needed, and what advantages does it bring?"
-      placeholder: |
-        Example: Explain the problem this feature solves, and what benefits it provides to users or developers.
+        Example: Add a new message type to the MoQ protocol
     validations:
       required: true
 
@@ -34,19 +24,19 @@ body:
     id: use_case
     attributes:
       label: "Use Case"
-      description: "Describe how this feature would be used."
+      description: "Describe how this feature would be used"
       placeholder: |
-        Example: Provide a typical scenario where this feature would be applied.
+        Example: Used for latency optimization in live streaming scenarios
     validations:
       required: true
 
   - type: textarea
     id: proposed_solution
     attributes:
-      label: "Proposed Solution (include Next Steps)"
-      description: "Provide a high-level idea of how this could be implemented, including suggested next steps."
+      label: "Proposed Solution"
+      description: "Share your ideas on how this could be implemented"
       placeholder: |
-        Example: Describe the approach for implementing this feature, along with any suggested next steps for discussion or prototyping.
+        Example: Add a new method `OptimizeLatency()` to the `moqt` package
     validations:
       required: false
 
@@ -55,17 +45,7 @@ body:
     attributes:
       label: "Alternatives Considered"
       description: "Any other approaches you considered"
-      placeholder: |
-        Example: List any alternative solutions or approaches that were considered.
-    validations:
-      required: false
-
-  - type: input
-    id: related_issues
-    attributes:
-      label: "Related issues"
-      description: "Please provide the issue number or URL of related issues (optional). Example: #123, https://github.com/owner/repo/issues/123"
-      placeholder: "#123, https://github.com/owner/repo/issues/123"
+      placeholder: "- Alternative 1\n- Alternative 2"
     validations:
       required: false
 

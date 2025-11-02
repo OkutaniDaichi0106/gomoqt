@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -43,7 +43,7 @@ func TestNewSession(t *testing.T) {
 
 			sessStream := newSessionStream(mockStream, &SetupRequest{
 				Path:             "test/path",
-				ClientExtensions: NewParameters(),
+				ClientExtensions: NewExtension(),
 			})
 			session := newSession(conn, sessStream, tt.mux, slog.Default(), nil)
 
@@ -84,7 +84,7 @@ func TestNewSessionWithNilMux(t *testing.T) {
 
 			sessStream := newSessionStream(mockStream, &SetupRequest{
 				Path:             "test/path",
-				ClientExtensions: NewParameters(),
+				ClientExtensions: NewExtension(),
 			})
 			session := newSession(conn, sessStream, tt.mux, slog.Default(), nil)
 
@@ -112,7 +112,7 @@ func TestNewSession_WithNilLogger(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 
 	session := newSession(conn, sessStream, NewTrackMux(), nil, nil)
@@ -139,7 +139,7 @@ func TestNewSession_SessionStreamClosure(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
@@ -181,7 +181,7 @@ func TestSession_Terminate(t *testing.T) {
 
 			sessStream := newSessionStream(mockStream, &SetupRequest{
 				Path:             "test/path",
-				ClientExtensions: NewParameters(),
+				ClientExtensions: NewExtension(),
 			})
 			session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
@@ -244,7 +244,7 @@ func TestSession_Subscribe(t *testing.T) {
 
 			sessStream := newSessionStream(mockStream, &SetupRequest{
 				Path:             "test/path",
-				ClientExtensions: NewParameters(),
+				ClientExtensions: NewExtension(),
 			})
 			session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
@@ -282,7 +282,7 @@ func TestSession_Subscribe_OpenError(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
@@ -321,7 +321,7 @@ func TestSession_Subscribe_OpenStreamApplicationError(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
@@ -361,7 +361,7 @@ func TestSession_Subscribe_EncodeStreamTypeError(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
@@ -402,7 +402,7 @@ func TestSession_Subscribe_EncodeStreamTypeStreamError(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
@@ -448,7 +448,7 @@ func TestSession_Subscribe_NilConfig(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
@@ -494,7 +494,7 @@ func TestSession_Subscribe_EncodeSubscribeMessageStreamError(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
@@ -544,7 +544,7 @@ func TestSession_Subscribe_EncodeSubscribeMessageRemoteStreamError(t *testing.T)
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
@@ -588,7 +588,7 @@ func TestSession_Subscribe_DecodeSubscribeOkStreamError(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
@@ -629,7 +629,7 @@ func TestSession_Subscribe_DecodeSubscribeOkError(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
@@ -657,7 +657,7 @@ func TestSession_Context(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
@@ -682,7 +682,7 @@ func TestSession_nextSubscribeID(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
@@ -710,7 +710,7 @@ func TestSession_HandleBiStreams_AcceptError(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
@@ -738,7 +738,7 @@ func TestSession_HandleUniStreamsAcceptError(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
@@ -769,7 +769,7 @@ func TestSession_ConcurrentAccess(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
@@ -830,7 +830,7 @@ func TestSession_ContextCancellation(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
@@ -866,7 +866,7 @@ func TestSession_WithRealMux(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, mux, slog.Default(), nil)
 
@@ -892,7 +892,7 @@ func TestSession_GoAway(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
@@ -974,7 +974,7 @@ func TestSession_AcceptAnnounce(t *testing.T) {
 
 			sessStream := newSessionStream(mockStream, &SetupRequest{
 				Path:             "test/path",
-				ClientExtensions: NewParameters(),
+				ClientExtensions: NewExtension(),
 			})
 			session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
@@ -1015,7 +1015,7 @@ func TestSession_AddTrackWriter(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
@@ -1045,7 +1045,7 @@ func TestSession_RemoveTrackWriter(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
@@ -1076,7 +1076,7 @@ func TestSession_RemoveTrackReader(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
@@ -1114,7 +1114,7 @@ func TestSession_AddTrackReader(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
@@ -1140,7 +1140,7 @@ func TestSession_ProcessBiStream_Announce(t *testing.T) {
 
 	sessStream := newSessionStream(mockSessStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	mux := NewTrackMux()
 	session := newSession(conn, sessStream, mux, slog.Default(), nil)
@@ -1202,7 +1202,7 @@ func TestSession_ProcessBiStream_Subscribe(t *testing.T) {
 
 	sessStream := newSessionStream(mockSessStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	mux := NewTrackMux()
 	session := newSession(conn, sessStream, mux, slog.Default(), nil)
@@ -1275,7 +1275,7 @@ func TestSession_ProcessBiStream_InvalidStreamType(t *testing.T) {
 
 	sessStream := newSessionStream(mockSessStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
@@ -1329,7 +1329,7 @@ func TestSession_ProcessBiStream_DecodeStreamTypeError(t *testing.T) {
 
 	sessStream := newSessionStream(mockSessStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
@@ -1370,7 +1370,7 @@ func TestSession_ProcessBiStream_DecodeAnnounceMessageError(t *testing.T) {
 
 	sessStream := newSessionStream(mockSessStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
@@ -1413,7 +1413,7 @@ func TestSession_ProcessBiStream_DecodeSubscribeMessageError(t *testing.T) {
 
 	sessStream := newSessionStream(mockSessStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
@@ -1456,7 +1456,7 @@ func TestSession_ProcessUniStream_Group(t *testing.T) {
 
 	sessStream := newSessionStream(mockSessStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
@@ -1521,7 +1521,7 @@ func TestSession_ProcessUniStream_UnknownSubscribeID(t *testing.T) {
 
 	sessStream := newSessionStream(mockSessStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
@@ -1574,7 +1574,7 @@ func TestSession_ProcessUniStream_InvalidStreamType(t *testing.T) {
 
 	sessStream := newSessionStream(mockSessStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
@@ -1628,7 +1628,7 @@ func TestSession_ProcessUniStream_DecodeStreamTypeError(t *testing.T) {
 
 	sessStream := newSessionStream(mockSessStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
@@ -1658,7 +1658,7 @@ func TestSession_ProcessUniStream_DecodeGroupMessageError(t *testing.T) {
 
 	sessStream := newSessionStream(mockSessStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
@@ -1699,7 +1699,7 @@ func TestSession_Subscribe_TerminatingSession(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
@@ -1735,7 +1735,7 @@ func TestSession_AcceptAnnounce_TerminatingSession(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
@@ -1776,7 +1776,7 @@ func TestSession_AcceptAnnounce_OpenStreamApplicationError(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
@@ -1811,7 +1811,7 @@ func TestSession_AcceptAnnounce_EncodeStreamTypeError(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
@@ -1850,7 +1850,7 @@ func TestSession_AcceptAnnounce_EncodeStreamTypeStreamError(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
@@ -1901,7 +1901,7 @@ func TestSession_AcceptAnnounce_EncodePleaseMessageStreamError(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
@@ -1944,7 +1944,7 @@ func TestSession_AcceptAnnounce_DecodeInitMessageStreamError(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
@@ -1982,7 +1982,7 @@ func TestSession_AcceptAnnounce_DecodeInitMessageError(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
@@ -2008,7 +2008,7 @@ func TestSession_Terminate_AlreadyTerminating(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
@@ -2043,7 +2043,7 @@ func TestSession_Terminate_WithApplicationError(t *testing.T) {
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
-		ClientExtensions: NewParameters(),
+		ClientExtensions: NewExtension(),
 	})
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 

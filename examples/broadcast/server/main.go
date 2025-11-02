@@ -48,7 +48,7 @@ func main() {
 	// Register the broadcast handler with the default mux
 	moqt.PublishFunc(context.Background(), "/server.broadcast", func(tw *moqt.TrackWriter) {
 		seq := moqt.GroupSequenceFirst
-		frame := moqt.NewFrame(1024)
+		builder := moqt.NewFrameBuilder(1024)
 		for {
 			time.Sleep(100 * time.Millisecond)
 
@@ -58,9 +58,9 @@ func main() {
 				return
 			}
 
-			frame.Reset()
-			frame.Write([]byte("FRAME " + seq.String()))
-			err = gw.WriteFrame(frame)
+			builder.Reset()
+			builder.Append([]byte("FRAME " + seq.String()))
+			err = gw.WriteFrame(builder.Frame())
 			if err != nil {
 				gw.CancelWrite(moqt.InternalGroupErrorCode) // TODO: Handle error properly
 				slog.Error("failed to write frame", "error", err)

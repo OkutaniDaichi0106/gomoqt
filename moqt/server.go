@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
 	"github.com/OkutaniDaichi0106/gomoqt/quic/quicgo"
 	"github.com/OkutaniDaichi0106/gomoqt/webtransport"
@@ -339,15 +339,20 @@ func acceptSessionStream(acceptCtx context.Context, conn quic.Connection, connLo
 	}
 
 	// Get the client parameters
-	clientParams := &Parameters{scm.Parameters}
+	clientParams := &Extension{scm.Parameters}
 
 	// Get the path parameter
 	path, _ := clientParams.GetString(param_type_path)
 
+	versions := make([]Version, len(scm.SupportedVersions))
+	for i, v := range scm.SupportedVersions {
+		versions[i] = Version(v)
+	}
+
 	req := &SetupRequest{
 		ctx:              stream.Context(),
 		Path:             path,
-		Versions:         scm.SupportedVersions,
+		Versions:         versions,
 		ClientExtensions: clientParams,
 	}
 

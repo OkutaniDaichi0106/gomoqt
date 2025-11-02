@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -69,8 +70,6 @@ func main() {
 						}
 
 						go func(gr *moqt.GroupReader) {
-							defer gr.CancelRead(moqt.InternalGroupErrorCode)
-
 							gw, err := tw.OpenGroup(gr.GroupSequence())
 							if err != nil {
 								slog.Error("failed to open group", "error", err)
@@ -78,7 +77,16 @@ func main() {
 							}
 							defer gw.Close()
 
-							for frame := range gr.Frames(nil) {
+							for {
+								frame, err := gr.ReadFrame()
+								if err != nil {
+									if err == io.EOF {
+										return
+									}
+									slog.Error("failed to accept frame", "error", err)
+									return
+								}
+
 								err = gw.WriteFrame(frame)
 								if err != nil {
 									slog.Error("failed to write frame", "error", err)

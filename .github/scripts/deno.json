@@ -1,0 +1,12 @@
+{
+  "imports": {
+    "octokit": "https://esm.sh/octokit?dts"
+  },
+  "tasks": {
+    "translate": "deno run --allow-net --allow-env translate.ts"
+  },
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitAny": true
+  }
+}

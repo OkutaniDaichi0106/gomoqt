@@ -5,7 +5,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/message"
+	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
 )
 
@@ -133,8 +133,8 @@ func (s *TrackWriter) OpenGroup(seq GroupSequence) (*GroupWriter, error) {
 	}
 
 	err = message.GroupMessage{
-		SubscribeID:   s.subscribeID,
-		GroupSequence: seq,
+		SubscribeID:   uint64(s.subscribeID),
+		GroupSequence: uint64(seq),
 	}.Encode(stream)
 	if err != nil {
 		var strErr *quic.StreamError

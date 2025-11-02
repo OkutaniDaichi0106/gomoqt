@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -77,10 +78,17 @@ func main() {
 			slog.Info("Accepted group", "group_sequence", gr.GroupSequence())
 
 			go func(gr *moqt.GroupReader) {
-				defer gr.CancelRead(moqt.InternalGroupErrorCode)
+				for {
+					frame, err := gr.ReadFrame()
+					if err != nil {
+						if err == io.EOF {
+							return
+						}
+						slog.Error("failed to read frame", "error", err)
+						return
+					}
 
-				for frame := range gr.Frames(nil) {
-					slog.Info("Received a frame", "frame", string(frame.Body()))
+					slog.Info("Received a frame", "frame", string(frame.Bytes()))
 
 					// TODO: Release the frame after processing
 					// This is important to avoid memory leaks
@@ -99,7 +107,7 @@ func main() {
 
 	moqt.PublishFunc(context.Background(), "/server.interop", func(tw *moqt.TrackWriter) {
 		seq := moqt.GroupSequenceFirst
-		frame := moqt.NewFrame(1024)
+		builder := moqt.NewFrameBuilder(1024)
 		for range 10 {
 			group, err := tw.OpenGroup(seq)
 			if err != nil {
@@ -109,8 +117,9 @@ func main() {
 
 			slog.Info("Opened group successfully", "group_sequence", group.GroupSequence())
 
-			frame.Reset()
-			frame.Write([]byte("Hello from interop server in Go!"))
+			builder.Reset()
+			builder.Append([]byte("Hello from interop server in Go!"))
+			frame := builder.Frame()
 			err = group.WriteFrame(frame)
 			if err != nil {
 				group.CancelWrite(moqt.InternalGroupErrorCode) // TODO: Handle error properly
@@ -118,7 +127,7 @@ func main() {
 				break
 			}
 
-			slog.Info("Sent frame successfully", "frame", string(frame.Body()))
+			slog.Info("Sent frame successfully", "frame", string(frame.Bytes()))
 
 			group.Close()
 

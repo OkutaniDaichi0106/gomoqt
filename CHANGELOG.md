@@ -22,6 +22,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Improved Frame encapsulation and API design
 - Enhanced memory efficiency through optimized buffer reuse
 - Expanded test coverage for GroupReader iterator pattern
+- Migrated moq-web from Node.js to Deno runtime
+- Moved hang-web directory to moqrtc-js repository
 
 ### Fixed
 

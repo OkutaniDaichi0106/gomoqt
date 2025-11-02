@@ -10,7 +10,8 @@ This directory contains automation scripts for the gomoqt repository.
 
 ### translate.ts
 
-Automatically translates GitHub issue and PR bodies into multiple languages using LibreTranslate API.
+Automatically translates GitHub issue and PR bodies into multiple languages
+using LibreTranslate API.
 
 **Usage:**
 
@@ -43,4 +44,5 @@ deno task translate
 
 ## Development
 
-All scripts are written in TypeScript and run with Deno. Configuration is in `deno.json`.
+All scripts are written in TypeScript and run with Deno. Configuration is in
+`deno.json`.

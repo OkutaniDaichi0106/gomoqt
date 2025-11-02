@@ -150,8 +150,9 @@ func (r *trackRelayer) relay(ctx context.Context) {
 		}
 		r.mu.RUnlock()
 
+		frame := moqt.NewFrame(0)
 		for {
-			frame, err := gr.ReadFrame()
+			err := gr.ReadFrame(frame)
 			if err != nil {
 				break
 			}

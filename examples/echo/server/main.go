@@ -77,8 +77,10 @@ func main() {
 							}
 							defer gw.Close()
 
+							defer gr.CancelRead(moqt.InternalGroupErrorCode)
+							frame := moqt.NewFrame(0)
 							for {
-								frame, err := gr.ReadFrame()
+								err := gr.ReadFrame(frame)
 								if err != nil {
 									if err == io.EOF {
 										return

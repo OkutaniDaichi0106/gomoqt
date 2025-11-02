@@ -193,6 +193,101 @@ func (t Test) Coverage() error {
 }
 
 // ======================================
+// INTEROPERABILITY
+// ======================================
+
+type Server mg.Namespace
+
+func (s Server) Default() error {
+	fmt.Println("Setting up default server environment...")
+	s.Go()
+	return nil
+}
+
+// func (s Server) All() error {
+// 	fmt.Println("Setting up all server environments...")
+// 	s.Go()
+// 	return nil
+// }
+
+func (Server) Go() error {
+	fmt.Println("Setting up Go environment...")
+	return nil
+}
+
+// func (Server) Deno() error {
+// 	fmt.Println("Setting up Deno environment...")
+// 	return nil
+// }
+
+// func (Server) Node() error {
+// 	fmt.Println("Setting up Node.js environment...")
+// 	return nil
+// }
+
+// func (Server) Bun() error {
+// 	fmt.Println("Setting up Bun environment...")
+// 	return nil
+// }
+
+type Client mg.Namespace
+
+func (c Client) Default() error {
+	fmt.Println("Setting up default client environment...")
+	c.Go()
+	return nil
+}
+
+func (c Client) All() error {
+	fmt.Println("Setting up all client environments...")
+	c.Go()
+	c.Deno()
+	c.Node()
+	c.Bun()
+	c.Chrome()
+	c.Firefox()
+	c.Safari()
+	return nil
+}
+
+func (Client) Go() error {
+	fmt.Println("Setting up Go environment...")
+	return nil
+}
+
+func (Client) Deno() error {
+	fmt.Println("Setting up Deno environment...")
+	return nil
+}
+
+func (Client) Node() error {
+	fmt.Println("Setting up Node.js environment...")
+	return nil
+}
+
+func (Client) Bun() error {
+	fmt.Println("Setting up Bun environment...")
+	return nil
+}
+
+func (Client) Chrome() error {
+	fmt.Println("Setting up Chrome environment...")
+	return nil
+}
+
+func (Client) Firefox() error {
+	fmt.Println("Setting up Firefox environment...")
+	return nil
+}
+
+func (Client) Safari() error {
+	fmt.Println("Setting up Safari environment...")
+	return nil
+}
+
+type Interop mg.Namespace
+
+// ======================================
 // DEVELOPMENT UTILITIES
 // ======================================
 

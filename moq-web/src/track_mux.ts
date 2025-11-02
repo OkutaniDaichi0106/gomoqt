@@ -165,7 +165,7 @@ export class TrackMux {
 	}
 }
 
-export const DefaultTrackMux = new TrackMux();
+export const DefaultTrackMux: TrackMux = new TrackMux();
 
 export interface TrackHandler {
 	serveTrack(ctx: Promise<void>, trackWriter: TrackWriter): Promise<void>;

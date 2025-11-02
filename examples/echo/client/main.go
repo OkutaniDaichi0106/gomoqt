@@ -12,7 +12,7 @@ import (
 func main() {
 	moqt.PublishFunc(context.Background(), "/client.echo", func(tw *moqt.TrackWriter) {
 		seq := moqt.GroupSequenceFirst
-		builder := moqt.NewFrameBuilder(1024)
+		frame := moqt.NewFrame(1024)
 		for {
 			time.Sleep(100 * time.Millisecond)
 
@@ -22,10 +22,10 @@ func main() {
 				return
 			}
 
-			builder.Reset()
-			builder.Append([]byte("FRAME " + seq.String()))
+			frame.Reset()
+			frame.Write([]byte("FRAME " + seq.String()))
 
-			err = gw.WriteFrame(builder.Frame())
+			err = gw.WriteFrame(frame)
 			if err != nil {
 				gw.CancelWrite(moqt.InternalGroupErrorCode)
 				slog.Error("failed to write frame", "error", err)
@@ -86,8 +86,10 @@ func main() {
 				}
 
 				go func(gr *moqt.GroupReader) {
+					defer gr.CancelRead(moqt.InternalGroupErrorCode)
+					frame := moqt.NewFrame(0)
 					for {
-						frame, err := gr.ReadFrame()
+						err := gr.ReadFrame(frame)
 						if err != nil {
 							if err == io.EOF {
 								return
@@ -96,7 +98,7 @@ func main() {
 							return
 						}
 
-						slog.Info("received a frame", "frame", string(frame.Bytes()))
+						slog.Info("received a frame", "frame", string(frame.Body()))
 
 						// TODO: Release the frame after reading
 						// This is important to avoid memory leaks

@@ -1,0 +1,60 @@
+name: Crash
+about: Using tsgo or the language server caused a panic
+title: ''
+labels: [Crash]
+assignees: []
+
+body:
+  - type: textarea
+    id: stack-trace
+    attributes:
+      label: Stack trace
+      description: Please paste the full stack trace here.
+      placeholder: |
+        [paste stack trace here]
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Describe the steps to reproduce the crash.
+      placeholder: |
+        1. Step one
+        2. Step two
+        3. Step three
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: What version of tsgo or the language server are you using?
+      placeholder: e.g., v1.0.0
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Describe your environment (OS, architecture, runtime version, etc.)
+      placeholder: |
+        - OS: Windows 11
+        - Architecture: x64
+        - Runtime: Node.js v18.0.0
+        - Other relevant details
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: If applicable, provide any relevant logs or error messages.
+      placeholder: |
+        [paste logs here]
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add any other context about the problem here, such as what you were trying to do when the crash occurred.

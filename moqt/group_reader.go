@@ -24,8 +24,6 @@ type GroupReader struct {
 	stream     quic.ReceiveStream
 	frameCount int64
 
-	// frame *Frame
-
 	onClose func()
 }
 
@@ -34,9 +32,9 @@ func (s *GroupReader) GroupSequence() GroupSequence {
 }
 
 func (s *GroupReader) ReadFrame(frame *Frame) error {
-	// if s.frame == nil {
-	// 	s.frame = newFrame(0)
-	// }
+	if frame == nil {
+		panic("nil frame")
+	}
 	err := frame.decode(s.stream)
 	if err != nil {
 		if errors.Is(err, io.EOF) {

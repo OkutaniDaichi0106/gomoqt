@@ -1,6 +1,6 @@
 import { assertEquals, assertExists } from "@std/assert";
-import { Reader } from "../webtransport/reader.ts";
-import { Writer } from "../webtransport/writer.ts";
+import { ReceiveStream } from "../webtransport/receive_stream.ts";
+import { SendStream } from "../webtransport/send_stream.ts";
 
 // Reuse the same helper used in existing tests but in a Deno.test friendly file
 export function createIsolatedStreams(): {

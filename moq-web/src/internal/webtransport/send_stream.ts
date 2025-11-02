@@ -137,13 +137,13 @@ import { MAX_VARINT1, MAX_VARINT2, MAX_VARINT4, MAX_VARINT8 } from "./len.ts";
 export interface SendStreamInit {
 	stream: WritableStream<Uint8Array>;
 	transfer?: ArrayBufferLike;
-	streamId: number;
+	streamId: bigint;
 }
 
 export class SendStream {
 	#writer: WritableStreamDefaultWriter<Uint8Array>;
 	#buf: BytesBuffer;
-	readonly id: number;
+	readonly id: bigint;
 
 	constructor(init: SendStreamInit) {
 		this.#writer = init.stream.getWriter();

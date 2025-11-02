@@ -7,7 +7,7 @@ import type {
 	SendSubscribeStream,
 	TrackConfig,
 } from "./subscribe_stream.ts";
-import type { Reader, Writer } from "./internal/webtransport/mod.ts";
+import type { ReceiveStream, SendStream } from "./internal/webtransport/mod.ts";
 import { UniStreamTypes } from "./stream_type.ts";
 import { GroupMessage } from "./internal/message/mod.ts";
 import type { BroadcastPath } from "./broadcast_path.ts";
@@ -19,14 +19,14 @@ export class TrackWriter {
 	broadcastPath: BroadcastPath;
 	trackName: string;
 	#subscribeStream: ReceiveSubscribeStream;
-	#openUniStreamFunc: () => Promise<[Writer, undefined] | [undefined, Error]>;
+	#openUniStreamFunc: () => Promise<[SendStream, undefined] | [undefined, Error]>;
 	#groups: GroupWriter[] = [];
 
 	constructor(
 		broadcastPath: BroadcastPath,
 		trackName: string,
 		subscribeStream: ReceiveSubscribeStream,
-		openUniStreamFunc: () => Promise<[Writer, undefined] | [undefined, Error]>,
+		openUniStreamFunc: () => Promise<[SendStream, undefined] | [undefined, Error]>,
 	) {
 		this.broadcastPath = broadcastPath;
 		this.trackName = trackName;
@@ -55,7 +55,7 @@ export class TrackWriter {
 			return [undefined, err];
 		}
 
-		let writer: Writer | undefined;
+		let writer: SendStream | undefined;
 		[writer, err] = await this.#openUniStreamFunc();
 		if (err) {
 			return [undefined, err];
@@ -108,12 +108,12 @@ export class TrackWriter {
 
 export class TrackReader {
 	#subscribeStream: SendSubscribeStream;
-	#acceptFunc: (ctx: Promise<void>) => Promise<[Reader, GroupMessage] | undefined>;
+	#acceptFunc: (ctx: Promise<void>) => Promise<[ReceiveStream, GroupMessage] | undefined>;
 	#onCloseFunc: () => void;
 
 	constructor(
 		subscribeStream: SendSubscribeStream,
-		acceptFunc: (ctx: Promise<void>) => Promise<[Reader, GroupMessage] | undefined>,
+		acceptFunc: (ctx: Promise<void>) => Promise<[ReceiveStream, GroupMessage] | undefined>,
 		onCloseFunc: () => void,
 	) {
 		this.#subscribeStream = subscribeStream;

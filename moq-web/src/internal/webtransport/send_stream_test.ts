@@ -1,5 +1,7 @@
-import { assertEquals, assertThrows } from "@std/assert";
-import { Writer } from "./writer.ts";
+import { assertEquals, assertExists, assertThrows, fail } from "@std/assert";
+import { SendStream } from "./send_stream.ts";
+import { StreamError } from "./error.ts";
+
 
 function setupWriter() {
 	const writtenData: Uint8Array[] = [];
@@ -12,7 +14,7 @@ function setupWriter() {
 			state.streamClosed = true;
 		},
 	});
-	const writer = new Writer({ stream: writableStream, streamId: 1n });
+	const writer = new SendStream({ stream: writableStream, streamId: 1n });
 	return { writer, writtenData, state };
 }
 
@@ -68,11 +70,9 @@ Deno.test("Writer", async (t) => {
 		}
 	});
 });
-import { assertEquals, assertExists, assertThrows, fail } from "@std/assert";
-import { Writer } from "./writer.ts";
-import { StreamError } from "./error.ts";
 
-function createWriter(): { writer: Writer; writtenData: Uint8Array[]; streamClosed: boolean } {
+
+function createWriter(): { writer: SendStream; writtenData: Uint8Array[]; streamClosed: boolean } {
 	const writtenData: Uint8Array[] = [];
 	let streamClosed = false;
 	const writableStream = new WritableStream<Uint8Array>({
@@ -83,7 +83,7 @@ function createWriter(): { writer: Writer; writtenData: Uint8Array[]; streamClos
 			streamClosed = true;
 		},
 	});
-	const writer = new Writer({ stream: writableStream, streamId: 1n });
+	const writer = new SendStream({ stream: writableStream, streamId: 1n });
 	return { writer, writtenData, streamClosed };
 }
 

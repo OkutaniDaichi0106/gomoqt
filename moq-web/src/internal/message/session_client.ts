@@ -1,5 +1,6 @@
-import type { Reader, Writer } from "../webtransport/mod.ts";
+import type { SendStream } from "../webtransport/mod.ts";
 import { bytesLen, varintLen } from "../webtransport/mod.ts";
+import { ReceiveStream } from "../webtransport/receive_stream.ts";
 
 export interface SessionClientInit {
 	versions?: Set<number>;
@@ -29,7 +30,7 @@ export class SessionClientMessage {
 		return length;
 	}
 
-	async encode(writer: Writer): Promise<Error | undefined> {
+	async encode(writer: SendStream): Promise<Error | undefined> {
 		writer.writeVarint(this.messageLength);
 		writer.writeVarint(this.versions.size);
 		for (const version of this.versions) {
@@ -43,7 +44,7 @@ export class SessionClientMessage {
 		return await writer.flush();
 	}
 
-	async decode(reader: Reader): Promise<Error | undefined> {
+	async decode(reader: ReceiveStream): Promise<Error | undefined> {
 		let [len, err] = await reader.readVarint();
 		if (err) {
 			return err;

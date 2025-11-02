@@ -4,7 +4,7 @@ export interface BytesPoolOptions {
 }
 
 // Global default configuration (similar to Go's package-level variables)
-export let DefaultBytesPoolOptions: Required<BytesPoolOptions> = {
+export const DefaultBytesPoolOptions: Required<BytesPoolOptions> = {
 	maxPerBucket: 5,
 	maxTotalBytes: 0, // 0 means no limit
 };

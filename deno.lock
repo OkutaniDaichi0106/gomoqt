@@ -1,6 +1,7 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@okudai/golikejs@~0.5.2": "0.5.2",
     "jsr:@std/assert@^1.0.15": "1.0.15",
     "jsr:@std/data-structures@^1.0.9": "1.0.9",
     "jsr:@std/fs@^1.0.19": "1.0.19",
@@ -11,6 +12,9 @@
     "jsr:@std/testing@^1.0.16": "1.0.16"
   },
   "jsr": {
+    "@okudai/golikejs@0.5.2": {
+      "integrity": "ffce4168072ccbd8cf274e1278f16a8c175f517c636e426878a9085bfd17d06b"
+    },
     "@std/assert@1.0.15": {
       "integrity": "d64018e951dbdfab9777335ecdb000c0b4e3df036984083be219ce5941e4703b",
       "dependencies": [

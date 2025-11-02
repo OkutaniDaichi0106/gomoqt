@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
-import { Reader } from "../webtransport/reader.ts";
-import { Writer } from "../webtransport/writer.ts";
+import { ReceiveStream } from "../webtransport/receive_stream.ts";
+import { SendStream } from "../webtransport/send_stream.ts";
 
 /**
  * Helper function to create isolated writer/reader pair that avoids TransformStream deadlock

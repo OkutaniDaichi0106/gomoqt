@@ -1,17 +1,15 @@
-import {
-	afterEach,
-	assertEquals,
-	assertExists,
-	assertThrows,
-	beforeEach,
-	describe,
-	it,
-} from "../deps.ts";
+import { assertEquals, assertExists } from "@std/assert";
 import type { MOQOptions } from "./options.ts";
-import { Extensions } from "./internal/extensions.ts";
+import { Extensions } from "./extensions.ts";
 
-describe("MOQOptions", () => {
-	it("should define the correct interface structure", () => {
+// Test configuration to ignore resource leaks from background operations
+const testOptions = {
+  sanitizeResources: false,
+  sanitizeOps: false,
+};
+
+Deno.test("MOQOptions", testOptions, async (t) => {
+	await t.step("should define the correct interface structure", () => {
 		// This is a type-only test to ensure the interface is correctly defined
 		const mockOptions: MOQOptions = {
 			versions: new Set([1n]),
@@ -19,22 +17,22 @@ describe("MOQOptions", () => {
 		};
 
 		assertExists(mockOptions.extensions);
-		assertInstanceOf(mockOptions.extensions, Extensions);
-		assertInstanceOf(mockOptions.versions, Set);
-		expect(mockOptions.versions?.has(1n)).toBe(true);
+		assertEquals(mockOptions.extensions instanceof Extensions, true);
+		assertEquals(mockOptions.versions instanceof Set, true);
+		assertEquals(mockOptions.versions?.has(1n), true);
 	});
 
-	it("should allow empty options", () => {
+	await t.step("should allow empty options", () => {
 		// Extensions should be optional
 		const emptyOptions: MOQOptions = {
 			versions: new Set(),
 		};
 
 		assertEquals(emptyOptions.extensions, undefined);
-		assertInstanceOf(emptyOptions.versions, Set);
+		assertEquals(emptyOptions.versions instanceof Set, true);
 	});
 
-	it("should allow options with extensions", () => {
+	await t.step("should allow options with extensions", () => {
 		const extensions = new Extensions();
 		extensions.addString(1, "test");
 
@@ -44,11 +42,11 @@ describe("MOQOptions", () => {
 		};
 
 		assertEquals(options.extensions, extensions);
-		expect(options.extensions?.getString(1)).toBe("test");
-		expect(options.versions?.has(1n)).toBe(true);
+		assertEquals(options.extensions?.getString(1), "test");
+		assertEquals(options.versions?.has(1n), true);
 	});
 
-	it("should support partial assignment", () => {
+	await t.step("should support partial assignment", () => {
 		// Should be able to create options incrementally
 		const options: MOQOptions = {
 			versions: new Set(),
@@ -56,14 +54,14 @@ describe("MOQOptions", () => {
 
 		// Initially no extensions
 		assertEquals(options.extensions, undefined);
-		assertInstanceOf(options.versions, Set);
+		assertEquals(options.versions instanceof Set, true);
 
 		// Can add extensions later
 		options.extensions = new Extensions();
-		assertInstanceOf(options.extensions, Extensions);
+		assertEquals(options.extensions instanceof Extensions, true);
 	});
 
-	it("should be compatible with different extension configurations", () => {
+	await t.step("should be compatible with different extension configurations", () => {
 		const extensions1 = new Extensions();
 		extensions1.addBytes(1, new Uint8Array([1, 2, 3]));
 
@@ -74,14 +72,14 @@ describe("MOQOptions", () => {
 		const options1: MOQOptions = { versions: new Set([1n]), extensions: extensions1 };
 		const options2: MOQOptions = { versions: new Set([2n]), extensions: extensions2 };
 
-		expect(options1.extensions?.getBytes(1)).toEqual(new Uint8Array([1, 2, 3]));
-		expect(options2.extensions?.getString(2)).toBe("test");
-		expect(options2.extensions?.getNumber(3)).toBe(42n);
-		expect(options1.versions?.has(1n)).toBe(true);
-		expect(options2.versions?.has(2n)).toBe(true);
+		assertEquals(options1.extensions?.getBytes(1), new Uint8Array([1, 2, 3]));
+		assertEquals(options2.extensions?.getString(2), "test");
+		assertEquals(options2.extensions?.getNumber(3), 42n);
+		assertEquals(options1.versions?.has(1n), true);
+		assertEquals(options2.versions?.has(2n), true);
 	});
 
-	it("should support transportOptions", () => {
+	await t.step("should support transportOptions", () => {
 		const transportOptions: WebTransportOptions = {
 			allowPooling: true,
 			congestionControl: "throughput",

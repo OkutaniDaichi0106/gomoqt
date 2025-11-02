@@ -1,16 +1,42 @@
-import { ReceiveStream } from "./reader.ts";
+import { ReceiveStream } from "./receive_stream.ts";
 import { Stream } from "./stream.ts";
-import { SendStream } from "./writer.ts";
+import { SendStream } from "./send_stream.ts";
 
 /**
  * streamIDCounter manages Stream IDs for WebTransport (QUIC) streams.
  * Stream IDs increment by 4 to maintain the initiator and directionality bits.
  */
 export class streamIDCounter {
-	clientBiStreamCounter: number = 0;        // client bidirectional
-	serverBiStreamCounter: number = 1;  // server bidirectional
-	clientUniStreamCounter: number = 2;       // client unidirectional
-	serverUniStreamCounter: number = 3; // server unidirectional
+	clientBiStreamCounter: bigint = 0n;        // client bidirectional
+	serverBiStreamCounter: bigint = 1n;  // server bidirectional
+	clientUniStreamCounter: bigint = 2n;       // client unidirectional
+	serverUniStreamCounter: bigint = 3n; // server unidirectional
+
+    constructor() {}
+
+    countClientBiStream(): bigint {
+        const id = this.clientBiStreamCounter;
+        this.clientBiStreamCounter += 4n;
+        return id;
+    }
+
+    countServerBiStream(): bigint {
+        const id = this.serverBiStreamCounter;
+        this.serverBiStreamCounter += 4n;
+        return id;
+    }
+
+    countClientUniStream(): bigint {
+        const id = this.clientUniStreamCounter;
+        this.clientUniStreamCounter += 4n;
+        return id;
+    }
+
+    countServerUniStream(): bigint {
+        const id = this.serverUniStreamCounter;
+        this.serverUniStreamCounter += 4n;
+        return id;
+    }
 }
 
 export class Connection {
@@ -31,10 +57,9 @@ export class Connection {
         try {
             const wtStream = await this.#webtransport.createBidirectionalStream();
             const stream = new Stream({
-                streamId: this.#counter.clientBiStreamCounter,
+                streamId: this.#counter.countClientBiStream(),
                 stream: wtStream
             });
-            this.#counter.clientBiStreamCounter += 4;
             return [stream, undefined];
         } catch (e) {
             return [undefined, e as Error];
@@ -45,10 +70,9 @@ export class Connection {
         try {
             const wtStream = await this.#webtransport.createUnidirectionalStream();
             const stream = new SendStream({
-                streamId: this.#counter.clientUniStreamCounter,
+                streamId: this.#counter.countClientUniStream(),
                 stream: wtStream
             });
-            this.#counter.clientUniStreamCounter += 4;
             return [stream, undefined];
         } catch (e) {
             return [undefined, e as Error];
@@ -61,10 +85,9 @@ export class Connection {
             return [undefined, new Error("Failed to accept stream")];
         }
         const stream = new Stream({
-            streamId: this.#counter.serverBiStreamCounter,
+            streamId: this.#counter.countServerBiStream(),
             stream: wtStream
         });
-        this.#counter.serverBiStreamCounter += 4;
         return [stream, undefined];
     }
 
@@ -73,11 +96,10 @@ export class Connection {
         if (done) {
             return [undefined, new Error("Failed to accept unidirectional stream")];
         }
-        const stream = new ReceiveStream({ 
-            streamId: this.#counter.serverUniStreamCounter, 
-            stream: wtStream 
+        const stream = new ReceiveStream({
+            streamId: this.#counter.countServerUniStream(),
+            stream: wtStream
         });
-        this.#counter.serverUniStreamCounter += 4;
         return [stream, undefined];
     }
 

@@ -1,55 +1,4 @@
-import { assertEquals, assertStrictEquals } from "@std/assert";
-
-import {
-	readString,
-	readUint8Array,
-	readVarint,
-	writeString,
-	writeUint8Array,
-	writeVarint,
-} from "./bytes.ts";
-
-Deno.test("io bytes - varint roundtrip small values", () => {
-	const buf = new Uint8Array(8);
-	const len = writeVarint(buf, 42, 0);
-	const [v, n] = readVarint(buf, 0);
-	assertStrictEquals(n, len);
-	assertStrictEquals(v, 42);
-});
-
-Deno.test("io bytes - varint 2-byte roundtrip", () => {
-	const buf = new Uint8Array(8);
-	const len = writeVarint(buf, 0x123, 0);
-	const [v, n] = readVarint(buf, 0);
-	assertStrictEquals(n, len);
-	assertStrictEquals(v, 0x123);
-});
-
-Deno.test("io bytes - write/read bytes roundtrip", () => {
-	const data = new Uint8Array([1, 2, 3, 4, 5]);
-	const buf = new Uint8Array(16);
-	const wrote = writeUint8Array(buf, data, 0);
-	const [out, n] = readUint8Array(buf, 0);
-	assertStrictEquals(n, wrote);
-	assertEquals(Array.from(out), Array.from(data));
-});
-
-Deno.test("io bytes - write/read string roundtrip", () => {
-	const s = "hello こんにちは";
-	const buf = new Uint8Array(64);
-	const w = writeString(buf, s, 0);
-	const [out, n] = readString(buf, 0);
-	assertStrictEquals(n, w);
-	assertStrictEquals(out, s);
-});
-
-Deno.test("readString should read string", () => {
-	const buf = new Uint8Array([3, 97, 98, 99]); // len=3, "abc"
-	const [str, len] = readString(buf);
-	assertEquals(str, "abc");
-	assertEquals(len, 4);
-});
-import { assertEquals, assertThrows, fail } from "@std/assert";
+import { assertEquals, assertThrows } from "@std/assert";
 import {
 	BytesBuffer,
 	readBigVarint,
@@ -116,10 +65,10 @@ Deno.test("webtransport/BytesBuffer behavior", async (t) => {
 		const buffer = new BytesBuffer(new ArrayBuffer(2));
 		const data = new Uint8Array([1, 2]);
 		buffer.write(data);
-		if (buffer.capacity < 2) fail(`capacity ${buffer.capacity} < 2`);
+		assertEquals(buffer.capacity >= 2, true, `capacity ${buffer.capacity} < 2`);
 		const moreData = new Uint8Array([3, 4, 5]);
 		buffer.write(moreData);
-		if (buffer.capacity < 5) fail(`capacity ${buffer.capacity} < 5`);
+		assertEquals(buffer.capacity >= 5, true, `capacity ${buffer.capacity} < 5`);
 	});
 
 	await t.step("readUint8 should read a single byte", () => {
@@ -149,8 +98,8 @@ Deno.test("webtransport/BytesBuffer behavior", async (t) => {
 		assertEquals(buffer.size, 3);
 
 		const reservedBuffer = buffer.reserve(6);
-		if (reservedBuffer.length < 6) fail(`reserved length ${reservedBuffer.length} < 6`);
-		if (buffer.capacity < 9) fail(`capacity ${buffer.capacity} < 9`);
+		assertEquals(reservedBuffer.length >= 6, true, `reserved length ${reservedBuffer.length} < 6`);
+		assertEquals(buffer.capacity >= 9, true, `capacity ${buffer.capacity} < 9`);
 	});
 
 	await t.step("construction with initial data initializes capacity", () => {
@@ -158,7 +107,7 @@ Deno.test("webtransport/BytesBuffer behavior", async (t) => {
 		const buffer = new BytesBuffer(initialData.buffer);
 		// Initially buffer is empty for writing, data needs to be written first
 		assertEquals(buffer.size, 0);
-		if (buffer.capacity < 3) fail(`capacity ${buffer.capacity} < 3`);
+		assertEquals(buffer.capacity >= 3, true, `capacity ${buffer.capacity} < 3`);
 	});
 
 	await t.step("bytes method returns content without consuming", () => {
@@ -177,7 +126,7 @@ Deno.test("webtransport/BytesBuffer behavior", async (t) => {
 		const largeData = new Uint8Array([1, 2, 3, 4]);
 		buffer.write(largeData);
 		assertEquals(buffer.size, 4);
-		if (buffer.capacity < 4) fail(`capacity ${buffer.capacity} < 4`);
+		assertEquals(buffer.capacity >= 4, true, `capacity ${buffer.capacity} < 4`);
 		assertEquals(buffer.bytes(), largeData);
 	});
 

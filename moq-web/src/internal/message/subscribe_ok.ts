@@ -1,4 +1,4 @@
-import type { Reader, Writer } from "../webtransport/mod.ts";
+import type { Reader, SendStream } from "../webtransport/mod.ts";
 
 export interface SubscribeOkMessageInit {}
 

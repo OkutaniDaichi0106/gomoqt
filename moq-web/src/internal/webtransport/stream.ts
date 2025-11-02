@@ -1,13 +1,13 @@
-import { ReceiveStream } from "./reader.ts";
-import { SendStream } from "./writer.ts";
+import { ReceiveStream } from "./receive_stream.ts";
+import { SendStream } from "./send_stream.ts";
 
 export interface StreamInit {
-    streamId: number;
+    streamId: bigint;
     stream : WebTransportBidirectionalStream;
 }
 
 export class Stream {
-    readonly id: number;
+    readonly id: bigint;
     readonly writable: SendStream;
     readonly readable: ReceiveStream;
     constructor(init: StreamInit) {

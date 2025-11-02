@@ -1,10 +1,11 @@
 import { BytesBuffer, MAX_BYTES_LENGTH } from "./bytes.ts";
 import { DefaultBufferPool } from "./buffer_pool.ts";
 import type { StreamError } from "./error.ts";
+import { EOFError } from "@okudai/golikejs/io";
 
 const DefaultReadSize: number = 1024; // 1 KB
 
-export const EOF = new Error("EOF");
+// export const EOF = new Error("EOF");
 
 // /**
 //  * Reads a varint-encoded number from the byte array at the specified offset
@@ -121,7 +122,7 @@ export const EOF = new Error("EOF");
 export interface ReceiveStreamInit {
 	stream: ReadableStream<Uint8Array>;
 	transfer?: ArrayBufferLike;
-	streamId: number;
+	streamId: bigint;
 }
 
 export class ReceiveStream {
@@ -129,7 +130,7 @@ export class ReceiveStream {
 	#pull: ReadableStreamDefaultReader<Uint8Array>;
 	#buf: BytesBuffer;
 	#closed: Promise<void>;
-	readonly id: number;
+	readonly id: bigint;
 
 	constructor(init: ReceiveStreamInit) {
 		this.#pull = init.stream.getReader();
@@ -320,7 +321,7 @@ export class ReceiveStream {
 		while (totalFilled < n) {
 			const { done, value } = await this.#pull.read();
 			if (done) {
-				return EOF;
+				return new EOFError();
 			}
 			if (!value || value.length === 0) {
 				// No data this iteration; wait for next pull

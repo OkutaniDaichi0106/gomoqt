@@ -25,7 +25,7 @@ import { DefaultTrackMux } from "./track_mux.ts";
 import { BiStreamTypes, UniStreamTypes } from "./stream_type.ts";
 import { Queue } from "./internal/queue.ts";
 import type { SubscribeID, TrackName } from "./alias.ts";
-import type { ReceiveStream } from "./internal/webtransport/reader.ts";
+import type { ReceiveStream } from "./internal/webtransport/receive_stream.ts";
 import { Connection } from "./internal/webtransport/connection.ts";
 
 export interface SessionInit {

@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
-import { SendStream } from "./writer.ts";
-import { ReceiveStream } from "./reader.ts";
+import { SendStream } from "./send_stream.ts";
+import { ReceiveStream } from "./receive_stream.ts";
 
 // NOTE: These tests have a known issue with Promise resolution in Deno's test framework.
 // The tests pass functionally, but Deno detects pending promises from TransformStream/ReceiveStream

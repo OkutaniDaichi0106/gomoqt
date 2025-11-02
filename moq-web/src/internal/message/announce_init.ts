@@ -1,5 +1,6 @@
-import type { Reader, Writer } from "../internal/webtransport/mod.ts";
-import { stringLen, varintLen } from "../io/len.ts";
+import type { ReceiveStream } from "../webtransport/mod.ts";
+import { stringLen, varintLen } from "../webtransport/len.ts";
+import { SendStream } from "../webtransport/send_stream.ts";
 
 export interface AnnounceInitMessageInit {
 	suffixes?: string[];
@@ -21,13 +22,13 @@ export class AnnounceInitMessage {
 		return len;
 	}
 
-	async encode(writer: Writer): Promise<Error | undefined> {
+	async encode(writer: SendStream): Promise<Error | undefined> {
 		writer.writeVarint(this.messageLength);
 		writer.writeStringArray(this.suffixes);
 		return await writer.flush();
 	}
 
-	async decode(reader: Reader): Promise<Error | undefined> {
+	async decode(reader: ReceiveStream): Promise<Error | undefined> {
 		let [len, err] = await reader.readVarint();
 		if (err) {
 			return err;

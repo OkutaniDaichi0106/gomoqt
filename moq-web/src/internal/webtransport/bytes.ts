@@ -1,3 +1,4 @@
+import { Buffer } from "@okudai/golikejs/bytes";
 import { MAX_VARINT1, MAX_VARINT2, MAX_VARINT4, MAX_VARINT8 } from "./len.ts";
 
 export const MAX_BYTES_LENGTH = 1 << 30; // 1 GiB, maximum length of bytes to read
@@ -5,104 +6,83 @@ export const MAX_BYTES_LENGTH = 1 << 30; // 1 GiB, maximum length of bytes to re
 export const MAX_UINT = 0x3FFFFFFFFFFFFFFFn; // Maximum value for a 62-bit unsigned integer
 
 export class BytesBuffer {
-	#buf: Uint8Array;
-	#off: number; // read offset
-	#len: number; // write offset
+	#buf: Buffer;
 
 	constructor(memory: ArrayBufferLike) {
-		this.#buf = new Uint8Array(memory);
-		this.#off = 0;
-		this.#len = 0; // Start with an empty buffer for writing
+		this.#buf = new Buffer(memory);
 	}
 
 	static make(capacity: number): BytesBuffer {
-		const buf = new Uint8Array(capacity);
-		return new BytesBuffer(buf.buffer);
+		const buffer = BytesBuffer.#makeBuffer(capacity);
+		return new BytesBuffer(buffer);
+	}
+
+	static #makeBuffer(capacity: number): ArrayBuffer {
+		return new ArrayBuffer(capacity);
 	}
 
 	bytes(): Uint8Array {
-		return this.#buf.subarray(this.#off, this.#len);
+		return this.#buf.bytes();
 	}
 
 	get size(): number {
-		return this.#len - this.#off;
+		return this.#buf.size;
 	}
 
 	get capacity(): number {
-		return this.#buf.length;
+		return this.#buf.cap();
 	}
 
 	reset() {
-		this.#off = 0;
-		this.#len = 0;
+		this.#buf.reset();
 	}
 
 	read(buf: Uint8Array): number {
-		const bytesAvailable = this.size;
-		const bytesToRead = Math.min(buf.length, bytesAvailable);
-		if (bytesToRead === 0) {
-			return 0;
+		// Read available bytes
+		let bytesRead = 0;
+		while (bytesRead < buf.length) {
+			const [byte, error] = this.#buf.readByte();
+			if (error) {
+				break;
+			}
+			buf[bytesRead] = byte;
+			bytesRead++;
 		}
-		buf.set(this.#buf.subarray(this.#off, this.#off + bytesToRead));
-		this.#off += bytesToRead;
-		if (this.#off === this.#len) {
-			this.reset();
-		}
-		return bytesToRead;
+		
+		return bytesRead;
 	}
 
 	readUint8(): number {
-		if (this.size < 1) {
+		const [value, err] = this.#buf.readByte();
+		if (err) {
 			throw new Error("Not enough data to read a byte");
-		}
-		const value = this.#buf[this.#off]!;
-		this.#off += 1;
-		if (this.#off === this.#len) {
-			this.reset();
 		}
 		return value;
 	}
 
 	write(data: Uint8Array): number {
-		this.grow(data.length);
-		this.#buf.set(data, this.#len);
-		this.#len += data.length;
+		for (let i = 0; i < data.length; i++) {
+			this.#buf.writeByte(data[i]!);
+		}
 		return data.length;
 	}
 
 	writeUint8(value: number): void {
-		this.grow(1);
-		this.#buf[this.#len] = value;
-		this.#len += 1;
+		this.#buf.writeByte(value);
 	}
 
 	grow(n: number) {
-		if (n < 0) {
-			throw new Error("Cannot grow buffer by a negative size");
-		}
-		const required = this.size + n;
-		if (required > this.capacity) {
-			// Create a new buffer having an enough capacity
-			const newBuf = new Uint8Array(Math.max(required, this.capacity * 2));
-			// Copy the existing data to the new buffer from the head
-			newBuf.set(this.bytes());
-			this.#buf = newBuf;
-		} else if (this.#off > 0) {
-			// Slide the buffer to the head
-			this.#buf.copyWithin(0, this.#off, this.#len);
-		}
-
-		// Adjust the offsets
-		this.#len -= this.#off;
-		this.#off = 0;
+		this.#buf.grow(n);
 	}
 
 	reserve(n: number): Uint8Array {
-		this.grow(n);
-		const start = this.#len;
-		const end = start + n;
-		this.#len = end;
-		return this.#buf.subarray(start, end);
+		this.#buf.grow(n);
+		const result = new Uint8Array(n);
+		// Write placeholder bytes to reserve space
+		for (let i = 0; i < n; i++) {
+			this.#buf.writeByte(0);
+		}
+		return result;
 	}
 }
 

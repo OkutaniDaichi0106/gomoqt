@@ -280,6 +280,13 @@ export class SendStream {
 	}
 
 	async close(): Promise<void> {
+		// Flush any remaining buffered data before closing
+		const flushErr = await this.flush();
+		if (flushErr) {
+			// Even if flush fails, still try to close the writer
+			await this.#writer.abort(flushErr);
+			return;
+		}
 		await this.#writer.close();
 	}
 

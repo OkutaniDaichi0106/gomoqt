@@ -2,17 +2,68 @@ package main
 
 import (
 	"context"
+	"flag"
 	"io"
 	"log/slog"
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt"
+	"github.com/magefile/mage/mg"
 )
+
+type Client mg.Namespace
+
+func (c *Client) Dial(ctx context.Context) error {
+	flag.Parse()
+
+	client := &moqt.Client{
+		Logger: slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{
+			Level: slog.LevelDebug,
+		})),
+	}
+
+	sess, err := client.Dial(ctx, "https://moqt.example.com:9000/interop", nil)
+	if err != nil {
+		return err
+	}
+
+	slog.Info("Connected to the server successfully")
+
+	// Close the session when done
+	return nil
+}
+
+func (c *Client) Discover(ctx context.Context) error {
+	err := c.Dial(ctx)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *Client) Subscribe(ctx context.Context) error {
+	err := c.Dial(ctx)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *Client) PublishAndAnnounce(ctx context.Context) error {
+	err := c.Dial(ctx)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
 
 func main() {
 	moqt.PublishFunc(context.Background(), "/interop.client", func(tw *moqt.TrackWriter) {
 		seq := moqt.GroupSequenceFirst
-		builder := moqt.NewFrameBuilder(1024)
+		frame := moqt.NewFrame(1024)
 		for range 10 {
 			group, err := tw.OpenGroup(seq)
 			if err != nil {
@@ -22,9 +73,9 @@ func main() {
 
 			slog.Info("Opened group successfully", "group_sequence", group.GroupSequence())
 
-			builder.Reset()
-			builder.Append([]byte("Hello from interop client in Go!"))
-			err = group.WriteFrame(builder.Frame())
+			frame.Reset()
+			frame.Write([]byte("Hello from interop client in Go!"))
+			err = group.WriteFrame(frame)
 			if err != nil {
 				slog.Error("failed to write frame", "error", err)
 				return
@@ -93,17 +144,8 @@ func main() {
 		slog.Info("Accepted a group", "group_sequence", gr.GroupSequence())
 
 		go func(gr *moqt.GroupReader) {
-			for {
-				frame, err := gr.ReadFrame()
-				if err != nil {
-					if err == io.EOF {
-						return
-					}
-					slog.Error("failed to read frame", "error", err)
-					break
-				}
-
-				slog.Info("Received a frame", "frame", string(frame.Bytes()))
+			for frame := range gr.Frames(nil) {
+				slog.Info("Received a frame", "frame", string(frame.Body()))
 			}
 		}(gr)
 	}

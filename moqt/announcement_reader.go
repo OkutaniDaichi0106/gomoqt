@@ -2,6 +2,7 @@ package moqt
 
 import (
 	"context"
+	"iter"
 	"log/slog"
 	"sync"
 
@@ -158,6 +159,22 @@ func (ras *AnnouncementReader) ReceiveAnnouncement(ctx context.Context) (*Announ
 	}
 }
 
+func (ras *AnnouncementReader) Announcements(ctx context.Context) iter.Seq[*Announcement] {
+	return func(yield func(*Announcement) bool) {
+		for {
+			ann, err := ras.ReceiveAnnouncement(ctx)
+			if err != nil {
+				return
+			}
+
+			if !yield(ann) {
+				return
+			}
+		}
+	}
+
+}
+
 func (ras *AnnouncementReader) Close() error {
 	ras.announcementsMu.Lock()
 	defer ras.announcementsMu.Unlock()
@@ -198,5 +215,6 @@ func (ras *AnnouncementReader) Context() context.Context {
 	return ras.ctx
 }
 
+// Alias types for better readability
 type suffix = string
 type prefix = string

@@ -182,7 +182,7 @@ func (s *Server) ServeQUICConn(conn quic.Connection) error {
 	}
 }
 
-func (s *Server) ServeWebTransport(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) HandleWebTransport(w http.ResponseWriter, r *http.Request) error {
 	if s.shuttingDown() {
 		return fmt.Errorf("server is shutting down")
 	}

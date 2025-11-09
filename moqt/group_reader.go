@@ -3,6 +3,7 @@ package moqt
 import (
 	"errors"
 	"io"
+	"iter"
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
@@ -67,7 +68,7 @@ func (s *GroupReader) SetReadDeadline(t time.Time) error {
 	return s.stream.SetReadDeadline(t)
 }
 
-func (s *GroupReader) Frames(buf *Frame) func(yield func(*Frame) bool) {
+func (s *GroupReader) Frames(buf *Frame) iter.Seq[*Frame] {
 	return func(yield func(*Frame) bool) {
 		if buf == nil {
 			buf = NewFrame(0)

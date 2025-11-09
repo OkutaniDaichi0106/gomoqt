@@ -28,21 +28,19 @@ func newSession(conn quic.Connection, sessStream *sessionStream, mux *TrackMux, 
 	}
 
 	// Supervise the session stream closure
-	go func() {
-		streamCtx := sessStream.Context()
-		connCtx := conn.Context()
-		<-streamCtx.Done()
-		if connCtx.Err() != nil {
-			return // If the connection is already closed, do nothing
+	streamCtx := sessStream.Context()
+	context.AfterFunc(streamCtx, func() {
+		var appErr *quic.ApplicationError
+		if errors.As(streamCtx.Err(), &appErr) {
+			return // Normal closure
 		}
 
-		// If the stream is closed unexpectedly, terminate the session
-		sessLogger.Warn("session stream closed unexpectedly",
+		sessLogger.Warn("session stream context closed unexpectedly",
 			"reason", Cause(streamCtx),
 		)
 
-		conn.CloseWithError(quic.ApplicationErrorCode(ProtocolViolationErrorCode), "session stream closed unexpectedly")
-	}()
+		conn.CloseWithError(quic.ApplicationErrorCode(ProtocolViolationErrorCode), "session stream context closed unexpectedly")
+	})
 
 	sess := &Session{
 		sessionStream: sessStream,

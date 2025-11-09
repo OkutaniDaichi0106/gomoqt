@@ -847,7 +847,7 @@ func TestServer_HandleNativeQUIC_AcceptStreamError(t *testing.T) {
 	assert.Contains(t, err.Error(), "accept error")
 }
 
-func TestServer_ServeWebTransport(t *testing.T) {
+func TestServer_HandleWebTransport(t *testing.T) {
 	tests := map[string]struct {
 		expectError  bool
 		upgradeError error
@@ -881,7 +881,7 @@ func TestServer_ServeWebTransport(t *testing.T) {
 
 			server.wtServer = wtServer
 
-			err := server.ServeWebTransport(mockResponseWriter, req)
+			err := server.HandleWebTransport(mockResponseWriter, req)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -892,7 +892,7 @@ func TestServer_ServeWebTransport(t *testing.T) {
 	}
 }
 
-func TestServer_ServeWebTransport_ShuttingDown(t *testing.T) {
+func TestServer_HandleWebTransport_ShuttingDown(t *testing.T) {
 	server := &Server{
 		Addr: ":8080",
 	}
@@ -901,12 +901,12 @@ func TestServer_ServeWebTransport_ShuttingDown(t *testing.T) {
 	mockResponseWriter := &MockHTTPResponseWriter{}
 	req := &http.Request{}
 
-	err := server.ServeWebTransport(mockResponseWriter, req)
+	err := server.HandleWebTransport(mockResponseWriter, req)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "server is shutting down")
 }
 
-func TestServer_ServeWebTransport_WithNilLogger(t *testing.T) {
+func TestServer_HandleWebTransport_WithNilLogger(t *testing.T) {
 	server := &Server{
 		Addr: ":8080",
 	}
@@ -921,7 +921,7 @@ func TestServer_ServeWebTransport_WithNilLogger(t *testing.T) {
 
 	server.wtServer = wtServer
 
-	err := server.ServeWebTransport(mockResponseWriter, req)
+	err := server.HandleWebTransport(mockResponseWriter, req)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to upgrade connection")
 }
@@ -1841,7 +1841,7 @@ func TestServer_WebTransportEdgeCases(t *testing.T) {
 				server.wtServer = wtServer
 			}
 
-			err := server.ServeWebTransport(mockWriter, req)
+			err := server.HandleWebTransport(mockWriter, req)
 
 			if tt.expectError {
 				assert.Error(t, err)

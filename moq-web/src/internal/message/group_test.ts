@@ -6,19 +6,19 @@ Deno.test("GroupMessage - encode/decode roundtrip - multiple scenarios", async (
 	const testCases = {
 		"normal case": {
 			subscribeId: 123,
-			sequence: 456n,
+			sequence: 456,
 		},
 		"zero values": {
 			subscribeId: 0,
-			sequence: 0n,
+			sequence: 0,
 		},
 		"large numbers": {
 			subscribeId: 1000000,
-			sequence: 2000000n,
+			sequence: 2000000,
 		},
 		"single values": {
 			subscribeId: 1,
-			sequence: 1n,
+			sequence: 1,
 		},
 	};
 
@@ -150,7 +150,7 @@ Deno.test("GroupMessage - error cases", async (t) => {
 			transfer: undefined,
 			streamId: 0n,
 		});
-		const original = new GroupMessage({ subscribeId: 1, sequence: 2n });
+		const original = new GroupMessage({ subscribeId: 1, sequence: 2 });
 		const encErr = await original.encode(writer);
 		if (encErr) throw encErr;
 

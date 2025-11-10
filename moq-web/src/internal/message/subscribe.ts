@@ -6,8 +6,8 @@ export interface SubscribeMessageInit {
 	broadcastPath?: string;
 	trackName?: string;
 	trackPriority?: number;
-	minGroupSequence?: bigint;
-	maxGroupSequence?: bigint;
+	minGroupSequence?: number;
+	maxGroupSequence?: number;
 }
 
 export class SubscribeMessage {
@@ -15,16 +15,16 @@ export class SubscribeMessage {
 	broadcastPath: string;
 	trackName: string;
 	trackPriority: number;
-	minGroupSequence: bigint;
-	maxGroupSequence: bigint;
+	minGroupSequence: number;
+	maxGroupSequence: number;
 
 	constructor(init: SubscribeMessageInit) {
 		this.subscribeId = init.subscribeId ?? 0;
 		this.broadcastPath = init.broadcastPath ?? "";
 		this.trackName = init.trackName ?? "";
 		this.trackPriority = init.trackPriority ?? 0;
-		this.minGroupSequence = init.minGroupSequence ?? 0n;
-		this.maxGroupSequence = init.maxGroupSequence ?? 0n;
+		this.minGroupSequence = init.minGroupSequence ?? 0;
+		this.maxGroupSequence = init.maxGroupSequence ?? 0;
 	}
 
 	get messageLength(): number {
@@ -44,8 +44,8 @@ export class SubscribeMessage {
 		writer.writeString(this.broadcastPath);
 		writer.writeString(this.trackName);
 		writer.writeVarint(this.trackPriority);
-		writer.writeBigVarint(this.minGroupSequence);
-		writer.writeBigVarint(this.maxGroupSequence);
+		writer.writeVarint(this.minGroupSequence);
+		writer.writeVarint(this.maxGroupSequence);
 		return await writer.flush();
 	}
 
@@ -70,11 +70,11 @@ export class SubscribeMessage {
 		if (err) {
 			return err;
 		}
-		[this.minGroupSequence, err] = await reader.readBigVarint();
+		[this.minGroupSequence, err] = await reader.readVarint();
 		if (err) {
 			return err;
 		}
-		[this.maxGroupSequence, err] = await reader.readBigVarint();
+		[this.maxGroupSequence, err] = await reader.readVarint();
 		if (err) {
 			return err;
 		}

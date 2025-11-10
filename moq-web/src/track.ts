@@ -107,15 +107,21 @@ export class TrackWriter {
 }
 
 export class TrackReader {
+	broadcastPath: BroadcastPath;
+	trackName: string;
 	#subscribeStream: SendSubscribeStream;
 	#acceptFunc: (ctx: Promise<void>) => Promise<[ReceiveStream, GroupMessage] | undefined>;
 	#onCloseFunc: () => void;
 
 	constructor(
+		broadcastPath: BroadcastPath,
+		trackName: string,
 		subscribeStream: SendSubscribeStream,
 		acceptFunc: (ctx: Promise<void>) => Promise<[ReceiveStream, GroupMessage] | undefined>,
 		onCloseFunc: () => void,
 	) {
+		this.broadcastPath = broadcastPath;
+		this.trackName = trackName;
 		this.#subscribeStream = subscribeStream;
 		this.#acceptFunc = acceptFunc;
 		this.#onCloseFunc = onCloseFunc;

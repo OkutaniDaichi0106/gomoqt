@@ -3,16 +3,16 @@ import { varintLen } from "../webtransport/mod.ts";
 
 export interface GroupMessageInit {
 	subscribeId?: number;
-	sequence?: bigint;
+	sequence?: number;
 }
 
 export class GroupMessage {
 	subscribeId: number;
-	sequence: bigint;
+	sequence: number;
 
 	constructor(init: GroupMessageInit) {
 		this.subscribeId = init.subscribeId ?? 0;
-		this.sequence = init.sequence ?? 0n;
+		this.sequence = init.sequence ?? 0;
 	}
 
 	get messageLength(): number {
@@ -22,7 +22,7 @@ export class GroupMessage {
 	async encode(writer: SendStream): Promise<Error | undefined> {
 		writer.writeVarint(this.messageLength);
 		writer.writeVarint(this.subscribeId);
-		writer.writeBigVarint(this.sequence);
+		writer.writeVarint(this.sequence);
 		return await writer.flush();
 	}
 
@@ -37,7 +37,7 @@ export class GroupMessage {
 			return err;
 		}
 
-		[this.sequence, err] = await reader.readBigVarint();
+		[this.sequence, err] = await reader.readVarint();
 		if (err) {
 			return err;
 		}

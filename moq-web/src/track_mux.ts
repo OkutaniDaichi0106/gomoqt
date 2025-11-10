@@ -98,21 +98,29 @@ export class TrackMux {
 	async publishFunc(
 		ctx: Promise<void>,
 		path: BroadcastPath,
-		handler: (ctx: Promise<void>, trackWriter: TrackWriter) => Promise<void>,
+		handler: (trackWriter: TrackWriter) => Promise<void>,
 	) {
 		await this.publish(ctx, path, { serveTrack: handler });
 	}
 
-	async serveTrack(trackWriter: TrackWriter): Promise<void> {
-		const path = trackWriter.broadcastPath;
+	async serveTrack(track: TrackWriter): Promise<void> {
+		const path = track.broadcastPath;
 		const announced = this.#handlers.get(path);
-		if (announced) {
-			console.debug(`[TrackMux] serving track for path: ${path}`);
-			await announced.handler.serveTrack(announced.announcement.ended(), trackWriter);
-		} else {
+		if (!announced) {
 			console.warn(`[TrackMux] no handler for track for path: ${path}`);
-			await NotFoundHandler.serveTrack(Promise.resolve(), trackWriter);
+			await NotFoundHandler.serveTrack(track);
+			return;
 		}
+
+		const stop = announced.announcement.afterFunc(() => {
+			track.close();
+		});
+
+		console.debug(`[TrackMux] serving track for path: ${path}`);
+		await announced.handler.serveTrack(track);
+
+		// Ensure cleanup after serving
+		stop();
 	}
 
 	async serveAnnouncement(writer: AnnouncementWriter, prefix: TrackPrefix): Promise<void> {
@@ -168,11 +176,11 @@ export class TrackMux {
 export const DefaultTrackMux: TrackMux = new TrackMux();
 
 export interface TrackHandler {
-	serveTrack(ctx: Promise<void>, trackWriter: TrackWriter): Promise<void>;
+	serveTrack(trackWriter: TrackWriter): Promise<void>;
 }
 
 const NotFoundHandler: TrackHandler = {
-	async serveTrack(_: Promise<void>, trackWriter: TrackWriter): Promise<void> {
+	async serveTrack(trackWriter: TrackWriter): Promise<void> {
 		await trackWriter.closeWithError(TrackNotFoundErrorCode, "Track not found");
 	},
 };

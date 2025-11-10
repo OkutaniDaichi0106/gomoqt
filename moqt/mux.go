@@ -228,11 +228,14 @@ func (mux *TrackMux) serveTrack(tw *TrackWriter) {
 	}
 
 	// Ensure track is closed when announcement ends
-	announced.AfterFunc(func() {
+	stop := announced.AfterFunc(func() {
 		tw.Close()
 	})
 
 	announced.TrackHandler.ServeTrack(tw)
+
+	// Stop the announcement watcher when done
+	stop()
 }
 
 // serveAnnouncements serves announcements for tracks matching the given pattern.

@@ -11,10 +11,10 @@ import { TrackNotFoundErrorCode } from "./error.ts";
 
 // Mock implementations using DI pattern
 class MockTrackHandler implements TrackHandler {
-	calls: Array<{ ctx: Promise<void>; trackWriter: Partial<TrackWriter> }> = [];
+	calls: Array<{ trackWriter: Partial<TrackWriter> }> = [];
 
-	async serveTrack(ctx: Promise<void>, trackWriter: TrackWriter): Promise<void> {
-		this.calls.push({ ctx, trackWriter });
+	async serveTrack(trackWriter: TrackWriter): Promise<void> {
+		this.calls.push({ trackWriter });
 	}
 
 	reset() {
@@ -345,7 +345,7 @@ Deno.test("TrackHandler - Interface", () => {
 		"/test/path" as BroadcastPath,
 		"test-track",
 	);
-	mockHandler.serveTrack(background().done(), mockTrackWriter);
+	mockHandler.serveTrack(mockTrackWriter);
 
 	assertEquals(mockHandler.calls.length, 1);
 	assertEquals(mockHandler.calls[0]?.trackWriter, mockTrackWriter);
@@ -446,7 +446,7 @@ Deno.test("TrackMux - Additional Coverage", async (t) => {
 		const path = "/test/path" as BroadcastPath;
 
 		let handlerCalled = false;
-		await trackMux.publishFunc(ctx.done(), path, async (_ctx, _trackWriter) => {
+		await trackMux.publishFunc(ctx.done(), path, async (_trackWriter) => {
 			handlerCalled = true;
 		});
 

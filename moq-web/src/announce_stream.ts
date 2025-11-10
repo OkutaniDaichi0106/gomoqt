@@ -352,7 +352,7 @@ export class AnnouncementReader {
 export class Announcement {
 	readonly broadcastPath: BroadcastPath;
 	#done: Promise<void>;
-	#notifyFunc: () => void;
+	#signalFunc: () => void;
 	#active: boolean = true;
 
 	constructor(path: string, signal: Promise<void>) {
@@ -363,10 +363,7 @@ export class Announcement {
 			resolveFunc = resolve;
 		});
 
-		this.#notifyFunc = () => {
-			this.#active = false;
-			resolveFunc();
-		};
+		this.#signalFunc = () => resolveFunc();
 
 		// Cancel when the signal is done
 		signal.then(() => {
@@ -375,7 +372,11 @@ export class Announcement {
 	}
 
 	end(): void {
-		this.#notifyFunc();
+		if (!this.#active) {
+			return;
+		}
+		this.#active = false;
+		this.#signalFunc();
 	}
 
 	isActive(): boolean {
@@ -384,5 +385,22 @@ export class Announcement {
 
 	ended(): Promise<void> {
 		return this.#done;
+	}
+
+	afterFunc(fn: () => void): () => boolean {
+		let executed = false;
+		this.#done.then(() => {
+			if (executed) return;
+			executed = true;
+			fn();
+		});
+
+		return () => {
+			if (executed) {
+				return false;
+			}
+			executed = true;
+			return !executed;
+		};
 	}
 }

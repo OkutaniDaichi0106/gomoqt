@@ -377,7 +377,7 @@ func (c *Client) Close() error {
 
 	c.sessMu.Lock()
 	for sess := range c.activeSess {
-		go sess.CloseWithError(NoError, NoError.String())
+		go sess.CloseWithError(NoError, SessionErrorText(NoError))
 	}
 	c.sessMu.Unlock()
 
@@ -421,7 +421,7 @@ func (c *Client) Shutdown(ctx context.Context) error {
 		case <-ctx.Done():
 			if len(c.activeSess) > 0 {
 				for sess := range c.activeSess {
-					go sess.CloseWithError(GoAwayTimeoutErrorCode, GoAwayTimeoutErrorCode.String())
+					go sess.CloseWithError(GoAwayTimeoutErrorCode, SessionErrorText(GoAwayTimeoutErrorCode))
 				}
 
 				if logger != nil {

@@ -4,43 +4,41 @@ export interface Frame extends Source {
 	data: Uint8Array;
 }
 
-export class BytesFrame implements Frame {
-	bytes: Uint8Array;
+export const Frame: {
+	new (bytes: Uint8Array): Frame;
+} = class BytesFrame implements Frame {
+	data: Uint8Array;
 
 	constructor(bytes: Uint8Array) {
-		this.bytes = bytes;
-	}
-
-	get data(): Uint8Array {
-		return this.bytes;
+		this.data = bytes;
 	}
 
 	get byteLength(): number {
-		return this.bytes.byteLength;
+		return this.data.byteLength;
 	}
 
 	copyTo(dest: AllowSharedBufferSource): void {
 		if (dest instanceof Uint8Array) {
-			dest.set(this.bytes);
+			dest.set(this.data);
 		} else if (dest instanceof ArrayBuffer) {
-			new Uint8Array(dest).set(this.bytes);
+			new Uint8Array(dest).set(this.data);
 		} else {
 			throw new Error("Unsupported destination type");
 		}
 	}
 
 	clone(buffer?: Uint8Array<ArrayBufferLike>): BytesFrame {
-		if (buffer && buffer.byteLength >= this.bytes.byteLength) {
-			buffer.set(this.bytes);
-			return new BytesFrame(buffer.subarray(0, this.bytes.byteLength));
+		if (buffer && buffer.byteLength >= this.data.byteLength) {
+			buffer.set(this.data);
+			return new BytesFrame(buffer.subarray(0, this.data.byteLength));
 		}
-		return new BytesFrame(this.bytes.slice());
+		return new BytesFrame(this.data.slice());
 	}
 
 	copyFrom(src: Frame): void {
-		if (src.byteLength > this.bytes.byteLength) {
-			this.bytes = new Uint8Array(src.byteLength);
+		if (src.byteLength > this.data.byteLength) {
+			this.data = new Uint8Array(src.byteLength);
 		}
-		src.copyTo(this.bytes);
+		src.copyTo(this.data);
 	}
-}
+};

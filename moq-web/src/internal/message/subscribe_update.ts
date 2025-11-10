@@ -3,19 +3,19 @@ import { varintLen } from "../webtransport/mod.ts";
 
 export interface SubscribeUpdateMessageInit {
 	trackPriority?: number;
-	minGroupSequence?: bigint;
-	maxGroupSequence?: bigint;
+	minGroupSequence?: number;
+	maxGroupSequence?: number;
 }
 
 export class SubscribeUpdateMessage {
 	trackPriority: number;
-	minGroupSequence: bigint;
-	maxGroupSequence: bigint;
+	minGroupSequence: number;
+	maxGroupSequence: number;
 
 	constructor(init: SubscribeUpdateMessageInit) {
 		this.trackPriority = init.trackPriority ?? 0;
-		this.minGroupSequence = init.minGroupSequence ?? 0n;
-		this.maxGroupSequence = init.maxGroupSequence ?? 0n;
+		this.minGroupSequence = init.minGroupSequence ?? 0;
+		this.maxGroupSequence = init.maxGroupSequence ?? 0;
 	}
 
 	get messageLength(): number {
@@ -29,8 +29,8 @@ export class SubscribeUpdateMessage {
 	async encode(writer: SendStream): Promise<Error | undefined> {
 		writer.writeVarint(this.messageLength);
 		writer.writeVarint(this.trackPriority);
-		writer.writeBigVarint(this.minGroupSequence);
-		writer.writeBigVarint(this.maxGroupSequence);
+		writer.writeVarint(this.minGroupSequence);
+		writer.writeVarint(this.maxGroupSequence);
 		return await writer.flush();
 	}
 
@@ -43,11 +43,11 @@ export class SubscribeUpdateMessage {
 		if (err) {
 			return err;
 		}
-		[this.minGroupSequence, err] = await reader.readBigVarint();
+		[this.minGroupSequence, err] = await reader.readVarint();
 		if (err) {
 			return err;
 		}
-		[this.maxGroupSequence, err] = await reader.readBigVarint();
+		[this.maxGroupSequence, err] = await reader.readVarint();
 		if (err) {
 			return err;
 		}

@@ -460,13 +460,16 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 
 		subLogger.Debug("accepted a subscribe stream")
 
-		trackWriter := newTrackWriter(
+		track := newTrackWriter(
 			BroadcastPath(sm.BroadcastPath), TrackName(sm.TrackName),
 			substr, sess.conn.OpenUniStream, func() { sess.removeTrackWriter(SubscribeID(sm.SubscribeID)) },
 		)
-		sess.addTrackWriter(SubscribeID(sm.SubscribeID), trackWriter)
+		sess.addTrackWriter(SubscribeID(sm.SubscribeID), track)
 
-		sess.mux.serveTrack(trackWriter)
+		sess.mux.serveTrack(track)
+
+		// Ensure the track writer is closed when done
+		track.Close()
 	default:
 		streamLogger.Error("unknown bidirectional stream type",
 			"stream_type", streamType,

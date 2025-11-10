@@ -500,7 +500,7 @@ func TestClient_DialWebTransport_CustomDialSuccess(t *testing.T) {
 
 	// Cleanup
 	if sess != nil {
-		sess.Terminate(NoError, "")
+		sess.CloseWithError(NoError, "")
 	}
 	// Close block channel to allow any pending reads to complete
 	close(blockChan)
@@ -566,7 +566,7 @@ func TestClient_DialQUIC_CustomDialSuccess(t *testing.T) {
 
 	// Cleanup
 	if sess != nil {
-		sess.Terminate(NoError, "")
+		sess.CloseWithError(NoError, "")
 	}
 	// Close block channel to allow any pending reads to complete
 	close(blockChan)

@@ -449,7 +449,7 @@ func (s *Server) Close() error {
 	s.sessMu.Lock()
 	if len(s.activeSess) > 0 {
 		for sess := range s.activeSess {
-			go sess.Terminate(NoError, NoError.String())
+			go sess.CloseWithError(NoError, NoError.String())
 		}
 
 		s.sessMu.Unlock()
@@ -515,7 +515,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		s.sessMu.Lock()
 		if len(s.activeSess) > 0 {
 			for sess := range s.activeSess {
-				go sess.Terminate(GoAwayTimeoutErrorCode, GoAwayTimeoutErrorCode.String())
+				go sess.CloseWithError(GoAwayTimeoutErrorCode, GoAwayTimeoutErrorCode.String())
 			}
 			s.sessMu.Unlock()
 

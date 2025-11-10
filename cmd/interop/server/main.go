@@ -143,7 +143,7 @@ func main() {
 		slog.Info("[Server] Operations completed")
 
 		// Terminate session before shutting down server
-		sess.Terminate(moqt.NoError, "no error")
+		sess.CloseWithError(moqt.NoError, "no error")
 
 		// Trigger server shutdown after handling one session
 		// Give time for session cleanup and final data transmission

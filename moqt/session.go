@@ -27,21 +27,6 @@ func newSession(conn quic.Connection, sessStream *sessionStream, mux *TrackMux, 
 		)
 	}
 
-	// Supervise the session stream closure
-	streamCtx := sessStream.Context()
-	context.AfterFunc(streamCtx, func() {
-		var appErr *quic.ApplicationError
-		if errors.As(streamCtx.Err(), &appErr) {
-			return // Normal closure
-		}
-
-		sessLogger.Warn("session stream context closed unexpectedly",
-			"reason", Cause(streamCtx),
-		)
-
-		conn.CloseWithError(quic.ApplicationErrorCode(ProtocolViolationErrorCode), "session stream context closed unexpectedly")
-	})
-
 	sess := &Session{
 		sessionStream: sessStream,
 		ctx:           conn.Context(),
@@ -52,6 +37,21 @@ func newSession(conn quic.Connection, sessStream *sessionStream, mux *TrackMux, 
 		trackWriters:  make(map[SubscribeID]*TrackWriter),
 		onClose:       onClose,
 	}
+
+	// Supervise the session stream closure
+	sessStreamCtx := sessStream.Context()
+	context.AfterFunc(sessStreamCtx, func() {
+		var appErr *quic.ApplicationError
+		if errors.As(sessStreamCtx.Err(), &appErr) {
+			return // Normal closure
+		}
+
+		sessLogger.Warn("session stream context closed unexpectedly",
+			"reason", Cause(sessStreamCtx),
+		)
+
+		sess.CloseWithError(ProtocolViolationErrorCode, "session stream closed unexpectedly")
+	})
 
 	// Listen bidirectional streams
 	sess.wg.Go(func() {
@@ -101,7 +101,7 @@ func (s *Session) Context() context.Context {
 	return s.ctx
 }
 
-func (s *Session) Terminate(code SessionErrorCode, msg string) error {
+func (s *Session) CloseWithError(code SessionErrorCode, msg string) error {
 	if s.terminating() {
 		s.logger.Debug("termination already in progress")
 		return s.sessErr
@@ -400,7 +400,7 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 		streamLogger.Error("failed to decode stream type message",
 			"error", err,
 		)
-		sess.Terminate(ProtocolViolationErrorCode, err.Error())
+		sess.CloseWithError(ProtocolViolationErrorCode, err.Error())
 		return
 	}
 
@@ -471,7 +471,7 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 		streamLogger.Error("unknown bidirectional stream type",
 			"stream_type", streamType,
 		)
-		sess.Terminate(ProtocolViolationErrorCode, fmt.Sprintf("unknown bidirectional stream type: %v", streamType))
+		sess.CloseWithError(ProtocolViolationErrorCode, fmt.Sprintf("unknown bidirectional stream type: %v", streamType))
 		return
 	}
 }
@@ -544,7 +544,7 @@ func (sess *Session) processUniStream(stream quic.ReceiveStream, streamLogger *s
 		)
 
 		// Terminate the session
-		sess.Terminate(ProtocolViolationErrorCode, fmt.Sprintf("unknown unidirectional stream type: %v", streamType))
+		sess.CloseWithError(ProtocolViolationErrorCode, fmt.Sprintf("unknown unidirectional stream type: %v", streamType))
 		return
 	}
 }

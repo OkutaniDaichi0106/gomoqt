@@ -47,7 +47,7 @@ func main() {
 
 	slog.Info("[Client] Connected to server")
 
-	defer sess.Terminate(moqt.NoError, "no error")
+	defer sess.CloseWithError(moqt.NoError, "no error")
 
 	var wg sync.WaitGroup
 

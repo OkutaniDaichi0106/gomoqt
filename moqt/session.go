@@ -426,11 +426,10 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 
 		annLogger.Debug("accepted an announce stream")
 
-		// Serve the announcement stream
-		// This is a blocking call that will handle incoming announcements
-		// and will not return until the stream is closed.
-		// It will also handle the initial announcements if any.
-		sess.mux.serveAnnouncements(annstr, prefix)
+		sess.mux.serveAnnouncements(annstr)
+
+		// Ensure the announcement writer is closed when done
+		annstr.Close()
 	case message.StreamTypeSubscribe:
 		var sm message.SubscribeMessage
 		err := sm.Decode(stream)

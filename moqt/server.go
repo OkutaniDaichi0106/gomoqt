@@ -89,8 +89,9 @@ type Server struct {
 
 	inShutdown atomic.Bool
 
-	doneChan chan struct{} // Signal channel (notifies when server is completely closed)
-
+	// Channel to signal server shutdown completion
+	// Closed when all sessions are closed
+	doneChan chan struct{}
 }
 
 func (s *Server) init() {
@@ -140,14 +141,28 @@ func (s *Server) ServeQUICListener(ln quic.Listener) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	for {
-		if s.shuttingDown() {
-			return ErrServerClosed
+	// Watch for shutdown and cancel context when shutting down
+	go func() {
+		for !s.shuttingDown() {
+			time.Sleep(100 * time.Millisecond)
 		}
+		cancel()
+	}()
 
+	for {
 		// Listen for new QUIC connections
 		conn, err := ln.Accept(ctx)
 		if err != nil {
+			// Check if this is due to shutdown
+			if s.shuttingDown() {
+				listenerLogger.Debug("listener closed due to shutdown")
+				return ErrServerClosed
+			}
+			// Check if context was cancelled
+			if errors.Is(err, context.Canceled) {
+				listenerLogger.Debug("listener accept cancelled")
+				return ErrServerClosed
+			}
 			listenerLogger.Error("failed to accept QUIC connection",
 				"error", err.Error(),
 			)
@@ -445,37 +460,45 @@ func (s *Server) Close() error {
 	if s.Logger != nil {
 		s.Logger.Info("closing server", "address", s.Addr)
 	}
+
+	// Close all listeners first to stop accepting new connections
+	s.listenerMu.Lock()
+	for ln := range s.listeners {
+		ln.Close()
+	}
+	s.listenerMu.Unlock()
+
 	// Terminate all active sessions
 	s.sessMu.Lock()
-	if len(s.activeSess) > 0 {
-		for sess := range s.activeSess {
-			go sess.CloseWithError(NoError, SessionErrorText(NoError))
-		}
+	for sess := range s.activeSess {
+		go sess.CloseWithError(NoError, SessionErrorText(NoError))
+	}
+	s.sessMu.Unlock()
 
-		s.sessMu.Unlock()
-
-		<-s.doneChan
-	} else {
-		s.sessMu.Unlock()
-
-		// No active sessions, close doneChan immediately
+	// Wait for all sessions to close
+	// If there are no active sessions, close the doneChan now so Close doesn't block.
+	s.sessMu.Lock()
+	if len(s.activeSess) == 0 {
 		select {
 		case <-s.doneChan:
-			// Already closed
+			// already closed
 		default:
 			close(s.doneChan)
 		}
-	} // Close all listeners
-	s.listenerMu.Lock()
-	if len(s.listeners) > 0 {
-		if s.Logger != nil {
-			s.Logger.Info("closing QUIC listeners", "address", s.Addr)
-		}
-		for ln := range s.listeners {
-			ln.Close()
-		}
 	}
+	s.sessMu.Unlock()
+
+	<-s.doneChan
+
+	// Clear listeners map
+	s.listenerMu.Lock()
+	s.listeners = nil
 	s.listenerMu.Unlock()
+
+	// Close WebTransport server
+	if s.wtServer != nil {
+		s.wtServer.Close()
+	}
 
 	// Wait for all listeners to close
 	s.listenerGroup.Wait()
@@ -488,17 +511,29 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		return ErrServerClosed
 	}
 
+	if s.Logger != nil {
+		s.Logger.Info("shutting down server", "address", s.Addr)
+	}
+
 	// Set the shutdown flag
 	s.inShutdown.Store(true)
 
+	// Close all listeners first to stop accepting new connections
+	s.listenerMu.Lock()
+	for ln := range s.listeners {
+		if s.Logger != nil {
+			s.Logger.Debug("closing listener")
+		}
+		ln.Close()
+	}
+	s.listenerMu.Unlock()
+
+	// Send GOAWAY to all sessions
 	s.goAway()
 
-	// If there are no active sessions, signal done immediately so Shutdown
-	// returns without waiting for the context timeout.
+	// If there are no active sessions, close the doneChan now so shutdown returns immediately.
 	s.sessMu.Lock()
-	noSessions := len(s.activeSess) == 0
-	s.sessMu.Unlock()
-	if noSessions {
+	if len(s.activeSess) == 0 {
 		select {
 		case <-s.doneChan:
 			// already closed
@@ -506,34 +541,46 @@ func (s *Server) Shutdown(ctx context.Context) error {
 			close(s.doneChan)
 		}
 	}
+	s.sessMu.Unlock()
 
+	// Wait for sessions to close or context timeout
 	select {
 	case <-s.doneChan:
-		// Already closed
+		// All sessions closed gracefully
+		if s.Logger != nil {
+			s.Logger.Debug("all sessions closed gracefully")
+		}
 	case <-ctx.Done():
 		// Context canceled, terminate all sessions forcefully
-		s.sessMu.Lock()
-		if len(s.activeSess) > 0 {
-			for sess := range s.activeSess {
-				go sess.CloseWithError(GoAwayTimeoutErrorCode, SessionErrorText(GoAwayTimeoutErrorCode))
-			}
-			s.sessMu.Unlock()
-
-			// Wait for all sessions to close
-			<-s.doneChan
+		if s.Logger != nil {
+			s.Logger.Warn("shutdown timeout, forcing session termination")
 		}
+		s.sessMu.Lock()
+		for sess := range s.activeSess {
+			go sess.CloseWithError(GoAwayTimeoutErrorCode, SessionErrorText(GoAwayTimeoutErrorCode))
+		}
+		s.sessMu.Unlock()
+
+		// Wait for all sessions to close
+		<-s.doneChan
 	}
 
-	// Close all listeners
+	// Clear listeners map
 	s.listenerMu.Lock()
-	for ln := range s.listeners {
-		ln.Close()
-	}
 	s.listeners = nil
 	s.listenerMu.Unlock()
 
+	// Close WebTransport server
+	if s.wtServer != nil {
+		s.wtServer.Close()
+	}
+
 	// Wait for all listeners to close
 	s.listenerGroup.Wait()
+
+	if s.Logger != nil {
+		s.Logger.Info("server shutdown complete")
+	}
 
 	return nil
 }
@@ -578,6 +625,10 @@ func (s *Server) removeSession(sess *Session) {
 	s.sessMu.Lock()
 	defer s.sessMu.Unlock()
 
+	if s.activeSess == nil {
+		return
+	}
+
 	_, ok := s.activeSess[sess]
 	if !ok {
 		return
@@ -585,13 +636,20 @@ func (s *Server) removeSession(sess *Session) {
 
 	delete(s.activeSess, sess)
 
-	// Send completion signal if connections reach zero and server is closed
+	if s.Logger != nil {
+		s.Logger.Debug("session removed", "active_sessions", len(s.activeSess))
+	}
+
+	// Send completion signal if connections reach zero and server is shutting down
 	if len(s.activeSess) == 0 && s.shuttingDown() {
 		// Close the done channel to signal server is done
 		select {
 		case <-s.doneChan:
 			// Already closed
 		default:
+			if s.Logger != nil {
+				s.Logger.Debug("all sessions closed, signaling shutdown completion")
+			}
 			close(s.doneChan)
 		}
 	}

@@ -121,7 +121,9 @@ func TestServer_ServeQUICListener(t *testing.T) {
 			mockConn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
 			mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
 
-			mockListener.On("Accept", mock.Anything).Return(mockConn, nil)
+			mockListener.On("Accept", mock.Anything).Return(mockConn, nil).Once()
+			// After a single accept, return EOF to simulate listener closure
+			mockListener.On("Accept", mock.Anything).Return(nil, context.Canceled).Maybe()
 			mockListener.On("Close").Return(nil)
 			mockListener.On("Addr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 

@@ -1149,6 +1149,11 @@ func TestSession_ProcessBiStream_Announce(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("StreamID").Return(quic.StreamID(1))
 	mockStream.On("Context").Return(context.Background())
+	// Expect write/close operations for announcement writer init and close
+	mockStream.On("Write", mock.AnythingOfType("[]uint8")).Return(0, nil).Maybe()
+	mockStream.On("Close").Return(nil).Maybe()
+	mockStream.On("CancelRead", mock.Anything).Return(nil).Maybe()
+	mockStream.On("CancelWrite", mock.Anything).Return(nil).Maybe()
 
 	// Prepare StreamType + AnnouncePleaseMessage
 	var buf bytes.Buffer

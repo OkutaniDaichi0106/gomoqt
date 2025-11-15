@@ -147,7 +147,12 @@ func TestAnnouncementWriter_Init(t *testing.T) {
 				}
 
 				// Verify initCh is closed after successful initialization
-				assert.Nil(t, sas.initCh)
+				select {
+				case <-sas.initCh:
+					// Channel is closed, this is expected
+				default:
+					t.Error("initCh should be closed")
+				}
 			}
 
 			mockStream.AssertExpectations(t)
@@ -221,18 +226,15 @@ func TestAnnouncementWriter_Init_DuplicateAnnouncements(t *testing.T) {
 	assert.Contains(t, sas.actives, "stream1")
 
 	// Due to map iteration order the final active announcement may be either
-	// ann1 or ann2. Accept both possibilities but ensure exactly one is active
-	// and the other is ended.
+	// ann1 or ann2. Both should remain active since init doesn't end announcements.
 	active := sas.actives["stream1"]
-	switch active {
+	switch active.announcement {
 	case ann1:
-		// ann1 remained, ann2 should be ended
 		assert.True(t, ann1.IsActive())
-		assert.False(t, ann2.IsActive())
-	case ann2:
-		// ann2 remained, ann1 should be ended
 		assert.True(t, ann2.IsActive())
-		assert.False(t, ann1.IsActive())
+	case ann2:
+		assert.True(t, ann2.IsActive())
+		assert.True(t, ann1.IsActive())
 	default:
 		t.Fatalf("unexpected active announcement: %v", active)
 	}
@@ -259,8 +261,8 @@ func TestAnnouncementWriter_Init_MultipleDifferentAnnouncements(t *testing.T) {
 	assert.Len(t, sas.actives, 2)
 	assert.Contains(t, sas.actives, "stream1")
 	assert.Contains(t, sas.actives, "stream2")
-	assert.Equal(t, ann1, sas.actives["stream1"])
-	assert.Equal(t, ann2, sas.actives["stream2"])
+	assert.Equal(t, ann1, sas.actives["stream1"].announcement)
+	assert.Equal(t, ann2, sas.actives["stream2"].announcement)
 
 	mockStream.AssertExpectations(t)
 }
@@ -313,16 +315,15 @@ func TestAnnouncementWriter_Init_DeadlockIssue(t *testing.T) {
 	assert.Len(t, sas.actives, 1)
 	assert.Contains(t, sas.actives, "stream1")
 
-	// One announcement should remain active, the other should be ended
-	// (map iteration order is non-deterministic, so either could be kept)
+	// Both announcements should remain active since init doesn't end announcements
 	activeAnn := sas.actives["stream1"]
 	assert.NotNil(t, activeAnn)
 
-	if activeAnn == ann1 {
+	if activeAnn.announcement == ann1 {
 		assert.True(t, ann1.IsActive())
-		assert.False(t, ann2.IsActive())
-	} else if activeAnn == ann2 {
-		assert.False(t, ann1.IsActive())
+		assert.True(t, ann2.IsActive())
+	} else if activeAnn.announcement == ann2 {
+		assert.True(t, ann1.IsActive())
 		assert.True(t, ann2.IsActive())
 	} else {
 		t.Fatalf("unexpected announcement: %v", activeAnn)
@@ -440,7 +441,6 @@ func TestAnnouncementWriter_Close(t *testing.T) {
 
 	mockStream.On("Context").Return(ctx)
 	mockStream.On("Close").Return(nil)
-	mockStream.On("CancelRead", mock.Anything).Return()
 
 	sas := newAnnouncementWriter(mockStream, "/test/")
 
@@ -448,7 +448,7 @@ func TestAnnouncementWriter_Close(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Nil(t, sas.actives)
-	assert.Nil(t, sas.initCh)
+	assert.NotNil(t, sas.initCh)
 
 	mockStream.AssertExpectations(t)
 }
@@ -480,7 +480,7 @@ func TestAnnouncementWriter_CloseWithError(t *testing.T) {
 
 			assert.NoError(t, err)
 			assert.Nil(t, sas.actives)
-			assert.Nil(t, sas.initCh)
+			assert.NotNil(t, sas.initCh)
 
 			mockStream.AssertExpectations(t)
 		})
@@ -511,8 +511,8 @@ func TestAnnouncementWriter_SendAnnouncement_MultipleAnnouncements(t *testing.T)
 	assert.Len(t, sas.actives, 2)
 	assert.Contains(t, sas.actives, "stream1")
 	assert.Contains(t, sas.actives, "stream2")
-	assert.Equal(t, ann1, sas.actives["stream1"])
-	assert.Equal(t, ann2, sas.actives["stream2"])
+	assert.Equal(t, ann1, sas.actives["stream1"].announcement)
+	assert.Equal(t, ann2, sas.actives["stream2"].announcement)
 
 	mockStream.AssertExpectations(t)
 }
@@ -542,10 +542,10 @@ func TestAnnouncementWriter_SendAnnouncement_ReplaceExisting(t *testing.T) {
 	// Should have only one active announcement (the newer one)
 	assert.Len(t, sas.actives, 1)
 	assert.Contains(t, sas.actives, "stream1")
-	assert.Equal(t, ann2, sas.actives["stream1"])
+	assert.Equal(t, ann2, sas.actives["stream1"].announcement)
 
-	// First announcement should be ended
-	assert.False(t, ann1.IsActive())
+	// First announcement should remain active (AnnouncementWriter doesn't end announcements)
+	assert.True(t, ann1.IsActive())
 	assert.True(t, ann2.IsActive())
 
 	mockStream.AssertExpectations(t)
@@ -992,8 +992,7 @@ func TestAnnouncementWriter_MultipleClose(t *testing.T) {
 	ctx := context.Background()
 
 	mockStream.On("Context").Return(ctx)
-	mockStream.On("Close").Return(nil).Times(2)                  // Allow multiple close calls
-	mockStream.On("CancelRead", mock.Anything).Return().Times(2) // Allow multiple CancelRead calls
+	mockStream.On("Close").Return(nil).Times(2) // Allow multiple close calls
 
 	sas := newAnnouncementWriter(mockStream, "/test/")
 

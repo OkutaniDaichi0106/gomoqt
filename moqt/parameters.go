@@ -295,10 +295,17 @@ func (p Extension) GetBool(key ExtensionKey) (bool, error) {
 	}
 }
 
+// ErrParameterNotFound is returned when a parameter requested does not exist
+// within the Extension map.
 var ErrParameterNotFound = errors.New("parameter not found")
 
 const (
-	param_type_path               ExtensionKey = 0x01
+	// param_type_path is the ExtensionKey used to pass the requested
+	// QUAL broadcast path when creating or negotiating a session.
+	param_type_path ExtensionKey = 0x01
+	// param_type_authorization_info is an ExtensionKey used to carry
+	// authorization data (opaque bytes) sent by a client during session
+	// setup. Interpretation of this value is application-specific.
 	param_type_authorization_info ExtensionKey = 0x02
 	// param_type_delivery_timeout   ParameterType = 0x03
 	// param_type_new_session_uri ParameterType = 0x04

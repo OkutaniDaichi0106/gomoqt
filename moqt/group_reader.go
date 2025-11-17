@@ -19,6 +19,8 @@ func newGroupReader(sequence GroupSequence, stream quic.ReceiveStream,
 	}
 }
 
+// GroupReader receives group data for a subscribed track.
+// Each GroupReader corresponds to a GroupSequence and provides methods to read frames.
 type GroupReader struct {
 	sequence GroupSequence
 
@@ -28,10 +30,13 @@ type GroupReader struct {
 	onClose func()
 }
 
+// GroupSequence returns the GroupSequence this reader belongs to.
 func (s *GroupReader) GroupSequence() GroupSequence {
 	return s.sequence
 }
 
+// ReadFrame decodes the next Frame from the group stream into the provided frame buffer.
+// If io.EOF is returned, the group stream has been closed.
 func (s *GroupReader) ReadFrame(frame *Frame) error {
 	if frame == nil {
 		panic("nil frame")
@@ -59,15 +64,18 @@ func (s *GroupReader) ReadFrame(frame *Frame) error {
 	return nil
 }
 
+// CancelRead cancels the group using the provided GroupErrorCode.
 func (s *GroupReader) CancelRead(code GroupErrorCode) {
 	strErrCode := quic.StreamErrorCode(code)
 	s.stream.CancelRead(strErrCode)
 }
 
+// SetReadDeadline sets the read deadline for read operations.
 func (s *GroupReader) SetReadDeadline(t time.Time) error {
 	return s.stream.SetReadDeadline(t)
 }
 
+// Frames returns a sequence that yields decoded frames from the group stream.
 func (s *GroupReader) Frames(buf *Frame) iter.Seq[*Frame] {
 	return func(yield func(*Frame) bool) {
 		if buf == nil {

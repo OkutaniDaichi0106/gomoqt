@@ -25,6 +25,9 @@ func newTrackReader(broadcastPath BroadcastPath, trackName TrackName, subscribeS
 	return track
 }
 
+// TrackReader receives groups for a subscribed track.
+// It queues incoming group streams and allows the application to accept them via AcceptGroup.
+// TrackReader provides lifecycle and update APIs for managing subscriptions.
 type TrackReader struct {
 	BroadcastPath BroadcastPath
 	TrackName     TrackName
@@ -43,6 +46,8 @@ type TrackReader struct {
 	onCloseTrackFunc func()
 }
 
+// AcceptGroup blocks until the next group is available or context is
+// canceled. It returns a GroupReader tied to the accepted group stream.
 func (r *TrackReader) AcceptGroup(ctx context.Context) (*GroupReader, error) {
 	for {
 		r.trackMu.Lock()
@@ -82,6 +87,8 @@ func (r *TrackReader) AcceptGroup(ctx context.Context) (*GroupReader, error) {
 	}
 }
 
+// Close cancels queued groups, closes the queued channel, and terminates
+// the subscription stream gracefully.
 func (r *TrackReader) Close() error {
 	r.trackMu.Lock()
 	defer r.trackMu.Unlock()
@@ -109,6 +116,7 @@ func (r *TrackReader) Close() error {
 	return r.sendSubscribeStream.close()
 }
 
+// CloseWithError cancels the subscription with the provided SubscribeErrorCode and terminates the subscription.
 func (r *TrackReader) CloseWithError(code SubscribeErrorCode) error {
 	r.trackMu.Lock()
 	defer r.trackMu.Unlock()
@@ -136,6 +144,7 @@ func (r *TrackReader) CloseWithError(code SubscribeErrorCode) error {
 	return r.sendSubscribeStream.closeWithError(code)
 }
 
+// Update updates the subscription configuration with a new TrackConfig.
 func (r *TrackReader) Update(config *TrackConfig) error {
 	if config == nil {
 		return errors.New("subscribe config cannot be nil")
@@ -144,6 +153,7 @@ func (r *TrackReader) Update(config *TrackConfig) error {
 	return r.sendSubscribeStream.UpdateSubscribe(config)
 }
 
+// TrackConfig returns the currently active subscription configuration.
 func (r *TrackReader) TrackConfig() *TrackConfig {
 	return r.sendSubscribeStream.TrackConfig()
 }

@@ -199,6 +199,10 @@ func (ss *sessionStream) Context() context.Context {
 	return ss.ctx
 }
 
+// Accept accepts a setup request and converts it to an active Session.
+// The function expects a SetupResponseWriter as provided by the server when
+// responding to a client SETUP request. It uses the provided TrackMux to
+// route tracks for the accepted session.
 func Accept(w SetupResponseWriter, r *SetupRequest, mux *TrackMux) (*Session, error) {
 	if rsp, ok := w.(*responseWriter); ok {
 		return rsp.accept(mux)

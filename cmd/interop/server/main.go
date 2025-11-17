@@ -3,22 +3,28 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"log/slog"
+	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sync"
-	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt"
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
 )
 
 func main() {
-	slog.Info("[Server] Starting server on moqt.example.com:9000")
+	if err := mkcert(); err != nil {
+		fmt.Fprintf(os.Stderr, "[Server] Setting up certificates...failed\n  Error: %v\n", err)
+		return
+	}
+
+	// Print startup message directly
+	fmt.Println("[Server] ✓ Started on 127.0.0.1:9000")
 
 	server := moqt.Server{
-		Addr: "moqt.example.com:9000", // TODO: Use given address
+		Addr: "127.0.0.1:9000", // Use localhost
 		TLSConfig: &tls.Config{
 			NextProtos:         []string{"h3", "moq-00"},
 			Certificates:       []tls.Certificate{generateCert()},
@@ -39,136 +45,132 @@ func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		err := server.HandleWebTransport(w, r)
 		if err != nil {
-			slog.Error("[Server] failed to serve moq over webtransport: " + err.Error())
+			fmt.Fprintf(os.Stderr, "[Server] failed to serve moq over webtransport: %v\n", err)
 			return
 		}
 	})
 
 	moqt.HandleFunc("/", func(w moqt.SetupResponseWriter, r *moqt.SetupRequest) {
-		slog.Info("[Server] Accepting session")
+		fmt.Println("[Server] Setting up session")
 
 		// Create a custom mux for this session
 		mux := moqt.NewTrackMux()
 
-		// Register the handler BEFORE accepting session
-		slog.Info("[Server] Registering /interop/server handler")
-		mux.PublishFunc(context.Background(), "/interop/server", func(tw *moqt.TrackWriter) {
-			slog.Info("[Server] Client subscribed, sending data...")
+		// Accept the session with the custom mux
+		fmt.Print("[Server] Accepting session...")
+		sess, err := moqt.Accept(w, r, mux)
+		if err != nil {
+			fmt.Printf("...failed\n  Error: %v\n", err)
+			w.Reject(moqt.ProtocolViolationErrorCode)
+			return
+		}
+		fmt.Println("...ok")
 
+		var publishedWG sync.WaitGroup
+		publishedWG.Add(1)
+		mux.PublishFunc(context.Background(), "/interop/server", func(tw *moqt.TrackWriter) {
+			defer publishedWG.Done()
+
+			fmt.Println("[Server] Serving broadcast...")
+
+			fmt.Print("[Server] Opening group...")
 			group, err := tw.OpenGroup(moqt.GroupSequenceFirst)
 			if err != nil {
-				slog.Error("[Server] failed to open group: " + err.Error())
+				fmt.Printf("...failed\n  Error: %v\n", err)
 				return
 			}
 			defer group.Close()
+			fmt.Println("...ok")
 
+			fmt.Print("[Server] Writing frame to client...")
 			frame := moqt.NewFrame(1024)
 			frame.Write([]byte("HELLO"))
 
 			err = group.WriteFrame(frame)
 			if err != nil {
-				slog.Error("[Server] failed to write frame: " + err.Error())
+				fmt.Printf("...failed\n  Error: %v\n", err)
 				return
 			}
+			fmt.Println("...ok")
 
-			slog.Info("[Server] Data sent to client")
+			fmt.Println("[Server] ✓ Data sent to client")
 		})
 
-		// Accept the session with the custom mux
-		sess, err := moqt.Accept(w, r, mux)
+		// Wait for the broadcast to be published
+		publishedWG.Wait()
+
+		// Discover broadcasts from client
+		fmt.Print("[Server] Accepting client announcements...")
+		anns, err := sess.AcceptAnnounce("/")
 		if err != nil {
-			w.Reject(moqt.ProtocolViolationErrorCode)
-			slog.Error("[Server] failed to accept session: " + err.Error())
+			fmt.Printf("...failed\n  Error: %v\n", err)
 			return
 		}
+		defer anns.Close()
+		fmt.Println("...ok")
 
-		// Don't use defer for Terminate since we want to shutdown the server first
-		var wg sync.WaitGroup
+		fmt.Print("[Server] Receiving announcement...")
+		ann, err := anns.ReceiveAnnouncement(context.Background())
+		if err != nil {
+			fmt.Printf("...failed\n  Error: %v\n", err)
+			return
+		}
+		fmt.Println("...ok")
 
-		// Discover announcements from client
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		fmt.Printf("[Server] Discovered broadcast: %s\n", string(ann.BroadcastPath()))
 
-			slog.Info("[Server] Starting to accept client announcements...")
-			anns, err := sess.AcceptAnnounce("/")
-			if err != nil {
-				slog.Error("[Server] failed to accept announce: " + err.Error())
-				return
-			}
-			defer anns.Close()
+		fmt.Print("[Server] Subscribing to broadcast...")
+		track, err := sess.Subscribe(ann.BroadcastPath(), "", nil)
+		if err != nil {
+			fmt.Printf("...failed\n  Error: %v\n", err)
+			return
+		}
+		defer track.Close()
+		fmt.Println("...ok")
 
-			slog.Info("[Server] Waiting for announcement from client...")
-			ann, err := anns.ReceiveAnnouncement(context.Background())
-			if err != nil {
-				slog.Error("[Server] failed to receive announcement: " + err.Error())
-				return
-			}
+		fmt.Print("[Server] Accepting group...")
+		group, err := track.AcceptGroup(context.Background())
+		if err != nil {
+			fmt.Printf("...failed\n  Error: %v\n", err)
+			return
+		}
+		fmt.Println("...ok")
 
-			slog.Info("[Server] Discovered broadcast: " + string(ann.BroadcastPath()))
+		fmt.Print("[Server] Reading frame from client...")
+		frame := moqt.NewFrame(1024)
 
-			track, err := sess.Subscribe(ann.BroadcastPath(), "", nil)
-			if err != nil {
-				slog.Error("[Server] failed to subscribe: " + err.Error())
-				return
-			}
-			defer track.Close()
+		err = group.ReadFrame(frame)
+		if err != nil {
+			fmt.Printf("...failed\n  Error: %v\n", err)
+			return
+		}
+		fmt.Println("...ok")
 
-			slog.Info("[Server] Subscribed to a track")
+		fmt.Printf("[Server] ✓ Received data from client: %s\n", string(frame.Body()))
 
-			group, err := track.AcceptGroup(context.Background())
-			if err != nil {
-				slog.Error("[Server] failed to accept group: " + err.Error())
-				return
-			}
-			defer group.CancelRead(moqt.InternalGroupErrorCode)
-
-			slog.Info("[Server] Received a group")
-
-			frame := moqt.NewFrame(1024)
-
-			err = group.ReadFrame(frame)
-			if err != nil {
-				slog.Error("[Server] failed to read frame: " + err.Error())
-				return
-			}
-
-			slog.Info("[Server] Received frame: " + string(frame.Body()))
-		}()
-
-		// Wait for all operations to complete
-		slog.Info("[Server] Waiting for operations to complete...")
-		wg.Wait()
-
-		slog.Info("[Server] Operations completed")
-
-		// Terminate session before shutting down server
+		fmt.Print("[Server] Closing session...")
 		sess.CloseWithError(moqt.NoError, "no error")
+		fmt.Println("...ok")
 
-		// Trigger server shutdown after handling one session
-		// Give time for session cleanup and final data transmission
-		time.AfterFunc(100*time.Millisecond, func() {
-			if shutdownErr := server.Shutdown(context.Background()); shutdownErr != nil {
-				slog.Error("[Server] Shutdown error: " + shutdownErr.Error())
-				os.Exit(1)
-			}
-			os.Exit(0)
-		})
+		fmt.Println("[Server] Operation completed successfully")
 	})
 
+	fmt.Println("[Server] Listening...")
 	err := server.ListenAndServe()
 	// Ignore expected shutdown errors
 	if err != nil && err != moqt.ErrServerClosed && err.Error() != "quic: server closed" {
-		slog.Error("[Server] failed to listen and serve: " + err.Error())
+		fmt.Fprintf(os.Stderr, "[Server] failed to listen and serve: %v\n", err)
 		os.Exit(1)
 	}
+
+	fmt.Println("[Server] Exited normally")
 }
 
 func generateCert() tls.Certificate {
 	// Find project root by looking for go.mod file
 	root, err := findRootDir()
 	if err != nil {
-		slog.Error("[Server] failed to find project root: " + err.Error())
+		fmt.Fprintf(os.Stderr, "[Server] failed to find project root: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -178,7 +180,7 @@ func generateCert() tls.Certificate {
 
 	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
 	if err != nil {
-		slog.Error("[Server] failed to load certificates: " + err.Error())
+		fmt.Fprintf(os.Stderr, "[Server] failed to load certificates: %v\n", err)
 		os.Exit(1)
 	}
 	return cert
@@ -205,4 +207,32 @@ func findRootDir() (string, error) {
 	}
 
 	return "", os.ErrNotExist
+}
+
+func mkcert() error {
+	// Resolve paths from project root so the program works regardless of CWD
+	root, err := findRootDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[Server] failed to find project root for mkcert: %v\n", err)
+		return err
+	}
+
+	serverCertPath := filepath.Join(root, "cmd", "interop", "server", "moqt.example.com.pem")
+
+	// Check if server certificates exist
+	if _, err := os.Stat(serverCertPath); os.IsNotExist(err) {
+		fmt.Print("[Server] Setting up certificates...")
+		cmd := exec.Command("mkcert", "moqt.example.com")
+		// Ensure mkcert runs in the server directory where cert files should be generated
+		cmd.Dir = filepath.Join(root, "cmd", "interop", "server")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		err := cmd.Run()
+		if err != nil {
+			fmt.Printf("...failed\n  Error: %v\n", err)
+			return err
+		}
+		fmt.Println("...ok")
+	}
+	return nil
 }

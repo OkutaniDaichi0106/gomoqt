@@ -1,5 +1,5 @@
 import type { ReceiveStream, SendStream } from "../webtransport/mod.ts";
-import { stringLen } from "../webtransport/mod.ts";
+import { stringLen, varintLen } from "../webtransport/mod.ts";
 
 export interface AnnounceMessageInit {
 	suffix?: string;
@@ -16,12 +16,15 @@ export class AnnounceMessage {
 	}
 
 	get messageLength(): number {
-		return stringLen(this.suffix) + 1; // +1 for the boolean
+		// AnnounceStatus is sent as a varint (not boolean)
+		// varint for status + string length
+		return varintLen(this.active ? 1 : 0) + stringLen(this.suffix);
 	}
 
 	async encode(writer: SendStream): Promise<Error | undefined> {
 		writer.writeVarint(this.messageLength);
-		writer.writeBoolean(this.active);
+		// Write AnnounceStatus as varint: 0x0 (ENDED) or 0x1 (ACTIVE)
+		writer.writeVarint(this.active ? 1 : 0);
 		writer.writeString(this.suffix);
 		return await writer.flush();
 	}
@@ -31,10 +34,14 @@ export class AnnounceMessage {
 		if (err) {
 			return err;
 		}
-		[this.active, err] = await reader.readBoolean();
+		// Read AnnounceStatus as varint
+		let status: number;
+		[status, err] = await reader.readVarint();
 		if (err) {
 			return err;
 		}
+		this.active = status === 1;
+		
 		[this.suffix, err] = await reader.readString();
 		if (err) {
 			return err;

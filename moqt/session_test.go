@@ -132,7 +132,14 @@ func TestNewSession_SessionStreamClosure(t *testing.T) {
 	conn := &MockQUICConnection{}
 	connCtx := context.Background()
 	conn.On("Context").Return(connCtx)
-	conn.On("CloseWithError", quic.ApplicationErrorCode(ProtocolViolationErrorCode), "session stream closed unexpectedly").Return(nil).Once()
+	// Signal when CloseWithError is called so tests can wait deterministically
+	closeCh := make(chan struct{}, 1)
+	conn.On("CloseWithError", quic.ApplicationErrorCode(ProtocolViolationErrorCode), "session stream closed unexpectedly").Return(nil).Once().Run(func(mock.Arguments) {
+		select {
+		case closeCh <- struct{}{}:
+		default:
+		}
+	})
 	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
 	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
 	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080}).Maybe()
@@ -147,7 +154,12 @@ func TestNewSession_SessionStreamClosure(t *testing.T) {
 
 	cancel()
 
-	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-closeCh:
+		// ok
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("CloseWithError was not called after cancel")
+	}
 
 	conn.AssertExpectations(t)
 }
@@ -215,7 +227,13 @@ func TestSession_Subscribe(t *testing.T) {
 			mockStream := &MockQUICStream{}
 			// Set up expectations needed for sessionStream
 			mockStream.On("Read", mock.Anything).Return(0, io.EOF)
-			mockStream.On("Write", mock.Anything).Return(0, nil)
+			writeCh := make(chan struct{}, 1)
+			mockStream.On("Write", mock.Anything).Return(0, nil).Run(func(mock.Arguments) {
+				select {
+				case writeCh <- struct{}{}:
+				default:
+				}
+			})
 			mockStream.On("Close").Return(nil)
 			mockStream.On("Context").Return(context.Background()) // Create a separate mock for the track stream that responds to the SUBSCRIBE protocol
 			mockTrackStream := &MockQUICStream{}
@@ -421,7 +439,13 @@ func TestSession_Subscribe_EncodeStreamTypeStreamError(t *testing.T) {
 func TestSession_Subscribe_NilConfig(t *testing.T) {
 	mockStream := &MockQUICStream{}
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
-	mockStream.On("Write", mock.Anything).Return(0, nil)
+	writeCh := make(chan struct{}, 1)
+	mockStream.On("Write", mock.Anything).Return(0, nil).Run(func(mock.Arguments) {
+		select {
+		case writeCh <- struct{}{}:
+		default:
+		}
+	})
 	mockStream.On("Context").Return(context.Background())
 
 	mockTrackStream := &MockQUICStream{}
@@ -704,8 +728,20 @@ func TestSession_HandleBiStreams_AcceptError(t *testing.T) {
 	conn := &MockQUICConnection{}
 	conn.On("Context").Return(context.Background())
 	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
-	conn.On("AcceptStream", mock.Anything).Return(nil, errors.New("accept stream failed"))
-	conn.On("AcceptUniStream", mock.Anything).Return(nil, errors.New("accept stream failed"))
+	// Signal that AcceptStream/AcceptUniStream were attempted
+	acceptStreamCh := make(chan struct{}, 1)
+	conn.On("AcceptStream", mock.Anything).Return(nil, errors.New("accept stream failed")).Run(func(mock.Arguments) {
+		select {
+		case acceptStreamCh <- struct{}{}:
+		default:
+		}
+	})
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, errors.New("accept stream failed")).Run(func(mock.Arguments) {
+		select {
+		case acceptStreamCh <- struct{}{}:
+		default:
+		}
+	})
 	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
 	sessStream := newSessionStream(mockStream, &SetupRequest{
@@ -714,8 +750,13 @@ func TestSession_HandleBiStreams_AcceptError(t *testing.T) {
 	})
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
-	// Wait a bit for the background goroutine to try accepting
-	time.Sleep(50 * time.Millisecond)
+	// Wait for the background goroutine to attempt AcceptStream/AcceptUniStream
+	select {
+	case <-acceptStreamCh:
+		// ok
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("AcceptStream/AcceptUniStream not called by background goroutine")
+	}
 
 	// The session should handle the error gracefully
 	assert.NotNil(t, session)
@@ -1164,13 +1205,23 @@ func TestSession_ProcessBiStream_Announce(t *testing.T) {
 	assert.NoError(t, err)
 
 	data := buf.Bytes()
-	mockStream.ReadFunc = func(p []byte) (int, error) {
+	// Wrap the ReadFunc to signal when the message is read to detect processing start
+	var readCh = make(chan struct{}, 1)
+	orig := func(p []byte) (int, error) {
 		if len(data) == 0 {
 			return 0, io.EOF
 		}
 		n := copy(p, data)
 		data = data[n:]
 		return n, nil
+	}
+	mockStream.ReadFunc = func(p []byte) (int, error) {
+		n, err := orig(p)
+		select {
+		case readCh <- struct{}{}:
+		default:
+		}
+		return n, err
 	}
 
 	streamLogger := slog.Default().With("stream_id", mockStream.StreamID())
@@ -1233,7 +1284,8 @@ func TestSession_ProcessBiStream_Subscribe(t *testing.T) {
 	assert.NoError(t, err)
 
 	data := buf.Bytes()
-	mockStream.ReadFunc = func(p []byte) (int, error) {
+	readCh := make(chan struct{}, 1)
+	origRead := func(p []byte) (int, error) {
 		if len(data) == 0 {
 			return 0, io.EOF
 		}
@@ -1241,7 +1293,21 @@ func TestSession_ProcessBiStream_Subscribe(t *testing.T) {
 		data = data[n:]
 		return n, nil
 	}
-	mockStream.On("Write", mock.Anything).Return(0, nil)
+	mockStream.ReadFunc = func(p []byte) (int, error) {
+		n, err := origRead(p)
+		select {
+		case readCh <- struct{}{}:
+		default:
+		}
+		return n, err
+	}
+	writeCh := make(chan struct{}, 1)
+	mockStream.On("Write", mock.Anything).Return(0, nil).Run(func(mock.Arguments) {
+		select {
+		case writeCh <- struct{}{}:
+		default:
+		}
+	})
 
 	streamLogger := slog.Default().With("stream_id", mockStream.StreamID())
 
@@ -1252,8 +1318,13 @@ func TestSession_ProcessBiStream_Subscribe(t *testing.T) {
 		close(done)
 	}()
 
-	// Wait a bit for the processing to start and track writer to be added
-	time.Sleep(100 * time.Millisecond)
+	// Wait for the processing to start by detecting a Read
+	select {
+	case <-readCh:
+		// ok
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("processBiStream did not read subscribe message")
+	}
 
 	// Terminate to stop blocking
 	session.CloseWithError(NoError, "")

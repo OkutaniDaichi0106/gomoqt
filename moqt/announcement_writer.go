@@ -26,7 +26,7 @@ func newAnnouncementWriter(stream quic.Stream, prefix prefix) *AnnouncementWrite
 	return sas
 }
 
-// AnnouncementWriter manages the sending of announcements over a QUIC stream.
+// AnnouncementWriter manages the sending of announcements for a specified prefix.
 // It handles initialization, sending active announcements, and cleanup.
 type AnnouncementWriter struct {
 	prefix prefix
@@ -178,8 +178,7 @@ func (aw *AnnouncementWriter) SendAnnouncement(announcement *Announcement) error
 	return nil
 }
 
-// Close gracefully closes the AnnouncementWriter, ending all active announcements
-// and closing the underlying stream.
+// Close gracefully closes the AnnouncementWriter and ends all active announcements.
 func (aw *AnnouncementWriter) Close() error {
 	aw.mu.Lock()
 	defer aw.mu.Unlock()
@@ -193,8 +192,7 @@ func (aw *AnnouncementWriter) Close() error {
 	return aw.stream.Close()
 }
 
-// CloseWithError closes the AnnouncementWriter with an error, ending all active announcements
-// and canceling the stream with the specified error code.
+// CloseWithError ends all active announcements and signals an error condition via the given code.
 func (aw *AnnouncementWriter) CloseWithError(code AnnounceErrorCode) error {
 	aw.mu.Lock()
 	defer aw.mu.Unlock()
@@ -212,7 +210,7 @@ func (aw *AnnouncementWriter) CloseWithError(code AnnounceErrorCode) error {
 	return nil
 }
 
-// Context returns the context associated with the AnnouncementWriter.
+// Context returns the AnnouncementWriter's context.
 func (aw *AnnouncementWriter) Context() context.Context {
 	return aw.ctx
 }

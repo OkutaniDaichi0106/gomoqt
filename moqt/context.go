@@ -8,6 +8,11 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
 )
 
+// Cause translates a Go context cancellation reason into a package-specific error type.
+// When the provided context was canceled because of a QUIC stream error or application error,
+// Cause converts that into the corresponding moqt error (e.g., SessionError, AnnounceError,
+// SubscribeError, GroupError).
+// If no specific translation is available, the original context cause is returned unchanged.
 func Cause(ctx context.Context) error {
 	reason := context.Cause(ctx)
 

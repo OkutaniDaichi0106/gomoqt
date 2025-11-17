@@ -26,6 +26,9 @@ func newTrackWriter(path BroadcastPath, name TrackName,
 	return track
 }
 
+// TrackWriter writes groups for a published track.
+// It manages the lifecycle of active groups for that track.
+// The TrackWriter provides methods to open group writers and to inspect the track configuration.
 type TrackWriter struct {
 	BroadcastPath BroadcastPath
 	TrackName     TrackName
@@ -40,6 +43,7 @@ type TrackWriter struct {
 	onCloseTrackFunc func()
 }
 
+// Close stops publishing and cancels active groups.
 func (s *TrackWriter) Close() error {
 	s.groupMapMu.Lock()
 
@@ -66,6 +70,7 @@ func (s *TrackWriter) Close() error {
 	return err
 }
 
+// CloseWithError stops publishing due to an error and cancels active groups.
 func (s *TrackWriter) CloseWithError(code SubscribeErrorCode) {
 	s.groupMapMu.Lock()
 
@@ -88,6 +93,8 @@ func (s *TrackWriter) CloseWithError(code SubscribeErrorCode) {
 	}
 }
 
+// OpenGroup opens a new group for the provided group sequence and returns a GroupWriter to write frames into it.
+// If seq is zero an error is returned.
 func (s *TrackWriter) OpenGroup(seq GroupSequence) (*GroupWriter, error) {
 	if seq == 0 {
 		return nil, errors.New("group sequence must not be zero")
@@ -155,6 +162,7 @@ func (s *TrackWriter) OpenGroup(seq GroupSequence) (*GroupWriter, error) {
 	return group, nil
 }
 
+// TrackConfig returns the TrackConfig supplied by the subscriber, if any.
 func (s *TrackWriter) TrackConfig() *TrackConfig {
 	if s.receiveSubscribeStream == nil {
 		return nil
@@ -162,6 +170,7 @@ func (s *TrackWriter) TrackConfig() *TrackConfig {
 	return s.receiveSubscribeStream.TrackConfig()
 }
 
+// Context returns the context associated with the TrackWriter.
 func (s *TrackWriter) Context() context.Context {
 	return s.ctx
 }

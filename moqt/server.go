@@ -16,9 +16,10 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/quic/quicgo"
 	"github.com/OkutaniDaichi0106/gomoqt/webtransport"
 	"github.com/OkutaniDaichi0106/gomoqt/webtransport/webtransportgo"
-	"github.com/quic-go/quic-go/http3"
 )
 
+// ListenAndServe starts a new Server bound to the specified address and TLS configuration and runs it until an error occurs.
+// This is a convenience helper that constructs a Server with the default setup handler and calls its ListenAndServe method.
 func ListenAndServe(addr string, tlsConfig *tls.Config) error {
 	server := &Server{
 		Addr:         addr,
@@ -29,11 +30,10 @@ func ListenAndServe(addr string, tlsConfig *tls.Config) error {
 }
 
 // Server is a MOQ server that accepts both WebTransport and raw QUIC connections.
-// It handles session setup, track announcements, and subscriptions according to
-// the MOQ Lite specification.
+// It handles session setup, track announcements, and subscriptions according to the MOQ Lite specification.
 //
-// The server maintains active sessions and listeners, providing graceful shutdown
-// capabilities. It can serve over multiple listeners simultaneously.
+// The server maintains active sessions and listeners. It provides graceful shutdown capabilities and
+// can serve over multiple listeners simultaneously.
 type Server struct {
 	/*
 	 * Server's Address
@@ -119,6 +119,8 @@ func (s *Server) init() {
 	})
 }
 
+// ServeQUICListener accepts connections on the provided QUIC listener and handles them using the Server's configuration.
+// This runs until the listener is closed or the server shuts down.
 func (s *Server) ServeQUICListener(ln quic.Listener) error {
 	if s.shuttingDown() {
 		return ErrServerClosed
@@ -180,6 +182,8 @@ func (s *Server) ServeQUICListener(ln quic.Listener) error {
 	}
 }
 
+// ServeQUICConn serves a single QUIC connection.
+// It detects whether the connection uses WebTransport or the native MOQ ALPN and dispatches to the appropriate handling logic for the session.
 func (s *Server) ServeQUICConn(conn quic.Connection) error {
 	if s.shuttingDown() {
 		return ErrServerClosed
@@ -188,7 +192,7 @@ func (s *Server) ServeQUICConn(conn quic.Connection) error {
 	s.init()
 
 	switch protocol := conn.ConnectionState().TLS.NegotiatedProtocol; protocol {
-	case http3.NextProtoH3:
+	case NextProtoH3:
 		return s.wtServer.ServeQUICConn(conn)
 	case NextProtoMOQ:
 		return s.handleNativeQUIC(conn)
@@ -197,6 +201,9 @@ func (s *Server) ServeQUICConn(conn quic.Connection) error {
 	}
 }
 
+// HandleWebTransport upgrades an incoming HTTP request to a WebTransport
+// connection and handles session handshake and setup using the Server's
+// SetupHandler.
 func (s *Server) HandleWebTransport(w http.ResponseWriter, r *http.Request) error {
 	if s.shuttingDown() {
 		return fmt.Errorf("server is shutting down")
@@ -374,6 +381,8 @@ func acceptSessionStream(acceptCtx context.Context, conn quic.Connection, connLo
 	return newSessionStream(stream, req), nil
 }
 
+// ListenAndServe starts the server by listening on the server's Address and serving QUIC connections.
+// TLS configuration must be provided on the Server for ListenAndServe to function properly.
 func (s *Server) ListenAndServe() error {
 	s.init()
 
@@ -407,6 +416,9 @@ func (s *Server) ListenAndServe() error {
 	return s.ServeQUICListener(ln)
 }
 
+// ListenAndServeTLS starts the listener over QUIC/TLS using the provided
+// certificate files. It wraps ListenAndServe by creating a TLS config from
+// the provided cert/key files.
 func (s *Server) ListenAndServeTLS(certFile, keyFile string) error {
 	if s.shuttingDown() {
 		return ErrServerClosed
@@ -446,6 +458,8 @@ func (s *Server) ListenAndServeTLS(certFile, keyFile string) error {
 	return s.ServeQUICListener(ln)
 }
 
+// Close gracefully shuts down the server by closing all listeners and
+// sessions, waiting until all sessions have been terminated.
 func (s *Server) Close() error {
 	if s.shuttingDown() {
 		return ErrServerClosed
@@ -506,6 +520,9 @@ func (s *Server) Close() error {
 	return nil
 }
 
+// Shutdown gracefully shuts down the server. It stops accepting new
+// connections, sends goaway to sessions and waits for active sessions to
+// close, respecting the provided context for timeouts.
 func (s *Server) Shutdown(ctx context.Context) error {
 	if s.shuttingDown() {
 		return ErrServerClosed

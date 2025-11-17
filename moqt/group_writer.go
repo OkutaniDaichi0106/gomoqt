@@ -19,6 +19,8 @@ func newGroupWriter(stream quic.SendStream, sequence GroupSequence,
 	}
 }
 
+// GroupWriter writes frames for a single group.
+// It manages the lifecycle of the group.
 type GroupWriter struct {
 	sequence GroupSequence
 
@@ -30,10 +32,12 @@ type GroupWriter struct {
 	onClose func()
 }
 
+// GroupSequence returns the group sequence identifier associated with this writer.
 func (sgs *GroupWriter) GroupSequence() GroupSequence {
 	return sgs.sequence
 }
 
+// WriteFrame writes a Frame to the group stream.
 func (sgs *GroupWriter) WriteFrame(frame *Frame) error {
 	if frame == nil {
 		return nil
@@ -49,16 +53,19 @@ func (sgs *GroupWriter) WriteFrame(frame *Frame) error {
 	return nil
 }
 
+// SetWriteDeadline sets the write deadline for write operations.
 func (sgs *GroupWriter) SetWriteDeadline(t time.Time) error {
 	return sgs.stream.SetWriteDeadline(t)
 }
 
+// CancelWrite cancels the group with the specified GroupErrorCode and triggers callbacks.
 func (sgs *GroupWriter) CancelWrite(code GroupErrorCode) {
 	sgs.stream.CancelWrite(quic.StreamErrorCode(code))
 
 	sgs.onClose()
 }
 
+// Close closes the group stream gracefully.
 func (sgs *GroupWriter) Close() error {
 	err := sgs.stream.Close()
 	if err != nil {
@@ -70,6 +77,7 @@ func (sgs *GroupWriter) Close() error {
 	return nil
 }
 
+// Context returns the context associated with this writer.
 func (s *GroupWriter) Context() context.Context {
 	return s.ctx
 }

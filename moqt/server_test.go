@@ -121,7 +121,13 @@ func TestServer_ServeQUICListener(t *testing.T) {
 			mockConn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
 			mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
 
-			mockListener.On("Accept", mock.Anything).Return(mockConn, nil).Once()
+			acceptCh := make(chan struct{}, 1)
+			mockListener.On("Accept", mock.Anything).Return(mockConn, nil).Once().Run(func(mock.Arguments) {
+				select {
+				case acceptCh <- struct{}{}:
+				default:
+				}
+			})
 			// After a single accept, return EOF to simulate listener closure
 			mockListener.On("Accept", mock.Anything).Return(nil, context.Canceled).Maybe()
 			mockListener.On("Close").Return(nil)
@@ -138,8 +144,13 @@ func TestServer_ServeQUICListener(t *testing.T) {
 				}
 			}()
 
-			// Give time for the server to start
-			time.Sleep(tt.waitTime)
+			// Wait for the server to call Accept (no arbitrary sleep)
+			select {
+			case <-acceptCh:
+				// ok
+			case <-time.After(200 * time.Millisecond):
+				t.Fatal("ServeQUICListener did not call Accept in time")
+			}
 
 			// Close the server
 			server.Close()
@@ -437,9 +448,6 @@ func TestServer_DoneChannel(t *testing.T) {
 
 			// Close server
 			server.Close()
-
-			// Give time for cleanup
-			time.Sleep(tt.closeTime)
 
 			// Should be done after close
 			select {

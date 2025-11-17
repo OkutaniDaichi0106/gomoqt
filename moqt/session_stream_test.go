@@ -34,8 +34,7 @@ func TestNewSessionStream(t *testing.T) {
 	assert.NotNil(t, ss.SessionUpdated(), "SessionUpdated channel should be initialized")
 	assert.Equal(t, req.Path, ss.Path, "path should be set correctly")
 
-	// Give time for background goroutines to complete
-	time.Sleep(50 * time.Millisecond)
+	// No need to wait here; just assert expectations
 
 	mockStream.AssertExpectations(t)
 }
@@ -102,8 +101,6 @@ func TestSessionStream_SessionUpdated(t *testing.T) {
 
 	// Trigger setupDone to start listening for updates
 	ss.handleUpdates()
-	// Short sleep to let background goroutine start
-	time.Sleep(10 * time.Millisecond)
 
 	ch := ss.SessionUpdated()
 	assert.NotNil(t, ch, "SessionUpdated should return a valid channel")
@@ -224,11 +221,27 @@ func TestSessionStream_listenUpdates(t *testing.T) {
 
 			ss := newSessionStream(mockStream, req)
 
-			// Start listening for updates
+			// Start listening for updates and wrap ReadFunc to signal reads
 			ss.handleUpdates()
-
-			// Give sufficient time for listenUpdates to process message
-			time.Sleep(100 * time.Millisecond)
+			readCh := make(chan struct{}, 1)
+			if mockStream.ReadFunc != nil {
+				origRead := mockStream.ReadFunc
+				mockStream.ReadFunc = func(p []byte) (int, error) {
+					n, err := origRead(p)
+					select {
+					case readCh <- struct{}{}:
+					default:
+					}
+					return n, err
+				}
+			}
+			// Wait for a read to be performed by the background goroutine (timeout on no read)
+			select {
+			case <-readCh:
+				// ok
+			case <-time.After(200 * time.Millisecond):
+				t.Fatal("listenUpdates did not perform read")
+			}
 
 			if tt.expectUpdate {
 				select {
@@ -266,9 +279,6 @@ func TestSessionStream_listenUpdates_StreamClosed(t *testing.T) {
 	// Trigger setupDone to start listening for updates
 	ss.handleUpdates()
 
-	// Give time for listenUpdates to encounter EOF and close
-	time.Sleep(100 * time.Millisecond)
-
 	// Verify the session stream handles EOF properly
 	select {
 	case <-ss.SessionUpdated():
@@ -294,14 +304,10 @@ func TestSessionStream_listenUpdates_ContextCancellation(t *testing.T) {
 
 	ss := newSessionStream(mockStream, req)
 
-	// Let listenUpdates start
-	time.Sleep(10 * time.Millisecond)
-
-	// Cancel the context
+	// Cancel the context immediately after starting handler
 	cancel()
 
-	// Give time for listenUpdates to detect cancellation
-	time.Sleep(50 * time.Millisecond)
+	// Give time for listenUpdates to detect cancellation (select below ensures detection)
 
 	// Verify the stream handles cancellation properly
 	select {
@@ -959,8 +965,7 @@ func TestSessionStream_listenUpdates_InitialChannelState(t *testing.T) {
 	ch := ss.SessionUpdated()
 	assert.NotNil(t, ch, "SessionUpdated channel should be initialized")
 
-	// Give time for listenUpdates to start and finish
-	time.Sleep(50 * time.Millisecond)
+	// No need to busy-wait; channel existence was already asserted
 
 	mockStream.AssertExpectations(t)
 }

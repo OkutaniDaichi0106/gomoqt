@@ -41,13 +41,14 @@ func newSession(conn quic.Connection, sessStream *sessionStream, mux *TrackMux, 
 	// Supervise the session stream closure
 	sessStreamCtx := sessStream.Context()
 	context.AfterFunc(sessStreamCtx, func() {
+		reason := sessStreamCtx.Err()
 		var appErr *quic.ApplicationError
-		if errors.As(sessStreamCtx.Err(), &appErr) {
+		if errors.As(reason, &appErr) {
 			return // Normal closure
 		}
 
 		sessLogger.Warn("session stream context closed unexpectedly",
-			"reason", Cause(sessStreamCtx),
+			"reason", reason,
 		)
 
 		sess.CloseWithError(ProtocolViolationErrorCode, "session stream closed unexpectedly")
@@ -66,6 +67,8 @@ func newSession(conn quic.Connection, sessStream *sessionStream, mux *TrackMux, 
 	return sess
 }
 
+// Session represents an active MOQ session over a QUIC connection.
+// It manages bidirectional and unidirectional streams, subscriptions, and announcements for a single peer connection.
 type Session struct {
 	*sessionStream
 
@@ -97,10 +100,13 @@ func (s *Session) terminating() bool {
 	return s.isTerminating.Load()
 }
 
+// Context returns the session's context which is canceled when the session
+// terminates. Use it to observe session lifecycle and cancellation.
 func (s *Session) Context() context.Context {
 	return s.ctx
 }
 
+// CloseWithError closes the connection with an error code and message.
 func (s *Session) CloseWithError(code SessionErrorCode, msg string) error {
 	if s.terminating() {
 		s.logger.Debug("termination already in progress")
@@ -268,6 +274,10 @@ func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackCon
 	return trackReceiver, nil
 }
 
+// Subscribe starts a subscription for the specified broadcast path and track name within the session.
+// It returns a TrackReader that can be used to accept groups and read track data.
+// The returned TrackReader and the subscription exist for the lifetime of this session unless closed.
+
 func (s *Session) nextSubscribeID() SubscribeID {
 	// Increment and return the previous value atomically
 	return SubscribeID(s.subscribeIDCounter.Add(1))
@@ -364,6 +374,10 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 
 	return newAnnouncementReader(stream, prefix, aim.Suffixes), nil
 }
+
+// AcceptAnnounce requests announcements from the remote peer that match the
+// specified prefix. It opens an announce stream and returns an
+// AnnouncementReader that yields Announcement objects for active tracks.
 
 func (sess *Session) goAway(uri string) error {
 	if sess.sessionStream == nil {

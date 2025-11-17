@@ -99,6 +99,7 @@
     "dependencies": [
       "jsr:@okudai/golikejs@~0.5.2",
       "jsr:@std/assert@1",
+      "jsr:@std/path@^1.1.2",
       "jsr:@std/testing@1"
     ]
   }

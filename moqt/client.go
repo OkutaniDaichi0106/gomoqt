@@ -159,9 +159,9 @@ func (c *Client) DialWebTransport(ctx context.Context, host, path string, mux *T
 	var err error
 
 	if c.DialWebTransportFunc != nil {
-		_, conn, err = c.DialWebTransportFunc(dialCtx, host+path, http.Header{})
+		_, conn, err = c.DialWebTransportFunc(dialCtx, host+path, http.Header{}, c.TLSConfig)
 	} else {
-		_, conn, err = webtransportgo.Dial(dialCtx, "https://"+host+path, http.Header{})
+		_, conn, err = webtransportgo.Dial(dialCtx, "https://"+host+path, http.Header{}, c.TLSConfig)
 	}
 
 	if err != nil {

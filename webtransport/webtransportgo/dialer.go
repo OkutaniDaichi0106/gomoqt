@@ -2,6 +2,7 @@ package webtransportgo
 
 import (
 	"context"
+	"crypto/tls"
 	"net/http"
 
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
@@ -11,8 +12,10 @@ import (
 
 var _ webtransport.DialAddrFunc = Dial
 
-func Dial(ctx context.Context, addr string, header http.Header) (*http.Response, quic.Connection, error) {
-	var d quicgo_webtransportgo.Dialer
+func Dial(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, quic.Connection, error) {
+	d := quicgo_webtransportgo.Dialer{
+		TLSClientConfig: tlsConfig,
+	}
 	rsp, wtsess, err := d.Dial(ctx, addr, header)
 
 	return rsp, wrapSession(wtsess), err

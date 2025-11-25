@@ -192,7 +192,7 @@ func TestClient_DialWebTransport(t *testing.T) {
 			}
 			uri, _ := url.Parse(tt.uri)
 			old := c.DialWebTransportFunc
-			c.DialWebTransportFunc = func(ctx context.Context, url string, h http.Header) (*http.Response, quic.Connection, error) {
+			c.DialWebTransportFunc = func(ctx context.Context, url string, h http.Header, tlsConfig *tls.Config) (*http.Response, quic.Connection, error) {
 				return nil, nil, tt.wtErr
 			}
 			defer func() { c.DialWebTransportFunc = old }()
@@ -491,7 +491,7 @@ func TestClient_DialWebTransport_CustomDialSuccess(t *testing.T) {
 	mockConn.On("ConnectionState").Return(quic.ConnectionState{})
 	mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
 
-	c.DialWebTransportFunc = func(ctx context.Context, addr string, header http.Header) (*http.Response, quic.Connection, error) {
+	c.DialWebTransportFunc = func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, quic.Connection, error) {
 		return &http.Response{}, mockConn, nil
 	}
 	sess, err := c.DialWebTransport(context.Background(), "example.com:443", "/test", nil)
@@ -747,7 +747,7 @@ func TestClient_Dial_URLSchemes(t *testing.T) {
 			c.init()
 
 			// Mock successful connections to avoid actual network calls
-			c.DialWebTransportFunc = func(ctx context.Context, addr string, header http.Header) (*http.Response, quic.Connection, error) {
+			c.DialWebTransportFunc = func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, quic.Connection, error) {
 				mockConn := &MockQUICConnection{}
 				mockConn.On("Context").Return(context.Background())
 				mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)

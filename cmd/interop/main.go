@@ -63,18 +63,9 @@ func main() {
 		}
 	}()
 
-	// Wait for server to register its publish handler (ready signal)
-	// slog.Debug(" Waiting for server to be ready...")
-	// select {
-	// case <-serverReady:
-	// 	slog.Debug("Detected server ready (publish handler registered)")
-	// case <-time.After(5 * time.Second):
-	// 	slog.Warn("Timed out waiting for server readiness, proceeding anyway")
-	// }
-
 	// Run client and wait for completion (run client package under cmd/interop)
 	slog.Debug(" Starting client...")
-	clientCmd := exec.Command("go", "run", "./client", "-addr", "https://"+*addr)
+	clientCmd := exec.CommandContext(ctx, "go", "run", "./client", "-addr", "https://"+*addr)
 
 	clientStdout, err := clientCmd.StdoutPipe()
 	if err != nil {
@@ -92,7 +83,6 @@ func main() {
 		return
 	}
 
-	// clientReady := make(chan struct{}, 1)
 	wg.Go(func() {
 		streamAndLog("Client", clientStdout)
 	})
@@ -107,6 +97,9 @@ func main() {
 	if err != nil {
 		slog.Error("Client failed: " + err.Error())
 	}
+
+	// Stop the server to unblock output streams
+	cancel()
 
 	// Wait for all streaming goroutines to finish
 	wg.Wait()

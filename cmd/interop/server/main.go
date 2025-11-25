@@ -54,6 +54,12 @@ func main() {
 		<-serverDone
 		_ = server.Close()
 	}()
+	defer func() {
+		select {
+		case serverDone <- struct{}{}:
+		default:
+		}
+	}()
 
 	// Serve MOQ over WebTransport
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -83,7 +89,10 @@ func main() {
 			// Close the server when the session ends
 			<-sess.Context().Done()
 
-			serverDone <- struct{}{}
+			select {
+			case serverDone <- struct{}{}:
+			default:
+			}
 		}()
 
 		path := moqt.BroadcastPath("/interop/server")
@@ -260,7 +269,7 @@ func mkcert() error {
 	// Check if server certificates exist
 	if _, err := os.Stat(serverCertPath); os.IsNotExist(err) {
 		fmt.Print("Setting up certificates...")
-		cmd := exec.Command("mkcert", "moqt.example.com")
+		cmd := exec.Command("mkcert", "-cert-file", "moqt.example.com.pem", "-key-file", "moqt.example.com-key.pem", "moqt.example.com", "127.0.0.1")
 		// Ensure mkcert runs in the server directory where cert files should be generated
 		cmd.Dir = filepath.Join(root, "cmd", "interop", "server")
 		cmd.Stdout = os.Stdout

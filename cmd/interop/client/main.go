@@ -12,7 +12,11 @@ import (
 func main() {
 	addr := flag.String("addr", "https://moqt.example.com:9000", "server URL for MOQ (https://host:port)")
 	flag.Parse()
-	client := &moqt.Client{}
+	client := &moqt.Client{
+		Config: &moqt.Config{
+			SetupTimeout: 10 * time.Second,
+		},
+	}
 
 	// Create a custom mux for this session (like http.NewServeMux())
 	mux := moqt.NewTrackMux()

@@ -273,7 +273,23 @@ type Interop mg.Namespace
 // Go runs the interop test
 func (Interop) Go() error {
 	fmt.Println("Running interop test...")
-	return sh.RunV("go", "run", "./cmd/interop")
+
+	// Save current working directory
+	wd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	// Restore working directory when done
+	defer func() {
+		_ = os.Chdir(wd)
+	}()
+
+	// Change to interop directory
+	if err := os.Chdir("cmd/interop"); err != nil {
+		return err
+	}
+
+	return sh.RunV("go", "run", ".")
 }
 
 // ======================================

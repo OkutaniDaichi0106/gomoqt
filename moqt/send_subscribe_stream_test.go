@@ -421,7 +421,6 @@ func TestSendSubscribeStream_UpdateSubscribeClosedStream(t *testing.T) {
 		cancel(nil) // Simulate stream closure cancelling the context
 	}).Return(nil)
 	mockStream.On("Context").Return(ctx)
-	mockStream.On("CancelRead", mock.Anything).Return()
 
 	sss := newSendSubscribeStream(id, mockStream, config, Info{})
 
@@ -451,7 +450,6 @@ func TestSendSubscribeStream_CloseAlreadyClosed(t *testing.T) {
 	mockStream.On("Close").Run(func(args mock.Arguments) {
 		cancel(nil)
 	}).Return(nil)
-	mockStream.On("CancelRead", mock.Anything).Return()
 
 	sss := newSendSubscribeStream(SubscribeID(110), mockStream, &TrackConfig{}, Info{})
 

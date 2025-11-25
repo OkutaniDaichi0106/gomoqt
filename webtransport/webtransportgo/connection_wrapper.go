@@ -5,25 +5,18 @@ import (
 	"net"
 
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
-	quicgo_webtransportgo "github.com/OkutaniDaichi0106/webtransport-go"
+	quicgo_webtransportgo "github.com/quic-go/webtransport-go"
 )
 
 type sessionWrapper struct {
 	sess *quicgo_webtransportgo.Session
 }
 
-func wrapSession(wtconn *quicgo_webtransportgo.Session) quic.Connection {
+func wrapSession(wtsess *quicgo_webtransportgo.Session) quic.Connection {
 	return &sessionWrapper{
-		sess: wtconn,
+		sess: wtsess,
 	}
 }
-
-// func unwrapConn(conn quic.Connection) *quicgo_webtransportgo.Session {
-// 	if wconn, ok := conn.(*sessionWrapper); ok {
-// 		return wconn.sess
-// 	}
-// 	return nil
-// }
 
 func (conn *sessionWrapper) AcceptStream(ctx context.Context) (quic.Stream, error) {
 	stream, err := conn.sess.AcceptStream(ctx)
@@ -40,7 +33,11 @@ func (conn *sessionWrapper) CloseWithError(code quic.ApplicationErrorCode, msg s
 }
 
 func (wrapper *sessionWrapper) ConnectionState() quic.ConnectionState {
-	return wrapper.sess.ConnectionState()
+	return wrapper.sess.SessionState().ConnectionState
+}
+
+func (wrapper *sessionWrapper) ConnectionStats() quic.ConnectionStats {
+	return wrapper.sess.ConnectionStats()
 }
 
 func (conn *sessionWrapper) Context() context.Context {

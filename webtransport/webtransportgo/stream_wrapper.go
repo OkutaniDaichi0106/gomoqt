@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
-	quicgo_webtransportgo "github.com/OkutaniDaichi0106/webtransport-go"
+	quicgo_webtransportgo "github.com/quic-go/webtransport-go"
 )
 
 var _ quic.Stream = (*streamWrapper)(nil)

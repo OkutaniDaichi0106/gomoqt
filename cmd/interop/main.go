@@ -1,124 +1,128 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"flag"
+	"fmt"
+	"io"
 	"log/slog"
-	"net"
-	"os"
 	"os/exec"
-	"path/filepath"
-	"time"
+	"sync"
 )
 
 func main() {
-	slog.Info("=== MOQ Interop Test ===")
+	addr := flag.String("addr", "127.0.0.1:9000", "server address")
+	flag.Parse()
 
-	// Wait for port to be available before starting
-	const serverAddr = "127.0.0.1:9000"
-	if !openPort(serverAddr, 10*time.Second) {
-		slog.Error("✗ Port is still in use, cannot start test")
-		return
-	}
-
-	// Check and generate certificates if needed
-	if err := mkcert(); err != nil {
-		slog.Error("Failed to setup certificates: " + err.Error())
-		return
-	}
+	slog.Info(" === MOQ Interop Test ===")
 
 	// Create context for server lifecycle
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Start server in background
-	serverCmd := exec.CommandContext(ctx, "go", "run", "./server")
-	serverCmd.Stdout = os.Stdout
-	serverCmd.Stderr = os.Stderr
+	// Start server in background (run server package under cmd/interop)
+	serverCmd := exec.CommandContext(ctx, "go", "run", "./server", "-addr", *addr)
 
-	err := serverCmd.Start()
+	// Pipe server output so we can reformat and unify logs
+	serverStdout, err := serverCmd.StdoutPipe()
+	if err != nil {
+		slog.Error("Failed to capture server stdout: " + err.Error())
+		return
+	}
+	serverStderr, err := serverCmd.StderrPipe()
+	if err != nil {
+		slog.Error("Failed to capture server stderr: " + err.Error())
+		return
+	}
+
+	err = serverCmd.Start()
 	if err != nil {
 		slog.Error("Failed to start server: " + err.Error())
 		return
 	}
 
 	// Ensure server is killed when we exit
+	// Stream server output in background
+	var wg sync.WaitGroup
+	// Channels to detect when the child server or client declare completion
+	// serverReady := make(chan struct{}, 1)
+	wg.Go(func() {
+		streamAndLog("Server", serverStdout)
+	})
+	wg.Go(func() {
+		streamAndLog("Server", serverStderr)
+	})
+
 	defer func() {
 		if serverCmd.Process != nil {
-			slog.Debug("Killing server process...")
+			slog.Debug(" Killing server process...")
 			serverCmd.Process.Kill()
 			serverCmd.Wait()
-			slog.Debug("Server process terminated")
-
-			// Wait for port to be released
-			if !openPort(serverAddr, 15*time.Second) {
-				slog.Warn("Port may still be in use after cleanup")
-			}
+			slog.Debug(" Server process terminated")
 		}
 	}()
 
-	// Wait for server to start
-	slog.Debug("Waiting for server to start...")
-	time.Sleep(2 * time.Second)
+	// Wait for server to register its publish handler (ready signal)
+	// slog.Debug(" Waiting for server to be ready...")
+	// select {
+	// case <-serverReady:
+	// 	slog.Debug("Detected server ready (publish handler registered)")
+	// case <-time.After(5 * time.Second):
+	// 	slog.Warn("Timed out waiting for server readiness, proceeding anyway")
+	// }
 
-	// Run client and wait for completion
-	slog.Debug("Starting client...")
-	clientCmd := exec.Command("go", "run", "./client")
-	clientCmd.Stdout = os.Stdout
-	clientCmd.Stderr = os.Stderr
+	// Run client and wait for completion (run client package under cmd/interop)
+	slog.Debug(" Starting client...")
+	clientCmd := exec.Command("go", "run", "./client", "-addr", "https://"+*addr)
 
-	err = clientCmd.Run()
+	clientStdout, err := clientCmd.StdoutPipe()
 	if err != nil {
-		slog.Error("✗ Client failed: " + err.Error())
-	} else {
-		slog.Info("✓ Client completed successfully")
+		slog.Error("Failed to capture client stdout: " + err.Error())
+		return
+	}
+	clientStderr, err := clientCmd.StderrPipe()
+	if err != nil {
+		slog.Error("Failed to capture client stderr: " + err.Error())
+		return
 	}
 
-	slog.Info("=== Interop Test Completed ===")
+	if err = clientCmd.Start(); err != nil {
+		slog.Error(" Failed to start client: " + err.Error())
+		return
+	}
+
+	// clientReady := make(chan struct{}, 1)
+	wg.Go(func() {
+		streamAndLog("Client", clientStdout)
+	})
+	wg.Go(func() {
+		streamAndLog("Client", clientStderr)
+	})
+
+	// Wait for the client process to finish running and let the server
+	// continue until it declares its operation complete as well. Use a
+	// timeout to avoid waiting forever in case things fail.
+	err = clientCmd.Wait()
+	if err != nil {
+		slog.Error("Client failed: " + err.Error())
+	}
+
+	// Wait for all streaming goroutines to finish
+	wg.Wait()
+
+	slog.Info(" === Interop Test Completed ===")
 }
 
-func mkcert() error {
-	serverCertPath := filepath.Join("server", "moqt.example.com.pem")
-
-	// Check if server certificates exist
-	if _, err := os.Stat(serverCertPath); os.IsNotExist(err) {
-		slog.Debug("Server certificates not found, generating with mkcert...")
-		cmd := exec.Command("mkcert", "moqt.example.com")
-		cmd.Dir = "server"
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		err := cmd.Run()
-		if err != nil {
-			slog.Error("Failed to generate certificates: " + err.Error())
-			return err
-		}
-		slog.Debug("Server certificates generated successfully")
+// streamAndLog reads from reader line by line and logs each line prefixed with
+// the source name. It also notifies channels when specific patterns are found.
+func streamAndLog(source string, r io.Reader) {
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := scanner.Text()
+		fmt.Printf("[%s] %s\n", source, line)
 	}
-	return nil
-}
-
-// openPort waits until the specified port becomes available
-// Returns true if port becomes available within timeout, false otherwise
-func openPort(addr string, timeout time.Duration) bool {
-	deadline := time.Now().Add(timeout)
-	attempt := 0
-	for time.Now().Before(deadline) {
-		attempt++
-		// Try to bind to the UDP port
-		conn, err := net.ListenPacket("udp", addr)
-		if err == nil {
-			// Port is available
-			conn.Close()
-			slog.Debug("Port is available", "addr", addr, "attempts", attempt)
-			return true
-		}
-
-		// Port still in use, wait a bit
-		if attempt == 1 || attempt%4 == 0 { // Log every 2 seconds
-			slog.Debug("Port still in use, waiting...", "addr", addr, "attempt", attempt)
-		}
-		time.Sleep(500 * time.Millisecond)
+	if err := scanner.Err(); err != nil {
+		slog.Warn("Error reading output stream", "error", err)
 	}
-
-	slog.Warn("Timeout waiting for port to become available", "addr", addr, "attempts", attempt)
-	return false
 }

@@ -128,26 +128,50 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 
 	// Add announcement to the announcement tree so that init captures it
 	current := &mux.announcementTree
-	// Add to root node first
-	current.addAnnouncement(announcement)
+
+	// Build a list of nodes from root to leaf and add the announcement to each node
+	nodes := []*announcingNode{current}
 	for _, seg := range prefixSegments {
 		current = current.getChild(seg)
-		// Add announcement to each node along the prefix chain
-		current.addAnnouncement(announcement)
+		nodes = append(nodes, current)
+	}
+
+	// Reserve a subscription slice to reuse across nodes and avoid allocations
+	type awChan struct {
+		aw *AnnouncementWriter
+		ch chan *Announcement
+	}
+	subs := make([]awChan, 0, 8)
+
+	for _, node := range nodes {
+		node.addAnnouncement(announcement)
+
 		// Snapshot subscriptions under RLock and send without holding the lock
-		current.mu.RLock()
-		subs := make([]chan *Announcement, 0, len(current.subscriptions))
-		for _, ch := range current.subscriptions {
-			subs = append(subs, ch)
+		node.mu.RLock()
+		subs = subs[:0]
+		for aw, ch := range node.subscriptions {
+			subs = append(subs, awChan{aw: aw, ch: ch})
 		}
-		current.mu.RUnlock()
-		for _, ch := range subs {
+		node.mu.RUnlock()
+
+		for _, ac := range subs {
+			ch := ac.ch
 			// Non-blocking send to avoid deadlocks; drop if buffer is full
 			select {
 			case ch <- announcement:
 			case <-announcement.Done():
 			default:
-				close(ch) // Close channel if subscriber is not keeping up
+				// Drop the message if the subscriber is not keeping up. Remove subscription
+				// from the node and close the channel safely to signal the writer side.
+				// delete by AnnouncementWriter pointer without scanning
+				node.mu.Lock()
+				delete(node.subscriptions, ac.aw)
+				node.mu.Unlock()
+				// Close the AW to signal the writer to cleanup and close its channel.
+				go func(a *AnnouncementWriter) {
+					// Use InternalAnnounceErrorCode to indicate an internal error condition
+					a.CloseWithError(InternalAnnounceErrorCode)
+				}(ac.aw)
 			}
 		}
 	}

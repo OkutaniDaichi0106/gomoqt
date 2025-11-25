@@ -22,8 +22,19 @@ type MockQUICStream struct {
 	mu     sync.Mutex
 }
 
-func (m *MockQUICStream) StreamID() quic.StreamID {
+func (m *MockQUICStream) StreamID() (id quic.StreamID) {
+	// Recover from testify/mock panic when method is called without an expectation.
+	// This makes tests more resilient to logging calls that reference StreamID().
+	defer func() {
+		if r := recover(); r != nil {
+			id = quic.StreamID(0)
+		}
+	}()
+
 	args := m.Called()
+	if len(args) == 0 || args.Get(0) == nil {
+		return quic.StreamID(0)
+	}
 	return args.Get(0).(quic.StreamID)
 }
 

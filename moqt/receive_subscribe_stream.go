@@ -2,6 +2,7 @@ package moqt
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
@@ -77,6 +78,8 @@ type receiveSubscribeStream struct {
 	stream quic.Stream
 
 	acceptOnce sync.Once
+	// writeInfoWG tracks active WriteInfo calls so close waits for them.
+	writeInfoWG sync.WaitGroup
 
 	configMu  sync.Mutex
 	config    *TrackConfig
@@ -94,12 +97,25 @@ func (rss *receiveSubscribeStream) SubscribeID() SubscribeID {
 func (rss *receiveSubscribeStream) WriteInfo(info Info) error {
 	var err error
 	rss.acceptOnce.Do(func() {
+		rss.writeInfoWG.Add(1)
+		defer rss.writeInfoWG.Done()
 		rss.configMu.Lock()
 		defer rss.configMu.Unlock()
 		if rss.ctx.Err() != nil {
 			err = Cause(rss.ctx)
 			return
 		}
+		// Debug logging to help diagnose subscription handshake issues
+		slog.Debug("sending SUBSCRIBE_OK on receive subscribe stream",
+			"stream_id", rss.stream.StreamID(),
+			"subscribe_id", rss.subscribeID,
+		)
+
+		// Debug log after the encode to disambiguate timing in interop logs.
+		slog.Debug("subcribe_ok encoded and written",
+			"stream_id", rss.stream.StreamID(),
+			"subscribe_id", rss.subscribeID,
+		)
 		sum := message.SubscribeOkMessage{}
 		err = sum.Encode(rss.stream)
 		if err != nil {
@@ -127,6 +143,10 @@ func (rss *receiveSubscribeStream) Updated() <-chan struct{} {
 	return rss.updatedCh
 }
 
+func (rss *receiveSubscribeStream) Context() context.Context {
+	return rss.ctx
+}
+
 func (rss *receiveSubscribeStream) close() error {
 	rss.configMu.Lock()
 	defer rss.configMu.Unlock()
@@ -135,10 +155,13 @@ func (rss *receiveSubscribeStream) close() error {
 		return Cause(rss.ctx)
 	}
 
-	// Close the write-side stream
+	// Wait for any in-flight WriteInfo calls to finish before closing.
+	rss.writeInfoWG.Wait()
+
+	// Close the write-side stream. Do not cancel the read side for a
+	// graceful close: allow the peer to finish its read operations and
+	// close the stream gracefully to avoid triggering a reset.
 	err := rss.stream.Close()
-	// Cancel the read-side stream
-	rss.stream.CancelRead(quic.StreamErrorCode(PublishAbortedErrorCode))
 
 	select {
 	case rss.closeOnce <- struct{}{}:
@@ -163,6 +186,10 @@ func (rss *receiveSubscribeStream) closeWithError(code SubscribeErrorCode) error
 		return Cause(rss.ctx)
 	}
 
+	// Wait for any in-flight WriteInfo calls to finish. We still cancel the
+	// stream afterwards to enforce the error unconditionally.
+	rss.writeInfoWG.Wait()
+
 	strErrCode := quic.StreamErrorCode(code)
 	// Cancel the write-side stream
 	rss.stream.CancelWrite(strErrCode)
@@ -178,4 +205,44 @@ func (rss *receiveSubscribeStream) closeWithError(code SubscribeErrorCode) error
 	}
 
 	return nil
+}
+
+func handleSubscribeUpdate(rss *receiveSubscribeStream) {
+	var sum message.SubscribeUpdateMessage
+	var err error
+
+	for {
+		if rss.ctx.Err() != nil {
+			break
+		}
+
+		err = sum.Decode(rss.stream)
+		if err != nil {
+			break
+		}
+
+		rss.configMu.Lock()
+		rss.config = &TrackConfig{
+			TrackPriority:    TrackPriority(sum.TrackPriority),
+			MinGroupSequence: GroupSequence(sum.MinGroupSequence),
+			MaxGroupSequence: GroupSequence(sum.MaxGroupSequence),
+		}
+
+		select {
+		case rss.updatedCh <- struct{}{}:
+		default:
+		}
+		rss.configMu.Unlock()
+	}
+
+	// Cleanup after loop ends
+	rss.configMu.Lock()
+	select {
+	case rss.closeOnce <- struct{}{}:
+		if rss.updatedCh != nil {
+			close(rss.updatedCh)
+		}
+	default:
+	}
+	rss.configMu.Unlock()
 }

@@ -153,6 +153,9 @@ func (s *Session) CloseWithError(code SessionErrorCode, msg string) error {
 
 func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackConfig) (*TrackReader, error) {
 	if s.terminating() {
+		if s.sessErr == nil {
+			return nil, ErrClosedSession
+		}
 		return nil, s.sessErr
 	}
 
@@ -177,6 +180,12 @@ func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackCon
 	}
 
 	streamLogger := s.logger.With("stream_id", stream.StreamID())
+
+	streamLogger.Info("opening SUBSCRIBE stream",
+		"stream_id", stream.StreamID(),
+		"subscribe_id", id,
+		"path", path,
+	)
 
 	err = message.StreamTypeSubscribe.Encode(stream)
 	if err != nil {
@@ -209,6 +218,12 @@ func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackCon
 		MaxGroupSequence: uint64(config.MaxGroupSequence),
 	}
 	err = sm.Encode(stream)
+	if err == nil {
+		streamLogger.Debug("sent SUBSCRIBE message",
+			"subscribe_id", id,
+			"path", path,
+		)
+	}
 	if err != nil {
 		var strErr *quic.StreamError
 		if errors.As(err, &strErr) && strErr.Remote {
@@ -231,31 +246,8 @@ func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackCon
 		return nil, err
 	}
 
-	var subok message.SubscribeOkMessage
-	err = subok.Decode(stream)
-	if err != nil {
-		var strErr *quic.StreamError
-		if errors.As(err, &strErr) {
-			strErrCode := quic.StreamErrorCode(strErr.ErrorCode)
-			stream.CancelWrite(strErrCode)
-
-			streamLogger.Error("failed to read SUBSCRIBE_OK response",
-				"error", strErr,
-			)
-			return nil, &SubscribeError{
-				StreamError: strErr,
-			}
-		}
-		strErrCode := quic.StreamErrorCode(InternalSubscribeErrorCode)
-		stream.CancelWrite(strErrCode)
-		stream.CancelRead(strErrCode)
-
-		streamLogger.Error("failed to read SUBSCRIBE_OK response",
-			"error", err,
-		)
-		return nil, err
-	}
-
+	// Register TrackReader AFTER sending SUBSCRIBE but BEFORE waiting for SUBSCRIBE_OK
+	// This ensures we're ready to receive data streams immediately when server approves
 	substr := newSendSubscribeStream(id, stream, config, Info{})
 
 	streamLogger.Debug("subscribe stream opened",
@@ -271,6 +263,61 @@ func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackCon
 	})
 	s.addTrackReader(id, trackReceiver)
 
+	cleanup := func() {
+		s.removeTrackReader(id)
+	}
+
+	var subok message.SubscribeOkMessage
+	err = subok.Decode(stream)
+	if err != nil {
+		cleanup()
+		var strErr *quic.StreamError
+		if errors.As(err, &strErr) {
+			streamLogger.Debug("<<ANNOUNCE_ENCODE_ERROR: stream error details>>",
+				"error_type", fmt.Sprintf("%T", strErr),
+				"stream_id", stream.StreamID(),
+				"remote", strErr.Remote,
+				"error_code", strErr.ErrorCode,
+				"error_msg", strErr.Error(),
+			)
+			// Debug: log stream error details for Subscribe
+			streamLogger.Debug("<<SUBSCRIBE_OK_READ_ERROR: stream error details>>",
+				"error_type", fmt.Sprintf("%T", strErr),
+				"stream_id", stream.StreamID(),
+				"remote", strErr.Remote,
+				"error_code", strErr.ErrorCode,
+				"error_msg", strErr.Error(),
+			)
+			strErrCode := quic.StreamErrorCode(strErr.ErrorCode)
+			stream.CancelWrite(strErrCode)
+
+			streamLogger.Error("failed to read SUBSCRIBE_OK response",
+				"error", strErr,
+			)
+			return nil, &SubscribeError{
+				StreamError: strErr,
+			}
+		}
+
+		// If Decode returned an error that's not a QUIC StreamError, log it and fail.
+		streamLogger.Error("failed to read SUBSCRIBE_OK response",
+			"error", err,
+		)
+
+		// For non-QUIC stream errors (e.g., io.EOF), do not cancel the stream
+		// aggressively. Allow the caller to close the session or the remote to
+		// clean up; canceling here may trigger a remote Reset which can break
+		// the normal lifecycle and lead to spurious EOFs on the server side.
+		return nil, err
+	} else {
+		// Successful receipt of SUBSCRIBE_OK. Log at Info level to aid debugging.
+		streamLogger.Debug("received SUBSCRIBE_OK for subscription",
+			"subscribe_id", sm.SubscribeID,
+			"broadcast_path", sm.BroadcastPath,
+			"track_name", sm.TrackName,
+		)
+	}
+
 	return trackReceiver, nil
 }
 
@@ -285,6 +332,9 @@ func (s *Session) nextSubscribeID() SubscribeID {
 
 func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) {
 	if sess.terminating() {
+		if sess.sessErr == nil {
+			return nil, ErrClosedSession
+		}
 		return nil, sess.sessErr
 	}
 
@@ -338,6 +388,13 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 		)
 		var strErr *quic.StreamError
 		if errors.As(err, &strErr) {
+			streamLogger.Debug("<<ANNOUNCE_PLEASE_WRITE_ERROR: stream error details>>",
+				"error_type", fmt.Sprintf("%T", strErr),
+				"stream_id", stream.StreamID(),
+				"remote", strErr.Remote,
+				"error_code", strErr.ErrorCode,
+				"error_msg", strErr.Error(),
+			)
 			strErrCode := quic.StreamErrorCode(InternalAnnounceErrorCode)
 			stream.CancelRead(strErrCode)
 
@@ -361,6 +418,14 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 		)
 		var strErr *quic.StreamError
 		if errors.As(err, &strErr) {
+			// Helpful debug logging for interop investigation: show exact stream error details
+			streamLogger.Debug("<<ANNOUNCE_READ_ERROR: stream error details>>",
+				"error_type", fmt.Sprintf("%T", strErr),
+				"stream_id", stream.StreamID(),
+				"remote", strErr.Remote,
+				"error_code", strErr.ErrorCode,
+				"error_msg", strErr.Error(),
+			)
 			strErrCode := quic.StreamErrorCode(InternalAnnounceErrorCode)
 			stream.CancelRead(strErrCode)
 
@@ -551,6 +616,7 @@ func (sess *Session) processUniStream(stream quic.ReceiveStream, streamLogger *s
 		}
 
 		groupLogger.Debug("accepted group stream")
+		groupLogger.Info("enqueueing group to trackReader", "subscribe_id", gm.SubscribeID, "group_sequence", gm.GroupSequence, "stream_id", stream.StreamID())
 
 		// Enqueue the receiver
 		track.enqueueGroup(GroupSequence(gm.GroupSequence), stream)
@@ -570,6 +636,11 @@ func (s *Session) addTrackWriter(id SubscribeID, writer *TrackWriter) {
 	defer s.trackWriterMapLocker.Unlock()
 
 	s.trackWriters[id] = writer
+	s.logger.Debug("added track writer",
+		"subscribe_id", id,
+		"track_path", writer.BroadcastPath,
+		"track_name", writer.TrackName,
+	)
 }
 
 func (s *Session) removeTrackWriter(id SubscribeID) {

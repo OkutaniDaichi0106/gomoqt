@@ -33,7 +33,7 @@ scope(async (defer) => {
 				return;
 			}
 
-			console.info("[Client] ✓ Data sent to server");
+			console.info("[Client] [OK] Data sent to server");
 		} catch (e) {
 			console.error("[Client] Error in publish:", e);
 		}
@@ -85,7 +85,7 @@ scope(async (defer) => {
 		return;
 	}
 
-	console.info("[Client] ✓ Received data from server:", new TextDecoder().decode(frame.data));
+	console.info("[Client] [OK] Received data from server:", new TextDecoder().decode(frame.data));
 
 	console.debug("[Client] Operations completed");
 });

@@ -30,8 +30,12 @@ func ReadVarint(b []byte) (uint64, int, error) {
 
 func ReadMessageLength(r io.Reader) (uint64, error) {
 	buf := [1]byte{}
-	if _, err := r.Read(buf[:]); err != nil {
-		return 0, err
+	n, err := r.Read(buf[:])
+	if err != nil {
+		if err != io.EOF || n == 0 {
+			return 0, err
+		}
+		// Ignore EOF if a byte was read
 	}
 	l := 1 << ((buf[0] & 0xc0) >> 6)
 	b1 := buf[0] & (0xff - 0xc0)
@@ -39,8 +43,11 @@ func ReadMessageLength(r io.Reader) (uint64, error) {
 		return uint64(b1), nil
 	}
 
-	if _, err := r.Read(buf[:]); err != nil {
-		return 0, err
+	if _, err = r.Read(buf[:]); err != nil {
+		if err != io.EOF || n == 0 {
+			return 0, err
+		}
+		// Ignore EOF if the last byte was read
 	}
 	b2 := buf[0]
 
@@ -48,12 +55,15 @@ func ReadMessageLength(r io.Reader) (uint64, error) {
 		return uint64(b1)<<8 | uint64(b2), nil
 	}
 
-	if _, err := r.Read(buf[:]); err != nil {
+	if _, err = r.Read(buf[:]); err != nil {
 		return 0, err
 	}
 	b3 := buf[0]
-	if _, err := r.Read(buf[:]); err != nil {
-		return 0, err
+	if _, err = r.Read(buf[:]); err != nil {
+		if err != io.EOF || n == 0 {
+			return 0, err
+		}
+		// Ignore EOF if the last byte was read
 	}
 	b4 := buf[0]
 
@@ -74,7 +84,10 @@ func ReadMessageLength(r io.Reader) (uint64, error) {
 	}
 	b7 := buf[0]
 	if _, err := r.Read(buf[:]); err != nil {
-		return 0, err
+		if err != io.EOF || n == 0 {
+			return 0, err
+		}
+		// Ignore EOF if the last byte was read
 	}
 	b8 := buf[0]
 

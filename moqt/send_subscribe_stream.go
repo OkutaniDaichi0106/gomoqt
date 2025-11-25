@@ -118,9 +118,7 @@ func (sss *sendSubscribeStream) close() error {
 
 	// Close the write side of the stream
 	err := sss.stream.Close()
-	// Cancel the read side of the stream
-	strErrCode := quic.StreamErrorCode(SubscribeCanceledErrorCode)
-	sss.stream.CancelRead(strErrCode)
+	// Do not cancel the read side on a graceful close: allow peer to finish sending
 
 	return err
 }

@@ -31,7 +31,7 @@ var (
 
 // AnnounceErrorCode represents error codes for track announcement operations.
 // These codes are used when an announcement is rejected or fails.
-type AnnounceErrorCode quic.StreamErrorCode
+type AnnounceErrorCode uint32
 
 const (
 	InternalAnnounceErrorCode AnnounceErrorCode = 0x0
@@ -88,7 +88,7 @@ func (err AnnounceError) AnnounceErrorCode() AnnounceErrorCode {
 
 // SubscribeErrorCode represents error codes for subscription operations.
 // These codes are used when a subscription request is rejected or fails.
-type SubscribeErrorCode quic.StreamErrorCode
+type SubscribeErrorCode uint32
 
 const (
 	InternalSubscribeErrorCode SubscribeErrorCode = 0x00
@@ -154,7 +154,7 @@ func (err SubscribeError) SubscribeErrorCode() SubscribeErrorCode {
 
 // SessionErrorCode represents error codes for MOQ session operations.
 // These codes are used at the connection level for protocol errors.
-type SessionErrorCode quic.ApplicationErrorCode
+type SessionErrorCode uint32
 
 const (
 	NoError SessionErrorCode = 0x0
@@ -223,7 +223,7 @@ func (err SessionError) SessionErrorCode() SessionErrorCode {
  */
 
 // GroupErrorCode represents error codes for group operations.
-type GroupErrorCode quic.StreamErrorCode
+type GroupErrorCode uint32
 
 const (
 	InternalGroupErrorCode GroupErrorCode = 0x00
@@ -273,57 +273,3 @@ func (err GroupError) Error() string {
 func (err GroupError) GroupErrorCode() GroupErrorCode {
 	return GroupErrorCode(err.ErrorCode)
 }
-
-// /*
-//  * Internal Error
-//  */
-// type InternalError struct {
-// 	Reason string
-// }
-
-// func (err InternalError) Error() string {
-// 	return fmt.Sprintf("moqt: internal error: %s", err.Reason)
-// }
-
-// func (InternalError) Is(err error) bool {
-// 	_, ok := err.(InternalError)
-// 	return ok
-// }
-
-// func (err InternalError) AnnounceErrorCode() AnnounceErrorCode {
-// 	return InternalAnnounceErrorCode
-// }
-
-// func (err InternalError) SubscribeErrorCode() SubscribeErrorCode {
-// 	return InternalSubscribeErrorCode
-// }
-
-// func (err InternalError) SessionErrorCode() SessionErrorCode {
-// 	return InternalSessionErrorCode
-// }
-
-// func (err InternalError) GroupErrorCode() GroupErrorCode {
-// 	return InternalGroupErrorCode
-// }
-
-// /*
-//  * Unauthorized Error
-//  */
-// type UnauthorizedError struct{}
-
-// func (UnauthorizedError) Error() string {
-// 	return "moqt: unauthorized"
-// }
-
-// func (UnauthorizedError) Is(err error) bool {
-// 	_, ok := err.(UnauthorizedError)
-// 	return ok
-// }
-
-// func (err UnauthorizedError) SubscribeErrorCode() SubscribeErrorCode {
-// 	return UnauthorizedSubscribeErrorCode
-// }
-
-// func (err UnauthorizedError) SessionErrorCode() SessionErrorCode {
-// 	return UnauthorizedSessionErrorCode
-// }

@@ -16,7 +16,16 @@ type MockQUICReceiveStream struct {
 }
 
 func (m *MockQUICReceiveStream) StreamID() quic.StreamID {
+	// Prevent panic when no expectation was provided for StreamID() calls.
+	defer func() {
+		if r := recover(); r != nil {
+			// No-op; will default to zero StreamID below
+		}
+	}()
 	args := m.Called()
+	if len(args) == 0 || args.Get(0) == nil {
+		return quic.StreamID(0)
+	}
 	return args.Get(0).(quic.StreamID)
 }
 

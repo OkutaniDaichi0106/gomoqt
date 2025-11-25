@@ -429,6 +429,8 @@ func TestDefaultMux_PublishFunc(t *testing.T) {
 	assert.True(t, called, "default handler function should be called")
 }
 
+// TestMux_Announce_NotifiesRootSubscriptions removed: covered by TestMux_ServeAnnouncements_InitSendsExistingAnnouncements
+
 // Test edge cases
 func TestMux_EdgeCases(t *testing.T) {
 	mux := NewTrackMux()
@@ -906,70 +908,166 @@ func TestMux_SimultaneousAnnounceAndPublish(t *testing.T) {
 
 // Test serveAnnouncements: initialization sends existing announcements to the writer
 func TestMux_ServeAnnouncements_InitSendsExistingAnnouncements(t *testing.T) {
+	tests := map[string]struct {
+		announcePath BroadcastPath
+		writerPrefix string
+	}{
+		"prefix": {announcePath: BroadcastPath("/test/stream1"), writerPrefix: "/test/"},
+		"root":   {announcePath: BroadcastPath("/rootstream"), writerPrefix: "/"},
+	}
+
+	for name, tc := range tests {
+		name := name
+		tc := tc
+		synctest.Test(t, func(t *testing.T) {
+			mux := NewTrackMux()
+			ctx := context.Background()
+
+			// Create an announcement and register it
+			ann, end := NewAnnouncement(ctx, tc.announcePath)
+			defer end()
+			mux.Announce(ann, TrackHandlerFunc(func(tw *TrackWriter) {}))
+
+			// Prepare mock stream for AnnouncementWriter
+			mockStream := &MockQUICStream{}
+			streamCtx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			mockStream.On("Context").Return(streamCtx)
+			// Allow write calls (init + potential active messages)
+			writeCh := make(chan struct{}, 1)
+			mockStream.On("Write", mock.Anything).Return(0, nil).Run(func(args mock.Arguments) {
+				select {
+				case writeCh <- struct{}{}:
+				default:
+				}
+			})
+			mockStream.On("CancelWrite", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
+			mockStream.On("CancelRead", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
+			mockStream.On("Close").Return(nil).Maybe()
+
+			aw := newAnnouncementWriter(mockStream, tc.writerPrefix)
+
+			var wg sync.WaitGroup
+			wg.Go(func() {
+				mux.serveAnnouncements(aw)
+			})
+
+			select {
+			case <-writeCh:
+				// ok
+			case <-time.After(500 * time.Millisecond):
+				t.Fatalf("expected Write to be called on mockStream during init for case %s", name)
+			}
+
+			// stop serveAnnouncements by cancelling the writer's underlying context
+			cancel()
+
+			// wait for goroutine to finish
+			ch := make(chan struct{})
+			go func() {
+				wg.Wait()
+				close(ch)
+			}()
+			select {
+			case <-ch:
+			case <-time.After(500 * time.Millisecond):
+				t.Fatalf("serveAnnouncements did not exit after cancelling context for case %s", name)
+			}
+
+			mockStream.AssertExpectations(t)
+		})
+	}
+}
+
+// Test that when an announcement is created before serveAnnouncements starts,
+// both an ancestor (root) and descendant writer receive initialization.
+func TestMux_ServeAnnouncements_AncestorAndDescendantReceive_AnnounceBefore(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		mux := NewTrackMux()
 		ctx := context.Background()
 
-		// Create an announcement under /test/stream1 and register it in the mux
-		ann, end := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
+		// Prepare announcement for /share/stream
+		ann, end := NewAnnouncement(ctx, BroadcastPath("/share/stream"))
 		defer end()
+		// Announce before registering writers
 		mux.Announce(ann, TrackHandlerFunc(func(tw *TrackWriter) {}))
 
-		// Prepare mock stream for AnnouncementWriter
-		mockStream := &MockQUICStream{}
-		streamCtx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		mockStream.On("Context").Return(streamCtx)
-		// Allow write calls (init + potential active messages)
-		writeCh := make(chan struct{}, 1)
-		mockStream.On("Write", mock.Anything).Return(0, nil).Run(func(args mock.Arguments) {
+		// Root writer (prefix "/")
+		rootStream := &MockQUICStream{}
+		rootCtx, cancelR := context.WithCancel(context.Background())
+		defer cancelR()
+		rootStream.On("Context").Return(rootCtx)
+		rootWriteCh := make(chan struct{}, 1)
+		rootStream.On("Write", mock.Anything).Return(0, nil).Run(func(args mock.Arguments) {
 			select {
-			case writeCh <- struct{}{}:
+			case rootWriteCh <- struct{}{}:
 			default:
 			}
 		})
-		// Allow CancelWrite/CancelRead/cancel Close to be called during cleanup
-		mockStream.On("CancelWrite", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
-		mockStream.On("CancelRead", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
-		mockStream.On("Close").Return(nil).Maybe()
-		mockStream.On("CancelWrite", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
-		mockStream.On("CancelRead", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return().Maybe()
-		mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
-		mockStream.On("CancelRead", mock.Anything).Return().Maybe()
-		mockStream.On("Close").Return(nil).Maybe()
-		mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
-		mockStream.On("CancelRead", mock.Anything).Return().Maybe()
+		rootStream.On("Close").Return(nil).Maybe()
+		rootStream.On("CancelWrite", mock.Anything).Return().Maybe()
+		rootStream.On("CancelRead", mock.Anything).Return().Maybe()
+		rootAW := newAnnouncementWriter(rootStream, "/")
 
-		aw := newAnnouncementWriter(mockStream, "/test/")
+		// Descendant writer (prefix /share/)
+		shareStream := &MockQUICStream{}
+		shareCtx, cancelS := context.WithCancel(context.Background())
+		defer cancelS()
+		shareStream.On("Context").Return(shareCtx)
+		shareWriteCh := make(chan struct{}, 1)
+		shareStream.On("Write", mock.Anything).Return(0, nil).Run(func(args mock.Arguments) {
+			select {
+			case shareWriteCh <- struct{}{}:
+			default:
+			}
+		})
+		shareStream.On("Close").Return(nil).Maybe()
+		shareStream.On("CancelWrite", mock.Anything).Return().Maybe()
+		shareStream.On("CancelRead", mock.Anything).Return().Maybe()
+		shareAW := newAnnouncementWriter(shareStream, "/share/")
 
 		var wg sync.WaitGroup
-		wg.Go(func() {
-			mux.serveAnnouncements(aw)
-		})
-
-		select {
-		case <-writeCh:
-			// ok
-		case <-time.After(500 * time.Millisecond):
-			t.Fatal("expected Write to be called on mockStream during init")
-		}
-
-		// stop serveAnnouncements by cancelling the writer's underlying context
-		cancel()
-
-		// wait for goroutine to finish
-		ch := make(chan struct{})
+		wg.Add(2)
 		go func() {
-			wg.Wait()
-			close(ch)
+			defer wg.Done()
+			mux.serveAnnouncements(rootAW)
 		}()
-		select {
-		case <-ch:
-		case <-time.After(500 * time.Millisecond):
-			t.Fatal("serveAnnouncements did not exit after cancelling context")
+		go func() {
+			defer wg.Done()
+			mux.serveAnnouncements(shareAW)
+		}()
+
+		// Wait for both streams to receive a write during init
+		deadline := time.Now().Add(500 * time.Millisecond)
+		gotRoot, gotShare := false, false
+		for time.Now().Before(deadline) {
+			for _, c := range rootStream.Calls {
+				if c.Method == "Write" {
+					gotRoot = true
+					break
+				}
+			}
+			for _, c := range shareStream.Calls {
+				if c.Method == "Write" {
+					gotShare = true
+					break
+				}
+			}
+			if gotRoot && gotShare {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		if !gotRoot || !gotShare {
+			t.Fatalf("expected Write on both root and share streams: gotRoot=%v gotShare=%v", gotRoot, gotShare)
 		}
 
-		mockStream.AssertExpectations(t)
+		// cleanup
+		cancelR()
+		cancelS()
+		wg.Wait()
+		rootStream.AssertExpectations(t)
+		shareStream.AssertExpectations(t)
 	})
 }
 
@@ -1254,6 +1352,70 @@ func TestMux_ServeAnnouncements_ContextCancel_StopsLoop(t *testing.T) {
 	})
 }
 
+// Test serveAnnouncements with a slow subscriber: ensure Announce does not deadlock and that
+// send attempts are bounded (messages may be dropped but serveAnnouncements should continue).
+func TestMux_ServeAnnouncements_SlowSubscriber_NoDeadlock(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		mux := NewTrackMux()
+		ctx := context.Background()
+
+		// Prepare a mock stream that simulates slow writes (sleep)
+		mockStream := &MockQUICStream{}
+		streamCtx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		mockStream.On("Context").Return(streamCtx)
+
+		writeCalls := int32(0)
+		// Simulate a slow write by sleeping on each Write call
+		mockStream.On("Write", mock.Anything).Return(0, nil).Run(func(args mock.Arguments) {
+			atomic.AddInt32(&writeCalls, 1)
+			time.Sleep(50 * time.Millisecond) // slow write
+		})
+		mockStream.On("Close").Return(nil).Maybe()
+		mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
+		mockStream.On("CancelRead", mock.Anything).Return().Maybe()
+
+		aw := newAnnouncementWriter(mockStream, "/slow/")
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			mux.serveAnnouncements(aw)
+		}()
+
+		// Give the writer a moment to initialize
+		time.Sleep(20 * time.Millisecond)
+
+		// Fire many announces in quick succession; some may be dropped due to channel buffer limits
+		count := 20
+		for i := 0; i < count; i++ {
+			ann, end := NewAnnouncement(ctx, BroadcastPath(fmt.Sprintf("/slow/stream-%d", i)))
+			mux.Announce(ann, TrackHandlerFunc(func(tw *TrackWriter) {}))
+			// end the announcement immediately so we don't leak
+			end()
+		}
+
+		// Wait a bit to allow writes to be processed
+		time.Sleep(500 * time.Millisecond)
+
+		// Cancel and wait for serveAnnouncements to exit
+		cancel()
+		wg.Wait()
+
+		// There should be some writes, but fewer than or equal to count.
+		// We assert there was at least one write to confirm the writer ran and processed some announcements.
+		assert.Greater(t, atomic.LoadInt32(&writeCalls), int32(0), "expected at least one write to be called")
+		assert.LessOrEqual(t, atomic.LoadInt32(&writeCalls), int32(count), "expected write calls not to exceed announces")
+
+		mockStream.AssertExpectations(t)
+	})
+}
+
+// Test that when the same subscription channel is present under multiple nodes
+// the announcer dedupes by channel and sends at most one announcement per announce.
+// Test removed: duplicate channel registration across nodes is unrealistic; AWs register per-node with their own channel
+
 // Test serveAnnouncements: two listeners for same prefix both receive announcements
 func TestMux_ServeAnnouncements_MultipleListeners_ReceiveAnnouncement(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
@@ -1368,6 +1530,56 @@ func TestMux_ServeAnnouncements_MultipleListeners_ReceiveAnnouncement(t *testing
 
 		mock1.AssertExpectations(t)
 		mock2.AssertExpectations(t)
+	})
+}
+
+func TestMux_Announce_ClosesBusySubscriber(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		mux := NewTrackMux()
+
+		// Prepare a real AnnouncementWriter and serveAnnouncements
+		mockStream := &MockQUICStream{}
+		// Make writes slow so the buffer fills up
+		mockStream.On("Context").Return(context.Background())
+		mockStream.On("Write", mock.Anything).Return(0, nil).Run(func(args mock.Arguments) {
+			time.Sleep(50 * time.Millisecond)
+		}).Maybe()
+		mockStream.On("Close").Return(nil).Maybe()
+		mockStream.On("CancelWrite", mock.Anything).Return().Maybe()
+		mockStream.On("CancelRead", mock.Anything).Return().Maybe()
+
+		aw := newAnnouncementWriter(mockStream, "/busy/")
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			mux.serveAnnouncements(aw)
+		}()
+
+		// Create an announcement and call Announce repeatedly to fill the buffer
+		_, _ = NewAnnouncement(context.Background(), BroadcastPath("/busy/stream"))
+
+		// Send enough announces to fill the channel buffer (8)
+		for i := 0; i < 16; i++ {
+			a, endf := NewAnnouncement(context.Background(), BroadcastPath(fmt.Sprintf("/busy/stream-%d", i)))
+			mux.Announce(a, TrackHandlerFunc(func(tw *TrackWriter) {}))
+			endf()
+		}
+
+		// Wait for some time to allow processing and the busy-channel detection path
+		time.Sleep(200 * time.Millisecond)
+
+		// Check that the subscription is removed (no entry for aw)
+		root := &mux.announcementTree
+		root.mu.RLock()
+		_, exists := root.subscriptions[aw]
+		root.mu.RUnlock()
+		assert.False(t, exists, "expected subscription removed after busy detection")
+
+		// Clean up: close AW if it's still open and wait
+		aw.Close()
+		wg.Wait()
 	})
 }
 

@@ -638,7 +638,8 @@ func TestSession_Subscribe_DecodeSubscribeOkError(t *testing.T) {
 	mockTrackStream.On("Context").Return(context.Background())
 	mockTrackStream.On("Write", mock.Anything).Return(0, nil)
 	mockTrackStream.On("CancelWrite", mock.Anything).Return()
-	mockTrackStream.On("CancelRead", mock.Anything).Return()
+	// Do not expect CancelRead to be called for generic read errors.
+	mockTrackStream.On("CancelRead", mock.Anything).Return().Maybe()
 
 	// Make Read fail with generic error
 	mockTrackStream.On("Read", mock.Anything).Return(0, errors.New("read error"))

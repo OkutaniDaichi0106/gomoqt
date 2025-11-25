@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/OkutaniDaichi0106/gomoqt/quic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -67,7 +68,8 @@ func TestTrackReceiver_EnqueueGroup(t *testing.T) {
 
 	// Mock receive stream
 	mockReceiveStream := &MockQUICReceiveStream{}
-	// StreamID() is not called during enqueue or accept
+	// AcceptGroup logs the stream ID; stub StreamID to satisfy the mock call
+	mockReceiveStream.On("StreamID").Return(quic.StreamID(100))
 
 	// Enqueue a group
 	receiver.enqueueGroup(GroupSequence(1), mockReceiveStream)

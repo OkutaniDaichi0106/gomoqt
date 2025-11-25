@@ -97,11 +97,11 @@ try {
 	// Wait for client to finish
 	clientStatus = await clientProcess.status;
 
-	if (!clientStatus.success) {
-		console.error("✗ Client failed");
-	} else {
-		console.log("✓ Client completed successfully");
-	}
+			if (!clientStatus.success) {
+				console.error("[ERR] Client failed");
+			} else {
+				console.log("[OK] Client completed successfully");
+			}
 } catch (error) {
 	console.error("Client execution error:", error);
 } finally {

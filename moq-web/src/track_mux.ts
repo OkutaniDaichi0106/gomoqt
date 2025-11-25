@@ -14,7 +14,6 @@ type AnnouncedTrackHandler = {
 export class TrackMux {
 	#handlers: Map<BroadcastPath, AnnouncedTrackHandler> = new Map();
 	#announcers: Map<TrackPrefix, Set<AnnouncementWriter>> = new Map();
-	// #announcements: Map<string, Announcement> = new Map();
 
 	constructor() {}
 

@@ -204,31 +204,10 @@ func (s Server) Default() error {
 	return nil
 }
 
-// func (s Server) All() error {
-// 	fmt.Println("Setting up all server environments...")
-// 	s.Go()
-// 	return nil
-// }
-
 func (Server) Go() error {
 	fmt.Println("Setting up Go environment...")
 	return nil
 }
-
-// func (Server) Deno() error {
-// 	fmt.Println("Setting up Deno environment...")
-// 	return nil
-// }
-
-// func (Server) Node() error {
-// 	fmt.Println("Setting up Node.js environment...")
-// 	return nil
-// }
-
-// func (Server) Bun() error {
-// 	fmt.Println("Setting up Bun environment...")
-// 	return nil
-// }
 
 type Client mg.Namespace
 
@@ -285,7 +264,17 @@ func (Client) Safari() error {
 	return nil
 }
 
+// ======================================
+// INTEROP
+// ======================================
+
 type Interop mg.Namespace
+
+// Go runs the interop test
+func (Interop) Go() error {
+	fmt.Println("Running interop test...")
+	return sh.RunV("go", "run", "./cmd/interop")
+}
 
 // ======================================
 // DEVELOPMENT UTILITIES

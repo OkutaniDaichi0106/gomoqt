@@ -49,42 +49,47 @@ type TrackReader struct {
 // AcceptGroup blocks until the next group is available or context is
 // canceled. It returns a GroupReader tied to the accepted group stream.
 func (r *TrackReader) AcceptGroup(ctx context.Context) (*GroupReader, error) {
+	trackCtx := r.Context()
+
 	for {
-		r.trackMu.Lock()
-		if len(r.queueing) > 0 {
-			next := r.queueing[0]
-
-			r.queueing = r.queueing[1:]
-
-			r.trackMu.Unlock()
-
-			var group *GroupReader
-			group = newGroupReader(next.sequence, next.stream,
-				func() { r.removeGroup(group) })
-
+		group := r.dequeueGroup()
+		if group != nil {
 			r.addGroup(group)
 
 			return group, nil
 		}
 
-		trackCtx := r.Context()
-
 		if trackCtx.Err() != nil {
-			r.trackMu.Unlock()
 			return nil, Cause(trackCtx)
 		}
-
-		queueCh := r.queuedCh
-		r.trackMu.Unlock()
 
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-trackCtx.Done():
 			return nil, Cause(trackCtx)
-		case <-queueCh:
+		case <-r.queuedCh:
 		}
 	}
+}
+
+func (r *TrackReader) dequeueGroup() *GroupReader {
+	r.trackMu.Lock()
+	defer r.trackMu.Unlock()
+
+	if len(r.queueing) > 0 {
+		next := r.queueing[0]
+
+		r.queueing = r.queueing[1:]
+
+		var group *GroupReader
+		group = newGroupReader(next.sequence, next.stream,
+			func() { r.removeGroup(group) })
+
+		return group
+	}
+
+	return nil
 }
 
 // Close cancels queued groups, closes the queued channel, and terminates

@@ -6,7 +6,7 @@ import (
 
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
 	"github.com/OkutaniDaichi0106/gomoqt/webtransport"
-	quicgo_webtransportgo "github.com/OkutaniDaichi0106/webtransport-go"
+	quicgo_webtransportgo "github.com/quic-go/webtransport-go"
 )
 
 var _ webtransport.DialAddrFunc = Dial

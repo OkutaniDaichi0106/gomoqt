@@ -4,10 +4,12 @@ import {
 	AnnounceInitMessage,
 	AnnouncePleaseMessage,
 	GroupMessage,
+	readVarint,
 	SessionClientMessage,
 	SessionServerMessage,
 	SubscribeMessage,
 	SubscribeOkMessage,
+	writeVarint,
 } from "./internal/message/mod.ts";
 import { Stream } from "./internal/webtransport/mod.ts";
 import { Extensions } from "./extensions.ts";
@@ -83,8 +85,7 @@ export class Session {
 			throw openErr;
 		}
 		// Send STREAM_TYPE
-		stream.writable.writeUint8(BiStreamTypes.SessionStreamType);
-		let err = await stream.writable.flush();
+		let [, err] = await writeVarint(stream.writable, BiStreamTypes.SessionStreamType);
 		if (err) {
 			console.error("moq: failed to open session stream:", err);
 			throw err;
@@ -156,8 +157,7 @@ export class Session {
 			return [undefined, openErr];
 		}
 		// Send STREAM_TYPE
-		stream.writable.writeUint8(BiStreamTypes.AnnounceStreamType);
-		let err = await stream.writable.flush();
+		let [, err] = await writeVarint(stream.writable, BiStreamTypes.AnnounceStreamType);
 		if (err) {
 			console.error("moq: failed to open announce stream:", err);
 			return [undefined, err];
@@ -203,8 +203,7 @@ export class Session {
 			return [undefined, openErr];
 		}
 		// Send STREAM_TYPE
-		stream.writable.writeUint8(BiStreamTypes.SubscribeStreamType);
-		let err = await stream.writable.flush();
+		let [, err] = await writeVarint(stream.writable, BiStreamTypes.SubscribeStreamType);
 		if (err) {
 			console.error("moq: failed to open subscribe stream:", err);
 			return [undefined, err];
@@ -357,7 +356,7 @@ export class Session {
 	async #listenBiStreams(): Promise<void> {
 		try {
 			// Handle incoming streams
-			let num: number | undefined;
+			let num: number;
 			let err: Error | undefined;
 			while (true) {
 				const [stream, acceptErr] = await this.#conn.acceptStream();
@@ -366,7 +365,7 @@ export class Session {
 					console.error("Bidirectional stream closed", acceptErr);
 					break;
 				}
-				[num, err] = await stream.readable.readUint8();
+				[num, , err] = await readVarint(stream.readable);
 				if (err) {
 					console.error("Failed to read from bidirectional stream:", err);
 					continue;
@@ -391,7 +390,7 @@ export class Session {
 
 	async #listenUniStreams(): Promise<void> {
 		try {
-			let num: number | undefined;
+			let num: number;
 			let err: Error | undefined;
 			while (true) {
 				const [stream, acceptErr] = await this.#conn.acceptUniStream();
@@ -401,7 +400,7 @@ export class Session {
 				}
 
 				// Read the first byte to determine the stream type
-				[num, err] = await stream.readUint8();
+				[num, , err] = await readVarint(stream);
 				if (err) {
 					console.error("Failed to read from unidirectional stream:", err);
 					return;

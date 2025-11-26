@@ -15,7 +15,6 @@ Deno.test("AnnounceInitMessage", async (t) => {
 		});
 		const writer = new SendStream({
 			stream: writableStream,
-			transfer: undefined,
 			streamId: 0n,
 		});
 
@@ -41,7 +40,6 @@ Deno.test("AnnounceInitMessage", async (t) => {
 		});
 		const reader = new ReceiveStream({
 			stream: readableStream,
-			transfer: undefined,
 			streamId: 0n,
 		});
 
@@ -61,7 +59,6 @@ Deno.test("AnnounceInitMessage", async (t) => {
 		});
 		const writer = new SendStream({
 			stream: writableStream,
-			transfer: undefined,
 			streamId: 0n,
 		});
 
@@ -87,7 +84,6 @@ Deno.test("AnnounceInitMessage", async (t) => {
 		});
 		const reader = new ReceiveStream({
 			stream: readableStream,
-			transfer: undefined,
 			streamId: 0n,
 		});
 
@@ -107,7 +103,6 @@ Deno.test("AnnounceInitMessage", async (t) => {
 			});
 			const reader = new ReceiveStream({
 				stream: readableStream,
-				transfer: undefined,
 				streamId: 0n,
 			});
 
@@ -127,7 +122,6 @@ Deno.test("AnnounceInitMessage", async (t) => {
 		});
 		const reader = new ReceiveStream({
 			stream: readableStream,
-			transfer: undefined,
 			streamId: 0n,
 		});
 
@@ -146,7 +140,6 @@ Deno.test("AnnounceInitMessage", async (t) => {
 		});
 		const reader = new ReceiveStream({
 			stream: readableStream,
-			transfer: undefined,
 			streamId: 0n,
 		});
 

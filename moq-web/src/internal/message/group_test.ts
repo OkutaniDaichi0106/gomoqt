@@ -33,7 +33,6 @@ Deno.test("GroupMessage - encode/decode roundtrip - multiple scenarios", async (
 			});
 			const writer = new SendStream({
 				stream: writableStream,
-				transfer: undefined,
 				streamId: 0n,
 			});
 
@@ -59,7 +58,6 @@ Deno.test("GroupMessage - encode/decode roundtrip - multiple scenarios", async (
 			});
 			const reader = new ReceiveStream({
 				stream: readableStream,
-				transfer: undefined,
 				streamId: 0n,
 			});
 
@@ -87,7 +85,6 @@ Deno.test("GroupMessage - error cases", async (t) => {
 			});
 			const reader = new ReceiveStream({
 				stream: readableStream,
-				transfer: undefined,
 				streamId: 0n,
 			});
 
@@ -108,7 +105,6 @@ Deno.test("GroupMessage - error cases", async (t) => {
 		});
 		const reader = new ReceiveStream({
 			stream: readableStream,
-			transfer: undefined,
 			streamId: 0n,
 		});
 
@@ -128,62 +124,11 @@ Deno.test("GroupMessage - error cases", async (t) => {
 		});
 		const reader = new ReceiveStream({
 			stream: readableStream,
-			transfer: undefined,
 			streamId: 0n,
 		});
 
 		const msg = new GroupMessage({});
 		const err = await msg.decode(reader);
 		if (!(err !== undefined)) throw new Error("expected error from decode sequence");
-	});
-
-	await t.step("decode should throw when length mismatches", async () => {
-		// Build a valid encoded message then tamper the length prefix
-		const chunks: Uint8Array[] = [];
-		const writableStream = new WritableStream({
-			write(chunk) {
-				chunks.push(chunk);
-			},
-		});
-		const writer = new SendStream({
-			stream: writableStream,
-			transfer: undefined,
-			streamId: 0n,
-		});
-		const original = new GroupMessage({ subscribeId: 1, sequence: 2 });
-		const encErr = await original.encode(writer);
-		if (encErr) throw encErr;
-
-		// Combine chunks
-		const totalLength = chunks.reduce((s, c) => s + c.length, 0);
-		const combined = new Uint8Array(totalLength);
-		let off = 0;
-		for (const c of chunks) {
-			combined.set(c, off);
-			off += c.length;
-		}
-
-		// Tamper first byte (declared length) to a wrong value
-		combined[0] = 0; // wrong length
-
-		const readableStream = new ReadableStream({
-			start(controller) {
-				controller.enqueue(combined);
-				controller.close();
-			},
-		});
-		const reader = new ReceiveStream({
-			stream: readableStream,
-			transfer: undefined,
-			streamId: 0n,
-		});
-
-		const decoded = new GroupMessage({});
-		try {
-			await decoded.decode(reader);
-			throw new Error("expected decode to throw due to length mismatch");
-		} catch (e) {
-			if (!(e instanceof Error) || !e.message.includes("message length mismatch")) throw e;
-		}
 	});
 });

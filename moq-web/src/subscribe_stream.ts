@@ -60,11 +60,6 @@ export class SendSubscribeStream {
 		}
 		this.#config = update;
 
-		const flushErr = await this.#stream.writable.flush();
-		if (flushErr) {
-			return new Error(`Failed to flush subscribe update: ${flushErr}`);
-		}
-
 		return undefined;
 	}
 

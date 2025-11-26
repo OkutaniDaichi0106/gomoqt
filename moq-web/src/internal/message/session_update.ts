@@ -1,5 +1,5 @@
-import type { ReceiveStream, SendStream } from "../webtransport/mod.ts";
-import { varintLen } from "../webtransport/mod.ts";
+import type { Reader, Writer } from "@okudai/golikejs/io";
+import { parseVarint, readFull, readVarint, varintLen, writeVarint } from "./message.ts";
 
 export interface SessionUpdateMessageInit {
 	bitrate?: number;
@@ -8,33 +8,45 @@ export interface SessionUpdateMessageInit {
 export class SessionUpdateMessage {
 	bitrate: number;
 
-	constructor(init: SessionUpdateMessageInit) {
+	constructor(init: SessionUpdateMessageInit = {}) {
 		this.bitrate = init.bitrate ?? 0;
 	}
 
-	get messageLength(): number {
+	/**
+	 * Returns the length of the message body (excluding the length prefix).
+	 */
+	get len(): number {
 		return varintLen(this.bitrate);
 	}
 
-	async encode(writer: SendStream): Promise<Error | undefined> {
-		writer.writeVarint(this.messageLength);
-		writer.writeVarint(this.bitrate);
-		return await writer.flush();
+	/**
+	 * Encodes the message to the writer.
+	 */
+	async encode(w: Writer): Promise<Error | undefined> {
+		const msgLen = this.len;
+		let err: Error | undefined;
+
+		[, err] = await writeVarint(w, msgLen);
+		if (err) return err;
+
+		[, err] = await writeVarint(w, this.bitrate);
+		if (err) return err;
+
+		return undefined;
 	}
 
-	async decode(reader: ReceiveStream): Promise<Error | undefined> {
-		let [len, err] = await reader.readVarint();
-		if (err) {
-			return err;
-		}
-		[this.bitrate, err] = await reader.readVarint();
-		if (err) {
-			return err;
-		}
+	/**
+	 * Decodes the message from the reader.
+	 */
+	async decode(r: Reader): Promise<Error | undefined> {
+		const [msgLen, , err1] = await readVarint(r);
+		if (err1) return err1;
 
-		if (len !== this.messageLength) {
-			throw new Error(`message length mismatch: expected ${len}, got ${this.messageLength}`);
-		}
+		const buf = new Uint8Array(msgLen);
+		const [, err2] = await readFull(r, buf);
+		if (err2) return err2;
+
+		[this.bitrate] = parseVarint(buf, 0);
 
 		return undefined;
 	}

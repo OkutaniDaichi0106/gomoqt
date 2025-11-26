@@ -9,7 +9,7 @@ import type {
 } from "./subscribe_stream.ts";
 import type { ReceiveStream, SendStream } from "./internal/webtransport/mod.ts";
 import { UniStreamTypes } from "./stream_type.ts";
-import { GroupMessage } from "./internal/message/mod.ts";
+import { GroupMessage, writeVarint } from "./internal/message/mod.ts";
 import type { BroadcastPath } from "./broadcast_path.ts";
 import type { SubscribeErrorCode } from "./error.ts";
 import { PublishAbortedErrorCode } from "./error.ts";
@@ -61,7 +61,11 @@ export class TrackWriter {
 			return [undefined, err];
 		}
 
-		writer!.writeUint8(UniStreamTypes.GroupStreamType);
+		[, err] = await writeVarint(writer!, UniStreamTypes.GroupStreamType);
+		if (err) {
+			return [undefined, new Error(`Failed to write stream type: ${err}`)];
+		}
+
 		const msg = new GroupMessage({
 			subscribeId: this.subscribeId,
 			sequence: groupSequence,

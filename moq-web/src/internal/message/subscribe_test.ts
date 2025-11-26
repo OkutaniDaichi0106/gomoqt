@@ -9,32 +9,32 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 			broadcastPath: "path",
 			trackName: "track",
 			trackPriority: 1,
-			minGroupSequence: 2n,
-			maxGroupSequence: 3n,
+			minGroupSequence: 2,
+			maxGroupSequence: 3,
 		},
 		"large sequence numbers": {
 			subscribeId: 1000000,
 			broadcastPath: "long/path/to/resource",
 			trackName: "long-track-name-with-hyphens",
 			trackPriority: 255,
-			minGroupSequence: 1000000n,
-			maxGroupSequence: 2000000n,
+			minGroupSequence: 1000000,
+			maxGroupSequence: 2000000,
 		},
 		"zero values": {
 			subscribeId: 0,
 			broadcastPath: "",
 			trackName: "",
 			trackPriority: 0,
-			minGroupSequence: 0n,
-			maxGroupSequence: 0n,
+			minGroupSequence: 0,
+			maxGroupSequence: 0,
 		},
 		"single character paths": {
 			subscribeId: 1,
 			broadcastPath: "a",
 			trackName: "b",
 			trackPriority: 1,
-			minGroupSequence: 1n,
-			maxGroupSequence: 2n,
+			minGroupSequence: 1,
+			maxGroupSequence: 2,
 		},
 	};
 
@@ -49,7 +49,6 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 			});
 			const writer = new SendStream({
 				stream: writableStream,
-				transfer: undefined,
 				streamId: 0n,
 			});
 
@@ -75,7 +74,6 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 			});
 			const reader = new ReceiveStream({
 				stream: readableStream,
-				transfer: undefined,
 				streamId: 0n,
 			});
 
@@ -127,7 +125,6 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 			});
 			const reader = new ReceiveStream({
 				stream: readableStream,
-				transfer: undefined,
 				streamId: 0n,
 			});
 
@@ -147,7 +144,6 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 		});
 		const reader = new ReceiveStream({
 			stream: readableStream,
-			transfer: undefined,
 			streamId: 0n,
 		});
 
@@ -166,7 +162,6 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 		});
 		const reader = new ReceiveStream({
 			stream: readableStream,
-			transfer: undefined,
 			streamId: 0n,
 		});
 
@@ -185,7 +180,6 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 		});
 		const reader = new ReceiveStream({
 			stream: readableStream,
-			transfer: undefined,
 			streamId: 0n,
 		});
 

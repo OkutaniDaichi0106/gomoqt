@@ -2,316 +2,174 @@
  * Mock implementations for WebTransport streams used in testing.
  *
  * This module provides mock implementations of:
- * - MockSendStream: Mock for SendStream (write operations)
- * - MockReceiveStream: Mock for ReceiveStream (read operations)
+ * - MockSendStream: Mock for SendStream (implements Writer interface)
+ * - MockReceiveStream: Mock for ReceiveStream (implements Reader interface)
  * - MockStream: Mock for bidirectional Stream (combines both)
- *
- * All mocks use spy functionality from @std/testing/mock to track method calls
- * and allow customization of return values for testing various scenarios.
- *
- * @example
- * ```ts
- * import { MockStream } from "./internal/webtransport/mock_stream_test.ts";
- *
- * // Create a bidirectional mock stream
- * const mockStream = new MockStream(42n);
- *
- * // Configure mock behavior
- * mockStream.writable.flushError = new Error("Flush failed");
- * mockStream.readable.data = [new Uint8Array([1, 2, 3])];
- *
- * // Use in tests
- * await someFunction(mockStream);
- *
- * // Verify calls
- * assertEquals(mockStream.writable.flushCalls > 0, true);
- * ```
  *
  * @module
  */
 
-import { spy } from "@std/testing/mock";
-import type { StreamError } from "./error.ts";
+import type { Reader, Writer } from "@okudai/golikejs/io";
 import { EOFError } from "@okudai/golikejs/io";
-
-// Define the minimal interface we need to mock (duck typing approach)
-// We don't need to match the full class structure, just the public API
-
-export interface Source {
-	byteLength: number;
-	copyTo(target: ArrayBuffer | ArrayBufferView<ArrayBufferLike>): void;
-}
+import type { StreamError } from "./error.ts";
 
 /**
  * Mock implementation of SendStream for testing.
- * All write methods are spies that can be tracked and verified.
- * This uses duck typing to be compatible with the SendStream class.
+ * Implements the Writer interface.
  */
-export class MockSendStream {
+export class MockSendStream implements Writer {
 	/** Stream ID (required property) */
-	public readonly streamId: bigint = 0n;
+	public readonly id: bigint;
 
-	/** Track flush method calls */
-	public flushCalls: number = 0;
+	/** Written data chunks */
+	public writtenData: Uint8Array[] = [];
+
 	/** Track close method calls */
 	public closeCalls: number = 0;
+
 	/** Track cancel method calls */
 	public cancelCalls: Array<StreamError> = [];
 
-	/** Spy for writeVarint method */
-	public writeVarint = spy((_value: number): void => {});
+	/** Error to return from write operations */
+	public writeError: Error | undefined = undefined;
 
-	/** Spy for writeBoolean method */
-	public writeBoolean = spy((_value: boolean): void => {});
-
-	/** Spy for writeBigVarint method */
-	public writeBigVarint = spy((_value: bigint): void => {});
-
-	/** Spy for writeString method */
-	public writeString = spy((_str: string): void => {});
-
-	/** Spy for writeStringArray method */
-	public writeStringArray = spy((_strings: string[]): void => {});
-
-	/** Spy for writeUint8Array method */
-	public writeUint8Array = spy((_data: Uint8Array): void => {});
-
-	/** Spy for writeUint8 method */
-	public writeUint8 = spy((_value: number): void => {});
-
-	/** Spy for copyFrom method */
-	public copyFrom = spy((_src: Source): void => {});
+	constructor(streamId: bigint = 0n) {
+		this.id = streamId;
+	}
 
 	/**
-	 * Spy for flush method.
-	 * Returns undefined by default (no error).
-	 * Override flushError to simulate flush errors.
+	 * Implements Writer.write
 	 */
-	public flushError: Error | undefined = undefined;
-	public flush = spy(async (): Promise<Error | undefined> => {
-		this.flushCalls++;
-		return this.flushError;
-	});
+	async write(p: Uint8Array): Promise<[number, Error | undefined]> {
+		if (this.writeError) {
+			return [0, this.writeError];
+		}
+		this.writtenData.push(p.slice()); // Clone to preserve data
+		return [p.length, undefined];
+	}
 
-	/** Spy for close method */
-	public close = spy(async (): Promise<void> => {
+	/** Close the stream */
+	async close(): Promise<void> {
 		this.closeCalls++;
-	});
+	}
 
-	/** Spy for cancel method */
-	public cancel = spy(async (err: StreamError): Promise<void> => {
+	/** Cancel the stream with error */
+	async cancel(err: StreamError): Promise<void> {
 		this.cancelCalls.push(err);
-	});
+	}
 
-	/** Spy for closed method */
-	public closed = spy((): Promise<void> => Promise.resolve());
+	/** Returns a resolved promise */
+	closed(): Promise<void> {
+		return Promise.resolve();
+	}
 
 	/** Reset all call tracking */
 	public reset(): void {
-		this.flushCalls = 0;
+		this.writtenData = [];
 		this.closeCalls = 0;
 		this.cancelCalls = [];
+		this.writeError = undefined;
+	}
+
+	/** Get all written data as a single Uint8Array */
+	public getAllWrittenData(): Uint8Array {
+		const totalLength = this.writtenData.reduce((sum, chunk) => sum + chunk.length, 0);
+		const result = new Uint8Array(totalLength);
+		let offset = 0;
+		for (const chunk of this.writtenData) {
+			result.set(chunk, offset);
+			offset += chunk.length;
+		}
+		return result;
 	}
 }
 
 /**
  * Mock implementation of ReceiveStream for testing.
- * All read methods are spies that can be tracked and verified.
- * Use the data array to provide mock data for read operations.
- * This uses duck typing to be compatible with the ReceiveStream class.
+ * Implements the Reader interface.
  */
-export class MockReceiveStream {
+export class MockReceiveStream implements Reader {
 	/** Stream ID (required property) */
-	public readonly streamId: bigint = 0n;
+	public readonly id: bigint;
 
 	/** Mock data to be returned by read operations */
-	public data: Uint8Array[] = [];
-	/** Current position in the data array */
-	private dataIndex = 0;
+	#data: Uint8Array;
+	#offset: number = 0;
 
 	/** Track cancel method calls */
 	public cancelCalls: Array<StreamError> = [];
 
-	/**
-	 * Error to return from read operations.
-	 * If set, all read operations will return this error.
-	 */
+	/** Error to return from read operations */
 	public readError: Error | undefined = undefined;
 
+	constructor(streamId: bigint = 0n, data: Uint8Array = new Uint8Array(0)) {
+		this.id = streamId;
+		this.#data = data;
+	}
+
 	/**
-	 * Override to customize readVarint behavior.
-	 * By default returns simple varint decoding from data array.
+	 * Implements Reader.read
 	 */
-	public readVarintImpl: () => Promise<[number, Error | undefined]> = async () => {
+	async read(p: Uint8Array): Promise<[number, Error | undefined]> {
 		if (this.readError) {
 			return [0, this.readError];
 		}
-		if (this.dataIndex >= this.data.length) {
+		if (this.#offset >= this.#data.length) {
 			return [0, new EOFError()];
 		}
-		const data = this.data[this.dataIndex++];
-		// Simple varint decoding (first byte only for testing)
-		return [(data?.[0]) || 0, undefined];
-	};
 
-	/**
-	 * Spy for readVarint method.
-	 * Returns [0, readError] or [0, EOF] when no data available.
-	 */
-	public readVarint = spy(async (): Promise<[number, Error | undefined]> => {
-		return this.readVarintImpl();
-	});
+		const remaining = this.#data.length - this.#offset;
+		const n = Math.min(p.length, remaining);
+		p.set(this.#data.subarray(this.#offset, this.#offset + n));
+		this.#offset += n;
+		return [n, undefined];
+	}
 
-	/** Spy for readBoolean method */
-	public readBoolean = spy(async (): Promise<[boolean, Error | undefined]> => {
-		if (this.readError) {
-			return [false, this.readError];
-		}
-		if (this.dataIndex >= this.data.length) {
-			return [false, new EOFError()];
-		}
-		const data = this.data[this.dataIndex++];
-		return [(data?.[0]) === 1, undefined];
-	});
-
-	/** Spy for readBigVarint method */
-	public readBigVarint = spy(async (): Promise<[bigint, Error | undefined]> => {
-		if (this.readError) {
-			return [0n, this.readError];
-		}
-		if (this.dataIndex >= this.data.length) {
-			return [0n, new EOFError()];
-		}
-		const data = this.data[this.dataIndex++];
-		return [BigInt((data?.[0]) || 0), undefined];
-	});
-
-	/** Spy for readString method */
-	public readString = spy(async (): Promise<[string, Error | undefined]> => {
-		if (this.readError) {
-			return ["", this.readError];
-		}
-		if (this.dataIndex >= this.data.length) {
-			return ["", new EOFError()];
-		}
-		const data = this.data[this.dataIndex++];
-		if (!data) {
-			return ["", new EOFError()];
-		}
-		const decoder = new TextDecoder();
-		return [decoder.decode(data), undefined];
-	});
-
-	/** Spy for readStringArray method */
-	public readStringArray = spy(async (): Promise<[string[], Error | undefined]> => {
-		if (this.readError) {
-			return [[], this.readError];
-		}
-		return [[], undefined];
-	});
-
-	/** Spy for readUint8Array method */
-	public readUint8Array = spy(
-		async (_transfer?: ArrayBufferLike): Promise<
-			[Uint8Array<ArrayBufferLike>, undefined] | [undefined, Error]
-		> => {
-			if (this.readError) {
-				return [undefined, this.readError];
-			}
-			if (this.dataIndex >= this.data.length) {
-				return [undefined, new EOFError()];
-			}
-			const data = this.data[this.dataIndex++];
-			if (!data) {
-				return [undefined, new EOFError()];
-			}
-			return [data, undefined];
-		},
-	);
-
-	/** Spy for readUint8 method */
-	public readUint8 = spy(async (): Promise<[number, Error | undefined]> => {
-		if (this.readError) {
-			return [0, this.readError];
-		}
-		if (this.dataIndex >= this.data.length) {
-			return [0, new EOFError()];
-		}
-		const data = this.data[this.dataIndex++];
-		return [(data?.[0]) || 0, undefined];
-	});
-
-	/** Spy for pushN method (simulates reading data into internal buffer) */
-	public pushN = spy(async (_n: number): Promise<Error | undefined> => {
-		if (this.readError) {
-			return this.readError;
-		}
-		return undefined;
-	});
-
-	/**
-	 * Override to customize fillN behavior.
-	 * By default returns undefined (no error).
-	 */
-	public fillNImpl: (buffer: Uint8Array, n: number) => Promise<Error | undefined> = async (
-		_buffer: Uint8Array,
-		_n: number,
-	) => {
-		if (this.readError) {
-			return this.readError;
-		}
-		return undefined;
-	};
-
-	/** Spy for fillN method (fills n bytes into buffer) */
-	public fillN = spy(async (buffer: Uint8Array, n: number): Promise<Error | undefined> => {
-		return this.fillNImpl(buffer, n);
-	});
-
-	/** Spy for cancel method */
-	public cancel = spy(async (reason: StreamError): Promise<void> => {
+	/** Cancel the stream */
+	async cancel(reason: StreamError): Promise<void> {
 		this.cancelCalls.push(reason);
-	});
+	}
 
-	/** Spy for closed method */
-	public closed = spy((): Promise<void> => Promise.resolve());
+	/** Returns a resolved promise */
+	closed(): Promise<void> {
+		return Promise.resolve();
+	}
 
-	/** Reset data index and call tracking */
+	/** Set the data to be read */
+	public setData(data: Uint8Array): void {
+		this.#data = data;
+		this.#offset = 0;
+	}
+
+	/** Reset the read position */
 	public reset(): void {
-		this.dataIndex = 0;
+		this.#offset = 0;
 		this.cancelCalls = [];
+		this.readError = undefined;
 	}
 }
 
 /**
- * Mock implementation of Stream (bidirectional stream).
- * Combines MockSendStream and MockReceiveStream with a stream ID.
- * This is compatible with the Stream class used in the application.
+ * Mock implementation of a bidirectional Stream for testing.
+ * Combines MockSendStream (writable) and MockReceiveStream (readable).
  */
 export class MockStream {
 	/** Stream ID */
-	public readonly streamId: bigint;
-	/** Writable stream (send) */
+	public readonly id: bigint;
+
+	/** Mock writable stream */
 	public readonly writable: MockSendStream;
-	/** Readable stream (receive) */
+
+	/** Mock readable stream */
 	public readonly readable: MockReceiveStream;
 
-	/**
-	 * Create a new MockStream with the specified stream ID.
-	 * @param streamId The stream ID (default: 0n)
-	 */
-	constructor(streamId: bigint = 0n) {
-		this.streamId = streamId;
-		this.writable = new MockSendStream();
-		this.readable = new MockReceiveStream();
-		// Set the same streamId on the child streams
-		(this.writable as any).streamId = streamId;
-		(this.readable as any).streamId = streamId;
+	constructor(streamId: bigint = 0n, readData: Uint8Array = new Uint8Array(0)) {
+		this.id = streamId;
+		this.writable = new MockSendStream(streamId);
+		this.readable = new MockReceiveStream(streamId, readData);
 	}
 
-	/**
-	 * Reset all tracking on both writable and readable streams.
-	 */
+	/** Reset both streams */
 	public reset(): void {
 		this.writable.reset();
 		this.readable.reset();

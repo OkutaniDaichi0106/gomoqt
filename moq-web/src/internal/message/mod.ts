@@ -1,3 +1,4 @@
+export * from "./message.ts";
 export * from "./session_client.ts";
 export * from "./session_server.ts";
 export * from "./session_update.ts";

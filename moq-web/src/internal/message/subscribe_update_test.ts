@@ -37,7 +37,6 @@ Deno.test("SubscribeUpdateMessage - encode/decode roundtrip - multiple scenarios
 			});
 			const writer = new SendStream({
 				stream: writableStream,
-				transfer: undefined,
 				streamId: 0n,
 			});
 
@@ -63,7 +62,6 @@ Deno.test("SubscribeUpdateMessage - encode/decode roundtrip - multiple scenarios
 			});
 			const reader = new ReceiveStream({
 				stream: readableStream,
-				transfer: undefined,
 				streamId: 0n,
 			});
 
@@ -98,7 +96,6 @@ Deno.test("SubscribeUpdateMessage - encode/decode roundtrip - multiple scenarios
 			});
 			const reader = new ReceiveStream({
 				stream: readableStream,
-				transfer: undefined,
 				streamId: 0n,
 			});
 
@@ -118,7 +115,6 @@ Deno.test("SubscribeUpdateMessage - encode/decode roundtrip - multiple scenarios
 		});
 		const reader = new ReceiveStream({
 			stream: readableStream,
-			transfer: undefined,
 			streamId: 0n,
 		});
 
@@ -137,7 +133,6 @@ Deno.test("SubscribeUpdateMessage - encode/decode roundtrip - multiple scenarios
 		});
 		const reader = new ReceiveStream({
 			stream: readableStream,
-			transfer: undefined,
 			streamId: 0n,
 		});
 

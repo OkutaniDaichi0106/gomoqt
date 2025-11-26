@@ -4,13 +4,15 @@ export interface Frame extends Source {
 	data: Uint8Array;
 }
 
-export const Frame: {
-	new (bytes: Uint8Array): Frame;
-} = class BytesFrame implements Frame {
+export class BytesFrame implements Frame {
 	data: Uint8Array;
 
 	constructor(bytes: Uint8Array) {
 		this.data = bytes;
+	}
+
+	get bytes(): Uint8Array {
+		return this.data;
 	}
 
 	get byteLength(): number {
@@ -41,4 +43,8 @@ export const Frame: {
 		}
 		src.copyTo(this.data);
 	}
-};
+}
+
+export const Frame: {
+	new (bytes: Uint8Array): Frame;
+} = BytesFrame;

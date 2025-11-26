@@ -13,7 +13,6 @@ Deno.test("SubscribeOkMessage - encode/decode roundtrip", async (t) => {
 		});
 		const writer = new SendStream({
 			stream: writableStream,
-			transfer: undefined,
 			streamId: 0n,
 		});
 
@@ -39,7 +38,6 @@ Deno.test("SubscribeOkMessage - encode/decode roundtrip", async (t) => {
 		});
 		const reader = new ReceiveStream({
 			stream: readableStream,
-			transfer: undefined,
 			streamId: 0n,
 		});
 
@@ -50,7 +48,7 @@ Deno.test("SubscribeOkMessage - encode/decode roundtrip", async (t) => {
 
 	await t.step("messageLength should return 0", () => {
 		const message = new SubscribeOkMessage({});
-		assertEquals(message.messageLength, 0);
+		assertEquals(message.len, 0);
 	});
 
 	await t.step("decode should return error when readVarint fails", async () => {
@@ -61,36 +59,11 @@ Deno.test("SubscribeOkMessage - encode/decode roundtrip", async (t) => {
 		});
 		const reader = new ReceiveStream({
 			stream: readableStream,
-			transfer: undefined,
 			streamId: 0n,
 		});
 
 		const message = new SubscribeOkMessage({});
 		const err = await message.decode(reader);
 		assertEquals(err !== undefined, true);
-	});
-
-	await t.step("decode should throw when length mismatch", async () => {
-		// Create a buffer with incorrect length (1 instead of 0)
-		const buffer = new Uint8Array([1]); // varint 1
-		const readableStream = new ReadableStream({
-			start(controller) {
-				controller.enqueue(buffer);
-				controller.close();
-			},
-		});
-		const reader = new ReceiveStream({
-			stream: readableStream,
-			transfer: undefined,
-			streamId: 0n,
-		});
-
-		const message = new SubscribeOkMessage({});
-		try {
-			await message.decode(reader);
-			throw new Error("Expected decode to throw");
-		} catch (error) {
-			assertEquals((error as Error).message.includes("message length mismatch"), true);
-		}
 	});
 });

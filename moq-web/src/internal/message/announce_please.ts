@@ -1,5 +1,12 @@
-import type { ReceiveStream, SendStream } from "../webtransport/mod.ts";
-import { stringLen } from "../webtransport/mod.ts";
+import type { Reader, Writer } from "@okudai/golikejs/io";
+import {
+	parseString,
+	readFull,
+	readVarint,
+	stringLen,
+	writeString,
+	writeVarint,
+} from "./message.ts";
 
 export interface AnnouncePleaseMessageInit {
 	prefix?: string;
@@ -8,34 +15,45 @@ export interface AnnouncePleaseMessageInit {
 export class AnnouncePleaseMessage {
 	prefix: string;
 
-	constructor(init: AnnouncePleaseMessageInit) {
+	constructor(init: AnnouncePleaseMessageInit = {}) {
 		this.prefix = init.prefix ?? "";
 	}
 
-	get messageLength(): number {
+	/**
+	 * Returns the length of the message body (excluding the length prefix).
+	 */
+	get len(): number {
 		return stringLen(this.prefix);
 	}
 
-	async encode(writer: SendStream): Promise<Error | undefined> {
-		writer.writeVarint(this.messageLength);
-		writer.writeString(this.prefix);
-		return await writer.flush();
+	/**
+	 * Encodes the message to the writer.
+	 */
+	async encode(w: Writer): Promise<Error | undefined> {
+		const msgLen = this.len;
+		let err: Error | undefined;
+
+		[, err] = await writeVarint(w, msgLen);
+		if (err) return err;
+
+		[, err] = await writeString(w, this.prefix);
+		if (err) return err;
+
+		return undefined;
 	}
 
-	async decode(reader: ReceiveStream): Promise<Error | undefined> {
-		let [len, err] = await reader.readVarint();
-		if (err) {
-			return err;
-		}
+	/**
+	 * Decodes the message from the reader.
+	 */
+	async decode(r: Reader): Promise<Error | undefined> {
+		const [msgLen, , err1] = await readVarint(r);
+		if (err1) return err1;
 
-		[this.prefix, err] = await reader.readString();
-		if (err) {
-			return err;
-		}
+		const buf = new Uint8Array(msgLen);
+		const [, err2] = await readFull(r, buf);
+		if (err2) return err2;
 
-		if (len !== this.messageLength) {
-			throw new Error(`message length mismatch: expected ${len}, got ${this.messageLength}`);
-		}
+		[this.prefix] = parseString(buf, 0);
 
 		return undefined;
 	}

@@ -3,12 +3,16 @@ import { withCancelCause } from "@okudai/golikejs/context";
 import type { CancelCauseFunc, Context } from "@okudai/golikejs/context";
 import { StreamError } from "./internal/webtransport/error.ts";
 import type { GroupMessage } from "./internal/message/mod.ts";
+import { readFull, readVarint, writeVarint } from "./internal/message/mod.ts";
 import type { Frame } from "./frame.ts";
 import type { GroupErrorCode } from "./error.ts";
 import { PublishAbortedErrorCode, SubscribeCanceledErrorCode } from "./error.ts";
+import { GroupSequence } from "./alias.ts";
+
+export const GroupSequenceFirst: GroupSequence = 1;
 
 export class GroupWriter {
-	readonly sequence: bigint;
+	readonly sequence: GroupSequence;
 	#stream: SendStream;
 	readonly context: Context;
 	#cancelFunc: CancelCauseFunc;
@@ -24,8 +28,13 @@ export class GroupWriter {
 	}
 
 	async writeFrame(src: Frame): Promise<Error | undefined> {
-		this.#stream.copyFrom(src);
-		const err = await this.#stream.flush();
+		// Write length prefix
+		let [, err] = await writeVarint(this.#stream, src.data.byteLength);
+		if (err) {
+			return err;
+		}
+		// Write data
+		[, err] = await this.#stream.write(src.data);
 		if (err) {
 			return err;
 		}
@@ -53,11 +62,10 @@ export class GroupWriter {
 }
 
 export class GroupReader {
-	readonly sequence: bigint;
+	readonly sequence: GroupSequence;
 	#reader: ReceiveStream;
 	readonly context: Context;
 	#cancelFunc: CancelCauseFunc;
-	// #frame?: BytesFrame;
 
 	constructor(trackCtx: Context, reader: ReceiveStream, group: GroupMessage) {
 		this.sequence = group.sequence;
@@ -70,11 +78,9 @@ export class GroupReader {
 	}
 
 	async readFrame(frame: Frame): Promise<Error | undefined> {
-		let err: Error | undefined;
-		let len: number;
-		[len, err] = await this.#reader.readVarint();
-		if (err) {
-			return err;
+		const [len, , err1] = await readVarint(this.#reader);
+		if (err1) {
+			return err1;
 		}
 
 		if (len > Number.MAX_SAFE_INTEGER) {
@@ -88,9 +94,9 @@ export class GroupReader {
 			frame.data = new Uint8Array(cap);
 		}
 
-		err = await this.#reader.fillN(frame.data, len);
-		if (err) {
-			return err;
+		const [, err2] = await readFull(this.#reader, frame.data.subarray(0, len));
+		if (err2) {
+			return err2;
 		}
 
 		return undefined;

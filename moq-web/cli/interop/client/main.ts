@@ -89,4 +89,3 @@ scope(async (defer) => {
 
 	console.debug("[Client] Operations completed");
 });
-

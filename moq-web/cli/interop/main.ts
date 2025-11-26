@@ -1,120 +1,111 @@
-import { dirname, join } from "@std/path";
+import { parseArgs } from "https://deno.land/std@0.224.0/cli/parse_args.ts";
+import { Client } from "../../src/client.ts";
+import { TrackMux } from "../../src/track_mux.ts";
+import { Frame } from "../../src/frame.ts";
+import { GroupSequenceFirst } from "../../src/group_stream.ts";
 
-console.log("=== MOQ Interop Test (TypeScript Client) ===");
-
-/**
- * Find the repository root by walking up to find .git directory.
- * Returns the repository root directory (gomoqt).
- */
-async function findRoot(): Promise<string> {
-	let currentPath = import.meta.dirname!; // Current file's directory
-
-	while (true) {
-		const gitPath = join(currentPath, ".git");
-		try {
-			const stat = await Deno.stat(gitPath);
-			if (stat.isDirectory) {
-				return currentPath; // Found .git directory
-			}
-		} catch {
-			// .git not found, continue searching
-		}
-
-		const parent = dirname(currentPath);
-		if (parent === currentPath) {
-			// Reached filesystem root without finding .git
-			throw new Error("Could not find repository root (.git directory)");
-		}
-		currentPath = parent;
-	}
-}
-
-// Determine project root and paths (cross-platform, robust)
-const rootPath = await findRoot();
-
-
-// Create context for server lifecycle
-const abortController = new AbortController();
-
-// Start server process using 'go run'
-console.log("Starting server...");
-const serverCmd = new Deno.Command("go", {
-	args: ["run", join(rootPath, "cmd/interop/server")],
-	stdout: "piped",
-	stderr: "piped",
-	env: {
-		...Deno.env.toObject(),
-		"SLOG_LEVEL": "debug",
-	},
-	signal: abortController.signal,
-});
-const serverProcess = serverCmd.spawn();
-
-// Forward server stdout/stderr to console
-(async () => {
-	const reader = serverProcess.stdout.getReader();
-	try {
-		while (true) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			Deno.stdout.writeSync(value);
-		}
-	} finally {
-		reader.releaseLock();
-	}
-})();
-
-(async () => {
-	const reader = serverProcess.stderr.getReader();
-	try {
-		while (true) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			Deno.stderr.writeSync(value);
-		}
-	} finally {
-		reader.releaseLock();
-	}
-})();
-
-// Wait for server to start
-console.log("Waiting for server to start...");
-await new Promise((resolve) => setTimeout(resolve, 3000));
-
-// Run client and wait for completion
-console.log("Starting client...");
-let clientStatus: Deno.CommandStatus | null = null;
-
-try {
-	const clientCmd = new Deno.Command("deno", {
-		args: ["run", "--log-level=info", "--allow-net", "--allow-read", join(rootPath, "moq-web/cli/interop/client/main.ts")],
-		cwd: rootPath,
-		stdout: "inherit",
-		stderr: "inherit",
+async function main() {
+	const args = parseArgs(Deno.args, {
+		string: ["addr"],
+		default: { addr: "https://moqt.example.com:9000" },
 	});
-	const clientProcess = clientCmd.spawn();
 
-	// Wait for client to finish
-	clientStatus = await clientProcess.status;
+	const addr = args.addr;
+	console.log(`Connecting to server at ${addr}...`);
 
-			if (!clientStatus.success) {
-				console.error("[ERR] Client failed");
-			} else {
-				console.log("[OK] Client completed successfully");
+	const client = new Client();
+	const mux = new TrackMux();
+
+	// Register publish handler before dialing
+	const donePromise = new Promise<void>((resolve) => {
+		// Create a context promise that never resolves (unless we want to stop publishing)
+		const ctx = new Promise<void>(() => {});
+
+		mux.publishFunc(ctx, "/interop/client", async (tw) => {
+			try {
+				console.log("Opening group...");
+				const [group, err] = await tw.openGroup(GroupSequenceFirst);
+				if (err) throw err;
+				console.log("...ok");
+
+				console.log("Writing frame to server...");
+				const frame = new Frame(new Uint8Array([72, 69, 76, 76, 79])); // "HELLO"
+				const writeErr = await group.writeFrame(frame);
+				if (writeErr) throw writeErr;
+				console.log("...ok");
+
+				await group.close();
+				resolve();
+			} catch (err) {
+				console.error("Error in publish handler:", err);
+				resolve(); // Resolve anyway to avoid hanging
 			}
-} catch (error) {
-	console.error("Client execution error:", error);
-} finally {
-	// Clean up: terminate server
-	console.log("Stopping server...");
-	abortController.abort();
-	
-	// Wait for the server process to terminate
+		});
+	});
+
+	let sess;
 	try {
-		await serverProcess.status;
-	} catch {
-		// Process cleanup completed
+		sess = await client.dial(addr, mux);
+		console.log("...ok");
+	} catch (err) {
+		console.error("...failed\n  Error:", err);
+		return;
+	}
+
+	try {
+		// Step 1: Accept announcements from server
+		console.log("Accepting server announcements...");
+		const [anns, acceptErr] = await sess.acceptAnnounce("/");
+		if (acceptErr) throw acceptErr;
+		console.log("...ok");
+
+		console.log("Receiving announcement...");
+		// Use a never-resolving promise for signal if we don't want timeout
+		const [ann, annErr] = await anns.receive(new Promise(() => {}));
+		if (annErr) throw annErr;
+		if (!ann) {
+			throw new Error("Announcement stream closed");
+		}
+		console.log("...ok");
+		console.log(`Discovered broadcast: ${ann.broadcastPath}`);
+
+		// Step 2: Subscribe to the server's broadcast and receive data
+		console.log("Subscribing to server broadcast...");
+		const [track, subErr] = await sess.subscribe(ann.broadcastPath, "");
+		if (subErr) throw subErr;
+		console.log("...ok");
+
+		console.log("Accepting group from server...");
+		const [group, groupErr] = await track.acceptGroup(new Promise(() => {}));
+		if (groupErr) throw groupErr;
+		if (!group) {
+			throw new Error("Track closed before group received");
+		}
+		console.log("...ok");
+
+		console.log("Reading the first frame from server...");
+		const frame = new Frame(new Uint8Array(1024));
+		const readErr = await group.readFrame(frame);
+		if (readErr) throw readErr;
+
+		// Note: frame.data might contain trailing zeros if payload is smaller than 1024
+		const payload = new TextDecoder().decode(frame.data).replace(/\0/g, "");
+		console.log(`...ok (payload: ${payload})`);
+
+		// Wait for the publish handler to complete
+		await donePromise;
+
+		// Wait a bit for server to process everything before closing
+		await new Promise((r) => setTimeout(r, 1000));
+	} catch (err) {
+		console.error("Error during interop:", err);
+	} finally {
+		console.log("Closing session...");
+		await sess.closeWithError(0, "no error");
+		console.log("...ok");
 	}
 }
 
-console.log("=== Interop Test Completed ===");
+if (import.meta.main) {
+	main();
+}

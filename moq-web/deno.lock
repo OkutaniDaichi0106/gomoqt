@@ -5,6 +5,7 @@
     "jsr:@std/assert@1": "1.0.15",
     "jsr:@std/assert@^1.0.15": "1.0.15",
     "jsr:@std/async@^1.0.15": "1.0.15",
+    "jsr:@std/cli@1": "1.0.24",
     "jsr:@std/data-structures@^1.0.9": "1.0.9",
     "jsr:@std/fs@^1.0.19": "1.0.19",
     "jsr:@std/internal@^1.0.10": "1.0.12",
@@ -25,6 +26,9 @@
     },
     "@std/async@1.0.15": {
       "integrity": "55d1d9d04f99403fe5730ab16bdcc3c47f658a6bf054cafb38a50f046238116e"
+    },
+    "@std/cli@1.0.24": {
+      "integrity": "b655a5beb26aa94f98add6bc8889f5fb9bc3ee2cc3fc954e151201f4c4200a5e"
     },
     "@std/data-structures@1.0.9": {
       "integrity": "033d6e17e64bf1f84a614e647c1b015fa2576ae3312305821e1a4cb20674bb4d"
@@ -100,6 +104,7 @@
     "dependencies": [
       "jsr:@okudai/golikejs@~0.5.2",
       "jsr:@std/assert@1",
+      "jsr:@std/cli@1",
       "jsr:@std/path@^1.1.2",
       "jsr:@std/testing@1"
     ]

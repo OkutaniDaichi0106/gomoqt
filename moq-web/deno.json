@@ -23,6 +23,7 @@
 	"imports": {
 		"@okudai/golikejs": "jsr:@okudai/golikejs@^0.5.2",
 		"@std/assert": "jsr:@std/assert@1",
+		"@std/cli": "jsr:@std/cli@1",
 		"@std/path": "jsr:@std/path@^1.1.2",
 		"@std/testing": "jsr:@std/testing@1"
 	},
@@ -35,7 +36,8 @@
 		"fmt:check": "deno fmt --check",
 		"lint": "deno lint",
 		"check": "deno check src/**/*.ts",
-		"interop": "deno run --allow-all cli/interop/main.ts"
+		"interop": "deno run --allow-run --allow-read --allow-net cli/interop/run_secure.ts",
+		"interop:insecure": "deno run --unstable-net --allow-all --unsafely-ignore-certificate-errors cli/interop/main.ts"
 	},
 	"fmt": {
 		"useTabs": true,

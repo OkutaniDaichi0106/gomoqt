@@ -64,12 +64,13 @@ export class Session {
 		this.#conn = new Connection(init.conn);
 		this.mux = init.mux ?? DefaultTrackMux;
 		const [ctx, cancel] = withCancelCause(background());
-		this.#conn.closed.finally(() => {
+		this.#conn.closed.catch((err) => {
+			console.debug("connection closed with error:", err);
+		}).finally(() => {
 			cancel(new Error("webtransport: connection closed"));
 		});
 		this.#ctx = ctx;
 		this.#cancelFunc = cancel;
-
 		this.ready = this.#setup(
 			init.versions ?? DEFAULT_CLIENT_VERSIONS,
 			init.extensions ?? new Extensions(),
@@ -384,10 +385,14 @@ export class Session {
 				}
 			}
 		} catch (error) {
-			console.error("Error in listenBiStreams:", error);
+			// "timed out" errors during connection close are expected
+			if (error instanceof Error && error.message === "timed out") {
+				console.debug("listenBiStreams: connection closed (timed out)");
+			} else {
+				console.error("Error in listenBiStreams:", error);
+			}
 		}
 	}
-
 	async #listenUniStreams(): Promise<void> {
 		try {
 			let num: number;
@@ -416,7 +421,12 @@ export class Session {
 				}
 			}
 		} catch (error) {
-			console.error("Error in listenUniStreams:", error);
+			// "timed out" errors during connection close are expected
+			if (error instanceof Error && error.message === "timed out") {
+				console.debug("listenUniStreams: connection closed (timed out)");
+			} else {
+				console.error("Error in listenUniStreams:", error);
+			}
 		}
 	}
 
@@ -433,7 +443,6 @@ export class Session {
 		await Promise.allSettled(this.#wg);
 		this.#wg = [];
 	}
-
 	async closeWithError(code: number, message: string): Promise<void> {
 		if (this.#ctx.err()) {
 			return;

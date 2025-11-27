@@ -123,10 +123,6 @@ export class TrackMux {
 	}
 
 	async serveAnnouncement(writer: AnnouncementWriter, prefix: TrackPrefix): Promise<void> {
-		// if (!isValidPrefix(prefix)) {
-		//     throw new Error(`Invalid track prefix: ${prefix}`);
-		// }
-
 		console.debug(`[TrackMux] serving announcements for prefix: ${prefix}`);
 
 		let announced: AnnouncedTrackHandler;

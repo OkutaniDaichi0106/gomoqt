@@ -1,4 +1,4 @@
-import { parseArgs } from "https://deno.land/std@0.224.0/cli/parse_args.ts";
+import { parseArgs } from "@std/cli/parse-args";
 import { Client } from "../../src/client.ts";
 import { TrackMux } from "../../src/track_mux.ts";
 import { Frame } from "../../src/frame.ts";
@@ -6,14 +6,37 @@ import { GroupSequenceFirst } from "../../src/group_stream.ts";
 
 async function main() {
 	const args = parseArgs(Deno.args, {
-		string: ["addr"],
-		default: { addr: "https://moqt.example.com:9000" },
+		string: ["addr", "cert-hash"],
+		boolean: ["insecure", "debug"],
+		default: { addr: "https://localhost:9000", insecure: false, debug: false },
 	});
+
+	// Suppress debug logs unless --debug flag is provided
+	if (!args.debug) {
+		console.debug = () => {};
+	}
 
 	const addr = args.addr;
 	console.log(`Connecting to server at ${addr}...`);
 
-	const client = new Client();
+	// For local development with self-signed certificates
+	let transportOptions: WebTransportOptions = {};
+
+	if (args.insecure && args["cert-hash"]) {
+		// Use provided certificate hash for localhost development
+		const hashBase64 = args["cert-hash"];
+		const hashBytes = Uint8Array.from(atob(hashBase64), (c) => c.charCodeAt(0));
+
+		transportOptions = {
+			serverCertificateHashes: [{
+				algorithm: "sha-256",
+				value: hashBytes,
+			}],
+		};
+		console.log("[DEV] Using provided certificate hash for self-signed cert");
+	}
+
+	const client = new Client({ transportOptions });
 	const mux = new TrackMux();
 
 	// Register publish handler before dialing
@@ -107,5 +130,8 @@ async function main() {
 }
 
 if (import.meta.main) {
-	main();
+	main().catch((err) => {
+		console.error("Fatal error:", err);
+		Deno.exit(1);
+	});
 }

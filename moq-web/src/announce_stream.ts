@@ -271,9 +271,15 @@ export class AnnouncementReader {
 		const msg = new AnnounceMessage({});
 		msg.decode(this.#stream.readable).then(async (err) => {
 			if (err) {
-				if (!(err instanceof EOFError)) {
-					console.error(`moq: failed to read ANNOUNCE message: ${err}`);
+				// EOFError and ConnectionReset are expected during normal shutdown
+				if (err instanceof EOFError) {
+					return;
 				}
+				if (err.message?.includes("ConnectionReset")) {
+					console.debug("moq: ANNOUNCE stream closed by peer (normal shutdown)");
+					return;
+				}
+				console.error(`moq: failed to read ANNOUNCE message: ${err}`);
 				return;
 			}
 

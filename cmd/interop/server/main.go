@@ -20,7 +20,7 @@ import (
 )
 
 func main() {
-	addr := flag.String("addr", "127.0.0.1:9000", "server address")
+	addr := flag.String("addr", ":9000", "server address")
 	flag.Parse()
 
 	if err := mkcert(); err != nil {
@@ -102,7 +102,7 @@ func main() {
 		// panics on close.
 		doneCh := make(chan struct{}, 1)
 		mux.PublishFunc(context.Background(), path, func(tw *moqt.TrackWriter) {
-			fmt.Println("Serving broadcast: " + string(path))
+			fmt.Println("Serving a track: " + string(path) + "," + string(tw.TrackName))
 
 			fmt.Print("Opening group...")
 			group, err := tw.OpenGroup(moqt.GroupSequenceFirst)
@@ -222,8 +222,8 @@ func generateCert() tls.Certificate {
 	}
 
 	// Load certificates from the interop/cert directory (project root)
-	certPath := filepath.Join(root, "cmd", "interop", "server", "moqt.example.com.pem")
-	keyPath := filepath.Join(root, "cmd", "interop", "server", "moqt.example.com-key.pem")
+	certPath := filepath.Join(root, "cmd", "interop", "server", "localhost.pem")
+	keyPath := filepath.Join(root, "cmd", "interop", "server", "localhost-key.pem")
 
 	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
 	if err != nil {
@@ -264,12 +264,12 @@ func mkcert() error {
 		return err
 	}
 
-	serverCertPath := filepath.Join(root, "cmd", "interop", "server", "moqt.example.com.pem")
+	serverCertPath := filepath.Join(root, "cmd", "interop", "server", "localhost.pem")
 
 	// Check if server certificates exist
 	if _, err := os.Stat(serverCertPath); os.IsNotExist(err) {
 		fmt.Print("Setting up certificates...")
-		cmd := exec.Command("mkcert", "-cert-file", "moqt.example.com.pem", "-key-file", "moqt.example.com-key.pem", "moqt.example.com", "127.0.0.1")
+		cmd := exec.Command("mkcert", "-cert-file", "localhost.pem", "-key-file", "localhost-key.pem", "localhost", "127.0.0.1", "::1")
 		// Ensure mkcert runs in the server directory where cert files should be generated
 		cmd.Dir = filepath.Join(root, "cmd", "interop", "server")
 		cmd.Stdout = os.Stdout

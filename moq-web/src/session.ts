@@ -363,7 +363,12 @@ export class Session {
 				const [stream, acceptErr] = await this.#conn.acceptStream();
 				// biStreams.releaseLock(); // Release the lock after reading
 				if (acceptErr) {
-					console.error("Bidirectional stream closed", acceptErr);
+					// Only log as error if session is not closing
+					if (!this.#ctx.err()) {
+						console.error("Bidirectional stream closed", acceptErr);
+					} else {
+						console.debug("Bidirectional stream accept stopped (session closing)");
+					}
 					break;
 				}
 				[num, , err] = await readVarint(stream.readable);
@@ -400,7 +405,12 @@ export class Session {
 			while (true) {
 				const [stream, acceptErr] = await this.#conn.acceptUniStream();
 				if (acceptErr) {
-					console.error("Unidirectional stream closed", acceptErr);
+					// Only log as error if session is not closing
+					if (!this.#ctx.err()) {
+						console.error("Unidirectional stream closed", acceptErr);
+					} else {
+						console.debug("Unidirectional stream accept stopped (session closing)");
+					}
 					break;
 				}
 
@@ -435,6 +445,9 @@ export class Session {
 			return;
 		}
 
+		// Cancel context first to signal shutdown to all listeners
+		this.#cancelFunc(new Error("session closing"));
+
 		this.#conn.close({
 			closeCode: 0x0, // Normal closure
 			reason: "No Error",
@@ -447,6 +460,9 @@ export class Session {
 		if (this.#ctx.err()) {
 			return;
 		}
+
+		// Cancel context first to signal shutdown to all listeners
+		this.#cancelFunc(new Error(message));
 
 		this.#conn.close({
 			closeCode: code,

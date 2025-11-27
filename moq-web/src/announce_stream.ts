@@ -11,8 +11,7 @@ import type { BroadcastPath } from "./broadcast_path.ts";
 import { StreamError } from "./internal/webtransport/error.ts";
 import { Queue } from "./internal/queue.ts";
 import { AnnounceInitMessage } from "./internal/message/announce_init.ts";
-import type { AnnounceErrorCode } from "./error.ts";
-import { DuplicatedAnnounceErrorCode } from "./error.ts";
+import { AnnounceErrorCode } from "./error.ts";
 import { Stream } from "./internal/webtransport/stream.ts";
 
 type suffix = string;
@@ -271,15 +270,17 @@ export class AnnouncementReader {
 		const msg = new AnnounceMessage({});
 		msg.decode(this.#stream.readable).then(async (err) => {
 			if (err) {
-				// EOFError and ConnectionReset are expected during normal shutdown
+				// EOFError and connection closed errors are expected during normal shutdown
 				if (err instanceof EOFError) {
 					return;
 				}
-				if (err.message?.includes("ConnectionReset")) {
-					console.debug("moq: ANNOUNCE stream closed by peer (normal shutdown)");
+				if (err instanceof WebTransportError && err.source === "session") {
 					return;
 				}
-				console.error(`moq: failed to read ANNOUNCE message: ${err}`);
+				// Only log as error if context is still active (not shutting down)
+				if (!this.context.err()) {
+					console.error(`moq: failed to read ANNOUNCE message: ${err}`);
+				}
 				return;
 			}
 
@@ -293,7 +294,7 @@ export class AnnouncementReader {
 			if (msg.active) {
 				if (old && old.isActive()) {
 					await this.closeWithError(
-						DuplicatedAnnounceErrorCode,
+						AnnounceErrorCode.DuplicatedAnnounce,
 						`duplicate announcement for path ${msg.suffix}`,
 					);
 
@@ -312,7 +313,7 @@ export class AnnouncementReader {
 			} else {
 				if (!old || (old && !old.isActive())) {
 					await this.closeWithError(
-						DuplicatedAnnounceErrorCode,
+						AnnounceErrorCode.DuplicatedAnnounce,
 						`trying to end non-existent announcement for path ${msg.suffix}`,
 					);
 

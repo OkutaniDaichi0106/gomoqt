@@ -273,21 +273,6 @@ func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackCon
 		cleanup()
 		var strErr *quic.StreamError
 		if errors.As(err, &strErr) {
-			streamLogger.Debug("<<ANNOUNCE_ENCODE_ERROR: stream error details>>",
-				"error_type", fmt.Sprintf("%T", strErr),
-				"stream_id", stream.StreamID(),
-				"remote", strErr.Remote,
-				"error_code", strErr.ErrorCode,
-				"error_msg", strErr.Error(),
-			)
-			// Debug: log stream error details for Subscribe
-			streamLogger.Debug("<<SUBSCRIBE_OK_READ_ERROR: stream error details>>",
-				"error_type", fmt.Sprintf("%T", strErr),
-				"stream_id", stream.StreamID(),
-				"remote", strErr.Remote,
-				"error_code", strErr.ErrorCode,
-				"error_msg", strErr.Error(),
-			)
 			strErrCode := quic.StreamErrorCode(strErr.ErrorCode)
 			stream.CancelWrite(strErrCode)
 

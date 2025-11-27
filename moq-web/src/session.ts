@@ -387,7 +387,7 @@ export class Session {
 		} catch (error) {
 			// "timed out" errors during connection close are expected
 			if (error instanceof Error && error.message === "timed out") {
-				console.debug("listenBiStreams: connection closed (timed out)");
+				// console.debug("listenBiStreams: connection closed (timed out)");
 			} else {
 				console.error("Error in listenBiStreams:", error);
 			}
@@ -423,7 +423,7 @@ export class Session {
 		} catch (error) {
 			// "timed out" errors during connection close are expected
 			if (error instanceof Error && error.message === "timed out") {
-				console.debug("listenUniStreams: connection closed (timed out)");
+				// console.debug("listenUniStreams: connection closed (timed out)");
 			} else {
 				console.error("Error in listenUniStreams:", error);
 			}

@@ -1,12 +1,13 @@
 import { ReceiveStream } from "./receive_stream.ts";
 import { Stream } from "./stream.ts";
 import { SendStream } from "./send_stream.ts";
+import { SessionError, SessionErrorInfo } from "./error.ts";
 
 /**
  * streamIDCounter manages Stream IDs for WebTransport (QUIC) streams.
  * Stream IDs increment by 4 to maintain the initiator and directionality bits.
  */
-export class streamIDCounter {
+class streamIDCounter {
 	clientBiStreamCounter: bigint = 0n; // client bidirectional
 	serverBiStreamCounter: bigint = 1n; // server bidirectional
 	clientUniStreamCounter: bigint = 2n; // client unidirectional
@@ -39,11 +40,24 @@ export class streamIDCounter {
 	}
 }
 
-export class Connection {
+export interface Session {
+	openStream(): Promise<[Stream, undefined] | [undefined, Error]>;
+	openUniStream(): Promise<[SendStream, undefined] | [undefined, Error]>;
+	acceptStream(): Promise<[Stream, undefined] | [undefined, Error]>;
+	acceptUniStream(): Promise<[ReceiveStream, undefined] | [undefined, Error]>;
+	close(closeInfo?: WebTransportCloseInfo): void;
+	ready: Promise<void>;
+	closed: Promise<WebTransportCloseInfo>;
+}
+
+type WebTransportUnidirectionalStream = ReadableStream<Uint8Array>;
+// TODO: Use proper WebTransport types when available
+
+class SessionImpl implements Session {
 	#counter: streamIDCounter;
 	#webtransport: WebTransport;
 
-	#uniStreams: ReadableStreamDefaultReader<ReadableStream<Uint8Array<ArrayBufferLike>>>;
+	#uniStreams: ReadableStreamDefaultReader<WebTransportUnidirectionalStream>;
 	#biStreams: ReadableStreamDefaultReader<WebTransportBidirectionalStream>;
 
 	constructor(webtransport: WebTransport) {
@@ -61,8 +75,18 @@ export class Connection {
 				stream: wtStream,
 			});
 			return [stream, undefined];
-		} catch (e) {
-			return [undefined, e as Error];
+		} catch (err) {
+			if (err instanceof Error) {
+				return [undefined, err];
+			}
+			const wtErr = err as WebTransportError;
+			if (wtErr.source === "session") {
+				const info = await this.#webtransport.closed;
+				if (info.closeCode !== undefined && info.reason !== undefined) {
+					return [undefined, new SessionError(info as SessionErrorInfo, true)];
+				}
+			}
+			return [undefined, err as Error];
 		}
 	}
 
@@ -105,6 +129,9 @@ export class Connection {
 
 	close(closeInfo?: WebTransportCloseInfo): void {
 		this.#webtransport.close(closeInfo);
+		// Cancel readers to resolve any pending read() calls
+		this.#biStreams.cancel().catch(() => {});
+		this.#uniStreams.cancel().catch(() => {});
 	}
 
 	get ready(): Promise<void> {
@@ -115,3 +142,7 @@ export class Connection {
 		return this.#webtransport.closed;
 	}
 }
+
+export const Session: {
+	new (webtransport: WebTransport): Session;
+} = SessionImpl;

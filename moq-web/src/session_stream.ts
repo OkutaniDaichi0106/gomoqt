@@ -24,6 +24,7 @@ export class SessionStream {
 	#serverInfo: ServerInfo;
 
 	#detectFunc: () => Promise<number>;
+	#wg: Promise<void>[] = [];
 
 	constructor(init: SessionStreamInit) {
 		this.#stream = init.stream;
@@ -40,29 +41,36 @@ export class SessionStream {
 		[this.context, this.#cancelFunc] = withCancelCause(init.context);
 		this.#detectFunc = init.detectFunc;
 
-		// Start handling session updates (fire and forget)
-		this.#handleUpdates().catch((err) => {
-			console.error(`moq: error in handleUpdates: ${err}`);
+		// Cancel streams when context is cancelled
+		this.context.done().then(() => {
+			this.#stream.readable.cancel(0).catch(() => {});
+			this.#stream.writable.cancel(0).catch(() => {});
 		});
 
-		// Start detecting bitrate updates (fire and forget)
-		this.#detectUpdates().catch((err) => {
-			console.error(`moq: error in detectUpdates: ${err}`);
-		});
+		// Start handling session updates
+		this.#wg.push(
+			this.#handleUpdates().catch((err) => {
+				console.error(`moq: error in handleUpdates: ${err}`);
+			})
+		);
+
+		// Start detecting bitrate updates
+		// this.#backgroundTasks.push(
+		// 	this.#detectUpdates().catch((err) => {
+		// 		console.error(`moq: error in detectUpdates: ${err}`);
+		// 	})
+		// );
 	}
 
-	async #detectUpdates(): Promise<void> {
-		while (!this.context.err()) {
-			const bitrate = await this.#detectFunc();
-			if (this.context.err()) {
-				break;
-			}
-			await this.#update(bitrate);
-
-			// Yield control to the event loop to prevent blocking
-			await new Promise((resolve) => setTimeout(resolve, 0));
-		}
-	}
+	// async #detectUpdates(): Promise<void> {
+	// 	while (!this.context.err()) {
+	// 		const bitrate = await this.#detectFunc();
+	// 		if (this.context.err()) {
+	// 			break;
+	// 		}
+	// 		await this.#update(bitrate);
+	// 	}
+	// }
 
 	async #handleUpdates(): Promise<void> {
 		while (!this.context.err()) {
@@ -73,15 +81,8 @@ export class SessionStream {
 				break;
 			}
 
-			console.debug("moq: SESSION_UPDATE message received.", {
-				"message": msg,
-			});
-
 			this.#serverInfo.bitrate = msg.bitrate;
 			this.#cond.broadcast();
-
-			// Yield control to the event loop to prevent blocking
-			await new Promise((resolve) => setTimeout(resolve, 0));
 		}
 	}
 
@@ -112,6 +113,10 @@ export class SessionStream {
 
 	get serverInfo(): ServerInfo {
 		return this.#serverInfo;
+	}
+
+	async waitForBackgroundTasks(): Promise<void> {
+		await Promise.allSettled(this.#wg);
 	}
 }
 

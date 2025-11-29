@@ -4,7 +4,7 @@ import type { BroadcastPath } from "./broadcast_path.ts";
 
 import type { TrackWriter } from "./track.ts";
 import type { TrackPrefix } from "./track_prefix.ts";
-import { TrackNotFoundErrorCode } from "./error.ts";
+import { SubscribeErrorCode } from "./error.ts";
 
 type AnnouncedTrackHandler = {
 	announcement: Announcement;
@@ -19,8 +19,6 @@ export class TrackMux {
 
 	async announce(announcement: Announcement, handler: TrackHandler): Promise<void> {
 		const path = announcement.broadcastPath;
-
-		console.debug(`[TrackMux] announcing track for path: ${path}`);
 
 		if (!announcement.isActive()) {
 			console.warn(`[TrackMux] announcement is not active for path: ${path}`);
@@ -42,8 +40,6 @@ export class TrackMux {
 
 		for (const [prefix, announcers] of this.#announcers.entries()) {
 			if (path.startsWith(prefix)) {
-				console.debug(`[TrackMux] announcing track for path: ${path} to prefix: ${prefix}`);
-
 				const sendPromises: Promise<void>[] = [];
 				const failed: AnnouncementWriter[] = [];
 
@@ -79,7 +75,6 @@ export class TrackMux {
 
 		// Wait for the announcement to end
 		announcement.ended().then(() => {
-			console.debug(`[TrackMux] track ended for path: ${path}`);
 			// Only remove the handler if the stored announcement is the same
 			// instance that ended. This prevents a replaced announcement from
 			// causing the newly-registered handler to be removed.
@@ -87,7 +82,7 @@ export class TrackMux {
 			if (current && current.announcement === announcement) {
 				this.#handlers.delete(path);
 			}
-		});
+		}).catch(() => {});
 	}
 
 	async publish(ctx: Promise<void>, path: BroadcastPath, handler: TrackHandler) {
@@ -115,7 +110,6 @@ export class TrackMux {
 			track.close();
 		});
 
-		console.debug(`[TrackMux] serving track for path: ${path}`);
 		await announced.handler.serveTrack(track);
 
 		// Ensure cleanup after serving
@@ -123,8 +117,6 @@ export class TrackMux {
 	}
 
 	async serveAnnouncement(writer: AnnouncementWriter, prefix: TrackPrefix): Promise<void> {
-		console.debug(`[TrackMux] serving announcements for prefix: ${prefix}`);
-
 		let announced: AnnouncedTrackHandler;
 		const init: Announcement[] = [];
 		for (announced of this.#handlers.values()) {
@@ -176,6 +168,6 @@ export interface TrackHandler {
 
 const NotFoundHandler: TrackHandler = {
 	async serveTrack(trackWriter: TrackWriter): Promise<void> {
-		await trackWriter.closeWithError(TrackNotFoundErrorCode, "Track not found");
+		await trackWriter.closeWithError(SubscribeErrorCode.TrackNotFound);
 	},
 };

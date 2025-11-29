@@ -7,7 +7,7 @@ import type { BroadcastPath } from "./broadcast_path.ts";
 import type { TrackPrefix } from "./track_prefix.ts";
 import { background, withCancelCause } from "@okudai/golikejs/context";
 import type { TrackWriter } from "./track.ts";
-import { TrackNotFoundErrorCode } from "./error.ts";
+import { SubscribeErrorCode } from "./error.ts";
 
 // Mock implementations using DI pattern
 class MockTrackHandler implements TrackHandler {
@@ -26,11 +26,11 @@ function createMockTrackWriter(
 	broadcastPath: BroadcastPath,
 	trackName: string,
 ): TrackWriter & {
-	closeWithErrorCalls: Array<{ code: number; reason: string }>;
+	closeWithErrorCalls: Array<{ code: number }>;
 	closeCalls: number;
 	reset: () => void;
 } {
-	const closeWithErrorCalls: Array<{ code: number; reason: string }> = [];
+	const closeWithErrorCalls: Array<{ code: number }> = [];
 	let closeCalls = 0;
 
 	return {
@@ -38,8 +38,8 @@ function createMockTrackWriter(
 		trackName,
 		closeWithErrorCalls,
 		closeCalls,
-		async closeWithError(code: number, reason: string): Promise<void> {
-			closeWithErrorCalls.push({ code, reason });
+		async closeWithError(code: number): Promise<void> {
+			closeWithErrorCalls.push({ code });
 		},
 		async close(): Promise<void> {
 			closeCalls++;
@@ -49,7 +49,7 @@ function createMockTrackWriter(
 			closeCalls = 0;
 		},
 	} as TrackWriter & {
-		closeWithErrorCalls: Array<{ code: number; reason: string }>;
+		closeWithErrorCalls: Array<{ code: number }>;
 		closeCalls: number;
 		reset: () => void;
 	};
@@ -179,8 +179,10 @@ Deno.test("TrackMux - announce", async (t) => {
 
 		// Should call closeWithError for not found path
 		assertEquals(differentTrackWriter.closeWithErrorCalls.length, 1);
-		assertEquals(differentTrackWriter.closeWithErrorCalls[0]?.code, TrackNotFoundErrorCode);
-		assertEquals(differentTrackWriter.closeWithErrorCalls[0]?.reason, "Track not found");
+		assertEquals(
+			differentTrackWriter.closeWithErrorCalls[0]?.code,
+			SubscribeErrorCode.TrackNotFound,
+		);
 	});
 });
 
@@ -234,8 +236,7 @@ Deno.test("TrackMux - serveTrack", async (t) => {
 
 		// Should call closeWithError for not found path
 		assertEquals(trackWriter.closeWithErrorCalls.length, 1);
-		assertEquals(trackWriter.closeWithErrorCalls[0]?.code, TrackNotFoundErrorCode);
-		assertEquals(trackWriter.closeWithErrorCalls[0]?.reason, "Track not found");
+		assertEquals(trackWriter.closeWithErrorCalls[0]?.code, SubscribeErrorCode.TrackNotFound);
 	});
 });
 

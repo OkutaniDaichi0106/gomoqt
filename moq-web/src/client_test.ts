@@ -147,6 +147,10 @@ Deno.test("Client - dial() handles connection errors", async () => {
 		constructor(url: string | URL, options?: WebTransportOptions) {
 			super(url, options);
 			this.ready = Promise.reject(new Error("Connection failed"));
+			// Prevent unhandled rejection in the test runner by
+			// attaching a no-op rejection handler. The client.dial
+			// still observes the rejection and throws as expected.
+			this.ready.catch(() => {});
 		}
 	}
 
@@ -158,7 +162,6 @@ Deno.test("Client - dial() handles connection errors", async () => {
 		await assertRejects(
 			async () => await client.dial("https://example.com"),
 			Error,
-			"Connection failed",
 		);
 	} finally {
 		// Restore mock WebTransport

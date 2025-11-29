@@ -1,6 +1,6 @@
 import type { Reader } from "@okudai/golikejs/io";
 import { EOFError } from "@okudai/golikejs/io";
-import type { StreamError } from "./error.ts";
+import { StreamError, StreamErrorCode, StreamErrorInfo } from "./error.ts";
 
 export interface ReceiveStreamInit {
 	stream: ReadableStream<Uint8Array>;
@@ -16,10 +16,24 @@ export class ReceiveStream implements Reader {
 	#buf: Uint8Array = new Uint8Array(0);
 	#closed: Promise<void>;
 	readonly id: bigint;
+	#err?: Error;
 
 	constructor(init: ReceiveStreamInit) {
 		this.#pull = init.stream.getReader();
 		this.#closed = this.#pull.closed;
+		// Track active ReceiveStreams for debugging
+		try {
+			(globalThis as any).__moq_openReceiveStreams =
+				(globalThis as any).__moq_openReceiveStreams ?? 0;
+			(globalThis as any).__moq_openReceiveStreams++;
+			this.#closed.then(() => {
+				(globalThis as any).__moq_openReceiveStreams--;
+			}).catch(() => {
+				// Ignore close errors for debugging counters
+			});
+		} catch (_e) {
+			// ignore if not present
+		}
 		this.id = init.streamId;
 	}
 
@@ -30,6 +44,10 @@ export class ReceiveStream implements Reader {
 	 * Implements io.Reader interface.
 	 */
 	async read(p: Uint8Array): Promise<[number, Error | undefined]> {
+		if (this.#err) {
+			return [0, this.#err];
+		}
+
 		// If we have buffered data, use it first
 		if (this.#buf.length > 0) {
 			const n = Math.min(p.length, this.#buf.length);
@@ -57,16 +75,35 @@ export class ReceiveStream implements Reader {
 			}
 
 			return [n, undefined];
-		} catch (error) {
-			if (error instanceof Error) {
-				return [0, error];
+		} catch (err) {
+			if (this.#err) {
+				return [0, this.#err];
 			}
-			return [0, new Error(`Failed to read from stream: ${error}`)];
+
+			if (err instanceof Error) {
+				return [0, err];
+			}
+			const wtErr = err as WebTransportError;
+			if (wtErr.source === "stream") {
+				if (wtErr.streamErrorCode !== null) {
+					this.#err = new StreamError(wtErr as StreamErrorInfo, true);
+				} else {
+					this.#err = new EOFError();
+				}
+			}
+			return [0, new Error(`Failed to read from stream: ${err}`)];
 		}
 	}
 
-	async cancel(reason: StreamError): Promise<void> {
-		return this.#pull.cancel(reason);
+	async cancel(code: StreamErrorCode): Promise<void> {
+		if (this.#err) {
+			return;
+		}
+		// Wrap the numeric reason in a StreamError so that consumers can inspect
+		// the structured error information (code, message, remote).
+		const err = new StreamError({ source: "stream", streamErrorCode: code }, false);
+		this.#err = err;
+		return this.#pull.cancel(err);
 	}
 
 	closed(): Promise<void> {

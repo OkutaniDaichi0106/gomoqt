@@ -11,7 +11,7 @@
  * - Environment variables: GITHUB_TOKEN, GITHUB_EVENT, GITHUB_REPOSITORY
  */
 
-import { Octokit } from "octokit";
+import { Octokit } from "npm:octokit";
 
 // Supported languages list
 export interface Language {
@@ -106,7 +106,7 @@ if (import.meta.main) {
   const octokit = new Octokit({ auth: GITHUB_TOKEN });
 
   const eventJson = Deno.env.get("GITHUB_EVENT") || "{}";
-  const [owner, repoName] = GITHUB_REPOSITORY.split("/");
+  const [owner, repoName] = GITHUB_REPOSITORY.split("/") as [string, string];
 
   const issue = parseEvent(eventJson);
   if (!issue) {

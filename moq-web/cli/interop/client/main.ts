@@ -1,4 +1,4 @@
-import { Client, Frame, TrackMux } from "@okudai/moq";
+import { Client, Frame, TrackMux, TrackWriter } from "@okudai/moq";
 import { background } from "@okudai/golikejs/context";
 import { scope } from "@okudai/golikejs";
 
@@ -14,7 +14,7 @@ scope(async (defer) => {
 
 	const mux = new TrackMux();
 
-	mux.publishFunc(background().done(), "/interop/client", async (track) => {
+	mux.publishFunc(background().done(), "/interop/client", async (track: TrackWriter) => {
 		try {
 			console.debug("[Client] Server subscribed, sending data...");
 

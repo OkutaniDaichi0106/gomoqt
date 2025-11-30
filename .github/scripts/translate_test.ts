@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { translate, parseEvent, generateComment, languages, type Issue } from "./translate.ts";
+import { translate, parseEvent, generateComment, languages } from "./translate.ts";
 
 // Mock fetch for testing
 const originalFetch = globalThis.fetch;
@@ -53,7 +53,7 @@ Deno.test("parseEvent - no issue or PR", () => {
 Deno.test("generateComment - basic", async () => {
   mockFetch({ translatedText: "Translated text" });
   try {
-    const comment = await generateComment("Original text", [languages[0]]); // Only English
+    const comment = await generateComment("Original text", [languages[0]!]); // Only English
     assertEquals(comment.includes("🇬🇧 English"), true);
     assertEquals(comment.includes("Translated text"), true);
     assertEquals(comment.includes("Auto-generated"), true);

@@ -1,7 +1,8 @@
-import type { Source } from "./internal/webtransport/mod.ts";
-
-export interface Frame extends Source {
+export interface Frame {
 	data: Uint8Array;
+
+	byteLength: number;
+	copyTo(target: ArrayBuffer | ArrayBufferView): void;
 }
 
 export class BytesFrame implements Frame {
@@ -29,7 +30,7 @@ export class BytesFrame implements Frame {
 		}
 	}
 
-	clone(buffer?: Uint8Array<ArrayBufferLike>): BytesFrame {
+	clone(buffer?: Uint8Array): BytesFrame {
 		if (buffer && buffer.byteLength >= this.data.byteLength) {
 			buffer.set(this.data);
 			return new BytesFrame(buffer.subarray(0, this.data.byteLength));

@@ -1,12 +1,11 @@
 import type { ReceiveStream, SendStream } from "./internal/webtransport/mod.ts";
 import { withCancelCause } from "@okudai/golikejs/context";
 import type { CancelCauseFunc, Context } from "@okudai/golikejs/context";
-import { StreamError } from "./internal/webtransport/error.ts";
+import { WebTransportStreamError } from "./internal/webtransport/error.ts";
 import type { GroupMessage } from "./internal/message/mod.ts";
 import { readFull, readVarint, writeVarint } from "./internal/message/mod.ts";
 import type { Frame } from "./frame.ts";
-import type { GroupErrorCode } from "./error.ts";
-import { PublishAbortedErrorCode, SubscribeCanceledErrorCode } from "./error.ts";
+import { GroupErrorCode } from "./error.ts";
 import { GroupSequence } from "./alias.ts";
 
 export const GroupSequenceFirst: GroupSequence = 1;
@@ -23,7 +22,7 @@ export class GroupWriter {
 		[this.context, this.#cancelFunc] = withCancelCause(trackCtx);
 
 		trackCtx.done().then(() => {
-			this.cancel(SubscribeCanceledErrorCode, "track was closed");
+			this.cancel(GroupErrorCode.SubscribeCanceled);
 		});
 	}
 
@@ -50,14 +49,17 @@ export class GroupWriter {
 		await this.#stream.close();
 	}
 
-	async cancel(code: GroupErrorCode, message: string): Promise<void> {
+	async cancel(code: GroupErrorCode): Promise<void> {
 		if (this.context.err()) {
 			// Do nothing if already cancelled
 			return;
 		}
-		const cause = new StreamError(code, message);
+		const cause = new WebTransportStreamError(
+			{ source: "stream", streamErrorCode: code },
+			false,
+		);
 		this.#cancelFunc(cause); // Notify the context about cancellation
-		await this.#stream.cancel(cause);
+		await this.#stream.cancel(code);
 	}
 }
 
@@ -73,7 +75,7 @@ export class GroupReader {
 		[this.context, this.#cancelFunc] = withCancelCause(trackCtx);
 
 		trackCtx.done().then(() => {
-			this.cancel(PublishAbortedErrorCode, "track was closed");
+			this.cancel(GroupErrorCode.PublishAborted);
 		});
 	}
 
@@ -102,13 +104,16 @@ export class GroupReader {
 		return undefined;
 	}
 
-	async cancel(code: GroupErrorCode, message: string): Promise<void> {
+	async cancel(code: GroupErrorCode): Promise<void> {
 		if (this.context.err()) {
 			// Do nothing if already cancelled
 			return;
 		}
-		const reason = new StreamError(code, message);
+		const reason = new WebTransportStreamError(
+			{ source: "stream", streamErrorCode: code },
+			false,
+		);
 		this.#cancelFunc(reason);
-		await this.#reader.cancel(reason);
+		await this.#reader.cancel(code);
 	}
 }

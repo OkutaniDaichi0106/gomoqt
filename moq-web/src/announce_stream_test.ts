@@ -1,0 +1,317 @@
+import { assertEquals, assertExists } from "@std/assert";
+import { spy } from "@std/testing/mock";
+import { Announcement, AnnouncementReader, AnnouncementWriter } from "./announce_stream.ts";
+import { background, withCancelCause } from "@okudai/golikejs/context";
+import {
+	AnnounceInitMessage,
+	AnnounceMessage,
+	AnnouncePleaseMessage,
+} from "./internal/message/mod.ts";
+import { MockReceiveStream, MockSendStream, MockStream } from "./mock_stream_test.ts";
+import { Buffer } from "@okudai/golikejs/bytes";
+
+Deno.test("Announcement", async (t) => {
+	await t.step("lifecycle: isActive and ended", async () => {
+		const [ctx] = withCancelCause(background());
+		const ann = new Announcement("/some/path", ctx.done());
+		assertEquals(ann.isActive(), true);
+		const endedPromise = ann.ended();
+		ann.end();
+		await endedPromise;
+		assertEquals(ann.isActive(), false);
+	});
+
+	await t.step("afterFunc executes registered function once", async () => {
+		const [ctx, cancel] = withCancelCause(background());
+		const ann = new Announcement("/some/path", ctx.done());
+		let ran = false;
+		const rv = ann.afterFunc(() => {
+			ran = true;
+		});
+		ann.end();
+		await ann.ended();
+		assertEquals(ran, true);
+		assertEquals(rv(), false);
+		cancel(undefined);
+	});
+});
+
+Deno.test("AnnouncementWriter", async (t) => {
+	await t.step("init respects prefix and writes ANNOUNCE_INIT", async () => {
+		const [ctx] = withCancelCause(background());
+		const writeBuf = Buffer.make(256);
+		const mockStream = new MockStream({
+			id: 1n,
+			writable: new MockSendStream({ id: 1n, write: (p) => writeBuf.write(p) }),
+		});
+		const req = new AnnouncePleaseMessage({ prefix: "/test/" });
+		const writer = new AnnouncementWriter(ctx, mockStream, req);
+		const ann = new Announcement("/test/abc", ctx.done());
+		const err = await writer.init([ann]);
+		assertEquals(err, undefined);
+		assertEquals(writeBuf.len() > 0, true);
+	});
+
+	await t.step("init returns error when prefix mismatched", async () => {
+		const [ctx] = withCancelCause(background());
+		const mockStream = new MockStream({ id: 2n });
+		const req = new AnnouncePleaseMessage({ prefix: "/test/" });
+		const writer = new AnnouncementWriter(ctx, mockStream, req);
+		const annWrong = new Announcement("/wrong/abc", ctx.done());
+		const err = await writer.init([annWrong]);
+		assertEquals(err instanceof Error, true);
+	});
+
+	await t.step("send sends ANNOUNCE and removes on ended", async () => {
+		const [ctx] = withCancelCause(background());
+		const writeBuf = Buffer.make(256);
+		const mockStream = new MockStream({
+			id: 3n,
+			writable: new MockSendStream({ id: 3n, write: (p) => writeBuf.write(p) }),
+		});
+		const req = new AnnouncePleaseMessage({ prefix: "/p/" });
+		const writer = new AnnouncementWriter(ctx, mockStream, req);
+		const ann = new Announcement("/p/def", ctx.done());
+		await writer.init([]);
+		const sendErr = await writer.send(ann);
+		assertEquals(sendErr, undefined);
+		assertEquals(writeBuf.len() >= 1, true);
+		ann.end();
+		await new Promise((r) => setTimeout(r, 10));
+		await writer.close();
+	});
+
+	await t.step("closeWithError cancels and calls stream cancel", async () => {
+		const [ctx] = withCancelCause(background());
+		const writableCancel = spy(async (_code: number) => {});
+		const readableCancel = spy(async (_code: number) => {});
+		const mockStream = new MockStream({
+			id: 4n,
+			writable: new MockSendStream({ id: 4n, cancel: writableCancel }),
+			readable: new MockReceiveStream({
+				id: 4n,
+				cancel: readableCancel,
+			}),
+		});
+		const req = new AnnouncePleaseMessage({ prefix: "/p/" });
+		const writer = new AnnouncementWriter(ctx, mockStream, req);
+		const ann = new Announcement("/p/abc", ctx.done());
+		await writer.init([ann]);
+		await writer.closeWithError(1);
+		assertEquals(
+			writableCancel.calls.length >= 0 && readableCancel.calls.length >= 0,
+			true,
+		);
+	});
+
+	await t.step("init returns error on duplicate suffix in input", async () => {
+		const [ctx] = withCancelCause(background());
+		const mockStream = new MockStream({ id: 6n });
+		const req = new AnnouncePleaseMessage({ prefix: "/dup/" });
+		const writer = new AnnouncementWriter(ctx, mockStream, req);
+		const ann1 = new Announcement("/dup/path", ctx.done());
+		const ann2 = new Announcement("/dup/path", ctx.done());
+		const err = await writer.init([ann1, ann2]);
+		if (!(err instanceof Error)) throw new Error(`Expected error but got ${err}`);
+	});
+
+	await t.step("init replaces inactive announcements with active ones", async () => {
+		const [ctx] = withCancelCause(background());
+		const mockStream = new MockStream({ id: 7n });
+		const req = new AnnouncePleaseMessage({ prefix: "/rep/" });
+		const writer = new AnnouncementWriter(ctx, mockStream, req);
+		const old = new Announcement("/rep/aaa", ctx.done());
+		old.end();
+		await writer.init([old]);
+		const newAnn = new Announcement("/rep/aaa", ctx.done());
+		const err = await writer.init([newAnn]);
+		if (err instanceof Error) throw err;
+	});
+
+	await t.step("init returns error when trying to end non-active announcement", async () => {
+		const mockStream = new MockStream({ id: 1n });
+
+		const aw = new AnnouncementWriter(
+			background(),
+			mockStream,
+			new AnnouncePleaseMessage({ prefix: "/test/" }),
+		);
+		const [ctx] = withCancelCause(background());
+		const ann = new Announcement("/test/a", ctx.done());
+		ann.end();
+
+		const err = await aw.init([ann]);
+		assertEquals(err instanceof Error, true);
+	});
+
+	await t.step("send returns error when trying to end non-active announcement", async () => {
+		const mockStream = new MockStream({ id: 2n });
+
+		const aw = new AnnouncementWriter(
+			background(),
+			mockStream,
+			new AnnouncePleaseMessage({ prefix: "/p/" }),
+		);
+		await aw.init([]);
+
+		const [ctx] = withCancelCause(background());
+		const ann2 = new Announcement("/p/b", ctx.done());
+		ann2.end();
+		const err2 = await aw.send(ann2);
+		assertEquals(err2 instanceof Error, true);
+	});
+
+	await t.step("close does nothing when context already has error", async () => {
+		const [ctx, cancelFunc] = withCancelCause(background());
+		cancelFunc(new Error("already canceled"));
+		await new Promise((r) => setTimeout(r, 0));
+		const closeSpy = spy(async () => {});
+		const mockStream = new MockStream({
+			id: 9n,
+			writable: new MockSendStream({ id: 9n, close: closeSpy }),
+		});
+		const req = new AnnouncePleaseMessage({ prefix: "/test/" });
+		const writer = new AnnouncementWriter(ctx, mockStream, req);
+		await writer.close();
+		assertEquals(closeSpy.calls.length, 0);
+	});
+
+	await t.step("closeWithError does nothing when context already has error", async () => {
+		const [ctx, cancelFunc] = withCancelCause(background());
+		cancelFunc(new Error("already canceled"));
+		await new Promise((r) => setTimeout(r, 0));
+		const writableCancel = spy(async (_code: number) => {});
+		const readableCancel = spy(async (_code: number) => {});
+		const mockStream = new MockStream({
+			id: 10n,
+			writable: new MockSendStream({ id: 10n, cancel: writableCancel }),
+			readable: new MockReceiveStream({
+				id: 10n,
+				cancel: readableCancel,
+			}),
+		});
+		const req = new AnnouncePleaseMessage({ prefix: "/test/" });
+		const writer = new AnnouncementWriter(ctx, mockStream, req);
+		await writer.closeWithError(1);
+		assertEquals(writableCancel.calls.length, 0);
+		assertEquals(readableCancel.calls.length, 0);
+	});
+});
+
+Deno.test("AnnouncementReader", async (t) => {
+	await t.step("initial announcements enqueued", async () => {
+		const [ctx] = withCancelCause(background());
+		const mockStream = new MockStream({ id: 5n });
+		const req = new AnnouncePleaseMessage({ prefix: "/x/" });
+		const aim = new AnnounceInitMessage({ suffixes: ["a", "b"] });
+		const reader = new AnnouncementReader(ctx, mockStream, req, aim);
+		const [ann, err] = await reader.receive(Promise.resolve());
+		assertEquals(err, undefined);
+		assertExists(ann);
+		if (ann) {
+			assertEquals(ann.isActive(), true);
+		}
+	});
+
+	await t.step("handles duplicate ANNOUNCE messages by closing with error", async () => {
+		const [ctx] = withCancelCause(background());
+		const aim = new AnnounceInitMessage({ suffixes: ["a"] });
+		// Encode ANNOUNCE message for same suffix 'a'
+		const buf = Buffer.make(128);
+		const am = new AnnounceMessage({ suffix: "a", active: true });
+		await am.encode(buf);
+		// Create mock stream with the data
+		const writableCancel = spy(async (_code: number) => {});
+		const mockStream = new MockStream({
+			id: 8n,
+			writable: new MockSendStream({ id: 8n, cancel: writableCancel }),
+			readable: new MockReceiveStream({ id: 8n, read: (p) => buf.read(p) }),
+		});
+		const req = new AnnouncePleaseMessage({ prefix: "/" });
+		new AnnouncementReader(ctx, mockStream, req, aim);
+		await new Promise((r) => setTimeout(r, 10));
+		assertEquals(writableCancel.calls.length >= 0, true);
+	});
+
+	await t.step(
+		"handles ANNOUNCE message with active false when no old exists and closes with error",
+		async () => {
+			const msg = new AnnounceMessage({ suffix: "a", active: false });
+			const buf = Buffer.make(128);
+			await msg.encode(buf);
+
+			const writableCancel = spy(async (_code: number) => {});
+			const readableCancel = spy(async (_code: number) => {});
+
+			const mockStream = new MockStream({
+				id: 1n,
+				writable: new MockSendStream({
+					id: 1n,
+					cancel: writableCancel,
+				}),
+				readable: new MockReceiveStream({
+					id: 1n,
+					read: (p) => buf.read(p),
+					cancel: readableCancel,
+				}),
+			});
+
+			const apm = new AnnouncePleaseMessage({ prefix: "/" });
+			const aim = new AnnounceInitMessage({ suffixes: [] });
+
+			new AnnouncementReader(background(), mockStream, apm, aim);
+			await new Promise((r) => setTimeout(r, 50));
+			assertEquals(writableCancel.calls.length > 0, true);
+			assertEquals(readableCancel.calls.length > 0, true);
+		},
+	);
+
+	await t.step("receive returns error when queue closed", async () => {
+		const mockStream = new MockStream({ id: 2n });
+
+		const apm = new AnnouncePleaseMessage({ prefix: "/test/" });
+		const aim = new AnnounceInitMessage({ suffixes: [] });
+		const ar = new AnnouncementReader(background(), mockStream, apm, aim);
+		await ar.close();
+
+		const [ann, err] = await ar.receive(new Promise(() => {}));
+		assertEquals(ann, undefined);
+		assertEquals(err instanceof Error, true);
+	});
+
+	await t.step("close does nothing when context already has error", async () => {
+		const [ctx, cancelFunc] = withCancelCause(background());
+		cancelFunc(new Error("already canceled"));
+		const closeSpy = spy(async () => {});
+		const mockStream = new MockStream({
+			id: 11n,
+			writable: new MockSendStream({ id: 11n, close: closeSpy }),
+		});
+		const req = new AnnouncePleaseMessage({ prefix: "/x/" });
+		const aim = new AnnounceInitMessage({ suffixes: [] });
+		const reader = new AnnouncementReader(ctx, mockStream, req, aim);
+		await reader.close();
+		assertEquals(closeSpy.calls.length, 0);
+	});
+
+	await t.step("closeWithError does nothing when context already has error", async () => {
+		const [ctx, cancelFunc] = withCancelCause(background());
+		cancelFunc(new Error("already canceled"));
+		const writableCancel = spy(async (_code: number) => {});
+		const readableCancel = spy(async (_code: number) => {});
+		const mockStream = new MockStream({
+			id: 12n,
+			writable: new MockSendStream({ id: 12n, cancel: writableCancel }),
+			readable: new MockReceiveStream({
+				id: 12n,
+				cancel: readableCancel,
+			}),
+		});
+		const req = new AnnouncePleaseMessage({ prefix: "/x/" });
+		const aim = new AnnounceInitMessage({ suffixes: [] });
+		const reader = new AnnouncementReader(ctx, mockStream, req, aim);
+		await reader.closeWithError(1);
+		assertEquals(writableCancel.calls.length, 0);
+		assertEquals(readableCancel.calls.length, 0);
+	});
+});

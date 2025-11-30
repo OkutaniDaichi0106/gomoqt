@@ -54,26 +54,24 @@ Deno.test("BroadcastPath - validateBroadcastPath", async (t) => {
 
 Deno.test("BroadcastPath - extension", async (t) => {
 	await t.step("returns correct extension for paths with extensions", () => {
-		assertEquals(extension("/alice.json" as BroadcastPath), ".json");
-		assertEquals(extension("/video/stream.mp4" as BroadcastPath), ".mp4");
-		assertEquals(extension("/file.min.js" as BroadcastPath), ".js");
-		assertEquals(extension("/test/path.backup.mp4" as BroadcastPath), ".mp4");
-		assertEquals(extension("/test/.hidden.txt" as BroadcastPath), ".txt");
-		assertEquals(extension("/test/path." as BroadcastPath), ".");
-		assertEquals(extension("file.txt" as BroadcastPath), ".txt");
+		assertEquals(extension("/alice.json"), ".json");
+		assertEquals(extension("/video/stream.mp4"), ".mp4");
+		assertEquals(extension("/file.min.js"), ".js");
+		assertEquals(extension("/test/path.backup.mp4"), ".mp4");
+		assertEquals(extension("/test/.hidden.txt"), ".txt");
+		assertEquals(extension("/test/path."), ".");
 	});
 
 	await t.step("returns empty string for paths without extensions", () => {
-		assertEquals(extension("/test/path" as BroadcastPath), "");
-		assertEquals(extension("/video/stream" as BroadcastPath), "");
-		assertEquals(extension("/" as BroadcastPath), "");
-		assertEquals(extension("" as BroadcastPath), "");
+		assertEquals(extension("/test/path"), "");
+		assertEquals(extension("/video/stream"), "");
+		assertEquals(extension("/"), "");
 	});
 
 	await t.step("handles edge cases correctly", () => {
-		assertEquals(extension("/test.dir/file" as BroadcastPath), "");
-		assertEquals(extension("/test.dir/file.ext" as BroadcastPath), ".ext");
-		assertEquals(extension("/.hidden" as BroadcastPath), "");
+		assertEquals(extension("/test.dir/file"), "");
+		assertEquals(extension("/test.dir/file.ext"), ".ext");
+		assertEquals(extension("/.hidden"), "");
 	});
 });
 

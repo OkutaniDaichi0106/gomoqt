@@ -3,11 +3,10 @@ import type { TrackHandler } from "./track_mux.ts";
 import { TrackMux } from "./track_mux.ts";
 import type { AnnouncementWriter } from "./announce_stream.ts";
 import { Announcement } from "./announce_stream.ts";
-import type { BroadcastPath } from "./broadcast_path.ts";
 import type { TrackPrefix } from "./track_prefix.ts";
 import { background, withCancelCause } from "@okudai/golikejs/context";
-import type { TrackWriter } from "./track.ts";
-import { TrackNotFoundErrorCode } from "./error.ts";
+import type { TrackWriter } from "./track_writer.ts";
+import { SubscribeErrorCode } from "./error.ts";
 
 // Mock implementations using DI pattern
 class MockTrackHandler implements TrackHandler {
@@ -22,81 +21,6 @@ class MockTrackHandler implements TrackHandler {
 	}
 }
 
-function createMockTrackWriter(
-	broadcastPath: BroadcastPath,
-	trackName: string,
-): TrackWriter & {
-	closeWithErrorCalls: Array<{ code: number; reason: string }>;
-	closeCalls: number;
-	reset: () => void;
-} {
-	const closeWithErrorCalls: Array<{ code: number; reason: string }> = [];
-	let closeCalls = 0;
-
-	return {
-		broadcastPath,
-		trackName,
-		closeWithErrorCalls,
-		closeCalls,
-		async closeWithError(code: number, reason: string): Promise<void> {
-			closeWithErrorCalls.push({ code, reason });
-		},
-		async close(): Promise<void> {
-			closeCalls++;
-		},
-		reset() {
-			closeWithErrorCalls.length = 0;
-			closeCalls = 0;
-		},
-	} as TrackWriter & {
-		closeWithErrorCalls: Array<{ code: number; reason: string }>;
-		closeCalls: number;
-		reset: () => void;
-	};
-}
-
-function createMockAnnouncementWriter(
-	context: ReturnType<typeof background>,
-): AnnouncementWriter & {
-	sendCalls: Announcement[];
-	initCalls: Announcement[][];
-	closeCalls: number;
-	reset: () => void;
-} {
-	const sendCalls: Announcement[] = [];
-	const initCalls: Announcement[][] = [];
-
-	const mock = {
-		context,
-		sendCalls,
-		initCalls,
-		closeCalls: 0,
-		async send(announcement: Announcement): Promise<Error | undefined> {
-			sendCalls.push(announcement);
-			return undefined;
-		},
-		async init(announcements: Announcement[]): Promise<Error | undefined> {
-			initCalls.push(announcements);
-			return undefined;
-		},
-		async close(): Promise<void> {
-			mock.closeCalls++;
-		},
-		reset() {
-			sendCalls.length = 0;
-			initCalls.length = 0;
-			mock.closeCalls = 0;
-		},
-	} as AnnouncementWriter & {
-		sendCalls: Announcement[];
-		initCalls: Announcement[][];
-		closeCalls: number;
-		reset: () => void;
-	};
-
-	return mock;
-}
-
 Deno.test("TrackMux - Constructor", () => {
 	const mux = new TrackMux();
 	assertInstanceOf(mux, TrackMux);
@@ -106,13 +30,33 @@ Deno.test("TrackMux - announce", async (t) => {
 	await t.step("should register handler for announcement path", async () => {
 		const trackMux = new TrackMux();
 		const mockHandler = new MockTrackHandler();
-		const mockTrackWriter = createMockTrackWriter(
-			"/test/path" as BroadcastPath,
-			"test-track",
-		);
+		const mockTrackWriter = (() => {
+			const closeWithErrorCalls: Array<{ code: number }> = [];
+			const obj: any = {
+				broadcastPath: "/test/path",
+				trackName: "test-track",
+				closeWithErrorCalls,
+				closeCalls: 0,
+				async closeWithError(code: number): Promise<void> {
+					closeWithErrorCalls.push({ code });
+				},
+				async close(): Promise<void> {
+					obj.closeCalls++;
+				},
+				reset(): void {
+					closeWithErrorCalls.length = 0;
+					obj.closeCalls = 0;
+				},
+			};
+			return obj as TrackWriter & {
+				closeWithErrorCalls: Array<{ code: number }>;
+				closeCalls: number;
+				reset: () => void;
+			};
+		})();
 
 		const [ctx, cancelFunc] = withCancelCause(background());
-		const mockAnnouncement = new Announcement("/test/path" as BroadcastPath, ctx.done());
+		const mockAnnouncement = new Announcement("/test/path", ctx.done());
 
 		await trackMux.announce(mockAnnouncement, mockHandler);
 		await trackMux.serveTrack(mockTrackWriter);
@@ -128,8 +72,39 @@ Deno.test("TrackMux - announce", async (t) => {
 		const mockHandler = new MockTrackHandler();
 
 		const [ctx, cancelFunc] = withCancelCause(background());
-		const mockAnnouncement = new Announcement("/test/path" as BroadcastPath, ctx.done());
-		const mockAnnouncementWriter = createMockAnnouncementWriter(ctx);
+		const mockAnnouncement = new Announcement("/test/path", ctx.done());
+		const mockAnnouncementWriter = (() => {
+			const sendCalls: Announcement[] = [];
+			const initCalls: Announcement[][] = [];
+			const mock: any = {
+				context: ctx,
+				sendCalls,
+				initCalls,
+				closeCalls: 0,
+				async send(announcement: Announcement): Promise<Error | undefined> {
+					sendCalls.push(announcement);
+					return undefined;
+				},
+				async init(announcements: Announcement[]): Promise<Error | undefined> {
+					initCalls.push(announcements);
+					return undefined;
+				},
+				async close(): Promise<void> {
+					mock.closeCalls++;
+				},
+				reset(): void {
+					sendCalls.length = 0;
+					initCalls.length = 0;
+					mock.closeCalls = 0;
+				},
+			};
+			return mock as AnnouncementWriter & {
+				sendCalls: Announcement[];
+				initCalls: Announcement[][];
+				closeCalls: number;
+				reset: () => void;
+			};
+		})();
 
 		const prefix = "/test/" as TrackPrefix;
 
@@ -150,13 +125,33 @@ Deno.test("TrackMux - announce", async (t) => {
 	await t.step("should clean up handler when announcement ends", async () => {
 		const trackMux = new TrackMux();
 		const mockHandler = new MockTrackHandler();
-		const mockTrackWriter = createMockTrackWriter(
-			"/test/path" as BroadcastPath,
-			"test-track",
-		);
+		const mockTrackWriter = (() => {
+			const closeWithErrorCalls: Array<{ code: number }> = [];
+			const obj: any = {
+				broadcastPath: "/test/path",
+				trackName: "test-track",
+				closeWithErrorCalls,
+				closeCalls: 0,
+				async closeWithError(code: number): Promise<void> {
+					closeWithErrorCalls.push({ code });
+				},
+				async close(): Promise<void> {
+					obj.closeCalls++;
+				},
+				reset(): void {
+					closeWithErrorCalls.length = 0;
+					obj.closeCalls = 0;
+				},
+			};
+			return obj as TrackWriter & {
+				closeWithErrorCalls: Array<{ code: number }>;
+				closeCalls: number;
+				reset: () => void;
+			};
+		})();
 
 		const [ctx, cancelFunc] = withCancelCause(background());
-		const mockAnnouncement = new Announcement("/test/path" as BroadcastPath, ctx.done());
+		const mockAnnouncement = new Announcement("/test/path", ctx.done());
 
 		await trackMux.announce(mockAnnouncement, mockHandler);
 
@@ -170,27 +165,72 @@ Deno.test("TrackMux - announce", async (t) => {
 
 		// Handler should be removed
 		mockHandler.reset();
-		const differentTrackWriter = createMockTrackWriter(
-			"/different/path" as BroadcastPath,
-			"different-track",
-		);
+		const differentTrackWriter = (() => {
+			const closeWithErrorCalls: Array<{ code: number }> = [];
+			const obj: any = {
+				broadcastPath: "/different/path",
+				trackName: "different-track",
+				closeWithErrorCalls,
+				closeCalls: 0,
+				async closeWithError(code: number): Promise<void> {
+					closeWithErrorCalls.push({ code });
+				},
+				async close(): Promise<void> {
+					obj.closeCalls++;
+				},
+				reset(): void {
+					closeWithErrorCalls.length = 0;
+					obj.closeCalls = 0;
+				},
+			};
+			return obj as TrackWriter & {
+				closeWithErrorCalls: Array<{ code: number }>;
+				closeCalls: number;
+				reset: () => void;
+			};
+		})();
 
 		await trackMux.serveTrack(differentTrackWriter);
 
 		// Should call closeWithError for not found path
 		assertEquals(differentTrackWriter.closeWithErrorCalls.length, 1);
-		assertEquals(differentTrackWriter.closeWithErrorCalls[0]?.code, TrackNotFoundErrorCode);
-		assertEquals(differentTrackWriter.closeWithErrorCalls[0]?.reason, "Track not found");
+		assertEquals(
+			differentTrackWriter.closeWithErrorCalls[0]?.code,
+			SubscribeErrorCode.TrackNotFound,
+		);
 	});
 });
 
 Deno.test("TrackMux - publish", async () => {
 	const trackMux = new TrackMux();
 	const mockHandler = new MockTrackHandler();
-	const mockTrackWriter = createMockTrackWriter("/test/path" as BroadcastPath, "test-track");
+	const mockTrackWriter = (() => {
+		const closeWithErrorCalls: Array<{ code: number }> = [];
+		const obj: any = {
+			broadcastPath: "/test/path",
+			trackName: "test-track",
+			closeWithErrorCalls,
+			closeCalls: 0,
+			async closeWithError(code: number): Promise<void> {
+				closeWithErrorCalls.push({ code });
+			},
+			async close(): Promise<void> {
+				obj.closeCalls++;
+			},
+			reset(): void {
+				closeWithErrorCalls.length = 0;
+				obj.closeCalls = 0;
+			},
+		};
+		return obj as TrackWriter & {
+			closeWithErrorCalls: Array<{ code: number }>;
+			closeCalls: number;
+			reset: () => void;
+		};
+	})();
 
 	const [ctx, cancelFunc] = withCancelCause(background());
-	const path = "/test/path" as BroadcastPath;
+	const path = "/test/path";
 
 	await trackMux.publish(ctx.done(), path, mockHandler);
 
@@ -206,13 +246,33 @@ Deno.test("TrackMux - serveTrack", async (t) => {
 	await t.step("should call registered handler for matching path", async () => {
 		const trackMux = new TrackMux();
 		const mockHandler = new MockTrackHandler();
-		const mockTrackWriter = createMockTrackWriter(
-			"/test/path" as BroadcastPath,
-			"test-track",
-		);
+		const mockTrackWriter = (() => {
+			const closeWithErrorCalls: Array<{ code: number }> = [];
+			const obj: any = {
+				broadcastPath: "/test/path",
+				trackName: "test-track",
+				closeWithErrorCalls,
+				closeCalls: 0,
+				async closeWithError(code: number): Promise<void> {
+					closeWithErrorCalls.push({ code });
+				},
+				async close(): Promise<void> {
+					obj.closeCalls++;
+				},
+				reset(): void {
+					closeWithErrorCalls.length = 0;
+					obj.closeCalls = 0;
+				},
+			};
+			return obj as TrackWriter & {
+				closeWithErrorCalls: Array<{ code: number }>;
+				closeCalls: number;
+				reset: () => void;
+			};
+		})();
 
 		const [ctx, cancelFunc] = withCancelCause(background());
-		const mockAnnouncement = new Announcement("/test/path" as BroadcastPath, ctx.done());
+		const mockAnnouncement = new Announcement("/test/path", ctx.done());
 
 		await trackMux.announce(mockAnnouncement, mockHandler);
 		await trackMux.serveTrack(mockTrackWriter);
@@ -225,17 +285,36 @@ Deno.test("TrackMux - serveTrack", async (t) => {
 
 	await t.step("should call NotFoundHandler for unregistered path", async () => {
 		const trackMux = new TrackMux();
-		const trackWriter = createMockTrackWriter(
-			"/different/path" as BroadcastPath,
-			"different-track",
-		);
+		const trackWriter = (() => {
+			const closeWithErrorCalls: Array<{ code: number }> = [];
+			const obj: any = {
+				broadcastPath: "/different/path",
+				trackName: "different-track",
+				closeWithErrorCalls,
+				closeCalls: 0,
+				async closeWithError(code: number): Promise<void> {
+					closeWithErrorCalls.push({ code });
+				},
+				async close(): Promise<void> {
+					obj.closeCalls++;
+				},
+				reset(): void {
+					closeWithErrorCalls.length = 0;
+					obj.closeCalls = 0;
+				},
+			};
+			return obj as TrackWriter & {
+				closeWithErrorCalls: Array<{ code: number }>;
+				closeCalls: number;
+				reset: () => void;
+			};
+		})();
 
 		await trackMux.serveTrack(trackWriter);
 
 		// Should call closeWithError for not found path
 		assertEquals(trackWriter.closeWithErrorCalls.length, 1);
-		assertEquals(trackWriter.closeWithErrorCalls[0]?.code, TrackNotFoundErrorCode);
-		assertEquals(trackWriter.closeWithErrorCalls[0]?.reason, "Track not found");
+		assertEquals(trackWriter.closeWithErrorCalls[0]?.code, SubscribeErrorCode.TrackNotFound);
 	});
 });
 
@@ -252,7 +331,38 @@ Deno.test("TrackMux - serveAnnouncement", async (t) => {
 		await t.step(name, async () => {
 			const trackMux = new TrackMux();
 			const [ctx, cancelFunc] = withCancelCause(background());
-			const mockAnnouncementWriter = createMockAnnouncementWriter(ctx);
+			const mockAnnouncementWriter = (() => {
+				const sendCalls: Announcement[] = [];
+				const initCalls: Announcement[][] = [];
+				const mock: any = {
+					context: ctx,
+					sendCalls,
+					initCalls,
+					closeCalls: 0,
+					async send(announcement: Announcement): Promise<Error | undefined> {
+						sendCalls.push(announcement);
+						return undefined;
+					},
+					async init(announcements: Announcement[]): Promise<Error | undefined> {
+						initCalls.push(announcements);
+						return undefined;
+					},
+					async close(): Promise<void> {
+						mock.closeCalls++;
+					},
+					reset(): void {
+						sendCalls.length = 0;
+						initCalls.length = 0;
+						mock.closeCalls = 0;
+					},
+				};
+				return mock as AnnouncementWriter & {
+					sendCalls: Announcement[];
+					initCalls: Announcement[][];
+					closeCalls: number;
+					reset: () => void;
+				};
+			})();
 
 			const servePromise = trackMux.serveAnnouncement(
 				mockAnnouncementWriter,
@@ -275,7 +385,38 @@ Deno.test("TrackMux - serveAnnouncement", async (t) => {
 		const validPrefix = "/test/" as TrackPrefix;
 		const [ctx, cancelFunc] = withCancelCause(background());
 
-		const mockAnnouncementWriter = createMockAnnouncementWriter(ctx);
+		const mockAnnouncementWriter = (() => {
+			const sendCalls: Announcement[] = [];
+			const initCalls: Announcement[][] = [];
+			const mock: any = {
+				context: ctx,
+				sendCalls,
+				initCalls,
+				closeCalls: 0,
+				async send(announcement: Announcement): Promise<Error | undefined> {
+					sendCalls.push(announcement);
+					return undefined;
+				},
+				async init(announcements: Announcement[]): Promise<Error | undefined> {
+					initCalls.push(announcements);
+					return undefined;
+				},
+				async close(): Promise<void> {
+					mock.closeCalls++;
+				},
+				reset(): void {
+					sendCalls.length = 0;
+					initCalls.length = 0;
+					mock.closeCalls = 0;
+				},
+			};
+			return mock as AnnouncementWriter & {
+				sendCalls: Announcement[];
+				initCalls: Announcement[][];
+				closeCalls: number;
+				reset: () => void;
+			};
+		})();
 
 		const servePromise = trackMux.serveAnnouncement(
 			mockAnnouncementWriter,
@@ -288,7 +429,7 @@ Deno.test("TrackMux - serveAnnouncement", async (t) => {
 
 		// Subsequent announcements should not be sent to this writer
 		const [ctx2, cancelFunc2] = withCancelCause(background());
-		const mockAnnouncement = new Announcement("/test/path" as BroadcastPath, ctx2.done());
+		const mockAnnouncement = new Announcement("/test/path", ctx2.done());
 		const mockHandler = new MockTrackHandler();
 
 		await trackMux.announce(mockAnnouncement, mockHandler);
@@ -307,13 +448,44 @@ Deno.test("TrackMux - close", async (t) => {
 		const mockHandler = new MockTrackHandler();
 
 		const [ctx, cancelFunc] = withCancelCause(background());
-		const mockAnnouncementWriter = createMockAnnouncementWriter(ctx);
+		const mockAnnouncementWriter = (() => {
+			const sendCalls: Announcement[] = [];
+			const initCalls: Announcement[][] = [];
+			const mock: any = {
+				context: ctx,
+				sendCalls,
+				initCalls,
+				closeCalls: 0,
+				async send(announcement: Announcement): Promise<Error | undefined> {
+					sendCalls.push(announcement);
+					return undefined;
+				},
+				async init(announcements: Announcement[]): Promise<Error | undefined> {
+					initCalls.push(announcements);
+					return undefined;
+				},
+				async close(): Promise<void> {
+					mock.closeCalls++;
+				},
+				reset(): void {
+					sendCalls.length = 0;
+					initCalls.length = 0;
+					mock.closeCalls = 0;
+				},
+			};
+			return mock as AnnouncementWriter & {
+				sendCalls: Announcement[];
+				initCalls: Announcement[][];
+				closeCalls: number;
+				reset: () => void;
+			};
+		})();
 
 		// Serve an announcement to add the writer to announcers
 		const servePromise = trackMux.serveAnnouncement(mockAnnouncementWriter, validPrefix);
 
 		// Announce a track to trigger sending to the writer
-		const path = "/test/path" as BroadcastPath;
+		const path = "/test/path";
 		const [ctx2, cancelFunc2] = withCancelCause(background());
 		await trackMux.announce(new Announcement(path, ctx2.done()), mockHandler);
 
@@ -341,10 +513,30 @@ Deno.test("TrackHandler - Interface", () => {
 
 	assertEquals(typeof mockHandler.serveTrack, "function");
 
-	const mockTrackWriter = createMockTrackWriter(
-		"/test/path" as BroadcastPath,
-		"test-track",
-	);
+	const mockTrackWriter = (() => {
+		const closeWithErrorCalls: Array<{ code: number }> = [];
+		const obj: any = {
+			broadcastPath: "/test/path",
+			trackName: "test-track",
+			closeWithErrorCalls,
+			closeCalls: 0,
+			async closeWithError(code: number): Promise<void> {
+				closeWithErrorCalls.push({ code });
+			},
+			async close(): Promise<void> {
+				obj.closeCalls++;
+			},
+			reset(): void {
+				closeWithErrorCalls.length = 0;
+				obj.closeCalls = 0;
+			},
+		};
+		return obj as TrackWriter & {
+			closeWithErrorCalls: Array<{ code: number }>;
+			closeCalls: number;
+			reset: () => void;
+		};
+	})();
 	mockHandler.serveTrack(mockTrackWriter);
 
 	assertEquals(mockHandler.calls.length, 1);
@@ -358,7 +550,7 @@ Deno.test("TrackMux - Additional Coverage", async (t) => {
 
 		// Create an announcement with already-resolved context (inactive)
 		const mockAnnouncement = new Announcement(
-			"/test/path" as BroadcastPath,
+			"/test/path",
 			Promise.resolve(),
 		);
 
@@ -368,10 +560,30 @@ Deno.test("TrackMux - Additional Coverage", async (t) => {
 		await trackMux.announce(mockAnnouncement, mockHandler);
 
 		// Should not register the handler since announcement is inactive
-		const mockTrackWriter = createMockTrackWriter(
-			"/test/path" as BroadcastPath,
-			"test-track",
-		);
+		const mockTrackWriter = (() => {
+			const closeWithErrorCalls: Array<{ code: number }> = [];
+			const obj: any = {
+				broadcastPath: "/test/path",
+				trackName: "test-track",
+				closeWithErrorCalls,
+				closeCalls: 0,
+				async closeWithError(code: number): Promise<void> {
+					closeWithErrorCalls.push({ code });
+				},
+				async close(): Promise<void> {
+					obj.closeCalls++;
+				},
+				reset(): void {
+					closeWithErrorCalls.length = 0;
+					obj.closeCalls = 0;
+				},
+			};
+			return obj as TrackWriter & {
+				closeWithErrorCalls: Array<{ code: number }>;
+				closeCalls: number;
+				reset: () => void;
+			};
+		})();
 		await trackMux.serveTrack(mockTrackWriter);
 
 		// Should call closeWithError since handler was not registered
@@ -384,21 +596,41 @@ Deno.test("TrackMux - Additional Coverage", async (t) => {
 		const mockHandler2 = new MockTrackHandler();
 
 		const [ctx1, cancelFunc1] = withCancelCause(background());
-		const mockAnnouncement1 = new Announcement("/test/path" as BroadcastPath, ctx1.done());
+		const mockAnnouncement1 = new Announcement("/test/path", ctx1.done());
 
 		await trackMux.announce(mockAnnouncement1, mockHandler1);
 
 		// Announce again with different announcement
 		const [ctx2, cancelFunc2] = withCancelCause(background());
-		const mockAnnouncement2 = new Announcement("/test/path" as BroadcastPath, ctx2.done());
+		const mockAnnouncement2 = new Announcement("/test/path", ctx2.done());
 
 		await trackMux.announce(mockAnnouncement2, mockHandler2);
 
 		// Should use the new handler
-		const mockTrackWriter = createMockTrackWriter(
-			"/test/path" as BroadcastPath,
-			"test-track",
-		);
+		const mockTrackWriter = (() => {
+			const closeWithErrorCalls: Array<{ code: number }> = [];
+			const obj: any = {
+				broadcastPath: "/test/path",
+				trackName: "test-track",
+				closeWithErrorCalls,
+				closeCalls: 0,
+				async closeWithError(code: number): Promise<void> {
+					closeWithErrorCalls.push({ code });
+				},
+				async close(): Promise<void> {
+					obj.closeCalls++;
+				},
+				reset(): void {
+					closeWithErrorCalls.length = 0;
+					obj.closeCalls = 0;
+				},
+			};
+			return obj as TrackWriter & {
+				closeWithErrorCalls: Array<{ code: number }>;
+				closeCalls: number;
+				reset: () => void;
+			};
+		})();
 		await trackMux.serveTrack(mockTrackWriter);
 
 		assertEquals(mockHandler1.calls.length, 0);
@@ -413,7 +645,38 @@ Deno.test("TrackMux - Additional Coverage", async (t) => {
 		const mockHandler = new MockTrackHandler();
 
 		const [ctx, cancelFunc] = withCancelCause(background());
-		const mockAnnouncementWriter = createMockAnnouncementWriter(ctx);
+		const mockAnnouncementWriter = (() => {
+			const sendCalls: Announcement[] = [];
+			const initCalls: Announcement[][] = [];
+			const mock: any = {
+				context: ctx,
+				sendCalls,
+				initCalls,
+				closeCalls: 0,
+				async send(announcement: Announcement): Promise<Error | undefined> {
+					sendCalls.push(announcement);
+					return undefined;
+				},
+				async init(announcements: Announcement[]): Promise<Error | undefined> {
+					initCalls.push(announcements);
+					return undefined;
+				},
+				async close(): Promise<void> {
+					mock.closeCalls++;
+				},
+				reset(): void {
+					sendCalls.length = 0;
+					initCalls.length = 0;
+					mock.closeCalls = 0;
+				},
+			};
+			return mock as AnnouncementWriter & {
+				sendCalls: Announcement[];
+				initCalls: Announcement[][];
+				closeCalls: number;
+				reset: () => void;
+			};
+		})();
 
 		// Override send to return an error
 		mockAnnouncementWriter.send = async (_: Announcement): Promise<Error | undefined> => {
@@ -425,7 +688,7 @@ Deno.test("TrackMux - Additional Coverage", async (t) => {
 
 		// Announce a path that matches the prefix
 		const [ctx2, cancelFunc2] = withCancelCause(background());
-		const mockAnnouncement = new Announcement("/test/path" as BroadcastPath, ctx2.done());
+		const mockAnnouncement = new Announcement("/test/path", ctx2.done());
 		await trackMux.announce(mockAnnouncement, mockHandler);
 
 		// Cancel the context to complete
@@ -437,13 +700,33 @@ Deno.test("TrackMux - Additional Coverage", async (t) => {
 
 	await t.step("should use publishFunc to register handler", async () => {
 		const trackMux = new TrackMux();
-		const mockTrackWriter = createMockTrackWriter(
-			"/test/path" as BroadcastPath,
-			"test-track",
-		);
+		const mockTrackWriter = (() => {
+			const closeWithErrorCalls: Array<{ code: number }> = [];
+			const obj: any = {
+				broadcastPath: "/test/path",
+				trackName: "test-track",
+				closeWithErrorCalls,
+				closeCalls: 0,
+				async closeWithError(code: number): Promise<void> {
+					closeWithErrorCalls.push({ code });
+				},
+				async close(): Promise<void> {
+					obj.closeCalls++;
+				},
+				reset(): void {
+					closeWithErrorCalls.length = 0;
+					obj.closeCalls = 0;
+				},
+			};
+			return obj as TrackWriter & {
+				closeWithErrorCalls: Array<{ code: number }>;
+				closeCalls: number;
+				reset: () => void;
+			};
+		})();
 
 		const [ctx, cancelFunc] = withCancelCause(background());
-		const path = "/test/path" as BroadcastPath;
+		const path = "/test/path";
 
 		let handlerCalled = false;
 		await trackMux.publishFunc(ctx.done(), path, async (_trackWriter) => {
@@ -462,14 +745,45 @@ Deno.test("TrackMux - Additional Coverage", async (t) => {
 		const mockHandler = new MockTrackHandler();
 
 		const [ctx, cancelFunc] = withCancelCause(background());
-		const mockAnnouncementWriter = createMockAnnouncementWriter(ctx);
+		const mockAnnouncementWriter = (() => {
+			const sendCalls: Announcement[] = [];
+			const initCalls: Announcement[][] = [];
+			const mock: any = {
+				context: ctx,
+				sendCalls,
+				initCalls,
+				closeCalls: 0,
+				async send(announcement: Announcement): Promise<Error | undefined> {
+					sendCalls.push(announcement);
+					return undefined;
+				},
+				async init(announcements: Announcement[]): Promise<Error | undefined> {
+					initCalls.push(announcements);
+					return undefined;
+				},
+				async close(): Promise<void> {
+					mock.closeCalls++;
+				},
+				reset(): void {
+					sendCalls.length = 0;
+					initCalls.length = 0;
+					mock.closeCalls = 0;
+				},
+			};
+			return mock as AnnouncementWriter & {
+				sendCalls: Announcement[];
+				initCalls: Announcement[][];
+				closeCalls: number;
+				reset: () => void;
+			};
+		})();
 
 		const prefix = "/other/" as TrackPrefix;
 		const servePromise = trackMux.serveAnnouncement(mockAnnouncementWriter, prefix);
 
 		// Announce a path that doesn't match the prefix
 		const [ctx2, cancelFunc2] = withCancelCause(background());
-		const mockAnnouncement = new Announcement("/test/path" as BroadcastPath, ctx2.done());
+		const mockAnnouncement = new Announcement("/test/path", ctx2.done());
 		await trackMux.announce(mockAnnouncement, mockHandler);
 
 		// Should not send to the writer

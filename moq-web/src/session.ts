@@ -20,18 +20,19 @@ import { AnnouncementReader, AnnouncementWriter } from "./announce_stream.ts";
 import type { TrackPrefix } from "./track_prefix.ts";
 import { ReceiveSubscribeStream, SendSubscribeStream } from "./subscribe_stream.ts";
 import type { TrackConfig } from "./subscribe_stream.ts";
-import type { BroadcastPath } from "./broadcast_path.ts";
-import { TrackReader, TrackWriter } from "./track.ts";
+import { type BroadcastPath, validateBroadcastPath } from "./broadcast_path.ts";
+import { TrackReader } from "./track_reader.ts";
+import { TrackWriter } from "./track_writer.ts";
 import type { TrackMux } from "./track_mux.ts";
 import { DefaultTrackMux } from "./track_mux.ts";
 import { BiStreamTypes, UniStreamTypes } from "./stream_type.ts";
 import { Queue } from "./internal/queue.ts";
 import type { SubscribeID, TrackName } from "./alias.ts";
-import type { ReceiveStream } from "./internal/webtransport/receive_stream.ts";
-import { Connection } from "./internal/webtransport/connection.ts";
+import * as webtransport from "./internal/webtransport/mod.ts";
 
-export interface SessionInit {
-	conn: WebTransport;
+export interface SessionOptions {
+	webtransport: webtransport.WebTransportSession;
+
 	versions?: Set<Version>;
 	extensions?: Extensions;
 	mux?: TrackMux;
@@ -39,7 +40,7 @@ export interface SessionInit {
 
 export class Session {
 	readonly ready: Promise<void>;
-	#conn: Connection;
+	#webtransport: webtransport.WebTransportSession;
 	#sessionStream!: SessionStream;
 	#ctx: Context;
 	#cancelFunc: CancelCauseFunc;
@@ -58,29 +59,54 @@ export class Session {
 
 	readonly mux: TrackMux;
 
-	#enqueueFuncs: Map<SubscribeID, (stream: ReceiveStream, msg: GroupMessage) => void> = new Map();
+	#queues: Map<
+		SubscribeID,
+		Queue<[webtransport.ReceiveStream, GroupMessage]>
+	> = new Map();
 
-	constructor(init: SessionInit) {
-		this.#conn = new Connection(init.conn);
-		this.mux = init.mux ?? DefaultTrackMux;
+	constructor(options: SessionOptions) {
+		this.#webtransport = options.webtransport;
+		this.mux = options.mux ?? DefaultTrackMux;
 		const [ctx, cancel] = withCancelCause(background());
-		this.#conn.closed.catch((err) => {
-			console.debug("connection closed with error:", err);
-		}).finally(() => {
-			cancel(new Error("webtransport: connection closed"));
+		this.#webtransport.closed.then((info) => {
+			if (this.#ctx.err()) {
+				return;
+			}
+
+			if (info.closeCode === undefined && info.reason === undefined) {
+				// This means the establishment of the connection failed
+				cancel(new Error("webtransport: connection closed unexpectedly"));
+				return;
+			}
+
+			cancel(
+				new webtransport.WebTransportSessionError(
+					info as webtransport.WebTransportSessionErrorInfo,
+					true,
+				),
+			);
+		}).catch((info) => {
+			if (this.#ctx.err()) {
+				// Session was already closed
+				return;
+			}
+
+			// Some error occurred while establishing the connection or waiting for the connection to close
+			// The caught error here is likely not defined in general. So we wrap it in a generic Error.
+			cancel(new Error(info));
 		});
 		this.#ctx = ctx;
 		this.#cancelFunc = cancel;
 		this.ready = this.#setup(
-			init.versions ?? DEFAULT_CLIENT_VERSIONS,
-			init.extensions ?? new Extensions(),
+			options.versions ?? DEFAULT_CLIENT_VERSIONS,
+			options.extensions ?? new Extensions(),
 		);
 	}
 
 	async #setup(versions: Set<Version>, extensions: Extensions): Promise<void> {
-		await this.#conn.ready;
+		await this.#webtransport.ready;
 
-		const [stream, openErr] = await this.#conn.openStream();
+		const [stream, openErr] = await this.#webtransport.openStream();
 		if (openErr) {
 			console.error("moq: failed to open session stream:", openErr);
 			throw openErr;
@@ -103,10 +129,7 @@ export class Session {
 			throw err;
 		}
 
-		console.debug("moq: SESSION_CLIENT message sent.", {
-			"message": req,
-			"streamId": stream.id,
-		});
+		// debug log removed
 
 		// Receive the session server message
 		const rsp = new SessionServerMessage({});
@@ -116,9 +139,7 @@ export class Session {
 			throw err;
 		}
 
-		console.debug("moq: SESSION_SERVER message received.", {
-			"message": rsp,
-		});
+		// debug log removed
 
 		// TODO: Check the version compatibility
 		if (!versions.has(rsp.version)) {
@@ -140,7 +161,7 @@ export class Session {
 
 		this.#sessionStream.context.done().then(() => {
 			this.#cancelFunc(new Error("moq: session stream closed"));
-		});
+		}).catch(() => {});
 
 		// Start listening for incoming streams
 		this.#wg.push(this.#listenBiStreams());
@@ -152,7 +173,7 @@ export class Session {
 	async acceptAnnounce(
 		prefix: TrackPrefix,
 	): Promise<[AnnouncementReader, undefined] | [undefined, Error]> {
-		const [stream, openErr] = await this.#conn.openStream();
+		const [stream, openErr] = await this.#webtransport.openStream();
 		if (openErr) {
 			console.error("moq: failed to open announce stream:", openErr);
 			return [undefined, openErr];
@@ -172,10 +193,7 @@ export class Session {
 			return [undefined, err];
 		}
 
-		console.debug(`moq: ANNOUNCE_PLEASE message sent.`, {
-			"message": req,
-			"streamId": stream.id,
-		});
+		// debug log removed
 
 		// Receive AnnounceInitMessage
 		const rsp = new AnnounceInitMessage({});
@@ -185,10 +203,7 @@ export class Session {
 			return [undefined, err];
 		}
 
-		console.debug(`moq: ANNOUNCE_INIT message received.`, {
-			"prefix": prefix,
-			"message": rsp,
-		});
+		// debug log removed
 
 		return [new AnnouncementReader(this.#ctx, stream, req, rsp), undefined];
 	}
@@ -198,7 +213,15 @@ export class Session {
 		name: TrackName,
 		config?: TrackConfig,
 	): Promise<[TrackReader, undefined] | [undefined, Error]> {
-		const [stream, openErr] = await this.#conn.openStream();
+		const subscribeId = this.#subscribeIDCounter++;
+		// Check for subscribe ID collision
+		if (this.#queues.has(subscribeId)) {
+			// Subscribe ID collision, should not happen
+			// This is handled as a panic
+
+			throw new Error(`moq: subscribe ID duplicate for subscribe ID ${subscribeId}`);
+		}
+		const [stream, openErr] = await this.#webtransport.openStream();
 		if (openErr) {
 			console.error("moq: failed to open subscribe stream:", openErr);
 			return [undefined, openErr];
@@ -212,7 +235,7 @@ export class Session {
 
 		// Send SUBSCRIBE message
 		const req = new SubscribeMessage({
-			subscribeId: this.#subscribeIDCounter++,
+			subscribeId: subscribeId,
 			broadcastPath: path,
 			trackName: name,
 			trackPriority: config?.trackPriority ?? 0,
@@ -225,10 +248,9 @@ export class Session {
 			return [undefined, err];
 		}
 
-		console.debug(`moq: SUBSCRIBE message sent.`, {
-			"message": req,
-			"streamId": stream.id,
-		});
+		// Add queue for incoming group streams
+		const queue = new Queue<[webtransport.ReceiveStream, GroupMessage]>();
+		this.#queues.set(subscribeId, queue);
 
 		const rsp = new SubscribeOkMessage({});
 		err = await rsp.decode(stream.readable);
@@ -237,46 +259,23 @@ export class Session {
 			return [undefined, err];
 		}
 
-		console.debug(`moq: SUBSCRIBE_OK message received.`, {
-			"subscribeId": req.subscribeId,
-			"message": req,
-		});
-
 		const subscribeStream = new SendSubscribeStream(this.#ctx, stream, req, rsp);
-
-		const queue = new Queue<[ReceiveStream, GroupMessage]>();
-
-		// Add the enqueue function to the map
-		this.#enqueueFuncs.set(req.subscribeId, (stream, msg) => {
-			queue.enqueue([stream, msg]);
-		});
 
 		const track = new TrackReader(
 			path,
 			name,
 			subscribeStream,
-			async (ctx: Promise<void>) => {
-				const result = await Promise.race([
-					ctx,
-					this.#ctx.done(),
-					queue.dequeue(),
-				]);
-
-				if (!result) {
-					return undefined;
-				}
-
-				return result;
-			},
+			queue,
 			() => {
-				this.#enqueueFuncs.delete(req.subscribeId);
+				this.#queues.delete(req.subscribeId);
+				queue.close();
 			},
 		);
 
 		return [track, undefined];
 	}
 
-	async #handleGroupStream(reader: ReceiveStream): Promise<void> {
+	async #handleGroupStream(reader: webtransport.ReceiveStream): Promise<void> {
 		const req = new GroupMessage({});
 		const err = await req.decode(reader);
 		if (err) {
@@ -284,18 +283,19 @@ export class Session {
 			return;
 		}
 
-		console.debug("moq: GROUP message received.", {
-			"message": req,
-			"streamId": reader.id,
-		});
+		// debug log removed
 
-		const enqueueFunc = this.#enqueueFuncs.get(req.subscribeId);
-		if (!enqueueFunc) {
-			console.error(`moq: no subscription found for Subscribe ID: ${req.subscribeId}`);
+		const queue = this.#queues.get(req.subscribeId);
+		if (!queue) {
+			// No enqueue function yet.
+			// This can happen if the subscribe call is not completed yet.
 			return;
 		}
-
-		enqueueFunc(reader, req);
+		try {
+			await queue.enqueue([reader, req]);
+		} catch (e) {
+			console.error(`moq: failed to enqueue group for subscribe ID ${req.subscribeId}:`, e);
+		}
 	}
 
 	async #handleSubscribeStream(stream: Stream): Promise<void> {
@@ -306,34 +306,16 @@ export class Session {
 			return;
 		}
 
-		console.debug("moq: SUBSCRIBE message received.", {
-			"message": req,
-			"streamId": stream.id,
-		});
-
 		const subscribeStream = new ReceiveSubscribeStream(this.#ctx, stream, req);
 
-		// const openUniStreamFunc = async (): Promise<[SendStream, undefined] | [undefined, Error]> => {
-		// 	try {
-		// 		const stream = await this.#conn.openUniStream();
-		// 		return [stream, undefined];
-		// 	} catch (err) {
-		// 		console.error("moq: failed to create unidirectional stream:", err);
-		// 		return [
-		// 			undefined,
-		// 			new Error(`moq: failed to create unidirectional stream: ${err}`),
-		// 		];
-		// 	}
-		// };
-
 		const trackWriter = new TrackWriter(
-			req.broadcastPath as BroadcastPath,
+			validateBroadcastPath(req.broadcastPath),
 			req.trackName,
 			subscribeStream,
-			this.#conn.openUniStream.bind(this.#conn),
+			this.#webtransport.openUniStream.bind(this.#webtransport),
 		);
 
-		this.mux.serveTrack(trackWriter);
+		await this.mux.serveTrack(trackWriter);
 	}
 
 	async #handleAnnounceStream(stream: Stream): Promise<void> {
@@ -344,30 +326,28 @@ export class Session {
 			return;
 		}
 
-		console.debug("moq: ANNOUNCE_PLEASE message received.", {
-			"message": req,
-			"streamId": stream.id,
-		});
+		// debug log removed
 
 		const aw = new AnnouncementWriter(this.#ctx, stream, req);
 
-		this.mux.serveAnnouncement(aw, aw.prefix);
+		await this.mux.serveAnnouncement(aw, aw.prefix);
 	}
 
 	async #listenBiStreams(): Promise<void> {
+		const pendingHandles: Promise<void>[] = [];
 		try {
 			// Handle incoming streams
 			let num: number;
 			let err: Error | undefined;
 			while (true) {
-				const [stream, acceptErr] = await this.#conn.acceptStream();
+				const [stream, acceptErr] = await this.#webtransport.acceptStream();
 				// biStreams.releaseLock(); // Release the lock after reading
 				if (acceptErr) {
 					// Only log as error if session is not closing
 					if (!this.#ctx.err()) {
 						console.error("Bidirectional stream closed", acceptErr);
 					} else {
-						console.debug("Bidirectional stream accept stopped (session closing)");
+						// debug log removed
 					}
 					break;
 				}
@@ -379,10 +359,10 @@ export class Session {
 
 				switch (num) {
 					case BiStreamTypes.SubscribeStreamType:
-						this.#handleSubscribeStream(stream);
+						pendingHandles.push(this.#handleSubscribeStream(stream));
 						break;
 					case BiStreamTypes.AnnounceStreamType:
-						this.#handleAnnounceStream(stream);
+						pendingHandles.push(this.#handleAnnounceStream(stream));
 						break;
 					default:
 						console.warn(`Unknown bidirectional stream type: ${num}`);
@@ -396,20 +376,27 @@ export class Session {
 			} else {
 				console.error("Error in listenBiStreams:", error);
 			}
+			return;
+		} finally {
+			// Wait for all pending handle operations to complete
+			if (pendingHandles.length > 0) {
+				await Promise.allSettled(pendingHandles);
+			}
 		}
 	}
 	async #listenUniStreams(): Promise<void> {
+		const pendingHandles: Promise<void>[] = [];
 		try {
 			let num: number;
 			let err: Error | undefined;
 			while (true) {
-				const [stream, acceptErr] = await this.#conn.acceptUniStream();
+				const [stream, acceptErr] = await this.#webtransport.acceptUniStream();
 				if (acceptErr) {
 					// Only log as error if session is not closing
 					if (!this.#ctx.err()) {
 						console.error("Unidirectional stream closed", acceptErr);
 					} else {
-						console.debug("Unidirectional stream accept stopped (session closing)");
+						// debug log removed
 					}
 					break;
 				}
@@ -423,7 +410,7 @@ export class Session {
 
 				switch (num) {
 					case UniStreamTypes.GroupStreamType:
-						await this.#handleGroupStream(stream);
+						pendingHandles.push(this.#handleGroupStream(stream));
 						break;
 					default:
 						console.warn(`Unknown unidirectional stream type: ${num}`);
@@ -437,6 +424,12 @@ export class Session {
 			} else {
 				console.error("Error in listenUniStreams:", error);
 			}
+			return;
+		} finally {
+			// Wait for all pending handle operations to complete
+			if (pendingHandles.length > 0) {
+				await Promise.allSettled(pendingHandles);
+			}
 		}
 	}
 
@@ -448,13 +441,26 @@ export class Session {
 		// Cancel context first to signal shutdown to all listeners
 		this.#cancelFunc(new Error("session closing"));
 
-		this.#conn.close({
+		this.#webtransport.close({
 			closeCode: 0x0, // Normal closure
 			reason: "No Error",
 		});
 
-		await Promise.allSettled(this.#wg);
+		try {
+			console.log(`Session.close: waiting for ${this.#wg.length} background tasks`);
+			await Promise.allSettled(this.#wg);
+			console.log(`Session.close: background tasks settled`);
+		} catch (_e) {
+			// ignore
+		}
 		this.#wg = [];
+
+		// Also wait for SessionStream background tasks
+		try {
+			await this.#sessionStream.waitForBackgroundTasks();
+		} catch (_e) {
+			// ignore
+		}
 	}
 	async closeWithError(code: number, message: string): Promise<void> {
 		if (this.#ctx.err()) {
@@ -464,12 +470,25 @@ export class Session {
 		// Cancel context first to signal shutdown to all listeners
 		this.#cancelFunc(new Error(message));
 
-		this.#conn.close({
+		this.#webtransport.close({
 			closeCode: code,
 			reason: message,
 		});
 
-		await Promise.allSettled(this.#wg);
+		try {
+			console.log(`Session.closeWithError: waiting for ${this.#wg.length} background tasks`);
+			await Promise.allSettled(this.#wg);
+			console.log(`Session.closeWithError: background tasks settled`);
+		} catch (_e) {
+			// ignore
+		}
 		this.#wg = [];
+
+		// Also wait for SessionStream background tasks
+		try {
+			await this.#sessionStream.waitForBackgroundTasks();
+		} catch (_e) {
+			// ignore
+		}
 	}
 }

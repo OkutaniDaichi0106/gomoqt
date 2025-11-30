@@ -1,12 +1,17 @@
 import { ReceiveStream } from "./receive_stream.ts";
 import { SendStream } from "./send_stream.ts";
 
+export interface Stream {
+	readonly id: bigint;
+	readonly writable: SendStream;
+	readonly readable: ReceiveStream;
+}
 export interface StreamInit {
 	streamId: bigint;
 	stream: WebTransportBidirectionalStream;
 }
 
-export class Stream {
+class StreamClass {
 	readonly id: bigint;
 	readonly writable: SendStream;
 	readonly readable: ReceiveStream;
@@ -22,3 +27,7 @@ export class Stream {
 		});
 	}
 }
+
+export const Stream: {
+	new (init: StreamInit): Stream;
+} = StreamClass;

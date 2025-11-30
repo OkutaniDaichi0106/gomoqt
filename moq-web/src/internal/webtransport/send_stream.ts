@@ -1,5 +1,15 @@
-import type { Writer } from "@okudai/golikejs/io";
-import type { StreamError } from "./error.ts";
+import { EOFError, type Writer } from "@okudai/golikejs/io";
+import { WebTransportStreamError, WebTransportStreamErrorInfo } from "./error.ts";
+import { WebTransportStreamErrorCode } from "./mod.ts";
+
+export interface SendStream extends Writer {
+	readonly id: bigint;
+
+	close(): Promise<void>;
+	cancel(code: WebTransportStreamErrorCode): Promise<void>;
+
+	closed(): Promise<void>;
+}
 
 export interface SendStreamInit {
 	stream: WritableStream<Uint8Array>;
@@ -10,9 +20,11 @@ export interface SendStreamInit {
  * SendStream wraps a WebTransport WritableStream and implements the io.Writer interface.
  * This is a thin wrapper that passes data directly to the underlying stream without internal buffering.
  */
-export class SendStream implements Writer {
+class SendStreamClass implements SendStream {
 	#writer: WritableStreamDefaultWriter<Uint8Array>;
 	readonly id: bigint;
+
+	#err?: Error;
 
 	constructor(init: SendStreamInit) {
 		this.#writer = init.stream.getWriter();
@@ -25,14 +37,32 @@ export class SendStream implements Writer {
 	 * Implements io.Writer interface.
 	 */
 	async write(p: Uint8Array): Promise<[number, Error | undefined]> {
+		if (this.#err) {
+			return [0, this.#err];
+		}
 		try {
 			await this.#writer.write(p);
 			return [p.length, undefined];
-		} catch (error) {
-			if (error instanceof Error) {
-				return [0, error];
+		} catch (err) {
+			if (this.#err) {
+				return [0, this.#err];
 			}
-			return [0, new Error(`Failed to write to stream: ${error}`)];
+
+			if (err instanceof Error) {
+				return [0, err];
+			}
+			const wtErr = err as WebTransportError;
+			if (wtErr.source === "stream") {
+				if (wtErr.streamErrorCode !== null) {
+					this.#err = new WebTransportStreamError(
+						wtErr as WebTransportStreamErrorInfo,
+						true,
+					);
+				} else {
+					this.#err = new EOFError();
+				}
+			}
+			return [0, this.#err];
 		}
 	}
 
@@ -40,7 +70,16 @@ export class SendStream implements Writer {
 		await this.#writer.close();
 	}
 
-	async cancel(err: StreamError): Promise<void> {
+	async cancel(code: WebTransportStreamErrorCode): Promise<void> {
+		if (this.#err) {
+			return;
+		}
+		const wtErr: WebTransportStreamErrorInfo = {
+			source: "stream",
+			streamErrorCode: code,
+		};
+		const err = new WebTransportStreamError(wtErr, false);
+		this.#err = err;
 		await this.#writer.abort(err);
 	}
 
@@ -49,7 +88,6 @@ export class SendStream implements Writer {
 	}
 }
 
-export interface Source {
-	byteLength: number;
-	copyTo(target: ArrayBuffer | ArrayBufferView<ArrayBufferLike>): void;
-}
+export const SendStream: {
+	new (init: SendStreamInit): SendStream;
+} = SendStreamClass;

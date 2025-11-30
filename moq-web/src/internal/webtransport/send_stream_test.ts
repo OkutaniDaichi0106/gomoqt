@@ -1,6 +1,6 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertInstanceOf } from "@std/assert";
 import { SendStream } from "./send_stream.ts";
-import { StreamError } from "./error.ts";
+import { WebTransportStreamError } from "./error.ts";
 
 function setupWriter() {
 	const writtenData: Uint8Array[] = [];
@@ -95,10 +95,18 @@ Deno.test("SendStream", async (t) => {
 		});
 		const writer = new SendStream({ stream: writableStream, streamId: 1n });
 
-		const error = new StreamError(1, "test error");
-		await writer.cancel(error);
+		const error = new WebTransportStreamError({ source: "stream", streamErrorCode: 1 }, false);
+		await writer.cancel(error.code);
 
-		assertEquals(abortReason, error);
+		assertInstanceOf(
+			abortReason,
+			WebTransportStreamError as unknown as new (...args: any[]) => Error,
+		);
+		if (abortReason instanceof WebTransportStreamError) {
+			assertEquals(abortReason.code, error.code);
+			assertEquals(abortReason.message, error.message);
+			assertEquals(abortReason.remote, error.remote);
+		}
 	});
 
 	await t.step("id - should return stream id", () => {
@@ -120,5 +128,68 @@ Deno.test("SendStream", async (t) => {
 		assertEquals(n, 0);
 		assertEquals(err instanceof Error, true);
 		assertEquals(err!.message, "Write failed");
+	});
+
+	await t.step(
+		"write handles WebTransportError with null streamErrorCode as EOFError",
+		async () => {
+			const writable = new WritableStream<Uint8Array>({
+				write(_chunk) {
+					// Reject with WebTransportError-like object (non-Error)
+					return Promise.reject({ source: "stream", streamErrorCode: null });
+				},
+			});
+			const s = new SendStream({ stream: writable, streamId: 1n });
+
+			const [n, err] = await s.write(new Uint8Array([1, 2, 3]));
+			assertEquals(n, 0);
+			// err should be instanceof Error (EOFError or Error)
+			assertInstanceOf(err, Error);
+
+			// Subsequent writes should return same error
+			const [n2, err2] = await s.write(new Uint8Array([4, 5]));
+			assertEquals(n2, 0);
+			assertInstanceOf(err2, Error);
+		},
+	);
+
+	await t.step(
+		"write handles WebTransportError with streamErrorCode set as StreamError",
+		async () => {
+			const writable = new WritableStream<Uint8Array>({
+				write(_chunk) {
+					// Reject with WebTransportError-like object (non-Error)
+					return Promise.reject({ source: "stream", streamErrorCode: 123 });
+				},
+			});
+			const s = new SendStream({ stream: writable, streamId: 2n });
+
+			const [n, err] = await s.write(new Uint8Array([1, 2, 3]));
+			assertEquals(n, 0);
+			assertInstanceOf(err, WebTransportStreamError);
+
+			// Further writes should immediately return the same StreamError
+			const [n2, err2] = await s.write(new Uint8Array([4, 5]));
+			assertEquals(n2, 0);
+			assertInstanceOf(err2, WebTransportStreamError);
+		},
+	);
+
+	await t.step("cancel sets err and aborts", async () => {
+		let aborted = false;
+		const writable = new WritableStream<Uint8Array>({
+			write(_chunk) {/* no-op */},
+			abort(_reason) {
+				aborted = true;
+				return Promise.resolve();
+			},
+		});
+		const s = new SendStream({ stream: writable, streamId: 3n });
+		await s.cancel(1);
+		const [n, err] = await s.write(new Uint8Array([1]));
+		assertEquals(n, 0);
+		// err should be a StreamError
+		assertInstanceOf(err, WebTransportStreamError);
+		assertEquals(aborted, true);
 	});
 });

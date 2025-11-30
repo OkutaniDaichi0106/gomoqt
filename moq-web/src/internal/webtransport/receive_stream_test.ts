@@ -1,7 +1,7 @@
 import { assertEquals, assertInstanceOf } from "@std/assert";
 import { ReceiveStream } from "./receive_stream.ts";
 import { EOFError } from "@okudai/golikejs/io";
-import { StreamError } from "./error.ts";
+import { WebTransportStreamError } from "./error.ts";
 
 function setupReader(data: Uint8Array[]) {
 	let index = 0;
@@ -113,10 +113,23 @@ Deno.test("ReceiveStream", async (t) => {
 		});
 		const reader = new ReceiveStream({ stream: readableStream, streamId: 1n });
 
-		const error = new StreamError(1, "test error");
-		await reader.cancel(error);
+		const code = 1;
 
-		assertEquals(cancelReason, error);
+		const error = new WebTransportStreamError(
+			{ source: "stream", streamErrorCode: code },
+			false,
+		);
+		await reader.cancel(code);
+
+		assertInstanceOf(
+			cancelReason,
+			WebTransportStreamError as unknown as new (...args: any[]) => Error,
+		);
+		if (cancelReason instanceof WebTransportStreamError) {
+			assertEquals(cancelReason.code, error.code);
+			assertEquals(cancelReason.message, error.message);
+			assertEquals(cancelReason.remote, error.remote);
+		}
 	});
 
 	await t.step("read - should handle large buffer request", async () => {
@@ -129,5 +142,41 @@ Deno.test("ReceiveStream", async (t) => {
 		assertEquals(err, undefined);
 		assertEquals(n, 3);
 		assertEquals(buf.subarray(0, 3), new Uint8Array([1, 2, 3]));
+	});
+
+	await t.step(
+		"read captures WebTransportError with null streamErrorCode as EOFError-like",
+		async () => {
+			const readable = new ReadableStream<Uint8Array>({
+				pull(_controller) {
+					return Promise.reject({ source: "stream", streamErrorCode: null });
+				},
+			});
+			const r = new ReceiveStream({ stream: readable, streamId: 1n });
+
+			const p = new Uint8Array(4);
+			const [n, err] = await r.read(p);
+			assertEquals(n, 0);
+			assertInstanceOf(err, Error);
+		},
+	);
+
+	await t.step("cancel sets error and subsequent read returns error", async () => {
+		let canceled = false;
+		const readable = new ReadableStream<Uint8Array>({
+			start(_controller) {},
+			cancel(_reason) {
+				canceled = true;
+				return Promise.resolve();
+			},
+		});
+		const r = new ReceiveStream({ stream: readable, streamId: 2n });
+		await r.cancel(1);
+
+		const p = new Uint8Array(4);
+		const [n, err] = await r.read(p);
+		assertEquals(n, 0);
+		assertInstanceOf(err, WebTransportStreamError);
+		assertEquals(canceled, true);
 	});
 });

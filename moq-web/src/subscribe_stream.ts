@@ -8,7 +8,6 @@ import { withCancelCause } from "@okudai/golikejs/context";
 import { StreamError } from "./internal/webtransport/mod.ts";
 import type { Info } from "./info.ts";
 import type { GroupSequence, SubscribeID, TrackPriority } from "./alias.ts";
-import { SubscribeErrorCode } from "./error.ts";
 
 export interface TrackConfig {
 	trackPriority: TrackPriority;
@@ -64,9 +63,9 @@ export class SendSubscribeStream {
 		return undefined;
 	}
 
-	async closeWithError(code: SubscribeErrorCode): Promise<void> {
-		const err = new StreamError({ source: "stream", streamErrorCode: code }, false);
-		await this.#stream.writable.cancel(code);
+	async closeWithError(code: number, message: string): Promise<void> {
+		const err = new StreamError(code, message);
+		await this.#stream.writable.cancel(err);
 		this.#cancelFunc(err);
 	}
 }
@@ -111,6 +110,11 @@ export class ReceiveSubscribeStream {
 				return;
 			}
 
+			console.debug(`moq: SUBSCRIBE_UPDATE message received.`, {
+				"subscribeId": this.subscribeId,
+				"message": msg,
+			});
+
 			this.#trackConfig = {
 				trackPriority: msg.trackPriority,
 				minGroupSequence: msg.minGroupSequence,
@@ -147,6 +151,11 @@ export class ReceiveSubscribeStream {
 			return new Error(`moq: failed to encode SUBSCRIBE_OK message: ${err}`);
 		}
 
+		console.debug(`moq: SUBSCRIBE_OK message sent.`, {
+			"subscribeId": this.subscribeId,
+			"message": msg,
+		});
+
 		this.#info = msg;
 
 		return undefined;
@@ -162,14 +171,14 @@ export class ReceiveSubscribeStream {
 		this.#cond.broadcast();
 	}
 
-	async closeWithError(code: SubscribeErrorCode): Promise<void> {
+	async closeWithError(code: number, message: string): Promise<void> {
 		if (this.context.err()) {
 			return;
 		}
-		const cause = new StreamError({ source: "stream", streamErrorCode: code }, false);
+		const cause = new StreamError(code, message);
 		this.#cancelFunc(cause);
-		await this.#stream.writable.cancel(code);
-		await this.#stream.readable.cancel(code);
+		await this.#stream.writable.cancel(cause);
+		await this.#stream.readable.cancel(cause);
 
 		this.#cond.broadcast();
 	}

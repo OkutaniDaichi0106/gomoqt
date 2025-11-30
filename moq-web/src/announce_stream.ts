@@ -11,7 +11,7 @@ import type { BroadcastPath } from "./broadcast_path.ts";
 import { StreamError } from "./internal/webtransport/error.ts";
 import { Queue } from "./internal/queue.ts";
 import { AnnounceInitMessage } from "./internal/message/announce_init.ts";
-import { AnnounceError, AnnounceErrorCode } from "./error.ts";
+import { AnnounceErrorCode } from "./error.ts";
 import { Stream } from "./internal/webtransport/stream.ts";
 
 type suffix = string;
@@ -69,12 +69,12 @@ export class AnnouncementWriter {
 					this.#announcements.delete(suffix);
 					const msg = new AnnounceMessage({ suffix, active: false });
 					const err = await msg.encode(this.#stream.writable);
-					if (err && err instanceof StreamError) {
-						return new AnnounceError(err.code, err.remote);
+					if (err) {
+						return err;
 					}
 
-					return err;
-				}).catch(() => {});
+					return undefined;
+				});
 			} else {
 				if (!old || (old && !old.isActive())) {
 					return new Error(
@@ -95,6 +95,11 @@ export class AnnouncementWriter {
 		if (err) {
 			return err;
 		}
+
+		console.debug(`moq: ANNOUNCE_INIT message sent.`, {
+			"prefix": this.prefix,
+			"message": msg,
+		});
 
 		// Resolve the initialization promise
 		this.#resolveInit?.();
@@ -131,6 +136,11 @@ export class AnnouncementWriter {
 				return err;
 			}
 
+			console.debug(`moq: ANNOUNCE message sent.`, {
+				"prefix": this.prefix,
+				"message": msg,
+			});
+
 			this.#announcements.set(suffix, announcement);
 
 			announcement.ended().then(async () => {
@@ -142,7 +152,7 @@ export class AnnouncementWriter {
 				}
 
 				return undefined;
-			}).catch(() => {});
+			});
 		} else {
 			if (!old || (old && !old.isActive())) {
 				return new Error(
@@ -165,25 +175,21 @@ export class AnnouncementWriter {
 		}
 		this.#cancelFunc(undefined);
 		await this.#stream.writable.close();
-		// End all announcements
-		for (const announcement of this.#announcements.values()) {
-			announcement.end();
-		}
 		this.#announcements.clear();
 		this.#resolveInit?.();
 		this.#resolveInit = undefined;
 	}
 
-	async closeWithError(code: AnnounceErrorCode): Promise<void> {
+	async closeWithError(code: AnnounceErrorCode, message: string): Promise<void> {
 		if (this.context.err()) {
 			// If already closed, do nothing
 			return;
 		}
 
-		const cause = new StreamError({ source: "stream", streamErrorCode: code }, false);
+		const cause = new StreamError(code, message);
 		this.#cancelFunc(cause);
-		await this.#stream.writable.cancel(code);
-		await this.#stream.readable.cancel(code);
+		await this.#stream.writable.cancel(cause);
+		await this.#stream.readable.cancel(cause);
 		this.#announcements.clear();
 		this.#resolveInit?.();
 		this.#resolveInit = undefined;
@@ -222,11 +228,9 @@ export class AnnouncementReader {
 			this.#queue.enqueue(announcement);
 		}
 
-		// Cancel streams when context is done
-		this.context.done().then(async () => {
-			await this.#stream.readable.cancel(0).catch(() => {});
-			await this.#stream.writable.cancel(0).catch(() => {});
-		});
+		// Listen for incoming announcements
+		// Start the reading loop
+		queueMicrotask(() => this.#readNext());
 	}
 
 	async receive(signal: Promise<void>): Promise<[Announcement, undefined] | [undefined, Error]> {
@@ -270,10 +274,9 @@ export class AnnouncementReader {
 				if (err instanceof EOFError) {
 					return;
 				}
-				if (err instanceof StreamError) {
-					throw new AnnounceError(err.code, err.remote);
+				if (err instanceof WebTransportError && err.source === "session") {
+					return;
 				}
-
 				// Only log as error if context is still active (not shutting down)
 				if (!this.context.err()) {
 					console.error(`moq: failed to read ANNOUNCE message: ${err}`);
@@ -281,11 +284,19 @@ export class AnnouncementReader {
 				return;
 			}
 
+			console.debug(`moq: ANNOUNCE message received.`, {
+				"prefix": this.prefix,
+				"message": msg,
+			});
+
 			const old = this.#announcements.get(msg.suffix);
 
 			if (msg.active) {
 				if (old && old.isActive()) {
-					await this.closeWithError(AnnounceErrorCode.DuplicatedAnnounce);
+					await this.closeWithError(
+						AnnounceErrorCode.DuplicatedAnnounce,
+						`duplicate announcement for path ${msg.suffix}`,
+					);
 
 					return;
 				} else if (old && !old.isActive()) {
@@ -301,7 +312,10 @@ export class AnnouncementReader {
 				this.#queue.enqueue(announcement);
 			} else {
 				if (!old || (old && !old.isActive())) {
-					await this.closeWithError(AnnounceErrorCode.DuplicatedAnnounce);
+					await this.closeWithError(
+						AnnounceErrorCode.DuplicatedAnnounce,
+						`trying to end non-existent announcement for path ${msg.suffix}`,
+					);
 
 					return;
 				}
@@ -312,13 +326,8 @@ export class AnnouncementReader {
 
 			this.#cond.broadcast();
 
-			// Check if context is cancelled before continuing the loop
-			if (this.context.err()) {
-				return;
-			}
-
 			queueMicrotask(() => this.#readNext());
-		}).catch(() => {});
+		});
 	}
 
 	async close(): Promise<void> {
@@ -334,15 +343,14 @@ export class AnnouncementReader {
 		this.#queue.close();
 	}
 
-	async closeWithError(code: AnnounceErrorCode): Promise<void> {
+	async closeWithError(code: AnnounceErrorCode, message: string): Promise<void> {
 		if (this.context.err()) {
 			// If already closed, do nothing
 			return;
 		}
-		const cause = new StreamError({ source: "stream", streamErrorCode: code }, false);
-		this.#cancelFunc(cause);
-		await this.#stream.writable.cancel(code);
-		await this.#stream.readable.cancel(code);
+		const cause = new StreamError(code, message);
+		await this.#stream.writable.cancel(cause);
+		await this.#stream.readable.cancel(cause);
 		this.#announcements.clear();
 		this.#queue.close();
 	}
@@ -367,7 +375,7 @@ export class Announcement {
 		// Cancel when the signal is done
 		signal.then(() => {
 			this.end();
-		}).catch(() => {});
+		});
 	}
 
 	end(): void {
@@ -392,7 +400,7 @@ export class Announcement {
 			if (executed) return;
 			executed = true;
 			fn();
-		}).catch(() => {});
+		});
 
 		return () => {
 			if (executed) {

@@ -5,7 +5,8 @@ import { StreamError } from "./internal/webtransport/error.ts";
 import type { GroupMessage } from "./internal/message/mod.ts";
 import { readFull, readVarint, writeVarint } from "./internal/message/mod.ts";
 import type { Frame } from "./frame.ts";
-import { GroupErrorCode } from "./error.ts";
+import type { GroupErrorCode } from "./error.ts";
+import { PublishAbortedErrorCode, SubscribeCanceledErrorCode } from "./error.ts";
 import { GroupSequence } from "./alias.ts";
 
 export const GroupSequenceFirst: GroupSequence = 1;
@@ -22,7 +23,7 @@ export class GroupWriter {
 		[this.context, this.#cancelFunc] = withCancelCause(trackCtx);
 
 		trackCtx.done().then(() => {
-			this.cancel(GroupErrorCode.SubscribeCanceled);
+			this.cancel(SubscribeCanceledErrorCode, "track was closed");
 		});
 	}
 
@@ -49,14 +50,14 @@ export class GroupWriter {
 		await this.#stream.close();
 	}
 
-	async cancel(code: GroupErrorCode): Promise<void> {
+	async cancel(code: GroupErrorCode, message: string): Promise<void> {
 		if (this.context.err()) {
 			// Do nothing if already cancelled
 			return;
 		}
-		const cause = new StreamError({ source: "stream", streamErrorCode: code }, false);
+		const cause = new StreamError(code, message);
 		this.#cancelFunc(cause); // Notify the context about cancellation
-		await this.#stream.cancel(code);
+		await this.#stream.cancel(cause);
 	}
 }
 
@@ -72,7 +73,7 @@ export class GroupReader {
 		[this.context, this.#cancelFunc] = withCancelCause(trackCtx);
 
 		trackCtx.done().then(() => {
-			this.cancel(GroupErrorCode.PublishAborted);
+			this.cancel(PublishAbortedErrorCode, "track was closed");
 		});
 	}
 
@@ -101,13 +102,13 @@ export class GroupReader {
 		return undefined;
 	}
 
-	async cancel(code: GroupErrorCode): Promise<void> {
+	async cancel(code: GroupErrorCode, message: string): Promise<void> {
 		if (this.context.err()) {
 			// Do nothing if already cancelled
 			return;
 		}
-		const reason = new StreamError({ source: "stream", streamErrorCode: code }, false);
+		const reason = new StreamError(code, message);
 		this.#cancelFunc(reason);
-		await this.#reader.cancel(code);
+		await this.#reader.cancel(reason);
 	}
 }

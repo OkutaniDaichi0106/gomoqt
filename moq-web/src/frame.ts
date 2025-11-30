@@ -29,7 +29,7 @@ export class BytesFrame implements Frame {
 		}
 	}
 
-	clone(buffer?: Uint8Array): BytesFrame {
+	clone(buffer?: Uint8Array<ArrayBufferLike>): BytesFrame {
 		if (buffer && buffer.byteLength >= this.data.byteLength) {
 			buffer.set(this.data);
 			return new BytesFrame(buffer.subarray(0, this.data.byteLength));

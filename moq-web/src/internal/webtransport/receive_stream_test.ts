@@ -113,17 +113,10 @@ Deno.test("ReceiveStream", async (t) => {
 		});
 		const reader = new ReceiveStream({ stream: readableStream, streamId: 1n });
 
-		const code = 1;
+		const error = new StreamError(1, "test error");
+		await reader.cancel(error);
 
-		const error = new StreamError({ source: "stream", streamErrorCode: code }, false);
-		await reader.cancel(code);
-
-		assertInstanceOf(cancelReason, StreamError as unknown as new (...args: any[]) => Error);
-		if (cancelReason instanceof StreamError) {
-			assertEquals(cancelReason.code, error.code);
-			assertEquals(cancelReason.message, error.message);
-			assertEquals(cancelReason.remote, error.remote);
-		}
+		assertEquals(cancelReason, error);
 	});
 
 	await t.step("read - should handle large buffer request", async () => {

@@ -46,19 +46,21 @@ export class Client {
 		// Normalize URL to string (WebTransport accepts a USVString).
 		// const endpoint = typeof url === "string" ? url : String(url);
 
+		let transport: WebTransport;
 		try {
-			const transport = new WebTransport(url, this.options.transportOptions);
-			const session = new Session({
-				conn: transport,
-				extensions: this.options.extensions,
-				mux,
-			});
-			await session.ready;
-			this.#sessions.add(session);
-			return session;
+			transport = new WebTransport(url, this.options.transportOptions);
 		} catch (err) {
 			return Promise.reject(new Error(`failed to create WebTransport: ${err}`));
 		}
+
+		const session = new Session({
+			conn: transport,
+			extensions: this.options.extensions,
+			mux,
+		});
+		await session.ready;
+		this.#sessions.add(session);
+		return session;
 	}
 
 	async close(): Promise<void> {

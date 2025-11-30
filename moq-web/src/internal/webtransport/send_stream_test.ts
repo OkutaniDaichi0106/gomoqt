@@ -1,4 +1,4 @@
-import { assertEquals, assertInstanceOf } from "@std/assert";
+import { assertEquals } from "@std/assert";
 import { SendStream } from "./send_stream.ts";
 import { StreamError } from "./error.ts";
 
@@ -95,15 +95,10 @@ Deno.test("SendStream", async (t) => {
 		});
 		const writer = new SendStream({ stream: writableStream, streamId: 1n });
 
-		const error = new StreamError({ source: "stream", streamErrorCode: 1 }, false);
-		await writer.cancel(error.code);
+		const error = new StreamError(1, "test error");
+		await writer.cancel(error);
 
-		assertInstanceOf(abortReason, StreamError as unknown as new (...args: any[]) => Error);
-		if (abortReason instanceof StreamError) {
-			assertEquals(abortReason.code, error.code);
-			assertEquals(abortReason.message, error.message);
-			assertEquals(abortReason.remote, error.remote);
-		}
+		assertEquals(abortReason, error);
 	});
 
 	await t.step("id - should return stream id", () => {

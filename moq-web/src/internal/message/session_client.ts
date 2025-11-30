@@ -1,6 +1,14 @@
-import type { SendStream } from "../webtransport/mod.ts";
-import { bytesLen, varintLen } from "../webtransport/mod.ts";
-import { ReceiveStream } from "../webtransport/receive_stream.ts";
+import type { Reader, Writer } from "@okudai/golikejs/io";
+import {
+	bytesLen,
+	parseBytes,
+	parseVarint,
+	readFull,
+	readVarint,
+	varintLen,
+	writeBytes,
+	writeVarint,
+} from "./message.ts";
 
 export interface SessionClientInit {
 	versions?: Set<number>;
@@ -11,12 +19,15 @@ export class SessionClientMessage {
 	versions: Set<number>;
 	extensions: Map<number, Uint8Array>;
 
-	constructor(init: SessionClientInit) {
+	constructor(init: SessionClientInit = {}) {
 		this.versions = init.versions ?? new Set();
 		this.extensions = init.extensions ?? new Map();
 	}
 
-	get messageLength(): number {
+	/**
+	 * Returns the length of the message body (excluding the length prefix).
+	 */
+	get len(): number {
 		let length = 0;
 		length += varintLen(this.versions.size);
 		for (const version of this.versions) {
@@ -30,84 +41,75 @@ export class SessionClientMessage {
 		return length;
 	}
 
-	async encode(writer: SendStream): Promise<Error | undefined> {
-		writer.writeVarint(this.messageLength);
-		writer.writeVarint(this.versions.size);
+	/**
+	 * Encodes the message to the writer.
+	 */
+	async encode(w: Writer): Promise<Error | undefined> {
+		const msgLen = this.len;
+		let err: Error | undefined;
+
+		[, err] = await writeVarint(w, msgLen);
+		if (err) return err;
+
+		[, err] = await writeVarint(w, this.versions.size);
+		if (err) return err;
+
 		for (const version of this.versions) {
-			writer.writeVarint(version);
+			[, err] = await writeVarint(w, version);
+			if (err) return err;
 		}
-		writer.writeVarint(this.extensions.size);
-		for (const ext of this.extensions.entries()) {
-			writer.writeVarint(ext[0]); // Write the extension ID
-			writer.writeUint8Array(ext[1]); // Write the extension data
+
+		[, err] = await writeVarint(w, this.extensions.size);
+		if (err) return err;
+
+		for (const [extId, extData] of this.extensions.entries()) {
+			[, err] = await writeVarint(w, extId);
+			if (err) return err;
+			[, err] = await writeBytes(w, extData);
+			if (err) return err;
 		}
-		return await writer.flush();
+
+		return undefined;
 	}
 
-	async decode(reader: ReceiveStream): Promise<Error | undefined> {
-		let [len, err] = await reader.readVarint();
-		if (err) {
-			return err;
-		}
-		let numVersions: number;
-		[numVersions, err] = await reader.readVarint();
-		if (err) {
-			return err;
-		}
-		if (numVersions < 0) {
-			throw new Error("Invalid number of versions for SessionClient");
-		}
-		if (numVersions > Number.MAX_SAFE_INTEGER) {
-			throw new Error("Number of versions exceeds maximum safe integer for SessionClient");
-		}
+	/**
+	 * Decodes the message from the reader.
+	 */
+	async decode(r: Reader): Promise<Error | undefined> {
+		const [msgLen, , err1] = await readVarint(r);
+		if (err1) return err1;
+
+		const buf = new Uint8Array(msgLen);
+		const [, err2] = await readFull(r, buf);
+		if (err2) return err2;
+
+		let offset = 0;
+
+		// Read versions
+		const [numVersions, n1] = parseVarint(buf, offset);
+		offset += n1;
+
 		const versions = new Set<number>();
 		for (let i = 0; i < numVersions; i++) {
-			let version: number;
-			[version, err] = await reader.readVarint();
-			if (err) {
-				return err;
-			}
+			const [version, n] = parseVarint(buf, offset);
 			versions.add(version);
+			offset += n;
 		}
-		let numExtensions: number;
-		[numExtensions, err] = await reader.readVarint();
-		if (err) {
-			return err;
-		}
-		if (numExtensions === undefined) {
-			throw new Error("read numExtensions: number is undefined");
-		}
-		if (numExtensions < 0) {
-			throw new Error("Invalid number of extensions for SessionClient");
-		}
-		if (numExtensions > Number.MAX_SAFE_INTEGER) {
-			throw new Error("Number of extensions exceeds maximum safe integer for SessionClient");
-		}
-		const extensions = new Map<number, Uint8Array>();
+		this.versions = versions;
 
-		let extId: number;
+		// Read extensions
+		const [numExtensions, n2] = parseVarint(buf, offset);
+		offset += n2;
+
+		const extensions = new Map<number, Uint8Array>();
 		for (let i = 0; i < numExtensions; i++) {
-			[extId, err] = await reader.readVarint();
-			if (err) {
-				return err;
-			}
-			let extData: Uint8Array | undefined;
-			[extData, err] = await reader.readUint8Array();
-			if (err) {
-				return err;
-			}
-			if (extData === undefined) {
-				throw new Error("read extData: Uint8Array is undefined");
-			}
+			const [extId, n3] = parseVarint(buf, offset);
+			offset += n3;
+			const [extData, n4] = parseBytes(buf, offset);
+			offset += n4;
 			extensions.set(extId, extData);
 		}
-
-		this.versions = versions;
 		this.extensions = extensions;
-
-		if (len !== this.messageLength) {
-			throw new Error(`message length mismatch: expected ${len}, got ${this.messageLength}`);
-		}
 
 		return undefined;
 	}

@@ -449,6 +449,25 @@ func TestReceiveSubscribeStream_ConcurrentAccess(t *testing.T) {
 	mockStream.AssertExpectations(t)
 }
 
+func TestReceiveSubscribeStream_Close_DoesNotCancelReadOnGracefulClose(t *testing.T) {
+	// Create a mock stream that returns EOF on Read and a background context.
+	mockStream := &MockQUICStream{
+		ReadFunc: func(p []byte) (int, error) { return 0, io.EOF },
+	}
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Close").Return(nil)
+
+	rss := newReceiveSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{})
+
+	// Perform a graceful close; it should not call CancelRead
+	err := rss.close()
+	require.NoError(t, err)
+
+	// Assert Close was called but CancelRead was not
+	mockStream.AssertCalled(t, "Close")
+	mockStream.AssertNotCalled(t, "CancelRead", mock.Anything)
+}
+
 func TestReceiveSubscribeStream_UpdateChannelBehavior(t *testing.T) {
 	t.Run("channel closes on EOF", func(t *testing.T) {
 		subscribeID := SubscribeID(123)

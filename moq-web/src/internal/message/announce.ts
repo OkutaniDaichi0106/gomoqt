@@ -1,5 +1,14 @@
-import type { ReceiveStream, SendStream } from "../webtransport/mod.ts";
-import { stringLen } from "../webtransport/mod.ts";
+import type { Reader, Writer } from "@okudai/golikejs/io";
+import {
+	parseString,
+	parseVarint,
+	readFull,
+	readVarint,
+	stringLen,
+	varintLen,
+	writeString,
+	writeVarint,
+} from "./message.ts";
 
 export interface AnnounceMessageInit {
 	suffix?: string;
@@ -10,39 +19,58 @@ export class AnnounceMessage {
 	suffix: string;
 	active: boolean;
 
-	constructor(init: AnnounceMessageInit) {
+	constructor(init: AnnounceMessageInit = {}) {
 		this.suffix = init.suffix ?? "";
 		this.active = init.active ?? false;
 	}
 
-	get messageLength(): number {
-		return stringLen(this.suffix) + 1; // +1 for the boolean
+	/**
+	 * Returns the length of the message body (excluding the length prefix).
+	 */
+	get len(): number {
+		// AnnounceStatus is sent as a varint (not boolean)
+		return varintLen(this.active ? 1 : 0) + stringLen(this.suffix);
 	}
 
-	async encode(writer: SendStream): Promise<Error | undefined> {
-		writer.writeVarint(this.messageLength);
-		writer.writeBoolean(this.active);
-		writer.writeString(this.suffix);
-		return await writer.flush();
+	/**
+	 * Encodes the message to the writer.
+	 */
+	async encode(w: Writer): Promise<Error | undefined> {
+		const msgLen = this.len;
+		let err: Error | undefined;
+
+		[, err] = await writeVarint(w, msgLen);
+		if (err) return err;
+
+		// Write AnnounceStatus as varint: 0x0 (ENDED) or 0x1 (ACTIVE)
+		[, err] = await writeVarint(w, this.active ? 1 : 0);
+		if (err) return err;
+
+		[, err] = await writeString(w, this.suffix);
+		if (err) return err;
+
+		return undefined;
 	}
 
-	async decode(reader: ReceiveStream): Promise<Error | undefined> {
-		let [len, err] = await reader.readVarint();
-		if (err) {
-			return err;
-		}
-		[this.active, err] = await reader.readBoolean();
-		if (err) {
-			return err;
-		}
-		[this.suffix, err] = await reader.readString();
-		if (err) {
-			return err;
-		}
+	/**
+	 * Decodes the message from the reader.
+	 */
+	async decode(r: Reader): Promise<Error | undefined> {
+		const [msgLen, , err1] = await readVarint(r);
+		if (err1) return err1;
 
-		if (len !== this.messageLength) {
-			throw new Error(`message length mismatch: expected ${len}, got ${this.messageLength}`);
-		}
+		const buf = new Uint8Array(msgLen);
+		const [, err2] = await readFull(r, buf);
+		if (err2) return err2;
+
+		let offset = 0;
+
+		// Read AnnounceStatus as varint
+		const [status, n1] = parseVarint(buf, offset);
+		this.active = status === 1;
+		offset += n1;
+
+		[this.suffix] = parseString(buf, offset);
 
 		return undefined;
 	}

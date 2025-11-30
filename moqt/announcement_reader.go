@@ -2,6 +2,7 @@ package moqt
 
 import (
 	"context"
+	"iter"
 	"log/slog"
 	"sync"
 
@@ -124,6 +125,8 @@ type AnnouncementReader struct {
 	announcedCh chan struct{} // notify when new announcement is available
 }
 
+// ReceiveAnnouncement blocks until an announcement for the configured prefix is available or until ctx or the reader's context is canceled.
+// It returns the next pending Announcement or an error describing the cancellation cause.
 func (ras *AnnouncementReader) ReceiveAnnouncement(ctx context.Context) (*Announcement, error) {
 	for {
 		ras.announcementsMu.Lock()
@@ -158,6 +161,24 @@ func (ras *AnnouncementReader) ReceiveAnnouncement(ctx context.Context) (*Announ
 	}
 }
 
+// Announcements returns an iterator that yields Announcement values for the configured prefix until ctx or the reader's context is canceled.
+func (ras *AnnouncementReader) Announcements(ctx context.Context) iter.Seq[*Announcement] {
+	return func(yield func(*Announcement) bool) {
+		for {
+			ann, err := ras.ReceiveAnnouncement(ctx)
+			if err != nil {
+				return
+			}
+
+			if !yield(ann) {
+				return
+			}
+		}
+	}
+
+}
+
+// Close closes the AnnouncementReader and releases resources. It is safe to call multiple times.
 func (ras *AnnouncementReader) Close() error {
 	ras.announcementsMu.Lock()
 	defer ras.announcementsMu.Unlock()
@@ -174,13 +195,12 @@ func (ras *AnnouncementReader) Close() error {
 	return ras.stream.Close()
 }
 
+// CloseWithError closes the AnnouncementReader with an error, ending all
+// active announcements and canceling the stream with the specified error
+// code.
 func (ras *AnnouncementReader) CloseWithError(code AnnounceErrorCode) error {
 	ras.announcementsMu.Lock()
 	defer ras.announcementsMu.Unlock()
-
-	if ras.ctx.Err() != nil {
-		return nil
-	}
 
 	if ras.announcedCh != nil {
 		close(ras.announcedCh)
@@ -194,9 +214,11 @@ func (ras *AnnouncementReader) CloseWithError(code AnnounceErrorCode) error {
 	return nil
 }
 
+// Context returns the AnnouncementReader's context. It is canceled when the reader is closed.
 func (ras *AnnouncementReader) Context() context.Context {
 	return ras.ctx
 }
 
+// Alias types for better readability
 type suffix = string
 type prefix = string

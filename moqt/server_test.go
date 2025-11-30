@@ -121,7 +121,15 @@ func TestServer_ServeQUICListener(t *testing.T) {
 			mockConn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
 			mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
 
-			mockListener.On("Accept", mock.Anything).Return(mockConn, nil)
+			acceptCh := make(chan struct{}, 1)
+			mockListener.On("Accept", mock.Anything).Return(mockConn, nil).Once().Run(func(mock.Arguments) {
+				select {
+				case acceptCh <- struct{}{}:
+				default:
+				}
+			})
+			// After a single accept, return EOF to simulate listener closure
+			mockListener.On("Accept", mock.Anything).Return(nil, context.Canceled).Maybe()
 			mockListener.On("Close").Return(nil)
 			mockListener.On("Addr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
@@ -136,8 +144,13 @@ func TestServer_ServeQUICListener(t *testing.T) {
 				}
 			}()
 
-			// Give time for the server to start
-			time.Sleep(tt.waitTime)
+			// Wait for the server to call Accept (no arbitrary sleep)
+			select {
+			case <-acceptCh:
+				// ok
+			case <-time.After(200 * time.Millisecond):
+				t.Fatal("ServeQUICListener did not call Accept in time")
+			}
 
 			// Close the server
 			server.Close()
@@ -436,9 +449,6 @@ func TestServer_DoneChannel(t *testing.T) {
 			// Close server
 			server.Close()
 
-			// Give time for cleanup
-			time.Sleep(tt.closeTime)
-
 			// Should be done after close
 			select {
 			case <-server.doneChan:
@@ -580,7 +590,7 @@ func TestServer_SessionManagement(t *testing.T) {
 			assert.Equal(t, tt.expectFinalCount, count, "active session count after removal should match expected")
 
 			// Cleanup
-			session.Terminate(NoError, NoError.String())
+			session.CloseWithError(NoError, SessionErrorText(NoError))
 		})
 	}
 }
@@ -847,7 +857,7 @@ func TestServer_HandleNativeQUIC_AcceptStreamError(t *testing.T) {
 	assert.Contains(t, err.Error(), "accept error")
 }
 
-func TestServer_ServeWebTransport(t *testing.T) {
+func TestServer_HandleWebTransport(t *testing.T) {
 	tests := map[string]struct {
 		expectError  bool
 		upgradeError error
@@ -881,7 +891,7 @@ func TestServer_ServeWebTransport(t *testing.T) {
 
 			server.wtServer = wtServer
 
-			err := server.ServeWebTransport(mockResponseWriter, req)
+			err := server.HandleWebTransport(mockResponseWriter, req)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -892,7 +902,7 @@ func TestServer_ServeWebTransport(t *testing.T) {
 	}
 }
 
-func TestServer_ServeWebTransport_ShuttingDown(t *testing.T) {
+func TestServer_HandleWebTransport_ShuttingDown(t *testing.T) {
 	server := &Server{
 		Addr: ":8080",
 	}
@@ -901,12 +911,12 @@ func TestServer_ServeWebTransport_ShuttingDown(t *testing.T) {
 	mockResponseWriter := &MockHTTPResponseWriter{}
 	req := &http.Request{}
 
-	err := server.ServeWebTransport(mockResponseWriter, req)
+	err := server.HandleWebTransport(mockResponseWriter, req)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "server is shutting down")
 }
 
-func TestServer_ServeWebTransport_WithNilLogger(t *testing.T) {
+func TestServer_HandleWebTransport_WithNilLogger(t *testing.T) {
 	server := &Server{
 		Addr: ":8080",
 	}
@@ -921,7 +931,7 @@ func TestServer_ServeWebTransport_WithNilLogger(t *testing.T) {
 
 	server.wtServer = wtServer
 
-	err := server.ServeWebTransport(mockResponseWriter, req)
+	err := server.HandleWebTransport(mockResponseWriter, req)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to upgrade connection")
 }
@@ -1060,7 +1070,7 @@ func TestServer_AddRemoveSession(t *testing.T) {
 	session := newSession(mockConn, sessStream, nil, slog.Default(), nil)
 
 	// Immediately terminate session to stop goroutines
-	defer session.Terminate(NoError, NoError.String())
+	defer session.CloseWithError(NoError, SessionErrorText(NoError))
 
 	// Test adding session
 	server.addSession(session)
@@ -1152,7 +1162,7 @@ func TestServer_Shutdown(t *testing.T) {
 				sessStream := newSessionStream(mockStream, req)
 				session := newSession(mockConn, sessStream, nil, slog.Default(), nil)
 				server.addSession(session)
-				defer session.Terminate(NoError, NoError.String())
+				defer session.CloseWithError(NoError, SessionErrorText(NoError))
 			}
 
 			ctx, cancel := context.WithTimeout(context.Background(), tt.contextTimeout)
@@ -1516,7 +1526,7 @@ func TestServer_SessionLifecycle(t *testing.T) {
 			// Remove all sessions
 			for _, session := range sessions {
 				server.removeSession(session)
-				session.Terminate(NoError, NoError.String())
+				session.CloseWithError(NoError, SessionErrorText(NoError))
 			}
 
 			// Verify sessions are removed
@@ -1668,7 +1678,7 @@ func TestServer_EdgeCaseOperations(t *testing.T) {
 					server.removeSession(session)
 				})
 
-				session.Terminate(NoError, NoError.String())
+				session.CloseWithError(NoError, SessionErrorText(NoError))
 			},
 		},
 		"remove non-existent listener": {
@@ -1841,7 +1851,7 @@ func TestServer_WebTransportEdgeCases(t *testing.T) {
 				server.wtServer = wtServer
 			}
 
-			err := server.ServeWebTransport(mockWriter, req)
+			err := server.HandleWebTransport(mockWriter, req)
 
 			if tt.expectError {
 				assert.Error(t, err)

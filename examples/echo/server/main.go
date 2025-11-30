@@ -109,7 +109,7 @@ func main() {
 
 	// Serve moq over webtransport
 	http.HandleFunc("/echo", func(w http.ResponseWriter, r *http.Request) {
-		err := server.ServeWebTransport(w, r)
+		err := server.HandleWebTransport(w, r)
 		if err != nil {
 			slog.Error("failed to serve moq over webtransport", "error", err)
 		}

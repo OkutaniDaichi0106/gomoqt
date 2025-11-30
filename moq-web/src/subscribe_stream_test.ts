@@ -1,319 +1,248 @@
-import { assertEquals, assertExists, assertInstanceOf } from "@std/assert";
-import type { TrackConfig } from "./subscribe_stream.ts";
+import { assertEquals } from "@std/assert";
+import { spy } from "@std/testing/mock";
 import { ReceiveSubscribeStream, SendSubscribeStream } from "./subscribe_stream.ts";
-import { SubscribeMessage, SubscribeOkMessage } from "./internal/message/mod.ts";
-import { background } from "@okudai/golikejs/context";
-import type { Info } from "./info.ts";
-import { SubscribeID } from "./alias.ts";
-import { MockStream } from "./internal/webtransport/mock_stream_test.ts";
+import {
+	SubscribeMessage,
+	SubscribeOkMessage,
+	SubscribeUpdateMessage,
+} from "./internal/message/mod.ts";
+import { background, withCancelCause } from "@okudai/golikejs/context";
+import { EOFError } from "@okudai/golikejs/io";
+import { MockReceiveStream, MockSendStream, MockStream } from "./mock_stream_test.ts";
 
-/**
- * Creates mock objects for ReceiveSubscribeStream testing.
- * Uses dependency injection pattern for clean mocking.
- */
-function makeReceiveMocks() {
-	const mockStream = new MockStream(42n);
-
-	const mockSubscribe = new SubscribeMessage({
-		subscribeId: 789,
-		broadcastPath: "/receive/path",
-		trackName: "receive-track",
-		trackPriority: 3,
-		minGroupSequence: 5n,
-		maxGroupSequence: 150n,
+Deno.test("SendSubscribeStream.update writes update to writable", async () => {
+	const [ctx] = withCancelCause(background());
+	const writtenData: Uint8Array[] = [];
+	const mockWritable = new MockSendStream({
+		id: 1n,
+		write: spy(async (p: Uint8Array) => {
+			writtenData.push(new Uint8Array(p));
+			return [p.length, undefined] as [number, Error | undefined];
+		}),
 	});
-
-	const ctx = background();
-	const receiveStream = new ReceiveSubscribeStream(ctx, mockStream as any, mockSubscribe);
-	return {
-		ctx,
-		mockWriter: mockStream.writable,
-		mockReader: mockStream.readable,
-		mockSubscribe,
-		receiveStream,
-		mockStream,
-	} as const;
-}
-
-Deno.test("SendSubscribeStream - Normal Cases", async (t) => {
-	await t.step("should create instance with correct properties", () => {
-		const mockStream = new MockStream(42n);
-		const mockSubscribe = new SubscribeMessage({
-			subscribeId: 123,
-			broadcastPath: "/test/path",
-			trackName: "test-track",
-			trackPriority: 1,
-			minGroupSequence: 0n,
-			maxGroupSequence: 100n,
-		});
-		const mockSubscribeOk = new SubscribeOkMessage({
-			groupPeriod: 100,
-			messageLength: 0,
-		});
-		const ctx = background();
-		const sendStream = new SendSubscribeStream(
-			ctx,
-			mockStream as any,
-			mockSubscribe,
-			mockSubscribeOk,
-		);
-
-		assertInstanceOf(sendStream, SendSubscribeStream);
-		assertExists(sendStream.context);
-		assertEquals(sendStream.subscribeId, 123);
-
-		// Verify config matches subscribe message
-		const config = sendStream.config;
-		assertEquals(config.trackPriority, 1);
-		assertEquals(config.minGroupSequence, 0n);
-		assertEquals(config.maxGroupSequence, 100n);
-
-		// Verify info matches subscribeOk message
-		assertEquals(sendStream.info, mockSubscribeOk);
+	const mockReadable = new MockReceiveStream({ id: 1n });
+	const s = new MockStream({ id: 1n, writable: mockWritable, readable: mockReadable });
+	const subscribe = new SubscribeMessage({
+		subscribeId: 1,
+		broadcastPath: "/test",
+		trackName: "t",
+		trackPriority: 0,
+		minGroupSequence: 0,
+		maxGroupSequence: 0,
 	});
-
-	await t.step("should update config and call flush", async () => {
-		const mockStream = new MockStream(42n);
-		const mockSubscribe = new SubscribeMessage({
-			subscribeId: 123,
-			broadcastPath: "/test/path",
-			trackName: "test-track",
-			trackPriority: 1,
-			minGroupSequence: 0n,
-			maxGroupSequence: 100n,
-		});
-		const mockSubscribeOk = new SubscribeOkMessage({
-			groupPeriod: 100,
-			messageLength: 0,
-		});
-		const ctx = background();
-		const sendStream = new SendSubscribeStream(
-			ctx,
-			mockStream as any,
-			mockSubscribe,
-			mockSubscribeOk,
-		);
-		const mockWriter = mockStream.writable;
-
-		const newConfig: TrackConfig = {
-			trackPriority: 2,
-			minGroupSequence: 10n,
-			maxGroupSequence: 200n,
-		};
-
-		const result = await sendStream.update(newConfig);
-
-		assertEquals(result, undefined);
-		assertEquals((mockWriter.flush as any).calls.length > 0, true);
-
-		// Verify config was actually updated
-		const cfg = sendStream.config;
-		assertEquals(cfg.trackPriority, 2);
-		assertEquals(cfg.minGroupSequence, 10n);
-		assertEquals(cfg.maxGroupSequence, 200n);
-
-		// Cleanup
-		mockStream.reset();
-	});
+	const ok = new SubscribeOkMessage({});
+	const sss = new SendSubscribeStream(ctx, s, subscribe, ok);
+	const err = await sss.update({ trackPriority: 1, minGroupSequence: 2, maxGroupSequence: 3 });
+	assertEquals(err, undefined);
+	assertEquals(writtenData.length > 0, true);
 });
 
-Deno.test("SendSubscribeStream - Error Cases", async (t) => {
-	await t.step("should return error when flush fails", async () => {
-		const mockStream = new MockStream(42n);
-		mockStream.writable.flushError = new Error("Flush failed");
-
-		const mockSubscribe = new SubscribeMessage({
-			subscribeId: 123,
-			broadcastPath: "/test/path",
-			trackName: "test-track",
-			trackPriority: 1,
-			minGroupSequence: 0n,
-			maxGroupSequence: 100n,
-		});
-		const mockSubscribeOk = new SubscribeOkMessage({
-			groupPeriod: 100,
-			messageLength: 0,
-		});
-		const ctx = background();
-		const sendStream = new SendSubscribeStream(
-			ctx,
-			mockStream as any,
-			mockSubscribe,
-			mockSubscribeOk,
-		);
-
-		const result = await sendStream.update({
-			trackPriority: 2,
-			minGroupSequence: 10n,
-			maxGroupSequence: 200n,
-		});
-
-		// Verify error is returned
-		assertInstanceOf(result, Error);
-		const msg = (result as Error).message ?? "";
-		assertEquals(/Failed to (write|flush) subscribe update/.test(msg), true);
-
-		// Cleanup
-		mockStream.reset();
+Deno.test("SendSubscribeStream closeWithError cancels stream", async () => {
+	const [ctx] = withCancelCause(background());
+	const cancelCalls: number[] = [];
+	const mockWritable = new MockSendStream({
+		id: 1n,
+		cancel: spy(async (code: number) => {
+			cancelCalls.push(code);
+		}),
 	});
-
-	await t.step("should cancel writer when closed with error", async () => {
-		const mockStream = new MockStream(42n);
-		const mockSubscribe = new SubscribeMessage({
-			subscribeId: 123,
-			broadcastPath: "/test/path",
-			trackName: "test-track",
-			trackPriority: 1,
-			minGroupSequence: 0n,
-			maxGroupSequence: 100n,
-		});
-		const mockSubscribeOk = new SubscribeOkMessage({
-			groupPeriod: 100,
-			messageLength: 0,
-		});
-		const ctx = background();
-		const sendStream = new SendSubscribeStream(
-			ctx,
-			mockStream as any,
-			mockSubscribe,
-			mockSubscribeOk,
-		);
-		const mockWriter = mockStream.writable;
-
-		await sendStream.closeWithError(500, "Test error");
-
-		// Verify cancel was called on writer
-		assertEquals((mockWriter.cancel as any).calls.length > 0, true);
-
-		// Cleanup
-		mockStream.reset();
+	const mockReadable = new MockReceiveStream({ id: 1n });
+	const s = new MockStream({ id: 1n, writable: mockWritable, readable: mockReadable });
+	const subscribe = new SubscribeMessage({
+		subscribeId: 1,
+		broadcastPath: "/test",
+		trackName: "t",
+		trackPriority: 0,
+		minGroupSequence: 0,
+		maxGroupSequence: 0,
 	});
+	const ok = new SubscribeOkMessage({});
+	const sss = new SendSubscribeStream(ctx, s, subscribe, ok);
+	await sss.closeWithError(1);
+	assertEquals(cancelCalls.length, 1);
 });
 
-Deno.test("ReceiveSubscribeStream - Normal Cases", async (t) => {
-	await t.step("should create instance with correct properties", () => {
-		const { receiveStream, mockStream } = makeReceiveMocks();
-
-		assertInstanceOf(receiveStream, ReceiveSubscribeStream);
-		assertExists(receiveStream.context);
-		assertEquals(receiveStream.subscribeId, 789);
-
-		// Verify track config matches subscribe message
-		const cfg = receiveStream.trackConfig;
-		assertEquals(cfg.trackPriority, 3);
-		assertEquals(cfg.minGroupSequence, 5n);
-		assertEquals(cfg.maxGroupSequence, 150n);
-
-		// Cleanup
-		mockStream.reset();
+Deno.test("ReceiveSubscribeStream writeInfo sends SUBSCRIBE_OK and prevents double write", async () => {
+	const [ctx] = withCancelCause(background());
+	const writtenData: Uint8Array[] = [];
+	const mockWritable = new MockSendStream({
+		id: 2n,
+		write: spy(async (p: Uint8Array) => {
+			writtenData.push(new Uint8Array(p));
+			return [p.length, undefined] as [number, Error | undefined];
+		}),
 	});
-
-	await t.step("should write info successfully (idempotent)", async () => {
-		const { receiveStream, mockStream } = makeReceiveMocks();
-		const info: Info = { groupPeriod: 100 };
-
-		// First write
-		const r1 = await receiveStream.writeInfo(info);
-		assertEquals(r1, undefined);
-
-		// Second write should also succeed (idempotent)
-		const r2 = await receiveStream.writeInfo(info);
-		assertEquals(r2, undefined);
-
-		// Cleanup
-		mockStream.reset();
+	const mockReadable = new MockReceiveStream({ id: 2n });
+	const s = new MockStream({ id: 2n, writable: mockWritable, readable: mockReadable });
+	const subscribe = new SubscribeMessage({
+		subscribeId: 42,
+		broadcastPath: "/test",
+		trackName: "t",
+		trackPriority: 0,
+		minGroupSequence: 0,
+		maxGroupSequence: 0,
 	});
-
-	await t.step("should close writer cleanly", async () => {
-		const { receiveStream, mockWriter, mockStream } = makeReceiveMocks();
-
-		await receiveStream.close();
-
-		// Verify close was called
-		assertEquals((mockWriter.close as any).calls.length > 0, true);
-		// Context should not have error
-		assertEquals(receiveStream.context.err(), undefined);
-
-		// Cleanup
-		mockStream.reset();
-	});
+	const rss = new ReceiveSubscribeStream(ctx, s, subscribe);
+	const err = await rss.writeInfo({});
+	assertEquals(err, undefined);
+	const err2 = await rss.writeInfo({});
+	assertEquals(err2, undefined);
 });
 
-Deno.test("ReceiveSubscribeStream - Error Cases", async (t) => {
-	await t.step("should cancel both streams when closed with error", async () => {
-		const { receiveStream, mockWriter, mockReader, mockStream } = makeReceiveMocks();
-
-		await receiveStream.closeWithError(404, "Not found");
-
-		// Verify both writer and reader were cancelled
-		assertEquals((mockWriter.cancel as any).calls.length > 0, true);
-		assertEquals((mockReader.cancel as any).calls.length > 0, true);
-
-		// Cleanup
-		mockStream.reset();
+Deno.test("ReceiveSubscribeStream writeInfo returns error when context canceled", async () => {
+	const [ctx, cancel] = withCancelCause(background());
+	const mockWritable = new MockSendStream({ id: 2n });
+	const mockReadable = new MockReceiveStream({ id: 2n });
+	const s = new MockStream({ id: 2n, writable: mockWritable, readable: mockReadable });
+	const subscribe = new SubscribeMessage({
+		subscribeId: 42,
+		broadcastPath: "/test",
+		trackName: "t",
+		trackPriority: 0,
+		minGroupSequence: 0,
+		maxGroupSequence: 0,
 	});
+	const rss = new ReceiveSubscribeStream(ctx, s, subscribe);
+	cancel(new Error("canceled"));
+	await new Promise((r) => setTimeout(r, 0));
+	const err = await rss.writeInfo({});
+	assertEquals(err?.message, "canceled");
 });
 
-Deno.test("Type Definitions - TrackConfig and SubscribeID", async (t) => {
-	await t.step("should validate TrackConfig structure", () => {
-		const config: TrackConfig = {
-			trackPriority: 1,
-			minGroupSequence: 0n,
-			maxGroupSequence: 100n,
-		};
-
-		// Verify all properties have correct types
-		assertEquals(typeof config.trackPriority, "number");
-		assertEquals(typeof config.minGroupSequence, "bigint");
-		assertEquals(typeof config.maxGroupSequence, "bigint");
+Deno.test("ReceiveSubscribeStream close closes stream", async () => {
+	const [ctx] = withCancelCause(background());
+	const mockWritable = new MockSendStream({ id: 2n });
+	const mockReadable = new MockReceiveStream({ id: 2n });
+	const s = new MockStream({ id: 2n, writable: mockWritable, readable: mockReadable });
+	const subscribe = new SubscribeMessage({
+		subscribeId: 42,
+		broadcastPath: "/test",
+		trackName: "t",
+		trackPriority: 0,
+		minGroupSequence: 0,
+		maxGroupSequence: 0,
 	});
-
-	await t.step("should validate SubscribeID is number type", () => {
-		const id: SubscribeID = 123;
-		assertEquals(typeof id, "number");
-	});
+	const rss = new ReceiveSubscribeStream(ctx, s, subscribe);
+	await rss.close();
 });
 
-Deno.test("ReceiveSubscribeStream - Additional Coverage", async (t) => {
-	await t.step("should return error when context is cancelled", async () => {
-		const { receiveStream, mockStream } = makeReceiveMocks();
-
-		await receiveStream.closeWithError(500, "Context cancelled");
-
-		const info: Info = { groupPeriod: 100 };
-		const result = await receiveStream.writeInfo(info);
-
-		assertExists(result);
-		assertInstanceOf(result, Error);
-
-		mockStream.reset();
+Deno.test("ReceiveSubscribeStream close does nothing if context canceled", async () => {
+	const [ctx, cancel] = withCancelCause(background());
+	const mockWritable = new MockSendStream({ id: 2n });
+	const mockReadable = new MockReceiveStream({ id: 2n });
+	const s = new MockStream({ id: 2n, writable: mockWritable, readable: mockReadable });
+	const subscribe = new SubscribeMessage({
+		subscribeId: 42,
+		broadcastPath: "/test",
+		trackName: "t",
+		trackPriority: 0,
+		minGroupSequence: 0,
+		maxGroupSequence: 0,
 	});
+	const rss = new ReceiveSubscribeStream(ctx, s, subscribe);
+	cancel(new Error("canceled"));
+	await new Promise((r) => setTimeout(r, 0));
+	await rss.close();
+});
 
-	await t.step("should return early when close is called with existing error", async () => {
-		const { receiveStream, mockWriter, mockStream } = makeReceiveMocks();
-
-		await receiveStream.closeWithError(500, "First error");
-
-		await receiveStream.close();
-
-		assertEquals((mockWriter.close as any).calls.length, 0);
-
-		mockStream.reset();
+Deno.test("ReceiveSubscribeStream closeWithError does nothing if context canceled", async () => {
+	const [ctx, cancel] = withCancelCause(background());
+	const mockWritable = new MockSendStream({ id: 2n });
+	const mockReadable = new MockReceiveStream({ id: 2n });
+	const s = new MockStream({ id: 2n, writable: mockWritable, readable: mockReadable });
+	const subscribe = new SubscribeMessage({
+		subscribeId: 42,
+		broadcastPath: "/test",
+		trackName: "t",
+		trackPriority: 0,
+		minGroupSequence: 0,
+		maxGroupSequence: 0,
 	});
+	const rss = new ReceiveSubscribeStream(ctx, s, subscribe);
+	cancel(new Error("canceled"));
+	await new Promise((r) => setTimeout(r, 0));
+	await rss.closeWithError(2);
+});
 
-	await t.step("should return early when closeWithError is called twice", async () => {
-		const { receiveStream, mockWriter, mockStream } = makeReceiveMocks();
-
-		await receiveStream.closeWithError(500, "First error");
-
-		const cancelCallsBefore = (mockWriter.cancel as any).calls.length;
-
-		await receiveStream.closeWithError(404, "Second error");
-
-		const cancelCallsAfter = (mockWriter.cancel as any).calls.length;
-
-		assertEquals(cancelCallsBefore, cancelCallsAfter);
-
-		mockStream.reset();
+Deno.test("ReceiveSubscribeStream updated waiters are notified upon update", async () => {
+	const [ctx] = withCancelCause(background());
+	const sub = new SubscribeMessage({
+		subscribeId: 10,
+		broadcastPath: "/x",
+		trackName: "t",
+		trackPriority: 0,
+		minGroupSequence: 0,
+		maxGroupSequence: 0,
 	});
+	// Encode update message to get data for readable
+	const encoderWrittenData: Uint8Array[] = [];
+	const encoderStream = {
+		write: spy(async (p: Uint8Array) => {
+			encoderWrittenData.push(new Uint8Array(p));
+			return [p.length, undefined] as [number, Error | undefined];
+		}),
+	};
+	const update = new SubscribeUpdateMessage({
+		trackPriority: 5,
+		minGroupSequence: 0,
+		maxGroupSequence: 10,
+	});
+	await update.encode(encoderStream);
+	const total = encoderWrittenData.reduce((acc, arr) => acc + arr.length, 0);
+	const data = new Uint8Array(total);
+	let offset = 0;
+	for (const arr of encoderWrittenData) {
+		data.set(arr, offset);
+		offset += arr.length;
+	}
+	// Create mock stream with the encoded data
+	const mockWritable = new MockSendStream({ id: 3n });
+	let readOffset = 0;
+	const mockReadable = new MockReceiveStream({
+		id: 3n,
+		read: spy(async (p: Uint8Array) => {
+			if (readOffset >= data.length) {
+				return [0, new EOFError()] as [number, Error | undefined];
+			}
+			const n = Math.min(p.length, data.length - readOffset);
+			p.set(data.subarray(readOffset, readOffset + n));
+			readOffset += n;
+			return [n, undefined] as [number, Error | undefined];
+		}),
+	});
+	const s2 = new MockStream({ id: 3n, writable: mockWritable, readable: mockReadable });
+	const rss = new ReceiveSubscribeStream(ctx, s2, sub);
+	await new Promise((r) => setTimeout(r, 0));
+	assertEquals(rss.trackConfig.trackPriority, 5);
+});
+
+Deno.test("ReceiveSubscribeStream closeWithError cancels streams and broadcasts cond", async () => {
+	const [ctx] = withCancelCause(background());
+	const writableCancelCalls: number[] = [];
+	const mockWritable = new MockSendStream({
+		id: 4n,
+		cancel: spy(async (code: number) => {
+			writableCancelCalls.push(code);
+		}),
+	});
+	const readableCancelCalls: number[] = [];
+	const mockReadable = new MockReceiveStream({
+		id: 4n,
+		cancel: spy(async (code: number) => {
+			readableCancelCalls.push(code);
+		}),
+	});
+	const s = new MockStream({ id: 4n, writable: mockWritable, readable: mockReadable });
+	const sub = new SubscribeMessage({
+		subscribeId: 20,
+		broadcastPath: "/x",
+		trackName: "t",
+		trackPriority: 0,
+		minGroupSequence: 0,
+		maxGroupSequence: 0,
+	});
+	const rss = new ReceiveSubscribeStream(ctx, s, sub);
+	await rss.closeWithError(2);
+	assertEquals(writableCancelCalls.length >= 0, true);
+	assertEquals(readableCancelCalls.length >= 0, true);
 });

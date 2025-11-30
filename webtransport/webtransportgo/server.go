@@ -8,8 +8,8 @@ import (
 
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
 	"github.com/OkutaniDaichi0106/gomoqt/webtransport"
-	quicgo_webtransportgo "github.com/OkutaniDaichi0106/webtransport-go"
 	quicgo_quicgo "github.com/quic-go/quic-go"
+	quicgo_webtransportgo "github.com/quic-go/webtransport-go"
 )
 
 func NewServer(checkOrigin func(r *http.Request) bool) webtransport.Server {

@@ -33,7 +33,6 @@ Deno.test("AnnounceMessage - encode/decode roundtrip - multiple scenarios", asyn
 			});
 			const writer = new SendStream({
 				stream: writableStream,
-				transfer: undefined,
 				streamId: 0n,
 			});
 
@@ -59,7 +58,6 @@ Deno.test("AnnounceMessage - encode/decode roundtrip - multiple scenarios", asyn
 			});
 			const reader = new ReceiveStream({
 				stream: readableStream,
-				transfer: undefined,
 				streamId: 0n,
 			});
 
@@ -81,7 +79,6 @@ Deno.test("AnnounceMessage - encode/decode roundtrip - multiple scenarios", asyn
 			});
 			const reader = new ReceiveStream({
 				stream: readableStream,
-				transfer: undefined,
 				streamId: 0n,
 			});
 
@@ -101,7 +98,6 @@ Deno.test("AnnounceMessage - encode/decode roundtrip - multiple scenarios", asyn
 		});
 		const reader = new ReceiveStream({
 			stream: readableStream,
-			transfer: undefined,
 			streamId: 0n,
 		});
 
@@ -110,17 +106,15 @@ Deno.test("AnnounceMessage - encode/decode roundtrip - multiple scenarios", asyn
 		assertEquals(err !== undefined, true);
 	});
 
-	await t.step("decode should return error when reading active fails", async () => {
-		const buffer = new Uint8Array([1, 0]); // message length, empty suffix, but no active
+	await t.step("decode should return error when buffer is truncated", async () => {
+		// Empty stream - cannot even read message length
 		const readableStream = new ReadableStream({
 			start(controller) {
-				controller.enqueue(buffer);
 				controller.close();
 			},
 		});
 		const reader = new ReceiveStream({
 			stream: readableStream,
-			transfer: undefined,
 			streamId: 0n,
 		});
 

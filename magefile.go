@@ -3,12 +3,15 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/magefile/mage/mg"
 	"github.com/magefile/mage/sh"
@@ -193,99 +196,142 @@ func (t Test) Coverage() error {
 }
 
 // ======================================
-// INTEROPERABILITY
+// INTEROP
 // ======================================
 
-type Server mg.Namespace
-
-func (s Server) Default() error {
-	fmt.Println("Setting up default server environment...")
-	s.Go()
-	return nil
-}
-
-// func (s Server) All() error {
-// 	fmt.Println("Setting up all server environments...")
-// 	s.Go()
-// 	return nil
-// }
-
-func (Server) Go() error {
-	fmt.Println("Setting up Go environment...")
-	return nil
-}
-
-// func (Server) Deno() error {
-// 	fmt.Println("Setting up Deno environment...")
-// 	return nil
-// }
-
-// func (Server) Node() error {
-// 	fmt.Println("Setting up Node.js environment...")
-// 	return nil
-// }
-
-// func (Server) Bun() error {
-// 	fmt.Println("Setting up Bun environment...")
-// 	return nil
-// }
-
-type Client mg.Namespace
-
-func (c Client) Default() error {
-	fmt.Println("Setting up default client environment...")
-	c.Go()
-	return nil
-}
-
-func (c Client) All() error {
-	fmt.Println("Setting up all client environments...")
-	c.Go()
-	c.Deno()
-	c.Node()
-	c.Bun()
-	c.Chrome()
-	c.Firefox()
-	c.Safari()
-	return nil
-}
-
-func (Client) Go() error {
-	fmt.Println("Setting up Go environment...")
-	return nil
-}
-
-func (Client) Deno() error {
-	fmt.Println("Setting up Deno environment...")
-	return nil
-}
-
-func (Client) Node() error {
-	fmt.Println("Setting up Node.js environment...")
-	return nil
-}
-
-func (Client) Bun() error {
-	fmt.Println("Setting up Bun environment...")
-	return nil
-}
-
-func (Client) Chrome() error {
-	fmt.Println("Setting up Chrome environment...")
-	return nil
-}
-
-func (Client) Firefox() error {
-	fmt.Println("Setting up Firefox environment...")
-	return nil
-}
-
-func (Client) Safari() error {
-	fmt.Println("Setting up Safari environment...")
-	return nil
-}
-
 type Interop mg.Namespace
+
+// Server runs the interop server
+func (Interop) Server() error {
+	fmt.Println("Starting interop server...")
+
+	// Save current working directory
+	wd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	// Restore working directory when done
+	defer func() {
+		_ = os.Chdir(wd)
+	}()
+
+	// Change to interop server directory
+	if err := os.Chdir("cmd/interop/server"); err != nil {
+		return err
+	}
+
+	return sh.RunV("go", "run", ".")
+}
+
+// Client runs the interop client with optional language flag and URL
+// Usage: mage interop:client
+//
+//	mage interop:client https://example.com:9000
+//	mage interop:client -go https://example.com:9000
+//	mage interop:client -ts https://example.com:9000
+func (Interop) Client() error {
+	// Mage does not pass flags as function params for namespace methods reliably,
+	// so parse arguments from os.Args looking for the target marker `interop:client`.
+	var args []string
+	for i, a := range os.Args {
+		if strings.HasSuffix(a, "interop:client") || a == "interop:client" {
+			if i+1 < len(os.Args) {
+				args = os.Args[i+1:]
+			}
+			break
+		}
+	}
+	// If no args found after the target marker, leave args empty so defaults apply.
+
+	// Parse flags from the extracted args
+	fs := flag.NewFlagSet("client", flag.ContinueOnError)
+	fs.SetOutput(io.Discard) // Suppress flag usage messages
+	useGo := fs.Bool("go", false, "Use Go client")
+	useTs := fs.Bool("ts", false, "Use TypeScript client")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	// Get remaining arguments (URL)
+	url := "https://127.0.0.1:9000"
+	remaining := fs.Args()
+	if len(remaining) > 0 {
+		url = remaining[0]
+	}
+
+	// Determine language
+	lang := "go" // default
+	if *useTs {
+		lang = "ts"
+	} else if *useGo {
+		lang = "go"
+	}
+
+	// Start server and client
+	return runInteropWithClient(lang, url)
+}
+
+// Default runs the interop client (same as Client)
+func (i Interop) Default() error {
+	return i.Client()
+}
+
+// runInteropWithClient starts the server and runs the specified client
+func runInteropWithClient(lang, url string) error {
+	// Save current working directory
+	wd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = os.Chdir(wd)
+	}()
+
+	// Start server in background
+	if err := os.Chdir("cmd/interop/server"); err != nil {
+		return err
+	}
+
+	serverCmd := exec.Command("go", "run", ".")
+	serverCmd.Stdout = os.Stdout
+	serverCmd.Stderr = os.Stderr
+
+	if err := serverCmd.Start(); err != nil {
+		return fmt.Errorf("failed to start server: %w", err)
+	}
+
+	// Wait for server to start
+	time.Sleep(2 * time.Second)
+
+	// Defer server shutdown
+	defer func() {
+		if serverCmd.Process != nil {
+			_ = serverCmd.Process.Kill()
+			_ = serverCmd.Wait()
+		}
+	}()
+
+	// Change to client directory and run client
+	if err := os.Chdir(wd); err != nil {
+		return err
+	}
+
+	if lang == "ts" {
+		if err := os.Chdir("moq-web/cli/interop"); err != nil {
+			return err
+		}
+		fmt.Printf("Starting TypeScript interop client (connecting to %s)...\n", url)
+		return sh.RunV("deno", "run", "--allow-net", "--allow-read", "main.ts", "--addr", url, "--insecure")
+	}
+
+	// Default to Go client
+	if err := os.Chdir("cmd/interop/client"); err != nil {
+		return err
+	}
+	fmt.Printf("Starting Go interop client (connecting to %s)...\n", url)
+	return sh.RunV("go", "run", ".", "-addr", url)
+}
 
 // ======================================
 // DEVELOPMENT UTILITIES
@@ -337,10 +383,28 @@ func Clean() error {
 // Help displays available commands (default target)
 func Help() {
 	fmt.Println("Available Mage commands:")
-	fmt.Println("  mage test   - Run all tests")
+	fmt.Println("")
+	fmt.Println("Setup:")
+	fmt.Println("  mage setup:all   - Setup all development tools")
+	fmt.Println("  mage setup:go    - Setup Go environment")
+	fmt.Println("  mage setup:deno  - Setup Deno environment")
+	fmt.Println("")
+	fmt.Println("Testing:")
+	fmt.Println("  mage test:all      - Run all tests")
+	fmt.Println("  mage test:coverage - Run tests with coverage")
+	fmt.Println("")
+	fmt.Println("Interop:")
+	fmt.Println("  mage interop:server           - Start interop server")
+	fmt.Println("  mage interop:client           - Start server + Go client (default)")
+	fmt.Println("  mage interop:client [url]     - Start server + Go client with custom URL")
+	fmt.Println("  mage interop:client -go [url] - Start server + Go client")
+	fmt.Println("  mage interop:client -ts [url] - Start server + TypeScript client")
+	fmt.Println("")
+	fmt.Println("Development:")
 	fmt.Println("  mage lint   - Run golangci-lint")
-	fmt.Println("  mage build  - Build the project")
-	fmt.Println("  mage clean  - Clean up generated files")
+	fmt.Println("  mage fmt    - Format code")
+	fmt.Println("  mage build  - Build project")
+	fmt.Println("  mage clean  - Clean generated files")
 	fmt.Println("  mage help   - Show this help message")
 	fmt.Println("")
 	fmt.Println("You can also run 'mage -l' to list all available targets.")

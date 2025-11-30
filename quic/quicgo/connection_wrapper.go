@@ -48,6 +48,16 @@ func (wrapper *connWrapper) ConnectionState() quic.ConnectionState {
 	}
 }
 
+func (wrapper *connWrapper) ConnectionStats() quic.ConnectionStats {
+	stats := wrapper.conn.ConnectionStats()
+	return quic.ConnectionStats{
+		BytesSent:     stats.BytesSent,
+		BytesReceived: stats.BytesReceived,
+		PacketsSent:   stats.PacketsSent,
+		PacketsLost:   stats.PacketsLost,
+	}
+}
+
 func (wrapper *connWrapper) Context() context.Context {
 	return wrapper.conn.Context()
 }

@@ -34,7 +34,7 @@ func main() {
 
     // Handle WebTransport connections
     http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
-        err := server.ServeWebTransport(w, r)
+        err := server.HandleWebTransport(w, r)
         if err != nil {
             slog.Error("Failed to serve MoQ over WebTransport", "error", err)
         }
@@ -224,13 +224,13 @@ On success, it returns a `*moqt.Session` for managing the established connection
 
 ## Handle WebTransport Connections
 
-For WebTransport-based MoQ sessions, integrate the server with an HTTP server using `(moqt.Server).ServeWebTransport` method.
+For WebTransport-based MoQ sessions, integrate the server with an HTTP server using `(moqt.Server).HandleWebTransport` method.
 
 **Using with net/http:**
 
 ```go
 http.HandleFunc("/moq", func(w http.ResponseWriter, r *http.Request) {
-    err := server.ServeWebTransport(w, r)
+    err := server.HandleWebTransport(w, r)
     if err != nil {
         // Handle error
     }
@@ -239,7 +239,7 @@ http.HandleFunc("/moq", func(w http.ResponseWriter, r *http.Request) {
 })
 ```
 
-The `(moqt.Server).ServeWebTransport` method upgrades the HTTP/3 connection to WebTransport, accepts the session stream, and routes the setup request to the configured `(moqt.Server).SetupHandler`.
+The `(moqt.Server).HandleWebTransport` method upgrades the HTTP/3 connection to WebTransport, accepts the session stream, and routes the setup request to the configured `(moqt.Server).SetupHandler`.
 
 ## Run the Server
 

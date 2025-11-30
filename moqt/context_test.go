@@ -49,7 +49,7 @@ func TestCause(t *testing.T) {
 			expected: &SessionError{
 				ApplicationError: &quic.ApplicationError{
 					Remote:       true,
-					ErrorCode:    1,
+					ErrorCode:    quic.ApplicationErrorCode(ProtocolViolationErrorCode),
 					ErrorMessage: "moqt: closed session stream",
 				},
 			},

@@ -2,6 +2,7 @@ import { Session } from "./session.ts";
 import type { MOQOptions } from "./options.ts";
 import { DEFAULT_CLIENT_VERSIONS } from "./version.ts";
 import { DefaultTrackMux, TrackMux } from "./track_mux.ts";
+import { WebTransportSession } from "./internal/webtransport/mod.ts";
 
 const DefaultWebTransportOptions: WebTransportOptions = {
 	allowPooling: false,
@@ -44,23 +45,21 @@ export class Client {
 		}
 
 		// Normalize URL to string (WebTransport accepts a USVString).
-		const endpoint = typeof url === "string" ? url : String(url);
+		// const endpoint = typeof url === "string" ? url : String(url);
 
-		let transport: WebTransport;
 		try {
-			transport = new WebTransport(endpoint, this.options.transportOptions);
+			const webtransport = new WebTransportSession(url, this.options.transportOptions);
+			const session = new Session({
+				webtransport: webtransport,
+				extensions: this.options.extensions,
+				mux,
+			});
+			await session.ready;
+			this.#sessions.add(session);
+			return session;
 		} catch (err) {
 			return Promise.reject(new Error(`failed to create WebTransport: ${err}`));
 		}
-
-		const session = new Session({
-			conn: transport,
-			extensions: this.options.extensions,
-			mux,
-		});
-		await session.ready;
-		this.#sessions.add(session);
-		return session;
 	}
 
 	async close(): Promise<void> {

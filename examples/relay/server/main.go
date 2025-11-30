@@ -40,7 +40,7 @@ func main() {
 	path := "/hang"
 
 	http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
-		err := server.ServeWebTransport(w, r)
+		err := server.HandleWebTransport(w, r)
 		if err != nil {
 			slog.Error("Failed to serve moq over webtransport", "error", err)
 		}

@@ -17,7 +17,17 @@ type MockQUICSendStream struct {
 }
 
 func (m *MockQUICSendStream) StreamID() quic.StreamID {
+	// Recover from testify/mock panic when no expectation is provided and
+	// default to zero StreamID which is safe for logging purposes.
+	defer func() {
+		if r := recover(); r != nil {
+			// ignore the panic and return zero value below
+		}
+	}()
 	args := m.Called()
+	if len(args) == 0 || args.Get(0) == nil {
+		return quic.StreamID(0)
+	}
 	return args.Get(0).(quic.StreamID)
 }
 

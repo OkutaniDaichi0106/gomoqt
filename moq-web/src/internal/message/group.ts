@@ -1,50 +1,65 @@
-import type { ReceiveStream, SendStream } from "../webtransport/mod.ts";
-import { varintLen } from "../webtransport/mod.ts";
+import type { Reader, Writer } from "@okudai/golikejs/io";
+import { parseVarint, readFull, readVarint, varintLen, writeVarint } from "./message.ts";
 
 export interface GroupMessageInit {
 	subscribeId?: number;
-	sequence?: bigint;
+	sequence?: number;
 }
 
 export class GroupMessage {
 	subscribeId: number;
-	sequence: bigint;
+	sequence: number;
 
-	constructor(init: GroupMessageInit) {
+	constructor(init: GroupMessageInit = {}) {
 		this.subscribeId = init.subscribeId ?? 0;
-		this.sequence = init.sequence ?? 0n;
+		this.sequence = init.sequence ?? 0;
 	}
 
-	get messageLength(): number {
+	/**
+	 * Returns the length of the message body (excluding the length prefix).
+	 */
+	get len(): number {
 		return varintLen(this.subscribeId) + varintLen(this.sequence);
 	}
 
-	async encode(writer: SendStream): Promise<Error | undefined> {
-		writer.writeVarint(this.messageLength);
-		writer.writeVarint(this.subscribeId);
-		writer.writeBigVarint(this.sequence);
-		return await writer.flush();
+	/**
+	 * Encodes the message to the writer.
+	 */
+	async encode(w: Writer): Promise<Error | undefined> {
+		const msgLen = this.len;
+		let err: Error | undefined;
+
+		[, err] = await writeVarint(w, msgLen);
+		if (err) return err;
+
+		[, err] = await writeVarint(w, this.subscribeId);
+		if (err) return err;
+
+		[, err] = await writeVarint(w, this.sequence);
+		if (err) return err;
+
+		return undefined;
 	}
 
-	async decode(reader: ReceiveStream): Promise<Error | undefined> {
-		let [len, err] = await reader.readVarint();
-		if (err) {
-			return err;
-		}
+	/**
+	 * Decodes the message from the reader.
+	 */
+	async decode(r: Reader): Promise<Error | undefined> {
+		const [msgLen, , err1] = await readVarint(r);
+		if (err1) return err1;
 
-		[this.subscribeId, err] = await reader.readVarint();
-		if (err) {
-			return err;
-		}
+		const buf = new Uint8Array(msgLen);
+		const [, err2] = await readFull(r, buf);
+		if (err2) return err2;
 
-		[this.sequence, err] = await reader.readBigVarint();
-		if (err) {
-			return err;
-		}
+		let offset = 0;
 
-		if (len !== this.messageLength) {
-			throw new Error(`message length mismatch: expected ${len}, got ${this.messageLength}`);
-		}
+		[this.subscribeId, offset] = (() => {
+			const [val, n] = parseVarint(buf, offset);
+			return [val, offset + n];
+		})();
+
+		[this.sequence] = parseVarint(buf, offset);
 
 		return undefined;
 	}

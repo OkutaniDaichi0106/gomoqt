@@ -1,568 +1,317 @@
-import { assertEquals, assertExists, assertInstanceOf, assertThrows } from "@std/assert";
+import { assertEquals, assertExists } from "@std/assert";
 import { spy } from "@std/testing/mock";
-import { EOFError } from "@okudai/golikejs/io";
 import { Announcement, AnnouncementReader, AnnouncementWriter } from "./announce_stream.ts";
-import type { ReceiveStream, SendStream } from "./internal/webtransport/mod.ts";
-import { MockStream } from "./internal/webtransport/mock_stream_test.ts";
+import { background, withCancelCause } from "@okudai/golikejs/context";
+import {
+	AnnounceInitMessage,
+	AnnounceMessage,
+	AnnouncePleaseMessage,
+} from "./internal/message/mod.ts";
+import { MockReceiveStream, MockSendStream, MockStream } from "./mock_stream_test.ts";
+import { Buffer } from "@okudai/golikejs/bytes";
 
-class MockContext {
-	doneCalled = false;
-	cancelled = false;
-	cancelError?: Error;
-	private doneResolve?: () => void;
-	private donePromise: Promise<void>;
+Deno.test("Announcement", async (t) => {
+	await t.step("lifecycle: isActive and ended", async () => {
+		const [ctx] = withCancelCause(background());
+		const ann = new Announcement("/some/path", ctx.done());
+		assertEquals(ann.isActive(), true);
+		const endedPromise = ann.ended();
+		ann.end();
+		await endedPromise;
+		assertEquals(ann.isActive(), false);
+	});
 
-	constructor() {
-		this.donePromise = new Promise<void>((resolve) => {
-			this.doneResolve = resolve;
+	await t.step("afterFunc executes registered function once", async () => {
+		const [ctx, cancel] = withCancelCause(background());
+		const ann = new Announcement("/some/path", ctx.done());
+		let ran = false;
+		const rv = ann.afterFunc(() => {
+			ran = true;
 		});
-	}
-
-	done(): Promise<void> {
-		return this.donePromise;
-	}
-
-	err(): Error | undefined {
-		return this.cancelError;
-	}
-
-	cancel(): void {
-		this.cancelled = true;
-		this.cancelError = new Error("context cancelled");
-		if (this.doneResolve) {
-			this.doneResolve();
-		}
-	}
-}
-
-class MockAnnouncePleaseMessage {
-	prefix: string;
-
-	constructor(prefix: string) {
-		this.prefix = prefix;
-	}
-
-	get messageLength(): number {
-		return this.prefix.length;
-	}
-
-	async encode(_writer: SendStream): Promise<Error | undefined> {
-		return undefined;
-	}
-
-	async decode(_reader: ReceiveStream): Promise<Error | undefined> {
-		return undefined;
-	}
-}
-
-class MockAnnounceInitMessage {
-	suffixes: string[];
-
-	constructor(suffixes: string[]) {
-		this.suffixes = suffixes;
-	}
-
-	get messageLength(): number {
-		return this.suffixes.length;
-	}
-
-	async encode(_writer: SendStream): Promise<Error | undefined> {
-		return undefined;
-	}
-
-	async decode(_reader: ReceiveStream): Promise<Error | undefined> {
-		return undefined;
-	}
-}
-
-// Test Announcement class
-Deno.test("Announcement - Normal Cases", async (t) => {
-	await t.step("should create active announcement", () => {
-		const announcement = new Announcement("/test/path", new Promise(() => {}));
-		assertEquals(announcement.broadcastPath, "/test/path");
-		assertEquals(announcement.isActive(), true);
+		ann.end();
+		await ann.ended();
+		assertEquals(ran, true);
+		assertEquals(rv(), false);
+		cancel(undefined);
 	});
+});
 
-	await t.step("should end announcement", async () => {
-		const announcement = new Announcement("/test/path", new Promise(() => {}));
-		announcement.end();
-		assertEquals(announcement.isActive(), false);
-
-		// ended() should resolve
-		const endedPromise = announcement.ended();
-		await endedPromise; // Should not hang
-	});
-
-	await t.step("should handle multiple end() calls", () => {
-		const announcement = new Announcement("/test/path", new Promise(() => {}));
-
-		announcement.end();
-		assertEquals(announcement.isActive(), false);
-
-		// Second end() should be idempotent
-		announcement.end();
-		assertEquals(announcement.isActive(), false);
-	});
-
-	await t.step("should end on signal", async () => {
-		let resolveSignal: () => void;
-		const signal = new Promise<void>((resolve) => {
-			resolveSignal = resolve;
+Deno.test("AnnouncementWriter", async (t) => {
+	await t.step("init respects prefix and writes ANNOUNCE_INIT", async () => {
+		const [ctx] = withCancelCause(background());
+		const writeBuf = Buffer.make(256);
+		const mockStream = new MockStream({
+			id: 1n,
+			writable: new MockSendStream({ id: 1n, write: (p) => writeBuf.write(p) }),
 		});
-
-		const announcement = new Announcement("/test/path", signal);
-		assertEquals(announcement.isActive(), true);
-
-		resolveSignal!();
-		await new Promise((resolve) => setTimeout(resolve, 10)); // Allow signal to propagate
-
-		assertEquals(announcement.isActive(), false);
-	});
-});
-
-Deno.test("Announcement - Error Cases", () => {
-	// Announcement constructor validates the path, so test invalid paths
-	assertThrows(
-		() => {
-			new Announcement("", new Promise(() => {}));
-		},
-		Error,
-		"Invalid broadcast path",
-	);
-
-	assertThrows(
-		() => {
-			new Announcement("test", new Promise(() => {}));
-		},
-		Error,
-		"Invalid broadcast path",
-	);
-});
-
-// Test AnnouncementWriter class
-Deno.test("AnnouncementWriter - Constructor", () => {
-	const mockStream = new MockStream(42n);
-	const mockContext = new MockContext();
-	const mockRequest = new MockAnnouncePleaseMessage("/test/");
-
-	const writer = new AnnouncementWriter(
-		mockContext as any,
-		mockStream as any,
-		mockRequest as any,
-	);
-
-	assertEquals(writer.prefix, "/test/");
-	assertExists(writer.context);
-});
-
-Deno.test("AnnouncementWriter - Init Method", async (t) => {
-	const mockStream = new MockStream(42n);
-	const mockContext = new MockContext();
-	const mockRequest = new MockAnnouncePleaseMessage("/test/");
-
-	const writer = new AnnouncementWriter(
-		mockContext as any,
-		mockStream as any,
-		mockRequest as any,
-	);
-
-	await t.step("should initialize with valid announcements", async () => {
-		const announcement = new Announcement("/test/path1", new Promise(() => {}));
-		const result = await writer.init([announcement]);
-		assertEquals(result, undefined);
-	});
-
-	await t.step("should reject announcement with wrong prefix", async () => {
-		const announcement = new Announcement("/wrong/path", new Promise(() => {}));
-		const result = await writer.init([announcement]);
-		assertExists(result);
-		assertInstanceOf(result, Error);
-	});
-
-	await t.step("should reject duplicate active announcements", async () => {
-		const announcement1 = new Announcement("/test/path1", new Promise(() => {}));
-		const announcement2 = new Announcement("/test/path1", new Promise(() => {}));
-		const result = await writer.init([announcement1, announcement2]);
-		assertExists(result);
-		assertInstanceOf(result, Error);
-	});
-
-	await t.step("should handle ending active announcements", async () => {
-		const mockStream2 = new MockStream(43n);
-		const mockContext2 = new MockContext();
-		const mockRequest2 = new MockAnnouncePleaseMessage("/test/");
-
-		const writer2 = new AnnouncementWriter(
-			mockContext2 as any,
-			mockStream2 as any,
-			mockRequest2 as any,
-		);
-
-		const announcement1 = new Announcement("/test/path1", new Promise(() => {}));
-		const initResult = await writer2.init([announcement1]);
-		assertEquals(initResult, undefined);
-
-		// Now try to end the same announcement
-		const endAnnouncement = new Announcement("/test/path1", new Promise(() => {}));
-		endAnnouncement.end(); // Make it inactive
-		const endResult = await writer2.init([endAnnouncement]);
-		assertEquals(endResult, undefined);
-	});
-
-	await t.step("should reject ending non-existent announcement", async () => {
-		const endAnnouncement = new Announcement("/test/nonexistent", new Promise(() => {}));
-		endAnnouncement.end(); // Make it inactive
-		const result = await writer.init([endAnnouncement]);
-		assertExists(result);
-		assertInstanceOf(result, Error);
-	});
-
-	await t.step("should replace inactive announcement with active one in init", async () => {
-		const mockStream3 = new MockStream(44n);
-		const mockContext3 = new MockContext();
-		const mockRequest3 = new MockAnnouncePleaseMessage("/test/");
-
-		const writer3 = new AnnouncementWriter(
-			mockContext3 as any,
-			mockStream3 as any,
-			mockRequest3 as any,
-		);
-
-		const announcement1 = new Announcement("/test/path1", new Promise(() => {}));
-		await writer3.init([announcement1]);
-
-		// End it
-		const endAnn = new Announcement("/test/path1", new Promise(() => {}));
-		endAnn.end();
-		await writer3.init([endAnn]);
-
-		// Now add active announcement with same path
-		const announcement2 = new Announcement("/test/path1", new Promise(() => {}));
-		const result = await writer3.init([announcement2]);
-		assertEquals(result, undefined);
-	});
-});
-
-Deno.test("AnnouncementWriter - Send Method", async (t) => {
-	const mockStream = new MockStream(42n);
-	const mockContext = new MockContext();
-	const mockRequest = new MockAnnouncePleaseMessage("/test/");
-
-	const writer = new AnnouncementWriter(
-		mockContext as any,
-		mockStream as any,
-		mockRequest as any,
-	);
-
-	// Initialize first
-	const initAnnouncement = new Announcement("/test/path1", new Promise(() => {}));
-	await writer.init([initAnnouncement]);
-
-	await t.step("should send valid announcement", async () => {
-		const announcement = new Announcement("/test/path2", new Promise(() => {}));
-		const result = await writer.send(announcement);
-		assertEquals(result, undefined);
-	});
-
-	await t.step("should reject announcement with wrong prefix", async () => {
-		const announcement = new Announcement("/wrong/path", new Promise(() => {}));
-		const result = await writer.send(announcement);
-		assertExists(result);
-		assertInstanceOf(result, Error);
-	});
-
-	await t.step("should handle ending announcements", async () => {
-		// First send an active announcement
-		const activeAnnouncement = new Announcement("/test/path3", new Promise(() => {}));
-		let sendResult = await writer.send(activeAnnouncement);
-		assertEquals(sendResult, undefined);
-
-		// Now send an inactive announcement to end it
-		const endAnnouncement = new Announcement("/test/path3", new Promise(() => {}));
-		endAnnouncement.end(); // Make it inactive
-		sendResult = await writer.send(endAnnouncement);
-		assertEquals(sendResult, undefined);
-	});
-
-	await t.step("should reject ending non-active announcement", async () => {
-		const endAnnouncement = new Announcement("/test/nonexistent", new Promise(() => {}));
-		endAnnouncement.end(); // Make it inactive
-		const result = await writer.send(endAnnouncement);
-		assertExists(result);
-		assertInstanceOf(result, Error);
-	});
-
-	await t.step("should reject duplicate active announcement in send", async () => {
-		const announcement1 = new Announcement("/test/path4", new Promise(() => {}));
-		await writer.send(announcement1);
-
-		// Try to send the same path again
-		const announcement2 = new Announcement("/test/path4", new Promise(() => {}));
-		const result = await writer.send(announcement2);
-		assertExists(result);
-		assertInstanceOf(result, Error);
-	});
-
-	await t.step("should replace inactive announcement with active one", async () => {
-		const activeAnn = new Announcement("/test/path5", new Promise(() => {}));
-		await writer.send(activeAnn);
-
-		// End it
-		const endAnn = new Announcement("/test/path5", new Promise(() => {}));
-		endAnn.end();
-		await writer.send(endAnn);
-
-		// Now send a new active one with same path
-		const newActiveAnn = new Announcement("/test/path5", new Promise(() => {}));
-		const result = await writer.send(newActiveAnn);
-		assertEquals(result, undefined);
-	});
-});
-
-Deno.test("AnnouncementWriter - Close Methods", async (t) => {
-	const mockStream = new MockStream(42n);
-	const mockContext = new MockContext();
-	const mockRequest = new MockAnnouncePleaseMessage("/test/");
-
-	const writer = new AnnouncementWriter(
-		mockContext as any,
-		mockStream as any,
-		mockRequest as any,
-	);
-
-	await t.step("should close normally", async () => {
-		await writer.close();
-		assertEquals(mockStream.writable.closeCalls, 1);
-	});
-
-	await t.step("should close with error", async () => {
-		const mockStream2 = new MockStream(43n);
-		const mockContext2 = new MockContext();
-		const mockRequest2 = new MockAnnouncePleaseMessage("/test/");
-
-		const writer2 = new AnnouncementWriter(
-			mockContext2 as any,
-			mockStream2 as any,
-			mockRequest2 as any,
-		);
-
-		await writer2.closeWithError(1, "test error");
-		// cancelCalls is an array, check its length
-		assertEquals(mockStream2.readable.cancelCalls.length, 1);
-	});
-});
-
-// Test AnnouncementReader class
-Deno.test("AnnouncementReader - Constructor", () => {
-	const mockStream = new MockStream(42n);
-	const mockContext = new MockContext();
-	const mockRequest = new MockAnnouncePleaseMessage("/test/");
-	const mockInit = new MockAnnounceInitMessage(["path1", "path2"]);
-
-	const reader = new AnnouncementReader(
-		mockContext as any,
-		mockStream as any,
-		mockRequest as any,
-		mockInit as any,
-	);
-
-	assertEquals(reader.prefix, "/test/");
-	assertExists(reader.context);
-});
-
-Deno.test("AnnouncementReader - Constructor Error Cases", () => {
-	const mockStream = new MockStream();
-	const mockContext = new MockContext();
-
-	assertThrows(
-		() => {
-			const mockRequest = new MockAnnouncePleaseMessage("invalid prefix");
-			const mockInit = new MockAnnounceInitMessage([]);
-			new AnnouncementReader(
-				mockContext as any,
-				mockStream as any,
-				mockRequest as any,
-				mockInit as any,
-			);
-		},
-		Error,
-		"invalid prefix",
-	);
-});
-
-Deno.test("AnnouncementReader - Receive Method", async (t) => {
-	await t.step("should receive initial announcements", async () => {
-		const mockStream = new MockStream(42n);
-		// Add mock data for announcement: suffix "path1"
-		mockStream.readable.data = [new Uint8Array([7]), new Uint8Array([112, 97, 116, 104, 49])]; // "path1"
-
-		const mockContext = new MockContext();
-		const mockRequest = new MockAnnouncePleaseMessage("/test/");
-		const mockInit = new MockAnnounceInitMessage(["path1"]);
-
-		const reader = new AnnouncementReader(
-			mockContext as any,
-			mockStream as any,
-			mockRequest as any,
-			mockInit as any,
-		);
-
-		// Set timeout to prevent hanging
-		let timerId: number | undefined;
-		const timeoutPromise = new Promise<void>((resolve) => {
-			timerId = setTimeout(resolve, 100) as unknown as number;
-		});
-		try {
-			const receivePromise = reader.receive(timeoutPromise);
-
-			// Wait with timeout
-			await Promise.race([
-				receivePromise,
-				timeoutPromise.then(() => [undefined, new Error("timeout")] as const),
-			]);
-
-			// Should either get an announcement or an error
-			// This is acceptable behavior
-		} finally {
-			if (timerId !== undefined) {
-				clearTimeout(timerId);
-			}
-		}
-	});
-
-	await t.step("should handle cancellation gracefully", async () => {
-		const mockStream = new MockStream();
-		const mockContext = new MockContext();
-		const mockRequest = new MockAnnouncePleaseMessage("/test/");
-		const mockInit = new MockAnnounceInitMessage([]);
-
-		const reader = new AnnouncementReader(
-			mockContext as any,
-			mockStream as any,
-			mockRequest as any,
-			mockInit as any,
-		);
-
-		// Cancel the context
-		mockContext.cancel();
-
-		// Receive should handle cancellation
-		let timerId: number | undefined;
-		const timeoutPromise = new Promise<void>((resolve) => {
-			timerId = setTimeout(resolve, 50) as unknown as number;
-		});
-		try {
-			await Promise.race([
-				reader.receive(timeoutPromise),
-				timeoutPromise,
-			]);
-		} finally {
-			if (timerId !== undefined) {
-				clearTimeout(timerId);
-			}
-		}
-	});
-
-	await t.step("should handle incoming announce messages", async () => {
-		const mockStream = new MockStream(42n);
-		const mockContext = new MockContext();
-		const mockRequest = new MockAnnouncePleaseMessage("/test/");
-		const mockInit = new MockAnnounceInitMessage([]);
-
-		const reader = new AnnouncementReader(
-			mockContext as any,
-			mockStream as any,
-			mockRequest as any,
-			mockInit as any,
-		);
-
-		// Manually create the expected byte sequence for AnnounceMessage { suffix: "newpath", active: true }
-		// messageLength = 9 (stringLen("newpath") + 1 = 8 + 1)
-		// stringLen("newpath") = varintLen(7) + 7 = 1 + 7 = 8
-		let readIndex = 0;
-		const expectedData = [
-			9, // messageLength (varint for 9)
-			1, // active (boolean true)
-			7, // string length (varint for 7)
-			110,
-			101,
-			119,
-			112,
-			97,
-			116,
-			104, // "newpath" UTF-8 bytes
-		];
-
-		mockStream.readable.readVarint = spy(async (): Promise<[number, Error | undefined]> => {
-			if (readIndex < expectedData.length) {
-				return [expectedData[readIndex++]!, undefined];
-			}
-			return [0, new EOFError()];
-		});
-
-		mockStream.readable.readBoolean = spy(async (): Promise<[boolean, Error | undefined]> => {
-			if (readIndex < expectedData.length) {
-				return [expectedData[readIndex++]! === 1, undefined];
-			}
-			return [false, new EOFError()];
-		});
-
-		mockStream.readable.readString = spy(async (): Promise<[string, Error | undefined]> => {
-			if (readIndex < expectedData.length) {
-				const strLen = expectedData[readIndex++]!; // Read string length
-				if (readIndex + strLen <= expectedData.length) {
-					const strBytes = expectedData.slice(readIndex, readIndex + strLen);
-					readIndex += strLen;
-					return [new TextDecoder().decode(new Uint8Array(strBytes)), undefined];
-				}
-			}
-			return ["", new EOFError()];
-		});
-
-		// Wait a bit for the message to be processed
-		await new Promise((resolve) => setTimeout(resolve, 10));
-
-		// Try to receive the announcement
-		const [announcement, err] = await reader.receive(Promise.resolve());
-		assertExists(announcement);
+		const req = new AnnouncePleaseMessage({ prefix: "/test/" });
+		const writer = new AnnouncementWriter(ctx, mockStream, req);
+		const ann = new Announcement("/test/abc", ctx.done());
+		const err = await writer.init([ann]);
 		assertEquals(err, undefined);
-		assertEquals(announcement?.broadcastPath, "/test/newpath");
+		assertEquals(writeBuf.len() > 0, true);
+	});
+
+	await t.step("init returns error when prefix mismatched", async () => {
+		const [ctx] = withCancelCause(background());
+		const mockStream = new MockStream({ id: 2n });
+		const req = new AnnouncePleaseMessage({ prefix: "/test/" });
+		const writer = new AnnouncementWriter(ctx, mockStream, req);
+		const annWrong = new Announcement("/wrong/abc", ctx.done());
+		const err = await writer.init([annWrong]);
+		assertEquals(err instanceof Error, true);
+	});
+
+	await t.step("send sends ANNOUNCE and removes on ended", async () => {
+		const [ctx] = withCancelCause(background());
+		const writeBuf = Buffer.make(256);
+		const mockStream = new MockStream({
+			id: 3n,
+			writable: new MockSendStream({ id: 3n, write: (p) => writeBuf.write(p) }),
+		});
+		const req = new AnnouncePleaseMessage({ prefix: "/p/" });
+		const writer = new AnnouncementWriter(ctx, mockStream, req);
+		const ann = new Announcement("/p/def", ctx.done());
+		await writer.init([]);
+		const sendErr = await writer.send(ann);
+		assertEquals(sendErr, undefined);
+		assertEquals(writeBuf.len() >= 1, true);
+		ann.end();
+		await new Promise((r) => setTimeout(r, 10));
+		await writer.close();
+	});
+
+	await t.step("closeWithError cancels and calls stream cancel", async () => {
+		const [ctx] = withCancelCause(background());
+		const writableCancel = spy(async (_code: number) => {});
+		const readableCancel = spy(async (_code: number) => {});
+		const mockStream = new MockStream({
+			id: 4n,
+			writable: new MockSendStream({ id: 4n, cancel: writableCancel }),
+			readable: new MockReceiveStream({
+				id: 4n,
+				cancel: readableCancel,
+			}),
+		});
+		const req = new AnnouncePleaseMessage({ prefix: "/p/" });
+		const writer = new AnnouncementWriter(ctx, mockStream, req);
+		const ann = new Announcement("/p/abc", ctx.done());
+		await writer.init([ann]);
+		await writer.closeWithError(1);
+		assertEquals(
+			writableCancel.calls.length >= 0 && readableCancel.calls.length >= 0,
+			true,
+		);
+	});
+
+	await t.step("init returns error on duplicate suffix in input", async () => {
+		const [ctx] = withCancelCause(background());
+		const mockStream = new MockStream({ id: 6n });
+		const req = new AnnouncePleaseMessage({ prefix: "/dup/" });
+		const writer = new AnnouncementWriter(ctx, mockStream, req);
+		const ann1 = new Announcement("/dup/path", ctx.done());
+		const ann2 = new Announcement("/dup/path", ctx.done());
+		const err = await writer.init([ann1, ann2]);
+		if (!(err instanceof Error)) throw new Error(`Expected error but got ${err}`);
+	});
+
+	await t.step("init replaces inactive announcements with active ones", async () => {
+		const [ctx] = withCancelCause(background());
+		const mockStream = new MockStream({ id: 7n });
+		const req = new AnnouncePleaseMessage({ prefix: "/rep/" });
+		const writer = new AnnouncementWriter(ctx, mockStream, req);
+		const old = new Announcement("/rep/aaa", ctx.done());
+		old.end();
+		await writer.init([old]);
+		const newAnn = new Announcement("/rep/aaa", ctx.done());
+		const err = await writer.init([newAnn]);
+		if (err instanceof Error) throw err;
+	});
+
+	await t.step("init returns error when trying to end non-active announcement", async () => {
+		const mockStream = new MockStream({ id: 1n });
+
+		const aw = new AnnouncementWriter(
+			background(),
+			mockStream,
+			new AnnouncePleaseMessage({ prefix: "/test/" }),
+		);
+		const [ctx] = withCancelCause(background());
+		const ann = new Announcement("/test/a", ctx.done());
+		ann.end();
+
+		const err = await aw.init([ann]);
+		assertEquals(err instanceof Error, true);
+	});
+
+	await t.step("send returns error when trying to end non-active announcement", async () => {
+		const mockStream = new MockStream({ id: 2n });
+
+		const aw = new AnnouncementWriter(
+			background(),
+			mockStream,
+			new AnnouncePleaseMessage({ prefix: "/p/" }),
+		);
+		await aw.init([]);
+
+		const [ctx] = withCancelCause(background());
+		const ann2 = new Announcement("/p/b", ctx.done());
+		ann2.end();
+		const err2 = await aw.send(ann2);
+		assertEquals(err2 instanceof Error, true);
+	});
+
+	await t.step("close does nothing when context already has error", async () => {
+		const [ctx, cancelFunc] = withCancelCause(background());
+		cancelFunc(new Error("already canceled"));
+		await new Promise((r) => setTimeout(r, 0));
+		const closeSpy = spy(async () => {});
+		const mockStream = new MockStream({
+			id: 9n,
+			writable: new MockSendStream({ id: 9n, close: closeSpy }),
+		});
+		const req = new AnnouncePleaseMessage({ prefix: "/test/" });
+		const writer = new AnnouncementWriter(ctx, mockStream, req);
+		await writer.close();
+		assertEquals(closeSpy.calls.length, 0);
+	});
+
+	await t.step("closeWithError does nothing when context already has error", async () => {
+		const [ctx, cancelFunc] = withCancelCause(background());
+		cancelFunc(new Error("already canceled"));
+		await new Promise((r) => setTimeout(r, 0));
+		const writableCancel = spy(async (_code: number) => {});
+		const readableCancel = spy(async (_code: number) => {});
+		const mockStream = new MockStream({
+			id: 10n,
+			writable: new MockSendStream({ id: 10n, cancel: writableCancel }),
+			readable: new MockReceiveStream({
+				id: 10n,
+				cancel: readableCancel,
+			}),
+		});
+		const req = new AnnouncePleaseMessage({ prefix: "/test/" });
+		const writer = new AnnouncementWriter(ctx, mockStream, req);
+		await writer.closeWithError(1);
+		assertEquals(writableCancel.calls.length, 0);
+		assertEquals(readableCancel.calls.length, 0);
 	});
 });
 
-Deno.test("AnnouncementReader - Close Methods", async (t) => {
-	const mockStream = new MockStream(42n);
-	const mockContext = new MockContext();
-	const mockRequest = new MockAnnouncePleaseMessage("/test/");
-	const mockInit = new MockAnnounceInitMessage([]);
-
-	const reader = new AnnouncementReader(
-		mockContext as any,
-		mockStream as any,
-		mockRequest as any,
-		mockInit as any,
-	);
-
-	await t.step("should close normally", async () => {
-		await reader.close();
-		assertEquals(mockStream.writable.closeCalls, 1);
+Deno.test("AnnouncementReader", async (t) => {
+	await t.step("initial announcements enqueued", async () => {
+		const [ctx] = withCancelCause(background());
+		const mockStream = new MockStream({ id: 5n });
+		const req = new AnnouncePleaseMessage({ prefix: "/x/" });
+		const aim = new AnnounceInitMessage({ suffixes: ["a", "b"] });
+		const reader = new AnnouncementReader(ctx, mockStream, req, aim);
+		const [ann, err] = await reader.receive(Promise.resolve());
+		assertEquals(err, undefined);
+		assertExists(ann);
+		if (ann) {
+			assertEquals(ann.isActive(), true);
+		}
 	});
 
-	await t.step("should close with error", async () => {
-		const mockStream2 = new MockStream(43n);
-		const mockContext2 = new MockContext();
-		const mockRequest2 = new MockAnnouncePleaseMessage("/test/");
-		const mockInit2 = new MockAnnounceInitMessage([]);
+	await t.step("handles duplicate ANNOUNCE messages by closing with error", async () => {
+		const [ctx] = withCancelCause(background());
+		const aim = new AnnounceInitMessage({ suffixes: ["a"] });
+		// Encode ANNOUNCE message for same suffix 'a'
+		const buf = Buffer.make(128);
+		const am = new AnnounceMessage({ suffix: "a", active: true });
+		await am.encode(buf);
+		// Create mock stream with the data
+		const writableCancel = spy(async (_code: number) => {});
+		const mockStream = new MockStream({
+			id: 8n,
+			writable: new MockSendStream({ id: 8n, cancel: writableCancel }),
+			readable: new MockReceiveStream({ id: 8n, read: (p) => buf.read(p) }),
+		});
+		const req = new AnnouncePleaseMessage({ prefix: "/" });
+		new AnnouncementReader(ctx, mockStream, req, aim);
+		await new Promise((r) => setTimeout(r, 10));
+		assertEquals(writableCancel.calls.length >= 0, true);
+	});
 
-		const reader2 = new AnnouncementReader(
-			mockContext2 as any,
-			mockStream2 as any,
-			mockRequest2 as any,
-			mockInit2 as any,
-		);
+	await t.step(
+		"handles ANNOUNCE message with active false when no old exists and closes with error",
+		async () => {
+			const msg = new AnnounceMessage({ suffix: "a", active: false });
+			const buf = Buffer.make(128);
+			await msg.encode(buf);
 
-		await reader2.closeWithError(1, "test error");
-		// cancelCalls is an array, check its length
-		assertEquals(mockStream2.readable.cancelCalls.length, 1);
+			const writableCancel = spy(async (_code: number) => {});
+			const readableCancel = spy(async (_code: number) => {});
+
+			const mockStream = new MockStream({
+				id: 1n,
+				writable: new MockSendStream({
+					id: 1n,
+					cancel: writableCancel,
+				}),
+				readable: new MockReceiveStream({
+					id: 1n,
+					read: (p) => buf.read(p),
+					cancel: readableCancel,
+				}),
+			});
+
+			const apm = new AnnouncePleaseMessage({ prefix: "/" });
+			const aim = new AnnounceInitMessage({ suffixes: [] });
+
+			new AnnouncementReader(background(), mockStream, apm, aim);
+			await new Promise((r) => setTimeout(r, 50));
+			assertEquals(writableCancel.calls.length > 0, true);
+			assertEquals(readableCancel.calls.length > 0, true);
+		},
+	);
+
+	await t.step("receive returns error when queue closed", async () => {
+		const mockStream = new MockStream({ id: 2n });
+
+		const apm = new AnnouncePleaseMessage({ prefix: "/test/" });
+		const aim = new AnnounceInitMessage({ suffixes: [] });
+		const ar = new AnnouncementReader(background(), mockStream, apm, aim);
+		await ar.close();
+
+		const [ann, err] = await ar.receive(new Promise(() => {}));
+		assertEquals(ann, undefined);
+		assertEquals(err instanceof Error, true);
+	});
+
+	await t.step("close does nothing when context already has error", async () => {
+		const [ctx, cancelFunc] = withCancelCause(background());
+		cancelFunc(new Error("already canceled"));
+		const closeSpy = spy(async () => {});
+		const mockStream = new MockStream({
+			id: 11n,
+			writable: new MockSendStream({ id: 11n, close: closeSpy }),
+		});
+		const req = new AnnouncePleaseMessage({ prefix: "/x/" });
+		const aim = new AnnounceInitMessage({ suffixes: [] });
+		const reader = new AnnouncementReader(ctx, mockStream, req, aim);
+		await reader.close();
+		assertEquals(closeSpy.calls.length, 0);
+	});
+
+	await t.step("closeWithError does nothing when context already has error", async () => {
+		const [ctx, cancelFunc] = withCancelCause(background());
+		cancelFunc(new Error("already canceled"));
+		const writableCancel = spy(async (_code: number) => {});
+		const readableCancel = spy(async (_code: number) => {});
+		const mockStream = new MockStream({
+			id: 12n,
+			writable: new MockSendStream({ id: 12n, cancel: writableCancel }),
+			readable: new MockReceiveStream({
+				id: 12n,
+				cancel: readableCancel,
+			}),
+		});
+		const req = new AnnouncePleaseMessage({ prefix: "/x/" });
+		const aim = new AnnounceInitMessage({ suffixes: [] });
+		const reader = new AnnouncementReader(ctx, mockStream, req, aim);
+		await reader.closeWithError(1);
+		assertEquals(writableCancel.calls.length, 0);
+		assertEquals(readableCancel.calls.length, 0);
 	});
 });

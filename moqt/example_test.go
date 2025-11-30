@@ -57,7 +57,7 @@ func ExampleClient() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer session.Terminate(moqt.NoError, "done")
+	defer session.CloseWithError(moqt.NoError, "done")
 
 	fmt.Println("Connected to MOQ server")
 }

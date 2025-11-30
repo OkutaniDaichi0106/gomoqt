@@ -1,29 +1,37 @@
-import type { ReceiveStream, SendStream } from "../webtransport/mod.ts";
+import type { Reader, Writer } from "@okudai/golikejs/io";
+import { readVarint, writeVarint } from "./message.ts";
 
 // deno-lint-ignore no-empty-interface
 export interface SubscribeOkMessageInit {}
 
 export class SubscribeOkMessage {
-	constructor(_: SubscribeOkMessageInit) {
+	constructor(_: SubscribeOkMessageInit = {}) {
 	}
 
-	get messageLength(): number {
+	/**
+	 * Returns the length of the message body (excluding the length prefix).
+	 */
+	get len(): number {
 		return 0;
 	}
 
-	async encode(writer: SendStream): Promise<Error | undefined> {
-		writer.writeVarint(this.messageLength);
-		return await writer.flush();
+	/**
+	 * Encodes the message to the writer.
+	 */
+	async encode(w: Writer): Promise<Error | undefined> {
+		const [, err] = await writeVarint(w, this.len);
+		return err;
 	}
 
-	async decode(reader: ReceiveStream): Promise<Error | undefined> {
-		const [len, err] = await reader.readVarint();
-		if (err) {
-			return err;
-		}
+	/**
+	 * Decodes the message from the reader.
+	 */
+	async decode(r: Reader): Promise<Error | undefined> {
+		const [msgLen, , err] = await readVarint(r);
+		if (err) return err;
 
-		if (len !== this.messageLength) {
-			throw new Error(`message length mismatch: expected ${len}, got ${this.messageLength}`);
+		if (msgLen !== this.len) {
+			return new Error(`message length mismatch: expected ${msgLen}, got ${this.len}`);
 		}
 
 		return undefined;

@@ -16,9 +16,10 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/quic/quicgo"
 	"github.com/OkutaniDaichi0106/gomoqt/webtransport"
 	"github.com/OkutaniDaichi0106/gomoqt/webtransport/webtransportgo"
-	"github.com/quic-go/quic-go/http3"
 )
 
+// ListenAndServe starts a new Server bound to the specified address and TLS configuration and runs it until an error occurs.
+// This is a convenience helper that constructs a Server with the default setup handler and calls its ListenAndServe method.
 func ListenAndServe(addr string, tlsConfig *tls.Config) error {
 	server := &Server{
 		Addr:         addr,
@@ -29,11 +30,10 @@ func ListenAndServe(addr string, tlsConfig *tls.Config) error {
 }
 
 // Server is a MOQ server that accepts both WebTransport and raw QUIC connections.
-// It handles session setup, track announcements, and subscriptions according to
-// the MOQ Lite specification.
+// It handles session setup, track announcements, and subscriptions according to the MOQ Lite specification.
 //
-// The server maintains active sessions and listeners, providing graceful shutdown
-// capabilities. It can serve over multiple listeners simultaneously.
+// The server maintains active sessions and listeners. It provides graceful shutdown capabilities and
+// can serve over multiple listeners simultaneously.
 type Server struct {
 	/*
 	 * Server's Address
@@ -89,8 +89,9 @@ type Server struct {
 
 	inShutdown atomic.Bool
 
-	doneChan chan struct{} // Signal channel (notifies when server is completely closed)
-
+	// Channel to signal server shutdown completion
+	// Closed when all sessions are closed
+	doneChan chan struct{}
 }
 
 func (s *Server) init() {
@@ -118,6 +119,8 @@ func (s *Server) init() {
 	})
 }
 
+// ServeQUICListener accepts connections on the provided QUIC listener and handles them using the Server's configuration.
+// This runs until the listener is closed or the server shuts down.
 func (s *Server) ServeQUICListener(ln quic.Listener) error {
 	if s.shuttingDown() {
 		return ErrServerClosed
@@ -140,14 +143,28 @@ func (s *Server) ServeQUICListener(ln quic.Listener) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	for {
-		if s.shuttingDown() {
-			return ErrServerClosed
+	// Watch for shutdown and cancel context when shutting down
+	go func() {
+		for !s.shuttingDown() {
+			time.Sleep(100 * time.Millisecond)
 		}
+		cancel()
+	}()
 
+	for {
 		// Listen for new QUIC connections
 		conn, err := ln.Accept(ctx)
 		if err != nil {
+			// Check if this is due to shutdown
+			if s.shuttingDown() {
+				listenerLogger.Debug("listener closed due to shutdown")
+				return ErrServerClosed
+			}
+			// Check if context was cancelled
+			if errors.Is(err, context.Canceled) {
+				listenerLogger.Debug("listener accept cancelled")
+				return ErrServerClosed
+			}
 			listenerLogger.Error("failed to accept QUIC connection",
 				"error", err.Error(),
 			)
@@ -165,6 +182,8 @@ func (s *Server) ServeQUICListener(ln quic.Listener) error {
 	}
 }
 
+// ServeQUICConn serves a single QUIC connection.
+// It detects whether the connection uses WebTransport or the native MOQ ALPN and dispatches to the appropriate handling logic for the session.
 func (s *Server) ServeQUICConn(conn quic.Connection) error {
 	if s.shuttingDown() {
 		return ErrServerClosed
@@ -173,7 +192,7 @@ func (s *Server) ServeQUICConn(conn quic.Connection) error {
 	s.init()
 
 	switch protocol := conn.ConnectionState().TLS.NegotiatedProtocol; protocol {
-	case http3.NextProtoH3:
+	case NextProtoH3:
 		return s.wtServer.ServeQUICConn(conn)
 	case NextProtoMOQ:
 		return s.handleNativeQUIC(conn)
@@ -182,7 +201,10 @@ func (s *Server) ServeQUICConn(conn quic.Connection) error {
 	}
 }
 
-func (s *Server) ServeWebTransport(w http.ResponseWriter, r *http.Request) error {
+// HandleWebTransport upgrades an incoming HTTP request to a WebTransport
+// connection and handles session handshake and setup using the Server's
+// SetupHandler.
+func (s *Server) HandleWebTransport(w http.ResponseWriter, r *http.Request) error {
 	if s.shuttingDown() {
 		return fmt.Errorf("server is shutting down")
 	}
@@ -359,6 +381,8 @@ func acceptSessionStream(acceptCtx context.Context, conn quic.Connection, connLo
 	return newSessionStream(stream, req), nil
 }
 
+// ListenAndServe starts the server by listening on the server's Address and serving QUIC connections.
+// TLS configuration must be provided on the Server for ListenAndServe to function properly.
 func (s *Server) ListenAndServe() error {
 	s.init()
 
@@ -392,6 +416,9 @@ func (s *Server) ListenAndServe() error {
 	return s.ServeQUICListener(ln)
 }
 
+// ListenAndServeTLS starts the listener over QUIC/TLS using the provided
+// certificate files. It wraps ListenAndServe by creating a TLS config from
+// the provided cert/key files.
 func (s *Server) ListenAndServeTLS(certFile, keyFile string) error {
 	if s.shuttingDown() {
 		return ErrServerClosed
@@ -431,6 +458,8 @@ func (s *Server) ListenAndServeTLS(certFile, keyFile string) error {
 	return s.ServeQUICListener(ln)
 }
 
+// Close gracefully shuts down the server by closing all listeners and
+// sessions, waiting until all sessions have been terminated.
 func (s *Server) Close() error {
 	if s.shuttingDown() {
 		return ErrServerClosed
@@ -445,60 +474,25 @@ func (s *Server) Close() error {
 	if s.Logger != nil {
 		s.Logger.Info("closing server", "address", s.Addr)
 	}
-	// Terminate all active sessions
-	s.sessMu.Lock()
-	if len(s.activeSess) > 0 {
-		for sess := range s.activeSess {
-			go sess.Terminate(NoError, NoError.String())
-		}
 
-		s.sessMu.Unlock()
-
-		<-s.doneChan
-	} else {
-		s.sessMu.Unlock()
-
-		// No active sessions, close doneChan immediately
-		select {
-		case <-s.doneChan:
-			// Already closed
-		default:
-			close(s.doneChan)
-		}
-	} // Close all listeners
+	// Close all listeners first to stop accepting new connections
 	s.listenerMu.Lock()
-	if len(s.listeners) > 0 {
-		if s.Logger != nil {
-			s.Logger.Info("closing QUIC listeners", "address", s.Addr)
-		}
-		for ln := range s.listeners {
-			ln.Close()
-		}
+	for ln := range s.listeners {
+		ln.Close()
 	}
 	s.listenerMu.Unlock()
 
-	// Wait for all listeners to close
-	s.listenerGroup.Wait()
-
-	return nil
-}
-
-func (s *Server) Shutdown(ctx context.Context) error {
-	if s.shuttingDown() {
-		return ErrServerClosed
-	}
-
-	// Set the shutdown flag
-	s.inShutdown.Store(true)
-
-	s.goAway()
-
-	// If there are no active sessions, signal done immediately so Shutdown
-	// returns without waiting for the context timeout.
+	// Terminate all active sessions
 	s.sessMu.Lock()
-	noSessions := len(s.activeSess) == 0
+	for sess := range s.activeSess {
+		go sess.CloseWithError(NoError, SessionErrorText(NoError))
+	}
 	s.sessMu.Unlock()
-	if noSessions {
+
+	// Wait for all sessions to close
+	// If there are no active sessions, close the doneChan now so Close doesn't block.
+	s.sessMu.Lock()
+	if len(s.activeSess) == 0 {
 		select {
 		case <-s.doneChan:
 			// already closed
@@ -506,34 +500,104 @@ func (s *Server) Shutdown(ctx context.Context) error {
 			close(s.doneChan)
 		}
 	}
+	s.sessMu.Unlock()
 
-	select {
-	case <-s.doneChan:
-		// Already closed
-	case <-ctx.Done():
-		// Context canceled, terminate all sessions forcefully
-		s.sessMu.Lock()
-		if len(s.activeSess) > 0 {
-			for sess := range s.activeSess {
-				go sess.Terminate(GoAwayTimeoutErrorCode, GoAwayTimeoutErrorCode.String())
-			}
-			s.sessMu.Unlock()
+	<-s.doneChan
 
-			// Wait for all sessions to close
-			<-s.doneChan
-		}
-	}
-
-	// Close all listeners
+	// Clear listeners map
 	s.listenerMu.Lock()
-	for ln := range s.listeners {
-		ln.Close()
-	}
 	s.listeners = nil
 	s.listenerMu.Unlock()
 
+	// Close WebTransport server
+	if s.wtServer != nil {
+		s.wtServer.Close()
+	}
+
 	// Wait for all listeners to close
 	s.listenerGroup.Wait()
+
+	return nil
+}
+
+// Shutdown gracefully shuts down the server. It stops accepting new
+// connections, sends goaway to sessions and waits for active sessions to
+// close, respecting the provided context for timeouts.
+func (s *Server) Shutdown(ctx context.Context) error {
+	if s.shuttingDown() {
+		return ErrServerClosed
+	}
+
+	if s.Logger != nil {
+		s.Logger.Info("shutting down server", "address", s.Addr)
+	}
+
+	// Set the shutdown flag
+	s.inShutdown.Store(true)
+
+	// Close all listeners first to stop accepting new connections
+	s.listenerMu.Lock()
+	for ln := range s.listeners {
+		if s.Logger != nil {
+			s.Logger.Debug("closing listener")
+		}
+		ln.Close()
+	}
+	s.listenerMu.Unlock()
+
+	// Send GOAWAY to all sessions
+	s.goAway()
+
+	// If there are no active sessions, close the doneChan now so shutdown returns immediately.
+	s.sessMu.Lock()
+	if len(s.activeSess) == 0 {
+		select {
+		case <-s.doneChan:
+			// already closed
+		default:
+			close(s.doneChan)
+		}
+	}
+	s.sessMu.Unlock()
+
+	// Wait for sessions to close or context timeout
+	select {
+	case <-s.doneChan:
+		// All sessions closed gracefully
+		if s.Logger != nil {
+			s.Logger.Debug("all sessions closed gracefully")
+		}
+	case <-ctx.Done():
+		// Context canceled, terminate all sessions forcefully
+		if s.Logger != nil {
+			s.Logger.Warn("shutdown timeout, forcing session termination")
+		}
+		s.sessMu.Lock()
+		for sess := range s.activeSess {
+			go sess.CloseWithError(GoAwayTimeoutErrorCode, SessionErrorText(GoAwayTimeoutErrorCode))
+		}
+		s.sessMu.Unlock()
+
+		// Wait for all sessions to close
+		<-s.doneChan
+	}
+
+	// Clear listeners map
+	s.listenerMu.Lock()
+	s.listeners = nil
+	s.listenerMu.Unlock()
+
+	// Close WebTransport server
+	if s.wtServer != nil {
+		s.wtServer.Close()
+	}
+
+	// Wait for all listeners to close
+	s.listenerGroup.Wait()
+
+	if s.Logger != nil {
+		s.Logger.Info("server shutdown complete")
+	}
 
 	return nil
 }
@@ -578,6 +642,10 @@ func (s *Server) removeSession(sess *Session) {
 	s.sessMu.Lock()
 	defer s.sessMu.Unlock()
 
+	if s.activeSess == nil {
+		return
+	}
+
 	_, ok := s.activeSess[sess]
 	if !ok {
 		return
@@ -585,13 +653,20 @@ func (s *Server) removeSession(sess *Session) {
 
 	delete(s.activeSess, sess)
 
-	// Send completion signal if connections reach zero and server is closed
+	if s.Logger != nil {
+		s.Logger.Debug("session removed", "active_sessions", len(s.activeSess))
+	}
+
+	// Send completion signal if connections reach zero and server is shutting down
 	if len(s.activeSess) == 0 && s.shuttingDown() {
 		// Close the done channel to signal server is done
 		select {
 		case <-s.doneChan:
 			// Already closed
 		default:
+			if s.Logger != nil {
+				s.Logger.Debug("all sessions closed, signaling shutdown completion")
+			}
 			close(s.doneChan)
 		}
 	}

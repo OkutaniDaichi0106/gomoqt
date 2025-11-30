@@ -131,7 +131,7 @@ func BenchmarkTrackMux_ServeAnnouncements(b *testing.B) {
 			b.ResetTimer()
 
 			for b.Loop() {
-				mux.serveAnnouncements(announceWriter, "/room/")
+				mux.serveAnnouncements(announceWriter)
 			}
 		})
 	}
@@ -471,7 +471,7 @@ func BenchmarkTrackMux_AnnouncementTree(b *testing.B) {
 			b.ResetTimer()
 
 			for b.Loop() {
-				mux.serveAnnouncements(mockWriter, "/level1/level2/")
+				mux.serveAnnouncements(mockWriter)
 			}
 		})
 	}
@@ -542,9 +542,7 @@ func BenchmarkTrackMux_GCPressure(b *testing.B) {
 			mux.Publish(ctx, path, handler)
 
 			// Periodic cleanup to simulate real usage
-			if i%1000 == 999 {
-				mux.Clear()
-			}
+			// periodic cleanup removed: TrackMux.Clear() no longer exists
 		}
 	})
 }

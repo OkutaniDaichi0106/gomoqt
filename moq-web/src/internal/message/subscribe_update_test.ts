@@ -6,23 +6,23 @@ Deno.test("SubscribeUpdateMessage - encode/decode roundtrip - multiple scenarios
 	const testCases = {
 		"normal case": {
 			trackPriority: 1,
-			minGroupSequence: 2n,
-			maxGroupSequence: 3n,
+			minGroupSequence: 2,
+			maxGroupSequence: 3,
 		},
 		"zero values": {
 			trackPriority: 0,
-			minGroupSequence: 0n,
-			maxGroupSequence: 0n,
+			minGroupSequence: 0,
+			maxGroupSequence: 0,
 		},
 		"large sequence numbers": {
 			trackPriority: 255,
-			minGroupSequence: 1000000n,
-			maxGroupSequence: 2000000n,
+			minGroupSequence: 1000000,
+			maxGroupSequence: 2000000,
 		},
 		"same min and max sequence": {
 			trackPriority: 10,
-			minGroupSequence: 100n,
-			maxGroupSequence: 100n,
+			minGroupSequence: 100,
+			maxGroupSequence: 100,
 		},
 	};
 
@@ -37,7 +37,6 @@ Deno.test("SubscribeUpdateMessage - encode/decode roundtrip - multiple scenarios
 			});
 			const writer = new SendStream({
 				stream: writableStream,
-				transfer: undefined,
 				streamId: 0n,
 			});
 
@@ -63,7 +62,6 @@ Deno.test("SubscribeUpdateMessage - encode/decode roundtrip - multiple scenarios
 			});
 			const reader = new ReceiveStream({
 				stream: readableStream,
-				transfer: undefined,
 				streamId: 0n,
 			});
 
@@ -98,7 +96,6 @@ Deno.test("SubscribeUpdateMessage - encode/decode roundtrip - multiple scenarios
 			});
 			const reader = new ReceiveStream({
 				stream: readableStream,
-				transfer: undefined,
 				streamId: 0n,
 			});
 
@@ -118,7 +115,6 @@ Deno.test("SubscribeUpdateMessage - encode/decode roundtrip - multiple scenarios
 		});
 		const reader = new ReceiveStream({
 			stream: readableStream,
-			transfer: undefined,
 			streamId: 0n,
 		});
 
@@ -137,7 +133,6 @@ Deno.test("SubscribeUpdateMessage - encode/decode roundtrip - multiple scenarios
 		});
 		const reader = new ReceiveStream({
 			stream: readableStream,
-			transfer: undefined,
 			streamId: 0n,
 		});
 

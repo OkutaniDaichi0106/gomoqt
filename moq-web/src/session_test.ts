@@ -1,162 +1,619 @@
-import { assertEquals, assertRejects, assertThrows } from "jsr:@std/assert@1";
-import { MockWebTransport } from "./internal/webtransport/mock_connection_test.ts";
+import { assertEquals, assertExists, assertInstanceOf } from "@std/assert";
+import { spy } from "@std/testing/mock";
 import { Session } from "./session.ts";
-import { Extensions } from "./extensions.ts";
+import { DEFAULT_CLIENT_VERSIONS } from "./version.ts";
+import {
+	AnnounceInitMessage,
+	AnnouncePleaseMessage,
+	GroupMessage,
+	SessionServerMessage,
+	SubscribeMessage,
+	SubscribeOkMessage,
+	writeVarint,
+} from "./internal/message/mod.ts";
+import { BiStreamTypes, UniStreamTypes } from "./stream_type.ts";
 import { TrackMux } from "./track_mux.ts";
+import type { TrackPrefix } from "./track_prefix.ts";
+import { Writer } from "@okudai/golikejs/io";
+import * as webtransport from "./internal/webtransport/mod.ts";
+import { EOFError } from "@okudai/golikejs/io";
 
-const testOptions = { sanitizeResources: false, sanitizeOps: false };
+// Utility class to implement Writer for encoding messages
+class Uint8ArrayWriter implements Writer {
+	chunks: Uint8Array[] = [];
 
-Deno.test("Session constructor with conn", testOptions, () => {
-	const mockWebTransport = new MockWebTransport();
-	mockWebTransport.markReady();
-	const session = new Session({ conn: mockWebTransport });
-	// Since connection is private, just check that session was created without error
-	assertEquals(typeof session, "object");
-	// Do not wait for ready to avoid hanging on decode
-});
-
-Deno.test("Session constructor throws without conn", () => {
-	assertThrows(() => new Session({} as any));
-});
-
-Deno.test("Session constructor with extensions", testOptions, () => {
-	const mockWebTransport = new MockWebTransport();
-	mockWebTransport.markReady();
-	const extensions = new Extensions();
-	const session = new Session({ conn: mockWebTransport, extensions });
-	assertEquals(typeof session, "object");
-});
-
-Deno.test("Session constructor with mux", testOptions, () => {
-	const mockWebTransport = new MockWebTransport();
-	mockWebTransport.markReady();
-	const mux = new TrackMux();
-	const session = new Session({ conn: mockWebTransport, mux });
-	assertEquals(session.mux, mux);
-});
-
-Deno.test("Session setup fails on openStream error", testOptions, async () => {
-	const mockWebTransport = new MockWebTransport();
-	mockWebTransport.setFailCreateStream(true);
-	mockWebTransport.markReady();
-	const session = new Session({ conn: mockWebTransport });
-	await assertRejects(() => session.ready);
-});
-
-Deno.test("Session acceptAnnounce", testOptions, () => {
-	const mockWebTransport = new MockWebTransport();
-	mockWebTransport.markReady();
-	const session = new Session({ conn: mockWebTransport });
-	// Mock the stream
-	const { readable, writable } = new TransformStream<Uint8Array>();
-	mockWebTransport.getBiReader().enqueue(
-		{ readable, writable } as WebTransportBidirectionalStream,
-	);
-	// Add test logic for acceptAnnounce
-	// This needs to be implemented based on session.ts logic
-	// For now, just check that session can be created
-	assertEquals(typeof session, "object");
-});
-
-Deno.test("Session subscribe", testOptions, () => {
-	const mockWebTransport = new MockWebTransport();
-	mockWebTransport.markReady();
-	const session = new Session({ conn: mockWebTransport });
-	// Mock subscribe logic
-	// Add test for subscribe method
-	// For now, just check that session can be created
-	assertEquals(typeof session, "object");
-});
-
-Deno.test("Session ready completes setup", testOptions, async () => {
-	const mockWebTransport = new MockWebTransport();
-	mockWebTransport.markReady();
-
-	const session = new Session({ conn: mockWebTransport });
-
-	// Wait for ready with short timeout to execute some lines
-	try {
-		await Promise.race([
-			session.ready,
-			new Promise((_, reject) => setTimeout(() => reject("timeout"), 10)),
-		]);
-	} catch (e) {
-		// Expected timeout, but some setup code was executed
+	async write(chunk: Uint8Array): Promise<[number, Error | undefined]> {
+		this.chunks.push(chunk.slice());
+		return [chunk.length, undefined];
 	}
 
-	assertEquals(typeof session, "object");
-});
-
-// Add more tests to reach 85% coverage
-Deno.test("Session close closes underlying connection", testOptions, async () => {
-	const mockWebTransport = new MockWebTransport();
-	mockWebTransport.markReady();
-	const session = new Session({ conn: mockWebTransport });
-
-	// allow setup to start but don't wait for full ready (avoid hang)
-	await Promise.race([
-		session.ready,
-		new Promise((resolve) => setTimeout(resolve, 5)),
-	]).catch(() => {});
-
-	await session.close();
-
-	const info = mockWebTransport.getCloseInfo();
-	// close() should call underlying close with normal code
-	if (info) {
-		assertEquals(info.closeCode, 0);
-	} else {
-		// Some implementations may close asynchronously; assert that calling close did not throw
-		assertEquals(typeof session, "object");
+	getBytes(): Uint8Array {
+		return new Uint8Array(this.chunks.flatMap((c) => Array.from(c)));
 	}
-});
+}
 
-Deno.test(
-	"Session closeWithError closes underlying connection with code",
-	testOptions,
-	async () => {
-		const mockWebTransport = new MockWebTransport();
-		mockWebTransport.markReady();
-		const session = new Session({ conn: mockWebTransport });
+// Utility function to encode messages to Uint8Array
+async function encodeMessageToUint8Array(
+	encoder: (w: Writer) => Promise<Error | undefined>,
+): Promise<Uint8Array> {
+	const writer = new Uint8ArrayWriter();
+	const err = await encoder(writer);
+	if (err) throw err;
+	return writer.getBytes();
+}
 
-		await Promise.race([
-			session.ready,
-			new Promise((resolve) => setTimeout(resolve, 5)),
-		]).catch(() => {});
+// Mock WebTransportSession implementation
+interface MockWebTransportSessionOptions {
+	openStreamResponses?: Uint8Array[];
+	openUniStreamCount?: number;
+	acceptStreamData?: Array<{ type: number; data: Uint8Array }>;
+	acceptUniStreamData?: Array<{ type: number; data: Uint8Array }>;
+	closedPromise?: Promise<WebTransportCloseInfo>;
+}
 
-		await session.closeWithError(42, "boom");
+class MockWebTransportSession implements webtransport.WebTransportSession {
+	#streamIdCounter = 0n;
+	#openStreamResponses: Uint8Array[];
+	#openStreamIndex = 0;
+	#acceptStreamData: Array<{ type: number; data: Uint8Array }>;
+	#acceptStreamIndex = 0;
+	#acceptUniStreamData: Array<{ type: number; data: Uint8Array }>;
+	#acceptUniStreamIndex = 0;
+	#closed = false;
+	#closedPromise: Promise<WebTransportCloseInfo>;
+	#closedResolve?: (info: WebTransportCloseInfo) => void;
+	#waitingAcceptResolvers: Array<() => void> = [];
 
-		const info = mockWebTransport.getCloseInfo();
-		if (info) {
-			assertEquals(info.closeCode, 42);
-			assertEquals(info.reason, "boom");
+	ready: Promise<void> = Promise.resolve();
+
+	constructor(options: MockWebTransportSessionOptions = {}) {
+		this.#openStreamResponses = options.openStreamResponses ?? [];
+		this.#acceptStreamData = options.acceptStreamData ?? [];
+		this.#acceptUniStreamData = options.acceptUniStreamData ?? [];
+
+		if (options.closedPromise) {
+			this.#closedPromise = options.closedPromise;
 		} else {
-			assertEquals(typeof session, "object");
+			this.#closedPromise = new Promise((resolve) => {
+				this.#closedResolve = resolve;
+			});
 		}
+	}
+
+	async openStream(): Promise<[webtransport.Stream, undefined] | [undefined, Error]> {
+		if (this.#closed) {
+			return [undefined, new Error("session closed")];
+		}
+		const id = this.#streamIdCounter;
+		this.#streamIdCounter += 4n;
+
+		const data = this.#openStreamResponses[this.#openStreamIndex] ?? new Uint8Array();
+		this.#openStreamIndex++;
+
+		// Create inline mock stream
+		const writtenData: Uint8Array[] = [];
+		let readOffset = 0;
+		const writable = {
+			id,
+			write: spy(async (p: Uint8Array) => {
+				writtenData.push(new Uint8Array(p));
+				return [p.length, undefined] as [number, Error | undefined];
+			}),
+			close: spy(async () => {}),
+			cancel: spy(async (_code: number) => {}),
+			closed: () => new Promise<void>(() => {}),
+		};
+		const readable = {
+			id,
+			read: spy(async (p: Uint8Array) => {
+				if (readOffset >= data.length) {
+					return [0, new EOFError()] as [number, Error | undefined];
+				}
+				const n = Math.min(p.length, data.length - readOffset);
+				p.set(data.subarray(readOffset, readOffset + n));
+				readOffset += n;
+				return [n, undefined] as [number, Error | undefined];
+			}),
+			cancel: spy(async (_code: number) => {}),
+			closed: () => new Promise<void>(() => {}),
+		};
+		return [{ id, writable, readable }, undefined];
+	}
+
+	async openUniStream(): Promise<[webtransport.SendStream, undefined] | [undefined, Error]> {
+		if (this.#closed) {
+			return [undefined, new Error("session closed")];
+		}
+		const id = this.#streamIdCounter;
+		this.#streamIdCounter += 4n;
+		const writtenData: Uint8Array[] = [];
+		return [{
+			id,
+			write: spy(async (p: Uint8Array) => {
+				writtenData.push(new Uint8Array(p));
+				return [p.length, undefined] as [number, Error | undefined];
+			}),
+			close: spy(async () => {}),
+			cancel: spy(async (_code: number) => {}),
+			closed: () => new Promise<void>(() => {}),
+		}, undefined];
+	}
+
+	async acceptStream(): Promise<[webtransport.Stream, undefined] | [undefined, Error]> {
+		if (this.#closed) {
+			return [undefined, new Error("session closed")];
+		}
+		if (this.#acceptStreamIndex >= this.#acceptStreamData.length) {
+			await new Promise<void>((resolve) => {
+				this.#waitingAcceptResolvers.push(resolve);
+			});
+			return [undefined, new Error("session closed")];
+		}
+		const item = this.#acceptStreamData[this.#acceptStreamIndex]!;
+		const { data } = item;
+		this.#acceptStreamIndex++;
+
+		const id = this.#streamIdCounter;
+		this.#streamIdCounter += 4n;
+
+		const writtenData: Uint8Array[] = [];
+		let readOffset = 0;
+		const writable = {
+			id,
+			write: spy(async (p: Uint8Array) => {
+				writtenData.push(new Uint8Array(p));
+				return [p.length, undefined] as [number, Error | undefined];
+			}),
+			close: spy(async () => {}),
+			cancel: spy(async (_code: number) => {}),
+			closed: () => new Promise<void>(() => {}),
+		};
+		const readable = {
+			id,
+			read: spy(async (p: Uint8Array) => {
+				if (readOffset >= data.length) {
+					return [0, new EOFError()] as [number, Error | undefined];
+				}
+				const n = Math.min(p.length, data.length - readOffset);
+				p.set(data.subarray(readOffset, readOffset + n));
+				readOffset += n;
+				return [n, undefined] as [number, Error | undefined];
+			}),
+			cancel: spy(async (_code: number) => {}),
+			closed: () => new Promise<void>(() => {}),
+		};
+		return [{ id, writable, readable }, undefined];
+	}
+
+	async acceptUniStream(): Promise<[webtransport.ReceiveStream, undefined] | [undefined, Error]> {
+		if (this.#closed) {
+			return [undefined, new Error("session closed")];
+		}
+		if (this.#acceptUniStreamIndex >= this.#acceptUniStreamData.length) {
+			await new Promise<void>((resolve) => {
+				this.#waitingAcceptResolvers.push(resolve);
+			});
+			return [undefined, new Error("session closed")];
+		}
+		const uniItem = this.#acceptUniStreamData[this.#acceptUniStreamIndex]!;
+		const { data } = uniItem;
+		this.#acceptUniStreamIndex++;
+
+		const id = this.#streamIdCounter;
+		this.#streamIdCounter += 4n;
+
+		let readOffset = 0;
+		return [{
+			id,
+			read: spy(async (p: Uint8Array) => {
+				if (readOffset >= data.length) {
+					return [0, new EOFError()] as [number, Error | undefined];
+				}
+				const n = Math.min(p.length, data.length - readOffset);
+				p.set(data.subarray(readOffset, readOffset + n));
+				readOffset += n;
+				return [n, undefined] as [number, Error | undefined];
+			}),
+			cancel: spy(async (_code: number) => {}),
+			closed: () => new Promise<void>(() => {}),
+		}, undefined];
+	}
+
+	close(_closeInfo?: WebTransportCloseInfo): void {
+		this.#closed = true;
+		for (const resolve of this.#waitingAcceptResolvers) {
+			resolve();
+		}
+		this.#waitingAcceptResolvers = [];
+		if (this.#closedResolve) {
+			this.#closedResolve({ closeCode: 0, reason: "closed" });
+		}
+	}
+
+	get closed(): Promise<WebTransportCloseInfo> {
+		return this.#closedPromise;
+	}
+}
+
+Deno.test({
+	name: "Session",
+	sanitizeOps: false,
+	sanitizeResources: false,
+	fn: async (t) => {
+		await t.step("constructor and ready sends client message", async () => {
+			const rsp = new SessionServerMessage({ version: [...DEFAULT_CLIENT_VERSIONS][0] });
+			const serverBytes = await encodeMessageToUint8Array(async (w) => rsp.encode(w));
+
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [serverBytes],
+			});
+
+			const session = new Session({ webtransport: mock });
+			await session.ready;
+
+			assertInstanceOf(session, Session);
+			await session.close();
+		});
+
+		await t.step("constructor throws when SESSION_SERVER decode fails", async () => {
+			const serverBytes = new Uint8Array([0x80]);
+
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [serverBytes],
+			});
+
+			let threw = false;
+			let session: Session | undefined;
+			try {
+				session = new Session({ webtransport: mock });
+				await session.ready;
+			} catch (_err) {
+				threw = true;
+			} finally {
+				if (session) {
+					try {
+						await session.close();
+					} catch (_e) {
+						// ignore
+					}
+				}
+			}
+			assertEquals(threw, true);
+		});
+
+		await t.step("constructor throws when SESSION_SERVER version is incompatible", async () => {
+			const incompatibleVersion = 0x12345678;
+			const rsp = new SessionServerMessage({ version: incompatibleVersion });
+			const serverBytes = await encodeMessageToUint8Array(async (w) => rsp.encode(w));
+
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [serverBytes],
+			});
+
+			let threw = false;
+			let session: Session | undefined;
+			try {
+				session = new Session({ webtransport: mock });
+				await session.ready;
+			} catch (_err) {
+				threw = true;
+			} finally {
+				if (session) {
+					try {
+						await session.close();
+					} catch (_e) {
+						// ignore
+					}
+				}
+			}
+			assertEquals(threw, true);
+		});
+
+		await t.step("acceptAnnounce returns error when ANNOUNCE_INIT decode fails", async () => {
+			const serverBytes = await encodeMessageToUint8Array(async (w) => {
+				const s = new SessionServerMessage({ version: [...DEFAULT_CLIENT_VERSIONS][0] });
+				return await s.encode(w);
+			});
+			const truncatedBytes = new Uint8Array([0x80]);
+
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [serverBytes, truncatedBytes],
+			});
+
+			const session = new Session({ webtransport: mock });
+			await session.ready;
+
+			const [reader, err] = await session.acceptAnnounce("/test/" as TrackPrefix);
+			assertEquals(reader, undefined);
+			assertExists(err);
+			await session.close();
+		});
+
+		await t.step("subscribe returns error when SUBSCRIBE_OK decode fails", async () => {
+			const serverBytes = await encodeMessageToUint8Array(async (w) => {
+				const s = new SessionServerMessage({ version: [...DEFAULT_CLIENT_VERSIONS][0] });
+				return await s.encode(w);
+			});
+			const truncatedBytes = new Uint8Array([0x80]);
+
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [serverBytes, truncatedBytes],
+			});
+
+			const session = new Session({ webtransport: mock });
+			await session.ready;
+
+			const [track, err] = await session.subscribe(
+				"/test/path",
+				"track-name",
+			);
+			assertEquals(track, undefined);
+			assertExists(err);
+			await session.close();
+		});
+
+		await t.step("listening for subscribe stream calls mux serveTrack", async () => {
+			let served = false;
+			const mux: TrackMux = {
+				serveTrack: async (_t) => {
+					served = true;
+				},
+			} as TrackMux;
+
+			const req = new SubscribeMessage({
+				subscribeId: 1,
+				broadcastPath: "/test/path",
+				trackName: "name",
+				trackPriority: 0,
+				minGroupSequence: 0,
+				maxGroupSequence: 0,
+			});
+			const buf = await encodeMessageToUint8Array(async (w) => {
+				await writeVarint(w, BiStreamTypes.SubscribeStreamType);
+				return await req.encode(w);
+			});
+
+			const serverBytes = await encodeMessageToUint8Array(async (w) => {
+				const s = new SessionServerMessage({ version: [...DEFAULT_CLIENT_VERSIONS][0] });
+				return await s.encode(w);
+			});
+
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [serverBytes],
+				acceptStreamData: [{ type: BiStreamTypes.SubscribeStreamType, data: buf }],
+			});
+
+			const session = new Session({ webtransport: mock, mux });
+			await session.ready;
+
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			assertEquals(served, true);
+			await session.close();
+		});
+
+		await t.step("acceptAnnounce succeeds with valid messages", async () => {
+			const init = new AnnounceInitMessage({ suffixes: ["suffix"] });
+			const initBytes = await encodeMessageToUint8Array(async (w) => init.encode(w));
+
+			const serverBytes = await encodeMessageToUint8Array(async (w) => {
+				const s = new SessionServerMessage({ version: [...DEFAULT_CLIENT_VERSIONS][0] });
+				return await s.encode(w);
+			});
+
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [serverBytes, initBytes],
+			});
+
+			const session = new Session({ webtransport: mock });
+			await session.ready;
+
+			const [reader, err] = await session.acceptAnnounce("/test/" as TrackPrefix);
+			assertExists(reader);
+			assertEquals(err, undefined);
+			await reader.close();
+			await session.close();
+		});
+
+		await t.step("subscribe succeeds with valid messages", async () => {
+			const ok = new SubscribeOkMessage({});
+			const okBytes = await encodeMessageToUint8Array(async (w) => ok.encode(w));
+
+			const serverBytes = await encodeMessageToUint8Array(async (w) => {
+				const s = new SessionServerMessage({ version: [...DEFAULT_CLIENT_VERSIONS][0] });
+				return await s.encode(w);
+			});
+
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [serverBytes, okBytes],
+			});
+
+			const session = new Session({ webtransport: mock });
+			await session.ready;
+
+			const [track, err] = await session.subscribe(
+				"/test/path",
+				"track-name",
+			);
+			assertExists(track);
+			assertEquals(err, undefined);
+			await session.close();
+		});
+
+		await t.step("listening for announce stream calls mux serveAnnouncement", async () => {
+			let served = false;
+			let servedPrefix: TrackPrefix | undefined;
+			const mux: TrackMux = {
+				serveAnnouncement: async (_aw, prefix) => {
+					served = true;
+					servedPrefix = prefix;
+				},
+			} as TrackMux;
+
+			const req = new AnnouncePleaseMessage({ prefix: "/test/" });
+			const buf = await encodeMessageToUint8Array(async (w) => {
+				await writeVarint(w, BiStreamTypes.AnnounceStreamType);
+				return await req.encode(w);
+			});
+
+			const serverBytes = await encodeMessageToUint8Array(async (w) => {
+				const s = new SessionServerMessage({ version: [...DEFAULT_CLIENT_VERSIONS][0] });
+				return await s.encode(w);
+			});
+
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [serverBytes],
+				acceptStreamData: [{ type: BiStreamTypes.AnnounceStreamType, data: buf }],
+			});
+
+			const session = new Session({ webtransport: mock, mux });
+			await session.ready;
+
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			assertEquals(served, true);
+			assertEquals(servedPrefix, "/test/");
+			await session.close();
+		});
+
+		await t.step("listening for group stream enqueues to track", async () => {
+			const serverBytes = await encodeMessageToUint8Array(async (w) => {
+				const s = new SessionServerMessage({ version: [...DEFAULT_CLIENT_VERSIONS][0] });
+				return await s.encode(w);
+			});
+
+			const ok = new SubscribeOkMessage({});
+			const okBytes = await encodeMessageToUint8Array(async (w) => ok.encode(w));
+
+			const groupMsg = new GroupMessage({
+				subscribeId: 0,
+				sequence: 1,
+			});
+			const groupBuf = await encodeMessageToUint8Array(async (w) => {
+				await writeVarint(w, UniStreamTypes.GroupStreamType);
+				return await groupMsg.encode(w);
+			});
+
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [serverBytes, okBytes],
+				acceptUniStreamData: [{ type: UniStreamTypes.GroupStreamType, data: groupBuf }],
+			});
+
+			const session = new Session({ webtransport: mock });
+			await session.ready;
+
+			const [track, err] = await session.subscribe(
+				"/test/path",
+				"track-name",
+			);
+			assertExists(track);
+			assertEquals(err, undefined);
+
+			await new Promise((resolve) => setTimeout(resolve, 10));
+
+			await session.close();
+		});
+
+		await t.step("close calls webtransport.close", async () => {
+			const serverBytes = await encodeMessageToUint8Array(async (w) => {
+				const s = new SessionServerMessage({ version: [...DEFAULT_CLIENT_VERSIONS][0] });
+				return await s.encode(w);
+			});
+
+			let closeCalled = false;
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [serverBytes],
+			});
+			const originalClose = mock.close.bind(mock);
+			mock.close = (_closeInfo?: WebTransportCloseInfo) => {
+				closeCalled = true;
+				originalClose(_closeInfo);
+			};
+
+			const session = new Session({ webtransport: mock });
+			await session.ready;
+
+			await session.close();
+			assertEquals(closeCalled, true);
+		});
+
+		await t.step("closeWithError calls webtransport.close with code and reason", async () => {
+			const serverBytes = await encodeMessageToUint8Array(async (w) => {
+				const s = new SessionServerMessage({ version: [...DEFAULT_CLIENT_VERSIONS][0] });
+				return await s.encode(w);
+			});
+
+			let closeInfo: WebTransportCloseInfo | undefined;
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [serverBytes],
+			});
+			const originalClose = mock.close.bind(mock);
+			mock.close = (info?: WebTransportCloseInfo) => {
+				closeInfo = info;
+				originalClose(info);
+			};
+
+			const session = new Session({ webtransport: mock });
+			await session.ready;
+
+			await session.closeWithError(0x123, "test error");
+			assertExists(closeInfo);
+			assertEquals(closeInfo.closeCode, 0x123);
+			assertEquals(closeInfo.reason, "test error");
+		});
+
+		await t.step("closeWithError does nothing when context already has error", async () => {
+			const serverBytes = await encodeMessageToUint8Array(async (w) => {
+				const s = new SessionServerMessage({ version: [...DEFAULT_CLIENT_VERSIONS][0] });
+				return await s.encode(w);
+			});
+
+			let closeCallCount = 0;
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [serverBytes],
+			});
+			const originalClose = mock.close.bind(mock);
+			mock.close = (info?: WebTransportCloseInfo) => {
+				closeCallCount++;
+				originalClose(info);
+			};
+
+			const session = new Session({ webtransport: mock });
+			await session.ready;
+
+			await session.closeWithError(0x1, "first error");
+			assertEquals(closeCallCount, 1);
+
+			await session.closeWithError(0x2, "second error");
+			assertEquals(closeCallCount, 1);
+		});
+
+		await t.step("multiple subscribes get different subscribe IDs", async () => {
+			const serverBytes = await encodeMessageToUint8Array(async (w) => {
+				const s = new SessionServerMessage({ version: [...DEFAULT_CLIENT_VERSIONS][0] });
+				return await s.encode(w);
+			});
+
+			const ok = new SubscribeOkMessage({});
+			const okBytes = await encodeMessageToUint8Array(async (w) => ok.encode(w));
+
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [serverBytes, okBytes, okBytes, okBytes],
+			});
+
+			const session = new Session({ webtransport: mock });
+			await session.ready;
+
+			const [track1, err1] = await session.subscribe("/path1", "name1");
+			const [track2, err2] = await session.subscribe("/path2", "name2");
+			const [track3, err3] = await session.subscribe("/path3", "name3");
+
+			assertExists(track1);
+			assertExists(track2);
+			assertExists(track3);
+			assertEquals(err1, undefined);
+			assertEquals(err2, undefined);
+			assertEquals(err3, undefined);
+
+			await session.close();
+		});
 	},
-);
-
-Deno.test("Session acceptAnnounce returns error when openStream fails", testOptions, async () => {
-	const mockWebTransport = new MockWebTransport();
-	mockWebTransport.setFailCreateStream(true);
-	mockWebTransport.markReady();
-	const session = new Session({ conn: mockWebTransport });
-	// setup will fail due to openStream failing; consume the rejection to avoid uncaught promise
-	await assertRejects(() => session.ready);
-
-	const [reader, err] = await session.acceptAnnounce("/test/" as any);
-	assertEquals(reader, undefined);
-	assertEquals(err instanceof Error, true);
-});
-
-Deno.test("Session subscribe returns error when openStream fails", testOptions, async () => {
-	const mockWebTransport = new MockWebTransport();
-	mockWebTransport.setFailCreateStream(true);
-	mockWebTransport.markReady();
-	const session = new Session({ conn: mockWebTransport });
-	await assertRejects(() => session.ready);
-
-	const [track, err] = await session.subscribe("/path" as any, "track" as any);
-	assertEquals(track, undefined);
-	assertEquals(err instanceof Error, true);
 });

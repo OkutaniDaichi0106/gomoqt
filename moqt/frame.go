@@ -6,17 +6,8 @@ import (
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 )
 
-// Frame represents a MOQ frame with optimized encoding for MOQT protocol.
-//
-// The Frame is designed for efficient encoding/decoding of MOQ payloads:
-// - buf: 8-byte buffer combining header (length varint) and payload data
-// - header: 8-byte array used to store the length varint without allocations
-// - body: slice pointing into buf[8:] containing the actual frame payload
-//
-// This design avoids creating additional byte buffers during encode operations.
-// The length is encoded directly into the header array, then written with the payload.
-//
-// Access the payload via the Body() method to maintain internal consistency.
+// Frame represents a MOQ frame.
+// It provides methods to build, read, and encode MOQ payloads.
 type Frame struct {
 	buf    []byte
 	header [8]byte
@@ -37,9 +28,8 @@ func (f *Frame) Reset() {
 	f.body = f.body[:0]
 }
 
-// Body returns a reference to the frame payload bytes.
-// The returned slice references the internal buffer and should not be modified.
-// Use Write() to add data or Reset() to clear the frame.
+// Body returns the frame payload bytes.
+// Use Write to add data and Reset to clear the frame.
 func (f *Frame) Body() []byte {
 	return f.body
 }
@@ -54,9 +44,8 @@ func (f *Frame) init(cap int) {
 	f.body = body
 }
 
-// append appends bytes to the frame payload, growing the buffer if necessary.
-// If additional capacity is needed, the buffer is reallocated and data is copied.
-// This is an internal method used by Write() and Clone().
+// append appends bytes to the frame payload and grows the buffer when needed.
+// This helper is used by Write and Clone.
 func (f *Frame) append(b []byte) {
 	if len(b)+len(f.body) > cap(f.body) {
 		// Reallocate the body buffer if necessary

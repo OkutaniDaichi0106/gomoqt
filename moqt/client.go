@@ -86,6 +86,9 @@ func (c *Client) dialTimeout() time.Duration {
 	return 5 * time.Second
 }
 
+// Dial establishes a new session to the specified URL using either WebTransport (https scheme) or QUIC (moqt scheme).
+// The provided TrackMux is used to route incoming service tracks if non-nil.
+// Dial returns the newly created Session or an error.
 func (c *Client) Dial(ctx context.Context, urlStr string, mux *TrackMux) (*Session, error) {
 	var logger *slog.Logger
 	if c.Logger != nil {
@@ -125,6 +128,9 @@ func generateSessionID() string {
 	return hex.EncodeToString(bytes)
 }
 
+// DialWebTransport establishes a new session over WebTransport (HTTP/3).
+// It performs the WebTransport handshake and initializes a MOQ session stream.
+// `host` should be host:port and `path` is the path used for session setup.
 func (c *Client) DialWebTransport(ctx context.Context, host, path string, mux *TrackMux) (*Session, error) {
 	var clientLogger *slog.Logger
 	if c.Logger != nil {
@@ -153,9 +159,9 @@ func (c *Client) DialWebTransport(ctx context.Context, host, path string, mux *T
 	var err error
 
 	if c.DialWebTransportFunc != nil {
-		_, conn, err = c.DialWebTransportFunc(dialCtx, host+path, http.Header{})
+		_, conn, err = c.DialWebTransportFunc(dialCtx, host+path, http.Header{}, c.TLSConfig)
 	} else {
-		_, conn, err = webtransportgo.Dial(dialCtx, "https://"+host+path, http.Header{})
+		_, conn, err = webtransportgo.Dial(dialCtx, "https://"+host+path, http.Header{}, c.TLSConfig)
 	}
 
 	if err != nil {
@@ -189,6 +195,9 @@ func (c *Client) DialWebTransport(ctx context.Context, host, path string, mux *T
 }
 
 // TODO: Expose this method if QUIC is supported
+// DialQUIC establishes a new session over native QUIC by dialing the provided
+// address and negotiating a session stream. This uses the QUIC dial function
+// configured on the Client (DialQUICFunc) if present.
 func (c *Client) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux) (*Session, error) {
 	if c.shuttingDown() {
 		return nil, ErrClientClosed
@@ -368,6 +377,9 @@ func (c *Client) shuttingDown() bool {
 	return c.inShutdown.Load()
 }
 
+// Close starts shutting down the client. It stops accepting new dials and
+// begins closing all active sessions, returning only after all sessions
+// are terminated.
 func (c *Client) Close() error {
 	c.inShutdown.Store(true)
 
@@ -377,7 +389,7 @@ func (c *Client) Close() error {
 
 	c.sessMu.Lock()
 	for sess := range c.activeSess {
-		go sess.Terminate(NoError, NoError.String())
+		go sess.CloseWithError(NoError, SessionErrorText(NoError))
 	}
 	c.sessMu.Unlock()
 
@@ -397,6 +409,9 @@ func (c *Client) Close() error {
 	return nil
 }
 
+// Shutdown gracefully shuts down the client, waiting for active sessions to
+// complete within the given context. If the context expires, remaining
+// sessions are terminated forcefully.
 func (c *Client) Shutdown(ctx context.Context) error {
 	if c.shuttingDown() {
 		return nil
@@ -421,7 +436,7 @@ func (c *Client) Shutdown(ctx context.Context) error {
 		case <-ctx.Done():
 			if len(c.activeSess) > 0 {
 				for sess := range c.activeSess {
-					go sess.Terminate(GoAwayTimeoutErrorCode, GoAwayTimeoutErrorCode.String())
+					go sess.CloseWithError(GoAwayTimeoutErrorCode, SessionErrorText(GoAwayTimeoutErrorCode))
 				}
 
 				if logger != nil {

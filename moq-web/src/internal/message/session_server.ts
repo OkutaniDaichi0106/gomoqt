@@ -1,5 +1,14 @@
-import type { ReceiveStream, SendStream } from "../webtransport/mod.ts";
-import { bytesLen, varintLen } from "../webtransport/mod.ts";
+import type { Reader, Writer } from "@okudai/golikejs/io";
+import {
+	bytesLen,
+	parseBytes,
+	parseVarint,
+	readFull,
+	readVarint,
+	varintLen,
+	writeBytes,
+	writeVarint,
+} from "./message.ts";
 
 export interface SessionServerMessageInit {
 	version?: number;
@@ -10,12 +19,15 @@ export class SessionServerMessage {
 	version: number;
 	extensions: Map<number, Uint8Array>;
 
-	constructor(init: SessionServerMessageInit) {
+	constructor(init: SessionServerMessageInit = {}) {
 		this.version = init.version ?? 0;
 		this.extensions = init.extensions ?? new Map();
 	}
 
-	get messageLength(): number {
+	/**
+	 * Returns the length of the message body (excluding the length prefix).
+	 */
+	get len(): number {
 		let length = 0;
 		length += varintLen(this.version);
 		length += varintLen(this.extensions.size);
@@ -26,58 +38,63 @@ export class SessionServerMessage {
 		return length;
 	}
 
-	async encode(writer: SendStream): Promise<Error | undefined> {
-		writer.writeVarint(this.messageLength);
-		writer.writeVarint(this.version);
-		writer.writeVarint(this.extensions.size); // Write the number of extensions
-		for (const ext of this.extensions.entries()) {
-			writer.writeVarint(ext[0]); // Write the extension ID
-			writer.writeUint8Array(ext[1]); // Write the extension data
+	/**
+	 * Encodes the message to the writer.
+	 */
+	async encode(w: Writer): Promise<Error | undefined> {
+		const msgLen = this.len;
+		let err: Error | undefined;
+
+		[, err] = await writeVarint(w, msgLen);
+		if (err) return err;
+
+		[, err] = await writeVarint(w, this.version);
+		if (err) return err;
+
+		[, err] = await writeVarint(w, this.extensions.size);
+		if (err) return err;
+
+		for (const [extId, extData] of this.extensions.entries()) {
+			[, err] = await writeVarint(w, extId);
+			if (err) return err;
+			[, err] = await writeBytes(w, extData);
+			if (err) return err;
 		}
-		return await writer.flush();
+
+		return undefined;
 	}
 
-	async decode(reader: ReceiveStream): Promise<Error | undefined> {
-		let [len, err] = await reader.readVarint();
-		if (err) {
-			return err;
-		}
+	/**
+	 * Decodes the message from the reader.
+	 */
+	async decode(r: Reader): Promise<Error | undefined> {
+		const [msgLen, , err1] = await readVarint(r);
+		if (err1) return err1;
 
-		[this.version, err] = await reader.readVarint();
-		if (err) {
-			return err;
-		}
+		const buf = new Uint8Array(msgLen);
+		const [, err2] = await readFull(r, buf);
+		if (err2) return err2;
 
-		let extensionCount: number;
-		[extensionCount, err] = await reader.readVarint();
-		if (err) {
-			return err;
-		}
+		let offset = 0;
+
+		// Read version
+		const [version, n1] = parseVarint(buf, offset);
+		this.version = version;
+		offset += n1;
+
+		// Read extensions
+		const [numExtensions, n2] = parseVarint(buf, offset);
+		offset += n2;
 
 		const extensions = new Map<number, Uint8Array>();
-
-		let extId: number;
-		for (let i = 0; i < extensionCount; i++) {
-			[extId, err] = await reader.readVarint();
-			if (err) {
-				return err;
-			}
-			let extData: Uint8Array | undefined;
-			[extData, err] = await reader.readUint8Array();
-			if (err) {
-				return err;
-			}
-			if (extData === undefined) {
-				throw new Error("read extData: Uint8Array is undefined");
-			}
+		for (let i = 0; i < numExtensions; i++) {
+			const [extId, n3] = parseVarint(buf, offset);
+			offset += n3;
+			const [extData, n4] = parseBytes(buf, offset);
+			offset += n4;
 			extensions.set(extId, extData);
 		}
-
 		this.extensions = extensions;
-
-		if (len !== this.messageLength) {
-			throw new Error(`message length mismatch: expected ${len}, got ${this.messageLength}`);
-		}
 
 		return undefined;
 	}

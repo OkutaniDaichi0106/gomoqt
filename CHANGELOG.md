@@ -38,13 +38,3 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Fixed a bug where `Frame.encode` could write extra zero bytes beyond the actual payload, causing clients to receive a large number of empty frames (`frame_length=0`). Now only the header and payload are written, ensuring protocol correctness and efficiency.
 
-### Removed
-
-- Remove interop demo clients and web client app
-- Removed unused browser and session interface files
-- Deleted obsolete `track_test.ts` and associated tests
-
-### Documentation
-
-- Added placeholder for CLI documentation and improved README sections for interop usage
-

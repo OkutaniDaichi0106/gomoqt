@@ -11,7 +11,7 @@ import {
 	SubscribeOkMessage,
 	writeVarint,
 } from "./internal/message/mod.ts";
-import { Stream } from "./internal/webtransport/mod.ts";
+import { ReceiveStream, Stream, WebTransportSessionError, WebTransportSessionErrorInfo, WebTransportSession } from "./internal/webtransport/mod.ts";
 import { Extensions } from "./extensions.ts";
 import { SessionStream } from "./session_stream.ts";
 import { background, withCancelCause } from "@okudai/golikejs/context";
@@ -28,10 +28,9 @@ import { DefaultTrackMux } from "./track_mux.ts";
 import { BiStreamTypes, UniStreamTypes } from "./stream_type.ts";
 import { Queue } from "./internal/queue.ts";
 import type { SubscribeID, TrackName } from "./alias.ts";
-import * as webtransport from "./internal/webtransport/mod.ts";
 
 export interface SessionOptions {
-	webtransport: webtransport.WebTransportSession;
+	webtransport: WebTransportSession;
 
 	versions?: Set<Version>;
 	extensions?: Extensions;
@@ -40,7 +39,7 @@ export interface SessionOptions {
 
 export class Session {
 	readonly ready: Promise<void>;
-	#webtransport: webtransport.WebTransportSession;
+	#webtransport: WebTransportSession;
 	#sessionStream!: SessionStream;
 	#ctx: Context;
 	#cancelFunc: CancelCauseFunc;
@@ -61,7 +60,7 @@ export class Session {
 
 	#queues: Map<
 		SubscribeID,
-		Queue<[webtransport.ReceiveStream, GroupMessage]>
+		Queue<[ReceiveStream, GroupMessage]>
 	> = new Map();
 
 	constructor(options: SessionOptions) {
@@ -80,8 +79,8 @@ export class Session {
 			}
 
 			cancel(
-				new webtransport.WebTransportSessionError(
-					info as webtransport.WebTransportSessionErrorInfo,
+				new WebTransportSessionError(
+					info as WebTransportSessionErrorInfo,
 					true,
 				),
 			);
@@ -249,7 +248,7 @@ export class Session {
 		}
 
 		// Add queue for incoming group streams
-		const queue = new Queue<[webtransport.ReceiveStream, GroupMessage]>();
+		const queue = new Queue<[ReceiveStream, GroupMessage]>();
 		this.#queues.set(subscribeId, queue);
 
 		const rsp = new SubscribeOkMessage({});
@@ -275,7 +274,7 @@ export class Session {
 		return [track, undefined];
 	}
 
-	async #handleGroupStream(reader: webtransport.ReceiveStream): Promise<void> {
+	async #handleGroupStream(reader: ReceiveStream): Promise<void> {
 		const req = new GroupMessage({});
 		const err = await req.decode(reader);
 		if (err) {

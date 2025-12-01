@@ -1,5 +1,5 @@
 import { assertEquals, assertInstanceOf } from "@std/assert";
-import { WebTransportSession as WebTransportSession } from "./connection.ts";
+import { WebTransportSession } from "./connection.ts";
 import { WebTransportSessionError } from "./error.ts";
 
 class FailingMockWebTransport {

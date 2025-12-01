@@ -15,8 +15,8 @@ import { BiStreamTypes, UniStreamTypes } from "./stream_type.ts";
 import { TrackMux } from "./track_mux.ts";
 import type { TrackPrefix } from "./track_prefix.ts";
 import { Writer } from "@okudai/golikejs/io";
-import * as webtransport from "./internal/webtransport/mod.ts";
 import { EOFError } from "@okudai/golikejs/io";
+import { ReceiveStream, SendStream, Stream, WebTransportSession } from "./internal/webtransport/mod.ts";
 
 // Utility class to implement Writer for encoding messages
 class Uint8ArrayWriter implements Writer {
@@ -51,7 +51,7 @@ interface MockWebTransportSessionOptions {
 	closedPromise?: Promise<WebTransportCloseInfo>;
 }
 
-class MockWebTransportSession implements webtransport.WebTransportSession {
+class MockWebTransportSession implements WebTransportSession {
 	#streamIdCounter = 0n;
 	#openStreamResponses: Uint8Array[];
 	#openStreamIndex = 0;
@@ -80,7 +80,7 @@ class MockWebTransportSession implements webtransport.WebTransportSession {
 		}
 	}
 
-	async openStream(): Promise<[webtransport.Stream, undefined] | [undefined, Error]> {
+	async openStream(): Promise<[Stream, undefined] | [undefined, Error]> {
 		if (this.#closed) {
 			return [undefined, new Error("session closed")];
 		}
@@ -120,7 +120,7 @@ class MockWebTransportSession implements webtransport.WebTransportSession {
 		return [{ id, writable, readable }, undefined];
 	}
 
-	async openUniStream(): Promise<[webtransport.SendStream, undefined] | [undefined, Error]> {
+	async openUniStream(): Promise<[SendStream, undefined] | [undefined, Error]> {
 		if (this.#closed) {
 			return [undefined, new Error("session closed")];
 		}
@@ -139,7 +139,7 @@ class MockWebTransportSession implements webtransport.WebTransportSession {
 		}, undefined];
 	}
 
-	async acceptStream(): Promise<[webtransport.Stream, undefined] | [undefined, Error]> {
+	async acceptStream(): Promise<[Stream, undefined] | [undefined, Error]> {
 		if (this.#closed) {
 			return [undefined, new Error("session closed")];
 		}
@@ -185,7 +185,7 @@ class MockWebTransportSession implements webtransport.WebTransportSession {
 		return [{ id, writable, readable }, undefined];
 	}
 
-	async acceptUniStream(): Promise<[webtransport.ReceiveStream, undefined] | [undefined, Error]> {
+	async acceptUniStream(): Promise<[ReceiveStream, undefined] | [undefined, Error]> {
 		if (this.#closed) {
 			return [undefined, new Error("session closed")];
 		}

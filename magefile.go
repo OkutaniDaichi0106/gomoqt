@@ -355,9 +355,16 @@ func Fmt() error {
 	}
 
 	fmt.Println("Formatting TypeScript code...")
-	if err := sh.RunV("deno", "fmt"); err != nil {
+	if err := sh.RunV("deno", "fmt", "--ignore=**/*.md,**/*.yml,**/*.yaml"); err != nil {
 		return err
 	}
+	return nil
+}
+
+// Check runs quality checks (formatting and linting)
+func Check() error {
+	mg.Deps(Fmt, Lint)
+	fmt.Println("Quality checks complete.")
 	return nil
 }
 
@@ -403,6 +410,7 @@ func Help() {
 	fmt.Println("Development:")
 	fmt.Println("  mage lint   - Run golangci-lint")
 	fmt.Println("  mage fmt    - Format code")
+	fmt.Println("  mage check  - Run quality checks (fmt and lint)")
 	fmt.Println("  mage build  - Build project")
 	fmt.Println("  mage clean  - Clean generated files")
 	fmt.Println("  mage help   - Show this help message")

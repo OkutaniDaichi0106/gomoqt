@@ -37,7 +37,10 @@ export interface TranslationResponse {
   translatedText: string;
 }
 
-export const translate = async (text: string, target: string): Promise<string> => {
+export const translate = async (
+  text: string,
+  target: string,
+): Promise<string> => {
   const res = await fetch("https://libretranslate.com/translate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -67,7 +70,10 @@ export const parseEvent = (eventJson: string): Issue | undefined => {
   return event.issue || event.pull_request;
 };
 
-export const generateComment = async (text: string, languages: Language[]): Promise<string> => {
+export const generateComment = async (
+  text: string,
+  languages: Language[],
+): Promise<string> => {
   let comment = "### 🌍 Translations (Automated for Global Collaboration)\n\n";
 
   for (const lang of languages) {

@@ -15,7 +15,7 @@ export type TrackPrefix = `/${string}/` | `/`;
  * @returns true if the path is a valid TrackPrefix
  */
 export function isValidPrefix(path: string): boolean {
-	return path.startsWith("/") && path.endsWith("/");
+  return path.startsWith("/") && path.endsWith("/");
 }
 
 /**
@@ -25,8 +25,10 @@ export function isValidPrefix(path: string): boolean {
  * @throws Error if the path is not a valid TrackPrefix
  */
 export function validateTrackPrefix(prefix: string): TrackPrefix {
-	if (!isValidPrefix(prefix)) {
-		throw new Error(`Invalid track prefix: "${prefix}". Must start and end with "/"`);
-	}
-	return prefix as TrackPrefix;
+  if (!isValidPrefix(prefix)) {
+    throw new Error(
+      `Invalid track prefix: "${prefix}". Must start and end with "/"`,
+    );
+  }
+  return prefix as TrackPrefix;
 }

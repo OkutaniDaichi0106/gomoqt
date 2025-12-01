@@ -19,7 +19,7 @@ func (m *MockQUICReceiveStream) StreamID() quic.StreamID {
 	// Prevent panic when no expectation was provided for StreamID() calls.
 	defer func() {
 		if r := recover(); r != nil {
-			// No-op; will default to zero StreamID below
+			_ = r // No-op; will default to zero StreamID below
 		}
 	}()
 	args := m.Called()

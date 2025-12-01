@@ -31,7 +31,7 @@ func main() {
 
 	defer func() {
 		fmt.Print("Closing session...")
-		sess.CloseWithError(moqt.NoError, "no error")
+		_ = sess.CloseWithError(moqt.NoError, "no error")
 		fmt.Println("...ok")
 	}()
 
@@ -113,7 +113,7 @@ func main() {
 
 		fmt.Print("Writing frame to server...")
 		frame := moqt.NewFrame(1024)
-		frame.Write([]byte("HELLO"))
+		_, _ = frame.Write([]byte("HELLO"))
 
 		err = group.WriteFrame(frame)
 		if err != nil {

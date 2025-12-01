@@ -566,7 +566,7 @@ func TestClient_DialQUIC_CustomDialSuccess(t *testing.T) {
 
 	// Cleanup
 	if sess != nil {
-		sess.CloseWithError(NoError, "")
+		_ = sess.CloseWithError(NoError, "")
 	}
 	// Close block channel to allow any pending reads to complete
 	close(blockChan)
@@ -648,7 +648,7 @@ func TestClient_OpenSession_NilExtensions(t *testing.T) {
 
 	// Expect panic when extensions is nil
 	assert.Panics(t, func() {
-		openSessionStream(mockConn, "/test", nil, slog.Default())
+		_, _ = openSessionStream(mockConn, "/test", nil, slog.Default())
 	})
 }
 
@@ -784,7 +784,7 @@ func TestClient_Dial_URLSchemes(t *testing.T) {
 				mockConn.On("Context").Return(context.Background())
 				mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
 				buffer := bytes.NewBuffer(nil)
-				message.SessionServerMessage{
+				_ = message.SessionServerMessage{
 					SelectedVersion: uint64(Develop),
 				}.Encode(buffer)
 				mockStream := &MockQUICStream{

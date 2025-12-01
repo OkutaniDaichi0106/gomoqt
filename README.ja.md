@@ -36,65 +36,66 @@ MOQ Liteの主要なやり取りを実装しています。
 ### はじめ方
 
 1. リポジトリのクローン:
+
 ```bash
 git clone https://github.com/OkutaniDaichi0106/gomoqt.git
 cd gomoqt
 ```
 
 2. パッケージのインストール:
+
 ```bash
 go get github.com/OkutaniDaichi0106/gomoqt
 ```
 
-3. 開発環境のセットアップ:
-```bash
-just dev-setup
-```
+3. Mageツールのインストール:
 
-このコマンドで以下の項目が実行されます:
-- 必要な証明書ツール（mkcert）のインストール
-- 開発ツール（goimports, golangci-lint）のインストール
-- プロジェクトの依存関係のインストール
-- 開発用証明書の生成
+```bash
+go install github.com/magefile/mage@latest
+```
 
 ### 開発用コマンド
 
 #### サンプルの実行
+
 ```bash
 # 相互運用性テスト用サーバーの起動
-just interop-server
+mage interop:server
 
 # 別のターミナルで相互運用性テスト用クライアントを実行
-just interop-client
+mage interop:client
 ```
 
 #### コードの品質管理
+
 ```bash
 # コードフォーマット
-just fmt
+mage fmt
 
 # リンター実行
-just lint
-
-# テスト実行
-just test
+mage lint
 
 # コード品質チェック（フォーマットとリント）
-just check
+mage check
+
+# テスト実行
+mage test
 ```
 
 #### ビルドとクリーン
+
 ```bash
 # コードのビルド
-just build
+mage build
 
 # 生成ファイルの削除
-just clean
+mage clean
 ```
 
 ### サンプル
 
-[examples](examples) ディレクトリには、gomoqtの使用方法を示すサンプルアプリケーションが含まれています:
+[examples](examples)
+ディレクトリには、gomoqtの使用方法を示すサンプルアプリケーションが含まれています:
 
 - **ブロードキャスト** `broadcast/`: ブロードキャスト機能のデモ
 - **証明書** `cert/`: 証明書管理のサンプル
@@ -107,7 +108,6 @@ just clean
 - [Goドキュメント](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt)
 - [MOQTransforkの仕様](https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html)
 
-
 ## コントリビューション
 
 ご協力お待ちしております！日本語対応できます！
@@ -118,9 +118,9 @@ just clean
 3. 変更を加える
 4. コード品質の確認:
    ```bash
-   just fmt
-   just lint
-   just test
+   mage fmt
+   mage lint
+   mage test
    ```
 5. 変更をコミット (`git commit -m 'Add amazing feature'`)
 6. ブランチにプッシュ (`git push origin feature/amazing-feature`)
@@ -133,5 +133,6 @@ just clean
 ## 参考文献
 
 - [quic-go](https://github.com/quic-go/quic-go) - Go言語によるQUIC実装
-- [webtransport-go](https://github.com/quic-go/webtransport-go) - Go言語によるWebTransport実装
+- [webtransport-go](https://github.com/quic-go/webtransport-go) -
+  Go言語によるWebTransport実装
 - [moq-drafts](https://github.com/kixelated/moq-drafts) - MOQ Transfork仕様

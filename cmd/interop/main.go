@@ -57,8 +57,8 @@ func main() {
 	defer func() {
 		if serverCmd.Process != nil {
 			slog.Debug(" Killing server process...")
-			serverCmd.Process.Kill()
-			serverCmd.Wait()
+			_ = serverCmd.Process.Kill()
+			_ = serverCmd.Wait()
 			slog.Debug(" Server process terminated")
 		}
 	}()

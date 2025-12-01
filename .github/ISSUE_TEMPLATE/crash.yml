@@ -1,6 +1,6 @@
 name: Crash
 about: Using tsgo or the language server caused a panic
-title: ''
+title: ""
 labels: [Crash]
 assignees: []
 

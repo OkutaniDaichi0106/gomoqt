@@ -1,10 +1,19 @@
-import { assertEquals, assertRejects } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { translate, parseEvent, generateComment, languages } from "./translate.ts";
+import {
+  assertEquals,
+  assertRejects,
+} from "https://deno.land/std@0.208.0/assert/mod.ts";
+import {
+  generateComment,
+  languages,
+  parseEvent,
+  translate,
+} from "./translate.ts";
 
 // Mock fetch for testing
 const originalFetch = globalThis.fetch;
 const mockFetch = (response: any) => {
-  globalThis.fetch = async () => new Response(JSON.stringify(response), { status: 200 });
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify(response), { status: 200 });
 };
 
 const restoreFetch = () => {
@@ -24,7 +33,11 @@ Deno.test("translate function - success", async () => {
 Deno.test("translate function - API error", async () => {
   globalThis.fetch = async () => new Response("Error", { status: 500 });
   try {
-    await assertRejects(async () => await translate("Test", "en"), Error, "Translation API failed");
+    await assertRejects(
+      async () => await translate("Test", "en"),
+      Error,
+      "Translation API failed",
+    );
   } finally {
     restoreFetch();
   }
@@ -38,7 +51,9 @@ Deno.test("parseEvent - issue", () => {
 });
 
 Deno.test("parseEvent - pull_request", () => {
-  const eventJson = JSON.stringify({ pull_request: { number: 2, body: "PR body" } });
+  const eventJson = JSON.stringify({
+    pull_request: { number: 2, body: "PR body" },
+  });
   const issue = parseEvent(eventJson);
   assertEquals(issue?.number, 2);
   assertEquals(issue?.body, "PR body");

@@ -80,7 +80,7 @@ func main() {
 		sess, err := moqt.Accept(w, r, mux)
 		if err != nil {
 			fmt.Printf("...failed\n  Error: %v\n", err)
-			w.Reject(moqt.ProtocolViolationErrorCode)
+			_ = w.Reject(moqt.ProtocolViolationErrorCode)
 			return
 		}
 		fmt.Println("...ok")
@@ -116,7 +116,7 @@ func main() {
 
 			fmt.Print("Writing frame to client...")
 			frame := moqt.NewFrame(1024)
-			frame.Write([]byte("HELLO"))
+			_, _ = frame.Write([]byte("HELLO"))
 
 			err = group.WriteFrame(frame)
 			if err != nil {
@@ -188,7 +188,7 @@ func main() {
 		err = group.ReadFrame(frame)
 		if err != nil {
 			if err == io.EOF {
-				// Group closed by client
+				return // Group closed by client
 			}
 			fmt.Printf("...failed\n  Error: %v\n", err)
 			return
@@ -200,7 +200,7 @@ func main() {
 		// arbitrary sleeps.
 
 		fmt.Print("Closing session...")
-		sess.CloseWithError(moqt.NoError, "no error")
+		_ = sess.CloseWithError(moqt.NoError, "no error")
 		fmt.Println("...ok")
 	})
 

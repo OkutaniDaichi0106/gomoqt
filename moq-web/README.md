@@ -1,8 +1,10 @@
 # @okutanidaichi/moqt
 
-A TypeScript/JavaScript implementation of Media over QUIC Transport (MoQT) for both Deno and Node.js environments.
+A TypeScript/JavaScript implementation of Media over QUIC Transport (MoQT) for
+both Deno and Node.js environments.
 
-This library enables clients to connect and communicate with the Go implementation of the Media over QUIC protocol (gomoqt).
+This library enables clients to connect and communicate with the Go
+implementation of the Media over QUIC protocol (gomoqt).
 
 ## Installation
 
@@ -24,7 +26,8 @@ npm install @okutanidaichi/moqt
 
 ## Development
 
-This project uses Deno as its primary development environment, providing TypeScript-native development with built-in testing, formatting, and linting.
+This project uses Deno as its primary development environment, providing
+TypeScript-native development with built-in testing, formatting, and linting.
 
 ### Prerequisites
 
@@ -67,15 +70,17 @@ Tests use Deno's standard testing library with BDD-style syntax:
 import { assertEquals, describe, it } from "../deps.ts";
 
 describe("MyFeature", () => {
-	it("should work correctly", () => {
-		assertEquals(1 + 1, 2);
-	});
+  it("should work correctly", () => {
+    assertEquals(1 + 1, 2);
+  });
 });
 ```
 
 ## Migration from Node.js
 
-This project was recently migrated from Node.js + Vitest to pure Deno. For detailed migration notes and patterns, see [DENO_MIGRATION.md](./DENO_MIGRATION.md).
+This project was recently migrated from Node.js + Vitest to pure Deno. For
+detailed migration notes and patterns, see
+[DENO_MIGRATION.md](./DENO_MIGRATION.md).
 
 Key changes:
 

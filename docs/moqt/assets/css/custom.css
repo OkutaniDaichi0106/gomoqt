@@ -35,16 +35,17 @@
 .hextra-feature-card.card--image img.card__img {
   position: absolute;
   top: 40%;
-  left: 25px;        /* slightly closer to the edge so more right area shows */
-  width: 140%;       /* shrink to reveal more of the right side */
-  max-width: none;   /* allow oversizing */
+  left: 25px; /* slightly closer to the edge so more right area shows */
+  width: 140%; /* shrink to reveal more of the right side */
+  max-width: none; /* allow oversizing */
   pointer-events: none;
   border-radius: 6px; /* round image corners */
 }
 
-@media (min-width: 640px) { /* sm: */
+@media (min-width: 640px) {
+  /* sm: */
   .hextra-feature-card.card--image img.card__img {
-    width: 100%;     /* near full card width on small+ screens */
+    width: 100%; /* near full card width on small+ screens */
   }
 }
 
@@ -87,5 +88,5 @@ html.dark .hero-btn--green a:hover {
   background-color: #05965e !important; /* emerald-600 */
 }
 .hero-btn--green a:focus {
-  box-shadow: 0 0 0 4px rgba(16,185,129,0.35) !important; /* ring */
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.35) !important; /* ring */
 }

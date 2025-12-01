@@ -21,7 +21,7 @@ func (m *MockQUICSendStream) StreamID() quic.StreamID {
 	// default to zero StreamID which is safe for logging purposes.
 	defer func() {
 		if r := recover(); r != nil {
-			// ignore the panic and return zero value below
+			_ = r // ignore the panic and return zero value below
 		}
 	}()
 	args := m.Called()

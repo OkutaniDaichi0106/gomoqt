@@ -124,7 +124,7 @@ func (c *Client) Dial(ctx context.Context, urlStr string, mux *TrackMux) (*Sessi
 // generateSessionID creates a unique session identifier for logging
 func generateSessionID() string {
 	bytes := make([]byte, 4)
-	rand.Read(bytes)
+	_, _ = rand.Read(bytes)
 	return hex.EncodeToString(bytes)
 }
 
@@ -325,7 +325,7 @@ func openSessionStream(conn quic.Connection, path string, extensions *Extension,
 	err = rsp.AwaitAccepted()
 	if err != nil {
 		streamLogger.Error("moq: failed to set up session", "error", err)
-		conn.CloseWithError(quic.ApplicationErrorCode(InternalSessionErrorCode), "moq: failed to set up session")
+		_ = conn.CloseWithError(quic.ApplicationErrorCode(InternalSessionErrorCode), "moq: failed to set up session")
 		return nil, err
 	}
 
@@ -389,7 +389,9 @@ func (c *Client) Close() error {
 
 	c.sessMu.Lock()
 	for sess := range c.activeSess {
-		go sess.CloseWithError(NoError, SessionErrorText(NoError))
+		go func(sess *Session) {
+			_ = sess.CloseWithError(NoError, SessionErrorText(NoError))
+		}(sess)
 	}
 	c.sessMu.Unlock()
 
@@ -436,7 +438,9 @@ func (c *Client) Shutdown(ctx context.Context) error {
 		case <-ctx.Done():
 			if len(c.activeSess) > 0 {
 				for sess := range c.activeSess {
-					go sess.CloseWithError(GoAwayTimeoutErrorCode, SessionErrorText(GoAwayTimeoutErrorCode))
+					go func(sess *Session) {
+						_ = sess.CloseWithError(GoAwayTimeoutErrorCode, SessionErrorText(GoAwayTimeoutErrorCode))
+					}(sess)
 				}
 
 				if logger != nil {
@@ -461,6 +465,6 @@ func (c *Client) goAway() {
 		if sess == nil {
 			continue
 		}
-		sess.goAway("")
+		_ = sess.goAway("")
 	}
 }

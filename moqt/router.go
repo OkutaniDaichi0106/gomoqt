@@ -132,7 +132,7 @@ func (f SetupHandlerFunc) ServeMOQ(w SetupResponseWriter, r *SetupRequest) {
 }
 
 var RejectSetupFunc func(w SetupResponseWriter, r *SetupRequest) = func(w SetupResponseWriter, r *SetupRequest) {
-	w.Reject(SetupFailedErrorCode)
+	_ = w.Reject(SetupFailedErrorCode)
 }
 
 var RejectSetupHandler SetupHandler = SetupHandlerFunc(RejectSetupFunc)

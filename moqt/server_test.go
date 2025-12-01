@@ -590,7 +590,7 @@ func TestServer_SessionManagement(t *testing.T) {
 			assert.Equal(t, tt.expectFinalCount, count, "active session count after removal should match expected")
 
 			// Cleanup
-			session.CloseWithError(NoError, SessionErrorText(NoError))
+			_ = session.CloseWithError(NoError, SessionErrorText(NoError))
 		})
 	}
 }
@@ -1070,7 +1070,7 @@ func TestServer_AddRemoveSession(t *testing.T) {
 	session := newSession(mockConn, sessStream, nil, slog.Default(), nil)
 
 	// Immediately terminate session to stop goroutines
-	defer session.CloseWithError(NoError, SessionErrorText(NoError))
+	defer func() { _ = session.CloseWithError(NoError, SessionErrorText(NoError)) }()
 
 	// Test adding session
 	server.addSession(session)
@@ -1162,7 +1162,7 @@ func TestServer_Shutdown(t *testing.T) {
 				sessStream := newSessionStream(mockStream, req)
 				session := newSession(mockConn, sessStream, nil, slog.Default(), nil)
 				server.addSession(session)
-				defer session.CloseWithError(NoError, SessionErrorText(NoError))
+				defer func() { _ = session.CloseWithError(NoError, SessionErrorText(NoError)) }()
 			}
 
 			ctx, cancel := context.WithTimeout(context.Background(), tt.contextTimeout)
@@ -1526,7 +1526,7 @@ func TestServer_SessionLifecycle(t *testing.T) {
 			// Remove all sessions
 			for _, session := range sessions {
 				server.removeSession(session)
-				session.CloseWithError(NoError, SessionErrorText(NoError))
+				_ = session.CloseWithError(NoError, SessionErrorText(NoError))
 			}
 
 			// Verify sessions are removed
@@ -1678,7 +1678,7 @@ func TestServer_EdgeCaseOperations(t *testing.T) {
 					server.removeSession(session)
 				})
 
-				session.CloseWithError(NoError, SessionErrorText(NoError))
+				_ = session.CloseWithError(NoError, SessionErrorText(NoError))
 			},
 		},
 		"remove non-existent listener": {

@@ -170,7 +170,9 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 				// Close the AW to signal the writer to cleanup and close its channel.
 				go func(a *AnnouncementWriter) {
 					// Use InternalAnnounceErrorCode to indicate an internal error condition
-					a.CloseWithError(InternalAnnounceErrorCode)
+					if err := a.CloseWithError(InternalAnnounceErrorCode); err != nil {
+						slog.Error("failed to close AnnouncementWriter (internal) in goroutine", "error", err)
+					}
 				}(ac.aw)
 			}
 		}
@@ -308,7 +310,9 @@ func (mux *TrackMux) serveAnnouncements(aw *AnnouncementWriter) {
 	slog.Debug("serveAnnouncements start", "prefix", aw.prefix)
 
 	if !isValidPrefix(aw.prefix) {
-		aw.CloseWithError(InvalidPrefixErrorCode)
+		if err := aw.CloseWithError(InvalidPrefixErrorCode); err != nil {
+			slog.Error("failed to close AnnouncementWriter due to invalid prefix", "error", err)
+		}
 		return
 	}
 
@@ -402,7 +406,9 @@ func (mux *TrackMux) serveAnnouncements(aw *AnnouncementWriter) {
 	err := aw.init(actives)
 	if err != nil {
 		slog.Error("[TrackMux] failed to initialize announcement writer", "error", err)
-		aw.CloseWithError(InternalAnnounceErrorCode)
+		if err2 := aw.CloseWithError(InternalAnnounceErrorCode); err2 != nil {
+			slog.Error("failed to close AnnouncementWriter after init failure", "error", err2)
+		}
 		return
 	}
 
@@ -414,7 +420,9 @@ func (mux *TrackMux) serveAnnouncements(aw *AnnouncementWriter) {
 				return
 			}
 			if err := aw.SendAnnouncement(ann); err != nil {
-				aw.CloseWithError(InternalAnnounceErrorCode)
+				if err2 := aw.CloseWithError(InternalAnnounceErrorCode); err2 != nil {
+					slog.Error("failed to close AnnouncementWriter after SendAnnouncement error", "error", err2)
+				}
 				return
 			}
 		case <-aw.Context().Done():

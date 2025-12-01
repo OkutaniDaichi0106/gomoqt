@@ -3,6 +3,7 @@ package moqt
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
@@ -97,10 +98,17 @@ func (aw *AnnouncementWriter) registerEndHandler(sfx suffix, ann *Announcement) 
 		current, exists := aw.actives[sfx]
 		if exists && current.announcement == ann {
 			delete(aw.actives, sfx)
-			message.AnnounceMessage{
+			if err := (message.AnnounceMessage{
 				AnnounceStatus: message.ENDED,
 				TrackSuffix:    sfx,
-			}.Encode(aw.stream)
+			}).Encode(aw.stream); err != nil {
+				var strErr *quic.StreamError
+				if errors.As(err, &strErr) {
+					slog.Error("failed to write announce ended message", "error", err, "suffix", sfx, "stream_error", strErr.Error())
+				} else {
+					slog.Error("failed to write announce ended message", "error", err, "suffix", sfx)
+				}
+			}
 		}
 	})
 
@@ -111,10 +119,17 @@ func (aw *AnnouncementWriter) registerEndHandler(sfx suffix, ann *Announcement) 
 		aw.mu.Lock()
 		defer aw.mu.Unlock()
 		delete(aw.actives, sfx)
-		message.AnnounceMessage{
+		if err := (message.AnnounceMessage{
 			AnnounceStatus: message.ENDED,
 			TrackSuffix:    sfx,
-		}.Encode(aw.stream)
+		}).Encode(aw.stream); err != nil {
+			var strErr *quic.StreamError
+			if errors.As(err, &strErr) {
+				slog.Error("failed to write announce ended message (end handler)", "error", err, "suffix", sfx, "stream_error", strErr.Error())
+			} else {
+				slog.Error("failed to write announce ended message (end handler)", "error", err, "suffix", sfx)
+			}
+		}
 	}
 }
 

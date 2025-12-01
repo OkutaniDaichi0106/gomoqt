@@ -51,7 +51,9 @@ func newSession(conn quic.Connection, sessStream *sessionStream, mux *TrackMux, 
 			"reason", reason,
 		)
 
-		sess.CloseWithError(ProtocolViolationErrorCode, "session stream closed unexpectedly")
+		if err := sess.CloseWithError(ProtocolViolationErrorCode, "session stream closed unexpectedly"); err != nil {
+			sessLogger.Error("failed to close session after stream context closed", "error", err)
+		}
 	})
 
 	// Listen bidirectional streams
@@ -464,7 +466,9 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 		streamLogger.Error("failed to decode stream type message",
 			"error", err,
 		)
-		sess.CloseWithError(ProtocolViolationErrorCode, err.Error())
+		if err2 := sess.CloseWithError(ProtocolViolationErrorCode, err.Error()); err2 != nil {
+			streamLogger.Error("failed to close session after stream decode error", "error", err2)
+		}
 		return
 	}
 
@@ -537,7 +541,9 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 		streamLogger.Error("unknown bidirectional stream type",
 			"stream_type", streamType,
 		)
-		sess.CloseWithError(ProtocolViolationErrorCode, fmt.Sprintf("unknown bidirectional stream type: %v", streamType))
+		if err := sess.CloseWithError(ProtocolViolationErrorCode, fmt.Sprintf("unknown bidirectional stream type: %v", streamType)); err != nil {
+			streamLogger.Error("failed to close session for unknown bidirectional stream type", "error", err)
+		}
 		return
 	}
 }
@@ -611,7 +617,9 @@ func (sess *Session) processUniStream(stream quic.ReceiveStream, streamLogger *s
 		)
 
 		// Terminate the session
-		sess.CloseWithError(ProtocolViolationErrorCode, fmt.Sprintf("unknown unidirectional stream type: %v", streamType))
+		if err := sess.CloseWithError(ProtocolViolationErrorCode, fmt.Sprintf("unknown unidirectional stream type: %v", streamType)); err != nil {
+			streamLogger.Error("failed to close session for unknown unidirectional stream type", "error", err)
+		}
 		return
 	}
 }

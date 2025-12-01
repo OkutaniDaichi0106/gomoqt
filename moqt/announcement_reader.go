@@ -74,7 +74,7 @@ func newAnnouncementReader(stream quic.Stream, prefix prefix, initSuffixes []suf
 					ar.announcementsMu.Unlock()
 
 					// Close the stream with an error
-					ar.CloseWithError(DuplicatedAnnounceErrorCode)
+					_ = ar.CloseWithError(DuplicatedAnnounceErrorCode)
 
 					return
 				}
@@ -91,14 +91,14 @@ func newAnnouncementReader(stream quic.Stream, prefix prefix, initSuffixes []suf
 				} else {
 					// Release lock before calling CloseWithError to avoid deadlock
 					ar.announcementsMu.Unlock()
-					ar.CloseWithError(DuplicatedAnnounceErrorCode)
+					_ = ar.CloseWithError(DuplicatedAnnounceErrorCode)
 					return
 				}
 			default:
 				ar.announcementsMu.Unlock()
 
 				// Unsupported status, close with error
-				ar.CloseWithError(InvalidAnnounceStatusErrorCode)
+				_ = ar.CloseWithError(InvalidAnnounceStatusErrorCode)
 				return
 			}
 		}

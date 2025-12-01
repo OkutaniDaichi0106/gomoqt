@@ -44,7 +44,7 @@ func TestNewFrame(t *testing.T) {
 			assert.NotNil(t, frame)
 
 			if len(tt.data) > 0 {
-				frame.Write(tt.data)
+				_, _ = frame.Write(tt.data)
 			}
 
 			assert.Equal(t, tt.expected, frame.Body())
@@ -59,12 +59,12 @@ func TestFrame_WriteGrowth(t *testing.T) {
 	assert.Equal(t, 0, frame.Len())
 
 	// Write data within capacity
-	frame.Write([]byte("abc"))
+	_, _ = frame.Write([]byte("abc"))
 	assert.Equal(t, 3, frame.Len())
 	assert.Equal(t, []byte("abc"), frame.Body())
 
 	// Write more data to trigger growth
-	frame.Write([]byte("defghij"))
+	_, _ = frame.Write([]byte("defghij"))
 	assert.Equal(t, 10, frame.Len())
 	assert.Equal(t, []byte("abcdefghij"), frame.Body())
 	assert.True(t, frame.Cap() >= 10)
@@ -73,7 +73,7 @@ func TestFrame_WriteGrowth(t *testing.T) {
 func TestFrame_Reset(t *testing.T) {
 	// Test that Reset clears the body while preserving capacity
 	frame := NewFrame(20)
-	frame.Write([]byte("some data"))
+	_, _ = frame.Write([]byte("some data"))
 	assert.Equal(t, 9, frame.Len())
 	originalCap := frame.Cap()
 
@@ -83,7 +83,7 @@ func TestFrame_Reset(t *testing.T) {
 	assert.Len(t, frame.Body(), 0)
 
 	// Verify we can write again after reset
-	frame.Write([]byte("new data"))
+	_, _ = frame.Write([]byte("new data"))
 	assert.Equal(t, 8, frame.Len())
 	assert.Equal(t, []byte("new data"), frame.Body())
 }
@@ -92,7 +92,7 @@ func TestFrame_Clone(t *testing.T) {
 	// Test that Clone creates an independent copy
 	originalData := []byte("original data")
 	frame := NewFrame(len(originalData))
-	frame.Write(originalData)
+	_, _ = frame.Write(originalData)
 
 	clone := frame.Clone()
 	assert.NotNil(t, clone)
@@ -100,7 +100,7 @@ func TestFrame_Clone(t *testing.T) {
 
 	// Modify original and verify clone is unchanged
 	frame.Reset()
-	frame.Write([]byte("modified"))
+	_, _ = frame.Write([]byte("modified"))
 	assert.Equal(t, []byte("modified"), frame.Body())
 	assert.Equal(t, originalData, clone.Body())
 
@@ -138,7 +138,7 @@ func TestFrame_EncodeDecode_RoundTrip(t *testing.T) {
 				t.Run(sc.name, func(t *testing.T) {
 					// Create and encode frame
 					frame := NewFrame(sc.initalC)
-					frame.Write(tt.payload)
+					_, _ = frame.Write(tt.payload)
 
 					var buf bytes.Buffer
 					// encode must succeed (fatal for this subtest)
@@ -180,7 +180,7 @@ func TestFrame_WriteTo(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			frame := NewFrame(len(tt.payload) + 8)
-			frame.Write(tt.payload)
+			_, _ = frame.Write(tt.payload)
 
 			var buf bytes.Buffer
 			n, err := frame.WriteTo(&buf)
@@ -202,13 +202,13 @@ func TestFrame_LenAndCap(t *testing.T) {
 	assert.Equal(t, 0, frame.Len())
 	assert.Equal(t, 50, frame.Cap())
 
-	frame.Write([]byte("test"))
+	_, _ = frame.Write([]byte("test"))
 	assert.Equal(t, 4, frame.Len())
 	assert.Equal(t, 50, frame.Cap())
 
 	// After growth
 	largeData := make([]byte, 100)
-	frame.Write(largeData)
+	_, _ = frame.Write(largeData)
 	assert.Equal(t, 104, frame.Len())
 	assert.True(t, frame.Cap() >= 104)
 }
@@ -217,7 +217,7 @@ func TestFrame_EncodeHeaderLayout(t *testing.T) {
 	// Test that encode correctly uses the header buffer for length encoding
 	// This verifies the MOQ encoding optimization where header stores length varint
 	frame := NewFrame(10)
-	frame.Write([]byte("test"))
+	_, _ = frame.Write([]byte("test"))
 
 	var buf bytes.Buffer
 	err := frame.encode(&buf)
@@ -288,7 +288,7 @@ func TestFrame_Encode(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			frame := NewFrame(len(tt.payload) + 8)
 			if len(tt.payload) > 0 {
-				frame.Write(tt.payload)
+				_, _ = frame.Write(tt.payload)
 			}
 
 			var buf bytes.Buffer

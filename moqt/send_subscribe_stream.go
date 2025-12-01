@@ -93,7 +93,7 @@ func (sss *sendSubscribeStream) UpdateSubscribe(newConfig *TrackConfig) error {
 	if err != nil {
 		// Close the stream with error on write failure
 		sss.mu.Unlock() // Unlock before calling closeWithError to avoid deadlock
-		sss.closeWithError(InternalSubscribeErrorCode)
+		_ = sss.closeWithError(InternalSubscribeErrorCode)
 		sss.mu.Lock() // Re-lock for defer
 		return err
 	}

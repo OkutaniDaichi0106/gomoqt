@@ -36,10 +36,14 @@ func TestNewSession(t *testing.T) {
 			mockStream.On("Read", mock.Anything).Return(0, io.EOF) // Create a proper mock connection
 			conn := &MockQUICConnection{}
 			conn.On("Context").Return(context.Background())
+			// Provide a default OpenStream behavior for tests that don't explicitly set it
+			conn.On("OpenStream").Return(nil, io.EOF).Maybe()
 			conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
 			conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)    // For handleBiStreams goroutine
 			conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF) // For handleUniStreams goroutine
 			conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+			// Provide a default OpenStream behavior for tests that don't explicitly set it
+			conn.On("OpenStream").Return(nil, io.EOF).Maybe()
 
 			sessStream := newSessionStream(mockStream, &SetupRequest{
 				Path:             "test/path",
@@ -54,7 +58,7 @@ func TestNewSession(t *testing.T) {
 			}
 
 			// Cleanup
-			session.CloseWithError(NoError, "")
+			_ = session.CloseWithError(NoError, "")
 		})
 	}
 }
@@ -93,7 +97,7 @@ func TestNewSessionWithNilMux(t *testing.T) {
 			}
 
 			// Cleanup
-			session.CloseWithError(InternalSessionErrorCode, "terminate reason")
+			_ = session.CloseWithError(InternalSessionErrorCode, "terminate reason")
 		})
 	}
 }
@@ -119,7 +123,7 @@ func TestNewSession_WithNilLogger(t *testing.T) {
 
 	assert.NotNil(t, session, "session should be created with nil logger")
 
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestNewSession_SessionStreamClosure(t *testing.T) {
@@ -281,7 +285,7 @@ func TestSession_Subscribe(t *testing.T) {
 			}
 
 			// Cleanup
-			session.CloseWithError(NoError, "")
+			_ = session.CloseWithError(NoError, "")
 		})
 	}
 }
@@ -316,7 +320,7 @@ func TestSession_Subscribe_OpenError(t *testing.T) {
 	assert.Nil(t, subscriber)
 
 	// Cleanup
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_Subscribe_OpenStreamApplicationError(t *testing.T) {
@@ -352,7 +356,7 @@ func TestSession_Subscribe_OpenStreamApplicationError(t *testing.T) {
 	var sessErr *SessionError
 	assert.ErrorAs(t, err, &sessErr)
 
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_Subscribe_EncodeStreamTypeError(t *testing.T) {
@@ -390,7 +394,7 @@ func TestSession_Subscribe_EncodeStreamTypeError(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, reader)
 
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_Subscribe_EncodeStreamTypeStreamError(t *testing.T) {
@@ -433,7 +437,7 @@ func TestSession_Subscribe_EncodeStreamTypeStreamError(t *testing.T) {
 	var subErr *SubscribeError
 	assert.ErrorAs(t, err, &subErr)
 
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_Subscribe_NilConfig(t *testing.T) {
@@ -482,7 +486,7 @@ func TestSession_Subscribe_NilConfig(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, reader)
 
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_Subscribe_EncodeSubscribeMessageStreamError(t *testing.T) {
@@ -529,7 +533,7 @@ func TestSession_Subscribe_EncodeSubscribeMessageStreamError(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, reader)
 
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_Subscribe_EncodeSubscribeMessageRemoteStreamError(t *testing.T) {
@@ -581,7 +585,7 @@ func TestSession_Subscribe_EncodeSubscribeMessageRemoteStreamError(t *testing.T)
 	var subErr *SubscribeError
 	assert.ErrorAs(t, err, &subErr)
 
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_Subscribe_DecodeSubscribeOkStreamError(t *testing.T) {
@@ -625,7 +629,7 @@ func TestSession_Subscribe_DecodeSubscribeOkStreamError(t *testing.T) {
 	var subErr *SubscribeError
 	assert.ErrorAs(t, err, &subErr)
 
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_Subscribe_DecodeSubscribeOkError(t *testing.T) {
@@ -665,7 +669,7 @@ func TestSession_Subscribe_DecodeSubscribeOkError(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, reader)
 
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_Context(t *testing.T) {
@@ -690,7 +694,7 @@ func TestSession_Context(t *testing.T) {
 	assert.NotNil(t, ctx, "Context should not be nil")
 
 	// Cleanup
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_nextSubscribeID(t *testing.T) {
@@ -718,7 +722,7 @@ func TestSession_nextSubscribeID(t *testing.T) {
 	assert.True(t, id2 > id1, "Subsequent IDs should be larger")
 
 	// Cleanup
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_HandleBiStreams_AcceptError(t *testing.T) {
@@ -763,7 +767,7 @@ func TestSession_HandleBiStreams_AcceptError(t *testing.T) {
 	assert.NotNil(t, session)
 
 	// Cleanup
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_HandleUniStreamsAcceptError(t *testing.T) {
@@ -791,7 +795,7 @@ func TestSession_HandleUniStreamsAcceptError(t *testing.T) {
 	assert.NotNil(t, session)
 
 	// Cleanup
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_ConcurrentAccess(t *testing.T) {
@@ -849,7 +853,7 @@ func TestSession_ConcurrentAccess(t *testing.T) {
 	}
 
 	// Cleanup
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_ContextCancellation(t *testing.T) {
@@ -880,7 +884,7 @@ func TestSession_ContextCancellation(t *testing.T) {
 	assert.NotNil(t, ctx)
 
 	// Terminate the session
-	session.CloseWithError(NoError, "test termination")
+	_ = session.CloseWithError(NoError, "test termination")
 
 	// Context should be cancelled after termination
 	timer := time.AfterFunc(100*time.Millisecond, func() {
@@ -915,7 +919,7 @@ func TestSession_WithRealMux(t *testing.T) {
 	assert.Equal(t, mux, session.mux, "Mux should be set correctly in the session")
 
 	// Cleanup
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_GoAway(t *testing.T) {
@@ -943,7 +947,7 @@ func TestSession_GoAway(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Cleanup
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_AcceptAnnounce(t *testing.T) {
@@ -985,7 +989,8 @@ func TestSession_AcceptAnnounce(t *testing.T) {
 			prefix: "/test/prefix/",
 			setupMocks: func(mockConn *MockQUICConnection, mockStream interface{}) {
 				mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(errors.New("close error")).Once()
-				// No additional mocks needed, session is terminating
+				// Provide optional OpenStream behavior to avoid unexpected calls during termination
+				mockConn.On("OpenStream").Return(nil, io.EOF).Maybe()
 			},
 			expectError: true,
 		},
@@ -1006,6 +1011,7 @@ func TestSession_AcceptAnnounce(t *testing.T) {
 			if name != "terminating session" {
 				conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
 			}
+
 			conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 			conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF).Maybe()
 			conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF).Maybe()
@@ -1023,10 +1029,6 @@ func TestSession_AcceptAnnounce(t *testing.T) {
 			announceStream := &MockQUICStream{}
 			tt.setupMocks(conn, announceStream)
 
-			if name == "terminating session" {
-				session.CloseWithError(NoError, "")
-			}
-
 			reader, err := session.AcceptAnnounce(tt.prefix)
 			if tt.expectError {
 				assert.Error(t, err)
@@ -1037,7 +1039,7 @@ func TestSession_AcceptAnnounce(t *testing.T) {
 			}
 
 			// Cleanup
-			session.CloseWithError(NoError, "")
+			_ = session.CloseWithError(NoError, "")
 		})
 	}
 }
@@ -1067,7 +1069,7 @@ func TestSession_AddTrackWriter(t *testing.T) {
 	assert.Equal(t, writer, session.trackWriters[id])
 
 	// Cleanup
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_RemoveTrackWriter(t *testing.T) {
@@ -1098,7 +1100,7 @@ func TestSession_RemoveTrackWriter(t *testing.T) {
 	assert.NotContains(t, session.trackWriters, id)
 
 	// Cleanup
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_RemoveTrackReader(t *testing.T) {
@@ -1129,7 +1131,7 @@ func TestSession_RemoveTrackReader(t *testing.T) {
 	assert.NotContains(t, session.trackReaders, id)
 
 	// Cleanup
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestCancelStreamWithError(t *testing.T) {
@@ -1165,7 +1167,7 @@ func TestSession_AddTrackReader(t *testing.T) {
 	session.addTrackReader(id, reader)
 	assert.Equal(t, reader, session.trackReaders[id])
 
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_ProcessBiStream_Announce(t *testing.T) {
@@ -1241,7 +1243,7 @@ func TestSession_ProcessBiStream_Announce(t *testing.T) {
 		// Expected to block waiting for announcements
 	}
 
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_ProcessBiStream_Subscribe(t *testing.T) {
@@ -1328,7 +1330,7 @@ func TestSession_ProcessBiStream_Subscribe(t *testing.T) {
 	}
 
 	// Terminate to stop blocking
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 
 	select {
 	case <-done:
@@ -1581,7 +1583,7 @@ func TestSession_ProcessUniStream_Group(t *testing.T) {
 	// Verify group was enqueued
 	time.Sleep(10 * time.Millisecond)
 
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_ProcessUniStream_UnknownSubscribeID(t *testing.T) {
@@ -1634,7 +1636,7 @@ func TestSession_ProcessUniStream_UnknownSubscribeID(t *testing.T) {
 
 	mockRecvStream.AssertExpectations(t)
 
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_ProcessUniStream_InvalidStreamType(t *testing.T) {
@@ -1864,7 +1866,7 @@ func TestSession_AcceptAnnounce_OpenStreamApplicationError(t *testing.T) {
 	var sessErr *SessionError
 	assert.ErrorAs(t, err, &sessErr)
 
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_AcceptAnnounce_EncodeStreamTypeError(t *testing.T) {
@@ -1897,7 +1899,7 @@ func TestSession_AcceptAnnounce_EncodeStreamTypeError(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, reader)
 
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_AcceptAnnounce_EncodeStreamTypeStreamError(t *testing.T) {
@@ -1938,7 +1940,7 @@ func TestSession_AcceptAnnounce_EncodeStreamTypeStreamError(t *testing.T) {
 	var annErr *AnnounceError
 	assert.ErrorAs(t, err, &annErr)
 
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_AcceptAnnounce_EncodePleaseMessageStreamError(t *testing.T) {
@@ -1989,7 +1991,7 @@ func TestSession_AcceptAnnounce_EncodePleaseMessageStreamError(t *testing.T) {
 	var annErr *AnnounceError
 	assert.ErrorAs(t, err, &annErr)
 
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_AcceptAnnounce_DecodeInitMessageStreamError(t *testing.T) {
@@ -2032,7 +2034,7 @@ func TestSession_AcceptAnnounce_DecodeInitMessageStreamError(t *testing.T) {
 	var annErr *AnnounceError
 	assert.ErrorAs(t, err, &annErr)
 
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_AcceptAnnounce_DecodeInitMessageError(t *testing.T) {
@@ -2068,7 +2070,7 @@ func TestSession_AcceptAnnounce_DecodeInitMessageError(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, reader)
 
-	session.CloseWithError(NoError, "")
+	_ = session.CloseWithError(NoError, "")
 }
 
 func TestSession_Terminate_AlreadyTerminating(t *testing.T) {

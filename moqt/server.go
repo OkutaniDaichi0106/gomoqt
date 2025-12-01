@@ -485,7 +485,14 @@ func (s *Server) Close() error {
 	// Terminate all active sessions
 	s.sessMu.Lock()
 	for sess := range s.activeSess {
-		go sess.CloseWithError(NoError, SessionErrorText(NoError))
+		// Close sessions concurrently; log potential errors.
+		go func(sess *Session) {
+			if err := sess.CloseWithError(NoError, SessionErrorText(NoError)); err != nil {
+				if s.Logger != nil {
+					s.Logger.Error("failed to close session during server Close", "error", err)
+				}
+			}
+		}(sess)
 	}
 	s.sessMu.Unlock()
 
@@ -574,7 +581,13 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		}
 		s.sessMu.Lock()
 		for sess := range s.activeSess {
-			go sess.CloseWithError(GoAwayTimeoutErrorCode, SessionErrorText(GoAwayTimeoutErrorCode))
+			go func(sess *Session) {
+				if err := sess.CloseWithError(GoAwayTimeoutErrorCode, SessionErrorText(GoAwayTimeoutErrorCode)); err != nil {
+					if s.Logger != nil {
+						s.Logger.Error("failed to close session during shutdown force", "error", err)
+					}
+				}
+			}(sess)
 		}
 		s.sessMu.Unlock()
 
@@ -688,6 +701,6 @@ func (s *Server) goAway() {
 	defer s.sessMu.Unlock()
 
 	for sess := range s.activeSess {
-		sess.goAway("") // TODO: specify URI if needed
+		_ = sess.goAway("") // TODO: specify URI if needed; log if required
 	}
 }

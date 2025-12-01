@@ -122,7 +122,7 @@ func TestTrackReader_Update(t *testing.T) {
 
 	newTrackConfig := TrackConfig{}
 
-	receiver.Update(&newTrackConfig)
+	_ = receiver.Update(&newTrackConfig)
 
 	// Verify update
 	assert.Equal(t, &TrackConfig{}, receiver.TrackConfig())

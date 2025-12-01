@@ -2013,6 +2013,11 @@ func TestMux_ServeTrack_ClosesWhenAnnouncementEnds(t *testing.T) {
 
 	// Register the handler so it remains active
 	mux.Announce(ann, TrackHandlerFunc(func(tw *TrackWriter) {
+		// Ensure we handle cases where receiveSubscribeStream might be nil (closed early)
+		if tw.receiveSubscribeStream == nil {
+			// Nothing to wait on; exit handler immediately
+			return
+		}
 		// Wait for context cancellation or closure; this will be unblocked when the announcement ends and tw.Close() is called
 		<-tw.Context().Done()
 	}))

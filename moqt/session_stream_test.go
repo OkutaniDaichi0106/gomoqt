@@ -80,7 +80,7 @@ func TestSessionStream_updateSession_WriteError(t *testing.T) {
 
 	// Error handling depends on implementation, but should not panic
 	assert.NotPanics(t, func() {
-		ss.updateSession(uint64(1000000))
+		_ = ss.updateSession(uint64(1000000))
 	}, "updateSession should not panic on write error")
 
 	mockStream.AssertExpectations(t)
@@ -166,9 +166,9 @@ func TestSessionStream_listenUpdates(t *testing.T) {
 				// Valid SessionUpdateMessage
 				bitrate := uint64(1000000)
 				var buf bytes.Buffer
-				message.SessionUpdateMessage{
+				_ = (message.SessionUpdateMessage{
 					Bitrate: bitrate,
-				}.Encode(&buf)
+				}).Encode(&buf)
 
 				mockStream := &MockQUICStream{
 					ReadFunc: buf.Read,
@@ -195,9 +195,9 @@ func TestSessionStream_listenUpdates(t *testing.T) {
 		"zero bitrate": {
 			mockStream: func() *MockQUICStream {
 				var buf bytes.Buffer
-				message.SessionUpdateMessage{
+				_ = (message.SessionUpdateMessage{
 					Bitrate: 0,
-				}.Encode(&buf)
+				}).Encode(&buf)
 
 				mockStream := &MockQUICStream{
 					ReadFunc: buf.Read,
@@ -343,7 +343,7 @@ func TestSessionStream_ConcurrentAccess(t *testing.T) {
 	// Concurrent updateSession calls
 	wg.Go(func() {
 		for i := range 5 {
-			ss.updateSession(uint64(i * 1000))
+			_ = ss.updateSession(uint64(i * 1000))
 			time.Sleep(time.Millisecond)
 		}
 	})
@@ -587,7 +587,7 @@ func TestResponse_AwaitAccepted(t *testing.T) {
 					Parameters:      map[uint64][]byte{1: []byte("test")},
 				}
 				var buf bytes.Buffer
-				ssm.Encode(&buf)
+				_ = ssm.Encode(&buf)
 
 				mockStream := &MockQUICStream{
 					ReadFunc: buf.Read,
@@ -664,7 +664,7 @@ func TestResponse_AwaitAccepted_OnlyOnce(t *testing.T) {
 		Parameters:      map[uint64][]byte{1: []byte("test")},
 	}
 	var buf bytes.Buffer
-	ssm.Encode(&buf)
+	_ = ssm.Encode(&buf)
 
 	// Use ReadFunc for simpler mocking
 	mockStream.ReadFunc = buf.Read
@@ -701,7 +701,7 @@ func TestResponse_AwaitAccepted_ConcurrentCalls(t *testing.T) {
 		Parameters:      map[uint64][]byte{1: []byte("test")},
 	}
 	var buf bytes.Buffer
-	ssm.Encode(&buf)
+	_ = ssm.Encode(&buf)
 
 	// Use ReadFunc for simpler mocking
 	mockStream.ReadFunc = buf.Read
@@ -862,7 +862,7 @@ func TestResponse_AwaitAccepted_InvalidMessage(t *testing.T) {
 					Parameters:      map[uint64][]byte{1: []byte("test")},
 				}
 				var fullBuf bytes.Buffer
-				ssm.Encode(&fullBuf)
+				_ = ssm.Encode(&fullBuf)
 				fullData := fullBuf.Bytes()
 
 				// Take only first 2 bytes to create truncated message
@@ -921,7 +921,7 @@ func TestResponse_AwaitAccepted_DifferentVersions(t *testing.T) {
 				Parameters:      map[uint64][]byte{1: []byte("test")},
 			}
 			var buf bytes.Buffer
-			ssm.Encode(&buf)
+			_ = ssm.Encode(&buf)
 
 			// Use ReadFunc for simpler mocking
 			mockStream.ReadFunc = buf.Read
@@ -1042,7 +1042,7 @@ func TestResponse_AwaitAccepted_ErrorHandling(t *testing.T) {
 					Parameters:      map[uint64][]byte{},
 				}
 				var buf bytes.Buffer
-				ssm.Encode(&buf)
+				_ = ssm.Encode(&buf)
 
 				mockStream := &MockQUICStream{
 					ReadFunc: buf.Read,
@@ -1315,7 +1315,7 @@ func TestResponse_AwaitAccepted_BoundaryVersions(t *testing.T) {
 				Parameters:      map[uint64][]byte{1: []byte("test")},
 			}
 			var buf bytes.Buffer
-			ssm.Encode(&buf)
+			_ = ssm.Encode(&buf)
 
 			// Use ReadFunc for simpler mocking
 			mockStream.ReadFunc = buf.Read
@@ -1410,7 +1410,7 @@ func TestResponse_AwaitAccepted_Race(t *testing.T) {
 		Parameters:      map[uint64][]byte{1: []byte("test")},
 	}
 	var buf bytes.Buffer
-	ssm.Encode(&buf)
+	_ = ssm.Encode(&buf)
 
 	mockStream.ReadFunc = buf.Read
 
@@ -1512,7 +1512,7 @@ func TestResponse_SessionStream_Sharing(t *testing.T) {
 		Parameters:      map[uint64][]byte{1: []byte("shared_state_test")},
 	}
 	var buf bytes.Buffer
-	ssm.Encode(&buf)
+	_ = ssm.Encode(&buf)
 
 	// Use ReadFunc for simpler mocking
 	mockStream.ReadFunc = buf.Read

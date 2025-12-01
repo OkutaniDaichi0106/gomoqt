@@ -24,7 +24,7 @@ func Example() {
 		SetupHandler: moqt.SetupHandlerFunc(func(w moqt.SetupResponseWriter, r *moqt.SetupRequest) {
 			// Select a supported version from the client's request
 			if err := w.SelectVersion(moqt.DefaultServerVersion); err != nil {
-				w.Reject(moqt.UnsupportedVersionErrorCode)
+				_ = w.Reject(moqt.UnsupportedVersionErrorCode)
 				return
 			}
 		}),
@@ -57,7 +57,7 @@ func ExampleClient() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer session.CloseWithError(moqt.NoError, "done")
+	defer func() { _ = session.CloseWithError(moqt.NoError, "done") }()
 
 	fmt.Println("Connected to MOQ server")
 }

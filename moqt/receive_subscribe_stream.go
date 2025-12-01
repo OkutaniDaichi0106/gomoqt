@@ -119,7 +119,7 @@ func (rss *receiveSubscribeStream) WriteInfo(info Info) error {
 		sum := message.SubscribeOkMessage{}
 		err = sum.Encode(rss.stream)
 		if err != nil {
-			rss.closeWithError(InternalSubscribeErrorCode)
+			_ = rss.closeWithError(InternalSubscribeErrorCode)
 			return
 		}
 	})

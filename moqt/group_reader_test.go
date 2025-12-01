@@ -230,7 +230,7 @@ func TestGroupReader_ReadFrame(t *testing.T) {
 			setupStream: func() *MockQUICReceiveStream {
 				// Create a frame with some data
 				frame := NewFrame(10)
-				frame.Write([]byte("test data"))
+				_, _ = frame.Write([]byte("test data"))
 				var buf bytes.Buffer
 				err := frame.encode(&buf)
 				if err != nil {
@@ -305,7 +305,7 @@ func TestGroupReader_Frames(t *testing.T) {
 	t.Run("iterates frames until error", func(t *testing.T) {
 		// Prepare a single encoded frame
 		frame := NewFrame(20)
-		frame.Write([]byte("test"))
+		_, _ = frame.Write([]byte("test"))
 
 		var buf bytes.Buffer
 		err := frame.encode(&buf)

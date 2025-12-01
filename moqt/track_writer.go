@@ -2,6 +2,7 @@ package moqt
 
 import (
 	"errors"
+	"log/slog"
 	"sync"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
@@ -109,7 +110,9 @@ func (s *TrackWriter) CloseWithError(code SubscribeErrorCode) {
 	}
 	s.groupMapMu.Unlock()
 	if s.receiveSubscribeStream != nil {
-		s.receiveSubscribeStream.closeWithError(code)
+		if err := s.receiveSubscribeStream.closeWithError(code); err != nil {
+			slog.Error("failed to close receive subscribe stream with error", "error", err)
+		}
 		s.receiveSubscribeStream = nil
 	}
 

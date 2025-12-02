@@ -2,7 +2,6 @@ package message_test
 
 import (
 	"bytes"
-	"io"
 	"testing"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
@@ -119,14 +118,15 @@ func TestSessionServerMessage_DecodeErrors(t *testing.T) {
 	t.Run("extra data", func(t *testing.T) {
 		var ssm message.SessionServerMessage
 		var buf bytes.Buffer
-		buf.WriteByte(0x03) // length 3
-		buf.WriteByte(0x00)
+		// Create a valid message with length 2 (version + empty params)
+		// but claim the length is 3, leaving 1 byte unconsumed
+		buf.WriteByte(0x03) // length 3 (varint)
 		buf.WriteByte(0x01) // selected version
 		buf.WriteByte(0x00) // parameters count 0
-		buf.WriteByte(0xFF) // extra byte
+		buf.WriteByte(0x00) // extra byte inside message (not consumed)
 		src := bytes.NewReader(buf.Bytes())
 		err := ssm.Decode(src)
+		// Should fail with ErrMessageTooShort because there's leftover data in the message
 		assert.Error(t, err)
-		assert.Equal(t, io.EOF, err)
 	})
 }

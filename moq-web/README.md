@@ -70,9 +70,9 @@ Tests use Deno's standard testing library with BDD-style syntax:
 import { assertEquals, describe, it } from "../deps.ts";
 
 describe("MyFeature", () => {
-  it("should work correctly", () => {
-    assertEquals(1 + 1, 2);
-  });
+	it("should work correctly", () => {
+		assertEquals(1 + 1, 2);
+	});
 });
 ```
 

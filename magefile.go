@@ -254,7 +254,7 @@ func (Interop) Client() error {
 	}
 
 	// Get remaining arguments (URL)
-	url := "https://127.0.0.1:9000"
+	url := "https://localhost:9000"
 	remaining := fs.Args()
 	if len(remaining) > 0 {
 		url = remaining[0]
@@ -318,11 +318,12 @@ func runInteropWithClient(lang, url string) error {
 	}
 
 	if lang == "ts" {
-		if err := os.Chdir("moq-web/cli/interop"); err != nil {
+		if err := os.Chdir("moq-web"); err != nil {
 			return err
 		}
 		fmt.Printf("Starting TypeScript interop client (connecting to %s)...\n", url)
-		return sh.RunV("deno", "run", "--allow-net", "--allow-read", "main.ts", "--addr", url, "--insecure")
+		// Use run_secure.ts which handles mkcert CA certificate automatically
+		return sh.RunV("deno", "run", "--unstable-net", "--allow-all", "cli/interop/run_secure.ts", "--addr", url)
 	}
 
 	// Default to Go client

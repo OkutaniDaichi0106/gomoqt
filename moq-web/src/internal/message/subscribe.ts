@@ -1,14 +1,14 @@
 import type { Reader, Writer } from "@okudai/golikejs/io";
 import {
-  parseString,
-  parseVarint,
-  readFull,
-  readUint16,
-  stringLen,
-  varintLen,
-  writeString,
-  writeUint16,
-  writeVarint,
+	parseString,
+	parseVarint,
+	readFull,
+	readUint16,
+	stringLen,
+	varintLen,
+	writeString,
+	writeUint16,
+	writeVarint,
 } from "./message.ts";
 
 export interface SubscribeMessageInit {
@@ -59,8 +59,8 @@ export class SubscribeMessage {
 		const msgLen = this.len;
 		let err: Error | undefined;
 
-    [, err] = await writeUint16(w, msgLen);
-    if (err) return err;
+		[, err] = await writeUint16(w, msgLen);
+		if (err) return err;
 
 		[, err] = await writeVarint(w, this.subscribeId);
 		if (err) return err;
@@ -90,10 +90,10 @@ export class SubscribeMessage {
 	async decode(r: Reader): Promise<Error | undefined> {
 		let err: Error | undefined;
 
-    // Read message length
-    let msgLen: number;
-    [msgLen, , err] = await readUint16(r);
-    if (err) return err;
+		// Read message length
+		let msgLen: number;
+		[msgLen, , err] = await readUint16(r);
+		if (err) return err;
 
 		// Read message body into a buffer
 		const buf = new Uint8Array(msgLen);

@@ -15,20 +15,20 @@ export class SubscribeOkMessage {
 		return 0;
 	}
 
-  /**
-   * Encodes the message to the writer.
-   */
-  async encode(w: Writer): Promise<Error | undefined> {
-    const [, err] = await writeUint16(w, this.len);
-    return err;
-  }
+	/**
+	 * Encodes the message to the writer.
+	 */
+	async encode(w: Writer): Promise<Error | undefined> {
+		const [, err] = await writeUint16(w, this.len);
+		return err;
+	}
 
-  /**
-   * Decodes the message from the reader.
-   */
-  async decode(r: Reader): Promise<Error | undefined> {
-    const [msgLen, , err] = await readUint16(r);
-    if (err) return err;
+	/**
+	 * Decodes the message from the reader.
+	 */
+	async decode(r: Reader): Promise<Error | undefined> {
+		const [msgLen, , err] = await readUint16(r);
+		if (err) return err;
 
 		if (msgLen !== this.len) {
 			return new Error(

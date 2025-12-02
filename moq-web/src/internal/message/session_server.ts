@@ -1,14 +1,14 @@
 import type { Reader, Writer } from "@okudai/golikejs/io";
 import {
-  bytesLen,
-  parseBytes,
-  parseVarint,
-  readFull,
-  readUint16,
-  varintLen,
-  writeBytes,
-  writeUint16,
-  writeVarint,
+	bytesLen,
+	parseBytes,
+	parseVarint,
+	readFull,
+	readUint16,
+	varintLen,
+	writeBytes,
+	writeUint16,
+	writeVarint,
 } from "./message.ts";
 
 export interface SessionServerMessageInit {
@@ -46,8 +46,8 @@ export class SessionServerMessage {
 		const msgLen = this.len;
 		let err: Error | undefined;
 
-    [, err] = await writeUint16(w, msgLen);
-    if (err) return err;
+		[, err] = await writeUint16(w, msgLen);
+		if (err) return err;
 
 		[, err] = await writeVarint(w, this.version);
 		if (err) return err;
@@ -65,12 +65,12 @@ export class SessionServerMessage {
 		return undefined;
 	}
 
-  /**
-   * Decodes the message from the reader.
-   */
-  async decode(r: Reader): Promise<Error | undefined> {
-    const [msgLen, , err1] = await readUint16(r);
-    if (err1) return err1;
+	/**
+	 * Decodes the message from the reader.
+	 */
+	async decode(r: Reader): Promise<Error | undefined> {
+		const [msgLen, , err1] = await readUint16(r);
+		if (err1) return err1;
 
 		const buf = new Uint8Array(msgLen);
 		const [, err2] = await readFull(r, buf);

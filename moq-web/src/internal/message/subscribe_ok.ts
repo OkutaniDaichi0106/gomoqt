@@ -1,5 +1,5 @@
 import type { Reader, Writer } from "@okudai/golikejs/io";
-import { readVarint, writeVarint } from "./message.ts";
+import { readUint16, writeUint16 } from "./message.ts";
 
 // deno-lint-ignore no-empty-interface
 export interface SubscribeOkMessageInit {}
@@ -19,7 +19,7 @@ export class SubscribeOkMessage {
    * Encodes the message to the writer.
    */
   async encode(w: Writer): Promise<Error | undefined> {
-    const [, err] = await writeVarint(w, this.len);
+    const [, err] = await writeUint16(w, this.len);
     return err;
   }
 
@@ -27,7 +27,7 @@ export class SubscribeOkMessage {
    * Decodes the message from the reader.
    */
   async decode(r: Reader): Promise<Error | undefined> {
-    const [msgLen, , err] = await readVarint(r);
+    const [msgLen, , err] = await readUint16(r);
     if (err) return err;
 
     if (msgLen !== this.len) {

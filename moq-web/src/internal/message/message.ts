@@ -76,39 +76,6 @@ export async function readUint16(
 }
 
 /**
- * Writes a big-endian u16 to the writer.
- * Returns number of bytes written and any error.
- */
-export async function writeUint16(
-	w: Writer,
-	num: number,
-): Promise<[number, Error | undefined]> {
-	if (num < 0 || num > 0xffff) {
-		return [0, new RangeError("Value exceeds u16 range")];
-	}
-	const buf = new Uint8Array(2);
-	buf[0] = (num >> 8) & 0xff;
-	buf[1] = num & 0xff;
-	return await w.write(buf);
-}
-
-/**
- * Reads a big-endian u16 from the reader.
- * Returns the value, number of bytes read, and any error.
- */
-export async function readUint16(
-	r: Reader,
-): Promise<[number, number, Error | undefined]> {
-	const buf = new Uint8Array(2);
-	const [n, err] = await readFull(r, buf);
-	if (err) {
-		return [0, n, err];
-	}
-	const value = (buf[0]! << 8) | buf[1]!;
-	return [value, 2, undefined];
-}
-
-/**
  * Writes a varint to the writer.
  * Returns number of bytes written and any error.
  */

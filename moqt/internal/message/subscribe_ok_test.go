@@ -63,9 +63,9 @@ func TestSubscribeOkMessage_DecodeErrors(t *testing.T) {
 	t.Run("extra data", func(t *testing.T) {
 		var som message.SubscribeOkMessage
 		var buf bytes.Buffer
-		buf.WriteByte(0x01)
-		buf.WriteByte(0x00)
-		buf.WriteByte(0x00) // extra
+		buf.WriteByte(0x00) // length u16 high byte
+		buf.WriteByte(0x01) // length u16 low byte = 1
+		buf.WriteByte(0x00) // extra (fills to 1 byte)
 		src := bytes.NewReader(buf.Bytes())
 		err := som.Decode(src)
 		assert.Error(t, err)

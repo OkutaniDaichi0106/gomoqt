@@ -449,7 +449,7 @@ func TestClient_DialWebTransport_CustomDialSuccess(t *testing.T) {
 	// Encode a proper SessionServerMessage using bytes.Buffer
 	var buf bytes.Buffer
 	ssm := message.SessionServerMessage{
-		SelectedVersion: uint64(Draft01),
+		SelectedVersion: uint64(LiteDraft01),
 		Parameters:      make(parameters),
 	}
 	err := ssm.Encode(&buf)
@@ -515,7 +515,7 @@ func TestClient_DialQUIC_CustomDialSuccess(t *testing.T) {
 	// Encode a proper SessionServerMessage using bytes.Buffer
 	var buf bytes.Buffer
 	ssm := message.SessionServerMessage{
-		SelectedVersion: uint64(Draft01),
+		SelectedVersion: uint64(LiteDraft01),
 		Parameters:      make(parameters),
 	}
 	err := ssm.Encode(&buf)
@@ -663,7 +663,7 @@ func TestClient_OpenSession_Success(t *testing.T) {
 	// Encode a proper SessionServerMessage using bytes.Buffer
 	var buf bytes.Buffer
 	ssm := message.SessionServerMessage{
-		SelectedVersion: uint64(Draft01),
+		SelectedVersion: uint64(LiteDraft01),
 		Parameters:      make(parameters),
 	}
 	err := ssm.Encode(&buf)
@@ -751,19 +751,16 @@ func TestClient_Dial_URLSchemes(t *testing.T) {
 				mockConn := &MockQUICConnection{}
 				mockConn.On("Context").Return(context.Background())
 				mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+				// Encode a proper SessionServerMessage
+				wtBuffer := bytes.NewBuffer(nil)
+				_ = message.SessionServerMessage{
+					SelectedVersion: uint64(Default),
+				}.Encode(wtBuffer)
 				mockStream := &MockQUICStream{
 					WriteFunc: func(p []byte) (int, error) {
 						return len(p), nil // Mock successful write
 					},
-					ReadFunc: func(p []byte) (int, error) {
-						// Return minimal valid SESSION_SERVER response
-						if len(p) >= 2 {
-							p[0] = 0x01 // Message length = 1
-							p[1] = 0x01 // Selected version = 1
-							return 2, nil
-						}
-						return 0, nil
-					},
+					ReadFunc: wtBuffer.Read,
 				}
 				mockStream.On("Write", mock.AnythingOfType("[]uint8"))
 				mockStream.On("Read", mock.AnythingOfType("[]uint8"))
@@ -785,7 +782,7 @@ func TestClient_Dial_URLSchemes(t *testing.T) {
 				mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
 				buffer := bytes.NewBuffer(nil)
 				_ = message.SessionServerMessage{
-					SelectedVersion: uint64(Develop),
+					SelectedVersion: uint64(Default),
 				}.Encode(buffer)
 				mockStream := &MockQUICStream{
 					WriteFunc: func(p []byte) (int, error) {

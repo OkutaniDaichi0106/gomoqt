@@ -103,11 +103,12 @@ func TestAnnounceMessage_DecodeErrors(t *testing.T) {
 		var am message.AnnounceMessage
 		// Manually construct data with extra bytes after valid data
 		var buf bytes.Buffer
-		buf.WriteByte(0x04) // length 4
+		buf.WriteByte(0x00) // length u16 high byte
+		buf.WriteByte(0x04) // length u16 low byte = 4
 		buf.WriteByte(0x01) // status
 		buf.WriteByte(0x01) // string length 1
 		buf.WriteByte('a')  // string
-		buf.WriteByte(0x00) // extra byte
+		buf.WriteByte(0x00) // extra byte (fills to 4 bytes)
 		src := bytes.NewReader(buf.Bytes())
 		err := am.Decode(src)
 		assert.Error(t, err)

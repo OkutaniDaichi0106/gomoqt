@@ -85,39 +85,39 @@ func TestReadVarint(t *testing.T) {
 func TestReadMessageLength(t *testing.T) {
 	tests := map[string]struct {
 		input    []byte
-		expected uint64
+		expected uint16
 		wantErr  bool
 	}{
-		"1 byte - zero": {
-			input:    []byte{0x00},
+		"zero": {
+			input:    []byte{0x00, 0x00},
 			expected: 0,
 			wantErr:  false,
 		},
-		"1 byte - max": {
-			input:    []byte{0x3f},
+		"small value": {
+			input:    []byte{0x00, 0x3f},
 			expected: 63,
 			wantErr:  false,
 		},
-		"2 bytes": {
-			input:    []byte{0x40, 0x80},
+		"medium value": {
+			input:    []byte{0x00, 0x80},
 			expected: 128,
 			wantErr:  false,
 		},
-		"4 bytes": {
-			input:    []byte{0x80, 0x00, 0x00, 0x01},
-			expected: 1,
+		"large value": {
+			input:    []byte{0x01, 0x00},
+			expected: 256,
 			wantErr:  false,
 		},
-		"8 bytes": {
-			input:    []byte{0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01},
-			expected: 1,
+		"max value": {
+			input:    []byte{0xff, 0xff},
+			expected: 65535,
 			wantErr:  false,
 		},
 		"empty input": {
 			input:   []byte{},
 			wantErr: true,
 		},
-		"incomplete 2 bytes": {
+		"incomplete - 1 byte": {
 			input:   []byte{0x40},
 			wantErr: true,
 		},

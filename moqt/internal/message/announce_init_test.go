@@ -83,8 +83,8 @@ func TestAnnounceInitMessage_DecodeErrors(t *testing.T) {
 	t.Run("read varint error", func(t *testing.T) {
 		var aim message.AnnounceInitMessage
 		var buf bytes.Buffer
-		buf.WriteByte(0x80 | 1) // length 1
-		buf.WriteByte(0x00)
+		buf.WriteByte(0x00) // length u16 high byte
+		buf.WriteByte(0x01) // length u16 low byte = 1
 		buf.WriteByte(0x80) // invalid varint
 		src := bytes.NewReader(buf.Bytes())
 		err := aim.Decode(src)
@@ -94,8 +94,8 @@ func TestAnnounceInitMessage_DecodeErrors(t *testing.T) {
 	t.Run("read string error", func(t *testing.T) {
 		var aim message.AnnounceInitMessage
 		var buf bytes.Buffer
-		buf.WriteByte(0x80 | 3) // length 3
-		buf.WriteByte(0x00)
+		buf.WriteByte(0x00) // length u16 high byte
+		buf.WriteByte(0x03) // length u16 low byte = 3
 		buf.WriteByte(0x01) // count 1
 		buf.WriteByte(0x80) // invalid string varint
 		src := bytes.NewReader(buf.Bytes())
@@ -106,12 +106,13 @@ func TestAnnounceInitMessage_DecodeErrors(t *testing.T) {
 	t.Run("extra data", func(t *testing.T) {
 		var aim message.AnnounceInitMessage
 		var buf bytes.Buffer
-		buf.WriteByte(0x05) // length 5
-		buf.WriteByte(0x00)
+		buf.WriteByte(0x00) // length u16 high byte
+		buf.WriteByte(0x05) // length u16 low byte = 5
 		buf.WriteByte(0x01) // count 1
 		buf.WriteByte(0x01) // string length 1
 		buf.WriteByte('a')  // string
 		buf.WriteByte(0x00) // extra
+		buf.WriteByte(0x00) // extra (need to pad to 5 bytes)
 		src := bytes.NewReader(buf.Bytes())
 		err := aim.Decode(src)
 		assert.Error(t, err)

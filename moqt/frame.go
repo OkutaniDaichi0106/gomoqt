@@ -66,12 +66,12 @@ func (f *Frame) Cap() int {
 	return cap(f.body)
 }
 
-// encode writes the frame in MOQ format: length varint followed by payload.
+// encode writes the frame in MOQ format: u16 length followed by payload.
 // The length is encoded into the header buffer to minimize allocations.
 func (f *Frame) encode(w io.Writer) error {
-	l := uint64(len(f.body))
-	header, size := message.WriteVarint(f.header[:0], l)
-	start := 8 - size
+	l := uint16(len(f.body))
+	header, _ := message.WriteMessageLength(f.header[:0], l)
+	start := 8 - len(header)
 	copy(f.buf[start:], header)
 	end := 8 + len(f.body)
 	_, err := w.Write(f.buf[start:end])

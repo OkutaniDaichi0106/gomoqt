@@ -5,15 +5,15 @@ import { readUint16, writeUint16 } from "./message.ts";
 export interface SubscribeOkMessageInit {}
 
 export class SubscribeOkMessage {
-  constructor(_: SubscribeOkMessageInit = {}) {
-  }
+	constructor(_: SubscribeOkMessageInit = {}) {
+	}
 
-  /**
-   * Returns the length of the message body (excluding the length prefix).
-   */
-  get len(): number {
-    return 0;
-  }
+	/**
+	 * Returns the length of the message body (excluding the length prefix).
+	 */
+	get len(): number {
+		return 0;
+	}
 
   /**
    * Encodes the message to the writer.
@@ -30,12 +30,12 @@ export class SubscribeOkMessage {
     const [msgLen, , err] = await readUint16(r);
     if (err) return err;
 
-    if (msgLen !== this.len) {
-      return new Error(
-        `message length mismatch: expected ${msgLen}, got ${this.len}`,
-      );
-    }
+		if (msgLen !== this.len) {
+			return new Error(
+				`message length mismatch: expected ${msgLen}, got ${this.len}`,
+			);
+		}
 
-    return undefined;
-  }
+		return undefined;
+	}
 }

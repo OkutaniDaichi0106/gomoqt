@@ -4,9 +4,10 @@ import {
 	parseBytes,
 	parseVarint,
 	readFull,
-	readVarint,
+	readUint16,
 	varintLen,
 	writeBytes,
+	writeUint16,
 	writeVarint,
 } from "./message.ts";
 
@@ -48,7 +49,7 @@ export class SessionClientMessage {
 		const msgLen = this.len;
 		let err: Error | undefined;
 
-		[, err] = await writeVarint(w, msgLen);
+		[, err] = await writeUint16(w, msgLen);
 		if (err) return err;
 
 		[, err] = await writeVarint(w, this.versions.size);
@@ -76,7 +77,7 @@ export class SessionClientMessage {
 	 * Decodes the message from the reader.
 	 */
 	async decode(r: Reader): Promise<Error | undefined> {
-		const [msgLen, , err1] = await readVarint(r);
+		const [msgLen, , err1] = await readUint16(r);
 		if (err1) return err1;
 
 		const buf = new Uint8Array(msgLen);

@@ -3,10 +3,11 @@ import {
 	parseString,
 	parseVarint,
 	readFull,
-	readVarint,
+	readUint16,
 	stringLen,
 	varintLen,
 	writeString,
+	writeUint16,
 	writeVarint,
 } from "./message.ts";
 
@@ -58,7 +59,7 @@ export class SubscribeMessage {
 		const msgLen = this.len;
 		let err: Error | undefined;
 
-		[, err] = await writeVarint(w, msgLen);
+		[, err] = await writeUint16(w, msgLen);
 		if (err) return err;
 
 		[, err] = await writeVarint(w, this.subscribeId);
@@ -91,7 +92,7 @@ export class SubscribeMessage {
 
 		// Read message length
 		let msgLen: number;
-		[msgLen, , err] = await readVarint(r);
+		[msgLen, , err] = await readUint16(r);
 		if (err) return err;
 
 		// Read message body into a buffer

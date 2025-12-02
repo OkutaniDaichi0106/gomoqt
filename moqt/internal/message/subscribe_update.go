@@ -34,7 +34,7 @@ func (su SubscribeUpdateMessage) Encode(w io.Writer) error {
 	p := pool.Get(msgLen + VarintLen(uint64(msgLen)))
 	defer pool.Put(p)
 
-	p, _ = WriteVarint(p, uint64(msgLen))
+	p, _ = WriteMessageLength(p, uint16(msgLen))
 	p, _ = WriteVarint(p, uint64(su.TrackPriority))
 	p, _ = WriteVarint(p, uint64(su.MinGroupSequence))
 	p, _ = WriteVarint(p, uint64(su.MaxGroupSequence))
@@ -45,12 +45,12 @@ func (su SubscribeUpdateMessage) Encode(w io.Writer) error {
 }
 
 func (sum *SubscribeUpdateMessage) Decode(src io.Reader) error {
-	num, err := ReadMessageLength(src)
+	size, err := ReadMessageLength(src)
 	if err != nil {
 		return err
 	}
 
-	b := pool.Get(int(num))[:num]
+	b := pool.Get(int(size))[:size]
 	defer pool.Put(b)
 
 	_, err = io.ReadFull(src, b)

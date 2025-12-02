@@ -1,6 +1,7 @@
 package message
 
 import (
+	"encoding/binary"
 	"fmt"
 )
 
@@ -79,3 +80,9 @@ const (
 	maxVarInt4 = 1<<(32-2) - 1
 	maxVarInt8 = 1<<(64-2) - 1
 )
+
+func WriteMessageLength(b []byte, size uint16) ([]byte, int) {
+	fmt.Printf("WriteMessageLength: %d\n", size)
+	b = binary.BigEndian.AppendUint16(b, size)
+	return b, len(b)
+}

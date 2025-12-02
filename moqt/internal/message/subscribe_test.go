@@ -2,7 +2,6 @@ package message_test
 
 import (
 	"bytes"
-	"io"
 	"testing"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
@@ -174,8 +173,8 @@ func TestSubscribeMessage_DecodeErrors(t *testing.T) {
 	t.Run("extra data", func(t *testing.T) {
 		var s message.SubscribeMessage
 		var buf bytes.Buffer
-		buf.WriteByte(0x09) // length 9
-		buf.WriteByte(0x00)
+		buf.WriteByte(0x00) // length u16 high byte
+		buf.WriteByte(0x0A) // length u16 low byte = 10
 		buf.WriteByte(0x01) // subscribe id
 		buf.WriteByte(0x01) // broadcast path length 1
 		buf.WriteByte('a')
@@ -184,10 +183,11 @@ func TestSubscribeMessage_DecodeErrors(t *testing.T) {
 		buf.WriteByte(0x01) // track priority
 		buf.WriteByte(0x01) // min group sequence
 		buf.WriteByte(0x01) // max group sequence
-		buf.WriteByte(0xFF) // extra byte
+		buf.WriteByte(0xFF) // extra byte 1 (total message 9 + 1 extra = 10)
+		buf.WriteByte(0xFF) // extra byte 2 (need 10 bytes in the buffer for ReadFull)
 		src := bytes.NewReader(buf.Bytes())
 		err := s.Decode(src)
 		assert.Error(t, err)
-		assert.Equal(t, io.EOF, err)
+		assert.Equal(t, message.ErrMessageTooShort, err)
 	})
 }

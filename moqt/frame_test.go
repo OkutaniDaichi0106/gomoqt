@@ -148,7 +148,7 @@ func TestFrame_EncodeDecode_RoundTrip(t *testing.T) {
 					r := bytes.NewReader(buf.Bytes())
 					n, err := message.ReadMessageLength(r)
 					require.NoError(t, err)
-					require.Equal(t, uint64(len(tt.payload)), n)
+					require.Equal(t, uint16(len(tt.payload)), n)
 
 					// Read the payload and compare exact bytes
 					got := make([]byte, n)
@@ -273,15 +273,13 @@ func TestFrame_Write_AsIOWriter(t *testing.T) {
 }
 
 func TestFrame_Encode(t *testing.T) {
-	// Verify that encode writes exactly the varint length header followed by payload
+	// Verify that encode writes exactly the u16 length header followed by payload
 	tests := map[string]struct {
 		payload []byte
 	}{
-		"empty":             {payload: []byte{}},
-		"small":             {payload: []byte("a")},
-		"one-byte-boundary": {payload: make([]byte, 63)}, // 63 -> 1-byte varint
-		"two-byte-boundary": {payload: make([]byte, 64)}, // 64 -> 2-byte varint
-		"medium":            {payload: make([]byte, 1000)},
+		"empty":  {payload: []byte{}},
+		"small":  {payload: []byte("a")},
+		"medium": {payload: make([]byte, 1000)},
 	}
 
 	for name, tt := range tests {
@@ -294,8 +292,8 @@ func TestFrame_Encode(t *testing.T) {
 			var buf bytes.Buffer
 			require.NoError(t, frame.encode(&buf))
 
-			// Build expected bytes: varint(length) followed by payload
-			expectedHeader, _ := message.WriteVarint(nil, uint64(len(tt.payload)))
+			// Build expected bytes: u16(length) followed by payload
+			expectedHeader, _ := message.WriteMessageLength(nil, uint16(len(tt.payload)))
 			expected := append(expectedHeader, tt.payload...)
 
 			got := buf.Bytes()

@@ -1,6 +1,7 @@
 package message
 
 import (
+	"encoding/binary"
 	"io"
 	"math"
 )
@@ -28,77 +29,14 @@ func ReadVarint(b []byte) (uint64, int, error) {
 	return i, l, nil
 }
 
-func ReadMessageLength(r io.Reader) (uint64, error) {
-	buf := [1]byte{}
-	n, err := r.Read(buf[:])
-	if err != nil {
-		if err != io.EOF || n == 0 {
-			return 0, err
-		}
-		// Ignore EOF if a byte was read
-	}
-	l := 1 << ((buf[0] & 0xc0) >> 6)
-	b1 := buf[0] & (0xff - 0xc0)
-	if l == 1 {
-		return uint64(b1), nil
-	}
-
-	n2, err := r.Read(buf[:])
-	if err != nil {
-		if err != io.EOF || n2 == 0 {
-			return 0, err
-		}
-		// Ignore EOF if a byte was read
-	}
-	b2 := buf[0]
-
-	if l == 2 {
-		return uint64(b1)<<8 | uint64(b2), nil
-	}
-
-	_, err = r.Read(buf[:])
+func ReadMessageLength(r io.Reader) (uint16, error) {
+	buf := [2]byte{}
+	_, err := io.ReadFull(r, buf[:])
 	if err != nil {
 		return 0, err
 	}
-	b3 := buf[0]
-	n4, err := r.Read(buf[:])
-	if err != nil {
-		if err != io.EOF || n4 == 0 {
-			return 0, err
-		}
-		// Ignore EOF if the last byte was read
-	}
-	b4 := buf[0]
-
-	if l == 4 {
-		return uint64(b1)<<24 | uint64(b2)<<16 | uint64(b3)<<8 | uint64(b4), nil
-	}
-
-	_, err = r.Read(buf[:])
-	if err != nil {
-		return 0, err
-	}
-	b5 := buf[0]
-	_, err = r.Read(buf[:])
-	if err != nil {
-		return 0, err
-	}
-	b6 := buf[0]
-	_, err = r.Read(buf[:])
-	if err != nil {
-		return 0, err
-	}
-	b7 := buf[0]
-	n8, err := r.Read(buf[:])
-	if err != nil {
-		if err != io.EOF || n8 == 0 {
-			return 0, err
-		}
-		// Ignore EOF if the last byte was read
-	}
-	b8 := buf[0]
-
-	return uint64(b1)<<56 | uint64(b2)<<48 | uint64(b3)<<40 | uint64(b4)<<32 | uint64(b5)<<24 | uint64(b6)<<16 | uint64(b7)<<8 | uint64(b8), nil
+	length := binary.BigEndian.Uint16(buf[:])
+	return length, nil
 }
 
 func ReadBytes(b []byte) ([]byte, int, error) {

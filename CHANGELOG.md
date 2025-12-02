@@ -19,6 +19,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Changed default protocol version from Develop (0xffffff00) to LiteDraft01 (0xff0dad01)
+- Changed message length encoding from QUIC variable-length integer to big-endian u16
 - Replaced Frame `Append()` with private `append()` method
 - Frame `Bytes()` method renamed to `Body()`
 - Updated all Frame test methods to use `Write()` instead of `Append()`

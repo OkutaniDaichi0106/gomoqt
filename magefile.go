@@ -322,7 +322,7 @@ func runInteropWithClient(lang, url string) error {
 			return err
 		}
 		fmt.Printf("Starting TypeScript interop client (connecting to %s)...\n", url)
-		// Use run_secure.ts which handles mkcert CA certificate automatically
+		// Use run_secure.ts which handles mkcert CA certificate and --unstable-net for WebTransport
 		return sh.RunV("deno", "run", "--unstable-net", "--allow-all", "cli/interop/run_secure.ts", "--addr", url)
 	}
 

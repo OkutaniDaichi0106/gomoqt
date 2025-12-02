@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/magefile/mage/mg"
 	"github.com/magefile/mage/sh"
@@ -227,17 +226,8 @@ func (Interop) Server() error {
 //	mage interop:client go        - Run Go client
 //	mage interop:client ts        - Run TypeScript client
 func (Interop) Client(lang string) error {
-	url := "https://localhost:9000"
-	return runInteropWithClient(lang, url)
-}
+	fmt.Printf("Starting interop test with %s client...\n", lang)
 
-// Default runs the interop client with Go (same as Client go)
-func (i Interop) Default() error {
-	return i.Client("go")
-}
-
-// runInteropWithClient starts the server and runs the specified client
-func runInteropWithClient(lang, url string) error {
 	// Save current working directory
 	wd, err := os.Getwd()
 	if err != nil {
@@ -247,50 +237,17 @@ func runInteropWithClient(lang, url string) error {
 		_ = os.Chdir(wd)
 	}()
 
-	// Start server in background
-	if err := os.Chdir("cmd/interop/server"); err != nil {
+	// Change to interop directory and run main.go
+	if err := os.Chdir("cmd/interop"); err != nil {
 		return err
 	}
 
-	serverCmd := exec.Command("go", "run", ".")
-	serverCmd.Stdout = os.Stdout
-	serverCmd.Stderr = os.Stderr
+	return sh.RunV("go", "run", ".", "-lang", lang)
+}
 
-	if err := serverCmd.Start(); err != nil {
-		return fmt.Errorf("failed to start server: %w", err)
-	}
-
-	// Wait for server to start
-	time.Sleep(2 * time.Second)
-
-	// Defer server shutdown
-	defer func() {
-		if serverCmd.Process != nil {
-			_ = serverCmd.Process.Kill()
-			_ = serverCmd.Wait()
-		}
-	}()
-
-	// Change to client directory and run client
-	if err := os.Chdir(wd); err != nil {
-		return err
-	}
-
-	if lang == "ts" {
-		if err := os.Chdir("moq-web"); err != nil {
-			return err
-		}
-		fmt.Printf("Starting TypeScript interop client (connecting to %s)...\n", url)
-		// Use run_secure.ts which handles mkcert CA certificate and --unstable-net for WebTransport
-		return sh.RunV("deno", "run", "--unstable-net", "--allow-all", "cli/interop/run_secure.ts", "--addr", url)
-	}
-
-	// Default to Go client
-	if err := os.Chdir("cmd/interop/client"); err != nil {
-		return err
-	}
-	fmt.Printf("Starting Go interop client (connecting to %s)...\n", url)
-	return sh.RunV("go", "run", ".", "-addr", url)
+// Default runs the interop client with Go (same as Client go)
+func (i Interop) Default() error {
+	return i.Client("go")
 }
 
 // ======================================

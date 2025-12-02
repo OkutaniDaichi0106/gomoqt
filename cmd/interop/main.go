@@ -7,12 +7,17 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
+	"time"
 )
 
 func main() {
-	addr := flag.String("addr", "127.0.0.1:9000", "server address")
+	addr := flag.String("addr", "localhost:9000", "server address")
+	lang := flag.String("lang", "go", "client language: go or ts")
 	flag.Parse()
 
 	slog.Info(" === MOQ Interop Test ===")
@@ -22,7 +27,9 @@ func main() {
 	defer cancel()
 
 	// Start server in background (run server package under cmd/interop)
-	serverCmd := exec.CommandContext(ctx, "go", "run", "./server", "-addr", *addr)
+	// Server binds to :port (all interfaces), not hostname:port
+	_, port, _ := strings.Cut(*addr, ":")
+	serverCmd := exec.CommandContext(ctx, "go", "run", "./server", "-addr", ":"+port)
 
 	// Pipe server output so we can reformat and unify logs
 	serverStdout, err := serverCmd.StdoutPipe()
@@ -63,9 +70,29 @@ func main() {
 		}
 	}()
 
-	// Run client and wait for completion (run client package under cmd/interop)
+	// Wait for server to be ready
+	time.Sleep(2 * time.Second)
+
+	// Run client and wait for completion
 	slog.Debug(" Starting client...")
-	clientCmd := exec.CommandContext(ctx, "go", "run", "./client", "-addr", "https://"+*addr)
+	var clientCmd *exec.Cmd
+	if *lang == "ts" {
+		// TypeScript client - run from moq-web directory
+		// Get the directory where this main.go is located, then find moq-web relative to project root
+		wd, _ := os.Getwd()
+		// We're in cmd/interop, so go up two levels to project root, then into moq-web
+		moqWebDir := filepath.Join(wd, "moq-web")
+		// If running from cmd/interop, adjust path
+		if _, err := os.Stat(moqWebDir); os.IsNotExist(err) {
+			moqWebDir = filepath.Join(wd, "..", "..", "moq-web")
+		}
+		clientCmd = exec.CommandContext(ctx, "deno", "run", "--unstable-net", "--allow-all",
+			"cli/interop/run_secure.ts", "--addr", "https://"+*addr)
+		clientCmd.Dir = moqWebDir
+	} else {
+		// Go client
+		clientCmd = exec.CommandContext(ctx, "go", "run", "./client", "-addr", "https://"+*addr)
+	}
 
 	clientStdout, err := clientCmd.StdoutPipe()
 	if err != nil {
@@ -93,18 +120,26 @@ func main() {
 	// Wait for the client process to finish running and let the server
 	// continue until it declares its operation complete as well. Use a
 	// timeout to avoid waiting forever in case things fail.
-	err = clientCmd.Wait()
-	if err != nil {
-		slog.Error("Client failed: " + err.Error())
-	}
+	clientErr := clientCmd.Wait()
 
 	// Stop the server to unblock output streams
 	cancel()
+
+	// Kill server process immediately
+	if serverCmd.Process != nil {
+		_ = serverCmd.Process.Kill()
+		_ = serverCmd.Wait()
+	}
 
 	// Wait for all streaming goroutines to finish
 	wg.Wait()
 
 	slog.Info(" === Interop Test Completed ===")
+
+	if clientErr != nil {
+		slog.Error("Client failed: " + clientErr.Error())
+		os.Exit(1)
+	}
 }
 
 // streamAndLog reads from reader line by line and logs each line prefixed with

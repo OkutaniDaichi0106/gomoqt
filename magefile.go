@@ -3,9 +3,7 @@
 package main
 
 import (
-	"flag"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"regexp"
@@ -223,58 +221,19 @@ func (Interop) Server() error {
 	return sh.RunV("go", "run", ".")
 }
 
-// Client runs the interop client with optional language flag and URL
-// Usage: mage interop:client
+// Client runs the interop client with the specified language.
+// Usage:
 //
-//	mage interop:client https://example.com:9000
-//	mage interop:client -go https://example.com:9000
-//	mage interop:client -ts https://example.com:9000
-func (Interop) Client() error {
-	// Mage does not pass flags as function params for namespace methods reliably,
-	// so parse arguments from os.Args looking for the target marker `interop:client`.
-	var args []string
-	for i, a := range os.Args {
-		if strings.HasSuffix(a, "interop:client") || a == "interop:client" {
-			if i+1 < len(os.Args) {
-				args = os.Args[i+1:]
-			}
-			break
-		}
-	}
-	// If no args found after the target marker, leave args empty so defaults apply.
-
-	// Parse flags from the extracted args
-	fs := flag.NewFlagSet("client", flag.ContinueOnError)
-	fs.SetOutput(io.Discard) // Suppress flag usage messages
-	useGo := fs.Bool("go", false, "Use Go client")
-	useTs := fs.Bool("ts", false, "Use TypeScript client")
-
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-
-	// Get remaining arguments (URL)
+//	mage interop:client go        - Run Go client
+//	mage interop:client ts        - Run TypeScript client
+func (Interop) Client(lang string) error {
 	url := "https://localhost:9000"
-	remaining := fs.Args()
-	if len(remaining) > 0 {
-		url = remaining[0]
-	}
-
-	// Determine language
-	lang := "go" // default
-	if *useTs {
-		lang = "ts"
-	} else if *useGo {
-		lang = "go"
-	}
-
-	// Start server and client
 	return runInteropWithClient(lang, url)
 }
 
-// Default runs the interop client (same as Client)
+// Default runs the interop client with Go (same as Client go)
 func (i Interop) Default() error {
-	return i.Client()
+	return i.Client("go")
 }
 
 // runInteropWithClient starts the server and runs the specified client
@@ -402,11 +361,9 @@ func Help() {
 	fmt.Println("  mage test:coverage - Run tests with coverage")
 	fmt.Println("")
 	fmt.Println("Interop:")
-	fmt.Println("  mage interop:server           - Start interop server")
-	fmt.Println("  mage interop:client           - Start server + Go client (default)")
-	fmt.Println("  mage interop:client [url]     - Start server + Go client with custom URL")
-	fmt.Println("  mage interop:client -go [url] - Start server + Go client")
-	fmt.Println("  mage interop:client -ts [url] - Start server + TypeScript client")
+	fmt.Println("  mage interop:server    - Start interop server")
+	fmt.Println("  mage interop:client go - Start server + Go client")
+	fmt.Println("  mage interop:client ts - Start server + TypeScript client")
 	fmt.Println("")
 	fmt.Println("Development:")
 	fmt.Println("  mage lint   - Run golangci-lint")

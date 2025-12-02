@@ -82,7 +82,6 @@ const (
 )
 
 func WriteMessageLength(b []byte, size uint16) ([]byte, int) {
-	fmt.Printf("WriteMessageLength: %d\n", size)
 	b = binary.BigEndian.AppendUint16(b, size)
 	return b, len(b)
 }

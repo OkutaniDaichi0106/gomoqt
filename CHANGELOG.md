@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Changed
+
+- SUBSCRIBE message: removed `Min Group Sequence` and `Max Group Sequence` fields for simplified group sequence handling
+- TrackWriter `OpenGroup()`: now internally manages group sequence increments without requiring it as an argument
+
 ## [v0.4.0] - 2025-12-04
 
 ### Added
@@ -39,6 +46,3 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Fixed
 
 - Fixed a bug where `Frame.encode` could write extra zero bytes beyond the actual payload, causing clients to receive a large number of empty frames (`frame_length=0`). Now only the header and payload are written, ensuring protocol correctness and efficiency.
-
-## [Unreleased]
-

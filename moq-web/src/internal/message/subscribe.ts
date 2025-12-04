@@ -16,8 +16,6 @@ export interface SubscribeMessageInit {
 	broadcastPath?: string;
 	trackName?: string;
 	trackPriority?: number;
-	minGroupSequence?: number;
-	maxGroupSequence?: number;
 }
 
 export class SubscribeMessage {
@@ -25,16 +23,12 @@ export class SubscribeMessage {
 	broadcastPath: string;
 	trackName: string;
 	trackPriority: number;
-	minGroupSequence: number;
-	maxGroupSequence: number;
 
 	constructor(init: SubscribeMessageInit = {}) {
 		this.subscribeId = init.subscribeId ?? 0;
 		this.broadcastPath = init.broadcastPath ?? "";
 		this.trackName = init.trackName ?? "";
 		this.trackPriority = init.trackPriority ?? 0;
-		this.minGroupSequence = init.minGroupSequence ?? 0;
-		this.maxGroupSequence = init.maxGroupSequence ?? 0;
 	}
 
 	/**
@@ -45,9 +39,7 @@ export class SubscribeMessage {
 			varintLen(this.subscribeId) +
 			stringLen(this.broadcastPath) +
 			stringLen(this.trackName) +
-			varintLen(this.trackPriority) +
-			varintLen(this.minGroupSequence) +
-			varintLen(this.maxGroupSequence)
+			varintLen(this.trackPriority)
 		);
 	}
 
@@ -72,12 +64,6 @@ export class SubscribeMessage {
 		if (err) return err;
 
 		[, err] = await writeVarint(w, this.trackPriority);
-		if (err) return err;
-
-		[, err] = await writeVarint(w, this.minGroupSequence);
-		if (err) return err;
-
-		[, err] = await writeVarint(w, this.maxGroupSequence);
 		if (err) return err;
 
 		return undefined;
@@ -122,15 +108,6 @@ export class SubscribeMessage {
 		const [trackPriority, n4] = parseVarint(buf, offset);
 		this.trackPriority = trackPriority;
 		offset += n4;
-
-		// minGroupSequence
-		const [minGroupSequence, n5] = parseVarint(buf, offset);
-		this.minGroupSequence = minGroupSequence;
-		offset += n5;
-
-		// maxGroupSequence
-		const [maxGroupSequence, _n6] = parseVarint(buf, offset);
-		this.maxGroupSequence = maxGroupSequence;
 
 		return undefined;
 	}

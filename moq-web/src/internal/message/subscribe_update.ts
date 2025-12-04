@@ -10,19 +10,13 @@ import {
 
 export interface SubscribeUpdateMessageInit {
 	trackPriority?: number;
-	minGroupSequence?: number;
-	maxGroupSequence?: number;
 }
 
 export class SubscribeUpdateMessage {
 	trackPriority: number;
-	minGroupSequence: number;
-	maxGroupSequence: number;
 
 	constructor(init: SubscribeUpdateMessageInit = {}) {
 		this.trackPriority = init.trackPriority ?? 0;
-		this.minGroupSequence = init.minGroupSequence ?? 0;
-		this.maxGroupSequence = init.maxGroupSequence ?? 0;
 	}
 
 	/**
@@ -30,9 +24,7 @@ export class SubscribeUpdateMessage {
 	 */
 	get len(): number {
 		return (
-			varintLen(this.trackPriority) +
-			varintLen(this.minGroupSequence) +
-			varintLen(this.maxGroupSequence)
+			varintLen(this.trackPriority)
 		);
 	}
 
@@ -47,12 +39,6 @@ export class SubscribeUpdateMessage {
 		if (err) return err;
 
 		[, err] = await writeVarint(w, this.trackPriority);
-		if (err) return err;
-
-		[, err] = await writeVarint(w, this.minGroupSequence);
-		if (err) return err;
-
-		[, err] = await writeVarint(w, this.maxGroupSequence);
 		if (err) return err;
 
 		return undefined;
@@ -72,16 +58,6 @@ export class SubscribeUpdateMessage {
 		let offset = 0;
 
 		[this.trackPriority, offset] = (() => {
-			const [val, n] = parseVarint(buf, offset);
-			return [val, offset + n];
-		})();
-
-		[this.minGroupSequence, offset] = (() => {
-			const [val, n] = parseVarint(buf, offset);
-			return [val, offset + n];
-		})();
-
-		[this.maxGroupSequence] = (() => {
 			const [val, n] = parseVarint(buf, offset);
 			return [val, offset + n];
 		})();

@@ -12,9 +12,6 @@ var (
 	// Only "https" (for WebTransport) and "moqt" (for QUIC) schemes are valid.
 	ErrInvalidScheme = errors.New("moqt: invalid scheme")
 
-	// ErrInvalidRange is returned when a subscribe range is invalid.
-	ErrInvalidRange = errors.New("moqt: invalid range")
-
 	// ErrClosedSession is returned when attempting to use a closed session.
 	ErrClosedSession = errors.New("moqt: closed session")
 

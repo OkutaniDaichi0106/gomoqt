@@ -395,8 +395,6 @@ Deno.test({
 					broadcastPath: "/test/path",
 					trackName: "name",
 					trackPriority: 0,
-					minGroupSequence: 0,
-					maxGroupSequence: 0,
 				});
 				const buf = await encodeMessageToUint8Array(async (w) => {
 					await writeVarint(w, BiStreamTypes.SubscribeStreamType);

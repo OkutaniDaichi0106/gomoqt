@@ -6,23 +6,15 @@ Deno.test("SubscribeUpdateMessage - encode/decode roundtrip - multiple scenarios
 	const testCases = {
 		"normal case": {
 			trackPriority: 1,
-			minGroupSequence: 2,
-			maxGroupSequence: 3,
 		},
 		"zero values": {
 			trackPriority: 0,
-			minGroupSequence: 0,
-			maxGroupSequence: 0,
 		},
-		"large sequence numbers": {
+		"max priority": {
 			trackPriority: 255,
-			minGroupSequence: 1000000,
-			maxGroupSequence: 2000000,
 		},
-		"same min and max sequence": {
+		"mid priority": {
 			trackPriority: 10,
-			minGroupSequence: 100,
-			maxGroupSequence: 100,
 		},
 	};
 
@@ -73,16 +65,6 @@ Deno.test("SubscribeUpdateMessage - encode/decode roundtrip - multiple scenarios
 				input.trackPriority,
 				`trackPriority mismatch for ${caseName}`,
 			);
-			assertEquals(
-				decodedMessage.minGroupSequence,
-				input.minGroupSequence,
-				`minGroupSequence mismatch for ${caseName}`,
-			);
-			assertEquals(
-				decodedMessage.maxGroupSequence,
-				input.maxGroupSequence,
-				`maxGroupSequence mismatch for ${caseName}`,
-			);
 		});
 	}
 
@@ -109,27 +91,6 @@ Deno.test("SubscribeUpdateMessage - encode/decode roundtrip - multiple scenarios
 		"decode should return error when reading subscribeId fails",
 		async () => {
 			const buffer = new Uint8Array([5]); // only message length
-			const readableStream = new ReadableStream({
-				start(controller) {
-					controller.enqueue(buffer);
-					controller.close();
-				},
-			});
-			const reader = new ReceiveStream({
-				stream: readableStream,
-				streamId: 0n,
-			});
-
-			const message = new SubscribeUpdateMessage({});
-			const err = await message.decode(reader);
-			assertEquals(err !== undefined, true);
-		},
-	);
-
-	await t.step(
-		"decode should return error when reading minGroupSequence fails",
-		async () => {
-			const buffer = new Uint8Array([6, 1]); // message length, subscribeId, but no minGroupSequence
 			const readableStream = new ReadableStream({
 				start(controller) {
 					controller.enqueue(buffer);

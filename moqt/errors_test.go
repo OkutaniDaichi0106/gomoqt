@@ -17,10 +17,6 @@ func TestStandardErrors(t *testing.T) {
 			err:    ErrInvalidScheme,
 			expect: "moqt: invalid scheme",
 		},
-		"invalid range": {
-			err:    ErrInvalidRange,
-			expect: "moqt: invalid range",
-		},
 		"closed session": {
 			err:    ErrClosedSession,
 			expect: "moqt: closed session",

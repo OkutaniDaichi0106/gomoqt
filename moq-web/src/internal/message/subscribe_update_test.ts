@@ -1,29 +1,20 @@
 import { assertEquals } from "@std/assert";
 import { SubscribeUpdateMessage } from "./subscribe_update.ts";
 import { Buffer } from "@okudai/golikejs/bytes";
-import type { Writer } from "@okudai/golikejs/io";
 
 Deno.test("SubscribeUpdateMessage - encode/decode roundtrip - multiple scenarios", async (t) => {
 	const testCases = {
 		"normal case": {
 			trackPriority: 1,
-			minGroupSequence: 2,
-			maxGroupSequence: 3,
 		},
 		"zero values": {
 			trackPriority: 0,
-			minGroupSequence: 0,
-			maxGroupSequence: 0,
 		},
-		"large sequence numbers": {
+		"max priority": {
 			trackPriority: 255,
-			minGroupSequence: 1000000,
-			maxGroupSequence: 2000000,
 		},
-		"same min and max sequence": {
+		"mid priority": {
 			trackPriority: 10,
-			minGroupSequence: 100,
-			maxGroupSequence: 100,
 		},
 	};
 
@@ -46,16 +37,6 @@ Deno.test("SubscribeUpdateMessage - encode/decode roundtrip - multiple scenarios
 				input.trackPriority,
 				`trackPriority mismatch for ${caseName}`,
 			);
-			assertEquals(
-				decodedMessage.minGroupSequence,
-				input.minGroupSequence,
-				`minGroupSequence mismatch for ${caseName}`,
-			);
-			assertEquals(
-				decodedMessage.maxGroupSequence,
-				input.maxGroupSequence,
-				`maxGroupSequence mismatch for ${caseName}`,
-			);
 		});
 	}
 
@@ -77,130 +58,6 @@ Deno.test("SubscribeUpdateMessage - encode/decode roundtrip - multiple scenarios
 			const message = new SubscribeUpdateMessage({});
 			const err = await message.decode(buffer);
 			assertEquals(err !== undefined, true);
-		},
-	);
-
-	await t.step(
-		"decode should return error when reading minGroupSequence fails",
-		async () => {
-			const buffer = Buffer.make(10);
-			// Write message length = 6, subscribeId = 1, but no minGroupSequence
-			await buffer.write(new Uint8Array([0x00, 0x06, 0x01]));
-			const message = new SubscribeUpdateMessage({});
-			const err = await message.decode(buffer);
-			assertEquals(err !== undefined, true);
-		},
-	);
-
-	await t.step("encode should return error when writeUint16 fails", async () => {
-		const mockWriter: Writer = {
-			async write(_p: Uint8Array): Promise<[number, Error | undefined]> {
-				return [0, new Error("Write failed")];
-			},
-		};
-
-		const message = new SubscribeUpdateMessage({
-			trackPriority: 1,
-			minGroupSequence: 0,
-			maxGroupSequence: 100,
-		});
-		const err = await message.encode(mockWriter);
-		assertEquals(err instanceof Error, true);
-	});
-
-	await t.step(
-		"encode should return error when writeVarint fails for subscribeId",
-		async () => {
-			let callCount = 0;
-			const mockWriter: Writer = {
-				async write(p: Uint8Array): Promise<[number, Error | undefined]> {
-					callCount++;
-					if (callCount > 1) {
-						return [0, new Error("Write failed")];
-					}
-					return [p.length, undefined];
-				},
-			};
-
-			const message = new SubscribeUpdateMessage({
-				trackPriority: 1,
-				minGroupSequence: 0,
-				maxGroupSequence: 100,
-			});
-			const err = await message.encode(mockWriter);
-			assertEquals(err instanceof Error, true);
-		},
-	);
-
-	await t.step(
-		"encode should return error when writeVarint fails for trackPriority",
-		async () => {
-			let callCount = 0;
-			const mockWriter: Writer = {
-				async write(p: Uint8Array): Promise<[number, Error | undefined]> {
-					callCount++;
-					if (callCount > 2) {
-						return [0, new Error("Write failed")];
-					}
-					return [p.length, undefined];
-				},
-			};
-
-			const message = new SubscribeUpdateMessage({
-				trackPriority: 1,
-				minGroupSequence: 0,
-				maxGroupSequence: 100,
-			});
-			const err = await message.encode(mockWriter);
-			assertEquals(err instanceof Error, true);
-		},
-	);
-
-	await t.step(
-		"encode should return error when writeVarint fails for minGroupSequence",
-		async () => {
-			let callCount = 0;
-			const mockWriter: Writer = {
-				async write(p: Uint8Array): Promise<[number, Error | undefined]> {
-					callCount++;
-					if (callCount > 3) {
-						return [0, new Error("Write failed")];
-					}
-					return [p.length, undefined];
-				},
-			};
-
-			const message = new SubscribeUpdateMessage({
-				trackPriority: 1,
-				minGroupSequence: 0,
-				maxGroupSequence: 100,
-			});
-			const err = await message.encode(mockWriter);
-			assertEquals(err instanceof Error, true);
-		},
-	);
-
-	await t.step(
-		"encode should return error when writeVarint fails for maxGroupSequence",
-		async () => {
-			let callCount = 0;
-			const mockWriter: Writer = {
-				async write(p: Uint8Array): Promise<[number, Error | undefined]> {
-					callCount++;
-					if (callCount > 3) {
-						return [0, new Error("Write failed")];
-					}
-					return [p.length, undefined];
-				},
-			};
-
-			const message = new SubscribeUpdateMessage({
-				trackPriority: 1,
-				minGroupSequence: 0,
-				maxGroupSequence: 100,
-			});
-			const err = await message.encode(mockWriter);
-			assertEquals(err instanceof Error, true);
 		},
 	);
 });

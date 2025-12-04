@@ -23,25 +23,19 @@ func TestNewReceiveSubscribeStream(t *testing.T) {
 		"valid creation": {
 			subscribeID: SubscribeID(123),
 			config: &TrackConfig{
-				TrackPriority:    TrackPriority(1),
-				MinGroupSequence: GroupSequence(0),
-				MaxGroupSequence: GroupSequence(100),
+				TrackPriority: TrackPriority(1),
 			},
 		},
 		"zero subscribe ID": {
 			subscribeID: SubscribeID(0),
 			config: &TrackConfig{
-				TrackPriority:    TrackPriority(0),
-				MinGroupSequence: GroupSequence(0),
-				MaxGroupSequence: GroupSequence(10),
+				TrackPriority: TrackPriority(0),
 			},
 		},
 		"large subscribe ID": {
 			subscribeID: SubscribeID(4294967295),
 			config: &TrackConfig{
-				TrackPriority:    TrackPriority(255),
-				MinGroupSequence: GroupSequence(1000),
-				MaxGroupSequence: GroupSequence(2000),
+				TrackPriority: TrackPriority(255),
 			},
 		},
 		"nil config": {
@@ -111,9 +105,7 @@ func TestReceiveSubscribeStream_SubscribeID(t *testing.T) {
 			mockStream.On("Read", mock.AnythingOfType("[]uint8")).Return(0, io.EOF).Maybe()
 
 			config := &TrackConfig{
-				TrackPriority:    TrackPriority(1),
-				MinGroupSequence: GroupSequence(0),
-				MaxGroupSequence: GroupSequence(100),
+				TrackPriority: TrackPriority(1),
 			}
 
 			rss := newReceiveSubscribeStream(tt.subscribeID, mockStream, config)
@@ -142,16 +134,12 @@ func TestReceiveSubscribeStream_TrackConfig(t *testing.T) {
 	}{
 		"valid config": {
 			config: &TrackConfig{
-				TrackPriority:    TrackPriority(10),
-				MinGroupSequence: GroupSequence(5),
-				MaxGroupSequence: GroupSequence(100),
+				TrackPriority: TrackPriority(10),
 			},
 		},
 		"zero values": {
 			config: &TrackConfig{
-				TrackPriority:    TrackPriority(0),
-				MinGroupSequence: GroupSequence(0),
-				MaxGroupSequence: GroupSequence(0),
+				TrackPriority: TrackPriority(0),
 			},
 		},
 		"nil config": {
@@ -178,8 +166,6 @@ func TestReceiveSubscribeStream_TrackConfig(t *testing.T) {
 			assert.NotNil(t, resultConfig, "TrackConfig should not be nil")
 			if tt.config != nil {
 				assert.Equal(t, tt.config.TrackPriority, resultConfig.TrackPriority, "TrackPriority should match")
-				assert.Equal(t, tt.config.MinGroupSequence, resultConfig.MinGroupSequence, "MinGroupSequence should match")
-				assert.Equal(t, tt.config.MaxGroupSequence, resultConfig.MaxGroupSequence, "MaxGroupSequence should match")
 			}
 
 			// Wait for goroutine to close cleanly
@@ -209,9 +195,7 @@ func TestReceiveSubscribeStream_Updated(t *testing.T) {
 	mockStream.On("Read", mock.AnythingOfType("[]uint8")).Return(0, io.EOF).Maybe()
 
 	config := &TrackConfig{
-		TrackPriority:    TrackPriority(1),
-		MinGroupSequence: GroupSequence(0),
-		MaxGroupSequence: GroupSequence(100),
+		TrackPriority: TrackPriority(1),
 	}
 
 	rss := newReceiveSubscribeStream(subscribeID, mockStream, config)
@@ -240,9 +224,7 @@ func TestReceiveSubscribeStream_ListenUpdates_WithSubscribeUpdateMessage(t *test
 
 	// Create a valid SubscribeUpdateMessage
 	updateMsg := message.SubscribeUpdateMessage{
-		TrackPriority:    5,
-		MinGroupSequence: 10,
-		MaxGroupSequence: 50,
+		TrackPriority: 5,
 	}
 
 	// Encode the message
@@ -257,9 +239,7 @@ func TestReceiveSubscribeStream_ListenUpdates_WithSubscribeUpdateMessage(t *test
 	mockStream.On("Context").Return(context.Background())
 
 	config := &TrackConfig{
-		TrackPriority:    TrackPriority(1),
-		MinGroupSequence: GroupSequence(0),
-		MaxGroupSequence: GroupSequence(100),
+		TrackPriority: TrackPriority(1),
 	}
 
 	rss := newReceiveSubscribeStream(subscribeID, mockStream, config)
@@ -275,8 +255,6 @@ func TestReceiveSubscribeStream_ListenUpdates_WithSubscribeUpdateMessage(t *test
 	updatedConfig := rss.TrackConfig()
 	if err == nil {
 		assert.Equal(t, TrackPriority(5), updatedConfig.TrackPriority, "TrackPriority should be updated")
-		assert.Equal(t, GroupSequence(10), updatedConfig.MinGroupSequence, "MinGroupSequence should be updated")
-		assert.Equal(t, GroupSequence(50), updatedConfig.MaxGroupSequence, "MaxGroupSequence should be updated")
 	}
 
 	// Give some time for the goroutine to complete
@@ -326,9 +304,7 @@ func TestReceiveSubscribeStream_CloseWithError(t *testing.T) {
 			mockStream.On("CancelRead", quic.StreamErrorCode(tt.errorCode)).Return()
 
 			config := &TrackConfig{
-				TrackPriority:    TrackPriority(1),
-				MinGroupSequence: GroupSequence(0),
-				MaxGroupSequence: GroupSequence(100),
+				TrackPriority: TrackPriority(1),
 			}
 
 			rss := newReceiveSubscribeStream(subscribeID, mockStream, config)
@@ -364,9 +340,7 @@ func TestReceiveSubscribeStream_CloseWithError_MultipleClose(t *testing.T) {
 	mockStream.On("CancelRead", mock.Anything).Return()
 
 	config := &TrackConfig{
-		TrackPriority:    TrackPriority(1),
-		MinGroupSequence: GroupSequence(0),
-		MaxGroupSequence: GroupSequence(100),
+		TrackPriority: TrackPriority(1),
 	}
 	// Create stream manually
 	rss := newReceiveSubscribeStream(123, mockStream, config)
@@ -393,9 +367,7 @@ func TestReceiveSubscribeStream_ConcurrentAccess(t *testing.T) {
 	mockStream.On("Read", mock.AnythingOfType("[]uint8")).Return(0, io.EOF).Maybe()
 
 	config := &TrackConfig{
-		TrackPriority:    TrackPriority(1),
-		MinGroupSequence: GroupSequence(0),
-		MaxGroupSequence: GroupSequence(100),
+		TrackPriority: TrackPriority(1),
 	}
 
 	rss := newReceiveSubscribeStream(subscribeID, mockStream, config)
@@ -511,14 +483,10 @@ func TestReceiveSubscribeStream_UpdateChannelBehavior(t *testing.T) {
 		// Create multiple update messages
 		updates := []message.SubscribeUpdateMessage{
 			{
-				TrackPriority:    1,
-				MinGroupSequence: 0,
-				MaxGroupSequence: 10,
+				TrackPriority: 1,
 			},
 			{
-				TrackPriority:    2,
-				MinGroupSequence: 5,
-				MaxGroupSequence: 15,
+				TrackPriority: 2,
 			},
 		}
 

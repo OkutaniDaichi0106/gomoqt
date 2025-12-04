@@ -17,8 +17,6 @@ Deno.test("TrackReader", async (t) => {
 				broadcastPath: "/test",
 				trackName: "name",
 				trackPriority: 1,
-				minGroupSequence: 0,
-				maxGroupSequence: 1,
 			});
 			const ok = new SubscribeOkMessage({});
 			const sss = new SendSubscribeStream(ctx, stream, subscribe, ok);
@@ -42,8 +40,6 @@ Deno.test("TrackReader", async (t) => {
 				broadcastPath: "/test",
 				trackName: "name",
 				trackPriority: 0,
-				minGroupSequence: 0,
-				maxGroupSequence: 0,
 			});
 			const ok = new SubscribeOkMessage({});
 			const sss = new SendSubscribeStream(ctx, stream, subscribe, ok);
@@ -68,8 +64,6 @@ Deno.test("TrackReader", async (t) => {
 				broadcastPath: "/test",
 				trackName: "name",
 				trackPriority: 1,
-				minGroupSequence: 0,
-				maxGroupSequence: 1,
 			});
 			const ok = new SubscribeOkMessage({});
 			const sss = new SendSubscribeStream(ctx, stream, subscribe, ok);
@@ -97,8 +91,6 @@ Deno.test("TrackReader", async (t) => {
 				broadcastPath: "/test",
 				trackName: "name",
 				trackPriority: 1,
-				minGroupSequence: 0,
-				maxGroupSequence: 1,
 			});
 			const ok = new SubscribeOkMessage({});
 			const sss = new SendSubscribeStream(ctx, stream, subscribe, ok);
@@ -128,8 +120,6 @@ Deno.test("TrackReader", async (t) => {
 			broadcastPath: "/test",
 			trackName: "name",
 			trackPriority: 1,
-			minGroupSequence: 0,
-			maxGroupSequence: 1,
 		});
 		const ok = new SubscribeOkMessage({});
 		const sss = new SendSubscribeStream(ctx, stream, subscribe, ok);
@@ -152,8 +142,6 @@ Deno.test("TrackReader", async (t) => {
 			broadcastPath: "/test",
 			trackName: "name",
 			trackPriority: 5,
-			minGroupSequence: 10,
-			maxGroupSequence: 20,
 		});
 		const ok = new SubscribeOkMessage({});
 		const sss = new SendSubscribeStream(ctx, stream, subscribe, ok);
@@ -162,8 +150,6 @@ Deno.test("TrackReader", async (t) => {
 
 		const config = tr.trackConfig;
 		assertEquals(config.trackPriority, 5);
-		assertEquals(config.minGroupSequence, 10);
-		assertEquals(config.maxGroupSequence, 20);
 	});
 
 	await t.step("TrackReader.context returns subscribe stream context", () => {
@@ -174,8 +160,6 @@ Deno.test("TrackReader", async (t) => {
 			broadcastPath: "/test",
 			trackName: "name",
 			trackPriority: 1,
-			minGroupSequence: 0,
-			maxGroupSequence: 1,
 		});
 		const ok = new SubscribeOkMessage({});
 		const sss = new SendSubscribeStream(ctx, stream, subscribe, ok);

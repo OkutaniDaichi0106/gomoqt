@@ -395,8 +395,6 @@ Deno.test({
 					broadcastPath: "/test/path",
 					trackName: "name",
 					trackPriority: 0,
-					minGroupSequence: 0,
-					maxGroupSequence: 0,
 				});
 				const buf = await encodeMessageToUint8Array(async (w) => {
 					await writeVarint(w, BiStreamTypes.SubscribeStreamType);
@@ -768,7 +766,7 @@ Deno.test({
 				const [track, err] = await session.subscribe(
 					"/test/path",
 					"track-name",
-					{ trackPriority: 5, minGroupSequence: 10, maxGroupSequence: 20 },
+					{ trackPriority: 5 },
 				);
 				assertExists(track);
 				assertEquals(err, undefined);
@@ -776,8 +774,6 @@ Deno.test({
 				// Verify track config is reflected
 				const config = track.trackConfig;
 				assertEquals(config.trackPriority, 5);
-				assertEquals(config.minGroupSequence, 10);
-				assertEquals(config.maxGroupSequence, 20);
 
 				await session.close();
 			},

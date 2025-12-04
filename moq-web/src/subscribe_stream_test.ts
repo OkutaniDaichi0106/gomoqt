@@ -89,8 +89,6 @@ Deno.test("ReceiveSubscribeStream writeInfo sends SUBSCRIBE_OK and prevents doub
 		broadcastPath: "/test",
 		trackName: "t",
 		trackPriority: 0,
-		minGroupSequence: 0,
-		maxGroupSequence: 0,
 	});
 	const rss = new ReceiveSubscribeStream(ctx, s, subscribe);
 	const err = await rss.writeInfo({});
@@ -113,8 +111,6 @@ Deno.test("ReceiveSubscribeStream writeInfo returns error when context canceled"
 		broadcastPath: "/test",
 		trackName: "t",
 		trackPriority: 0,
-		minGroupSequence: 0,
-		maxGroupSequence: 0,
 	});
 	const rss = new ReceiveSubscribeStream(ctx, s, subscribe);
 	cancel(new Error("canceled"));
@@ -137,8 +133,6 @@ Deno.test("ReceiveSubscribeStream close closes stream", async () => {
 		broadcastPath: "/test",
 		trackName: "t",
 		trackPriority: 0,
-		minGroupSequence: 0,
-		maxGroupSequence: 0,
 	});
 	const rss = new ReceiveSubscribeStream(ctx, s, subscribe);
 	await rss.close();
@@ -158,8 +152,6 @@ Deno.test("ReceiveSubscribeStream close does nothing if context canceled", async
 		broadcastPath: "/test",
 		trackName: "t",
 		trackPriority: 0,
-		minGroupSequence: 0,
-		maxGroupSequence: 0,
 	});
 	const rss = new ReceiveSubscribeStream(ctx, s, subscribe);
 	cancel(new Error("canceled"));
@@ -181,8 +173,6 @@ Deno.test("ReceiveSubscribeStream closeWithError does nothing if context cancele
 		broadcastPath: "/test",
 		trackName: "t",
 		trackPriority: 0,
-		minGroupSequence: 0,
-		maxGroupSequence: 0,
 	});
 	const rss = new ReceiveSubscribeStream(ctx, s, subscribe);
 	cancel(new Error("canceled"));
@@ -197,8 +187,6 @@ Deno.test("ReceiveSubscribeStream updated waiters are notified upon update", asy
 		broadcastPath: "/x",
 		trackName: "t",
 		trackPriority: 0,
-		minGroupSequence: 0,
-		maxGroupSequence: 0,
 	});
 	// Encode update message to get data for readable
 	const encoderWrittenData: Uint8Array[] = [];
@@ -210,8 +198,6 @@ Deno.test("ReceiveSubscribeStream updated waiters are notified upon update", asy
 	};
 	const update = new SubscribeUpdateMessage({
 		trackPriority: 5,
-		minGroupSequence: 0,
-		maxGroupSequence: 10,
 	});
 	await update.encode(encoderStream);
 	const total = encoderWrittenData.reduce((acc, arr) => acc + arr.length, 0);
@@ -272,8 +258,6 @@ Deno.test("ReceiveSubscribeStream closeWithError cancels streams and broadcasts 
 		broadcastPath: "/x",
 		trackName: "t",
 		trackPriority: 0,
-		minGroupSequence: 0,
-		maxGroupSequence: 0,
 	});
 	const rss = new ReceiveSubscribeStream(ctx, s, sub);
 	await rss.closeWithError(2);

@@ -10,7 +10,6 @@ The following error variables are defined with the prefix `Err` and are used for
 | Variable Name           | Error Message               | Description (inferred)           |
 |-------------------------|-----------------------------|----------------------------------|
 | `moqt.ErrInvalidScheme` | "moqt: invalid scheme"      | Invalid scheme error             |
-| `moqt.ErrInvalidRange`  | "moqt: invalid range"       | Invalid range error              |
 | `moqt.ErrClosedSession` | "moqt: closed session"      | Session has been closed          |
 | `moqt.ErrServerClosed`  | "moqt: server closed"       | Server has been closed           |
 | `moqt.ErrClientClosed`  | "moqt: client closed"       | Client has been closed           |

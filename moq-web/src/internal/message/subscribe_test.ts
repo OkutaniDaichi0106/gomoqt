@@ -10,32 +10,24 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 			broadcastPath: "path",
 			trackName: "track",
 			trackPriority: 1,
-			minGroupSequence: 2,
-			maxGroupSequence: 3,
 		},
-		"large sequence numbers": {
+		"large values": {
 			subscribeId: 1000000,
 			broadcastPath: "long/path/to/resource",
 			trackName: "long-track-name-with-hyphens",
 			trackPriority: 255,
-			minGroupSequence: 1000000,
-			maxGroupSequence: 2000000,
 		},
 		"zero values": {
 			subscribeId: 0,
 			broadcastPath: "",
 			trackName: "",
 			trackPriority: 0,
-			minGroupSequence: 0,
-			maxGroupSequence: 0,
 		},
 		"single character paths": {
 			subscribeId: 1,
 			broadcastPath: "a",
 			trackName: "b",
 			trackPriority: 1,
-			minGroupSequence: 1,
-			maxGroupSequence: 2,
 		},
 	};
 
@@ -74,16 +66,6 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 				decodedMessage.trackPriority,
 				input.trackPriority,
 				`trackPriority mismatch for ${caseName}`,
-			);
-			assertEquals(
-				decodedMessage.minGroupSequence,
-				input.minGroupSequence,
-				`minGroupSequence mismatch for ${caseName}`,
-			);
-			assertEquals(
-				decodedMessage.maxGroupSequence,
-				input.maxGroupSequence,
-				`maxGroupSequence mismatch for ${caseName}`,
 			);
 		});
 	}
@@ -147,8 +129,6 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 				broadcastPath: "path",
 				trackName: "track",
 				trackPriority: 1,
-				minGroupSequence: 0,
-				maxGroupSequence: 100,
 			});
 			const err = await message.encode(mockWriter);
 			assertEquals(err instanceof Error, true);
@@ -174,8 +154,6 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 				broadcastPath: "path",
 				trackName: "track",
 				trackPriority: 1,
-				minGroupSequence: 0,
-				maxGroupSequence: 100,
 			});
 			const err = await message.encode(mockWriter);
 			assertEquals(err instanceof Error, true);
@@ -201,8 +179,6 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 				broadcastPath: "path",
 				trackName: "track",
 				trackPriority: 1,
-				minGroupSequence: 0,
-				maxGroupSequence: 100,
 			});
 			const err = await message.encode(mockWriter);
 			assertEquals(err instanceof Error, true);
@@ -228,8 +204,6 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 				broadcastPath: "path",
 				trackName: "track",
 				trackPriority: 1,
-				minGroupSequence: 0,
-				maxGroupSequence: 100,
 			});
 			const err = await message.encode(mockWriter);
 			assertEquals(err instanceof Error, true);
@@ -255,62 +229,6 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 				broadcastPath: "path",
 				trackName: "track",
 				trackPriority: 1,
-				minGroupSequence: 0,
-				maxGroupSequence: 100,
-			});
-			const err = await message.encode(mockWriter);
-			assertEquals(err instanceof Error, true);
-		},
-	);
-
-	await t.step(
-		"encode should return error when writeVarint fails for minGroupSequence",
-		async () => {
-			let callCount = 0;
-			const mockWriter: Writer = {
-				async write(p: Uint8Array): Promise<[number, Error | undefined]> {
-					callCount++;
-					if (callCount > 7) {
-						return [0, new Error("Write failed")];
-					}
-					return [p.length, undefined];
-				},
-			};
-
-			const message = new SubscribeMessage({
-				subscribeId: 1,
-				broadcastPath: "path",
-				trackName: "track",
-				trackPriority: 1,
-				minGroupSequence: 0,
-				maxGroupSequence: 100,
-			});
-			const err = await message.encode(mockWriter);
-			assertEquals(err instanceof Error, true);
-		},
-	);
-
-	await t.step(
-		"encode should return error when writeVarint fails for maxGroupSequence",
-		async () => {
-			let callCount = 0;
-			const mockWriter: Writer = {
-				async write(p: Uint8Array): Promise<[number, Error | undefined]> {
-					callCount++;
-					if (callCount > 8) {
-						return [0, new Error("Write failed")];
-					}
-					return [p.length, undefined];
-				},
-			};
-
-			const message = new SubscribeMessage({
-				subscribeId: 1,
-				broadcastPath: "path",
-				trackName: "track",
-				trackPriority: 1,
-				minGroupSequence: 0,
-				maxGroupSequence: 100,
 			});
 			const err = await message.encode(mockWriter);
 			assertEquals(err instanceof Error, true);

@@ -342,7 +342,7 @@ func TestAnnouncementReader_AnnouncementTracking(t *testing.T) {
 func TestAnnouncementReader_ConcurrentAccess(t *testing.T) {
 	// Create multiple messages
 	buf := bytes.NewBuffer(nil)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		err := message.AnnounceMessage{
 			TrackSuffix:    fmt.Sprintf("/stream%d", i),
 			AnnounceStatus: message.ACTIVE,

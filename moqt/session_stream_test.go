@@ -543,7 +543,7 @@ func TestAccept_ConcurrentCalls(t *testing.T) {
 	sessions := make([]*Session, numGoroutines)
 
 	// Start multiple goroutines calling Accept concurrently
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()

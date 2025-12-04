@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import { SessionServerMessage } from "./session_server.ts";
-import { ReceiveStream, SendStream } from "../webtransport/mod.ts";
+import { Buffer } from "@okudai/golikejs/bytes";
+import type { Writer } from "@okudai/golikejs/io";
 
 Deno.test("SessionServerMessage - encode/decode roundtrip - multiple scenarios", async (t) => {
 	const testCases = {
@@ -30,45 +31,17 @@ Deno.test("SessionServerMessage - encode/decode roundtrip - multiple scenarios",
 
 	for (const [caseName, input] of Object.entries(testCases)) {
 		await t.step(caseName, async () => {
-			// Create buffer for encoding
-			const chunks: Uint8Array[] = [];
-			const writableStream = new WritableStream({
-				write(chunk) {
-					chunks.push(chunk);
-				},
-			});
-			const writer = new SendStream({
-				stream: writableStream,
-				streamId: 0n,
-			});
-
+			// Encode using Buffer
+			const buffer = Buffer.make(200);
 			const message = new SessionServerMessage(input);
-			const encodeErr = await message.encode(writer);
+			const encodeErr = await message.encode(buffer);
 			assertEquals(encodeErr, undefined, `encode failed for ${caseName}`);
 
-			// Combine chunks into single buffer
-			const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-			const combinedBuffer = new Uint8Array(totalLength);
-			let offset = 0;
-			for (const chunk of chunks) {
-				combinedBuffer.set(chunk, offset);
-				offset += chunk.length;
-			}
-
-			// Create readable stream for decoding
-			const readableStream = new ReadableStream({
-				start(controller) {
-					controller.enqueue(combinedBuffer);
-					controller.close();
-				},
-			});
-			const reader = new ReceiveStream({
-				stream: readableStream,
-				streamId: 0n,
-			});
-
+			// Decode from a new buffer with written data
+			const readBuffer = Buffer.make(200);
+			await readBuffer.write(buffer.bytes());
 			const decodedMessage = new SessionServerMessage({});
-			const decodeErr = await decodedMessage.decode(reader);
+			const decodeErr = await decodedMessage.decode(readBuffer);
 			assertEquals(decodeErr, undefined, `decode failed for ${caseName}`);
 			assertEquals(
 				decodedMessage.version,
@@ -86,18 +59,9 @@ Deno.test("SessionServerMessage - encode/decode roundtrip - multiple scenarios",
 	await t.step(
 		"decode should return error when readVarint fails for message length",
 		async () => {
-			const readableStream = new ReadableStream({
-				start(controller) {
-					controller.close(); // Close immediately to cause read error
-				},
-			});
-			const reader = new ReceiveStream({
-				stream: readableStream,
-				streamId: 0n,
-			});
-
+			const buffer = Buffer.make(0); // Empty buffer
 			const message = new SessionServerMessage({});
-			const err = await message.decode(reader);
+			const err = await message.decode(buffer);
 			assertEquals(err !== undefined, true);
 		},
 	);
@@ -105,20 +69,10 @@ Deno.test("SessionServerMessage - encode/decode roundtrip - multiple scenarios",
 	await t.step(
 		"decode should return error when readVarint fails for version",
 		async () => {
-			const buffer = new Uint8Array([1]); // only message length
-			const readableStream = new ReadableStream({
-				start(controller) {
-					controller.enqueue(buffer);
-					controller.close();
-				},
-			});
-			const reader = new ReceiveStream({
-				stream: readableStream,
-				streamId: 0n,
-			});
-
+			const buffer = Buffer.make(10);
+			await buffer.write(new Uint8Array([0x00, 0x01])); // message length = 1, but no version data
 			const message = new SessionServerMessage({});
-			const err = await message.decode(reader);
+			const err = await message.decode(buffer);
 			assertEquals(err !== undefined, true);
 		},
 	);
@@ -126,20 +80,11 @@ Deno.test("SessionServerMessage - encode/decode roundtrip - multiple scenarios",
 	await t.step(
 		"decode should return error when readVarint fails for extension count",
 		async () => {
-			const buffer = new Uint8Array([2, 1]); // message length, version, but no extension count
-			const readableStream = new ReadableStream({
-				start(controller) {
-					controller.enqueue(buffer);
-					controller.close();
-				},
-			});
-			const reader = new ReceiveStream({
-				stream: readableStream,
-				streamId: 0n,
-			});
-
+			const buffer = Buffer.make(10);
+			// message length = 2, version = 1, but no extension count
+			await buffer.write(new Uint8Array([0x00, 0x02, 0x01]));
 			const message = new SessionServerMessage({});
-			const err = await message.decode(reader);
+			const err = await message.decode(buffer);
 			assertEquals(err !== undefined, true);
 		},
 	);
@@ -147,20 +92,11 @@ Deno.test("SessionServerMessage - encode/decode roundtrip - multiple scenarios",
 	await t.step(
 		"decode should return error when reading extension ID fails",
 		async () => {
-			const buffer = new Uint8Array([3, 1, 1]); // message length, version, extensionCount=1, but no ID
-			const readableStream = new ReadableStream({
-				start(controller) {
-					controller.enqueue(buffer);
-					controller.close();
-				},
-			});
-			const reader = new ReceiveStream({
-				stream: readableStream,
-				streamId: 0n,
-			});
-
+			const buffer = Buffer.make(10);
+			// message length = 3, version = 1, extensionCount = 1, but no ID
+			await buffer.write(new Uint8Array([0x00, 0x03, 0x01, 0x01]));
 			const message = new SessionServerMessage({});
-			const err = await message.decode(reader);
+			const err = await message.decode(buffer);
 			assertEquals(err !== undefined, true);
 		},
 	);
@@ -168,21 +104,128 @@ Deno.test("SessionServerMessage - encode/decode roundtrip - multiple scenarios",
 	await t.step(
 		"decode should return error when reading extension data fails",
 		async () => {
-			const buffer = new Uint8Array([4, 1, 1, 1]); // message length, version, extensionCount=1, ID=1, but no data
-			const readableStream = new ReadableStream({
-				start(controller) {
-					controller.enqueue(buffer);
-					controller.close();
-				},
-			});
-			const reader = new ReceiveStream({
-				stream: readableStream,
-				streamId: 0n,
-			});
-
+			const buffer = Buffer.make(10);
+			// message length = 4, version = 1, extensionCount = 1, ID = 1, but no data
+			await buffer.write(new Uint8Array([0x00, 0x04, 0x01, 0x01, 0x01]));
 			const message = new SessionServerMessage({});
-			const err = await message.decode(reader);
+			const err = await message.decode(buffer);
 			assertEquals(err !== undefined, true);
+		},
+	);
+
+	// Encode error tests using mockWriter with callCount tracking
+	await t.step(
+		"encode should return error when writeUint16 fails",
+		async () => {
+			let callCount = 0;
+			const mockWriter: Writer = {
+				async write(_p: Uint8Array): Promise<[number, Error | undefined]> {
+					callCount++;
+					if (callCount > 0) {
+						return [0, new Error("Write failed")];
+					}
+					return [_p.length, undefined];
+				},
+			};
+
+			const message = new SessionServerMessage({
+				version: 1,
+				extensions: new Map(),
+			});
+			const err = await message.encode(mockWriter);
+			assertEquals(err instanceof Error, true);
+		},
+	);
+
+	await t.step(
+		"encode should return error when writing version fails",
+		async () => {
+			let callCount = 0;
+			const mockWriter: Writer = {
+				async write(p: Uint8Array): Promise<[number, Error | undefined]> {
+					callCount++;
+					if (callCount > 1) {
+						return [0, new Error("Write failed")];
+					}
+					return [p.length, undefined];
+				},
+			};
+
+			const message = new SessionServerMessage({
+				version: 1,
+				extensions: new Map(),
+			});
+			const err = await message.encode(mockWriter);
+			assertEquals(err instanceof Error, true);
+		},
+	);
+
+	await t.step(
+		"encode should return error when writing extensions size fails",
+		async () => {
+			let callCount = 0;
+			const mockWriter: Writer = {
+				async write(p: Uint8Array): Promise<[number, Error | undefined]> {
+					callCount++;
+					if (callCount > 2) {
+						return [0, new Error("Write failed")];
+					}
+					return [p.length, undefined];
+				},
+			};
+
+			const message = new SessionServerMessage({
+				version: 1,
+				extensions: new Map(),
+			});
+			const err = await message.encode(mockWriter);
+			assertEquals(err instanceof Error, true);
+		},
+	);
+
+	await t.step(
+		"encode should return error when writing extension ID fails",
+		async () => {
+			let callCount = 0;
+			const mockWriter: Writer = {
+				async write(p: Uint8Array): Promise<[number, Error | undefined]> {
+					callCount++;
+					if (callCount > 3) {
+						return [0, new Error("Write failed")];
+					}
+					return [p.length, undefined];
+				},
+			};
+
+			const message = new SessionServerMessage({
+				version: 1,
+				extensions: new Map([[1, new Uint8Array([1, 2, 3])]]),
+			});
+			const err = await message.encode(mockWriter);
+			assertEquals(err instanceof Error, true);
+		},
+	);
+
+	await t.step(
+		"encode should return error when writing extension data fails",
+		async () => {
+			let callCount = 0;
+			const mockWriter: Writer = {
+				async write(p: Uint8Array): Promise<[number, Error | undefined]> {
+					callCount++;
+					if (callCount > 4) {
+						return [0, new Error("Write failed")];
+					}
+					return [p.length, undefined];
+				},
+			};
+
+			const message = new SessionServerMessage({
+				version: 1,
+				extensions: new Map([[1, new Uint8Array([1, 2, 3])]]),
+			});
+			const err = await message.encode(mockWriter);
+			assertEquals(err instanceof Error, true);
 		},
 	);
 });

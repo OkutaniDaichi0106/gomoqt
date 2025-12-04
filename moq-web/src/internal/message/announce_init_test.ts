@@ -1,94 +1,39 @@
 import { assertEquals } from "@std/assert";
 import { AnnounceInitMessage } from "./announce_init.ts";
-import { ReceiveStream, SendStream } from "../webtransport/mod.ts";
+import { Buffer } from "@okudai/golikejs/bytes";
+import type { Reader, Writer } from "@okudai/golikejs/io";
 
 Deno.test("AnnounceInitMessage", async (t) => {
 	await t.step("should encode and decode with suffixes", async () => {
 		const suffixes = ["suffix1", "suffix2", "suffix3"];
 
-		// Create buffer for encoding
-		const chunks: Uint8Array[] = [];
-		const writableStream = new WritableStream({
-			write(chunk) {
-				chunks.push(chunk);
-			},
-		});
-		const writer = new SendStream({
-			stream: writableStream,
-			streamId: 0n,
-		});
-
+		// Encode using Buffer
+		const buffer = Buffer.make(100);
 		const message = new AnnounceInitMessage({ suffixes });
-		const encodeErr = await message.encode(writer);
+		const encodeErr = await message.encode(buffer);
 		assertEquals(encodeErr, undefined);
 
-		// Combine chunks into single buffer
-		const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-		const combinedBuffer = new Uint8Array(totalLength);
-		let offset = 0;
-		for (const chunk of chunks) {
-			combinedBuffer.set(chunk, offset);
-			offset += chunk.length;
-		}
-
-		// Create readable stream for decoding
-		const readableStream = new ReadableStream({
-			start(controller) {
-				controller.enqueue(combinedBuffer);
-				controller.close();
-			},
-		});
-		const reader = new ReceiveStream({
-			stream: readableStream,
-			streamId: 0n,
-		});
-
+		// Decode from a new buffer with written data
+		const readBuffer = Buffer.make(100);
+		await readBuffer.write(buffer.bytes());
 		const decodedMessage = new AnnounceInitMessage({});
-		const decodeErr = await decodedMessage.decode(reader);
+		const decodeErr = await decodedMessage.decode(readBuffer);
 		assertEquals(decodeErr, undefined);
 		assertEquals(decodedMessage.suffixes, suffixes);
 	});
 
 	await t.step("should encode and decode without suffixes", async () => {
-		// Create buffer for encoding
-		const chunks: Uint8Array[] = [];
-		const writableStream = new WritableStream({
-			write(chunk) {
-				chunks.push(chunk);
-			},
-		});
-		const writer = new SendStream({
-			stream: writableStream,
-			streamId: 0n,
-		});
-
+		// Encode using Buffer
+		const buffer = Buffer.make(100);
 		const message = new AnnounceInitMessage({});
-		const encodeErr = await message.encode(writer);
+		const encodeErr = await message.encode(buffer);
 		assertEquals(encodeErr, undefined);
 
-		// Combine chunks into single buffer
-		const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-		const combinedBuffer = new Uint8Array(totalLength);
-		let offset = 0;
-		for (const chunk of chunks) {
-			combinedBuffer.set(chunk, offset);
-			offset += chunk.length;
-		}
-
-		// Create readable stream for decoding
-		const readableStream = new ReadableStream({
-			start(controller) {
-				controller.enqueue(combinedBuffer);
-				controller.close();
-			},
-		});
-		const reader = new ReceiveStream({
-			stream: readableStream,
-			streamId: 0n,
-		});
-
+		// Decode from a new buffer with written data
+		const readBuffer = Buffer.make(100);
+		await readBuffer.write(buffer.bytes());
 		const decodedMessage = new AnnounceInitMessage({});
-		const decodeErr = await decodedMessage.decode(reader);
+		const decodeErr = await decodedMessage.decode(readBuffer);
 		assertEquals(decodeErr, undefined);
 		assertEquals(decodedMessage.suffixes, []);
 	});
@@ -96,18 +41,14 @@ Deno.test("AnnounceInitMessage", async (t) => {
 	await t.step(
 		"decode should return error when readVarint fails for message length",
 		async () => {
-			const readableStream = new ReadableStream({
-				start(controller) {
-					controller.close();
+			const mockReader: Reader = {
+				async read(_p: Uint8Array): Promise<[number, Error | undefined]> {
+					return [0, new Error("Read failed")];
 				},
-			});
-			const reader = new ReceiveStream({
-				stream: readableStream,
-				streamId: 0n,
-			});
+			};
 
 			const message = new AnnounceInitMessage({});
-			const err = await message.decode(reader);
+			const err = await message.decode(mockReader);
 			assertEquals(err !== undefined, true);
 		},
 	);
@@ -115,20 +56,11 @@ Deno.test("AnnounceInitMessage", async (t) => {
 	await t.step(
 		"decode should return error when reading suffix count fails",
 		async () => {
-			const buffer = new Uint8Array([2]); // only message length
-			const readableStream = new ReadableStream({
-				start(controller) {
-					controller.enqueue(buffer);
-					controller.close();
-				},
-			});
-			const reader = new ReceiveStream({
-				stream: readableStream,
-				streamId: 0n,
-			});
+			const buffer = Buffer.make(10);
+			await buffer.write(new Uint8Array([2])); // only message length
 
 			const message = new AnnounceInitMessage({});
-			const err = await message.decode(reader);
+			const err = await message.decode(buffer);
 			assertEquals(err !== undefined, true);
 		},
 	);
@@ -136,21 +68,48 @@ Deno.test("AnnounceInitMessage", async (t) => {
 	await t.step(
 		"decode should return error when reading suffix value fails",
 		async () => {
-			const buffer = new Uint8Array([3, 2]); // message length, suffixCount=2, but no suffix data
-			const readableStream = new ReadableStream({
-				start(controller) {
-					controller.enqueue(buffer);
-					controller.close();
-				},
-			});
-			const reader = new ReceiveStream({
-				stream: readableStream,
-				streamId: 0n,
-			});
+			const buffer = Buffer.make(10);
+			await buffer.write(new Uint8Array([3, 2])); // message length, suffixCount=2, but no suffix data
 
 			const message = new AnnounceInitMessage({});
-			const err = await message.decode(reader);
+			const err = await message.decode(buffer);
 			assertEquals(err !== undefined, true);
+		},
+	);
+
+	// Encode error tests
+	await t.step(
+		"encode should return error when writeUint16 fails",
+		async () => {
+			const mockWriter: Writer = {
+				async write(_p: Uint8Array): Promise<[number, Error | undefined]> {
+					return [0, new Error("Write failed")];
+				},
+			};
+
+			const message = new AnnounceInitMessage({ suffixes: ["test"] });
+			const err = await message.encode(mockWriter);
+			assertEquals(err instanceof Error, true);
+		},
+	);
+
+	await t.step(
+		"encode should return error when writeStringArray fails",
+		async () => {
+			let callCount = 0;
+			const mockWriter: Writer = {
+				async write(p: Uint8Array): Promise<[number, Error | undefined]> {
+					callCount++;
+					if (callCount > 1) {
+						return [0, new Error("Write failed")];
+					}
+					return [p.length, undefined];
+				},
+			};
+
+			const message = new AnnounceInitMessage({ suffixes: ["test"] });
+			const err = await message.encode(mockWriter);
+			assertEquals(err instanceof Error, true);
 		},
 	);
 });

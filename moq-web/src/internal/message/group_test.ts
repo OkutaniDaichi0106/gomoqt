@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import { GroupMessage } from "./group.ts";
-import { ReceiveStream, SendStream } from "../webtransport/mod.ts";
+import { Buffer } from "@okudai/golikejs/bytes";
+import type { Reader, Writer } from "@okudai/golikejs/io";
 
 Deno.test("GroupMessage - encode/decode roundtrip - multiple scenarios", async (t) => {
 	const testCases = {
@@ -24,45 +25,17 @@ Deno.test("GroupMessage - encode/decode roundtrip - multiple scenarios", async (
 
 	for (const [caseName, input] of Object.entries(testCases)) {
 		await t.step(caseName, async () => {
-			// Create buffer for encoding
-			const chunks: Uint8Array[] = [];
-			const writableStream = new WritableStream({
-				write(chunk) {
-					chunks.push(chunk);
-				},
-			});
-			const writer = new SendStream({
-				stream: writableStream,
-				streamId: 0n,
-			});
-
+			// Encode using Buffer
+			const buffer = Buffer.make(100);
 			const msg = new GroupMessage(input);
-			const encodeErr = await msg.encode(writer);
+			const encodeErr = await msg.encode(buffer);
 			assertEquals(encodeErr, undefined, `encode failed for ${caseName}`);
 
-			// Combine chunks into single buffer
-			const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-			const combinedBuffer = new Uint8Array(totalLength);
-			let offset = 0;
-			for (const chunk of chunks) {
-				combinedBuffer.set(chunk, offset);
-				offset += chunk.length;
-			}
-
-			// Create readable stream for decoding
-			const readableStream = new ReadableStream({
-				start(controller) {
-					controller.enqueue(combinedBuffer);
-					controller.close();
-				},
-			});
-			const reader = new ReceiveStream({
-				stream: readableStream,
-				streamId: 0n,
-			});
-
+			// Decode from a new buffer with written data
+			const readBuffer = Buffer.make(100);
+			await readBuffer.write(buffer.bytes());
 			const decodedMsg = new GroupMessage({});
-			const decodeErr = await decodedMsg.decode(reader);
+			const decodeErr = await decodedMsg.decode(readBuffer);
 			assertEquals(decodeErr, undefined, `decode failed for ${caseName}`);
 			assertEquals(
 				decodedMsg.subscribeId,
@@ -82,18 +55,14 @@ Deno.test("GroupMessage - error cases", async (t) => {
 	await t.step(
 		"decode should return error when readVarint fails for message length",
 		async () => {
-			const readableStream = new ReadableStream({
-				start(controller) {
-					controller.close(); // Close immediately to cause read error
+			const mockReader: Reader = {
+				async read(_p: Uint8Array): Promise<[number, Error | undefined]> {
+					return [0, new Error("Read failed")];
 				},
-			});
-			const reader = new ReceiveStream({
-				stream: readableStream,
-				streamId: 0n,
-			});
+			};
 
 			const msg = new GroupMessage({});
-			const err = await msg.decode(reader);
+			const err = await msg.decode(mockReader);
 			if (!(err !== undefined)) throw new Error("expected error from decode");
 		},
 	);
@@ -102,20 +71,11 @@ Deno.test("GroupMessage - error cases", async (t) => {
 		"decode should return error when reading subscribeId fails",
 		async () => {
 			// message length only, no subscribeId
-			const buffer = new Uint8Array([1]);
-			const readableStream = new ReadableStream({
-				start(controller) {
-					controller.enqueue(buffer);
-					controller.close();
-				},
-			});
-			const reader = new ReceiveStream({
-				stream: readableStream,
-				streamId: 0n,
-			});
+			const buffer = Buffer.make(10);
+			await buffer.write(new Uint8Array([1]));
 
 			const msg = new GroupMessage({});
-			const err = await msg.decode(reader);
+			const err = await msg.decode(buffer);
 			if (!(err !== undefined)) {
 				throw new Error(
 					"expected error from decode subscribeId",
@@ -128,25 +88,77 @@ Deno.test("GroupMessage - error cases", async (t) => {
 		"decode should return error when reading sequence fails",
 		async () => {
 			// Provide length and subscribeId but no sequence
-			const buffer = new Uint8Array([2, 1]);
-			const readableStream = new ReadableStream({
-				start(controller) {
-					controller.enqueue(buffer);
-					controller.close();
-				},
-			});
-			const reader = new ReceiveStream({
-				stream: readableStream,
-				streamId: 0n,
-			});
+			const buffer = Buffer.make(10);
+			await buffer.write(new Uint8Array([2, 1]));
 
 			const msg = new GroupMessage({});
-			const err = await msg.decode(reader);
+			const err = await msg.decode(buffer);
 			if (!(err !== undefined)) {
 				throw new Error(
 					"expected error from decode sequence",
 				);
 			}
+		},
+	);
+
+	await t.step("encode should return error when writeUint16 fails", async () => {
+		const mockWriter: Writer = {
+			async write(_p: Uint8Array): Promise<[number, Error | undefined]> {
+				return [0, new Error("Write failed")];
+			},
+		};
+
+		const msg = new GroupMessage({
+			subscribeId: 1,
+			sequence: 1,
+		});
+		const err = await msg.encode(mockWriter);
+		assertEquals(err instanceof Error, true);
+	});
+
+	await t.step(
+		"encode should return error when writeVarint fails for subscribeId",
+		async () => {
+			let callCount = 0;
+			const mockWriter: Writer = {
+				async write(p: Uint8Array): Promise<[number, Error | undefined]> {
+					callCount++;
+					if (callCount > 1) {
+						return [0, new Error("Write failed")];
+					}
+					return [p.length, undefined];
+				},
+			};
+
+			const msg = new GroupMessage({
+				subscribeId: 1,
+				sequence: 1,
+			});
+			const err = await msg.encode(mockWriter);
+			assertEquals(err instanceof Error, true);
+		},
+	);
+
+	await t.step(
+		"encode should return error when writeVarint fails for sequence",
+		async () => {
+			let callCount = 0;
+			const mockWriter: Writer = {
+				async write(p: Uint8Array): Promise<[number, Error | undefined]> {
+					callCount++;
+					if (callCount > 2) {
+						return [0, new Error("Write failed")];
+					}
+					return [p.length, undefined];
+				},
+			};
+
+			const msg = new GroupMessage({
+				subscribeId: 1,
+				sequence: 1,
+			});
+			const err = await msg.encode(mockWriter);
+			assertEquals(err instanceof Error, true);
 		},
 	);
 });

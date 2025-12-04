@@ -100,11 +100,7 @@ func (s *Server) init() {
 		s.doneChan = make(chan struct{})
 		s.activeSess = make(map[*Session]struct{})
 		// Initialize WebtransportServer
-
-		var checkOrigin func(*http.Request) bool
-		if s.Config != nil && s.Config.CheckHTTPOrigin != nil {
-			checkOrigin = s.Config.CheckHTTPOrigin
-		}
+		checkOrigin := s.Config.checkHTTPOrigin()
 
 		if s.NewWebtransportServerFunc != nil {
 			s.wtServer = s.NewWebtransportServerFunc(checkOrigin)
@@ -231,9 +227,9 @@ func (s *Server) HandleWebTransport(w http.ResponseWriter, r *http.Request) erro
 
 	connLogger.Debug("establishing a WebTransport session")
 
-	acceptCtx, cancelAccept := context.WithTimeout(r.Context(), s.acceptTimeout())
+	acceptCtx, cancelAccept := context.WithTimeout(r.Context(), s.Config.setupTimeout())
 	defer cancelAccept()
-	sessStr, err := acceptSessionStream(acceptCtx, conn, connLogger)
+	sessStr, err := acceptSessionStream(acceptCtx, conn, connLogger, s.Config)
 	if err != nil {
 		connLogger.Error("failed to accept session stream",
 			"error", err,
@@ -282,9 +278,9 @@ func (s *Server) handleNativeQUIC(conn quic.Connection) error {
 
 	connLogger.Debug("moq: establishing a QUIC session")
 
-	acceptCtx, cancelAccept := context.WithTimeout(conn.Context(), s.acceptTimeout())
+	acceptCtx, cancelAccept := context.WithTimeout(conn.Context(), s.Config.setupTimeout())
 	defer cancelAccept()
-	sessStr, err := acceptSessionStream(acceptCtx, conn, connLogger)
+	sessStr, err := acceptSessionStream(acceptCtx, conn, connLogger, s.Config)
 	if err != nil {
 		connLogger.Error("moq: failed to accept session stream",
 			"error", err,
@@ -306,7 +302,7 @@ func (s *Server) handleNativeQUIC(conn quic.Connection) error {
 	return nil
 }
 
-func acceptSessionStream(acceptCtx context.Context, conn quic.Connection, connLogger *slog.Logger) (*sessionStream, error) {
+func acceptSessionStream(acceptCtx context.Context, conn quic.Connection, connLogger *slog.Logger, config *Config) (*sessionStream, error) {
 	sessionID := generateSessionID()
 
 	sessLogger := connLogger.With(
@@ -378,10 +374,8 @@ func acceptSessionStream(acceptCtx context.Context, conn quic.Connection, connLo
 		ClientExtensions: clientParams,
 	}
 
-	return newSessionStream(stream, req), nil
-}
-
-// ListenAndServe starts the server by listening on the server's Address and serving QUIC connections.
+	return newSessionStream(stream, req, config.newShiftDetector()), nil
+} // ListenAndServe starts the server by listening on the server's Address and serving QUIC connections.
 // TLS configuration must be provided on the Server for ListenAndServe to function properly.
 func (s *Server) ListenAndServe() error {
 	s.init()
@@ -687,13 +681,6 @@ func (s *Server) removeSession(sess *Session) {
 
 func (s *Server) shuttingDown() bool {
 	return s.inShutdown.Load()
-}
-
-func (s *Server) acceptTimeout() time.Duration {
-	if s.Config != nil && s.Config.SetupTimeout != 0 {
-		return s.Config.SetupTimeout
-	}
-	return 5 * time.Second
 }
 
 func (s *Server) goAway() {

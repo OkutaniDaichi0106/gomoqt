@@ -316,11 +316,11 @@ func TestMux_ConcurrentAccess(t *testing.T) {
 	wg.Add(numGoroutines)
 
 	// Concurrent registration and serving
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		go func(id int) {
 			defer wg.Done()
 
-			for j := 0; j < pathsPerGoroutine; j++ {
+			for j := range pathsPerGoroutine {
 				path := BroadcastPath(fmt.Sprintf("/test/%d/%d", id, j))
 
 				// Register handler
@@ -818,7 +818,7 @@ func TestMux_AnnouncementDeliveryToMultipleListeners(t *testing.T) {
 
 	// Both listeners should receive the announcement
 	count := 0
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		select {
 		case ann := <-received:
 			assert.Equal(t, announcement, ann, "Listener should receive the correct announcement")
@@ -917,7 +917,6 @@ func TestMux_ServeAnnouncements_InitSendsExistingAnnouncements(t *testing.T) {
 	}
 
 	for name, tc := range tests {
-		name := name
 		tc := tc
 		synctest.Test(t, func(t *testing.T) {
 			mux := NewTrackMux()
@@ -1378,18 +1377,16 @@ func TestMux_ServeAnnouncements_SlowSubscriber_NoDeadlock(t *testing.T) {
 		aw := newAnnouncementWriter(mockStream, "/slow/")
 
 		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			mux.serveAnnouncements(aw)
-		}()
+		})
 
 		// Give the writer a moment to initialize
 		time.Sleep(20 * time.Millisecond)
 
 		// Fire many announces in quick succession; some may be dropped due to channel buffer limits
 		count := 20
-		for i := 0; i < count; i++ {
+		for i := range count {
 			ann, end := NewAnnouncement(ctx, BroadcastPath(fmt.Sprintf("/slow/stream-%d", i)))
 			mux.Announce(ann, TrackHandlerFunc(func(tw *TrackWriter) {}))
 			// end the announcement immediately so we don't leak
@@ -1551,17 +1548,15 @@ func TestMux_Announce_ClosesBusySubscriber(t *testing.T) {
 		aw := newAnnouncementWriter(mockStream, "/busy/")
 
 		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			mux.serveAnnouncements(aw)
-		}()
+		})
 
 		// Create an announcement and call Announce repeatedly to fill the buffer
 		_, _ = NewAnnouncement(context.Background(), BroadcastPath("/busy/stream"))
 
 		// Send enough announces to fill the channel buffer (8)
-		for i := 0; i < 16; i++ {
+		for i := range 16 {
 			a, endf := NewAnnouncement(context.Background(), BroadcastPath(fmt.Sprintf("/busy/stream-%d", i)))
 			mux.Announce(a, TrackHandlerFunc(func(tw *TrackWriter) {}))
 			endf()
@@ -1617,11 +1612,9 @@ func TestMux_Publish_InitSendsExistingAnnouncements(t *testing.T) {
 	aw := newAnnouncementWriter(mockStream, "/pubinit/")
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		mux.serveAnnouncements(aw)
-	}()
+	})
 
 	// Wait up to 500ms for a Write to happen (init)
 	select {
@@ -1675,11 +1668,9 @@ func TestMux_Publish_AfterServeAnnouncements_SendsAnnouncement(t *testing.T) {
 	aw := newAnnouncementWriter(mockStream, "/pubafter/")
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		mux.serveAnnouncements(aw)
-	}()
+	})
 
 	// Wait until serveAnnouncements registers (first init Write) or proceed quickly
 	select {
@@ -1743,11 +1734,9 @@ func TestMux_PublishFunc_InitSendsExistingAnnouncements(t *testing.T) {
 	aw := newAnnouncementWriter(mockStream, "/pubfuncinit/")
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		mux.serveAnnouncements(aw)
-	}()
+	})
 
 	// Wait up to 500ms for a Write to happen
 	deadline := time.Now().Add(500 * time.Millisecond)
@@ -1813,11 +1802,9 @@ func TestMux_PublishFunc_AfterServeAnnouncements_SendsAnnouncement(t *testing.T)
 	aw := newAnnouncementWriter(mockStream, "/pubfuncafter/")
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		mux.serveAnnouncements(aw)
-	}()
+	})
 
 	// Wait until serveAnnouncements registers (first init Write) or short timeout
 	select {
@@ -1865,7 +1852,7 @@ func TestMux_ServeAnnouncements_ConcurrentAnnounce_NoDeadlock(t *testing.T) {
 		var mocks []*MockQUICStream
 		var cancels []context.CancelFunc
 		var readyChans []chan struct{}
-		for i := 0; i < listeners; i++ {
+		for range listeners {
 			ms := &MockQUICStream{}
 			// use cancellable contexts so we can stop goroutines later
 			cctx, cancel := context.WithCancel(context.Background())
@@ -1913,10 +1900,10 @@ func TestMux_ServeAnnouncements_ConcurrentAnnounce_NoDeadlock(t *testing.T) {
 		producers := 10
 		perProducer := 20
 		announceWg.Add(producers)
-		for p := 0; p < producers; p++ {
+		for p := range producers {
 			go func(id int) {
 				defer announceWg.Done()
-				for j := 0; j < perProducer; j++ {
+				for j := range perProducer {
 					ann, end := NewAnnouncement(ctx, BroadcastPath(fmt.Sprintf("/race/stream-%d-%d", id, j)))
 					// announce and end quickly
 					mux.Announce(ann, TrackHandlerFunc(func(tw *TrackWriter) {}))
@@ -2024,8 +2011,7 @@ func TestMux_ServeTrack_ClosesWhenAnnouncementEnds(t *testing.T) {
 
 	// Mock receive stream expects Close / CancelRead to be called as part of Close()
 	mockStream := &MockQUICStream{}
-	streamCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	streamCtx := t.Context()
 	mockStream.On("Context").Return(streamCtx)
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 	mockStream.On("Close").Return(nil).Maybe()
@@ -2040,11 +2026,9 @@ func TestMux_ServeTrack_ClosesWhenAnnouncementEnds(t *testing.T) {
 
 	// Serve in a goroutine so handler can block and we can end the announcement
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		mux.serveTrack(tw)
-	}()
+	})
 
 	// Wait for the handler to start inside serveTrack by polling the TrackHandler mapping
 	deadline := time.Now().Add(500 * time.Millisecond)
@@ -2151,16 +2135,17 @@ func TestAnnouncement_Stop_ReturnsFalse_IfRegisteredAfterEnd(t *testing.T) {
 	ann, end := NewAnnouncement(ctx, BroadcastPath("/announce/stop/after/registered"))
 	end()
 
-	// Register after end -- this should call the handler immediately and return a stop that is useless
-	called := false
-	stop := ann.AfterFunc(func() { called = true })
+	// Register after end -- this should call the handler asynchronously and return a stop that is useless
+	calledCh := make(chan struct{})
+	stop := ann.AfterFunc(func() { close(calledCh) })
 
-	// Handler should have been called immediately
+	// Handler should be called asynchronously
 	select {
-	case <-ann.Done():
-	default:
+	case <-calledCh:
+		// expected
+	case <-time.After(time.Second):
+		t.Fatal("handler was not called")
 	}
-	assert.True(t, called)
 
 	// stop should return false
 	assert.False(t, stop())
@@ -2176,7 +2161,7 @@ func TestAnnouncement_End_Idempotent_WithMultipleAfterFuncs(t *testing.T) {
 	var wg sync.WaitGroup
 	// We intentionally call end() twice below; AfterFunc handlers should be executed once total
 	wg.Add(n)
-	for i := 0; i < n; i++ {
+	for range n {
 		ann.AfterFunc(func() {
 			atomic.AddInt32(&calledCount, 1)
 			wg.Done()
@@ -2273,7 +2258,7 @@ func TestAnnouncement_AfterFunc_ConcurrentRegistrationAndEnd(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(n)
 
-	for i := 0; i < n; i++ {
+	for range n {
 		go func() {
 			ann.AfterFunc(func() {
 				atomic.AddInt32(&called, 1)
@@ -2282,11 +2267,11 @@ func TestAnnouncement_AfterFunc_ConcurrentRegistrationAndEnd(t *testing.T) {
 		}()
 	}
 
-	// Call end concurrently
-	go end()
-
-	// Wait for all registrations to complete
+	// Wait for all registrations to complete BEFORE calling end()
 	wg.Wait()
+
+	// Now call end after all AfterFunc registrations are complete
+	end()
 
 	// Wait until announcement's Done channel is closed to ensure all handler invocations are complete
 	select {

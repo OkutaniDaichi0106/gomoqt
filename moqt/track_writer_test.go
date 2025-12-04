@@ -369,9 +369,7 @@ func TestTrackWriter_OpenWhileClose(t *testing.T) {
 
 	// Start a goroutine that will open a group
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		defer func() {
 			if r := recover(); r != nil {
 				t.Logf("OpenGroup panicked during concurrent Close: %v", r)
@@ -383,7 +381,7 @@ func TestTrackWriter_OpenWhileClose(t *testing.T) {
 			// If it succeeded, ensure group is closed later
 			_ = group.Close()
 		}
-	}()
+	})
 
 	// Close the sender concurrently
 	_ = sender.Close()

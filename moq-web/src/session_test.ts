@@ -685,5 +685,224 @@ Deno.test({
 				await session.close();
 			},
 		);
+
+		await t.step(
+			"acceptAnnounce returns error when openStream fails",
+			async () => {
+				const serverBytes = await encodeMessageToUint8Array(async (w) => {
+					const s = new SessionServerMessage({
+						version: [...DEFAULT_CLIENT_VERSIONS][0],
+					});
+					return await s.encode(w);
+				});
+
+				const mock = new MockWebTransportSession({
+					openStreamResponses: [serverBytes],
+				});
+
+				const session = new Session({ webtransport: mock });
+				await session.ready;
+
+				// Close the mock to simulate openStream failure
+				mock.close();
+
+				const [reader, err] = await session.acceptAnnounce(
+					"/test/" as TrackPrefix,
+				);
+				assertEquals(reader, undefined);
+				assertExists(err);
+			},
+		);
+
+		await t.step(
+			"subscribe returns error when openStream fails",
+			async () => {
+				const serverBytes = await encodeMessageToUint8Array(async (w) => {
+					const s = new SessionServerMessage({
+						version: [...DEFAULT_CLIENT_VERSIONS][0],
+					});
+					return await s.encode(w);
+				});
+
+				const mock = new MockWebTransportSession({
+					openStreamResponses: [serverBytes],
+				});
+
+				const session = new Session({ webtransport: mock });
+				await session.ready;
+
+				// Close the mock to simulate openStream failure
+				mock.close();
+
+				const [track, err] = await session.subscribe(
+					"/test/path",
+					"track-name",
+				);
+				assertEquals(track, undefined);
+				assertExists(err);
+			},
+		);
+
+		await t.step(
+			"subscribe with trackConfig passes config values",
+			async () => {
+				const serverBytes = await encodeMessageToUint8Array(async (w) => {
+					const s = new SessionServerMessage({
+						version: [...DEFAULT_CLIENT_VERSIONS][0],
+					});
+					return await s.encode(w);
+				});
+
+				const ok = new SubscribeOkMessage({});
+				const okBytes = await encodeMessageToUint8Array(async (w) => ok.encode(w));
+
+				const mock = new MockWebTransportSession({
+					openStreamResponses: [serverBytes, okBytes],
+				});
+
+				const session = new Session({ webtransport: mock });
+				await session.ready;
+
+				const [track, err] = await session.subscribe(
+					"/test/path",
+					"track-name",
+					{ trackPriority: 5 },
+				);
+				assertExists(track);
+				assertEquals(err, undefined);
+
+				// Verify track config is reflected
+				const config = track.trackConfig;
+				assertEquals(config.trackPriority, 5);
+
+				await session.close();
+			},
+		);
+
+		await t.step(
+			"close does nothing when context already has error",
+			async () => {
+				const serverBytes = await encodeMessageToUint8Array(async (w) => {
+					const s = new SessionServerMessage({
+						version: [...DEFAULT_CLIENT_VERSIONS][0],
+					});
+					return await s.encode(w);
+				});
+
+				let closeCallCount = 0;
+				const mock = new MockWebTransportSession({
+					openStreamResponses: [serverBytes],
+				});
+				const originalClose = mock.close.bind(mock);
+				mock.close = (info?: WebTransportCloseInfo) => {
+					closeCallCount++;
+					originalClose(info);
+				};
+
+				const session = new Session({ webtransport: mock });
+				await session.ready;
+
+				await session.close();
+				assertEquals(closeCallCount, 1);
+
+				// Second close should be a no-op
+				await session.close();
+				assertEquals(closeCallCount, 1);
+			},
+		);
+
+		await t.step(
+			"listening for unknown bidirectional stream type logs warning",
+			async () => {
+				const serverBytes = await encodeMessageToUint8Array(async (w) => {
+					const s = new SessionServerMessage({
+						version: [...DEFAULT_CLIENT_VERSIONS][0],
+					});
+					return await s.encode(w);
+				});
+
+				// Create a buffer with unknown stream type (0xFF)
+				const unknownStreamBuf = new Uint8Array([0xFF]);
+
+				const mock = new MockWebTransportSession({
+					openStreamResponses: [serverBytes],
+					acceptStreamData: [{
+						type: 0xFF, // Unknown type
+						data: unknownStreamBuf,
+					}],
+				});
+
+				const session = new Session({ webtransport: mock });
+				await session.ready;
+
+				await new Promise((resolve) => setTimeout(resolve, 10));
+				await session.close();
+			},
+		);
+
+		await t.step(
+			"listening for unknown unidirectional stream type logs warning",
+			async () => {
+				const serverBytes = await encodeMessageToUint8Array(async (w) => {
+					const s = new SessionServerMessage({
+						version: [...DEFAULT_CLIENT_VERSIONS][0],
+					});
+					return await s.encode(w);
+				});
+
+				// Create a buffer with unknown stream type (0xFF)
+				const unknownStreamBuf = new Uint8Array([0xFF]);
+
+				const mock = new MockWebTransportSession({
+					openStreamResponses: [serverBytes],
+					acceptUniStreamData: [{
+						type: 0xFF, // Unknown type
+						data: unknownStreamBuf,
+					}],
+				});
+
+				const session = new Session({ webtransport: mock });
+				await session.ready;
+
+				await new Promise((resolve) => setTimeout(resolve, 10));
+				await session.close();
+			},
+		);
+
+		await t.step(
+			"group stream for unknown subscribe ID is ignored",
+			async () => {
+				const serverBytes = await encodeMessageToUint8Array(async (w) => {
+					const s = new SessionServerMessage({
+						version: [...DEFAULT_CLIENT_VERSIONS][0],
+					});
+					return await s.encode(w);
+				});
+
+				// Create group message with subscribeId that doesn't exist
+				const groupMsg = new GroupMessage({
+					subscribeId: 999, // Non-existent subscribe ID
+					sequence: 1,
+				});
+				const groupBuf = await encodeMessageToUint8Array(async (w) => {
+					await writeVarint(w, UniStreamTypes.GroupStreamType);
+					return await groupMsg.encode(w);
+				});
+
+				const mock = new MockWebTransportSession({
+					openStreamResponses: [serverBytes],
+					acceptUniStreamData: [{
+						type: UniStreamTypes.GroupStreamType,
+						data: groupBuf,
+					}],
+				});
+
+				const session = new Session({ webtransport: mock });
+				await session.ready;
+
+				await new Promise((resolve) => setTimeout(resolve, 10));
+				await session.close();
+			},
+		);
 	},
 });

@@ -91,6 +91,7 @@ func (aw *AnnouncementWriter) init(announcements map[*Announcement]struct{}) err
 
 // registerEndHandler registers handlers for when the announcement ends.
 // It sets up AfterFunc to clean up when the announcement becomes inactive.
+// Caller MUST hold aw.mu.
 func (aw *AnnouncementWriter) registerEndHandler(sfx suffix, ann *Announcement) {
 	stop := ann.AfterFunc(func() {
 		aw.mu.Lock()
@@ -154,22 +155,28 @@ func (aw *AnnouncementWriter) SendAnnouncement(announcement *Announcement) error
 		return errors.New("moq: broadcast path with invalid prefix")
 	}
 
-	// Check for previous announcement and get old endFunc
 	aw.mu.Lock()
-	defer aw.mu.Unlock()
 
 	active, exists := aw.actives[suffix]
 	if exists && active.announcement == announcement {
+		aw.mu.Unlock()
 		return nil // Already active, no need to re-announce
 	}
 
-	// If there's an existing announcement for this suffix, end it first
-	if exists {
-		// Call end function without holding the lock to avoid deadlock
-		aw.mu.Unlock()
-		active.end()
-		aw.mu.Lock()
+	// If there's an existing announcement for this suffix, end it first.
+	// Release lock before calling end() since it acquires the lock internally.
+	var endFunc func()
+	if exists && active.end != nil {
+		endFunc = active.end
 	}
+	aw.mu.Unlock()
+
+	if endFunc != nil {
+		endFunc()
+	}
+
+	aw.mu.Lock()
+	defer aw.mu.Unlock()
 
 	// Encode and send ACTIVE announcement
 	err := message.AnnounceMessage{
@@ -196,13 +203,20 @@ func (aw *AnnouncementWriter) SendAnnouncement(announcement *Announcement) error
 // Close gracefully closes the AnnouncementWriter and ends all active announcements.
 func (aw *AnnouncementWriter) Close() error {
 	aw.mu.Lock()
-	defer aw.mu.Unlock()
-
-	// End all active announcements
+	// Collect end functions to call after releasing the lock
+	var endFuncs []func()
 	for _, active := range aw.actives {
-		active.end()
+		if active.end != nil {
+			endFuncs = append(endFuncs, active.end)
+		}
 	}
 	aw.actives = nil
+	aw.mu.Unlock()
+
+	// Call end functions without holding the lock to avoid deadlock
+	for _, endFunc := range endFuncs {
+		endFunc()
+	}
 
 	return aw.stream.Close()
 }
@@ -210,13 +224,20 @@ func (aw *AnnouncementWriter) Close() error {
 // CloseWithError ends all active announcements and signals an error condition via the given code.
 func (aw *AnnouncementWriter) CloseWithError(code AnnounceErrorCode) error {
 	aw.mu.Lock()
-	defer aw.mu.Unlock()
-
-	// End all active announcements
+	// Collect end functions to call after releasing the lock
+	var endFuncs []func()
 	for _, active := range aw.actives {
-		active.end()
+		if active.end != nil {
+			endFuncs = append(endFuncs, active.end)
+		}
 	}
 	aw.actives = nil
+	aw.mu.Unlock()
+
+	// Call end functions without holding the lock to avoid deadlock
+	for _, endFunc := range endFuncs {
+		endFunc()
+	}
 
 	strErrCode := quic.StreamErrorCode(code)
 	aw.stream.CancelWrite(strErrCode)

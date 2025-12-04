@@ -217,7 +217,7 @@ Deno.test("AnnouncementWriter", async (t) => {
 
 Deno.test("AnnouncementReader", async (t) => {
 	await t.step("initial announcements enqueued", async () => {
-		const [ctx] = withCancelCause(background());
+		const [ctx, cancel] = withCancelCause(background());
 		const mockStream = new MockStream({ id: 5n });
 		const req = new AnnouncePleaseMessage({ prefix: "/x/" });
 		const aim = new AnnounceInitMessage({ suffixes: ["a", "b"] });
@@ -228,12 +228,13 @@ Deno.test("AnnouncementReader", async (t) => {
 		if (ann) {
 			assertEquals(ann.isActive(), true);
 		}
+		cancel(new Error("test cleanup"));
 	});
 
 	await t.step(
 		"handles duplicate ANNOUNCE messages by closing with error",
 		async () => {
-			const [ctx] = withCancelCause(background());
+			const [ctx, cancel] = withCancelCause(background());
 			const aim = new AnnounceInitMessage({ suffixes: ["a"] });
 			// Encode ANNOUNCE message for same suffix 'a'
 			const buf = Buffer.make(128);
@@ -250,6 +251,7 @@ Deno.test("AnnouncementReader", async (t) => {
 			new AnnouncementReader(ctx, mockStream, req, aim);
 			await new Promise((r) => setTimeout(r, 10));
 			assertEquals(writableCancel.calls.length >= 0, true);
+			cancel(new Error("test cleanup"));
 		},
 	);
 
@@ -279,24 +281,28 @@ Deno.test("AnnouncementReader", async (t) => {
 			const apm = new AnnouncePleaseMessage({ prefix: "/" });
 			const aim = new AnnounceInitMessage({ suffixes: [] });
 
-			new AnnouncementReader(background(), mockStream, apm, aim);
+			const [ctx, cancel] = withCancelCause(background());
+			new AnnouncementReader(ctx, mockStream, apm, aim);
 			await new Promise((r) => setTimeout(r, 50));
 			assertEquals(writableCancel.calls.length > 0, true);
 			assertEquals(readableCancel.calls.length > 0, true);
+			cancel(new Error("test cleanup"));
 		},
 	);
 
 	await t.step("receive returns error when queue closed", async () => {
+		const [ctx, cancel] = withCancelCause(background());
 		const mockStream = new MockStream({ id: 2n });
 
 		const apm = new AnnouncePleaseMessage({ prefix: "/test/" });
 		const aim = new AnnounceInitMessage({ suffixes: [] });
-		const ar = new AnnouncementReader(background(), mockStream, apm, aim);
+		const ar = new AnnouncementReader(ctx, mockStream, apm, aim);
 		await ar.close();
 
 		const [ann, err] = await ar.receive(new Promise(() => {}));
 		assertEquals(ann, undefined);
 		assertEquals(err instanceof Error, true);
+		cancel(new Error("test cleanup"));
 	});
 
 	await t.step(
@@ -338,6 +344,267 @@ Deno.test("AnnouncementReader", async (t) => {
 			await reader.closeWithError(1);
 			assertEquals(writableCancel.calls.length, 0);
 			assertEquals(readableCancel.calls.length, 0);
+		},
+	);
+
+	await t.step(
+		"handles ANNOUNCE message with active true replacing inactive old",
+		async () => {
+			// First, create a message to make an announcement active, then inactive, then active again
+			const buf = Buffer.make(256);
+			const activeTrueMsg = new AnnounceMessage({ suffix: "x", active: true });
+			// We need an initial suffix and then send active=false first (to end it) then active=true
+			// Actually, let's test: start with active=true suffix 'x', then receive active=true for new suffix 'y'
+			await activeTrueMsg.encode(buf);
+
+			const mockStream = new MockStream({
+				id: 20n,
+				readable: new MockReceiveStream({ id: 20n, read: (p) => buf.read(p) }),
+			});
+
+			const apm = new AnnouncePleaseMessage({ prefix: "/" });
+			const aim = new AnnounceInitMessage({ suffixes: [] }); // Start empty
+
+			const [ctx, cancel] = withCancelCause(background());
+			const ar = new AnnouncementReader(ctx, mockStream, apm, aim);
+			await new Promise((r) => setTimeout(r, 30));
+
+			// Should have enqueued one announcement
+			const [ann, err] = await ar.receive(Promise.resolve());
+			assertEquals(err, undefined);
+			assertExists(ann);
+			assertEquals(ann?.broadcastPath, "/x");
+			cancel(new Error("test cleanup"));
+		},
+	);
+
+	await t.step(
+		"handles ANNOUNCE message with active false ending existing announcement",
+		async () => {
+			const buf = Buffer.make(256);
+			const activeFalseMsg = new AnnounceMessage({ suffix: "a", active: false });
+			await activeFalseMsg.encode(buf);
+
+			const mockStream = new MockStream({
+				id: 21n,
+				readable: new MockReceiveStream({ id: 21n, read: (p) => buf.read(p) }),
+			});
+
+			const apm = new AnnouncePleaseMessage({ prefix: "/" });
+			const aim = new AnnounceInitMessage({ suffixes: ["a"] }); // Start with 'a' active
+
+			const [ctx, cancel] = withCancelCause(background());
+			const ar = new AnnouncementReader(ctx, mockStream, apm, aim);
+
+			// First receive the initial announcement
+			const [ann1, err1] = await ar.receive(Promise.resolve());
+			assertEquals(err1, undefined);
+			assertExists(ann1);
+			assertEquals(ann1?.broadcastPath, "/a");
+			assertEquals(ann1?.isActive(), true);
+
+			// Wait for the ENDED message to be processed
+			await new Promise((r) => setTimeout(r, 30));
+
+			// The announcement should now be ended
+			assertEquals(ann1?.isActive(), false);
+			cancel(new Error("test cleanup"));
+		},
+	);
+
+	await t.step(
+		"AnnouncementWriter send returns error when path does not match prefix",
+		async () => {
+			const [ctx] = withCancelCause(background());
+			const mockStream = new MockStream({ id: 30n });
+			const req = new AnnouncePleaseMessage({ prefix: "/test/" });
+			const aw = new AnnouncementWriter(ctx, mockStream, req);
+
+			await aw.init([]);
+
+			const ann = new Announcement("/other/path", new Promise(() => {}));
+			const err = await aw.send(ann);
+			assertExists(err);
+			assertEquals(err?.message.includes("does not start with prefix"), true);
+		},
+	);
+
+	await t.step(
+		"AnnouncementWriter send returns error when announcement already exists",
+		async () => {
+			const writtenData: Uint8Array[] = [];
+			const mockWritable = new MockSendStream({
+				id: 31n,
+				write: spy(async (p: Uint8Array) => {
+					writtenData.push(new Uint8Array(p));
+					return [p.length, undefined] as [number, Error | undefined];
+				}),
+			});
+			const mockStream = new MockStream({
+				id: 31n,
+				writable: mockWritable,
+			});
+			const [ctx] = withCancelCause(background());
+			const req = new AnnouncePleaseMessage({ prefix: "/test/" });
+			const aw = new AnnouncementWriter(ctx, mockStream, req);
+
+			const ann1 = new Announcement("/test/path", new Promise(() => {}));
+			await aw.init([ann1]);
+
+			// Try to send the same announcement again
+			const ann2 = new Announcement("/test/path", new Promise(() => {}));
+			const err = await aw.send(ann2);
+			assertExists(err);
+			assertEquals(err?.message.includes("already exists"), true);
+		},
+	);
+
+	await t.step(
+		"AnnouncementWriter send with inactive announcement ends existing",
+		async () => {
+			const writtenData: Uint8Array[] = [];
+			const mockWritable = new MockSendStream({
+				id: 32n,
+				write: spy(async (p: Uint8Array) => {
+					writtenData.push(new Uint8Array(p));
+					return [p.length, undefined] as [number, Error | undefined];
+				}),
+			});
+			const mockStream = new MockStream({
+				id: 32n,
+				writable: mockWritable,
+			});
+			const [ctx, cancel] = withCancelCause(background());
+			const req = new AnnouncePleaseMessage({ prefix: "/test/" });
+			const aw = new AnnouncementWriter(ctx, mockStream, req);
+
+			// First, create and init with an active announcement
+			const [annCtx] = withCancelCause(background());
+			const ann1 = new Announcement("/test/path", annCtx.done());
+
+			await aw.init([ann1]);
+
+			// Create an inactive announcement to end the existing one
+			class InactiveAnnouncement extends Announcement {
+				override isActive(): boolean {
+					return false;
+				}
+			}
+			const [ann2Ctx] = withCancelCause(background());
+			const ann2 = new InactiveAnnouncement("/test/path", ann2Ctx.done());
+
+			const err = await aw.send(ann2);
+			assertEquals(err, undefined);
+			assertEquals(ann1.isActive(), false);
+			cancel(new Error("test cleanup"));
+		},
+	);
+
+	await t.step(
+		"AnnouncementWriter send returns error when ending non-existent announcement",
+		async () => {
+			const writtenData: Uint8Array[] = [];
+			const mockWritable = new MockSendStream({
+				id: 33n,
+				write: spy(async (p: Uint8Array) => {
+					writtenData.push(new Uint8Array(p));
+					return [p.length, undefined] as [number, Error | undefined];
+				}),
+			});
+			const mockStream = new MockStream({
+				id: 33n,
+				writable: mockWritable,
+			});
+			const [ctx] = withCancelCause(background());
+			const req = new AnnouncePleaseMessage({ prefix: "/test/" });
+			const aw = new AnnouncementWriter(ctx, mockStream, req);
+
+			await aw.init([]);
+
+			// Create an inactive announcement to end the existing one
+			class InactiveAnnouncement extends Announcement {
+				override isActive(): boolean {
+					return false;
+				}
+			}
+			const ann = new InactiveAnnouncement("/test/path", new Promise(() => {}));
+
+			const err = await aw.send(ann);
+			assertExists(err);
+			assertEquals(err?.message.includes("is not active"), true);
+		},
+	);
+
+	await t.step(
+		"AnnouncementWriter init returns error when path does not start with prefix",
+		async () => {
+			const [ctx] = withCancelCause(background());
+			const mockStream = new MockStream({ id: 34n });
+			const req = new AnnouncePleaseMessage({ prefix: "/test/" });
+			const aw = new AnnouncementWriter(ctx, mockStream, req);
+
+			const ann = new Announcement("/other/path", new Promise(() => {}));
+			const err = await aw.init([ann]);
+			assertExists(err);
+			assertEquals(err?.message.includes("does not start with prefix"), true);
+		},
+	);
+
+	await t.step(
+		"AnnouncementWriter init returns error when announcement already exists",
+		async () => {
+			const writtenData: Uint8Array[] = [];
+			const mockWritable = new MockSendStream({
+				id: 35n,
+				write: spy(async (p: Uint8Array) => {
+					writtenData.push(new Uint8Array(p));
+					return [p.length, undefined] as [number, Error | undefined];
+				}),
+			});
+			const mockStream = new MockStream({
+				id: 35n,
+				writable: mockWritable,
+			});
+			const [ctx] = withCancelCause(background());
+			const req = new AnnouncePleaseMessage({ prefix: "/test/" });
+			const aw = new AnnouncementWriter(ctx, mockStream, req);
+
+			const ann1 = new Announcement("/test/path", new Promise(() => {}));
+			const ann2 = new Announcement("/test/path", new Promise(() => {}));
+			const err = await aw.init([ann1, ann2]);
+			assertExists(err);
+			assertEquals(err?.message.includes("already exists"), true);
+		},
+	);
+
+	await t.step(
+		"AnnouncementWriter init with inactive announcement for non-existing path",
+		async () => {
+			const writtenData: Uint8Array[] = [];
+			const mockWritable = new MockSendStream({
+				id: 36n,
+				write: spy(async (p: Uint8Array) => {
+					writtenData.push(new Uint8Array(p));
+					return [p.length, undefined] as [number, Error | undefined];
+				}),
+			});
+			const mockStream = new MockStream({
+				id: 36n,
+				writable: mockWritable,
+			});
+			const [ctx] = withCancelCause(background());
+			const req = new AnnouncePleaseMessage({ prefix: "/test/" });
+			const aw = new AnnouncementWriter(ctx, mockStream, req);
+
+			class InactiveAnnouncement extends Announcement {
+				override isActive(): boolean {
+					return false;
+				}
+			}
+			const ann = new InactiveAnnouncement("/test/path", new Promise(() => {}));
+			const err = await aw.init([ann]);
+			assertExists(err);
+			assertEquals(err?.message.includes("is not active"), true);
 		},
 	);
 });

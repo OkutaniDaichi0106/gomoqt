@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { SubscribeUpdateMessage } from "./subscribe_update.ts";
-import { ReceiveStream, SendStream } from "../webtransport/mod.ts";
+import { Buffer } from "@okudai/golikejs/bytes";
 
 Deno.test("SubscribeUpdateMessage - encode/decode roundtrip - multiple scenarios", async (t) => {
 	const testCases = {
@@ -20,45 +20,17 @@ Deno.test("SubscribeUpdateMessage - encode/decode roundtrip - multiple scenarios
 
 	for (const [caseName, input] of Object.entries(testCases)) {
 		await t.step(caseName, async () => {
-			// Create buffer for encoding
-			const chunks: Uint8Array[] = [];
-			const writableStream = new WritableStream({
-				write(chunk) {
-					chunks.push(chunk);
-				},
-			});
-			const writer = new SendStream({
-				stream: writableStream,
-				streamId: 0n,
-			});
-
+			// Encode using Buffer
+			const buffer = Buffer.make(100);
 			const message = new SubscribeUpdateMessage(input);
-			const encodeErr = await message.encode(writer);
+			const encodeErr = await message.encode(buffer);
 			assertEquals(encodeErr, undefined, `encode failed for ${caseName}`);
 
-			// Combine chunks into single buffer
-			const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-			const combinedBuffer = new Uint8Array(totalLength);
-			let offset = 0;
-			for (const chunk of chunks) {
-				combinedBuffer.set(chunk, offset);
-				offset += chunk.length;
-			}
-
-			// Create readable stream for decoding
-			const readableStream = new ReadableStream({
-				start(controller) {
-					controller.enqueue(combinedBuffer);
-					controller.close();
-				},
-			});
-			const reader = new ReceiveStream({
-				stream: readableStream,
-				streamId: 0n,
-			});
-
+			// Decode from a new buffer with written data
+			const readBuffer = Buffer.make(100);
+			await readBuffer.write(buffer.bytes());
 			const decodedMessage = new SubscribeUpdateMessage({});
-			const decodeErr = await decodedMessage.decode(reader);
+			const decodeErr = await decodedMessage.decode(readBuffer);
 			assertEquals(decodeErr, undefined, `decode failed for ${caseName}`);
 			assertEquals(
 				decodedMessage.trackPriority,
@@ -71,18 +43,9 @@ Deno.test("SubscribeUpdateMessage - encode/decode roundtrip - multiple scenarios
 	await t.step(
 		"decode should return error when readVarint fails for message length",
 		async () => {
-			const readableStream = new ReadableStream({
-				start(controller) {
-					controller.close();
-				},
-			});
-			const reader = new ReceiveStream({
-				stream: readableStream,
-				streamId: 0n,
-			});
-
+			const buffer = Buffer.make(0); // Empty buffer
 			const message = new SubscribeUpdateMessage({});
-			const err = await message.decode(reader);
+			const err = await message.decode(buffer);
 			assertEquals(err !== undefined, true);
 		},
 	);
@@ -90,20 +53,10 @@ Deno.test("SubscribeUpdateMessage - encode/decode roundtrip - multiple scenarios
 	await t.step(
 		"decode should return error when reading subscribeId fails",
 		async () => {
-			const buffer = new Uint8Array([5]); // only message length
-			const readableStream = new ReadableStream({
-				start(controller) {
-					controller.enqueue(buffer);
-					controller.close();
-				},
-			});
-			const reader = new ReceiveStream({
-				stream: readableStream,
-				streamId: 0n,
-			});
-
+			const buffer = Buffer.make(10);
+			await buffer.write(new Uint8Array([0x00, 0x05])); // message length = 5, but no data
 			const message = new SubscribeUpdateMessage({});
-			const err = await message.decode(reader);
+			const err = await message.decode(buffer);
 			assertEquals(err !== undefined, true);
 		},
 	);

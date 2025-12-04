@@ -436,55 +436,145 @@ func TestAnnouncementWriter_SendAnnouncement_WriteError(t *testing.T) {
 }
 
 func TestAnnouncementWriter_Close(t *testing.T) {
-	mockStream := &MockQUICStream{}
-	ctx := context.Background()
+	t.Run("closes with no active announcements", func(t *testing.T) {
+		mockStream := &MockQUICStream{}
+		ctx := context.Background()
 
-	mockStream.On("Context").Return(ctx)
-	mockStream.On("Close").Return(nil)
+		mockStream.On("Context").Return(ctx)
+		mockStream.On("Close").Return(nil)
 
-	sas := newAnnouncementWriter(mockStream, "/test/")
+		sas := newAnnouncementWriter(mockStream, "/test/")
 
-	err := sas.Close()
+		err := sas.Close()
 
-	assert.NoError(t, err)
-	assert.Nil(t, sas.actives)
-	assert.NotNil(t, sas.initCh)
+		assert.NoError(t, err)
+		assert.Nil(t, sas.actives)
+		assert.NotNil(t, sas.initCh)
 
-	mockStream.AssertExpectations(t)
+		mockStream.AssertExpectations(t)
+	})
+
+	t.Run("closes with active announcements", func(t *testing.T) {
+		mockStream := &MockQUICStream{}
+		ctx := context.Background()
+
+		mockStream.On("Context").Return(ctx)
+		mockStream.On("Write", mock.Anything).Return(0, nil) // For init and SendAnnouncement
+		mockStream.On("Close").Return(nil)
+
+		sas := newAnnouncementWriter(mockStream, "/test/")
+
+		// Initialize the AnnouncementWriter first
+		err := sas.init(map[*Announcement]struct{}{})
+		require.NoError(t, err)
+
+		// Add an active announcement
+		ann, _ := NewAnnouncement(ctx, BroadcastPath("/test/active"))
+		err = sas.SendAnnouncement(ann)
+		require.NoError(t, err)
+
+		// Verify we have an active announcement
+		assert.NotNil(t, sas.actives)
+		assert.Len(t, sas.actives, 1)
+		assert.True(t, ann.IsActive(), "announcement should be active initially")
+
+		err = sas.Close()
+
+		assert.NoError(t, err)
+		assert.Nil(t, sas.actives)
+		assert.True(t, ann.IsActive(), "announcement should remain active after Close (AnnouncementWriter doesn't end announcements)")
+
+		mockStream.AssertExpectations(t)
+	})
+
+	t.Run("handles stream close error", func(t *testing.T) {
+		mockStream := &MockQUICStream{}
+		ctx := context.Background()
+
+		expectedErr := fmt.Errorf("stream close error")
+		mockStream.On("Context").Return(ctx)
+		mockStream.On("Close").Return(expectedErr)
+
+		sas := newAnnouncementWriter(mockStream, "/test/")
+
+		err := sas.Close()
+
+		assert.Error(t, err)
+		assert.Equal(t, expectedErr, err)
+		assert.Nil(t, sas.actives)
+		assert.NotNil(t, sas.initCh)
+
+		mockStream.AssertExpectations(t)
+	})
 }
 
 func TestAnnouncementWriter_CloseWithError(t *testing.T) {
-	tests := map[string]struct {
-		errorCode AnnounceErrorCode
-	}{
-		"internal error": {
-			errorCode: InternalAnnounceErrorCode,
-		},
-		"duplicated announce error": {
-			errorCode: DuplicatedAnnounceErrorCode,
-		},
-	}
+	t.Run("closes with error and no active announcements", func(t *testing.T) {
+		tests := map[string]struct {
+			errorCode AnnounceErrorCode
+		}{
+			"internal error": {
+				errorCode: InternalAnnounceErrorCode,
+			},
+			"duplicated announce error": {
+				errorCode: DuplicatedAnnounceErrorCode,
+			},
+		}
 
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			mockStream := &MockQUICStream{}
-			ctx := context.Background()
+		for name, tt := range tests {
+			t.Run(name, func(t *testing.T) {
+				mockStream := &MockQUICStream{}
+				ctx := context.Background()
 
-			mockStream.On("Context").Return(ctx)
-			mockStream.On("CancelWrite", quic.StreamErrorCode(tt.errorCode)).Return()
-			mockStream.On("CancelRead", quic.StreamErrorCode(tt.errorCode)).Return()
+				mockStream.On("Context").Return(ctx)
+				mockStream.On("CancelWrite", quic.StreamErrorCode(tt.errorCode)).Return()
+				mockStream.On("CancelRead", quic.StreamErrorCode(tt.errorCode)).Return()
 
-			sas := newAnnouncementWriter(mockStream, "/test/")
+				sas := newAnnouncementWriter(mockStream, "/test/")
 
-			err := sas.CloseWithError(tt.errorCode)
+				err := sas.CloseWithError(tt.errorCode)
 
-			assert.NoError(t, err)
-			assert.Nil(t, sas.actives)
-			assert.NotNil(t, sas.initCh)
+				assert.NoError(t, err)
+				assert.Nil(t, sas.actives)
+				assert.NotNil(t, sas.initCh)
 
-			mockStream.AssertExpectations(t)
-		})
-	}
+				mockStream.AssertExpectations(t)
+			})
+		}
+	})
+
+	t.Run("closes with error and active announcements", func(t *testing.T) {
+		mockStream := &MockQUICStream{}
+		ctx := context.Background()
+
+		mockStream.On("Context").Return(ctx)
+		mockStream.On("Write", mock.Anything).Return(0, nil) // For init and SendAnnouncement
+		mockStream.On("CancelWrite", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return()
+		mockStream.On("CancelRead", quic.StreamErrorCode(InternalAnnounceErrorCode)).Return()
+
+		sas := newAnnouncementWriter(mockStream, "/test/")
+
+		// Initialize the AnnouncementWriter first
+		err := sas.init(map[*Announcement]struct{}{})
+		require.NoError(t, err)
+
+		// Add an active announcement
+		ann, _ := NewAnnouncement(ctx, BroadcastPath("/test/active"))
+		err = sas.SendAnnouncement(ann)
+		require.NoError(t, err)
+
+		// Verify we have an active announcement
+		assert.NotNil(t, sas.actives)
+		assert.Len(t, sas.actives, 1)
+		assert.True(t, ann.IsActive(), "announcement should be active initially")
+
+		err = sas.CloseWithError(InternalAnnounceErrorCode)
+
+		assert.NoError(t, err)
+		assert.Nil(t, sas.actives)
+
+		mockStream.AssertExpectations(t)
+	})
 }
 
 func TestAnnouncementWriter_SendAnnouncement_MultipleAnnouncements(t *testing.T) {
@@ -702,7 +792,7 @@ func TestAnnouncementWriter_Performance_LargeNumberOfAnnouncements(t *testing.T)
 	const numAnnouncements = 100 // Reduced for test efficiency
 
 	start := time.Now()
-	for i := 0; i < numAnnouncements; i++ {
+	for i := range numAnnouncements {
 		ann, _ := NewAnnouncement(ctx, BroadcastPath(fmt.Sprintf("/test/stream%d", i)))
 		err := sas.SendAnnouncement(ann)
 		assert.NoError(t, err)
@@ -729,7 +819,7 @@ func TestAnnouncementWriter_CleanupResourceLeaks(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create and end many announcements to test cleanup
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		ann, end := NewAnnouncement(ctx, BroadcastPath(fmt.Sprintf("/test/stream%d", i)))
 		err := sas.SendAnnouncement(ann)
 		assert.NoError(t, err)
@@ -868,7 +958,7 @@ func TestAnnouncementWriter_ConcurrentAccess(t *testing.T) {
 
 	go func() {
 		defer func() { done <- true }()
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			ann, _ := NewAnnouncement(ctx, BroadcastPath(fmt.Sprintf("/test/stream_a_%d", i)))
 			if err := sas.SendAnnouncement(ann); err != nil {
 				errors <- err
@@ -880,7 +970,7 @@ func TestAnnouncementWriter_ConcurrentAccess(t *testing.T) {
 
 	go func() {
 		defer func() { done <- true }()
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			ann, _ := NewAnnouncement(ctx, BroadcastPath(fmt.Sprintf("/test/stream_b_%d", i)))
 			if err := sas.SendAnnouncement(ann); err != nil {
 				errors <- err
@@ -925,7 +1015,7 @@ func TestAnnouncementWriter_ConcurrentAccess_SameSuffix_DeadlockRisk(t *testing.
 
 	go func() {
 		defer func() { done <- true }()
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			ann, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
 			if err := sas.SendAnnouncement(ann); err != nil {
 				errors <- err
@@ -937,7 +1027,7 @@ func TestAnnouncementWriter_ConcurrentAccess_SameSuffix_DeadlockRisk(t *testing.
 
 	go func() {
 		defer func() { done <- true }()
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			ann, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
 			if err := sas.SendAnnouncement(ann); err != nil {
 				errors <- err
@@ -1043,10 +1133,10 @@ func TestAnnouncementWriter_StressTest_HeavyConcurrentAccess(t *testing.T) {
 	errors := make(chan error, numGoroutines*numOperationsPerGoroutine)
 
 	// Launch multiple goroutines that compete for the same suffix aggressively
-	for g := 0; g < numGoroutines; g++ {
+	for g := range numGoroutines {
 		go func(goroutineID int) {
 			defer func() { done <- true }()
-			for i := 0; i < numOperationsPerGoroutine; i++ {
+			for i := range numOperationsPerGoroutine {
 				// Half of them use the same suffix, half use different suffixes
 				var suffixPath string
 				if i%2 == 0 {
@@ -1069,7 +1159,7 @@ func TestAnnouncementWriter_StressTest_HeavyConcurrentAccess(t *testing.T) {
 	}
 
 	// Wait for all goroutines to complete
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		<-done
 	}
 

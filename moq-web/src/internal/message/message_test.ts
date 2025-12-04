@@ -10,322 +10,170 @@ import {
 	readFull,
 	readString,
 	readStringArray,
+	readUint16,
 	readVarint,
 	writeBytes,
 	writeString,
 	writeStringArray,
+	writeUint16,
 	writeVarint,
 } from "./message.ts";
 import { EOFError } from "@okudai/golikejs/io";
+import { Buffer } from "@okudai/golikejs/bytes";
 
 Deno.test("message utilities", async (t) => {
 	await t.step("readFull - reads exactly the requested bytes", async () => {
-		const data = new Uint8Array([1, 2, 3, 4, 5]);
-		let offset = 0;
-		const reader = {
-			id: 0n,
-			read: spy(async (p: Uint8Array) => {
-				if (offset >= data.length) {
-					return [0, new EOFError()] as [number, Error | undefined];
-				}
-				const n = Math.min(p.length, data.length - offset);
-				p.set(data.subarray(offset, offset + n));
-				offset += n;
-				return [n, undefined] as [number, Error | undefined];
-			}),
-			cancel: spy(async (_code: number) => {}),
-			closed: () => new Promise<void>(() => {}),
-		};
+		const buffer = Buffer.make(10);
+		buffer.write(new Uint8Array([1, 2, 3, 4, 5]));
 
 		const result = new Uint8Array(3);
-		const [n, err] = await readFull(reader, result);
+		const [n, err] = await readFull(buffer, result);
 		assertEquals(n, 3);
 		assertEquals(err, undefined);
 		assertEquals(result, new Uint8Array([1, 2, 3]));
 	});
 
 	await t.step("readFull - returns EOF when not enough data", async () => {
-		const data = new Uint8Array([1, 2]);
-		let offset = 0;
-		const reader = {
-			id: 0n,
-			read: spy(async (p: Uint8Array) => {
-				if (offset >= data.length) {
-					return [0, new EOFError()] as [number, Error | undefined];
-				}
-				const n = Math.min(p.length, data.length - offset);
-				p.set(data.subarray(offset, offset + n));
-				offset += n;
-				return [n, undefined] as [number, Error | undefined];
-			}),
-			cancel: spy(async (_code: number) => {}),
-			closed: () => new Promise<void>(() => {}),
-		};
+		const buffer = Buffer.make(10);
+		buffer.write(new Uint8Array([1, 2]));
 
 		const result = new Uint8Array(5);
-		const [n, err] = await readFull(reader, result);
+		const [n, err] = await readFull(buffer, result);
 		assertEquals(n, 2);
 		assertEquals(err?.name, "EOFError");
 	});
 
-	await t.step("writeVarint - writes single byte varint", async () => {
-		const writtenData: Uint8Array[] = [];
-		const writer = {
-			id: 0n,
-			write: spy(async (p: Uint8Array) => {
-				writtenData.push(new Uint8Array(p));
-				return [p.length, undefined] as [number, Error | undefined];
-			}),
+	await t.step("readFull - returns EOF when reader returns 0 bytes without error", async () => {
+		// Mock reader that returns 0 bytes on second read
+		let callCount = 0;
+		const reader = {
+			read: async (p: Uint8Array) => {
+				callCount++;
+				if (callCount === 1) {
+					p[0] = 1;
+					return [1, undefined] as [number, Error | undefined];
+				}
+				return [0, undefined] as [number, Error | undefined]; // 0 bytes without error
+			},
 		};
-		const [n, err] = await writeVarint(writer, 42);
+
+		const result = new Uint8Array(5);
+		const [n, err] = await readFull(reader, result);
+		assertEquals(n, 1);
+		assertEquals(err?.name, "EOFError");
+	});
+
+	await t.step("writeVarint - writes single byte varint", async () => {
+		const buffer = Buffer.make(10);
+
+		const [n, err] = await writeVarint(buffer, 42);
 		assertEquals(n, 1);
 		assertEquals(err, undefined);
-		const allData = new Uint8Array(
-			writtenData.reduce((a, b) => a + b.length, 0),
-		);
-		let off = 0;
-		for (const d of writtenData) {
-			allData.set(d, off);
-			off += d.length;
-		}
-		assertEquals(allData, new Uint8Array([42]));
+		assertEquals(buffer.bytes(), new Uint8Array([42]));
 	});
 
 	await t.step("writeVarint - writes two byte varint", async () => {
-		const writtenData: Uint8Array[] = [];
-		const writer = {
-			id: 0n,
-			write: spy(async (p: Uint8Array) => {
-				writtenData.push(new Uint8Array(p));
-				return [p.length, undefined] as [number, Error | undefined];
-			}),
-		};
-		const [n, err] = await writeVarint(writer, 1000);
+		const buffer = Buffer.make(10);
+
+		const [n, err] = await writeVarint(buffer, 1000);
 		assertEquals(n, 2);
 		assertEquals(err, undefined);
-		const allData = new Uint8Array(
-			writtenData.reduce((a, b) => a + b.length, 0),
-		);
-		let off = 0;
-		for (const d of writtenData) {
-			allData.set(d, off);
-			off += d.length;
-		}
-		assertEquals(allData, new Uint8Array([0x43, 0xe8]));
+		assertEquals(buffer.bytes(), new Uint8Array([0x43, 0xe8]));
 	});
 
 	await t.step("writeVarint - writes four byte varint", async () => {
-		const writtenData: Uint8Array[] = [];
-		const writer = {
-			id: 0n,
-			write: spy(async (p: Uint8Array) => {
-				writtenData.push(new Uint8Array(p));
-				return [p.length, undefined] as [number, Error | undefined];
-			}),
-		};
-		const [n, err] = await writeVarint(writer, 100000);
+		const buffer = Buffer.make(10);
+
+		const [n, err] = await writeVarint(buffer, 100000);
 		assertEquals(n, 4);
 		assertEquals(err, undefined);
+		assertEquals(buffer.bytes(), new Uint8Array([0x80, 0x01, 0x86, 0xa0]));
 	});
 
 	await t.step("writeVarint - writes eight byte varint", async () => {
-		const writtenData: Uint8Array[] = [];
-		const writer = {
-			id: 0n,
-			write: spy(async (p: Uint8Array) => {
-				writtenData.push(new Uint8Array(p));
-				return [p.length, undefined] as [number, Error | undefined];
-			}),
-		};
-		const [n, err] = await writeVarint(writer, 4294967296);
+		const buffer = Buffer.make(10);
+
+		const [n, err] = await writeVarint(buffer, 4294967296);
 		assertEquals(n, 8);
 		assertEquals(err, undefined);
 	});
 
 	await t.step("writeVarint - rejects negative numbers", async () => {
-		const writtenData: Uint8Array[] = [];
-		const writer = {
-			id: 0n,
-			write: spy(async (p: Uint8Array) => {
-				writtenData.push(new Uint8Array(p));
-				return [p.length, undefined] as [number, Error | undefined];
-			}),
-		};
-		const [n, err] = await writeVarint(writer, -1);
+		const buffer = Buffer.make(10);
+
+		const [n, err] = await writeVarint(buffer, -1);
 		assertEquals(n, 0);
 		assertEquals(err?.message, "Varint cannot be negative");
 	});
 
 	await t.step("writeVarint - rejects too large numbers", async () => {
-		const writtenData: Uint8Array[] = [];
-		const writer = {
-			id: 0n,
-			write: spy(async (p: Uint8Array) => {
-				writtenData.push(new Uint8Array(p));
-				return [p.length, undefined] as [number, Error | undefined];
-			}),
-		};
-		const [n, err] = await writeVarint(writer, Infinity);
+		const buffer = Buffer.make(10);
+
+		const [n, err] = await writeVarint(buffer, Infinity);
 		assertEquals(n, 0);
 		assertEquals(err?.name, "RangeError");
 	});
 
 	await t.step("writeBytes - writes bytes with length prefix", async () => {
-		const writtenData: Uint8Array[] = [];
-		const writer = {
-			id: 0n,
-			write: spy(async (p: Uint8Array) => {
-				writtenData.push(new Uint8Array(p));
-				return [p.length, undefined] as [number, Error | undefined];
-			}),
-		};
+		const buffer = Buffer.make(10);
+
 		const data = new Uint8Array([1, 2, 3]);
-		const [n, err] = await writeBytes(writer, data);
+		const [n, err] = await writeBytes(buffer, data);
 		assertEquals(n, 4);
 		assertEquals(err, undefined);
+		assertEquals(buffer.bytes(), new Uint8Array([3, 1, 2, 3])); // length prefix + data
 	});
 
 	await t.step("writeString - writes string with length prefix", async () => {
-		const writtenData: Uint8Array[] = [];
-		const writer = {
-			id: 0n,
-			write: spy(async (p: Uint8Array) => {
-				writtenData.push(new Uint8Array(p));
-				return [p.length, undefined] as [number, Error | undefined];
-			}),
-		};
-		const [n, err] = await writeString(writer, "hello");
+		const buffer = Buffer.make(10);
+
+		const [n, err] = await writeString(buffer, "hello");
 		assertEquals(n, 6);
 		assertEquals(err, undefined);
+		assertEquals(buffer.bytes(), new Uint8Array([5, 104, 101, 108, 108, 111])); // length + "hello"
 	});
 
 	await t.step("writeStringArray - writes string array", async () => {
-		const writtenData: Uint8Array[] = [];
-		const writer = {
-			id: 0n,
-			write: spy(async (p: Uint8Array) => {
-				writtenData.push(new Uint8Array(p));
-				return [p.length, undefined] as [number, Error | undefined];
-			}),
-		};
+		const buffer = Buffer.make(50);
+
 		const arr = ["hello", "world"];
-		const [n, err] = await writeStringArray(writer, arr);
+		const [n, err] = await writeStringArray(buffer, arr);
 		assertEquals(err, undefined);
 		assertEquals(n > 0, true);
+
+		// Read back to verify
+		const readBuffer = Buffer.make(50);
+		await readBuffer.write(buffer.bytes());
+		const [readArr, , readErr] = await readStringArray(readBuffer);
+		assertEquals(readErr, undefined);
+		assertEquals(readArr, arr);
 	});
 
 	await t.step("readVarint - reads single byte varint", async () => {
-		const writtenData: Uint8Array[] = [];
-		const writerMock = {
-			write: spy(async (p: Uint8Array) => {
-				writtenData.push(new Uint8Array(p));
-				return [p.length, undefined] as [number, Error | undefined];
-			}),
-		};
-		await writeVarint(writerMock, 42);
-		const allData = new Uint8Array(
-			writtenData.reduce((a, b) => a + b.length, 0),
-		);
-		let off = 0;
-		for (const d of writtenData) {
-			allData.set(d, off);
-			off += d.length;
-		}
-		let readOffset = 0;
-		const reader = {
-			id: 0n,
-			read: spy(async (p: Uint8Array) => {
-				if (readOffset >= allData.length) {
-					return [0, new EOFError()] as [number, Error | undefined];
-				}
-				const n = Math.min(p.length, allData.length - readOffset);
-				p.set(allData.subarray(readOffset, readOffset + n));
-				readOffset += n;
-				return [n, undefined] as [number, Error | undefined];
-			}),
-			cancel: spy(async (_code: number) => {}),
-			closed: () => new Promise<void>(() => {}),
-		};
+		const buffer = Buffer.make(10);
+		buffer.write(new Uint8Array([42]));
 
-		const [value, n, err] = await readVarint(reader);
+		const [value, n, err] = await readVarint(buffer);
 		assertEquals(value, 42);
 		assertEquals(n, 1);
 		assertEquals(err, undefined);
 	});
 
 	await t.step("readVarint - reads two byte varint", async () => {
-		const writtenData: Uint8Array[] = [];
-		const writerMock = {
-			write: spy(async (p: Uint8Array) => {
-				writtenData.push(new Uint8Array(p));
-				return [p.length, undefined] as [number, Error | undefined];
-			}),
-		};
-		await writeVarint(writerMock, 1000);
-		const allData = new Uint8Array(
-			writtenData.reduce((a, b) => a + b.length, 0),
-		);
-		let off = 0;
-		for (const d of writtenData) {
-			allData.set(d, off);
-			off += d.length;
-		}
-		let readOffset = 0;
-		const reader = {
-			id: 0n,
-			read: spy(async (p: Uint8Array) => {
-				if (readOffset >= allData.length) {
-					return [0, new EOFError()] as [number, Error | undefined];
-				}
-				const n = Math.min(p.length, allData.length - readOffset);
-				p.set(allData.subarray(readOffset, readOffset + n));
-				readOffset += n;
-				return [n, undefined] as [number, Error | undefined];
-			}),
-			cancel: spy(async (_code: number) => {}),
-			closed: () => new Promise<void>(() => {}),
-		};
+		const buffer = Buffer.make(10);
+		buffer.write(new Uint8Array([0x43, 0xe8]));
 
-		const [value, n, err] = await readVarint(reader);
+		const [value, n, err] = await readVarint(buffer);
 		assertEquals(value, 1000);
 		assertEquals(n, 2);
 		assertEquals(err, undefined);
 	});
 
 	await t.step("readVarint - reads four byte varint", async () => {
-		const writtenData: Uint8Array[] = [];
-		const writerMock = {
-			write: spy(async (p: Uint8Array) => {
-				writtenData.push(new Uint8Array(p));
-				return [p.length, undefined] as [number, Error | undefined];
-			}),
-		};
-		await writeVarint(writerMock, 100000);
-		const allData = new Uint8Array(
-			writtenData.reduce((a, b) => a + b.length, 0),
-		);
-		let off = 0;
-		for (const d of writtenData) {
-			allData.set(d, off);
-			off += d.length;
-		}
-		let readOffset = 0;
-		const reader = {
-			id: 0n,
-			read: spy(async (p: Uint8Array) => {
-				if (readOffset >= allData.length) {
-					return [0, new EOFError()] as [number, Error | undefined];
-				}
-				const n = Math.min(p.length, allData.length - readOffset);
-				p.set(allData.subarray(readOffset, readOffset + n));
-				readOffset += n;
-				return [n, undefined] as [number, Error | undefined];
-			}),
-			cancel: spy(async (_code: number) => {}),
-			closed: () => new Promise<void>(() => {}),
-		};
+		const buffer = Buffer.make(10);
+		buffer.write(new Uint8Array([0x80, 0x01, 0x86, 0xa0]));
 
-		const [value, n, err] = await readVarint(reader);
+		const [value, n, err] = await readVarint(buffer);
 		assertEquals(value, 100000);
 		assertEquals(n, 4);
 		assertEquals(err, undefined);
@@ -371,40 +219,13 @@ Deno.test("message utilities", async (t) => {
 	});
 
 	await t.step("readBytes - reads bytes with length prefix", async () => {
-		const writtenData: Uint8Array[] = [];
-		const writerMock = {
-			write: spy(async (p: Uint8Array) => {
-				writtenData.push(new Uint8Array(p));
-				return [p.length, undefined] as [number, Error | undefined];
-			}),
-		};
+		const buffer = Buffer.make(10);
 		const data = new Uint8Array([1, 2, 3]);
-		await writeBytes(writerMock, data);
-		const allData = new Uint8Array(
-			writtenData.reduce((a, b) => a + b.length, 0),
-		);
-		let off = 0;
-		for (const d of writtenData) {
-			allData.set(d, off);
-			off += d.length;
-		}
-		let readOffset = 0;
-		const reader = {
-			id: 0n,
-			read: spy(async (p: Uint8Array) => {
-				if (readOffset >= allData.length) {
-					return [0, new EOFError()] as [number, Error | undefined];
-				}
-				const n = Math.min(p.length, allData.length - readOffset);
-				p.set(allData.subarray(readOffset, readOffset + n));
-				readOffset += n;
-				return [n, undefined] as [number, Error | undefined];
-			}),
-			cancel: spy(async (_code: number) => {}),
-			closed: () => new Promise<void>(() => {}),
-		};
+		await writeBytes(buffer, data);
 
-		const [result, n, err] = await readBytes(reader);
+		const readBuffer = Buffer.make(10);
+		readBuffer.write(buffer.bytes());
+		const [result, n, err] = await readBytes(readBuffer);
 		assertEquals(result, data);
 		assertEquals(n, 4);
 		assertEquals(err, undefined);
@@ -449,117 +270,36 @@ Deno.test("message utilities", async (t) => {
 	});
 
 	await t.step("readString - reads string with length prefix", async () => {
-		const writtenData: Uint8Array[] = [];
-		const writerMock = {
-			write: spy(async (p: Uint8Array) => {
-				writtenData.push(new Uint8Array(p));
-				return [p.length, undefined] as [number, Error | undefined];
-			}),
-		};
-		await writeString(writerMock, "hello");
-		const allData = new Uint8Array(
-			writtenData.reduce((a, b) => a + b.length, 0),
-		);
-		let off = 0;
-		for (const d of writtenData) {
-			allData.set(d, off);
-			off += d.length;
-		}
-		let readOffset = 0;
-		const reader = {
-			id: 0n,
-			read: spy(async (p: Uint8Array) => {
-				if (readOffset >= allData.length) {
-					return [0, new EOFError()] as [number, Error | undefined];
-				}
-				const n = Math.min(p.length, allData.length - readOffset);
-				p.set(allData.subarray(readOffset, readOffset + n));
-				readOffset += n;
-				return [n, undefined] as [number, Error | undefined];
-			}),
-			cancel: spy(async (_code: number) => {}),
-			closed: () => new Promise<void>(() => {}),
-		};
+		const buffer = Buffer.make(10);
+		await writeString(buffer, "hello");
 
-		const [result, n, err] = await readString(reader);
+		const readBuffer = Buffer.make(10);
+		readBuffer.write(buffer.bytes());
+		const [result, n, err] = await readString(readBuffer);
 		assertEquals(result, "hello");
 		assertEquals(n, 6);
 		assertEquals(err, undefined);
 	});
 
 	await t.step("readStringArray - reads string array", async () => {
-		const writtenData: Uint8Array[] = [];
-		const writerMock = {
-			write: spy(async (p: Uint8Array) => {
-				writtenData.push(new Uint8Array(p));
-				return [p.length, undefined] as [number, Error | undefined];
-			}),
-		};
+		const buffer = Buffer.make(50);
 		const arr = ["hello", "world"];
-		await writeStringArray(writerMock, arr);
-		const allData = new Uint8Array(
-			writtenData.reduce((a, b) => a + b.length, 0),
-		);
-		let off = 0;
-		for (const d of writtenData) {
-			allData.set(d, off);
-			off += d.length;
-		}
-		let readOffset = 0;
-		const reader = {
-			id: 0n,
-			read: spy(async (p: Uint8Array) => {
-				if (readOffset >= allData.length) {
-					return [0, new EOFError()] as [number, Error | undefined];
-				}
-				const n = Math.min(p.length, allData.length - readOffset);
-				p.set(allData.subarray(readOffset, readOffset + n));
-				readOffset += n;
-				return [n, undefined] as [number, Error | undefined];
-			}),
-			cancel: spy(async (_code: number) => {}),
-			closed: () => new Promise<void>(() => {}),
-		};
+		await writeStringArray(buffer, arr);
 
-		const [result, _n, err] = await readStringArray(reader);
+		const readBuffer = Buffer.make(50);
+		readBuffer.write(buffer.bytes());
+		const [result, _n, err] = await readStringArray(readBuffer);
 		assertEquals(result, arr);
 		assertEquals(err, undefined);
 	});
 
 	await t.step("readStringArray - rejects too large count", async () => {
-		const writtenData: Uint8Array[] = [];
-		const writerMock = {
-			write: spy(async (p: Uint8Array) => {
-				writtenData.push(new Uint8Array(p));
-				return [p.length, undefined] as [number, Error | undefined];
-			}),
-		};
-		await writeVarint(writerMock, MAX_BYTES_LENGTH + 1);
-		const allData = new Uint8Array(
-			writtenData.reduce((a, b) => a + b.length, 0),
-		);
-		let off = 0;
-		for (const d of writtenData) {
-			allData.set(d, off);
-			off += d.length;
-		}
-		let readOffset = 0;
-		const reader = {
-			id: 0n,
-			read: spy(async (p: Uint8Array) => {
-				if (readOffset >= allData.length) {
-					return [0, new EOFError()] as [number, Error | undefined];
-				}
-				const n = Math.min(p.length, allData.length - readOffset);
-				p.set(allData.subarray(readOffset, readOffset + n));
-				readOffset += n;
-				return [n, undefined] as [number, Error | undefined];
-			}),
-			cancel: spy(async (_code: number) => {}),
-			closed: () => new Promise<void>(() => {}),
-		};
+		const buffer = Buffer.make(10);
+		await writeVarint(buffer, MAX_BYTES_LENGTH + 1);
 
-		const [result, _n2, err] = await readStringArray(reader);
+		const readBuffer = Buffer.make(10);
+		readBuffer.write(buffer.bytes());
+		const [result, _n2, err] = await readStringArray(readBuffer);
 		assertEquals(result.length, 0);
 		assertEquals(err?.message, "String array count exceeds maximum limit");
 	});
@@ -638,5 +378,169 @@ Deno.test("message utilities", async (t) => {
 		const [result, n] = parseStringArray(data, 0);
 		assertEquals(result, ["hello", "world"]);
 		assertEquals(n, 13);
+	});
+
+	// Additional tests for 100% coverage
+	await t.step("writeUint16 - writes correct bytes", async () => {
+		const buffer = Buffer.make(10);
+		const [n, err] = await writeUint16(buffer, 0x1234);
+		assertEquals(n, 2);
+		assertEquals(err, undefined);
+		assertEquals(buffer.bytes(), new Uint8Array([0x12, 0x34]));
+	});
+
+	await t.step("writeUint16 - rejects value above 65535", async () => {
+		const buffer = Buffer.make(10);
+		const [n, err] = await writeUint16(buffer, 65536);
+		assertEquals(n, 0);
+		assertEquals(err?.name, "RangeError");
+	});
+
+	await t.step("writeUint16 - rejects negative value", async () => {
+		const buffer = Buffer.make(10);
+		const [n, err] = await writeUint16(buffer, -1);
+		assertEquals(n, 0);
+		assertEquals(err?.name, "RangeError");
+	});
+
+	await t.step("readUint16 - reads correct value", async () => {
+		const buffer = Buffer.make(10);
+		await buffer.write(new Uint8Array([0x12, 0x34]));
+		const [value, n, err] = await readUint16(buffer);
+		assertEquals(value, 0x1234);
+		assertEquals(n, 2);
+		assertEquals(err, undefined);
+	});
+
+	await t.step("readUint16 - returns error when not enough data", async () => {
+		const buffer = Buffer.make(10);
+		await buffer.write(new Uint8Array([0x12])); // Only 1 byte
+		const [value, n, err] = await readUint16(buffer);
+		assertEquals(value, 0);
+		assertEquals(n, 1);
+		assertEquals(err !== undefined, true);
+	});
+
+	await t.step("readVarint - returns error when remaining bytes fail", async () => {
+		const buffer = Buffer.make(10);
+		// Write a varint header indicating 2-byte varint but only 1 byte available
+		await buffer.write(new Uint8Array([0x40])); // 0x40 >> 6 = 1, len = 2
+
+		const [value, n, err] = await readVarint(buffer);
+		assertEquals(value, 0);
+		assertEquals(n, 1);
+		assertEquals(err !== undefined, true);
+	});
+
+	await t.step("writeStringArray - returns error when writeVarint fails", async () => {
+		const writer = {
+			write: spy(async (_p: Uint8Array) => {
+				return [0, new Error("Write error")] as [number, Error | undefined];
+			}),
+		};
+		const [n, err] = await writeStringArray(writer, ["test"]);
+		assertEquals(n, 0);
+		assertEquals(err?.message, "Write error");
+	});
+
+	await t.step("writeStringArray - returns error when writeString fails in loop", async () => {
+		let callCount = 0;
+		const writer = {
+			write: spy(async (p: Uint8Array) => {
+				callCount++;
+				// First call succeeds (writeVarint for count), second fails (writeString)
+				if (callCount === 1) {
+					return [p.length, undefined] as [number, Error | undefined];
+				}
+				return [0, new Error("Write string error")] as [number, Error | undefined];
+			}),
+		};
+		const [n, err] = await writeStringArray(writer, ["test"]);
+		assertEquals(n > 0, true); // At least the count was written
+		assertEquals(err?.message, "Write string error");
+	});
+
+	await t.step("readBytes - returns error when readFull fails", async () => {
+		const buffer = Buffer.make(10);
+		// Write length prefix (3) but no data
+		await buffer.write(new Uint8Array([3]));
+
+		const [result, n, err] = await readBytes(buffer);
+		assertEquals(result.length, 0);
+		assertEquals(n > 0, true);
+		assertEquals(err !== undefined, true);
+	});
+
+	await t.step("readStringArray - returns error when readString fails in loop", async () => {
+		const buffer = Buffer.make(10);
+		// Write count = 2, then first string length = 3 but no data
+		await buffer.write(new Uint8Array([2, 3]));
+
+		const [result, n, err] = await readStringArray(buffer);
+		assertEquals(result.length, 0);
+		assertEquals(n > 0, true);
+		assertEquals(err !== undefined, true);
+	});
+
+	await t.step("writeBytes - returns error when writeVarint fails", async () => {
+		const writer = {
+			write: async (_p: Uint8Array) => {
+				return [0, new Error("Write failed")] as [number, Error | undefined];
+			},
+		};
+		const [n, err] = await writeBytes(writer, new Uint8Array([1, 2, 3]));
+		assertEquals(n, 0);
+		assertEquals(err?.message, "Write failed");
+	});
+
+	await t.step("writeBytes - returns error when write data fails", async () => {
+		let callCount = 0;
+		const writer = {
+			write: async (p: Uint8Array) => {
+				callCount++;
+				if (callCount === 1) {
+					return [p.length, undefined] as [number, Error | undefined]; // writeVarint succeeds
+				}
+				return [0, new Error("Write data failed")] as [number, Error | undefined]; // write data fails
+			},
+		};
+		const [n, err] = await writeBytes(writer, new Uint8Array([1, 2, 3]));
+		assertEquals(n > 0, true);
+		assertEquals(err?.message, "Write data failed");
+	});
+
+	await t.step("writeString - returns error when writeBytes fails", async () => {
+		const writer = {
+			write: async (_p: Uint8Array) => {
+				return [0, new Error("Write failed")] as [number, Error | undefined];
+			},
+		};
+		const [n, err] = await writeString(writer, "test");
+		assertEquals(n, 0);
+		assertEquals(err?.message, "Write failed");
+	});
+
+	await t.step("readBytes - returns error when readVarint fails", async () => {
+		const buffer = Buffer.make(0); // Empty buffer causes readVarint to fail
+		const [result, n, err] = await readBytes(buffer);
+		assertEquals(result.length, 0);
+		assertEquals(n, 0);
+		assertEquals(err !== undefined, true);
+	});
+
+	await t.step("readString - returns error when readBytes fails", async () => {
+		const buffer = Buffer.make(0); // Empty buffer
+		const [result, n, err] = await readString(buffer);
+		assertEquals(result, "");
+		assertEquals(n, 0);
+		assertEquals(err !== undefined, true);
+	});
+
+	await t.step("readStringArray - returns error when readVarint fails", async () => {
+		const buffer = Buffer.make(0); // Empty buffer
+		const [result, n, err] = await readStringArray(buffer);
+		assertEquals(result.length, 0);
+		assertEquals(n, 0);
+		assertEquals(err !== undefined, true);
 	});
 });

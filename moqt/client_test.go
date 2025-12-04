@@ -31,12 +31,12 @@ func TestClient_InitOnce(t *testing.T) {
 
 func TestClient_TimeoutDefault(t *testing.T) {
 	c := &Client{}
-	assert.Equal(t, 5*time.Second, c.dialTimeout())
+	assert.Equal(t, 5*time.Second, c.Config.setupTimeout())
 }
 
 func TestClient_TimeoutCustom(t *testing.T) {
 	c := &Client{Config: &Config{SetupTimeout: 123 * time.Second}}
-	assert.Equal(t, 123*time.Second, c.dialTimeout())
+	assert.Equal(t, 123*time.Second, c.Config.setupTimeout())
 }
 
 func TestClient_AddRemoveSession(t *testing.T) {
@@ -124,7 +124,7 @@ func TestClient_ShutdownContextCancel(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	sess := newSession(mockConn, sessStream, nil, slog.Default(), nil)
 	c.addSession(sess)
 
@@ -349,7 +349,7 @@ func TestClient_openSession(t *testing.T) {
 			if extProvider == nil {
 				extProvider = func() *Extension { return &Extension{} }
 			}
-			_, err := openSessionStream(conn, "/path", extProvider(), slog.Default())
+			_, err := openSessionStream(conn, "/path", extProvider(), nil, slog.Default())
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
@@ -605,14 +605,14 @@ func TestClient_DialQUIC_ShuttingDown(t *testing.T) {
 // Test for Client with custom timeout configuration
 func TestClient_Timeout_WithNilConfig(t *testing.T) {
 	c := &Client{Config: nil}
-	timeout := c.dialTimeout()
+	timeout := c.Config.setupTimeout()
 	assert.Equal(t, 5*time.Second, timeout)
 }
 
 // Test for Client with custom timeout and zero value
 func TestClient_Timeout_ZeroValue(t *testing.T) {
 	c := &Client{Config: &Config{SetupTimeout: 0}}
-	timeout := c.dialTimeout()
+	timeout := c.Config.setupTimeout()
 	assert.Equal(t, 5*time.Second, timeout)
 }
 
@@ -648,7 +648,7 @@ func TestClient_OpenSession_NilExtensions(t *testing.T) {
 
 	// Expect panic when extensions is nil
 	assert.Panics(t, func() {
-		_, _ = openSessionStream(mockConn, "/test", nil, slog.Default())
+		_, _ = openSessionStream(mockConn, "/test", nil, nil, slog.Default())
 	})
 }
 
@@ -704,7 +704,7 @@ func TestClient_OpenSession_Success(t *testing.T) {
 	extensions := func() *Extension {
 		return NewExtension()
 	}
-	sessStream, err := openSessionStream(mockConn, "/test", extensions(), slog.Default())
+	sessStream, err := openSessionStream(mockConn, "/test", extensions(), nil, slog.Default())
 	require.NoError(t, err)
 	require.NotNil(t, sessStream)
 
@@ -849,7 +849,7 @@ func TestClient_Timeout_Configurations(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			c := &Client{Config: tt.config}
-			timeout := c.dialTimeout()
+			timeout := c.Config.setupTimeout()
 			assert.Equal(t, tt.expectedTimeout, timeout)
 		})
 	}
@@ -906,7 +906,7 @@ func TestGenerateSessionID_Boundaries(t *testing.T) {
 	const numIDs = 1000
 	ids := make(map[string]bool)
 
-	for i := 0; i < numIDs; i++ {
+	for range numIDs {
 		id := generateSessionID()
 
 		// Basic validation
@@ -983,7 +983,7 @@ func TestClient_Shutdown_Timeout(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	sess := newSession(mockConn, sessStream, nil, slog.Default(), nil)
 	c.addSession(sess)
 
@@ -1020,6 +1020,6 @@ func TestClient_ConfigurationInheritance(t *testing.T) {
 	require.Same(t, logger, c.Logger)
 
 	// Test timeout inheritance
-	timeout := c.dialTimeout()
+	timeout := c.Config.setupTimeout()
 	assert.Equal(t, 30*time.Second, timeout)
 }

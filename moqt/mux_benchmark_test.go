@@ -118,7 +118,7 @@ func BenchmarkTrackMux_ServeAnnouncements(b *testing.B) {
 			handler := TrackHandlerFunc(func(tw *TrackWriter) {})
 
 			// Pre-populate with handlers under /room/ prefix
-			for i := 0; i < size; i++ {
+			for i := range size {
 				path := BroadcastPath(fmt.Sprintf("/room/user%d", i))
 				mux.Publish(ctx, path, handler)
 			}
@@ -242,7 +242,7 @@ func BenchmarkTrackMux_DeepNestedPaths(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 
-			for i := 0; i < b.N; i++ {
+			for i := 0; b.Loop(); i++ {
 				if i%2 == 0 {
 					mux.Publish(ctx, path, handler)
 				} else {
@@ -459,7 +459,7 @@ func BenchmarkTrackMux_AnnouncementTree(b *testing.B) {
 			handler := TrackHandlerFunc(func(tw *TrackWriter) {})
 
 			// Create a deep tree structure
-			for i := 0; i < size; i++ {
+			for i := range size {
 				path := BroadcastPath(fmt.Sprintf("/level1/level2/level3/track%d", i))
 				mux.Publish(ctx, path, handler)
 			}
@@ -495,7 +495,7 @@ func BenchmarkTrackMux_MapOperations(b *testing.B) {
 
 			// Prepare lookup paths
 			lookupPaths := make([]BroadcastPath, 1000)
-			for i := 0; i < 1000; i++ {
+			for i := range 1000 {
 				lookupPaths[i] = BroadcastPath(fmt.Sprintf("/path/%d", i%size))
 			}
 
@@ -562,7 +562,7 @@ func BenchmarkTrackMux_CPUProfileOptimization(b *testing.B) {
 			// Register deeply nested paths
 			for i := range pathCount {
 				var pathBuilder strings.Builder
-				for depth := 0; depth < pathDepth; depth++ {
+				for depth := range pathDepth {
 					pathBuilder.WriteString(fmt.Sprintf("/level%d", depth))
 				}
 				pathBuilder.WriteString(fmt.Sprintf("/track%d", i))
@@ -577,7 +577,7 @@ func BenchmarkTrackMux_CPUProfileOptimization(b *testing.B) {
 				// Mix of operations that will show up in CPU profile
 				pathIndex := i % pathCount
 				var pathBuilder strings.Builder
-				for depth := 0; depth < pathDepth; depth++ {
+				for depth := range pathDepth {
 					pathBuilder.WriteString(fmt.Sprintf("/level%d", depth))
 				}
 				pathBuilder.WriteString(fmt.Sprintf("/track%d", pathIndex))

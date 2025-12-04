@@ -301,7 +301,7 @@ func TestReadParameters(t *testing.T) {
 		},
 		"empty value": {
 			input:    []byte{0x01, 0x01, 0x00}, // {1: ""}
-			expected: map[uint64][]byte{1: []byte{}},
+			expected: map[uint64][]byte{1: {}},
 			n:        3,
 			wantErr:  false,
 		},

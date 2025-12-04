@@ -96,16 +96,16 @@ func (a *Announcement) Done() <-chan struct{} {
 // AfterFunc registers a callback f to be invoked once when the announcement
 // ends. If the announcement is active, f is queued and a stop function is
 // returned that removes the registration (returns true when removed).
-// If the announcement already ended, f is called synchronously and the stop
-// function always returns false. AfterFunc and the returned stop function are
-// safe to call concurrently with end().
+// If the announcement already ended, f is called asynchronously in a new goroutine
+// and the stop function always returns false. AfterFunc and the returned stop
+// function are safe to call concurrently with end().
 func (a *Announcement) AfterFunc(f func()) (stop func() bool) {
 	// Synchronize access to afterHandlers to avoid races with end()
 	a.mu.Lock()
 	if !a.active.Load() {
 		a.mu.Unlock()
-		// Announcement already ended — call immediately without registering
-		f()
+		// Announcement already ended — call in a goroutine to avoid deadlock
+		go f()
 		return func() bool { return false }
 	}
 

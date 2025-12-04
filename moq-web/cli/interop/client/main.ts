@@ -3,16 +3,16 @@ import { background } from "@okudai/golikejs/context";
 import { scope } from "@okudai/golikejs";
 
 scope(async (defer) => {
-	defer(() => {
-		Deno.exit(0);
-	});
-
 	const client = new Client();
 	defer(() => {
 		client.close();
 	});
 
 	const mux = new TrackMux();
+
+	// Channel to signal that the publish handler has completed
+	const doneCh = new Array<() => void>();
+	let done = false;
 
 	mux.publishFunc(
 		background().done(),
@@ -41,6 +41,10 @@ scope(async (defer) => {
 				console.info("[Client] [OK] Data sent to server");
 			} catch (e) {
 				console.error("[Client] Error in publish:", e);
+			} finally {
+				// Signal that handler has been invoked
+				done = true;
+				doneCh.forEach((resolve) => resolve());
 			}
 		},
 	);
@@ -87,17 +91,38 @@ scope(async (defer) => {
 
 	console.debug("[Client] Received a group");
 
-	const frame = new Frame(new Uint8Array());
+	const frame = new Frame(new Uint8Array(1024));
 	const readErr = await group.readFrame(frame);
 	if (readErr) {
 		console.error("[Client] Failed to read frame:", readErr);
 		return;
 	}
 
+	console.log("[Client] Frame data length:", frame.data.byteLength);
 	console.info(
 		"[Client] [OK] Received data from server:",
 		new TextDecoder().decode(frame.data),
 	);
 
 	console.debug("[Client] Operations completed");
+
+	// Wait for the handler to complete (like Go's doneCh)
+	if (!done) {
+		await Promise.race([
+			new Promise<void>((resolve) => doneCh.push(resolve)),
+			new Promise<void>((resolve) => setTimeout(() => resolve(), 5000)),
+		]);
+	}
+
+	// Wait for a longer time before closing to allow server to read the frame
+	await new Promise((resolve) => setTimeout(resolve, 2000));
+
+	console.debug("[Client] Closing session...");
+	await session.closeWithError(0, "no error");
+	console.debug("[Client] ...ok");
+
+	defer(() => {
+		Deno.exit(0);
+	});
 });
+

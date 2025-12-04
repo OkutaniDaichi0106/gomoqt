@@ -3,7 +3,7 @@ import { withCancelCause } from "@okudai/golikejs/context";
 import type { CancelCauseFunc, Context } from "@okudai/golikejs/context";
 import { WebTransportStreamError } from "./internal/webtransport/error.ts";
 import type { GroupMessage } from "./internal/message/mod.ts";
-import { readFull, readVarint, writeVarint } from "./internal/message/mod.ts";
+import { readFull, readUint16, writeUint16 } from "./internal/message/mod.ts";
 import type { Frame } from "./frame.ts";
 import { GroupErrorCode } from "./error.ts";
 import { GroupSequence } from "./alias.ts";
@@ -27,8 +27,11 @@ export class GroupWriter {
 	}
 
 	async writeFrame(src: Frame): Promise<Error | undefined> {
-		// Write length prefix
-		let [, err] = await writeVarint(this.#stream, src.data.byteLength);
+		// Write length prefix as uint16 big-endian
+		if (src.data.byteLength > 0xffff) {
+			return new Error("Frame data exceeds maximum length (65535 bytes)");
+		}
+		let [, err] = await writeUint16(this.#stream, src.data.byteLength);
 		if (err) {
 			return err;
 		}
@@ -80,13 +83,10 @@ export class GroupReader {
 	}
 
 	async readFrame(frame: Frame): Promise<Error | undefined> {
-		const [len, , err1] = await readVarint(this.#reader);
+		// Read length prefix as uint16 big-endian
+		const [len, , err1] = await readUint16(this.#reader);
 		if (err1) {
 			return err1;
-		}
-
-		if (len > Number.MAX_SAFE_INTEGER) {
-			return new Error("Varint too large");
 		}
 
 		if (frame.data.byteLength < len) {
@@ -99,6 +99,11 @@ export class GroupReader {
 		const [, err2] = await readFull(this.#reader, frame.data.subarray(0, len));
 		if (err2) {
 			return err2;
+		}
+
+		// Trim frame.data to the actual length read
+		if (frame.data.byteLength > len) {
+			frame.data = frame.data.subarray(0, len);
 		}
 
 		return undefined;

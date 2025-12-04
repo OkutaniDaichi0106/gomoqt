@@ -906,7 +906,7 @@ func TestGenerateSessionID_Boundaries(t *testing.T) {
 	const numIDs = 1000
 	ids := make(map[string]bool)
 
-	for i := 0; i < numIDs; i++ {
+	for range numIDs {
 		id := generateSessionID()
 
 		// Basic validation

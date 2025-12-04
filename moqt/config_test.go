@@ -98,3 +98,40 @@ func TestConfig_setupTimeout(t *testing.T) {
 		assert.Equal(t, 30*time.Second, timeout, "should return configured timeout")
 	})
 }
+
+// TestConfig_newShiftDetector_Integration verifies detector factory integration
+func TestConfig_newShiftDetector_Integration(t *testing.T) {
+	t.Run("detector processes rate correctly", func(t *testing.T) {
+		c := &Config{
+			NewShiftDetector: func() bitrate.ShiftDetector {
+				return bitrate.NewEWMAShiftDetector(0.2, 0.3, 2)
+			},
+		}
+		detector := c.newShiftDetector()
+		assert.NotNil(t, detector)
+
+		// Test basic detection
+		assert.False(t, detector.Detect(1000), "first sample should not trigger")
+		assert.False(t, detector.Detect(1100), "second sample should not trigger")
+		assert.True(t, detector.Detect(2000), "large change should trigger")
+	})
+}
+
+// TestConfig_setupTimeout_Boundary verifies timeout edge cases
+func TestConfig_setupTimeout_Boundary(t *testing.T) {
+	t.Run("very small positive timeout", func(t *testing.T) {
+		c := &Config{
+			SetupTimeout: 1 * time.Millisecond,
+		}
+		timeout := c.setupTimeout()
+		assert.Equal(t, 1*time.Millisecond, timeout, "should accept very small timeout")
+	})
+
+	t.Run("very large timeout", func(t *testing.T) {
+		c := &Config{
+			SetupTimeout: 5 * time.Minute,
+		}
+		timeout := c.setupTimeout()
+		assert.Equal(t, 5*time.Minute, timeout, "should accept large timeout")
+	})
+}

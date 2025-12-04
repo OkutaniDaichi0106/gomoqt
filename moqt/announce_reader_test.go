@@ -391,10 +391,8 @@ func TestAnnouncementReader_ConcurrentAccess(t *testing.T) {
 	results := make(chan *Announcement, 5)
 	errors := make(chan error, 5)
 
-	for i := 0; i < 3; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 3 {
+		wg.Go(func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 			defer cancel()
 			ann, err := ras.ReceiveAnnouncement(ctx)
@@ -403,16 +401,14 @@ func TestAnnouncementReader_ConcurrentAccess(t *testing.T) {
 			} else if ann != nil {
 				results <- ann
 			}
-		}()
+		})
 	}
 
 	// Concurrent close call
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		time.Sleep(10 * time.Millisecond)
 		_ = ras.Close()
-	}()
+	})
 
 	wg.Wait()
 	close(results)
@@ -621,7 +617,7 @@ func TestAnnouncementReader_MultipleActiveStreams(t *testing.T) {
 	receivedAnnouncements := make(map[string]*Announcement)
 
 	// Try to receive up to 3 announcements (2 from messages + 1 initial)
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		// Use a short per-call timeout so a single blocking call doesn't dominate the test
 		perCtx, perCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 		ann, err := ras.ReceiveAnnouncement(perCtx)

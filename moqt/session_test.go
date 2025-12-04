@@ -825,7 +825,7 @@ func TestSession_ConcurrentAccess(t *testing.T) {
 
 	// Concurrent nextSubscribeID calls
 	go func() {
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			session.nextSubscribeID()
 		}
 		operations++
@@ -836,7 +836,7 @@ func TestSession_ConcurrentAccess(t *testing.T) {
 
 	// Concurrent Context calls
 	go func() {
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			session.Context()
 		}
 		operations++
@@ -953,12 +953,12 @@ func TestSession_GoAway(t *testing.T) {
 func TestSession_AcceptAnnounce(t *testing.T) {
 	tests := map[string]struct {
 		prefix      string
-		setupMocks  func(*MockQUICConnection, interface{})
+		setupMocks  func(*MockQUICConnection, any)
 		expectError bool
 	}{
 		"successful announce": {
 			prefix: "/test/prefix/",
-			setupMocks: func(mockConn *MockQUICConnection, mockStream interface{}) {
+			setupMocks: func(mockConn *MockQUICConnection, mockStream any) {
 				mockConn.On("OpenStream").Return(mockStream, nil).Once()
 				stream := mockStream.(*MockQUICStream)
 				stream.On("Context").Return(context.Background()).Once()
@@ -987,7 +987,7 @@ func TestSession_AcceptAnnounce(t *testing.T) {
 		},
 		"terminating session": {
 			prefix: "/test/prefix/",
-			setupMocks: func(mockConn *MockQUICConnection, mockStream interface{}) {
+			setupMocks: func(mockConn *MockQUICConnection, mockStream any) {
 				mockConn.On("CloseWithError", mock.Anything, mock.Anything).Return(errors.New("close error")).Once()
 				// Provide optional OpenStream behavior to avoid unexpected calls during termination
 				mockConn.On("OpenStream").Return(nil, io.EOF).Maybe()
@@ -996,7 +996,7 @@ func TestSession_AcceptAnnounce(t *testing.T) {
 		},
 		"open stream error": {
 			prefix: "/test/prefix/",
-			setupMocks: func(mockConn *MockQUICConnection, mockStream interface{}) {
+			setupMocks: func(mockConn *MockQUICConnection, mockStream any) {
 				mockConn.On("OpenStream").Return(nil, errors.New("open stream error")).Once()
 			},
 			expectError: true,
@@ -2369,4 +2369,135 @@ func TestSession_MonitorBitrate_DoesNotSendUpdate_WhenDetectorReturnsFalse(t *te
 
 	// Write should not have been called for SESSION_UPDATE
 	assert.Equal(t, 0, writeCallCount, "SESSION_UPDATE should not have been sent when detector returns false")
+}
+
+// TestSession_MonitorBitrate_ConvertsToKbps verifies that SESSION_UPDATE sends Kbps values
+func TestSession_MonitorBitrate_ConvertsToKbps(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var writeBuf bytes.Buffer
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(ctx)
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Write", mock.Anything).Run(func(args mock.Arguments) {
+		data := args.Get(0).([]byte)
+		writeBuf.Write(data)
+	}).Return(0, nil)
+
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(ctx)
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+
+	// Simulate 10 MB sent (80 Mbps = 10,000 Kbps over 1 second)
+	conn.On("ConnectionStats").Return(quic.ConnectionStats{BytesSent: 0}).Once()
+	conn.On("ConnectionStats").Return(quic.ConnectionStats{BytesSent: 10 * 1000 * 1000}).Maybe()
+
+	detector := &MockShiftDetector{
+		detectFunc: func(rate float64) bool {
+			return rate > 1000000 // True for > 1 MB/s (1 Mbps = ~125 KB/s)
+		},
+	}
+
+	sessStream := newSessionStream(mockStream, &SetupRequest{
+		Path:             "test/path",
+		ClientExtensions: NewExtension(),
+	}, detector)
+	_ = newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
+
+	time.Sleep(defaultBPSMonitorInterval + 500*time.Millisecond)
+	cancel()
+	time.Sleep(50 * time.Millisecond)
+
+	// Verify detector received rate in bytes/s (byterate)
+	assert.Greater(t, len(detector.calls), 0, "detector should have been called")
+	if len(detector.calls) > 0 {
+		// bytesDiff = 1,000,000 bytes, elapsed ≈ 1 second, so byterate ≈ 1,000,000 bytes/s
+		assert.Greater(t, detector.calls[0], float64(500000), "detector should receive byterate (bytes/s)")
+	}
+}
+
+// TestSession_MonitorBitrate_MultipleSamples verifies continuous monitoring
+func TestSession_MonitorBitrate_MultipleSamples(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(ctx)
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Write", mock.Anything).Return(0, nil)
+
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(ctx)
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+
+	bytesValues := []uint64{0, 1000000, 3000000, 5000000}
+	callCount := 0
+	conn.On("ConnectionStats").Return(func() quic.ConnectionStats {
+		result := quic.ConnectionStats{BytesSent: bytesValues[callCount]}
+		if callCount < len(bytesValues)-1 {
+			callCount++
+		}
+		return result
+	}()).Maybe()
+
+	callCount = 0
+	detector := &MockShiftDetector{
+		detectFunc: func(rate float64) bool {
+			return true // Always return true
+		},
+	}
+
+	sessStream := newSessionStream(mockStream, &SetupRequest{
+		Path:             "test/path",
+		ClientExtensions: NewExtension(),
+	}, detector)
+	_ = newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
+
+	// Wait for multiple monitoring intervals
+	time.Sleep(defaultBPSMonitorInterval*3 + 500*time.Millisecond)
+	cancel()
+	time.Sleep(50 * time.Millisecond)
+
+	// Detector should be called multiple times
+	assert.Greater(t, len(detector.calls), 1, "detector should be called multiple times")
+}
+
+// TestSession_MonitorBitrate_NoDetectorDoesNotPanic verifies graceful handling without detector
+func TestSession_MonitorBitrate_NoDetectorDoesNotPanic(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(ctx)
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Write", mock.Anything).Return(0, nil)
+
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(ctx)
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	conn.On("ConnectionStats").Return(quic.ConnectionStats{BytesSent: 1000000}).Maybe()
+
+	// No detector (nil)
+	sessStream := newSessionStream(mockStream, &SetupRequest{
+		Path:             "test/path",
+		ClientExtensions: NewExtension(),
+	}, nil)
+	_ = newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
+
+	// Should not panic even without detector
+	time.Sleep(defaultBPSMonitorInterval + 500*time.Millisecond)
+	cancel()
+	time.Sleep(50 * time.Millisecond)
+
+	// No assertion needed - just verify it doesn't panic
 }

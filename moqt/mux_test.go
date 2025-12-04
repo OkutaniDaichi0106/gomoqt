@@ -917,7 +917,6 @@ func TestMux_ServeAnnouncements_InitSendsExistingAnnouncements(t *testing.T) {
 	}
 
 	for name, tc := range tests {
-		name := name
 		tc := tc
 		synctest.Test(t, func(t *testing.T) {
 			mux := NewTrackMux()
@@ -1378,11 +1377,9 @@ func TestMux_ServeAnnouncements_SlowSubscriber_NoDeadlock(t *testing.T) {
 		aw := newAnnouncementWriter(mockStream, "/slow/")
 
 		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			mux.serveAnnouncements(aw)
-		}()
+		})
 
 		// Give the writer a moment to initialize
 		time.Sleep(20 * time.Millisecond)
@@ -1551,11 +1548,9 @@ func TestMux_Announce_ClosesBusySubscriber(t *testing.T) {
 		aw := newAnnouncementWriter(mockStream, "/busy/")
 
 		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			mux.serveAnnouncements(aw)
-		}()
+		})
 
 		// Create an announcement and call Announce repeatedly to fill the buffer
 		_, _ = NewAnnouncement(context.Background(), BroadcastPath("/busy/stream"))
@@ -1617,11 +1612,9 @@ func TestMux_Publish_InitSendsExistingAnnouncements(t *testing.T) {
 	aw := newAnnouncementWriter(mockStream, "/pubinit/")
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		mux.serveAnnouncements(aw)
-	}()
+	})
 
 	// Wait up to 500ms for a Write to happen (init)
 	select {
@@ -1675,11 +1668,9 @@ func TestMux_Publish_AfterServeAnnouncements_SendsAnnouncement(t *testing.T) {
 	aw := newAnnouncementWriter(mockStream, "/pubafter/")
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		mux.serveAnnouncements(aw)
-	}()
+	})
 
 	// Wait until serveAnnouncements registers (first init Write) or proceed quickly
 	select {
@@ -1743,11 +1734,9 @@ func TestMux_PublishFunc_InitSendsExistingAnnouncements(t *testing.T) {
 	aw := newAnnouncementWriter(mockStream, "/pubfuncinit/")
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		mux.serveAnnouncements(aw)
-	}()
+	})
 
 	// Wait up to 500ms for a Write to happen
 	deadline := time.Now().Add(500 * time.Millisecond)
@@ -1813,11 +1802,9 @@ func TestMux_PublishFunc_AfterServeAnnouncements_SendsAnnouncement(t *testing.T)
 	aw := newAnnouncementWriter(mockStream, "/pubfuncafter/")
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		mux.serveAnnouncements(aw)
-	}()
+	})
 
 	// Wait until serveAnnouncements registers (first init Write) or short timeout
 	select {
@@ -2024,8 +2011,7 @@ func TestMux_ServeTrack_ClosesWhenAnnouncementEnds(t *testing.T) {
 
 	// Mock receive stream expects Close / CancelRead to be called as part of Close()
 	mockStream := &MockQUICStream{}
-	streamCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	streamCtx := t.Context()
 	mockStream.On("Context").Return(streamCtx)
 	mockStream.On("Read", mock.Anything).Return(0, io.EOF).Maybe()
 	mockStream.On("Close").Return(nil).Maybe()

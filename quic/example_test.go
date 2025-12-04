@@ -101,7 +101,7 @@ func ExampleListener() {
 	fmt.Printf("Listening on: %s\n", listener.Addr())
 
 	// Accept connections in a loop
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		conn, err := listener.Accept(context.Background())
 		if err != nil {
 			log.Printf("Accept error: %v", err)

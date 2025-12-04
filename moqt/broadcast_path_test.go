@@ -289,7 +289,7 @@ func TestBroadcastPath_EdgeCases(t *testing.T) {
 		method      string
 		path        BroadcastPath
 		input       string
-		expected    interface{}
+		expected    any
 		description string
 	}{"hasPrefix_exact_match": {
 		method:      "HasPrefix",

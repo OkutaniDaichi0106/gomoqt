@@ -702,7 +702,7 @@ func TestAnnouncementWriter_Performance_LargeNumberOfAnnouncements(t *testing.T)
 	const numAnnouncements = 100 // Reduced for test efficiency
 
 	start := time.Now()
-	for i := 0; i < numAnnouncements; i++ {
+	for i := range numAnnouncements {
 		ann, _ := NewAnnouncement(ctx, BroadcastPath(fmt.Sprintf("/test/stream%d", i)))
 		err := sas.SendAnnouncement(ann)
 		assert.NoError(t, err)
@@ -729,7 +729,7 @@ func TestAnnouncementWriter_CleanupResourceLeaks(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create and end many announcements to test cleanup
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		ann, end := NewAnnouncement(ctx, BroadcastPath(fmt.Sprintf("/test/stream%d", i)))
 		err := sas.SendAnnouncement(ann)
 		assert.NoError(t, err)
@@ -868,7 +868,7 @@ func TestAnnouncementWriter_ConcurrentAccess(t *testing.T) {
 
 	go func() {
 		defer func() { done <- true }()
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			ann, _ := NewAnnouncement(ctx, BroadcastPath(fmt.Sprintf("/test/stream_a_%d", i)))
 			if err := sas.SendAnnouncement(ann); err != nil {
 				errors <- err
@@ -880,7 +880,7 @@ func TestAnnouncementWriter_ConcurrentAccess(t *testing.T) {
 
 	go func() {
 		defer func() { done <- true }()
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			ann, _ := NewAnnouncement(ctx, BroadcastPath(fmt.Sprintf("/test/stream_b_%d", i)))
 			if err := sas.SendAnnouncement(ann); err != nil {
 				errors <- err
@@ -925,7 +925,7 @@ func TestAnnouncementWriter_ConcurrentAccess_SameSuffix_DeadlockRisk(t *testing.
 
 	go func() {
 		defer func() { done <- true }()
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			ann, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
 			if err := sas.SendAnnouncement(ann); err != nil {
 				errors <- err
@@ -937,7 +937,7 @@ func TestAnnouncementWriter_ConcurrentAccess_SameSuffix_DeadlockRisk(t *testing.
 
 	go func() {
 		defer func() { done <- true }()
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			ann, _ := NewAnnouncement(ctx, BroadcastPath("/test/stream1"))
 			if err := sas.SendAnnouncement(ann); err != nil {
 				errors <- err
@@ -1043,10 +1043,10 @@ func TestAnnouncementWriter_StressTest_HeavyConcurrentAccess(t *testing.T) {
 	errors := make(chan error, numGoroutines*numOperationsPerGoroutine)
 
 	// Launch multiple goroutines that compete for the same suffix aggressively
-	for g := 0; g < numGoroutines; g++ {
+	for g := range numGoroutines {
 		go func(goroutineID int) {
 			defer func() { done <- true }()
-			for i := 0; i < numOperationsPerGoroutine; i++ {
+			for i := range numOperationsPerGoroutine {
 				// Half of them use the same suffix, half use different suffixes
 				var suffixPath string
 				if i%2 == 0 {
@@ -1069,7 +1069,7 @@ func TestAnnouncementWriter_StressTest_HeavyConcurrentAccess(t *testing.T) {
 	}
 
 	// Wait for all goroutines to complete
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		<-done
 	}
 

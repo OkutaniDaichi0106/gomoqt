@@ -103,7 +103,7 @@ func TestParametersLen(t *testing.T) {
 			1: []byte("value1"),
 			2: []byte("value2"),
 		}, VarintLen(2) + VarintLen(1) + BytesLen([]byte("value1")) + VarintLen(2) + BytesLen([]byte("value2"))},
-		"empty value": {map[uint64][]byte{1: []byte{}}, VarintLen(1) + VarintLen(1) + BytesLen([]byte{})},
+		"empty value": {map[uint64][]byte{1: {}}, VarintLen(1) + VarintLen(1) + BytesLen([]byte{})},
 	}
 
 	for name, tt := range tests {

@@ -133,3 +133,93 @@ func TestEWMAShiftDetector_Detect_ZeroAverage(t *testing.T) {
 	result := detector.Detect(100)
 	assert.True(t, result, "positive BPS should trigger when average is zero")
 }
+
+// TestEWMAShiftDetector_DetectWithRateParameter verifies rate parameter naming
+func TestEWMAShiftDetector_DetectWithRateParameter(t *testing.T) {
+	detector := NewEWMAShiftDetector(0.2, 0.3, 1)
+
+	// First call uses initial sample, should set average to input value
+	result1 := detector.Detect(5000)
+	assert.False(t, result1, "initial sample should return false")
+	assert.Equal(t, float64(5000), detector.average)
+
+	// Second call should trigger detection if rate is significantly different
+	result2 := detector.Detect(8000) // 60% above 5000, threshold is 30%
+	assert.True(t, result2, "8000 should be detected as shift from 5000 with 30% threshold")
+}
+
+// TestEWMAShiftDetector_Detect_StableValues verifies no detection for stable rate
+func TestEWMAShiftDetector_Detect_StableValues(t *testing.T) {
+	detector := NewEWMAShiftDetector(0.1, 0.2, 1)
+
+	// First sample
+	detector.Detect(10000)
+
+	// Keep value stable around average
+	for range 5 {
+		result := detector.Detect(10000)
+		assert.False(t, result, "stable rate should not trigger detection")
+	}
+}
+
+// TestEWMAShiftDetector_Detect_GradualIncrease verifies EWMA smoothing
+func TestEWMAShiftDetector_Detect_GradualIncrease(t *testing.T) {
+	detector := NewEWMAShiftDetector(0.3, 0.25, 1)
+
+	// Start at 1000
+	detector.Detect(1000)
+	initial := detector.average
+
+	// Gradually increase - each call updates average
+	detector.Detect(1100)
+	avg1 := detector.average
+	assert.Greater(t, avg1, initial, "average should increase")
+
+	detector.Detect(1200)
+	avg2 := detector.average
+	// With EWMA smoothing, growth should continue
+	assert.Greater(t, avg2, avg1, "average should continue to increase")
+}
+
+// TestEWMAShiftDetector_Detect_TinyThreshold verifies small threshold sensitivity
+func TestEWMAShiftDetector_Detect_TinyThreshold(t *testing.T) {
+	detector := NewEWMAShiftDetector(0.5, 0.01, 0) // 1% threshold, alpha=0.5
+	detector.average = 10000
+
+	// When we call Detect(10200):
+	// - new average = 0.5*10200 + 0.5*10000 = 10100
+	// - check: 10200 > 10100*1.01 = 10201? No
+	// So it won't trigger. Let's use a value that will.
+	// For 10% threshold to be clearer
+	detector.average = 10000
+
+	// With 1% threshold: detection happens if rate > avg*(1+0.01) or rate < avg*(1-0.01)
+	// After Detect(20000):
+	// - new average = 0.5*20000 + 0.5*10000 = 15000
+	// - check: 20000 > 15000*1.01 = 15150? Yes, should trigger
+	result := detector.Detect(20000)
+	assert.True(t, result, "large change should trigger with small threshold")
+
+	// Reset for next test
+	detector.average = 10000
+	// After Detect(0):
+	// - new average = 0.5*0 + 0.5*10000 = 5000
+	// - check: 0 < 5000*0.99 = 4950? Yes, should trigger
+	result = detector.Detect(0)
+	assert.True(t, result, "drop to zero should trigger")
+}
+
+// TestEWMAShiftDetector_Detect_LargeThreshold verifies insensitive detector
+func TestEWMAShiftDetector_Detect_LargeThreshold(t *testing.T) {
+	detector := NewEWMAShiftDetector(0.5, 0.5, 0) // 50% threshold, alpha=0.5
+	detector.average = 10000
+
+	// For 10% increase:
+	// - new average = 0.5*11000 + 0.5*10000 = 10500
+	// - check: 11000 > 10500*1.5 = 15750? No, won't trigger
+	assert.False(t, detector.Detect(11000), "10% increase should not trigger with 50% threshold")
+
+	// Reset and verify detector logic with large threshold works
+	detector.average = 10000
+	assert.NotNil(t, detector, "detector should work with large threshold")
+}

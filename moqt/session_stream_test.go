@@ -719,7 +719,7 @@ func TestResponse_AwaitAccepted_ConcurrentCalls(t *testing.T) {
 	results := make([]error, numGoroutines)
 
 	// Start multiple goroutines calling AwaitAccepted concurrently
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
@@ -1187,7 +1187,7 @@ func TestAccept_ParameterHandling(t *testing.T) {
 		"large parameters": {
 			setupParam: func() *Extension {
 				params := NewExtension()
-				for i := uint64(0); i < 10; i++ {
+				for i := range uint64(10) {
 					params.SetUint(ExtensionKey(i), i*1000)
 				}
 				return params
@@ -1376,7 +1376,7 @@ func TestAccept_Race(t *testing.T) {
 	rw.SetExtensions(NewExtension())
 
 	// Start many goroutines calling Accept
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
@@ -1427,7 +1427,7 @@ func TestResponse_AwaitAccepted_Race(t *testing.T) {
 	results := make([]error, numGoroutines)
 
 	// Start many goroutines calling AwaitAccepted
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()

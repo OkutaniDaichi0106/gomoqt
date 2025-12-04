@@ -405,7 +405,7 @@ func TestReceiveSubscribeStream_ConcurrentAccess(t *testing.T) {
 	numGoroutines := 10
 
 	wg.Add(numGoroutines)
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		go func() {
 			defer wg.Done()
 			id := rss.SubscribeID()
@@ -415,7 +415,7 @@ func TestReceiveSubscribeStream_ConcurrentAccess(t *testing.T) {
 
 	// Test concurrent access to TrackConfig
 	wg.Add(numGoroutines)
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		go func() {
 			defer wg.Done()
 			config := rss.TrackConfig()

@@ -3,7 +3,21 @@
 Eine Go-Implementierung von Media over QUIC Transport (MOQT), die speziell die
 MOQ Lite-Spezifikation für effizientes Medienstreaming über QUIC implementiert.
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/OkutaniDaichi0106/gomoqt.svg)](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt)
 [![codecov](https://codecov.io/gh/OkutaniDaichi0106/gomoqt/branch/main/graph/badge.svg?token=4LZCD3FEU3)](https://codecov.io/gh/OkutaniDaichi0106/gomoqt)
+
+## Inhaltsverzeichnis
+
+- [Übersicht](#übersicht)
+- [Funktionen](#funktionen)
+- [Komponenten](#komponenten)
+- [Entwicklung](#entwicklung)
+- [Beispiele](#beispiele)
+- [Dokumentation](#dokumentation)
+- [Spezifikationskonformität](#spezifikationskonformität)
+- [Zum Projekt beitragen](#zum-projekt-beitragen)
+- [Lizenz](#lizenz)
+- [Danksagungen](#danksagungen)
 
 ## Übersicht
 
@@ -91,8 +105,11 @@ Diese Implementierung enthält:
 # Interop-Server starten
 mage interop:server
 
-# In einem anderen Terminal den Interop-Client starten
-mage interop:client
+# In einem anderen Terminal den Interop-Client starten (Go)
+mage interop:client go
+
+# Oder den TypeScript-Client starten
+mage interop:client ts
 ```
 
 #### Codequalität
@@ -107,8 +124,11 @@ mage lint
 # Qualitätsprüfungen ausführen (fmt und lint)
 mage check
 
-# Tests ausführen
-mage test
+# Alle Tests ausführen
+mage test:all
+
+# Tests mit Coverage ausführen
+mage test:coverage
 ```
 
 #### Build & Clean
@@ -129,7 +149,7 @@ mage help
 Das Verzeichnis [examples](examples) enthält Beispielanwendungen zur Verwendung
 von gomoqt:
 
-- **Interop Server und Client** (`interop/`): Interoperabilitätstests zwischen
+- **Interop Server und Client** (`cmd/interop/`): Interoperabilitätstests zwischen
   verschiedenen MOQ-Implementierungen
 - **Broadcast-Beispiel** (`examples/broadcast/`): Demonstration der
   Broadcast-Funktionalität
@@ -165,7 +185,7 @@ Beiträge sind willkommen! So kannst du helfen:
    ```bash
    mage fmt
    mage lint
-   mage test
+   mage test:all
    ```
 5. Änderungen committen (`git commit -m 'Add amazing feature'`).
 6. Branch pushen (`git push origin feature/amazing-feature`).

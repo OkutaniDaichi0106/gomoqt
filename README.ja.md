@@ -2,6 +2,21 @@
 
 MOQT (Media over QUIC Transfork) のGo言語による実装です。
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/OkutaniDaichi0106/gomoqt.svg)](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt)
+[![codecov](https://codecov.io/gh/OkutaniDaichi0106/gomoqt/branch/main/graph/badge.svg?token=4LZCD3FEU3)](https://codecov.io/gh/OkutaniDaichi0106/gomoqt)
+
+## 目次
+
+- [概要](#概要)
+- [機能](#機能)
+- [コンポーネント](#コンポーネント)
+- [開発](#開発)
+- [サンプル](#サンプル)
+- [ドキュメント](#ドキュメント)
+- [コントリビューション](#コントリビューション)
+- [ライセンス](#ライセンス)
+- [参考文献](#参考文献)
+
 ## 概要
 
 この実装はQUICトランスポートを使用したメディアストリーミングアプリケーションを構築するためのライブラリで、[MOQTransforkの仕様](https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html)に基づいています。
@@ -31,7 +46,7 @@ MOQ Liteの主要なやり取りを実装しています。
 ### 前提条件
 
 - Go 1.25.0以降
-- [just](https://github.com/casey/just) コマンドツール
+- [Mage](https://magefile.org/) ビルドツール（`go install github.com/magefile/mage@latest` でインストール）
 
 ### はじめ方
 
@@ -62,8 +77,11 @@ go install github.com/magefile/mage@latest
 # 相互運用性テスト用サーバーの起動
 mage interop:server
 
-# 別のターミナルで相互運用性テスト用クライアントを実行
-mage interop:client
+# 別のターミナルで相互運用性テスト用クライアントを実行（Go）
+mage interop:client go
+
+# またはTypeScriptクライアントを実行
+mage interop:client ts
 ```
 
 #### コードの品質管理
@@ -78,8 +96,11 @@ mage lint
 # コード品質チェック（フォーマットとリント）
 mage check
 
-# テスト実行
-mage test
+# 全テスト実行
+mage test:all
+
+# カバレッジ付きテスト実行
+mage test:coverage
 ```
 
 #### ビルドとクリーン
@@ -97,11 +118,12 @@ mage clean
 [examples](examples)
 ディレクトリには、gomoqtの使用方法を示すサンプルアプリケーションが含まれています:
 
-- **ブロードキャスト** `broadcast/`: ブロードキャスト機能のデモ
-- **証明書** `cert/`: 証明書管理のサンプル
-- **エコー** `echo/`: シンプルなエコーサーバーとクライアントの実装
-- **ネイティブQUIC** `native_quic/`: QUICプロトコルを使用した直接通信
-- **リレー** `relay/`: リレーサーバーの実装
+- **Interopサーバーとクライアント** `cmd/interop/`: 異なるMOQ実装間の相互運用性テスト
+- **ブロードキャスト** `examples/broadcast/`: ブロードキャスト機能のデモ
+- **証明書** `examples/cert/`: 証明書管理のサンプル
+- **エコー** `examples/echo/`: シンプルなエコーサーバーとクライアントの実装
+- **ネイティブQUIC** `examples/native_quic/`: QUICプロトコルを使用した直接通信
+- **リレー** `examples/relay/`: リレーサーバーの実装
 
 ### ドキュメント
 
@@ -120,7 +142,7 @@ mage clean
    ```bash
    mage fmt
    mage lint
-   mage test
+   mage test:all
    ```
 5. 変更をコミット (`git commit -m 'Add amazing feature'`)
 6. ブランチにプッシュ (`git push origin feature/amazing-feature`)

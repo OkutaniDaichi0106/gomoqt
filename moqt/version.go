@@ -4,11 +4,14 @@ package moqt
 // These can be used to represent supported protocol versions in a client or server.
 const (
 	// Default Version
-	Default Version = LiteDraft01
+	Default Version = Development
 
 	// MoQ Lite Draft Versions
 	LiteDraft01 Version = 0xff0dad01
 	LiteDraft02 Version = 0xff0dad02
+
+	// This implement version
+	Development Version = 0xfeedbabe
 )
 
 // DefaultClientVersions lists the versions offered by default by a client during session setup.

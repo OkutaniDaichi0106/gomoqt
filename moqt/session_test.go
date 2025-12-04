@@ -2148,6 +2148,7 @@ func (m *MockShiftDetector) Detect(bps float64) bool {
 }
 
 func TestSession_MonitorBitrate_SendsSessionUpdate_WhenDetectorReturnsTrue(t *testing.T) {
+	t.Parallel()
 	// Create a context that we can cancel
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -2207,6 +2208,7 @@ func TestSession_MonitorBitrate_SendsSessionUpdate_WhenDetectorReturnsTrue(t *te
 }
 
 func TestSession_MonitorBitrate_NotStarted_WhenDetectorIsNil(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -2241,6 +2243,7 @@ func TestSession_MonitorBitrate_NotStarted_WhenDetectorIsNil(t *testing.T) {
 }
 
 func TestSession_MonitorBitrate_StopsOnContextCancel(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 
 	mockStream := &MockQUICStream{}
@@ -2282,6 +2285,7 @@ func TestSession_MonitorBitrate_StopsOnContextCancel(t *testing.T) {
 }
 
 func TestSession_MonitorBitrate_CalculatesBPSCorrectly(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -2330,6 +2334,7 @@ func TestSession_MonitorBitrate_CalculatesBPSCorrectly(t *testing.T) {
 }
 
 func TestSession_MonitorBitrate_DoesNotSendUpdate_WhenDetectorReturnsFalse(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -2373,6 +2378,7 @@ func TestSession_MonitorBitrate_DoesNotSendUpdate_WhenDetectorReturnsFalse(t *te
 
 // TestSession_MonitorBitrate_ConvertsToKbps verifies that SESSION_UPDATE sends Kbps values
 func TestSession_MonitorBitrate_ConvertsToKbps(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -2422,6 +2428,7 @@ func TestSession_MonitorBitrate_ConvertsToKbps(t *testing.T) {
 
 // TestSession_MonitorBitrate_MultipleSamples verifies continuous monitoring
 func TestSession_MonitorBitrate_MultipleSamples(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -2471,6 +2478,7 @@ func TestSession_MonitorBitrate_MultipleSamples(t *testing.T) {
 
 // TestSession_MonitorBitrate_NoDetectorDoesNotPanic verifies graceful handling without detector
 func TestSession_MonitorBitrate_NoDetectorDoesNotPanic(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

@@ -3,7 +3,21 @@
 A Go implementation of Media over QUIC Transport (MOQT), specifically
 implementing the MOQ Lite specification for efficient media streaming over QUIC.
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/OkutaniDaichi0106/gomoqt.svg)](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt)
 [![codecov](https://codecov.io/gh/OkutaniDaichi0106/gomoqt/branch/main/graph/badge.svg?token=4LZCD3FEU3)](https://codecov.io/gh/OkutaniDaichi0106/gomoqt)
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Components](#components)
+- [Development](#development)
+- [Examples](#examples)
+- [Documentation](#documentation)
+- [Specification Compliance](#specification-compliance)
+- [Contributing](#contributing)
+- [License](#license)
+- [Acknowledgments](#acknowledgments)
 
 ## Overview
 
@@ -93,8 +107,11 @@ across different platforms.
 # Start the interop server
 mage interop:server
 
-# In another terminal, run the interop client
-mage interop:client
+# In another terminal, run the interop client (Go)
+mage interop:client go
+
+# Or run the TypeScript client
+mage interop:client ts
 ```
 
 #### Code Quality
@@ -109,8 +126,11 @@ mage lint
 # Run quality checks (fmt and lint)
 mage check
 
-# Run tests
-mage test
+# Run all tests
+mage test:all
+
+# Run tests with coverage
+mage test:coverage
 ```
 
 #### Build & Clean
@@ -131,7 +151,7 @@ mage help
 The [examples](examples) directory includes sample applications demonstrating
 how to use gomoqt:
 
-- **Interop Server and Client** (`interop/`): Interoperability testing between
+- **Interop Server and Client** (`cmd/interop/`): Interoperability testing between
   different MOQ implementations
 - **Broadcast Example** (`examples/broadcast/`): Broadcasting functionality
   demonstration

@@ -1,4 +1,3 @@
-// Main entry point for the MoQT web library
 export * from "./alias.ts";
 export * from "./session.ts";
 export * from "./broadcast_path.ts";

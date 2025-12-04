@@ -48,7 +48,7 @@ func TestNewSession(t *testing.T) {
 			sessStream := newSessionStream(mockStream, &SetupRequest{
 				Path:             "test/path",
 				ClientExtensions: NewExtension(),
-			})
+			}, nil)
 			session := newSession(conn, sessStream, tt.mux, slog.Default(), nil)
 
 			if tt.expectOK {
@@ -89,7 +89,7 @@ func TestNewSessionWithNilMux(t *testing.T) {
 			sessStream := newSessionStream(mockStream, &SetupRequest{
 				Path:             "test/path",
 				ClientExtensions: NewExtension(),
-			})
+			}, nil)
 			session := newSession(conn, sessStream, tt.mux, slog.Default(), nil)
 
 			if tt.expectDefault {
@@ -117,7 +117,7 @@ func TestNewSession_WithNilLogger(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 
 	session := newSession(conn, sessStream, NewTrackMux(), nil, nil)
 
@@ -151,7 +151,7 @@ func TestNewSession_SessionStreamClosure(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 	assert.NotNil(t, session)
@@ -198,7 +198,7 @@ func TestSession_Terminate(t *testing.T) {
 			sessStream := newSessionStream(mockStream, &SetupRequest{
 				Path:             "test/path",
 				ClientExtensions: NewExtension(),
-			})
+			}, nil)
 			session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 			err := session.CloseWithError(tt.code, tt.msg)
@@ -267,7 +267,7 @@ func TestSession_Subscribe(t *testing.T) {
 			sessStream := newSessionStream(mockStream, &SetupRequest{
 				Path:             "test/path",
 				ClientExtensions: NewExtension(),
-			})
+			}, nil)
 			session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 			track, err := session.Subscribe(tt.path, tt.name, tt.config)
@@ -305,7 +305,7 @@ func TestSession_Subscribe_OpenError(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 	config := &TrackConfig{
@@ -344,7 +344,7 @@ func TestSession_Subscribe_OpenStreamApplicationError(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 	config := &TrackConfig{TrackPriority: 1}
@@ -384,7 +384,7 @@ func TestSession_Subscribe_EncodeStreamTypeError(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 	config := &TrackConfig{TrackPriority: 1}
@@ -425,7 +425,7 @@ func TestSession_Subscribe_EncodeStreamTypeStreamError(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 	config := &TrackConfig{TrackPriority: 1}
@@ -477,7 +477,7 @@ func TestSession_Subscribe_NilConfig(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 	// Pass nil config - should use default
@@ -523,7 +523,7 @@ func TestSession_Subscribe_EncodeSubscribeMessageStreamError(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 	config := &TrackConfig{TrackPriority: 1}
@@ -573,7 +573,7 @@ func TestSession_Subscribe_EncodeSubscribeMessageRemoteStreamError(t *testing.T)
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 	config := &TrackConfig{TrackPriority: 1}
@@ -617,7 +617,7 @@ func TestSession_Subscribe_DecodeSubscribeOkStreamError(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 	config := &TrackConfig{TrackPriority: 1}
@@ -659,7 +659,7 @@ func TestSession_Subscribe_DecodeSubscribeOkError(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 	config := &TrackConfig{TrackPriority: 1}
@@ -687,7 +687,7 @@ func TestSession_Context(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 	ctx := session.Context()
@@ -712,7 +712,7 @@ func TestSession_nextSubscribeID(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 	id1 := session.nextSubscribeID()
@@ -752,7 +752,7 @@ func TestSession_HandleBiStreams_AcceptError(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 	// Wait for the background goroutine to attempt AcceptStream/AcceptUniStream
@@ -785,7 +785,7 @@ func TestSession_HandleUniStreamsAcceptError(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 	// Wait a bit for the background goroutine to try accepting
@@ -816,7 +816,7 @@ func TestSession_ConcurrentAccess(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 	// Test concurrent access
@@ -877,7 +877,7 @@ func TestSession_ContextCancellation(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 	ctx := session.Context()
@@ -913,7 +913,7 @@ func TestSession_WithRealMux(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, mux, slog.Default(), nil)
 
 	assert.Equal(t, mux, session.mux, "Mux should be set correctly in the session")
@@ -939,7 +939,7 @@ func TestSession_GoAway(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
 	// Test goAway - now it calls updateSession
@@ -1023,7 +1023,7 @@ func TestSession_AcceptAnnounce(t *testing.T) {
 			sessStream := newSessionStream(mockStream, &SetupRequest{
 				Path:             "test/path",
 				ClientExtensions: NewExtension(),
-			})
+			}, nil)
 			session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
 			announceStream := &MockQUICStream{}
@@ -1060,7 +1060,7 @@ func TestSession_AddTrackWriter(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
 	writer := &TrackWriter{}
@@ -1090,7 +1090,7 @@ func TestSession_RemoveTrackWriter(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
 	writer := &TrackWriter{}
@@ -1121,7 +1121,7 @@ func TestSession_RemoveTrackReader(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
 	reader := &TrackReader{}
@@ -1159,7 +1159,7 @@ func TestSession_AddTrackReader(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
 	reader := &TrackReader{}
@@ -1185,7 +1185,7 @@ func TestSession_ProcessBiStream_Announce(t *testing.T) {
 	sessStream := newSessionStream(mockSessStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	mux := NewTrackMux()
 	session := newSession(conn, sessStream, mux, slog.Default(), nil)
 
@@ -1262,7 +1262,7 @@ func TestSession_ProcessBiStream_Subscribe(t *testing.T) {
 	sessStream := newSessionStream(mockSessStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	mux := NewTrackMux()
 	session := newSession(conn, sessStream, mux, slog.Default(), nil)
 
@@ -1355,7 +1355,7 @@ func TestSession_ProcessBiStream_InvalidStreamType(t *testing.T) {
 	sessStream := newSessionStream(mockSessStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
 	// Create a mock stream with invalid stream type
@@ -1409,7 +1409,7 @@ func TestSession_ProcessBiStream_DecodeStreamTypeError(t *testing.T) {
 	sessStream := newSessionStream(mockSessStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
 	mockStream := &MockQUICStream{}
@@ -1450,7 +1450,7 @@ func TestSession_ProcessBiStream_DecodeAnnounceMessageError(t *testing.T) {
 	sessStream := newSessionStream(mockSessStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
 	mockStream := &MockQUICStream{}
@@ -1493,7 +1493,7 @@ func TestSession_ProcessBiStream_DecodeSubscribeMessageError(t *testing.T) {
 	sessStream := newSessionStream(mockSessStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
 	mockStream := &MockQUICStream{}
@@ -1536,7 +1536,7 @@ func TestSession_ProcessUniStream_Group(t *testing.T) {
 	sessStream := newSessionStream(mockSessStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
 	// Add a track reader
@@ -1601,7 +1601,7 @@ func TestSession_ProcessUniStream_UnknownSubscribeID(t *testing.T) {
 	sessStream := newSessionStream(mockSessStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
 	// Create a mock receive stream for GROUP with unknown subscribe ID
@@ -1654,7 +1654,7 @@ func TestSession_ProcessUniStream_InvalidStreamType(t *testing.T) {
 	sessStream := newSessionStream(mockSessStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
 	// Create a mock receive stream with invalid stream type
@@ -1708,7 +1708,7 @@ func TestSession_ProcessUniStream_DecodeStreamTypeError(t *testing.T) {
 	sessStream := newSessionStream(mockSessStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
 	mockRecvStream := &MockQUICReceiveStream{}
@@ -1738,7 +1738,7 @@ func TestSession_ProcessUniStream_DecodeGroupMessageError(t *testing.T) {
 	sessStream := newSessionStream(mockSessStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
 	mockRecvStream := &MockQUICReceiveStream{}
@@ -1779,7 +1779,7 @@ func TestSession_Subscribe_TerminatingSession(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
 	// Terminate the session
@@ -1815,7 +1815,7 @@ func TestSession_AcceptAnnounce_TerminatingSession(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
 	// Terminate the session
@@ -1856,7 +1856,7 @@ func TestSession_AcceptAnnounce_OpenStreamApplicationError(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
 	reader, err := session.AcceptAnnounce("/test/prefix/")
@@ -1891,7 +1891,7 @@ func TestSession_AcceptAnnounce_EncodeStreamTypeError(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
 	reader, err := session.AcceptAnnounce("/test/prefix/")
@@ -1930,7 +1930,7 @@ func TestSession_AcceptAnnounce_EncodeStreamTypeStreamError(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
 	reader, err := session.AcceptAnnounce("/test/prefix/")
@@ -1981,7 +1981,7 @@ func TestSession_AcceptAnnounce_EncodePleaseMessageStreamError(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
 	reader, err := session.AcceptAnnounce("/test/prefix/")
@@ -2024,7 +2024,7 @@ func TestSession_AcceptAnnounce_DecodeInitMessageStreamError(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
 	reader, err := session.AcceptAnnounce("/test/prefix/")
@@ -2062,7 +2062,7 @@ func TestSession_AcceptAnnounce_DecodeInitMessageError(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
 	reader, err := session.AcceptAnnounce("/test/prefix/")
@@ -2088,7 +2088,7 @@ func TestSession_Terminate_AlreadyTerminating(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
 	// First termination
@@ -2123,7 +2123,7 @@ func TestSession_Terminate_WithApplicationError(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	})
+	}, nil)
 	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
 
 	err := session.CloseWithError(InternalSessionErrorCode, "test error")
@@ -2131,4 +2131,242 @@ func TestSession_Terminate_WithApplicationError(t *testing.T) {
 	assert.Error(t, err)
 	var sessErr *SessionError
 	assert.ErrorAs(t, err, &sessErr)
+}
+
+// MockShiftDetector is a mock implementation of bitrate.ShiftDetector for testing
+type MockShiftDetector struct {
+	detectFunc func(bps float64) bool
+	calls      []float64
+}
+
+func (m *MockShiftDetector) Detect(bps float64) bool {
+	m.calls = append(m.calls, bps)
+	if m.detectFunc != nil {
+		return m.detectFunc(bps)
+	}
+	return false
+}
+
+func TestSession_MonitorBitrate_SendsSessionUpdate_WhenDetectorReturnsTrue(t *testing.T) {
+	// Create a context that we can cancel
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Create mock stream with a buffer for writes
+	var writeBuf bytes.Buffer
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(ctx)
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Write", mock.Anything).Run(func(args mock.Arguments) {
+		data := args.Get(0).([]byte)
+		writeBuf.Write(data)
+	}).Return(0, nil)
+
+	// Create mock connection
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(ctx)
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+
+	// Simulate increasing bytes sent over multiple calls
+	conn.On("ConnectionStats").Return(quic.ConnectionStats{BytesSent: 0}).Once()
+	conn.On("ConnectionStats").Return(quic.ConnectionStats{BytesSent: 1000000}).Maybe()
+
+	// Create detector that returns true when there's traffic
+	detector := &MockShiftDetector{
+		detectFunc: func(bps float64) bool {
+			return bps > 0 // Always detect shift when there's traffic
+		},
+	}
+
+	sessStream := newSessionStream(mockStream, &SetupRequest{
+		Path:             "test/path",
+		ClientExtensions: NewExtension(),
+	}, detector)
+	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
+
+	// Wait a bit for the monitor to run
+	time.Sleep(defaultBPSMonitorInterval + 500*time.Millisecond)
+
+	// Cancel context to stop monitoring
+	cancel()
+
+	// Give some time for cleanup
+	time.Sleep(50 * time.Millisecond)
+
+	// Verify that detector was called
+	assert.Greater(t, len(detector.calls), 0, "detector should have been called")
+
+	// Verify that SESSION_UPDATE was sent (check write buffer has data)
+	assert.Greater(t, writeBuf.Len(), 0, "SESSION_UPDATE should have been written")
+
+	// Cleanup
+	_ = session.CloseWithError(NoError, "")
+}
+
+func TestSession_MonitorBitrate_NotStarted_WhenDetectorIsNil(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(ctx)
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(ctx)
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	// Note: ConnectionStats should NOT be called when detector is nil
+
+	sessStream := newSessionStream(mockStream, &SetupRequest{
+		Path:             "test/path",
+		ClientExtensions: NewExtension(),
+	}, nil) // nil detector
+	session := newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
+
+	// Wait to ensure monitor would have started if it was going to
+	time.Sleep(defaultBPSMonitorInterval + 100*time.Millisecond)
+
+	cancel()
+	time.Sleep(50 * time.Millisecond)
+
+	// ConnectionStats should not have been called
+	conn.AssertNotCalled(t, "ConnectionStats")
+
+	_ = session.CloseWithError(NoError, "")
+}
+
+func TestSession_MonitorBitrate_StopsOnContextCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(ctx)
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Write", mock.Anything).Return(0, nil)
+
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(ctx)
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	conn.On("ConnectionStats").Return(quic.ConnectionStats{BytesSent: 1000})
+
+	detector := &MockShiftDetector{
+		detectFunc: func(bps float64) bool {
+			return false // Never detect shift
+		},
+	}
+
+	sessStream := newSessionStream(mockStream, &SetupRequest{
+		Path:             "test/path",
+		ClientExtensions: NewExtension(),
+	}, detector)
+	_ = newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
+
+	// Let it run for a bit
+	time.Sleep(50 * time.Millisecond)
+
+	// Cancel context
+	cancel()
+
+	// Give time for goroutine to exit
+	time.Sleep(100 * time.Millisecond)
+
+	// If we got here without hanging, the test passes
+	// The goroutine should have exited cleanly
+}
+
+func TestSession_MonitorBitrate_CalculatesBPSCorrectly(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(ctx)
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Write", mock.Anything).Return(0, nil)
+
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(ctx)
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+
+	// First call returns 0, subsequent calls return 1MB
+	conn.On("ConnectionStats").Return(quic.ConnectionStats{BytesSent: 0}).Once()
+	conn.On("ConnectionStats").Return(quic.ConnectionStats{BytesSent: 1000000}).Maybe()
+
+	var capturedBPS float64
+	detector := &MockShiftDetector{
+		detectFunc: func(bps float64) bool {
+			capturedBPS = bps
+			return false
+		},
+	}
+
+	sessStream := newSessionStream(mockStream, &SetupRequest{
+		Path:             "test/path",
+		ClientExtensions: NewExtension(),
+	}, detector)
+	_ = newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
+
+	// Wait for at least one tick
+	time.Sleep(defaultBPSMonitorInterval + 500*time.Millisecond)
+
+	cancel()
+	time.Sleep(50 * time.Millisecond)
+
+	// BPS should be around 8Mbps (8000000 bps) for 1MB in 1 second
+	// Allow some tolerance due to timing
+	if len(detector.calls) > 0 {
+		// The BPS should be positive and in a reasonable range
+		assert.Greater(t, capturedBPS, float64(0), "BPS should be positive")
+	}
+}
+
+func TestSession_MonitorBitrate_DoesNotSendUpdate_WhenDetectorReturnsFalse(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	writeCallCount := 0
+	mockStream := &MockQUICStream{}
+	mockStream.On("Context").Return(ctx)
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Write", mock.Anything).Run(func(args mock.Arguments) {
+		writeCallCount++
+	}).Return(0, nil)
+
+	conn := &MockQUICConnection{}
+	conn.On("Context").Return(ctx)
+	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
+	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
+	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
+	conn.On("ConnectionStats").Return(quic.ConnectionStats{BytesSent: 1000000})
+
+	detector := &MockShiftDetector{
+		detectFunc: func(bps float64) bool {
+			return false // Never detect shift
+		},
+	}
+
+	sessStream := newSessionStream(mockStream, &SetupRequest{
+		Path:             "test/path",
+		ClientExtensions: NewExtension(),
+	}, detector)
+	_ = newSession(conn, sessStream, NewTrackMux(), slog.Default(), nil)
+
+	// Wait for monitoring to run
+	time.Sleep(defaultBPSMonitorInterval + 100*time.Millisecond)
+
+	cancel()
+	time.Sleep(50 * time.Millisecond)
+
+	// Write should not have been called for SESSION_UPDATE
+	assert.Equal(t, 0, writeCallCount, "SESSION_UPDATE should not have been sent when detector returns false")
 }

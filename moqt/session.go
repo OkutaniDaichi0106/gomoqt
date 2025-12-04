@@ -7,12 +7,22 @@ import (
 	"log/slog"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
 )
 
-func newSession(conn quic.Connection, sessStream *sessionStream, mux *TrackMux, connLogger *slog.Logger, onClose func()) *Session {
+// Default interval for BPS monitoring
+const defaultBPSMonitorInterval = 1 * time.Second
+
+func newSession(
+	conn quic.Connection,
+	sessStream *sessionStream,
+	mux *TrackMux,
+	connLogger *slog.Logger,
+	onClose func(),
+) *Session {
 	if mux == nil {
 		mux = DefaultMux
 	}
@@ -65,6 +75,13 @@ func newSession(conn quic.Connection, sessStream *sessionStream, mux *TrackMux, 
 	sess.wg.Go(func() {
 		sess.handleUniStreams()
 	})
+
+	// Start BPS monitoring if detector is configured
+	if sessStream.detector != nil {
+		sess.wg.Go(func() {
+			sess.monitorBitrate()
+		})
+	}
 
 	return sess
 }
@@ -660,4 +677,57 @@ func (s *Session) removeTrackReader(id SubscribeID) {
 func cancelStreamWithError(stream quic.Stream, code quic.StreamErrorCode) {
 	stream.CancelRead(code)
 	stream.CancelWrite(code)
+}
+
+// monitorBitrate periodically calculates the BPS from connection statistics
+// and sends SESSION_UPDATE messages when the detector detects a significant shift.
+func (s *Session) monitorBitrate() {
+	ticker := time.NewTicker(defaultBPSMonitorInterval)
+	defer ticker.Stop()
+
+	var lastBytesSent uint64
+	var lastTime time.Time
+
+	// Initialize with current stats
+	stats := s.conn.ConnectionStats()
+	lastBytesSent = stats.BytesSent
+	lastTime = time.Now()
+
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case now := <-ticker.C:
+			stats := s.conn.ConnectionStats()
+
+			// Calculate BPS from sent bytes difference
+			elapsed := now.Sub(lastTime).Seconds()
+			if elapsed <= 0 {
+				continue
+			}
+
+			bytesDiff := stats.BytesSent - lastBytesSent
+			byterate := float64(bytesDiff) / elapsed
+
+			// Update last values
+			lastBytesSent = stats.BytesSent
+			lastTime = now
+
+			// Check if detector indicates a significant shift
+			if s.sessionStream.detector.Detect(byterate) {
+				// Send SESSION_UPDATE message with new bitrate (Kbps)
+				kbps := uint64((byterate * 8) / 1000)
+				if err := s.sessionStream.updateSession(kbps); err != nil {
+					s.logger.Error("failed to send SESSION_UPDATE",
+						"error", err,
+						"bitrate_kbps", kbps,
+					)
+				} else {
+					s.logger.Debug("sent SESSION_UPDATE due to bitrate shift",
+						"bitrate_kbps", kbps,
+					)
+				}
+			}
+		}
+	}
 }

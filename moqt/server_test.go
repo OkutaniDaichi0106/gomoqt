@@ -366,7 +366,7 @@ func TestServer_AcceptSession(t *testing.T) {
 
 			ctx := context.Background()
 
-			sessStream, err := acceptSessionStream(ctx, mockConn, slog.Default())
+			sessStream, err := acceptSessionStream(ctx, mockConn, slog.Default(), nil)
 			if tt.expectOK {
 				assert.NoError(t, err, "acceptSessionStream() should not return error")
 				assert.NotNil(t, sessStream, "acceptSessionStream() should return session stream")
@@ -402,7 +402,7 @@ func TestServer_AcceptSession_AcceptStreamError(t *testing.T) {
 
 			ctx := context.Background()
 
-			sessStream, err := acceptSessionStream(ctx, mockConn, slog.Default())
+			sessStream, err := acceptSessionStream(ctx, mockConn, slog.Default(), nil)
 
 			assert.Error(t, err, "acceptSessionStream() should return an error")
 			assert.Contains(t, err.Error(), tt.expectErr.Error(), "acceptSessionStream() should return wrapped accept error")
@@ -564,7 +564,7 @@ func TestServer_SessionManagement(t *testing.T) {
 				Path:             "/test",
 				ClientExtensions: NewExtension(),
 			}
-			sessStream := newSessionStream(mockStream, req)
+			sessStream := newSessionStream(mockStream, req, nil)
 			session := newSession(mockConn, sessStream, nil, slog.Default(), nil)
 
 			// Test adding session
@@ -1025,7 +1025,7 @@ func TestServer_AcceptTimeout(t *testing.T) {
 				Config: tt.config,
 			}
 
-			timeout := server.acceptTimeout()
+			timeout := server.Config.setupTimeout()
 			assert.Equal(t, tt.expectedTimeout, timeout)
 		})
 	}
@@ -1064,7 +1064,7 @@ func TestServer_AddRemoveSession(t *testing.T) {
 		Path:             "/test",
 		ClientExtensions: NewExtension(),
 	}
-	sessStream := newSessionStream(mockStream, req)
+	sessStream := newSessionStream(mockStream, req, nil)
 
 	// Create session using newSession but quickly close it to avoid long-running goroutines
 	session := newSession(mockConn, sessStream, nil, slog.Default(), nil)
@@ -1159,7 +1159,7 @@ func TestServer_Shutdown(t *testing.T) {
 					Path:             "/test",
 					ClientExtensions: NewExtension(),
 				}
-				sessStream := newSessionStream(mockStream, req)
+				sessStream := newSessionStream(mockStream, req, nil)
 				session := newSession(mockConn, sessStream, nil, slog.Default(), nil)
 				server.addSession(session)
 				defer func() { _ = session.CloseWithError(NoError, SessionErrorText(NoError)) }()
@@ -1324,20 +1324,20 @@ func TestServer_BoundaryValues(t *testing.T) {
 				}
 			},
 			testFunc: func(t *testing.T, s *Server) {
-				timeout := s.acceptTimeout()
+				timeout := s.Config.setupTimeout()
 				assert.Equal(t, 5*time.Second, timeout)
 			},
 		},
 		"negative timeout config": {
-			description: "server with negative timeout should return the negative value",
+			description: "server with negative timeout should use default",
 			setupServer: func() *Server {
 				return &Server{
 					Config: &Config{SetupTimeout: -1 * time.Second},
 				}
 			},
 			testFunc: func(t *testing.T, s *Server) {
-				timeout := s.acceptTimeout()
-				assert.Equal(t, -1*time.Second, timeout)
+				timeout := s.Config.setupTimeout()
+				assert.Equal(t, 5*time.Second, timeout)
 			},
 		},
 		"maximum timeout config": {
@@ -1348,7 +1348,7 @@ func TestServer_BoundaryValues(t *testing.T) {
 				}
 			},
 			testFunc: func(t *testing.T, s *Server) {
-				timeout := s.acceptTimeout()
+				timeout := s.Config.setupTimeout()
 				assert.Equal(t, time.Hour*24, timeout)
 			},
 		},
@@ -1361,7 +1361,7 @@ func TestServer_BoundaryValues(t *testing.T) {
 				assert.NotPanics(t, func() {
 					s.init()
 					s.shuttingDown()
-					s.acceptTimeout()
+					s.Config.setupTimeout()
 				})
 			},
 		},
@@ -1510,7 +1510,7 @@ func TestServer_SessionLifecycle(t *testing.T) {
 					Path:             "/test",
 					ClientExtensions: NewExtension(),
 				}
-				sessStream := newSessionStream(mockStream, req)
+				sessStream := newSessionStream(mockStream, req, nil)
 				session := newSession(mockConn, sessStream, nil, slog.Default(), nil)
 				sessions = append(sessions, session)
 
@@ -1671,7 +1671,7 @@ func TestServer_EdgeCaseOperations(t *testing.T) {
 					Path:             "/test",
 					ClientExtensions: NewExtension(),
 				}
-				sessStream := newSessionStream(mockStream, req)
+				sessStream := newSessionStream(mockStream, req, nil)
 				session := newSession(mockConn, sessStream, nil, slog.Default(), nil)
 
 				assert.NotPanics(t, func() {

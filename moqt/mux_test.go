@@ -2151,16 +2151,17 @@ func TestAnnouncement_Stop_ReturnsFalse_IfRegisteredAfterEnd(t *testing.T) {
 	ann, end := NewAnnouncement(ctx, BroadcastPath("/announce/stop/after/registered"))
 	end()
 
-	// Register after end -- this should call the handler immediately and return a stop that is useless
-	called := false
-	stop := ann.AfterFunc(func() { called = true })
+	// Register after end -- this should call the handler asynchronously and return a stop that is useless
+	calledCh := make(chan struct{})
+	stop := ann.AfterFunc(func() { close(calledCh) })
 
-	// Handler should have been called immediately
+	// Handler should be called asynchronously
 	select {
-	case <-ann.Done():
-	default:
+	case <-calledCh:
+		// expected
+	case <-time.After(time.Second):
+		t.Fatal("handler was not called")
 	}
-	assert.True(t, called)
 
 	// stop should return false
 	assert.False(t, stop())

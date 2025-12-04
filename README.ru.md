@@ -1,8 +1,23 @@
 # gomoqt
 
-Реализация Media over QUIC Transport (MOQT) на Go, реализующая спецификацию MOQ Lite для эффективной потоковой передачи мультимедиа по QUIC.
+Реализация Media over QUIC Transport (MOQT) на Go, реализующая
+спецификацию MOQ Lite для эффективной потоковой передачи мультимедиа по QUIC.
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/OkutaniDaichi0106/gomoqt.svg)](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt)
 [![codecov](https://codecov.io/gh/OkutaniDaichi0106/gomoqt/branch/main/graph/badge.svg?token=4LZCD3FEU3)](https://codecov.io/gh/OkutaniDaichi0106/gomoqt)
+
+## Содержание
+
+- [Обзор](#обзор)
+- [Возможности](#возможности)
+- [Компоненты](#компоненты)
+- [Разработка](#разработка)
+- [Примеры](#примеры)
+- [Документация](#документация)
+- [Соответствие спецификации](#соответствие-спецификации)
+- [Вклад в проект](#вклад-в-проект)
+- [Лицензия](#лицензия)
+- [Благодарности](#благодарности)
 
 ## Обзор
 
@@ -66,25 +81,28 @@
    go get github.com/OkutaniDaichi0106/gomoqt
    ```
 
-3. Установите инструмент Mage:
+3. Установите инструмент сборки Mage:
    ```bash
    go install github.com/magefile/mage@latest
    ```
 
-Примечание: Команды для настройки окружения разработки (dev-setup, генерация сертификатов и т. д.) по-прежнему доступны через Justfile. Основные команды сборки (test, lint, fmt, build, clean) перенесены в Mage.
-
 ### Команды разработки
 
 #### Запуск примеров
+
 ```bash
 # Запустить сервер interop
-just interop-server
+mage interop:server
 
-# В другом терминале запустить клиента interop
-just interop-client
+# В другом терминале запустить клиента interop (Go)
+mage interop:client go
+
+# Или запустить клиента на TypeScript
+mage interop:client ts
 ```
 
 #### Проверка качества кода
+
 ```bash
 # Форматирование кода
 mage fmt
@@ -92,13 +110,20 @@ mage fmt
 # Запуск линтера (требуется golangci-lint: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)
 mage lint
 
-# Запуск тестов
-mage test
+# Запуск проверок качества (fmt и lint)
+mage check
+
+# Запуск всех тестов
+mage test:all
+
+# Запуск тестов с покрытием
+mage test:coverage
 ```
 
 #### Сборка и очистка
+
 ```bash
-# Сборка проекта
+# Сборка кода
 mage build
 
 # Очистка сгенерированных файлов
@@ -110,19 +135,24 @@ mage help
 
 ### Примеры
 
-Каталог [examples](examples) содержит примеры приложений, демонстрирующих использование gomoqt:
+Каталог [examples](examples) содержит примеры приложений, демонстрирующих
+использование gomoqt:
 
-* **Interop Server и Client** (`interop/`): Тестирование совместимости между различными реализациями MOQ
-* **Пример трансляции** (`examples/broadcast/`): Демонстрация функциональности вещания
-* **Пример эхо-сервера** (`examples/echo/`): Простой эхо-сервер и клиент
-* **Нативный QUIC** (`examples/native_quic/`): Примеры прямых QUIC-подключений
-* **Релей** (`examples/relay/`): Функциональность ретрансляции потоков мультимедиа
+- **Interop Server и Client** (`cmd/interop/`): Тестирование совместимости между
+  различными реализациями MOQ
+- **Пример трансляции** (`examples/broadcast/`): Демонстрация функциональности
+  вещания
+- **Пример эхо-сервера** (`examples/echo/`): Простой эхо-сервер и клиент
+- **Нативный QUIC** (`examples/native_quic/`): Примеры прямых QUIC-подключений
+- **Релей** (`examples/relay/`): Функциональность ретрансляции потоков
+  мультимедиа
 
 ### Документация
 
-* [GoDoc](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt)
-* [Спецификация MOQ Lite](https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html)
-* [Статус реализации](moqt/README.md) — Подробное отслеживание прогресса реализации
+- [GoDoc](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt)
+- [Спецификация MOQ Lite](https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html)
+- [Статус реализации](moqt/README.md) — Подробное отслеживание прогресса
+  реализации
 
 ## Соответствие спецификации
 
@@ -147,10 +177,13 @@ mage help
 
 ## Лицензия
 
-Этот проект распространяется по лицензии MIT. См. [LICENSE](LICENSE) для деталей.
+Этот проект распространяется по лицензии MIT. См. [LICENSE](LICENSE) для
+деталей.
 
 ## Благодарности
 
-* [quic-go](https://github.com/quic-go/quic-go) — реализация QUIC на Go
-* [webtransport-go](https://github.com/quic-go/webtransport-go) — реализация WebTransport на Go
-* [Спецификация MOQ Lite](https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html) — спецификация, которой следует данная реализация
+- [quic-go](https://github.com/quic-go/quic-go) — Реализация QUIC на Go
+- [webtransport-go](https://github.com/quic-go/webtransport-go) — Реализация
+  WebTransport на Go
+- [Спецификация MOQ Lite](https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html) —
+  Спецификация, которой следует данная реализация

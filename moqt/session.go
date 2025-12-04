@@ -212,12 +212,10 @@ func (s *Session) Subscribe(path BroadcastPath, name TrackName, config *TrackCon
 
 	// Send a SUBSCRIBE message
 	sm := message.SubscribeMessage{
-		SubscribeID:      uint64(id),
-		BroadcastPath:    string(path),
-		TrackName:        string(name),
-		TrackPriority:    uint8(config.TrackPriority),
-		MinGroupSequence: uint64(config.MinGroupSequence),
-		MaxGroupSequence: uint64(config.MaxGroupSequence),
+		SubscribeID:   uint64(id),
+		BroadcastPath: string(path),
+		TrackName:     string(name),
+		TrackPriority: uint8(config.TrackPriority),
 	}
 	err = sm.Encode(stream)
 	if err == nil {
@@ -511,9 +509,7 @@ func (sess *Session) processBiStream(stream quic.Stream, streamLogger *slog.Logg
 
 		// Create a receiveSubscribeStream
 		config := &TrackConfig{
-			TrackPriority:    TrackPriority(sm.TrackPriority),
-			MinGroupSequence: GroupSequence(sm.MinGroupSequence),
-			MaxGroupSequence: GroupSequence(sm.MaxGroupSequence),
+			TrackPriority: TrackPriority(sm.TrackPriority),
 		}
 		// Create a subscription-specific logger
 		subLogger := streamLogger.With(

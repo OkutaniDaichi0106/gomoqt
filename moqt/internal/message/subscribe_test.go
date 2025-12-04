@@ -16,20 +16,16 @@ func TestSubscribeMessage_EncodeDecode(t *testing.T) {
 	}{
 		"valid message": {
 			input: message.SubscribeMessage{
-				SubscribeID:      1,
-				BroadcastPath:    "path/to/track",
-				TrackPriority:    5,
-				MinGroupSequence: 10,
-				MaxGroupSequence: 20,
+				SubscribeID:   1,
+				BroadcastPath: "path/to/track",
+				TrackPriority: 5,
 			},
 		},
 		"empty track path": {
 			input: message.SubscribeMessage{
-				SubscribeID:      1,
-				BroadcastPath:    "",
-				TrackPriority:    5,
-				MinGroupSequence: 10,
-				MaxGroupSequence: 20,
+				SubscribeID:   1,
+				BroadcastPath: "",
+				TrackPriority: 5,
 			},
 		},
 		"nil parameters": {

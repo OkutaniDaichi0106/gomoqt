@@ -16,30 +16,22 @@ func TestSubscribeUpdateMessage_EncodeDecode(t *testing.T) {
 	}{
 		"valid message": {
 			input: message.SubscribeUpdateMessage{
-				TrackPriority:    5,
-				MinGroupSequence: 10,
-				MaxGroupSequence: 20,
+				TrackPriority: 5,
 			},
 		},
 		"empty parameters": {
 			input: message.SubscribeUpdateMessage{
-				TrackPriority:    5,
-				MinGroupSequence: 10,
-				MaxGroupSequence: 20,
+				TrackPriority: 5,
 			},
 		},
 		"max values": {
 			input: message.SubscribeUpdateMessage{
-				TrackPriority:    0,
-				MinGroupSequence: 1<<(64-2) - 1, // maxVarInt8
-				MaxGroupSequence: 1<<(64-2) - 1, // maxVarInt8
+				TrackPriority: 255,
 			},
 		},
 		"zero values": {
 			input: message.SubscribeUpdateMessage{
-				TrackPriority:    0,
-				MinGroupSequence: 0,
-				MaxGroupSequence: 0,
+				TrackPriority: 0,
 			},
 		},
 	}
@@ -96,40 +88,13 @@ func TestSubscribeUpdateMessage_DecodeErrors(t *testing.T) {
 		assert.Error(t, err)
 	})
 
-	t.Run("read varint error for min group sequence", func(t *testing.T) {
-		var sum message.SubscribeUpdateMessage
-		var buf bytes.Buffer
-		buf.WriteByte(0x80 | 2)
-		buf.WriteByte(0x00)
-		buf.WriteByte(0x01) // track priority
-		buf.WriteByte(0x80) // invalid varint
-		src := bytes.NewReader(buf.Bytes())
-		err := sum.Decode(src)
-		assert.Error(t, err)
-	})
-
-	t.Run("read varint error for max group sequence", func(t *testing.T) {
-		var sum message.SubscribeUpdateMessage
-		var buf bytes.Buffer
-		buf.WriteByte(0x80 | 3)
-		buf.WriteByte(0x00)
-		buf.WriteByte(0x01) // track priority
-		buf.WriteByte(0x01) // min group sequence
-		buf.WriteByte(0x80) // invalid varint
-		src := bytes.NewReader(buf.Bytes())
-		err := sum.Decode(src)
-		assert.Error(t, err)
-	})
-
 	t.Run("extra data", func(t *testing.T) {
 		var sum message.SubscribeUpdateMessage
 		var buf bytes.Buffer
 		buf.WriteByte(0x00) // length u16 high byte
-		buf.WriteByte(0x04) // length u16 low byte = 4
+		buf.WriteByte(0x02) // length u16 low byte = 2
 		buf.WriteByte(0x01) // track priority
-		buf.WriteByte(0x01) // min group sequence
-		buf.WriteByte(0x01) // max group sequence
-		buf.WriteByte(0x00) // extra (fills to 4 bytes)
+		buf.WriteByte(0x00) // extra
 		src := bytes.NewReader(buf.Bytes())
 		err := sum.Decode(src)
 		assert.Error(t, err)

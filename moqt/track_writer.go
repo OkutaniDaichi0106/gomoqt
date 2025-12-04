@@ -4,7 +4,6 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
-	"sync/atomic"
 
 	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
 	"github.com/OkutaniDaichi0106/gomoqt/quic"
@@ -33,8 +32,6 @@ func newTrackWriter(path BroadcastPath, name TrackName,
 type TrackWriter struct {
 	BroadcastPath BroadcastPath
 	TrackName     TrackName
-
-	groupCount atomic.Uint64
 
 	*receiveSubscribeStream
 
@@ -127,7 +124,11 @@ func (s *TrackWriter) CloseWithError(code SubscribeErrorCode) {
 
 // OpenGroup opens a new group for the provided group sequence and returns a GroupWriter to write frames into it.
 // If seq is zero an error is returned.
-func (s *TrackWriter) OpenGroup() (*GroupWriter, error) {
+func (s *TrackWriter) OpenGroup(seq GroupSequence) (*GroupWriter, error) {
+	if seq == 0 {
+		return nil, errors.New("group sequence must not be zero")
+	}
+
 	// Avoid accessing s.ctx directly; it can be nil if the receiveSubscribeStream
 	// has been cleared during Close(). Instead, capture the receiveSubscribeStream
 	// under lock and validate its context below.
@@ -176,11 +177,9 @@ func (s *TrackWriter) OpenGroup() (*GroupWriter, error) {
 		return nil, err
 	}
 
-	seq := s.groupCount.Add(1)
-
 	err = message.GroupMessage{
 		SubscribeID:   uint64(s.subscribeID),
-		GroupSequence: seq,
+		GroupSequence: uint64(seq),
 	}.Encode(stream)
 	if err != nil {
 		var strErr *quic.StreamError
@@ -195,7 +194,7 @@ func (s *TrackWriter) OpenGroup() (*GroupWriter, error) {
 	}
 
 	var group *GroupWriter
-	group = newGroupWriter(stream, GroupSequence(seq), func() { s.removeGroup(group) })
+	group = newGroupWriter(stream, seq, func() { s.removeGroup(group) })
 	s.addGroup(group)
 
 	return group, nil

@@ -218,7 +218,9 @@ func TestSession_Subscribe(t *testing.T) {
 			path: BroadcastPath("/test/track"),
 			name: TrackName("video"),
 			config: &TrackConfig{
-				TrackPriority: TrackPriority(1),
+				TrackPriority:    TrackPriority(1),
+				MinGroupSequence: GroupSequence(0),
+				MaxGroupSequence: GroupSequence(100),
 			},
 			wantError: false,
 		},
@@ -307,7 +309,9 @@ func TestSession_Subscribe_OpenError(t *testing.T) {
 	session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 	config := &TrackConfig{
-		TrackPriority: TrackPriority(1),
+		TrackPriority:    TrackPriority(1),
+		MinGroupSequence: GroupSequence(0),
+		MaxGroupSequence: GroupSequence(100),
 	}
 
 	subscriber, err := session.Subscribe(BroadcastPath("/test"), TrackName("video"), config)

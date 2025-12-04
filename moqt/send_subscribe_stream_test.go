@@ -15,7 +15,9 @@ import (
 func TestNewSendSubscribeStream(t *testing.T) {
 	id := SubscribeID(123)
 	config := &TrackConfig{
-		TrackPriority: TrackPriority(1),
+		TrackPriority:    TrackPriority(1),
+		MinGroupSequence: GroupSequence(0),
+		MaxGroupSequence: GroupSequence(100),
 	}
 	mockStream := &MockQUICStream{
 		ReadFunc: (&bytes.Buffer{}).Read, // Empty buffer returns EOF immediately
@@ -70,7 +72,9 @@ func TestSendSubscribeStream_ReadInfo(t *testing.T) {
 func TestSendSubscribeStream_TrackConfig(t *testing.T) {
 	id := SubscribeID(789)
 	config := &TrackConfig{
-		TrackPriority: TrackPriority(5),
+		TrackPriority:    TrackPriority(5),
+		MinGroupSequence: GroupSequence(10),
+		MaxGroupSequence: GroupSequence(50),
 	}
 	mockStream := &MockQUICStream{
 		ReadFunc: func(p []byte) (int, error) {
@@ -84,12 +88,16 @@ func TestSendSubscribeStream_TrackConfig(t *testing.T) {
 	returnedConfig := sss.TrackConfig()
 	assert.Equal(t, config, returnedConfig, "TrackConfig() should return the original config")
 	assert.Equal(t, config.TrackPriority, returnedConfig.TrackPriority, "TrackPriority should match")
+	assert.Equal(t, config.MinGroupSequence, returnedConfig.MinGroupSequence, "MinGroupSequence should match")
+	assert.Equal(t, config.MaxGroupSequence, returnedConfig.MaxGroupSequence, "MaxGroupSequence should match")
 }
 
 func TestSendSubscribeStream_UpdateSubscribe(t *testing.T) {
 	id := SubscribeID(101)
 	config := &TrackConfig{
-		TrackPriority: TrackPriority(1),
+		TrackPriority:    TrackPriority(1),
+		MinGroupSequence: GroupSequence(0),
+		MaxGroupSequence: GroupSequence(100),
 	}
 	mockStream := &MockQUICStream{
 		ReadFunc: func(p []byte) (int, error) {
@@ -103,7 +111,9 @@ func TestSendSubscribeStream_UpdateSubscribe(t *testing.T) {
 
 	// Test valid update
 	newConfig := &TrackConfig{
-		TrackPriority: TrackPriority(2),
+		TrackPriority:    TrackPriority(2),
+		MinGroupSequence: GroupSequence(10),
+		MaxGroupSequence: GroupSequence(90),
 	}
 
 	err := sss.UpdateSubscribe(newConfig)
@@ -112,6 +122,8 @@ func TestSendSubscribeStream_UpdateSubscribe(t *testing.T) {
 	// Verify config was updated
 	updatedConfig := sss.TrackConfig()
 	assert.Equal(t, newConfig.TrackPriority, updatedConfig.TrackPriority, "TrackPriority should be updated")
+	assert.Equal(t, newConfig.MinGroupSequence, updatedConfig.MinGroupSequence, "MinGroupSequence should be updated")
+	assert.Equal(t, newConfig.MaxGroupSequence, updatedConfig.MaxGroupSequence, "MaxGroupSequence should be updated")
 
 	mockStream.AssertExpectations(t)
 }
@@ -119,7 +131,9 @@ func TestSendSubscribeStream_UpdateSubscribe(t *testing.T) {
 func TestSendSubscribeStream_UpdateSubscribe_InvalidRange(t *testing.T) {
 	id := SubscribeID(102)
 	config := &TrackConfig{
-		TrackPriority: TrackPriority(1),
+		TrackPriority:    TrackPriority(1),
+		MinGroupSequence: GroupSequence(10),
+		MaxGroupSequence: GroupSequence(100),
 	}
 	mockStream := &MockQUICStream{
 		ReadFunc: func(p []byte) (int, error) {
@@ -134,6 +148,30 @@ func TestSendSubscribeStream_UpdateSubscribe_InvalidRange(t *testing.T) {
 		newConfig *TrackConfig
 		wantError bool
 	}{
+		"min > max": {
+			newConfig: &TrackConfig{
+				TrackPriority:    TrackPriority(1),
+				MinGroupSequence: GroupSequence(50),
+				MaxGroupSequence: GroupSequence(30),
+			},
+			wantError: true,
+		},
+		"decrease min when old min != 0": {
+			newConfig: &TrackConfig{
+				TrackPriority:    TrackPriority(1),
+				MinGroupSequence: GroupSequence(5), // less than original 10
+				MaxGroupSequence: GroupSequence(100),
+			},
+			wantError: true,
+		},
+		"increase max when old max != 0": {
+			newConfig: &TrackConfig{
+				TrackPriority:    TrackPriority(1),
+				MinGroupSequence: GroupSequence(10),
+				MaxGroupSequence: GroupSequence(200), // more than original 100
+			},
+			wantError: true,
+		},
 		"nil config": {
 			newConfig: nil,
 			wantError: true,
@@ -248,7 +286,9 @@ func TestSendSubscribeStream_CloseWithError_NilError(t *testing.T) {
 func TestSendSubscribeStream_ConcurrentUpdate(t *testing.T) {
 	id := SubscribeID(106)
 	config := &TrackConfig{
-		TrackPriority: TrackPriority(1),
+		TrackPriority:    TrackPriority(1),
+		MinGroupSequence: GroupSequence(0),
+		MaxGroupSequence: GroupSequence(100),
 	}
 	mockStream := &MockQUICStream{
 		ReadFunc: func(p []byte) (int, error) {
@@ -265,7 +305,9 @@ func TestSendSubscribeStream_ConcurrentUpdate(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Go(func() {
 		newConfig := &TrackConfig{
-			TrackPriority: TrackPriority(2),
+			TrackPriority:    TrackPriority(2),
+			MinGroupSequence: GroupSequence(5),
+			MaxGroupSequence: GroupSequence(95),
 		}
 		err := sss.UpdateSubscribe(newConfig)
 		if err != nil {
@@ -274,7 +316,9 @@ func TestSendSubscribeStream_ConcurrentUpdate(t *testing.T) {
 	})
 	wg.Go(func() {
 		newConfig := &TrackConfig{
-			TrackPriority: TrackPriority(3),
+			TrackPriority:    TrackPriority(3),
+			MinGroupSequence: GroupSequence(5), // Use same min to avoid conflict
+			MaxGroupSequence: GroupSequence(90),
 		}
 		err := sss.UpdateSubscribe(newConfig)
 		if err != nil {
@@ -321,7 +365,9 @@ func TestSendSubscribeStream_ContextCancellation(t *testing.T) {
 func TestSendSubscribeStream_UpdateSubscribeWriteError(t *testing.T) {
 	id := SubscribeID(108)
 	config := &TrackConfig{
-		TrackPriority: TrackPriority(1),
+		TrackPriority:    TrackPriority(1),
+		MinGroupSequence: GroupSequence(0),
+		MaxGroupSequence: GroupSequence(100),
 	}
 	mockStream := &MockQUICStream{
 		ReadFunc: func(p []byte) (int, error) {
@@ -344,7 +390,9 @@ func TestSendSubscribeStream_UpdateSubscribeWriteError(t *testing.T) {
 	sss := newSendSubscribeStream(id, mockStream, config, Info{})
 
 	newConfig := &TrackConfig{
-		TrackPriority: TrackPriority(2),
+		TrackPriority:    TrackPriority(2),
+		MinGroupSequence: GroupSequence(10),
+		MaxGroupSequence: GroupSequence(90),
 	}
 
 	err := sss.UpdateSubscribe(newConfig)
@@ -467,15 +515,47 @@ func TestSendSubscribeStream_UpdateSubscribeValidRangeTransitions(t *testing.T) 
 		expectError   bool
 		description   string
 	}{
-		"update priority": {
+		"increase min when old min is 0": {
 			initialConfig: &TrackConfig{
-				TrackPriority: TrackPriority(1),
+				TrackPriority:    TrackPriority(1),
+				MinGroupSequence: GroupSequence(0),
+				MaxGroupSequence: GroupSequence(100),
 			},
 			newConfig: &TrackConfig{
-				TrackPriority: TrackPriority(2),
+				TrackPriority:    TrackPriority(1),
+				MinGroupSequence: GroupSequence(10),
+				MaxGroupSequence: GroupSequence(100),
 			},
 			expectError: false,
-			description: "should allow updating priority",
+			description: "should allow increasing min when old min is 0",
+		},
+		"decrease max when old max is 0": {
+			initialConfig: &TrackConfig{
+				TrackPriority:    TrackPriority(1),
+				MinGroupSequence: GroupSequence(10),
+				MaxGroupSequence: GroupSequence(0),
+			},
+			newConfig: &TrackConfig{
+				TrackPriority:    TrackPriority(1),
+				MinGroupSequence: GroupSequence(10),
+				MaxGroupSequence: GroupSequence(50),
+			},
+			expectError: false,
+			description: "should allow setting max when old max is 0",
+		},
+		"valid range within bounds": {
+			initialConfig: &TrackConfig{
+				TrackPriority:    TrackPriority(1),
+				MinGroupSequence: GroupSequence(10),
+				MaxGroupSequence: GroupSequence(100),
+			},
+			newConfig: &TrackConfig{
+				TrackPriority:    TrackPriority(2),
+				MinGroupSequence: GroupSequence(20),
+				MaxGroupSequence: GroupSequence(80),
+			},
+			expectError: false,
+			description: "should allow valid range within bounds",
 		},
 	}
 	for name, tt := range tests {

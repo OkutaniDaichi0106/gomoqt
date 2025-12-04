@@ -10,13 +10,17 @@ import (
 *   Broadcast Path (string),
 *   Track Name (string),
 *   Track Priority (varint),
+*   Min Group Sequence (varint),
+*   Max Group Sequence (varint),
 * }
  */
 type SubscribeMessage struct {
-	SubscribeID   uint64
-	BroadcastPath string
-	TrackName     string
-	TrackPriority uint8
+	SubscribeID      uint64
+	BroadcastPath    string
+	TrackName        string
+	TrackPriority    uint8
+	MinGroupSequence uint64
+	MaxGroupSequence uint64
 }
 
 func (s SubscribeMessage) Len() int {
@@ -26,6 +30,8 @@ func (s SubscribeMessage) Len() int {
 	l += StringLen(s.BroadcastPath)
 	l += StringLen(s.TrackName)
 	l += VarintLen(uint64(s.TrackPriority))
+	l += VarintLen(uint64(s.MinGroupSequence))
+	l += VarintLen(uint64(s.MaxGroupSequence))
 
 	return l
 }
@@ -42,6 +48,8 @@ func (s SubscribeMessage) Encode(w io.Writer) error {
 	b, _ = WriteVarint(b, uint64(len(s.TrackName)))
 	b = append(b, s.TrackName...)
 	b, _ = WriteVarint(b, uint64(s.TrackPriority))
+	b, _ = WriteVarint(b, uint64(s.MinGroupSequence))
+	b, _ = WriteVarint(b, uint64(s.MaxGroupSequence))
 
 	_, err := w.Write(b)
 	return err
@@ -87,6 +95,20 @@ func (s *SubscribeMessage) Decode(src io.Reader) error {
 		return err
 	}
 	s.TrackPriority = uint8(num)
+	b = b[n:]
+
+	num, n, err = ReadVarint(b)
+	if err != nil {
+		return err
+	}
+	s.MinGroupSequence = num
+	b = b[n:]
+
+	num, n, err = ReadVarint(b)
+	if err != nil {
+		return err
+	}
+	s.MaxGroupSequence = num
 	b = b[n:]
 
 	if len(b) != 0 {

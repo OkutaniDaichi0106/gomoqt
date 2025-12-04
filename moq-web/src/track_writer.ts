@@ -8,7 +8,6 @@ import { GroupMessage, writeVarint } from "./internal/message/mod.ts";
 import type { BroadcastPath } from "./broadcast_path.ts";
 import type { SubscribeErrorCode } from "./error.ts";
 import { GroupErrorCode } from "./error.ts";
-import type { GroupSequence } from "./alias.ts";
 
 export class TrackWriter {
 	broadcastPath: BroadcastPath;
@@ -18,6 +17,7 @@ export class TrackWriter {
 		[SendStream, undefined] | [undefined, Error]
 	>;
 	#groups: GroupWriter[] = [];
+	#groupCount: number = 0;
 
 	constructor(
 		broadcastPath: BroadcastPath,
@@ -45,9 +45,7 @@ export class TrackWriter {
 		return this.#subscribeStream.trackConfig;
 	}
 
-	async openGroup(
-		groupSequence: GroupSequence,
-	): Promise<[GroupWriter, undefined] | [undefined, Error]> {
+	async openGroup(): Promise<[GroupWriter, undefined] | [undefined, Error]> {
 		let err: Error | undefined;
 		err = await this.#subscribeStream.writeInfo();
 		if (err) {
@@ -65,9 +63,10 @@ export class TrackWriter {
 			return [undefined, new Error(`Failed to write stream type: ${err}`)];
 		}
 
+		this.#groupCount++;
 		const msg = new GroupMessage({
 			subscribeId: this.subscribeId,
-			sequence: groupSequence,
+			sequence: this.#groupCount,
 		});
 		err = await msg.encode(writer!);
 		if (err) {

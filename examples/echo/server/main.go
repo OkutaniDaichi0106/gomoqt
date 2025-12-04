@@ -70,7 +70,7 @@ func main() {
 						}
 
 						go func(gr *moqt.GroupReader) {
-							gw, err := tw.OpenGroup()
+							gw, err := tw.OpenGroup(gr.GroupSequence())
 							if err != nil {
 								slog.Error("failed to open group", "error", err)
 								return

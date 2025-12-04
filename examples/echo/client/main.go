@@ -11,18 +11,19 @@ import (
 
 func main() {
 	moqt.PublishFunc(context.Background(), "/client.echo", func(tw *moqt.TrackWriter) {
+		seq := moqt.GroupSequenceFirst
 		frame := moqt.NewFrame(1024)
 		for {
 			time.Sleep(100 * time.Millisecond)
 
-			gw, err := tw.OpenGroup()
+			gw, err := tw.OpenGroup(seq)
 			if err != nil {
 				slog.Error("failed to open group", "error", err)
 				return
 			}
 
 			frame.Reset()
-			frame.Write([]byte("FRAME " + gw.GroupSequence().String()))
+			frame.Write([]byte("FRAME " + seq.String()))
 
 			err = gw.WriteFrame(frame)
 			if err != nil {
@@ -32,6 +33,8 @@ func main() {
 			}
 
 			gw.Close()
+
+			seq = seq.Next()
 		}
 	})
 

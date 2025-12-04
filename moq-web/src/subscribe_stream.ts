@@ -7,13 +7,11 @@ import type { CancelCauseFunc, Context } from "@okudai/golikejs/context";
 import { withCancelCause } from "@okudai/golikejs/context";
 import { WebTransportStreamError } from "./internal/webtransport/mod.ts";
 import type { Info } from "./info.ts";
-import type { GroupSequence, SubscribeID, TrackPriority } from "./alias.ts";
+import type { SubscribeID, TrackPriority } from "./alias.ts";
 import { SubscribeErrorCode } from "./error.ts";
 
 export interface TrackConfig {
 	trackPriority: TrackPriority;
-	minGroupSequence: GroupSequence;
-	maxGroupSequence: GroupSequence;
 }
 
 export class SendSubscribeStream {
@@ -34,8 +32,6 @@ export class SendSubscribeStream {
 		this.#stream = stream;
 		this.#config = {
 			trackPriority: subscribe.trackPriority,
-			minGroupSequence: subscribe.minGroupSequence,
-			maxGroupSequence: subscribe.maxGroupSequence,
 		};
 		this.#id = subscribe.subscribeId;
 		this.#info = ok;
@@ -93,8 +89,6 @@ export class ReceiveSubscribeStream {
 		this.subscribeId = subscribe.subscribeId;
 		this.#trackConfig = {
 			trackPriority: subscribe.trackPriority,
-			minGroupSequence: subscribe.minGroupSequence,
-			maxGroupSequence: subscribe.maxGroupSequence,
 		};
 		[this.context, this.#cancelFunc] = withCancelCause(sessCtx);
 
@@ -116,8 +110,6 @@ export class ReceiveSubscribeStream {
 
 			this.#trackConfig = {
 				trackPriority: msg.trackPriority,
-				minGroupSequence: msg.minGroupSequence,
-				maxGroupSequence: msg.maxGroupSequence,
 			};
 
 			this.#cond.broadcast();

@@ -2,7 +2,6 @@ import { parseArgs } from "@std/cli/parse-args";
 import { Client } from "../../src/client.ts";
 import { TrackMux } from "../../src/track_mux.ts";
 import { Frame } from "../../src/frame.ts";
-import { GroupSequenceFirst } from "../../src/group_stream.ts";
 
 async function main() {
 	const args = parseArgs(Deno.args, {
@@ -47,7 +46,7 @@ async function main() {
 		mux.publishFunc(ctx, "/interop/client", async (tw) => {
 			try {
 				console.log("Opening group...");
-				const [group, err] = await tw.openGroup(GroupSequenceFirst);
+				const [group, err] = await tw.openGroup();
 				if (err) throw err;
 				console.log("...ok");
 

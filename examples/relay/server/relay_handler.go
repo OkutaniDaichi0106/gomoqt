@@ -92,7 +92,7 @@ func (r *trackRelayer) addDestination(dest *moqt.TrackWriter) {
 	r.dests[dest] = struct{}{}
 	r.mu.Unlock()
 
-	gw, err := dest.OpenGroup()
+	gw, err := dest.OpenGroup(r.lastGroupCache.seq)
 	if err != nil {
 		r.removeDestination(dest)
 		return
@@ -137,7 +137,7 @@ func (r *trackRelayer) relay(ctx context.Context) {
 		groups := make([]*moqt.GroupWriter, 0, len(r.dests))
 		var failed []*moqt.TrackWriter
 		for dest := range r.dests {
-			gw, err := dest.OpenGroup()
+			gw, err := dest.OpenGroup(currentSeq)
 			if err != nil {
 				if failed == nil {
 					failed = make([]*moqt.TrackWriter, 0, 1<<3)

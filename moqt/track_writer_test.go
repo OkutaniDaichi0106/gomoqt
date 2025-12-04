@@ -77,10 +77,31 @@ func TestTrackWriter_OpenGroup(t *testing.T) {
 	sender := newTrackWriter("/broadcast/path", "track_name", substr, openUniStreamFunc, onCloseTrack)
 
 	// Test opening a group
-	group, err := sender.OpenGroup()
+	group, err := sender.OpenGroup(GroupSequence(1))
 	assert.NoError(t, err, "OpenGroup should not return error")
 	assert.NotNil(t, group, "group should not be nil")
 	assert.True(t, acceptCalled, "accept function should be called")
+}
+
+func TestTrackWriter_OpenGroup_ZeroSequence(t *testing.T) {
+	openUniStreamFunc := func() (quic.SendStream, error) {
+		return nil, nil
+	}
+	mockStream := &MockQUICStream{}
+	mockStream.On("StreamID").Return(quic.StreamID(1))
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Write", mock.Anything).Return(0, nil)
+	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{})
+	onCloseTrack := func() {}
+
+	sender := newTrackWriter("/broadcast/path", "track_name", substr, openUniStreamFunc, onCloseTrack)
+
+	// Test opening a group with zero sequence
+	group, err := sender.OpenGroup(GroupSequence(0))
+	assert.Error(t, err, "OpenGroup should return error for zero sequence")
+	assert.Nil(t, group, "group should be nil for zero sequence")
+	assert.Contains(t, err.Error(), "group sequence must not be zero")
 }
 
 func TestTrackWriter_OpenGroup_ContextCanceled(t *testing.T) {
@@ -101,10 +122,9 @@ func TestTrackWriter_OpenGroup_ContextCanceled(t *testing.T) {
 	sender := newTrackWriter("/broadcast/path", "track_name", substr, openUniStreamFunc, onCloseTrack)
 
 	// Test opening a group with canceled context
-	group, err := sender.OpenGroup()
+	group, err := sender.OpenGroup(GroupSequence(1))
 	assert.Error(t, err, "OpenGroup should return error with canceled context")
 	assert.Nil(t, group, "group should be nil with canceled context")
-	// The error should be the context error
 	assert.Equal(t, context.Canceled, err, "error should be context.Canceled")
 }
 
@@ -127,7 +147,7 @@ func TestTrackWriter_OpenGroup_OpenGroupError(t *testing.T) {
 	sender := newTrackWriter("/broadcast/path", "track_name", substr, openUniStreamFunc, onCloseTrack)
 
 	// Test opening a group when openUniStreamFunc returns error
-	group, err := sender.OpenGroup()
+	group, err := sender.OpenGroup(GroupSequence(1))
 	assert.Error(t, err, "OpenGroup should return error when openUniStreamFunc fails")
 	assert.Nil(t, group, "group should be nil when openUniStreamFunc fails")
 	assert.Contains(t, err.Error(), expectedError.Error(), "error should contain the error from openUniStreamFunc")
@@ -163,12 +183,11 @@ func TestTrackWriter_OpenGroup_Success(t *testing.T) {
 	sender := newTrackWriter("/broadcast/path", "track_name", substr, openUniStreamFunc, onCloseTrack)
 
 	// Test successful group opening
-	group, err := sender.OpenGroup()
+	group, err := sender.OpenGroup(GroupSequence(1))
 	assert.NoError(t, err, "OpenGroup should not return error")
 	assert.NotNil(t, group, "group should not be nil")
 	assert.True(t, acceptCalled, "accept function should be called")
-	// groupSequence is now auto-generated starting from 1
-	assert.Equal(t, GroupSequence(1), group.GroupSequence(), "group sequence should be 1 for first group")
+	assert.Equal(t, GroupSequence(1), group.GroupSequence(), "group sequence should match")
 
 	// Close the group to trigger removeGroup
 	err = group.Close()
@@ -197,7 +216,7 @@ func TestTrackWriter_ContextCancellation(t *testing.T) {
 	sender := newTrackWriter("/broadcast/path", "track_name", substr, openUniStreamFunc, onCloseTrack)
 
 	// Open a group first
-	group, err := sender.OpenGroup()
+	group, err := sender.OpenGroup(GroupSequence(1))
 	assert.NoError(t, err)
 	assert.NotNil(t, group)
 
@@ -205,7 +224,7 @@ func TestTrackWriter_ContextCancellation(t *testing.T) {
 	cancel()
 
 	// Try to open another group - this should fail due to cancelled context
-	group2, err := sender.OpenGroup()
+	group2, err := sender.OpenGroup(GroupSequence(2))
 	assert.Error(t, err, "OpenGroup should return error with cancelled context")
 	assert.Nil(t, group2, "group should be nil with cancelled context")
 	assert.Equal(t, context.Canceled, err, "error should be context.Canceled")
@@ -309,7 +328,7 @@ func TestTrackWriter_OpenAfterClose(t *testing.T) {
 			}
 		}()
 
-		group, err = sender.OpenGroup()
+		group, err = sender.OpenGroup(GroupSequence(1))
 	}()
 
 	if panicked {
@@ -358,7 +377,7 @@ func TestTrackWriter_OpenWhileClose(t *testing.T) {
 				t.Logf("OpenGroup panicked during concurrent Close: %v", r)
 			}
 		}()
-		group, err := sender.OpenGroup()
+		group, err := sender.OpenGroup(GroupSequence(1))
 		// Because Close is called concurrently, OpenGroup may return nil
 		if err == nil && group != nil {
 			// If it succeeded, ensure group is closed later

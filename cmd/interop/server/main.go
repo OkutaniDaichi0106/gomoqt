@@ -105,7 +105,7 @@ func main() {
 			fmt.Println("Serving a track: " + string(path) + "," + string(tw.TrackName))
 
 			fmt.Print("Opening group...")
-			group, err := tw.OpenGroup()
+			group, err := tw.OpenGroup(moqt.GroupSequenceFirst)
 			if err != nil {
 				fmt.Printf("...failed\n  Error: %v\n", err)
 				return

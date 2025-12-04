@@ -7,17 +7,24 @@ import (
 /*
  * SUBSCRIBE_UPDATE Message {
  *   Track Priority (varint),
+ *   Group Order (varint),
+ *   Min Group Sequence (varint),
+ *   Max Group Sequence (varint),
  *   Subscribe Update Parameters (Parameters),
  * }
  */
 type SubscribeUpdateMessage struct {
-	TrackPriority uint8
+	TrackPriority    uint8
+	MinGroupSequence uint64
+	MaxGroupSequence uint64
 }
 
 func (su SubscribeUpdateMessage) Len() int {
 	var l int
 
 	l += VarintLen(uint64(su.TrackPriority))
+	l += VarintLen(uint64(su.MinGroupSequence))
+	l += VarintLen(uint64(su.MaxGroupSequence))
 
 	return l
 }
@@ -29,6 +36,8 @@ func (su SubscribeUpdateMessage) Encode(w io.Writer) error {
 
 	p, _ = WriteMessageLength(p, uint16(msgLen))
 	p, _ = WriteVarint(p, uint64(su.TrackPriority))
+	p, _ = WriteVarint(p, uint64(su.MinGroupSequence))
+	p, _ = WriteVarint(p, uint64(su.MaxGroupSequence))
 
 	_, err := w.Write(p)
 
@@ -54,6 +63,20 @@ func (sum *SubscribeUpdateMessage) Decode(src io.Reader) error {
 		return err
 	}
 	sum.TrackPriority = uint8(num)
+	b = b[n:]
+
+	num, n, err = ReadVarint(b)
+	if err != nil {
+		return err
+	}
+	sum.MinGroupSequence = num
+	b = b[n:]
+
+	num, n, err = ReadVarint(b)
+	if err != nil {
+		return err
+	}
+	sum.MaxGroupSequence = num
 	b = b[n:]
 
 	if len(b) != 0 {

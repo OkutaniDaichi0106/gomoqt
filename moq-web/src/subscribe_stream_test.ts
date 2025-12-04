@@ -31,15 +31,11 @@ Deno.test("SendSubscribeStream.update writes update to writable", async () => {
 		broadcastPath: "/test",
 		trackName: "t",
 		trackPriority: 0,
-		minGroupSequence: 0,
-		maxGroupSequence: 0,
 	});
 	const ok = new SubscribeOkMessage({});
 	const sss = new SendSubscribeStream(ctx, s, subscribe, ok);
 	const err = await sss.update({
 		trackPriority: 1,
-		minGroupSequence: 2,
-		maxGroupSequence: 3,
 	});
 	assertEquals(err, undefined);
 	assertEquals(writtenData.length > 0, true);
@@ -65,8 +61,6 @@ Deno.test("SendSubscribeStream closeWithError cancels stream", async () => {
 		broadcastPath: "/test",
 		trackName: "t",
 		trackPriority: 0,
-		minGroupSequence: 0,
-		maxGroupSequence: 0,
 	});
 	const ok = new SubscribeOkMessage({});
 	const sss = new SendSubscribeStream(ctx, s, subscribe, ok);

@@ -44,7 +44,9 @@ func newReceiveSubscribeStream(id SubscribeID, stream quic.Stream, config *Track
 
 			rss.configMu.Lock()
 			rss.config = &TrackConfig{
-				TrackPriority: TrackPriority(sum.TrackPriority),
+				TrackPriority:    TrackPriority(sum.TrackPriority),
+				MinGroupSequence: GroupSequence(sum.MinGroupSequence),
+				MaxGroupSequence: GroupSequence(sum.MaxGroupSequence),
 			}
 
 			select {

@@ -21,7 +21,7 @@ scope(async (defer) => {
 			try {
 				console.debug("[Client] Server subscribed, sending data...");
 
-				const [group, trackErr] = await track.openGroup(1);
+				const [group, trackErr] = await track.openGroup();
 				if (trackErr) {
 					console.error("[Client] Failed to open group:", trackErr);
 					return;

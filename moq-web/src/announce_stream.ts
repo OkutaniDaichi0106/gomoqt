@@ -281,7 +281,12 @@ export class AnnouncementReader {
 				}
 
 				// Only log as error if context is still active (not shutting down)
-				if (!this.context.err()) {
+				// and it's not a connection reset during shutdown
+				if (
+					!this.context.err() &&
+					!(err.message?.includes("ConnectionReset") ||
+						err.message?.includes("stream reset"))
+				) {
 					console.error(`moq: failed to read ANNOUNCE message: ${err}`);
 				}
 				return;

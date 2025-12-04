@@ -2,7 +2,6 @@ import { parseArgs } from "@std/cli/parse-args";
 import { Client } from "../../src/client.ts";
 import { TrackMux } from "../../src/track_mux.ts";
 import { Frame } from "../../src/frame.ts";
-import { GroupSequenceFirst } from "../../src/group_stream.ts";
 
 async function main() {
 	const args = parseArgs(Deno.args, {
@@ -47,7 +46,7 @@ async function main() {
 		mux.publishFunc(ctx, "/interop/client", async (tw) => {
 			try {
 				console.log("Opening group...");
-				const [group, err] = await tw.openGroup(GroupSequenceFirst);
+				const [group, err] = await tw.openGroup();
 				if (err) throw err;
 				console.log("...ok");
 
@@ -92,6 +91,9 @@ async function main() {
 		console.log("...ok");
 		console.log(`Discovered broadcast: ${ann.broadcastPath}`);
 
+		// Close announcement stream after receiving what we need
+		anns.close();
+
 		// Step 2: Subscribe to the server's broadcast and receive data
 		console.log("Subscribing to server broadcast...");
 		const [track, subErr] = await sess.subscribe(ann.broadcastPath, "");
@@ -121,7 +123,17 @@ async function main() {
 		// Wait a bit for server to process everything before closing
 		await new Promise((r) => setTimeout(r, 1000));
 	} catch (err) {
-		console.error("Error during interop:", err);
+		// Ignore connection reset errors during shutdown
+		if (err && typeof err === "object" && "message" in err) {
+			const msg = String(err.message);
+			if (msg.includes("ConnectionReset") || msg.includes("stream reset")) {
+				// Expected during session closure
+			} else {
+				console.error("Error during interop:", err);
+			}
+		} else {
+			console.error("Error during interop:", err);
+		}
 	} finally {
 		console.log("Closing session...");
 		await sess.closeWithError(0, "no error");

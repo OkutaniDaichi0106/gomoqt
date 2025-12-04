@@ -3,7 +3,6 @@ import { spy } from "@std/testing/mock";
 import { TrackWriter } from "./track_writer.ts";
 import { background, withCancelCause } from "@okudai/golikejs/context";
 import { SendStream } from "./internal/webtransport/mod.ts";
-import { GroupSequenceFirst } from "./group_stream.ts";
 import { MockSendStream, MockStream } from "./mock_stream_test.ts";
 import { ReceiveSubscribeStream } from "./subscribe_stream.ts";
 import { SubscribeMessage } from "./internal/message/mod.ts";
@@ -19,8 +18,6 @@ Deno.test("TrackWriter", async (t) => {
 				broadcastPath: "/test",
 				trackName: "test",
 				trackPriority: 0,
-				minGroupSequence: 0,
-				maxGroupSequence: 0,
 			});
 			const rss = new ReceiveSubscribeStream(ctx, stream, subscribe);
 			const writtenData: Uint8Array[] = [];
@@ -33,7 +30,7 @@ Deno.test("TrackWriter", async (t) => {
 			});
 			const openUni = async () => [mockWritable, undefined] as [SendStream, undefined];
 			const tw = new TrackWriter("/test", "test", rss, openUni);
-			const [grp, err] = await tw.openGroup(1);
+			const [grp, err] = await tw.openGroup();
 			assertEquals(err, undefined);
 			assertEquals(grp !== undefined, true);
 		},
@@ -48,13 +45,11 @@ Deno.test("TrackWriter", async (t) => {
 				broadcastPath: "/test",
 				trackName: "test",
 				trackPriority: 0,
-				minGroupSequence: 0,
-				maxGroupSequence: 0,
 			});
 			const rss = new ReceiveSubscribeStream(ctx, stream, subscribe);
 			const openUni = async () => [undefined, new Error("no stream")] as [undefined, Error];
 			const tw = new TrackWriter("/test", "test", rss, openUni);
-			const [grp, err] = await tw.openGroup(1);
+			const [grp, err] = await tw.openGroup();
 			assertEquals(grp, undefined);
 			assertEquals(err instanceof Error, true);
 		},
@@ -70,8 +65,6 @@ Deno.test("TrackWriter", async (t) => {
 				broadcastPath: "/t",
 				trackName: "test",
 				trackPriority: 0,
-				minGroupSequence: 0,
-				maxGroupSequence: 0,
 			});
 			const rss = new ReceiveSubscribeStream(ctx, stream, subscribe);
 			const cancelCalls: number[] = [];
@@ -84,7 +77,7 @@ Deno.test("TrackWriter", async (t) => {
 			const openUni = async () => [mockWritable, undefined] as [SendStream, undefined];
 			const tw = new TrackWriter("/t", "test", rss, openUni);
 			// Open a group to add to internal groups
-			const [grp, err2] = await tw.openGroup(2);
+			const [grp, err2] = await tw.openGroup();
 			assertEquals(err2, undefined);
 			assertEquals(grp !== undefined, true);
 			// Close with error and ensure group canceled
@@ -114,8 +107,6 @@ Deno.test("TrackWriter", async (t) => {
 				broadcastPath: "/test/",
 				trackName: "name",
 				trackPriority: 0,
-				minGroupSequence: 0,
-				maxGroupSequence: 0,
 			});
 			const rss = new ReceiveSubscribeStream(ctx, stream, subscribe);
 
@@ -134,7 +125,7 @@ Deno.test("TrackWriter", async (t) => {
 				},
 			);
 
-			const [group, err] = await tw.openGroup(GroupSequenceFirst);
+			const [group, err] = await tw.openGroup();
 			assertEquals(group, undefined);
 			assertInstanceOf(err, Error);
 		},
@@ -150,8 +141,6 @@ Deno.test("TrackWriter", async (t) => {
 				broadcastPath: "/test/",
 				trackName: "name",
 				trackPriority: 0,
-				minGroupSequence: 0,
-				maxGroupSequence: 0,
 			});
 			const rss = new ReceiveSubscribeStream(ctx, stream, subscribe);
 
@@ -174,7 +163,7 @@ Deno.test("TrackWriter", async (t) => {
 
 			const tw = new TrackWriter("/test/", "name", rss, openUni);
 
-			const [group, err] = await tw.openGroup(GroupSequenceFirst);
+			const [group, err] = await tw.openGroup();
 			assertEquals(group, undefined);
 			assertInstanceOf(err, Error);
 		},

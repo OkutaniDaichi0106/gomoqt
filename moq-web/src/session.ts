@@ -255,8 +255,6 @@ export class Session {
 			broadcastPath: path,
 			trackName: name,
 			trackPriority: config?.trackPriority ?? 0,
-			minGroupSequence: config?.minGroupSequence ?? 0,
-			maxGroupSequence: config?.maxGroupSequence ?? 0,
 		});
 		err = await req.encode(stream.writable);
 		if (err) {

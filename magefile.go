@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -199,8 +200,23 @@ func (t Test) Coverage() error {
 type Interop mg.Namespace
 
 // Server runs the interop server
+// Usage:
+//
+//	mage interop:server              - Run server (normal mode)
+//	MKCERT=1 mage interop:server     - Run server with certificate regeneration
 func (Interop) Server() error {
 	fmt.Println("Starting interop server...")
+
+	// Check for MKCERT environment variable
+	mkcert := os.Getenv("MKCERT") != ""
+
+	// If MKCERT env var is set, regenerate certificates first
+	if mkcert {
+		fmt.Println("Regenerating certificates...")
+		if err := regenerateCerts(); err != nil {
+			return err
+		}
+	}
 
 	// Save current working directory
 	wd, err := os.Getwd()
@@ -318,9 +334,10 @@ func Help() {
 	fmt.Println("  mage test:coverage - Run tests with coverage")
 	fmt.Println("")
 	fmt.Println("Interop:")
-	fmt.Println("  mage interop:server    - Start interop server")
-	fmt.Println("  mage interop:client go - Start server + Go client")
-	fmt.Println("  mage interop:client ts - Start server + TypeScript client")
+	fmt.Println("  mage interop:server                    - Start interop server")
+	fmt.Println("  MKCERT=1 mage interop:server           - Start server with certificate regeneration")
+	fmt.Println("  mage interop:client go                 - Start server + Go client")
+	fmt.Println("  mage interop:client ts                 - Start server + TypeScript client")
 	fmt.Println("")
 	fmt.Println("Development:")
 	fmt.Println("  mage lint   - Run golangci-lint")
@@ -331,6 +348,40 @@ func Help() {
 	fmt.Println("  mage help   - Show this help message")
 	fmt.Println("")
 	fmt.Println("You can also run 'mage -l' to list all available targets.")
+}
+
+// regenerateCerts regenerates the server certificates
+func regenerateCerts() error {
+	// Find project root by looking for go.mod file
+	wd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	// Change to server directory
+	serverDir := filepath.Join(wd, "cmd", "interop", "server")
+	if err := os.Chdir(serverDir); err != nil {
+		return err
+	}
+	defer func() {
+		_ = os.Chdir(wd)
+	}()
+
+	// Remove old certificates if they exist
+	_ = os.Remove("localhost.pem")
+	_ = os.Remove("localhost-key.pem")
+
+	// Generate new certificates
+	fmt.Print("Generating new certificates with mkcert...")
+	cmd := exec.Command("mkcert", "-cert-file", "localhost.pem", "-key-file", "localhost-key.pem", "localhost", "127.0.0.1", "::1")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("...failed\n  Error: %v\n", err)
+		return err
+	}
+	fmt.Println("...ok")
+	return nil
 }
 
 // Default target - displays help when no target is specified

@@ -52,8 +52,6 @@ Deno.test("TrackReader", async (t) => {
 			const tr = new TrackReader("/test", "name", sss, queue, onClose);
 			const err = await tr.update({
 				trackPriority: 5,
-				minGroupSequence: 0,
-				maxGroupSequence: 0,
 			});
 			assertEquals(err, undefined);
 			assertEquals(tr.readInfo(), sss.info);

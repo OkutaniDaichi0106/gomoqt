@@ -1,7 +1,7 @@
 import { assertEquals, assertInstanceOf } from "@std/assert";
 import { spy } from "@std/testing/mock";
 import { GroupReader, GroupSequenceFirst, GroupWriter } from "./group_stream.ts";
-import { GroupMessage, writeVarint } from "./internal/message/mod.ts";
+import { GroupMessage, writeUint16 } from "./internal/message/mod.ts";
 import { BytesFrame, Frame } from "./frame.ts";
 import { background, withCancelCause } from "@okudai/golikejs/context";
 import { GroupErrorCode } from "./error.ts";
@@ -153,7 +153,7 @@ Deno.test("GroupReader", async (t) => {
 					},
 				),
 			};
-			await writeVarint(ms, payload.length);
+			await writeUint16(ms, payload.length);
 			await ms.write(payload);
 			const total = encoderWrittenData.reduce((a, b) => a + b.length, 0);
 			const data = new Uint8Array(total);
@@ -182,7 +182,7 @@ Deno.test("GroupReader", async (t) => {
 			assertEquals(err, undefined);
 			const readSub = frame.data.subarray(0, payload.length);
 			assertEquals(readSub, payload);
-			assertEquals(frame.data.length, 10);
+			assertEquals(frame.data.length, payload.length);
 		},
 	);
 

@@ -125,4 +125,3 @@ scope(async (defer) => {
 		Deno.exit(0);
 	});
 });
-

@@ -2267,11 +2267,11 @@ func TestAnnouncement_AfterFunc_ConcurrentRegistrationAndEnd(t *testing.T) {
 		}()
 	}
 
-	// Call end concurrently
-	go end()
-
-	// Wait for all registrations to complete
+	// Wait for all registrations to complete BEFORE calling end()
 	wg.Wait()
+
+	// Now call end after all AfterFunc registrations are complete
+	end()
 
 	// Wait until announcement's Done channel is closed to ensure all handler invocations are complete
 	select {

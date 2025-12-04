@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [v0.6.0] - 2025-12-05
+
+### Added
+
+- `bitrate` package: Bitrate monitoring functionality with `ShiftDetector` interface and `EWMAShiftDetector` implementation for detecting bitrate shifts using Exponential Weighted Moving Average
+
+### Fixed
+
+- `AnnouncementWriter`: Avoid deadlock by calling end functions asynchronously
+
+### Changed
+
+- Modernize test code: Replace traditional for loops with range loops
+- Stabilize flaky `TestAnnouncement_AfterFunc_ConcurrentRegistrationAndEnd` test
+- Replace `WritableStream` and `ReceiveStream` with `Buffer` in message tests
+
+## [v0.5.1] - 2025-12-04
+
+### Changed
+
+- docs: Update README files to add table of contents and improve clarity
+- docs: Update README for correct package references
+
 ## [v0.5.0] - 2025-12-04
 
 ### Changed

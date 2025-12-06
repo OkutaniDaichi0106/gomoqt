@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/bitrate"
+	"github.com/okdaichi/gomoqt/moqt/bitrate"
 )
 
 // Config contains configuration options for MOQ sessions.

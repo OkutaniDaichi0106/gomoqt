@@ -7,8 +7,8 @@ import (
 	"io"
 	"log"
 
-	"github.com/OkutaniDaichi0106/gomoqt/quic"
-	"github.com/OkutaniDaichi0106/gomoqt/quic/quicgo"
+	"github.com/okdaichi/gomoqt/quic"
+	"github.com/okdaichi/gomoqt/quic/quicgo"
 )
 
 // Example demonstrates basic QUIC connection setup.

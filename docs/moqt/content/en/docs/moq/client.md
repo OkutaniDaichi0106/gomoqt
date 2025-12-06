@@ -51,10 +51,10 @@ The following table describes the public fields of the `moqt.Client` struct:
 | Field                  | Type                        | Description                                 |
 |------------------------|-----------------------------|---------------------------------------------|
 | `TLSConfig`            | [`*tls.Config`](https://pkg.go.dev/crypto/tls#Config) | TLS configuration for secure connections    |
-| `QUICConfig`           | [`*quic.Config`](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt/quic#Config)              | QUIC protocol configuration                 |
-| `Config`               | [`*moqt.Config`](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt/moqt#Config)                   | MOQ protocol configuration                  |
-| `DialQUICFunc`         | [`quic.DialAddrFunc`](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt/quic#DialAddrFunc)         | Function to dial QUIC connection            |
-| `DialWebTransportFunc` | [`webtransport.DialAddrFunc`](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt/webtransport#DialAddrFunc) | Function to dial WebTransport connection    |
+| `QUICConfig`           | [`*quic.Config`](https://pkg.go.dev/github.com/okdaichi/gomoqt/quic#Config)              | QUIC protocol configuration                 |
+| `Config`               | [`*moqt.Config`](https://pkg.go.dev/github.com/okdaichi/gomoqt/moqt#Config)                   | MOQ protocol configuration                  |
+| `DialQUICFunc`         | [`quic.DialAddrFunc`](https://pkg.go.dev/github.com/okdaichi/gomoqt/quic#DialAddrFunc)         | Function to dial QUIC connection            |
+| `DialWebTransportFunc` | [`webtransport.DialAddrFunc`](https://pkg.go.dev/github.com/okdaichi/gomoqt/webtransport#DialAddrFunc) | Function to dial WebTransport connection    |
 | `Logger`               | [`*slog.Logger`](https://pkg.go.dev/log/slog#Logger)              | Logger for client events and errors         |
 
 {{< tabs items="Using Default QUIC, Using Custom QUIC" >}}
@@ -69,7 +69,7 @@ The following table describes the public fields of the `moqt.Client` struct:
 
 To use a custom QUIC implementation, you need to provide your own implementation of the `quic.DialAddrFunc`. `(moqt.Client).DialQUICFunc` field is set, it is used to dial QUIC connections instead of the default implementation.
 
-```go {filename="gomoqt/moqt/client.go",base_url="https://github.com/OkutaniDaichi0106/gomoqt/tree/main/moqt/client.go"}
+```go {filename="gomoqt/moqt/client.go",base_url="https://github.com/okdaichi/gomoqt/tree/main/moqt/client.go"}
 type Client struct {
     // ...
 	DialQUICFunc quic.DialAddrFunc
@@ -92,7 +92,7 @@ type Client struct {
 
 To use a custom WebTransport implementation, you need to provide your own implementation of the `webtransport.DialAddrFunc`. `(moqt.Client).DialWebTransportFunc` field is set, it is used to dial WebTransport connections instead of the default implementation.
 
-```go {filename="gomoqt/moqt/client.go",base_url="https://github.com/OkutaniDaichi0106/gomoqt/tree/main/moqt/client.go"}
+```go {filename="gomoqt/moqt/client.go",base_url="https://github.com/okdaichi/gomoqt/tree/main/moqt/client.go"}
 type Client struct {
     // ...
 	DialWebTransportFunc webtransport.DialAddrFunc

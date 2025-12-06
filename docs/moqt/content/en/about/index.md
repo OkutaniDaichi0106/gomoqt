@@ -23,7 +23,7 @@ Basic usage involves setting up a MoQ server and connecting clients for media st
 This project is licensed under the MIT License.
 
 ## Developer Information
-Developed by OkutaniDaichi0106 and contributors.
+Developed by okdaichi and contributors.
 
 For inquiries, please contact via GitHub Issues.
 
@@ -34,7 +34,7 @@ For questions or feedback, please open an issue on GitHub or reach out via the c
 
   {{< tab >}}
     {{<cards>}}
-    {{<card link="https://github.com/OkutaniDaichi0106" title="OkutaniDaichi0106" icon="github" subtitle="Owner">}}
+    {{<card link="https://github.com/okdaichi" title="okdaichi" icon="github" subtitle="Owner">}}
     {{</cards>}}
   {{< /tab >}}
   {{< tab >}}

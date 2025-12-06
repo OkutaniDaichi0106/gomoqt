@@ -1,20 +1,20 @@
-module github.com/OkutaniDaichi0106/gomoqt
+module github.com/okdaichi/gomoqt
 
 go 1.25.0
 
 require (
 	github.com/magefile/mage v1.15.0
-	github.com/quic-go/quic-go v0.56.0
+	github.com/quic-go/quic-go v0.57.1
 	github.com/quic-go/webtransport-go v0.9.1-0.20251115050751-b7714a748e1a
 	github.com/stretchr/testify v1.11.1
 )
 
-replace github.com/quic-go/quic-go => github.com/OkutaniDaichi0106/quic-go v0.0.0-20251120033224-9bbaddbace83
+// Removed replace directives to maintain upstream canonical modules. Use upstream canonical modules instead.
+replace github.com/quic-go/quic-go => github.com/okdaichi/quic-go v0.0.0-20251206231436-9d4d0b2820c2
 
-replace github.com/quic-go/webtransport-go => github.com/OkutaniDaichi0106/webtransport-go v0.9.2-0.20251120034558-cbcede81fc4a
+replace github.com/quic-go/webtransport-go => github.com/okdaichi/webtransport-go v0.9.2-0.20251206232458-65e9257355b8
 
 require (
-	github.com/OkutaniDaichi0106/webtransport-go v0.9.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dunglas/httpsfv v1.1.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect

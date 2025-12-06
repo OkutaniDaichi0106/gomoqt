@@ -11,12 +11,12 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/bitrate"
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/quic"
-	"github.com/OkutaniDaichi0106/gomoqt/quic/quicgo"
-	"github.com/OkutaniDaichi0106/gomoqt/webtransport"
-	"github.com/OkutaniDaichi0106/gomoqt/webtransport/webtransportgo"
+	"github.com/okdaichi/gomoqt/moqt/bitrate"
+	"github.com/okdaichi/gomoqt/moqt/internal/message"
+	"github.com/okdaichi/gomoqt/quic"
+	"github.com/okdaichi/gomoqt/quic/quicgo"
+	"github.com/okdaichi/gomoqt/webtransport"
+	"github.com/okdaichi/gomoqt/webtransport/webtransportgo"
 )
 
 // Client is a MOQ client that can establish sessions with MOQ servers.

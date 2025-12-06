@@ -9,7 +9,6 @@ require (
 	github.com/stretchr/testify v1.11.1
 )
 
-// Removed replace directives to maintain upstream canonical modules. Use upstream canonical modules instead.
 replace github.com/quic-go/quic-go => github.com/okdaichi/quic-go v0.0.0-20251206231436-9d4d0b2820c2
 
 replace github.com/quic-go/webtransport-go => github.com/okdaichi/webtransport-go v0.9.2-0.20251206232458-65e9257355b8

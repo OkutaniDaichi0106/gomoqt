@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt"
+	"github.com/okdaichi/gomoqt/moqt"
 )
 
 func newRelayHandler(path moqt.BroadcastPath, sess *moqt.Session) *relayHandler {

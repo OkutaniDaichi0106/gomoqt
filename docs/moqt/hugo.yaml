@@ -1,4 +1,4 @@
-baseURL: https://okutanidaichi0106.github.io/gomoqt/
+baseURL: https://okdaichi.github.io/gomoqt/
 languageCode: en
 title: gomoqt
 description: Fast, simply designed MoQ implementation for building scalable real-time apps.
@@ -25,14 +25,14 @@ menu:
     - identifier: sponsor
       name: ❤ Sponsor ↗
       weight: 4
-      url: https://github.com/sponsors/OkutaniDaichi0106
+      url: https://github.com/sponsors/okdaichi
     - identifier: search
       name: Search
       params:
         type: search
     - identifier: github
       name: GitHub
-      url: "https://github.com/OkutaniDaichi0106/gomoqt"
+      url: "https://github.com/okdaichi/gomoqt"
       params:
         icon: github
     # - identifier: introduction
@@ -59,7 +59,7 @@ menu:
       weight: 1
     - identifier: gomoqt
       name: gomoqt on pkg.go.dev
-      url: https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt
+      url: https://pkg.go.dev/github.com/okdaichi/gomoqt
       weight: 2
     - identifier: moq-lite-spec
       name: "MoQ-Lite Spec (draft-01)"
@@ -91,7 +91,7 @@ params:
       displayTags: true
   editURL:
     enable: true
-    base: "https://github.com/OkutaniDaichi0106/gomoqt/edit/main"
+    base: "https://github.com/okdaichi/gomoqt/edit/main"
 
 # Allow raw HTML in Markdown for hero wrappers and containers
 markup:

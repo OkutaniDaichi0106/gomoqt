@@ -1,4 +1,4 @@
-module github.com/OkutaniDaichi0106/gomoqt/moqt
+module github.com/okdaichi/gomoqt/moqt
 
 go 1.25.0
 

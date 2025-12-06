@@ -15,8 +15,8 @@ import (
 	"time"
 	// "sync" is not used directly here; it may be needed in future changes
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt"
-	"github.com/OkutaniDaichi0106/gomoqt/quic"
+	"github.com/okdaichi/gomoqt/moqt"
+	"github.com/okdaichi/gomoqt/quic"
 )
 
 func main() {

@@ -2,9 +2,9 @@
 title: "What is MOQ (to be)"
 date: 3025-09-01
 authors:
-  - name: OkutaniDaichi0106
-    link: https://github.com/OkutaniDaichi0106
-    image: https://github.com/OkutaniDaichi0106.png
+  - name: okdaichi
+    link: https://github.com/okdaichi
+    image: https://github.com/okdaichi.png
 tags:
   - MOQ
   - Protocol

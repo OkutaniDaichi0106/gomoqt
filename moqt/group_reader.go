@@ -6,7 +6,7 @@ import (
 	"iter"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/quic"
+	"github.com/okdaichi/gomoqt/quic"
 )
 
 func newGroupReader(sequence GroupSequence, stream quic.ReceiveStream,

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/bitrate"
+	"github.com/okdaichi/gomoqt/moqt/bitrate"
 	"github.com/stretchr/testify/assert"
 )
 

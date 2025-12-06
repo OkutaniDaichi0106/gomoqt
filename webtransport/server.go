@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/OkutaniDaichi0106/gomoqt/quic"
+	"github.com/okdaichi/gomoqt/quic"
 )
 
 // Server handles WebTransport connections over HTTP/3.

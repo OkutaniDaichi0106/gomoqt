@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/OkutaniDaichi0106/gomoqt/quic"
-	"github.com/OkutaniDaichi0106/gomoqt/webtransport"
+	"github.com/okdaichi/gomoqt/quic"
+	"github.com/okdaichi/gomoqt/webtransport"
 	"github.com/stretchr/testify/mock"
 )
 

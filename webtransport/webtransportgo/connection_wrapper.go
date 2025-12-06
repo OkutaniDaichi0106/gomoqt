@@ -4,7 +4,7 @@ import (
 	"context"
 	"net"
 
-	"github.com/OkutaniDaichi0106/gomoqt/quic"
+	"github.com/okdaichi/gomoqt/quic"
 	quicgo_webtransportgo "github.com/quic-go/webtransport-go"
 )
 

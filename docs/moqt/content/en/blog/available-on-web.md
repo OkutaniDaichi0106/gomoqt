@@ -3,9 +3,9 @@ title: "Available on the Web"
 date: 3025-03-01
 draft: true
 authors:
-  - name: OkutaniDaichi0106
-    link: https://github.com/OkutaniDaichi0106
-    image: https://github.com/OkutaniDaichi0106.png
+  - name: okdaichi
+    link: https://github.com/okdaichi
+    image: https://github.com/okdaichi.png
 tags:
   - Web
   - JS

@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/quic"
+	"github.com/okdaichi/gomoqt/moqt/internal/message"
+	"github.com/okdaichi/gomoqt/quic"
 )
 
 // Cause translates a Go context cancellation reason into a package-specific error type.

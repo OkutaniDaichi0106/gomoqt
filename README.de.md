@@ -3,8 +3,8 @@
 Eine Go-Implementierung von Media over QUIC Transport (MOQT), die speziell die
 MOQ Lite-Spezifikation für effizientes Medienstreaming über QUIC implementiert.
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/OkutaniDaichi0106/gomoqt.svg)](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt)
-[![codecov](https://codecov.io/gh/OkutaniDaichi0106/gomoqt/branch/main/graph/badge.svg?token=4LZCD3FEU3)](https://codecov.io/gh/OkutaniDaichi0106/gomoqt)
+[![Go Reference](https://pkg.go.dev/badge/github.com/okdaichi/gomoqt.svg)](https://pkg.go.dev/github.com/okdaichi/gomoqt)
+[![codecov](https://codecov.io/gh/okdaichi/gomoqt/branch/main/graph/badge.svg?token=4LZCD3FEU3)](https://codecov.io/gh/okdaichi/gomoqt)
 
 ## Inhaltsverzeichnis
 
@@ -83,13 +83,13 @@ Diese Implementierung enthält:
 
 1. Repository klonen:
    ```bash
-   git clone https://github.com/OkutaniDaichi0106/gomoqt.git
+   git clone https://github.com/okdaichi/gomoqt.git
    cd gomoqt
    ```
 
 2. Paket installieren:
    ```bash
-   go get github.com/OkutaniDaichi0106/gomoqt
+   go get github.com/okdaichi/gomoqt
    ```
 
 3. Mage-Tool installieren:
@@ -161,7 +161,7 @@ von gomoqt:
 
 ### Dokumentation
 
-- [GoDoc](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt)
+- [GoDoc](https://pkg.go.dev/github.com/okdaichi/gomoqt)
 - [MOQ Lite-Spezifikation](https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html)
 - [Implementierungsstatus](moqt/README.md) – Detaillierter Fortschritt der
   Implementierung

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt"
+	"github.com/okdaichi/gomoqt/moqt"
 )
 
 // Example demonstrates how to create and configure a basic MOQ server.

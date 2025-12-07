@@ -31,24 +31,24 @@ maintaining the core benefits of QUIC-based media delivery.
 ## Features
 
 -  **MOQ Lite Protocol**: Core implementation of the MOQ Lite specification
-- WebTransport Support: Full support for WebTransport connections in
+-  **WebTransport Support**: Full support for WebTransport connections in
   browsers
-- Raw QUIC Support: Direct QUIC connections for native applications
-- Track Management: Publisher/Subscriber pattern for media track handling
-- Multiplexed Streaming: Efficient multiplexing of multiple media tracks
-- Sample Applications: Complete examples demonstrating various use cases
-- Real-Time Streaming: Minimized end-to-end latency for interactive use
+-  **Raw QUIC Support**: Direct QUIC connections for native applications
+-  **Track Management**: Publisher/Subscriber pattern for media track handling
+-  **Multiplexed Streaming**: Efficient multiplexing of multiple media tracks
+-  **Sample Applications**: Complete examples demonstrating various use cases
+-  **Real-Time Streaming**: Minimized end-to-end latency for interactive use
   cases (live events, conferencing, low-latency monitoring). Suitable where
   responsiveness matters to user experience.
-- Uninterrupted Streaming: Robust playback on varying network conditions.
+-  **Uninterrupted Streaming**: Robust playback on varying network conditions.
   Built on QUIC/WebTransport primitives to reduce stalls and improve recovery
   from packet loss.
-- Efficient Content Delivery: Protocol-level optimizations and multiplexing
+-  **Efficient Content Delivery**: Protocol-level optimizations and multiplexing
   reduce connection overhead and infrastructure cost when serving many
   concurrent viewers or streams.
-- Seamless Playback: Jitter and buffer management designed to reduce
+-  **Seamless Playback**: Jitter and buffer management designed to reduce
   rebuffering and provide smooth continuous playback for viewers.
-- Optimized Quality: Adaptive delivery patterns that prioritize usable
+-  **Optimized Quality**: Adaptive delivery patterns that prioritize usable
   quality under constrained bandwidth, enabling consistent UX across device
   classes.
 

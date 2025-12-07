@@ -131,7 +131,7 @@ mage help
 ## ライセンス
 本プロジェクトは MIT ライセンスです。詳細は [LICENSE](LICENSE) を参照してください。
 
-## 付録
+## 謝辞
 - [quic-go](https://github.com/quic-go/quic-go) — Go による QUIC 実装
 - [webtransport-go](https://github.com/quic-go/webtransport-go) — Go による WebTransport 実装
 - [MOQ Lite 仕様](https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html) — 本実装が準拠する仕様

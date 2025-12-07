@@ -90,7 +90,7 @@ mage interop:client ts
 # Форматирование кода
 mage fmt
 
-# Запуск линтера (требуется golangci-lint: go install github.com/golangci-lint/cmd/golangci-lint@latest)
+# Запуск линтера (требуется golangci-lint: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)
 mage lint
 
 # Проверки качества (fmt и lint)

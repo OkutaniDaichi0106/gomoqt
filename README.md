@@ -88,7 +88,7 @@ This implementation targets the MOQ Lite specification, which provides a simplif
 # Format code
 mage fmt
 
-# Run linter (requires golangci-lint: go install github.com/golangci-lint/cmd/golangci-lint@latest)
+# Run linter (requires golangci-lint: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)
 mage lint
 
 # Run quality checks (fmt and lint)

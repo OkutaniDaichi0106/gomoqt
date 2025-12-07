@@ -88,7 +88,7 @@ mage interop:client ts
 # フォーマット
 mage fmt
 
-# リント (golangci-lint が必要: go install github.com/golangci-lint/cmd/golangci-lint@latest)
+# リント (golangci-lint が必要: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)
 mage lint
 
 # 品質チェック (fmt + lint)

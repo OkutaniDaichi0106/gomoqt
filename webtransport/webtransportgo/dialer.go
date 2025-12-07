@@ -5,8 +5,8 @@ import (
 	"crypto/tls"
 	"net/http"
 
-	"github.com/OkutaniDaichi0106/gomoqt/quic"
-	"github.com/OkutaniDaichi0106/gomoqt/webtransport"
+	"github.com/okdaichi/gomoqt/quic"
+	"github.com/okdaichi/gomoqt/webtransport"
 	quicgo_webtransportgo "github.com/quic-go/webtransport-go"
 )
 

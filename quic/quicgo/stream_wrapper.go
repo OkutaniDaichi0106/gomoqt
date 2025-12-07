@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/quic"
+	"github.com/okdaichi/gomoqt/quic"
 	quicgo_quicgo "github.com/quic-go/quic-go"
 )
 

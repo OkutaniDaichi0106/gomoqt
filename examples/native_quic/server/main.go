@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt"
-	"github.com/OkutaniDaichi0106/gomoqt/quic"
+	"github.com/okdaichi/gomoqt/moqt"
+	"github.com/okdaichi/gomoqt/quic"
 )
 
 func main() {

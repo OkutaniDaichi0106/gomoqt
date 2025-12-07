@@ -3,8 +3,8 @@
 A Go implementation of Media over QUIC Transport (MOQT), specifically
 implementing the MOQ Lite specification for efficient media streaming over QUIC.
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/OkutaniDaichi0106/gomoqt.svg)](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt)
-[![codecov](https://codecov.io/gh/OkutaniDaichi0106/gomoqt/branch/main/graph/badge.svg?token=4LZCD3FEU3)](https://codecov.io/gh/OkutaniDaichi0106/gomoqt)
+[![Go Reference](https://pkg.go.dev/badge/github.com/okdaichi/gomoqt.svg)](https://pkg.go.dev/github.com/okdaichi/gomoqt)
+[![codecov](https://codecov.io/gh/okdaichi/gomoqt/branch/main/graph/badge.svg?token=4LZCD3FEU3)](https://codecov.io/gh/okdaichi/gomoqt)
 
 ## Table of Contents
 
@@ -75,13 +75,13 @@ TypeScript implementation of the MOQ protocol for the Web.
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/OkutaniDaichi0106/gomoqt.git
+   git clone https://github.com/okdaichi/gomoqt.git
    cd gomoqt
    ```
 
 2. Install the package:
    ```bash
-   go get github.com/OkutaniDaichi0106/gomoqt
+   go get github.com/okdaichi/gomoqt
    ```
 
 3. Install Mage build tool:
@@ -152,7 +152,7 @@ how to use gomoqt:
 
 ### Documentation
 
-- [GoDoc](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt)
+- [GoDoc](https://pkg.go.dev/github.com/okdaichi/gomoqt)
 - [MOQ Lite Specification](https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html)
 - [Implementation Status](moqt/README.md) - Detailed implementation progress
 

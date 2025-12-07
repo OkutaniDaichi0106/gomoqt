@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/OkutaniDaichi0106/gomoqt/quic"
+	"github.com/okdaichi/gomoqt/quic"
 )
 
 var (

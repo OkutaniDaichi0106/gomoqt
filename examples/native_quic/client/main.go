@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt"
+	"github.com/okdaichi/gomoqt/moqt"
 )
 
 func main() {

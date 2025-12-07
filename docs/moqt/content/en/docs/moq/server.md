@@ -81,10 +81,10 @@ The following table describes the public fields of the `Server` struct:
 |------------------------|-----------------------------|---------------------------------------------|
 | `Addr`                 | `string`                    | Server address and port                     |
 | `TLSConfig`            | [`*tls.Config`](https://pkg.go.dev/crypto/tls#Config) | TLS configuration for secure connections    |
-| `QUICConfig`           | [`*quic.Config`](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt/quic#Config)              | QUIC protocol configuration                 |
-| `Config`               | [`*moqt.Config`](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt/moqt#Config)                   | MOQ protocol configuration                  |
-| `Handler`              | [`moqt.Handler`](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt/moqt#Handler)                 | Set-up Request handler for routing                 |
-| `ListenFunc`           | [`quic.ListenAddrFunc`](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt/quic#ListenAddrFunc)   | Function to listen for QUIC connections     |
+| `QUICConfig`           | [`*quic.Config`](https://pkg.go.dev/github.com/okdaichi/gomoqt/quic#Config)              | QUIC protocol configuration                 |
+| `Config`               | [`*moqt.Config`](https://pkg.go.dev/github.com/okdaichi/gomoqt/moqt#Config)                   | MOQ protocol configuration                  |
+| `Handler`              | [`moqt.Handler`](https://pkg.go.dev/github.com/okdaichi/gomoqt/moqt#Handler)                 | Set-up Request handler for routing                 |
+| `ListenFunc`           | [`quic.ListenAddrFunc`](https://pkg.go.dev/github.com/okdaichi/gomoqt/quic#ListenAddrFunc)   | Function to listen for QUIC connections     |
 | `NewWebtransportServerFunc` | `func(checkOrigin func(*http.Request) bool) webtransport.Server` | Function to create a new WebTransport server |
 | `Logger`               | [`*slog.Logger`](https://pkg.go.dev/log/slog#Logger)              | Logger for server events and errors         |
 
@@ -101,7 +101,7 @@ The following table describes the public fields of the `Server` struct:
 
 To use a custom QUIC implementation, you need to provide your own implementation of the `gomoqt/quic` interfaces and `quic.ListenAddrFunc`. `(moqt.Server).ListenFunc` field is set, it is used to listen for incoming QUIC connections instead of the default implementation.
 
-```go {filename="gomoqt/moqt/server.go",base_url="https://github.com/OkutaniDaichi0106/gomoqt/tree/main/moqt/server.go"}
+```go {filename="gomoqt/moqt/server.go",base_url="https://github.com/okdaichi/gomoqt/tree/main/moqt/server.go"}
 type Server struct {
     // ...
 	ListenFunc quic.ListenAddrFunc
@@ -124,7 +124,7 @@ type Server struct {
 
 To use a custom WebTransport implementation, you need to provide your own implementation of the `webtransport.Server` interface and a function to create it. `(moqt.Server).NewWebtransportServerFunc` field is set, it is used to create a new WebTransport server instead of the default implementation.
 
-```go {filename="gomoqt/moqt/server.go",base_url="https://github.com/OkutaniDaichi0106/gomoqt/tree/main/moqt/server.go"}
+```go {filename="gomoqt/moqt/server.go",base_url="https://github.com/okdaichi/gomoqt/tree/main/moqt/server.go"}
 type Server struct {
     // ...
     NewWebtransportServerFunc func(checkOrigin func(*http.Request) bool) webtransport.Server
@@ -142,7 +142,7 @@ type Server struct {
 Before establishing sessions, servers have to handle incoming set-up requests for a specific path and route them to appropriate handlers.
 `(Server).SetupHandler` field is used for this purpose.
 
-```go  {filename="gomoqt/moqt/server.go",base_url="https://github.com/OkutaniDaichi0106/gomoqt/tree/main/moqt/server.go"}
+```go  {filename="gomoqt/moqt/server.go",base_url="https://github.com/okdaichi/gomoqt/tree/main/moqt/server.go"}
 type Server struct {
     // ...
     SetupHandler SetupHandler
@@ -150,7 +150,7 @@ type Server struct {
 }
 ```
 
-```go {filename="gomoqt/moqt/router.go",base_url="https://github.com/OkutaniDaichi0106/gomoqt/tree/main/moqt/router.go"}
+```go {filename="gomoqt/moqt/router.go",base_url="https://github.com/okdaichi/gomoqt/tree/main/moqt/router.go"}
 type SetupHandler interface {
     ServeMOQ(SetupResponseWriter, *SetupRequest)
 }

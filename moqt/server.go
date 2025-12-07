@@ -11,11 +11,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/OkutaniDaichi0106/gomoqt/moqt/internal/message"
-	"github.com/OkutaniDaichi0106/gomoqt/quic"
-	"github.com/OkutaniDaichi0106/gomoqt/quic/quicgo"
-	"github.com/OkutaniDaichi0106/gomoqt/webtransport"
-	"github.com/OkutaniDaichi0106/gomoqt/webtransport/webtransportgo"
+	"github.com/okdaichi/gomoqt/moqt/internal/message"
+	"github.com/okdaichi/gomoqt/quic"
+	"github.com/okdaichi/gomoqt/quic/quicgo"
+	"github.com/okdaichi/gomoqt/webtransport"
+	"github.com/okdaichi/gomoqt/webtransport/webtransportgo"
 )
 
 // ListenAndServe starts a new Server bound to the specified address and TLS configuration and runs it until an error occurs.

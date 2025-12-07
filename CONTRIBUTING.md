@@ -48,7 +48,7 @@ Note: Development setup commands (dev-setup, certificate generation, etc.) are s
 
 ### 1. Choose an Issue
 
-- Check existing [issues](https://github.com/OkutaniDaichi0106/gomoqt/issues) for good first issues
+- Check existing [issues](https://github.com/okdaichi/gomoqt/issues) for good first issues
 - Look for issues labeled `good first issue` or `help wanted`
 - Comment on the issue to indicate you're working on it
 

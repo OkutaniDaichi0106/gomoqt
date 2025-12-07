@@ -1,8 +1,10 @@
-# MOQ protocol Implementation
+# `moqt` package
 
 ## Overview
 
-This package `moqt` provides a Go implementation of the MOQ protocol.
+This package provides the Go implementation of the MOQ Lite protocol used by
+the root module. It contains the core session, track, frame, and message
+primitives that power `gomoqt`.
 
 ### Specification
 
@@ -31,7 +33,7 @@ the MOQ Lite specification sections:
 | 2.1.1. WebTransport                        | :white_check_mark: | :white_check_mark: |
 | 2.1.2. QUIC                                | :white_check_mark: | :white_check_mark: |
 | 2.1.2. Connection URL                      | :white_check_mark: | :white_check_mark: |
-| 2.2. Extension Negocation                  | :white_check_mark: | :white_check_mark: |
+| 2.2. Extension Negotiation                 | :white_check_mark: | :white_check_mark: |
 | 2.2. Bitrate Monitoring                    | :white_check_mark: | :white_check_mark: |
 | 2.5. Termination                           | :white_check_mark: | :white_check_mark: |
 | 2.6. Migration                             | :construction:     | :x:                |

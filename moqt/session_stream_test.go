@@ -31,7 +31,7 @@ func TestNewSessionStream(t *testing.T) {
 	ss := newSessionStream(mockStream, req, nil)
 
 	assert.NotNil(t, ss, "newSessionStream should not return nil")
-	assert.NotNil(t, ss.SessionUpdated(), "SessionUpdated channel should be initialized")
+	assert.NotNil(t, ss.Updated(), "SessionUpdated channel should be initialized")
 	assert.Equal(t, req.Path, ss.Path, "path should be set correctly")
 
 	// No need to wait here; just assert expectations
@@ -102,7 +102,7 @@ func TestSessionStream_SessionUpdated(t *testing.T) {
 	// Trigger setupDone to start listening for updates
 	ss.handleUpdates()
 
-	ch := ss.SessionUpdated()
+	ch := ss.Updated()
 	assert.NotNil(t, ch, "SessionUpdated should return a valid channel")
 	assert.IsType(t, (<-chan struct{})(nil), ch, "SessionUpdated should return a receive-only channel")
 
@@ -245,7 +245,7 @@ func TestSessionStream_listenUpdates(t *testing.T) {
 
 			if tt.expectUpdate {
 				select {
-				case <-ss.SessionUpdated():
+				case <-ss.Updated():
 					// Check if the bitrate was updated correctly
 					ss.mu.Lock()
 					actualBitrate := ss.remoteBitrate
@@ -281,7 +281,7 @@ func TestSessionStream_listenUpdates_StreamClosed(t *testing.T) {
 
 	// Verify the session stream handles EOF properly
 	select {
-	case <-ss.SessionUpdated():
+	case <-ss.Updated():
 		// Channel might be closed, which is acceptable
 	case <-time.After(50 * time.Millisecond):
 		// No update received, also acceptable for EOF case
@@ -311,7 +311,7 @@ func TestSessionStream_listenUpdates_ContextCancellation(t *testing.T) {
 
 	// Verify the stream handles cancellation properly
 	select {
-	case <-ss.SessionUpdated():
+	case <-ss.Updated():
 		// Channel might be closed due to cancellation
 	case <-time.After(50 * time.Millisecond):
 		// No update received, also acceptable for cancellation
@@ -351,7 +351,7 @@ func TestSessionStream_ConcurrentAccess(t *testing.T) {
 	// Concurrent SessionUpdated calls
 	wg.Go(func() {
 		for range 5 {
-			ss.SessionUpdated()
+			ss.Updated()
 			time.Sleep(time.Millisecond)
 		}
 	})
@@ -962,7 +962,7 @@ func TestSessionStream_listenUpdates_InitialChannelState(t *testing.T) {
 	ss.handleUpdates()
 
 	// Channel should be initialized and available immediately
-	ch := ss.SessionUpdated()
+	ch := ss.Updated()
 	assert.NotNil(t, ch, "SessionUpdated channel should be initialized")
 
 	// No need to busy-wait; channel existence was already asserted

@@ -28,10 +28,11 @@ type TrackWriter struct {
 func (*TrackWriter) Close() error
 func (*TrackWriter) CloseWithError(SubscribeErrorCode)
 func (*TrackWriter) OpenGroup(GroupSequence) (*GroupWriter, error)
-func (TrackWriter) SubscribeID() SubscribeID
-func (*TrackWriter) TrackConfig() *TrackConfig
-func (TrackWriter) Updated() <-chan struct{}
-func (*TrackWriter) WriteInfo(Info) error
+func (TrackWriter) SubscribeID() SubscribeID            // through internal stream
+func (*TrackWriter) TrackConfig() *TrackConfig          // through internal stream
+func (TrackWriter) Updated() <-chan struct{}            // through internal stream
+func (*TrackWriter) WriteInfo(Info) error               // through internal stream
+func (TrackWriter) Context() context.Context            // through internal stream
 ```
 
 ### `moqt.TrackReader`
@@ -48,11 +49,10 @@ type TrackReader struct {
 func (*TrackReader) AcceptGroup(context.Context) (*GroupReader, error)
 func (*TrackReader) Close() error
 func (*TrackReader) CloseWithError(SubscribeErrorCode) error
-func (TrackReader) Context() context.Context
-func (TrackReader) SubscribeID() SubscribeID
-func (*TrackReader) TrackConfig() *TrackConfig
-func (*TrackReader) Update(*TrackConfig) error
-func (TrackReader) UpdateSubscribe(*TrackConfig) error
+func (*TrackReader) Update(*TrackConfig) error          // through internal stream
+func (*TrackReader) TrackConfig() *TrackConfig          // through internal stream
+func (TrackReader) SubscribeID() SubscribeID            // through internal stream
+func (TrackReader) Context() context.Context            // through internal stream
 ```
 
 ## Group
@@ -85,9 +85,10 @@ type GroupReader struct {
 }
 
 func (*GroupReader) GroupSequence() GroupSequence
-func (*GroupReader) ReadFrame() (*Frame, error)
+func (*GroupReader) ReadFrame(*Frame) error
 func (*GroupReader) CancelRead(GroupErrorCode)
 func (*GroupReader) SetReadDeadline(time.Time) error
+func (*GroupReader) Frames(*Frame) iter.Seq[*Frame]
 ```
 
 ## Frame
@@ -103,24 +104,12 @@ type Frame struct {
 	// contains filtered or unexported fields
 }
 
-func (*Frame) Bytes() []byte
+func NewFrame(int) *Frame
+func (*Frame) Body() []byte
 func (*Frame) Cap() int
 func (*Frame) Len() int
+func (*Frame) Reset()
 func (*Frame) Clone() *Frame
+func (*Frame) Write([]byte) (int, error)
 func (*Frame) WriteTo(w io.Writer) (int64, error)
-```
-### `moqt.FrameBuilder`
-
-Constructs and reuses buffers for building frames efficiently.
-
-```go
-func NewFrameBuilder(int) *FrameBuilder
-
-type FrameBuilder struct {
-	// contains filtered or unexported fields
-}
-
-func (*FrameBuilder) Append([]byte)
-func (*FrameBuilder) Frame() *Frame
-func (*FrameBuilder) Reset()
 ```

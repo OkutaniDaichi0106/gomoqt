@@ -33,7 +33,7 @@ mux.Publish(ctx, "/broadcast_path", trackHandler)
 **Using `PublishFunc`**:
 ```go
     mux := moqt.NewTrackMux()
-    mux.PublishFunc(ctx, "/broadcast_path", func(ctx context.Context, tw *moqt.TrackWriter) {
+    mux.PublishFunc(ctx, "/broadcast_path", func(tw *moqt.TrackWriter) {
         defer tw.Close() // Always close when done
 
         // Handle track subscription

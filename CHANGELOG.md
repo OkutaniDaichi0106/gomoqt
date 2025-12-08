@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Korean translation of README (`README.ko.md`)
+
+### Changed
+
+- Renamed `Session.SessionUpdated()` to `Session.Updated()`
+- docs: Updated all documentation to align with current implementation
+
 ## [v0.6.0] - 2025-12-05
 
 ### Added

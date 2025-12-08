@@ -15,7 +15,7 @@ To forward media data, a server subscribes to a source track as a subscriber to 
     var dests []*moqt.TrackWriter
 
     for {
-        gr, err := src.Read()
+        gr, err := src.AcceptGroup(context.Background())
         if err != nil {
             break
         }
@@ -34,8 +34,9 @@ To forward media data, a server subscribes to a source track as a subscriber to 
                 writers = append(writers, gw)
             }
 
+            frame := moqt.NewFrame(0)
             for {
-                frame, err := gr.ReadFrame()
+                err := gr.ReadFrame(frame)
                 if err != nil {
                     if err == io.EOF {
                         for _, gw := range writers {
@@ -44,7 +45,7 @@ To forward media data, a server subscribes to a source track as a subscriber to 
                     } else {
                         // Handle error
                         for _, gw := range writers {
-                            gw.CloseWithError(InternalGroupErrorCode)
+                            gw.CancelWrite(moqt.InternalGroupErrorCode)
                         }
                     }
                     break
@@ -57,7 +58,7 @@ To forward media data, a server subscribes to a source track as a subscriber to 
                     }
                 }
             }
-        }
+        }(gr)
     }
 ```
 {{% /details %}}

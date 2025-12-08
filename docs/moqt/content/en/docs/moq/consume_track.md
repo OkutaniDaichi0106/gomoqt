@@ -21,7 +21,7 @@ Consuming a track involves reading media data from a `moqt.TrackReader`, which p
     defer tr.Close()
 
     for {
-        gr, err := tr.AcceptGroup()
+        gr, err := tr.AcceptGroup(context.Background())
         if err != nil {
             // Handle error
             return
@@ -30,15 +30,15 @@ Consuming a track involves reading media data from a `moqt.TrackReader`, which p
         go func(gr *moqt.GroupReader) { // Read frames in parallel
             defer gr.Close()
 
+            frame := moqt.NewFrame(0)
             for {
-                frame, err := gr.ReadFrame()
-                if err != nil {
+                if err := gr.ReadFrame(frame); err != nil {
                     // End of group or error
                     break
                 }
 
                 // Process the frame
-                // The raw payload data can be accessed with frame.Bytes()
+                // The raw payload data can be accessed with frame.Body()
             }
         }(gr)
     }
@@ -59,6 +59,7 @@ To receive the next available group from a track, use `(moqt.TrackReader).Accept
 
 ```go
     var tr *moqt.TrackReader
+    ctx := context.Background()
     group, err := tr.AcceptGroup(ctx)
     if err != nil {
         // End of track or error
@@ -73,15 +74,26 @@ To read frames from a group, use `(moqt.GroupReader).ReadFrame` method. Each cal
 
 ```go
     var group *moqt.GroupReader
+    frame := moqt.NewFrame(0) // Reuse the buffer
 
     for {
-        frame, err := group.ReadFrame()
-        if err != nil {
+        if err := group.ReadFrame(frame); err != nil {
             // End of group or error
             break
         }
 
-        // Process the frame
+        // Process the frame using frame.Body()
+    }
+```
+
+### Iterate Frames
+
+Instead of a loop with `ReadFrame`, you can use `(moqt.GroupReader).Frames` to get a lazy iterator. Reuse a buffer to minimize allocations; the iterator populates it on each yield.
+
+```go
+    frame := moqt.NewFrame(0)
+    for f := range group.Frames(frame) {
+        // f == frame; process payload in place
     }
 ```
 
@@ -90,7 +102,8 @@ To read frames from a group, use `(moqt.GroupReader).ReadFrame` method. Each cal
 To clone a frame, use `(moqt.Frame).Clone` method. This creates a deep copy of the frame, including its data, allowing you to retain the frame data even after reading the next frame.
 
 ```go
-    var frame *moqt.Frame
+    frame := moqt.NewFrame(0)
+    _ = group.ReadFrame(frame)
     clone := frame.Clone()
 ```
 
@@ -99,7 +112,8 @@ To clone a frame, use `(moqt.Frame).Clone` method. This creates a deep copy of t
 To copy the frame data into a provided buffer, use `(moqt.Frame).WriteTo` method, implementing the `io.WriterTo` interface. It is useful for efficiently caching the frame data.
 
 ```go
-    var frame *moqt.Frame
+    frame := moqt.NewFrame(0)
+    _ = group.ReadFrame(frame)
     buf := bytes.NewBuffer(nil)
     io.Copy(buf, frame) // or frame.WriteTo(buf)
 ```

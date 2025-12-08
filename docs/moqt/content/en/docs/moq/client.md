@@ -19,7 +19,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to dial: %v", err)
 	}
-	defer sess.Terminate(moq.SessionErrorCodeNoError, "Client shutting down")
+	defer sess.CloseWithError(moqt.NoErrorCode, "Client shutting down")
 
 	// Use the session (e.g., subscribe to tracks, receive announcements)
 

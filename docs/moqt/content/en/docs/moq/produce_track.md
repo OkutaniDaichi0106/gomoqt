@@ -16,10 +16,10 @@ Producing a track involves writing media data to a `moqt.TrackWriter`, which man
     // Set the mux to a session
     // This differs from if it is client-side or server-side
 
-    mux.PublishFunc(func(ctx context.Context, tw *moqt.TrackWriter) {
+    mux.PublishFunc(ctx, "/broadcast_path", func(tw *moqt.TrackWriter) {
         defer tw.Close() // Always close when done
 
-        var seq GroupSequence = 1
+        var seq moqt.GroupSequence = 1
         for {
             gw, err := tw.OpenGroup(seq) // Create a new group
             if err != nil {
@@ -27,7 +27,9 @@ Producing a track involves writing media data to a `moqt.TrackWriter`, which man
                 return
             }
 
-            frame := moqt.NewFrame(int(1024))
+            frame := moqt.NewFrame(1024)
+            payload := []byte("sample data")
+            frame.Write(payload)
 
             err = gw.WriteFrame(frame)
             if err != nil {
@@ -54,7 +56,7 @@ When the other side (client or server) subscribes to a broadcast path, the regis
     var mux *moqt.TrackMux
 
     // Register the track handler with PublishFunc
-    mux.PublishFunc(ctx, "/broadcast_path", func(ctx context.Context, tw *moqt.TrackWriter) {
+    mux.PublishFunc(ctx, "/broadcast_path", func(tw *moqt.TrackWriter) {
         defer tw.Close() // Always close when done
 
         // Handle track subscription
@@ -111,7 +113,9 @@ To add media data to a group, use `(moqt.GroupWriter).WriteFrame` method. Each f
 
 ```go
     var gw *moqt.GroupWriter
-    var frame *moqt.Frame
+    frame := moqt.NewFrame(0)
+    payload := []byte("sample payload")
+    frame.Write(payload) // Populate payload
     err := gw.WriteFrame(frame)
     if err != nil {
         // Handle error
@@ -120,21 +124,19 @@ To add media data to a group, use `(moqt.GroupWriter).WriteFrame` method. Each f
 
 ### Frame Creation
 
-To create a new frame, use `moqt.FrameBuilder`. It provides a convenient way to build frames, allowing for efficient creation and reuse of frame data buffers.
+Create frames with `moqt.NewFrame(capacity)`, reuse the buffer with `Reset`, and append payload via `Write` or by manipulating `Body()` when needed.
 
 ```go
-    builder := moqt.NewFrameBuilder(1024)
+    frame := moqt.NewFrame(1024)
+    frame.Write([]byte("Good Morning"))
+    fmt.Println(string(frame.Body())) // "Good Morning"
 
-    builder.Append([]byte("Good Morning"))
-    frame := builder.Frame()
-    fmt.Println(string(frame.Bytes())) // "Good Morning"
-
-    builder.Reset() // Reset the builder for the next frame
-    builder.Append([]byte("Good Evening"))
-    fmt.Println(string(frame.Bytes())) // "Good Evening"
+    frame.Reset() // Reuse buffer for next frame
+    frame.Write([]byte("Good Evening"))
+    fmt.Println(string(frame.Body())) // "Good Evening"
 ```
 
-Frame is designed to be immutable once after creation. This is intentional because MOQ does not allow modifications to the frame data.
+Frames are reused for efficiency; clone with `frame.Clone()` when you need to retain a copy after the next write.
 
 > Relays MUST NOT combine, split, or otherwise modify object payloads.<br>
 > — <cite>MOQT WG[^1]</cite>
@@ -151,10 +153,10 @@ To finalize a group and indicate that no more frames will be sent, call `(moqt.G
 
 ## Cancel Group Writing
 
-To cancel a group and stop receiving frames, call `(moqt.GroupReader).CancelWrite` method with an error code.
+To cancel a group and stop sending frames, call `(moqt.GroupWriter).CancelWrite` method with an error code.
 
 ```go
-    var group *moqt.GroupReader
+    var group *moqt.GroupWriter
     var code moqt.GroupErrorCode
     group.CancelWrite(code)
 ```

@@ -194,7 +194,7 @@ func (ss *sessionStream) handleUpdates() {
 	})
 }
 
-func (ss *sessionStream) SessionUpdated() <-chan struct{} {
+func (ss *sessionStream) Updated() <-chan struct{} {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
 	return ss.updatedCh

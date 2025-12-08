@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Chinese (Simplified) translation of README (`README.zh-cn.md`)
 - Korean translation of README (`README.ko.md`)
 
 ### Changed
@@ -28,55 +29,98 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed
 
 - Modernize test code: Replace traditional for loops with range loops
-- Stabilize flaky `TestAnnouncement_AfterFunc_ConcurrentRegistrationAndEnd` test
-- Replace `WritableStream` and `ReceiveStream` with `Buffer` in message tests
 
-## [v0.5.1] - 2025-12-04
+## [v0.5.0] - 2025-11-27
 
 ### Changed
 
-- docs: Update README files to add table of contents and improve clarity
-- docs: Update README for correct package references
+- Update Broadcast example: Switch from LiveKit to UDP as media source
+- `Mux`: Return `ErrNoSubscribers` on failure to find subscribers instead of GOAWAY
 
-## [v0.5.0] - 2025-12-04
-
-### Changed
-
-- SUBSCRIBE message: removed `Min Group Sequence` and `Max Group Sequence` fields for simplified group sequence handling
-- TrackWriter `OpenGroup()`: now internally manages group sequence increments without requiring it as an argument
-
-## [v0.4.0] - 2025-12-04
-
-### Added
-
-- Frame `Write()` method implementing `io.Writer` interface
-- Frame `Body()` method for direct payload access
-- Frame `Clone()` method for deep copying
-- Comprehensive Frame tests (20+ test cases)
-- GroupReader `Frames()` iterator with optional buffer parameter
-- Interop Mage targets: `mage interop:server` and `mage interop:client` with `-go`/`-ts` flags for running interop tests and demos
-- `TrackReader` and `TrackWriter` classes with associated unit tests
-- Additional unit tests for `SessionStream` and Stream types covering new scenarios
+## [v0.4.3] - 2025-11-26
 
 ### Changed
 
-- Changed default protocol version from Develop (0xffffff00) to LiteDraft01 (0xff0dad01)
-- Changed message length encoding from QUIC variable-length integer to big-endian u16
-- Replaced Frame `Append()` with private `append()` method
-- Frame `Bytes()` method renamed to `Body()`
-- Updated all Frame test methods to use `Write()` instead of `Append()`
-- Improved Frame encapsulation and API design
-- Enhanced memory efficiency through optimized buffer reuse
-- Expanded test coverage for GroupReader iterator pattern
-- Migrated moq-web from Node.js to Deno runtime
-- Moved hang-web directory to moqrtc-js repository
-- Refactor WebTransport stream handling: introduced `StreamID` type and `WebTransportSession`; improved error handling and logging
-- Refactor interop server and client: improved address/config handling, context management, and added secure `mkcert` wrapper
-- Refactor subscription stream and track handling: use `SubscribeErrorCode`, numeric group sequence types, graceful closure, and enhanced logging
-- Replace `session.Terminate` with `session.CloseWithError` for consistent session closure behavior
-- Refactor announcement handling in `TrackMux` and related components
-- Update dependencies and improve type-safety in translate and interop client scripts
+- Improve error handling: Distinguish temporary and permanent errors
+
+## [v0.4.2] - 2025-11-25
 
 ### Fixed
 
-- Fixed a bug where `Frame.encode` could write extra zero bytes beyond the actual payload, causing clients to receive a large number of empty frames (`frame_length=0`). Now only the header and payload are written, ensuring protocol correctness and efficiency.
+- Fix duplicate panic in announcement handling
+
+## [v0.4.1] - 2025-11-24
+
+### Fixed
+
+- `TrackWriter.Close()`: Handle stream closure errors
+- `GroupWriter`: Add nil check for frame field to prevent panic
+
+## [v0.4.0] - 2025-11-24
+
+### Added
+
+- New track writer implementation (`TrackWriter`, `GroupWriter`, `FrameWriter`)
+- Concurrent frame writing support via `TrackWriter.Spawn()`
+- `TrackWriter.Write()` method for direct frame writing
+- Generic parameter type support for `TrackConfig`
+
+### Changed
+
+- Replace `TrackPublisher` with new `TrackWriter` API
+- Simplify parallel group writing with direct track writer operations
+- `SendSubscribeStream` now returns `*TrackWriter` instead of `TrackPublisher`
+
+### Removed
+
+- Old `TrackPublisher` API
+
+## [v0.3.0] - 2025-11-21
+
+### Added
+
+- Native QUIC support: Direct QUIC connection examples in `examples/native_quic`
+- `quic` package: Wrapper for QUIC functionality used by core library and examples
+- Russian translation of README (`README.ru.md`)
+- German translation of README (`README.de.md`)
+- Japanese translation of README (`README.ja.md`)
+
+### Changed
+
+- Reorganize dependencies: Separate QUIC and WebTransport dependencies for flexible usage
+- Update examples to demonstrate both WebTransport and native QUIC usage
+
+## [v0.2.0] - 2025-11-15
+
+### Added
+
+- WebTransport support via `webtransport` package
+- Interoperability testing suite in `cmd/interop`
+- TypeScript client implementation in `moq-web`
+
+### Changed
+
+- Improve session management and error handling
+- Update documentation with WebTransport examples
+
+## [v0.1.0] - 2025-11-01
+
+### Added
+
+- Initial implementation of MOQ Lite protocol
+- Core `moqt` package with session, track, group, and frame handling
+- Basic examples: broadcast, echo, relay
+- Mage build system integration
+- Comprehensive test coverage
+- MIT License
+
+[Unreleased]: https://github.com/OkutaniDaichi0106/gomoqt/compare/v0.6.0...HEAD
+[v0.6.0]: https://github.com/OkutaniDaichi0106/gomoqt/compare/v0.5.0...v0.6.0
+[v0.5.0]: https://github.com/OkutaniDaichi0106/gomoqt/compare/v0.4.3...v0.5.0
+[v0.4.3]: https://github.com/OkutaniDaichi0106/gomoqt/compare/v0.4.2...v0.4.3
+[v0.4.2]: https://github.com/OkutaniDaichi0106/gomoqt/compare/v0.4.1...v0.4.2
+[v0.4.1]: https://github.com/OkutaniDaichi0106/gomoqt/compare/v0.4.0...v0.4.1
+[v0.4.0]: https://github.com/OkutaniDaichi0106/gomoqt/compare/v0.3.0...v0.4.0
+[v0.3.0]: https://github.com/OkutaniDaichi0106/gomoqt/compare/v0.2.0...v0.3.0
+[v0.2.0]: https://github.com/OkutaniDaichi0106/gomoqt/compare/v0.1.0...v0.2.0
+[v0.1.0]: https://github.com/OkutaniDaichi0106/gomoqt/releases/tag/v0.1.0

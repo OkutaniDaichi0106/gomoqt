@@ -1,7 +1,7 @@
 # gomoqt
 
 <div align="center">
-<sup align="center"><a href="README.ja.md">日本語</a> | <a href="README.de.md">Deutsch</a> | <a href="README.ru.md">Русский</a> | <a href="README.ko.md">한국어</a></sup>
+<sup align="center"><a href="README.ja.md">日本語</a> | <a href="README.de.md">Deutsch</a> | <a href="README.ru.md">Русский</a> | <a href="README.ko.md">한국어</a> | <a href="README.zh-cn.md">简体中文</a></sup>
 </div>
 
 A Go implementation of Media over QUIC Transport (MOQT), specifically implementing the MOQ Lite specification for efficient media streaming over QUIC.

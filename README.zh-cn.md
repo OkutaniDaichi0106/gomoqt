@@ -4,7 +4,7 @@
 <sup align="center"><a href="README.md">English</a></sup>
 </div>
 
-基于 QUIC 的媒体传输(MOQT)的 Go 实现,专门实现了 MOQ Lite 规范以实现高效的媒体流传输。
+在 Go 语言中实现 Media over QUIC (MOQ),遵循 MOQ Lite 规范,通过 QUIC 协议高效地传输和分发媒体内容。
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/OkutaniDaichi0106/gomoqt.svg)](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt)
 [![codecov](https://codecov.io/gh/OkutaniDaichi0106/gomoqt/branch/main/graph/badge.svg?token=4LZCD3FEU3)](https://codecov.io/gh/OkutaniDaichi0106/gomoqt)
@@ -23,14 +23,14 @@
 - [致谢](#致谢)
 
 ## 概述
-本实现遵循 [MOQ Lite 规范](https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html),为使用 QUIC 传输构建实时媒体流应用提供基础。
+本实现遵循 [MOQ Lite 规范](https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html),可以利用 QUIC 构建实时媒体流应用的通信基础。
 
 ## 快速开始
 ```bash
 # 安装 Mage (需要 Go 1.25+)
 go install github.com/magefile/mage@latest
 
-# 运行互操作服务器 (WebTransport + QUIC)
+# 启动 Interop 服务器 (WebTransport + QUIC)
 mage interop:server
 
 # 在另一个终端运行 Go 客户端
@@ -42,15 +42,15 @@ mage interop:client ts
 
 ## 特性
 - **MOQ Lite 协议** — MoQ 规范的轻量级版本
-  - **低延迟播放** — 最小化从数据发现、传输/接收到播放的延迟
-  - **不间断播放** — 通过独立的数据传输/接收实现对网络波动的弹性设计
-  - **网络环境优化** — 根据网络条件实现行为优化
-  - **轨道管理** — 发布者/订阅者模型用于轨道数据传输/接收
-  - **高效复用传输** — 通过轨道通告和订阅实现高效复用
+  - **低延迟播放** — 将从数据发现、传输到播放的整体延迟降至最低
+  - **连续播放** — 通过独立的数据收发设计,提高系统对网络波动的适应能力
+  - **网络环境优化** — 能根据实际网络条件对运行方式进行最优调整
+  - **轨道管理** — 通过 Publisher/Subscriber 模式进行轨道数据的收发
+  - **高效复用分发** — 通过 Track Announce 与 Subscribe 实现高效的多路复用
   - **Web 支持** — 使用 WebTransport 支持浏览器
   - **原生 QUIC 支持** — 通过 `quic` 包装器提供原生 QUIC 支持
-- **灵活的依赖设计** — 分离 QUIC 和 WebTransport 等依赖项,允许仅使用必要组件
-- **示例与互操作** — `examples/` 和 `cmd/interop` 中的示例应用和互操作套件(广播、回显、中继、原生 QUIC、互操作服务器/客户端)
+- **灵活的依赖设计** — 将 QUIC、WebTransport 等依赖进行解耦,可按需启用或替换
+- **示例与互通测试** — 在 `examples/` 与 `cmd/interop` 中提供示例及互操作性测试集(broadcast、echo、relay、native_quic、interop 服务器/客户端)
 
 ### 另请参阅
 - [moqt/](moqt/) — 核心包(帧、会话、轨道复用)
@@ -72,7 +72,7 @@ mage interop:client ts
 - **广播示例**(`examples/broadcast/`):广播功能演示
 - **回显示例**(`examples/echo/`):简单的回显服务器和客户端实现
 - **原生 QUIC**(`examples/native_quic/`):直接 QUIC 连接示例
-- **中继**(`examples/relay/`):用于媒体流的中继功能
+- **中继**(`examples/relay/`):媒体流中继实现示例
 
 ## 文档
 - [GoDoc](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt)
@@ -80,7 +80,7 @@ mage interop:client ts
 - [实现状态](moqt/README.md) — 详细的实现进度
 
 ## 规范合规性
-本实现针对 MOQ Lite 规范,该规范提供了一种简化的媒体传输方法。当前的实现状态可以在 [moqt 包 README](moqt/README.md) 中找到,其中包括根据规范部分对已实现功能的详细跟踪。
+本实现以 MOQ Lite 规范为目标。关于当前的实现进度及各章节的对应关系,请参考 [moqt 包 README](moqt/README.md)。
 
 ## 开发
 ### 先决条件

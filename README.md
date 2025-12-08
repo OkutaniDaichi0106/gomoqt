@@ -1,111 +1,89 @@
 # gomoqt
 
-A Go implementation of Media over QUIC Transport (MOQT), specifically
-implementing the MOQ Lite specification for efficient media streaming over QUIC.
+A Go implementation of Media over QUIC Transport (MOQT), specifically implementing the MOQ Lite specification for efficient media streaming over QUIC.
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/OkutaniDaichi0106/gomoqt.svg)](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt)
 [![codecov](https://codecov.io/gh/OkutaniDaichi0106/gomoqt/branch/main/graph/badge.svg?token=4LZCD3FEU3)](https://codecov.io/gh/OkutaniDaichi0106/gomoqt)
 
 ## Table of Contents
-
 - [Overview](#overview)
+- [Quick Start](#quick-start)
 - [Features](#features)
 - [Components](#components)
-- [Development](#development)
 - [Examples](#examples)
 - [Documentation](#documentation)
 - [Specification Compliance](#specification-compliance)
+- [Development](#development)
 - [Contributing](#contributing)
 - [License](#license)
 - [Acknowledgments](#acknowledgments)
 
 ## Overview
+This implementation follows the [MOQ Lite specification](https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html), providing a foundation for building real-time media streaming applications using QUIC transport.
 
-This implementation follows the
-[MOQ Lite specification](https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html),
-providing a foundation for building real-time media streaming applications using
-QUIC transport. MOQ Lite is a simplified version of the Media over QUIC
-Transport protocol, designed for lower latency and reduced complexity while
-maintaining the core benefits of QUIC-based media delivery.
-
-## Features
-
--  **MOQ Lite Protocol**: Core implementation of the MOQ Lite specification
--  **WebTransport Support**: Full support for WebTransport connections in
-  browsers
--  **Raw QUIC Support**: Direct QUIC connections for native applications
--  **Track Management**: Publisher/Subscriber pattern for media track handling
--  **Multiplexed Streaming**: Efficient multiplexing of multiple media tracks
--  **Sample Applications**: Complete examples demonstrating various use cases
--  **Real-Time Streaming**: Minimized end-to-end latency for interactive use
-  cases (live events, conferencing, low-latency monitoring). Suitable where
-  responsiveness matters to user experience.
--  **Uninterrupted Streaming**: Robust playback on varying network conditions.
-  Built on QUIC/WebTransport primitives to reduce stalls and improve recovery
-  from packet loss.
--  **Efficient Content Delivery**: Protocol-level optimizations and multiplexing
-  reduce connection overhead and infrastructure cost when serving many
-  concurrent viewers or streams.
--  **Seamless Playback**: Jitter and buffer management designed to reduce
-  rebuffering and provide smooth continuous playback for viewers.
--  **Optimized Quality**: Adaptive delivery patterns that prioritize usable
-  quality under constrained bandwidth, enabling consistent UX across device
-  classes.
-
-## Components
-
-### moqt
-
-The core Go package for implementing and handling the Media over QUIC (MOQ)
-protocol.
-
-### moq-web
-
-TypeScript implementation of the MOQ protocol for the Web.
-
-## Development
-
-### Prerequisites
-
-- Go 1.25.0 or later
-- [Mage](https://magefile.org/) build tool (install with
-  `go install github.com/magefile/mage@latest`)
-
-### Getting Started
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/OkutaniDaichi0106/gomoqt.git
-   cd gomoqt
-   ```
-
-2. Install the package:
-   ```bash
-   go get github.com/OkutaniDaichi0106/gomoqt
-   ```
-
-3. Install Mage build tool:
-   ```bash
-   go install github.com/magefile/mage@latest
-   ```
-
-### Development Commands
-
-#### Running Examples
-
+## Quick Start
 ```bash
-# Start the interop server
+# install Mage (Go 1.25+)
+go install github.com/magefile/mage@latest
+
+# run interop server (WebTransport + QUIC)
 mage interop:server
 
-# In another terminal, run the interop client (Go)
+# in another terminal, run a Go client
 mage interop:client go
 
-# Or run the TypeScript client
+# or run the TypeScript client
 mage interop:client ts
 ```
 
-#### Code Quality
+## Features
+- **MOQ Lite Protocol** — Lightweight version of MoQ specification
+  - **Low-latency playback** — Minimizes latency from data discovery, transmission/reception to playback
+  - **Uninterrupted playback** — Resilient design against network fluctuations through independent data transmission/reception
+  - **Network environment optimization** — Enables behavior optimization according to network conditions
+  - **Track management** — Publisher/Subscriber model for track data transmission/reception
+  - **Efficient multiplexed delivery** — Efficient multiplexing through track announcements and subscriptions
+  - **Web support** — Browser support using WebTransport
+  - **QUIC native support** — Native QUIC support via `quic` wrappers
+- **Flexible dependency design** — Separates dependencies like QUIC and WebTransport, allowing use of only necessary components
+- **Examples & Interop** — Sample applications and interop suite in `examples/` and `cmd/interop` (broadcast, echo, relay, native_quic, interop server/client)
 
+### See also
+- [moqt/](moqt/) — core package (frames, session, track muxing)
+- [quic/](quic/) — QUIC wrapper and `examples/native_quic`
+- [webtransport/](webtransport/), [webtransport/webtransportgo/](webtransport/webtransportgo/), [moq-web/](moq-web/) — WebTransport and client-side code
+- [examples/](examples/) — sample apps (broadcast, echo, native_quic, relay)
+
+## Components
+- `moqt` — Core Go package for Media over QUIC (MOQ) protocol.
+- `moq-web` — TypeScript implementation for the web client side.
+- `quic` — QUIC wrapper utilities used by the core library and examples.
+- `webtransport` — WebTransport server wrappers (plus `webtransportgo`).
+- `cmd/interop` — Interoperability server and clients (Go/TypeScript).
+- `examples` — Demonstration apps (broadcast, echo, native_quic, relay).
+
+## Examples
+The [examples](examples) directory includes sample applications demonstrating how to use gomoqt:
+- **Interop Server and Client** (`cmd/interop/`): Interoperability testing between different MOQ implementations
+- **Broadcast Example** (`examples/broadcast/`): Broadcasting functionality demonstration
+- **Echo Example** (`examples/echo/`): Simple echo server and client implementation
+- **Native QUIC** (`examples/native_quic/`): Direct QUIC connection examples
+- **Relay** (`examples/relay/`): Relay functionality for media streaming
+
+## Documentation
+- [GoDoc](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt)
+- [MOQ Lite Specification](https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html)
+- [Implementation Status](moqt/README.md) — Detailed implementation progress
+
+## Specification Compliance
+This implementation targets the MOQ Lite specification, which provides a simplified approach to Media over QUIC Transport. The current implementation status can be found in the [moqt package README](moqt/README.md), which includes detailed tracking of implemented features according to the specification sections.
+
+## Development
+### Prerequisites
+- Go 1.25.0 or later
+- [Mage](https://magefile.org/) build tool (install with `go install github.com/magefile/mage@latest`)
+
+### Development Commands
 ```bash
 # Format code
 mage fmt
@@ -124,7 +102,6 @@ mage test:coverage
 ```
 
 #### Build & Clean
-
 ```bash
 # Build the code
 mage build
@@ -136,38 +113,8 @@ mage clean
 mage help
 ```
 
-### Examples
-
-The [examples](examples) directory includes sample applications demonstrating
-how to use gomoqt:
-
-- **Interop Server and Client** (`cmd/interop/`): Interoperability testing between
-  different MOQ implementations
-- **Broadcast Example** (`examples/broadcast/`): Broadcasting functionality
-  demonstration
-- **Echo Example** (`examples/echo/`): Simple echo server and client
-  implementation
-- **Native QUIC** (`examples/native_quic/`): Direct QUIC connection examples
-- **Relay** (`examples/relay/`): Relay functionality for media streaming
-
-### Documentation
-
-- [GoDoc](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt)
-- [MOQ Lite Specification](https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html)
-- [Implementation Status](moqt/README.md) - Detailed implementation progress
-
-## Specification Compliance
-
-This implementation targets the MOQ Lite specification, which provides a
-simplified approach to Media over QUIC Transport. The current implementation
-status can be found in the [moqt package README](moqt/README.md), which includes
-detailed tracking of implemented features according to the specification
-sections.
-
 ## Contributing
-
 We welcome contributions! Here's how you can help:
-
 1. Fork the repository.
 2. Create a feature branch (`git checkout -b feature/amazing-feature`).
 3. Make your changes.
@@ -182,14 +129,9 @@ We welcome contributions! Here's how you can help:
 7. Open a Pull Request.
 
 ## License
-
-This project is licensed under the MIT License; see [LICENSE](LICENSE) for
-details.
+This project is licensed under the MIT License; see [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
-
-- [quic-go](https://github.com/quic-go/quic-go) - QUIC implementation in Go
-- [webtransport-go](https://github.com/quic-go/webtransport-go) - WebTransport
-  implementation in Go
-- [MOQ Lite Specification](https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html) -
-  The specification this implementation follows
+- [quic-go](https://github.com/quic-go/quic-go) — QUIC implementation in Go
+- [webtransport-go](https://github.com/quic-go/webtransport-go) — WebTransport implementation in Go
+- [MOQ Lite Specification](https://kixelated.github.io/moq-drafts/draft-lcurley-moq-transfork.html) — The specification this implementation follows

@@ -446,7 +446,7 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 // specified prefix. It opens an announce stream and returns an
 // AnnouncementReader that yields Announcement objects for active tracks.
 
-func (sess *Session) goAway(uri string) error {
+func (sess *Session) goAway(_ string) error {
 	if sess.sessionStream == nil {
 		return nil
 	}

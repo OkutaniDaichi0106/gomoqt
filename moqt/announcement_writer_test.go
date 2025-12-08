@@ -319,13 +319,14 @@ func TestAnnouncementWriter_Init_DeadlockIssue(t *testing.T) {
 	activeAnn := sas.actives["stream1"]
 	assert.NotNil(t, activeAnn)
 
-	if activeAnn.announcement == ann1 {
+	switch activeAnn.announcement {
+	case ann1:
 		assert.True(t, ann1.IsActive())
 		assert.True(t, ann2.IsActive())
-	} else if activeAnn.announcement == ann2 {
+	case ann2:
 		assert.True(t, ann1.IsActive())
 		assert.True(t, ann2.IsActive())
-	} else {
+	default:
 		t.Fatalf("unexpected announcement: %v", activeAnn)
 	}
 

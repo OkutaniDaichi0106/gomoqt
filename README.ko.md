@@ -1,5 +1,9 @@
 # gomoqt
 
+<div align="center">
+<sup align="center"><a href="README.md">English</a></sup>
+</div>
+
 QUIC을 통한 효율적인 미디어 스트리밍을 위해 MOQ Lite 사양을 구현한 Media over QUIC Transport(MOQT)의 Go 구현체입니다.
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/OkutaniDaichi0106/gomoqt.svg)](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt)

@@ -1,5 +1,9 @@
 # gomoqt
 
+<div align="center">
+<sup align="center"><a href="README.md">English</a></sup>
+</div>
+
 Media over QUIC (MOQ) の Go 実装で、MOQ Lite 仕様に基づき QUIC 上で効率的なメディア配信を行います。
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/OkutaniDaichi0106/gomoqt.svg)](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt)

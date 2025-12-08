@@ -1,5 +1,9 @@
 # gomoqt
 
+<div align="center">
+<sup align="center"><a href="README.md">English</a></sup>
+</div>
+
 Реализация Media over QUIC Transport (MOQT) на Go, использующая спецификацию MOQ Lite для эффективной потоковой передачи мультимедиа по QUIC.
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/OkutaniDaichi0106/gomoqt.svg)](https://pkg.go.dev/github.com/OkutaniDaichi0106/gomoqt)

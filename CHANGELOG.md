@@ -10,11 +10,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Chinese (Simplified) translation of README (`README.zh-cn.md`)
 - Korean translation of README (`README.ko.md`)
+- Chinese translation of README (`README.zh.md`)
+- Russian translation of README (`README.ru.md`)
+- German translation of README (`README.de.md`)
+- Japanese translation of README (`README.ja.md`)
+- Language selection links in all README files for improved accessibility
+- Detailed README files for interop, examples, and moqt package
 
 ### Changed
 
+- **Repository ownership**: Changed GitHub username from `OkutaniDaichi0106` to `okdaichi`
 - Renamed `Session.SessionUpdated()` to `Session.Updated()`
-- docs: Updated all documentation to align with current implementation
+- Renamed `Session.Terminate()` to `Session.CloseWithError()` for consistency
+- Updated all documentation to align with current implementation and reflect correct GitHub username
+- Improved README formatting and features section clarity across all languages
+- Updated module replace directives to use forked quic-go and webtransport-go commits
 
 ## [v0.6.0] - 2025-12-05
 

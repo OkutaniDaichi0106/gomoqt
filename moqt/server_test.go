@@ -557,7 +557,7 @@ func TestServer_SessionManagement(t *testing.T) {
 					ErrorCode:    quic.ApplicationErrorCode(args[0].(quic.ApplicationErrorCode)),
 					ErrorMessage: args[1].(string),
 				}) // Cancel the connection context
-			}).Return(nil) // For session.Terminate
+			}).Return(nil) // For session.CloseWithError
 			mockConn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
 
 			req := &SetupRequest{

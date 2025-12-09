@@ -7,7 +7,7 @@ MOQ Session is established when a client connects to a QUIC server and offers to
 
 ## Implementation
 
-### `moq.Session`
+### `moqt.Session`
 
 ```go
 type Session struct {

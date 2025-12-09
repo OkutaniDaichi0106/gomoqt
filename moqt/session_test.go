@@ -202,7 +202,7 @@ func TestSession_CloseWithError(t *testing.T) {
 			session := newSession(conn, sessStream, nil, slog.Default(), nil)
 
 			err := session.CloseWithError(tt.code, tt.msg)
-			assert.NoError(t, err, "Terminate should not return error")
+			assert.NoError(t, err, "CloseWithError should not return error")
 		})
 	}
 }
@@ -2069,7 +2069,7 @@ func TestSession_AcceptAnnounce_DecodeInitMessageError(t *testing.T) {
 	_ = session.CloseWithError(NoError, "")
 }
 
-func TestSession_Terminate_AlreadyTerminating(t *testing.T) {
+func TestSession_CloseWithError_AlreadyTerminating(t *testing.T) {
 	conn := &MockQUICConnection{}
 	conn.On("Context").Return(context.Background())
 	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil).Once()

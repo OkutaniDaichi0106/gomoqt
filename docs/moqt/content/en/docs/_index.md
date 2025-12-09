@@ -1,6 +1,9 @@
 ---
 linkTitle: "Documentation"
 title: Introduction
+description: Complete documentation for gomoqt - Learn how to build real-time media streaming applications with Media over QUIC protocol.
+images:
+  - https://go.dev/images/gophers/motorcycle.svg
 cascade:
   type: docs
 ---

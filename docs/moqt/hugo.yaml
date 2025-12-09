@@ -92,6 +92,23 @@ params:
   editURL:
     enable: true
     base: "https://github.com/okdaichi/gomoqt/edit/main"
+  
+  # SEO and Social Media Configuration
+  social:
+    twitter: OD47215  # Your Twitter handle (without @)
+    images:
+      - https://go.dev/images/gophers/motorcycle.svg  # Default Gopher image for OG cards
+    author: OD47215
+    siteName: gomoqt
+    siteDescription: Fast, simply designed MoQ implementation for building scalable real-time apps.
+
+# SEO and Social Media Settings
+enableRobotsTXT: true
+
+sitemap:
+  changefreq: weekly
+  filename: sitemap.xml
+  priority: 0.5
 
 # Allow raw HTML in Markdown for hero wrappers and containers
 markup:

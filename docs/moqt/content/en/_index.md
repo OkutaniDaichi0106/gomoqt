@@ -1,6 +1,9 @@
 ---
 title: gomoqt
 layout: hextra-home
+description: Fast, simply designed MoQ implementation for building scalable real-time apps in Go. Familiar API design inspired by net/http.
+images:
+  - https://go.dev/images/gophers/motorcycle.svg
 ---
 
 {{<hextra/hero-badge>}}

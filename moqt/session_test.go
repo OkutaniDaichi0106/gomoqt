@@ -168,7 +168,7 @@ func TestNewSession_SessionStreamClosure(t *testing.T) {
 	conn.AssertExpectations(t)
 }
 
-func TestSession_Terminate(t *testing.T) {
+func TestSession_CloseWithError(t *testing.T) {
 	tests := map[string]struct {
 		code SessionErrorCode
 		msg  string

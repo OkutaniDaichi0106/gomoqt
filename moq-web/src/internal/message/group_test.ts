@@ -1,7 +1,7 @@
 import { assertEquals } from "@std/assert";
 import { GroupMessage } from "./group.ts";
-import { Buffer } from "@okudai/golikejs/bytes";
-import type { Reader, Writer } from "@okudai/golikejs/io";
+import { Buffer } from "@okdaichi/golikejs/bytes";
+import type { Reader, Writer } from "@okdaichi/golikejs/io";
 
 Deno.test("GroupMessage - encode/decode roundtrip - multiple scenarios", async (t) => {
 	const testCases = {
@@ -101,20 +101,23 @@ Deno.test("GroupMessage - error cases", async (t) => {
 		},
 	);
 
-	await t.step("encode should return error when writeUint16 fails", async () => {
-		const mockWriter: Writer = {
-			async write(_p: Uint8Array): Promise<[number, Error | undefined]> {
-				return [0, new Error("Write failed")];
-			},
-		};
+	await t.step(
+		"encode should return error when writeUint16 fails",
+		async () => {
+			const mockWriter: Writer = {
+				async write(_p: Uint8Array): Promise<[number, Error | undefined]> {
+					return [0, new Error("Write failed")];
+				},
+			};
 
-		const msg = new GroupMessage({
-			subscribeId: 1,
-			sequence: 1,
-		});
-		const err = await msg.encode(mockWriter);
-		assertEquals(err instanceof Error, true);
-	});
+			const msg = new GroupMessage({
+				subscribeId: 1,
+				sequence: 1,
+			});
+			const err = await msg.encode(mockWriter);
+			assertEquals(err instanceof Error, true);
+		},
+	);
 
 	await t.step(
 		"encode should return error when writeVarint fails for subscribeId",

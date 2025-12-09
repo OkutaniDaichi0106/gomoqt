@@ -1,4 +1,4 @@
-import { Buffer } from "@okudai/golikejs/bytes";
+import { Buffer } from "@okdaichi/golikejs/bytes";
 import { MAX_VARINT1, MAX_VARINT2, MAX_VARINT4, MAX_VARINT8 } from "./len.ts";
 
 export const MAX_BYTES_LENGTH = 1 << 30; // 1 GiB, maximum length of bytes to read

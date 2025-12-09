@@ -1,10 +1,10 @@
 import type { SubscribeMessage } from "./internal/message/mod.ts";
 import { SubscribeOkMessage, SubscribeUpdateMessage } from "./internal/message/mod.ts";
 import type { Stream } from "./internal/webtransport/mod.ts";
-import { EOFError } from "@okudai/golikejs/io";
-import { Cond, Mutex } from "@okudai/golikejs/sync";
-import type { CancelCauseFunc, Context } from "@okudai/golikejs/context";
-import { withCancelCause } from "@okudai/golikejs/context";
+import { EOFError } from "@okdaichi/golikejs/io";
+import { Cond, Mutex } from "@okdaichi/golikejs/sync";
+import type { CancelCauseFunc, Context } from "@okdaichi/golikejs/context";
+import { withCancelCause } from "@okdaichi/golikejs/context";
 import { WebTransportStreamError } from "./internal/webtransport/mod.ts";
 import type { Info } from "./info.ts";
 import type { SubscribeID, TrackPriority } from "./alias.ts";

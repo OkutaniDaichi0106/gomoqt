@@ -1,4 +1,4 @@
-import { EOFError, type Writer } from "@okudai/golikejs/io";
+import { EOFError, type Writer } from "@okdaichi/golikejs/io";
 import { WebTransportStreamError, WebTransportStreamErrorInfo } from "./error.ts";
 import { WebTransportStreamErrorCode } from "./mod.ts";
 

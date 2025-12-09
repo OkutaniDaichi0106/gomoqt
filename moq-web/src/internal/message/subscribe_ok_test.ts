@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { SubscribeOkMessage } from "./subscribe_ok.ts";
-import { Buffer } from "@okudai/golikejs/bytes";
+import { Buffer } from "@okdaichi/golikejs/bytes";
 
 Deno.test("SubscribeOkMessage - encode/decode roundtrip", async (t) => {
 	await t.step("should encode and decode empty message", async () => {
@@ -29,14 +29,17 @@ Deno.test("SubscribeOkMessage - encode/decode roundtrip", async (t) => {
 		assertEquals(err !== undefined, true);
 	});
 
-	await t.step("decode should return error when message length mismatch", async () => {
-		const buffer = Buffer.make(10);
-		// Write a non-zero message length (expect 0 but got non-zero)
-		await buffer.write(new Uint8Array([0x00, 0x05])); // msgLen = 5 (big-endian uint16)
+	await t.step(
+		"decode should return error when message length mismatch",
+		async () => {
+			const buffer = Buffer.make(10);
+			// Write a non-zero message length (expect 0 but got non-zero)
+			await buffer.write(new Uint8Array([0x00, 0x05])); // msgLen = 5 (big-endian uint16)
 
-		const message = new SubscribeOkMessage({});
-		const err = await message.decode(buffer);
-		assertEquals(err !== undefined, true);
-		assertEquals(err?.message.includes("message length mismatch"), true);
-	});
+			const message = new SubscribeOkMessage({});
+			const err = await message.decode(buffer);
+			assertEquals(err !== undefined, true);
+			assertEquals(err?.message.includes("message length mismatch"), true);
+		},
+	);
 });

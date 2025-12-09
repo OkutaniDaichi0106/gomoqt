@@ -1,6 +1,6 @@
 import { GroupWriter } from "./group_stream.ts";
 import type { Info } from "./info.ts";
-import type { Context } from "@okudai/golikejs/context";
+import type { Context } from "@okdaichi/golikejs/context";
 import type { ReceiveSubscribeStream, TrackConfig } from "./subscribe_stream.ts";
 import type { SendStream } from "./internal/webtransport/mod.ts";
 import { UniStreamTypes } from "./stream_type.ts";

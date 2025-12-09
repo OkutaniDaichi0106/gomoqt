@@ -1,9 +1,9 @@
-import { EOFError } from "@okudai/golikejs/io";
+import { EOFError } from "@okdaichi/golikejs/io";
 import type { AnnouncePleaseMessage } from "./internal/message/mod.ts";
 import { AnnounceMessage } from "./internal/message/mod.ts";
-import { ContextCancelledError, watchPromise, withCancelCause } from "@okudai/golikejs/context";
-import type { CancelCauseFunc, Context } from "@okudai/golikejs/context";
-import { Cond, Mutex } from "@okudai/golikejs/sync";
+import { ContextCancelledError, watchPromise, withCancelCause } from "@okdaichi/golikejs/context";
+import type { CancelCauseFunc, Context } from "@okdaichi/golikejs/context";
+import { Cond, Mutex } from "@okdaichi/golikejs/sync";
 import type { TrackPrefix } from "./track_prefix.ts";
 import { isValidPrefix, validateTrackPrefix } from "./track_prefix.ts";
 import { validateBroadcastPath } from "./broadcast_path.ts";

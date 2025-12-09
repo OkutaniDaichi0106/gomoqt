@@ -1,10 +1,10 @@
-# @okudai/moq
+# @okdaichi/moq
 
-[![JSR](https://jsr.io/badges/@okudai/moq)](https://jsr.io/@okudai/moq)
+[![JSR](https://jsr.io/badges/@okdaichi/moq)](https://jsr.io/@okdaichi/moq)
 
-TypeScript/JavaScript implementation of Media over QUIC (MOQ Lite)
-for Deno (and Node via JSR). It is the web/JS client counterpart to the Go
-implementation in this repository.
+TypeScript/JavaScript implementation of Media over QUIC (MOQ Lite) for Deno (and
+Node via JSR). It is the web/JS client counterpart to the Go implementation in
+this repository.
 
 ## Overview
 
@@ -16,28 +16,28 @@ implementation in this repository.
 
 ### Deno
 
-Install from [JSR](https://jsr.io/@okudai/moq):
+Install from [JSR](https://jsr.io/@okdaichi/moq):
 
 ```bash
-deno add jsr:@okudai/moq
+deno add jsr:@okdaichi/moq
 ```
 
 Then import:
 
 ```typescript
-import { Session } from "@okudai/moq";
+import { Session } from "@okdaichi/moq";
 ```
 
 ### Node.js (npm via JSR)
 
 ```bash
-npx jsr add @okudai/moq
+npx jsr add @okdaichi/moq
 ```
 
 ## Usage (minimal)
 
 ```ts
-import { Session } from "@okudai/moq";
+import { Session } from "@okdaichi/moq";
 
 const session = new Session({ url: "https://example.com/interop" });
 // TODO: add track subscription/publish based on your app
@@ -46,8 +46,7 @@ await session.connect();
 
 ## Development
 
-This project uses Deno as its primary environment (TypeScript-native with
-built-in fmt/lint/test).
+This project uses Deno as its primary environment (TypeScript-native with built-in fmt/lint/test).
 
 - Prerequisite: [Deno](https://deno.land/) v2.0 or later
 

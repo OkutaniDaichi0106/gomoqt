@@ -1,7 +1,7 @@
 import { assertEquals } from "@std/assert";
 import { SessionClientMessage } from "./session_client.ts";
-import { Buffer } from "@okudai/golikejs/bytes";
-import type { Writer } from "@okudai/golikejs/io";
+import { Buffer } from "@okdaichi/golikejs/bytes";
+import type { Writer } from "@okdaichi/golikejs/io";
 
 Deno.test("SessionClientMessage", async (t) => {
 	await t.step("should be defined", () => {
@@ -79,16 +79,19 @@ Deno.test("SessionClientMessage", async (t) => {
 		assertEquals(typeof length, "number");
 	});
 
-	await t.step("should calculate correct length with no versions and no extensions", () => {
-		const versions = new Set<number>();
-		const extensions = new Map<number, Uint8Array>();
+	await t.step(
+		"should calculate correct length with no versions and no extensions",
+		() => {
+			const versions = new Set<number>();
+			const extensions = new Map<number, Uint8Array>();
 
-		const message = new SessionClientMessage({ versions, extensions });
-		const length = message.len;
+			const message = new SessionClientMessage({ versions, extensions });
+			const length = message.len;
 
-		// Length should be: varint(0) + varint(0) = 2 bytes
-		assertEquals(length, 2);
-	});
+			// Length should be: varint(0) + varint(0) = 2 bytes
+			assertEquals(length, 2);
+		},
+	);
 
 	await t.step(
 		"should encode and decode with single version and no extensions",

@@ -1,7 +1,7 @@
 import { assertEquals, assertExists } from "@std/assert";
 import { TrackReader } from "./track_reader.ts";
 import { Queue } from "./internal/queue.ts";
-import { background, withCancelCause } from "@okudai/golikejs/context";
+import { background, withCancelCause } from "@okdaichi/golikejs/context";
 import { MockReceiveStream, MockStream } from "./mock_stream_test.ts";
 import { SendSubscribeStream } from "./subscribe_stream.ts";
 import { GroupMessage, SubscribeMessage, SubscribeOkMessage } from "./internal/message/mod.ts";

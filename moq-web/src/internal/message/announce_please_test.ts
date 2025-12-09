@@ -1,7 +1,7 @@
 import { assertEquals } from "@std/assert";
 import { AnnouncePleaseMessage } from "./announce_please.ts";
-import { Buffer } from "@okudai/golikejs/bytes";
-import type { Writer } from "@okudai/golikejs/io";
+import { Buffer } from "@okdaichi/golikejs/bytes";
+import type { Writer } from "@okdaichi/golikejs/io";
 
 Deno.test("AnnouncePleaseMessage - encode/decode roundtrip - multiple scenarios", async (t) => {
 	const testCases = {
@@ -57,37 +57,43 @@ Deno.test("AnnouncePleaseMessage - encode/decode roundtrip - multiple scenarios"
 		assertEquals(err !== undefined, true);
 	});
 
-	await t.step("encode should return error when writeUint16 fails", async () => {
-		let callCount = 0;
-		const mockWriter: Writer = {
-			async write(_p: Uint8Array): Promise<[number, Error | undefined]> {
-				callCount++;
-				if (callCount > 0) {
-					return [0, new Error("Write failed")];
-				}
-				return [_p.length, undefined];
-			},
-		};
+	await t.step(
+		"encode should return error when writeUint16 fails",
+		async () => {
+			let callCount = 0;
+			const mockWriter: Writer = {
+				async write(_p: Uint8Array): Promise<[number, Error | undefined]> {
+					callCount++;
+					if (callCount > 0) {
+						return [0, new Error("Write failed")];
+					}
+					return [_p.length, undefined];
+				},
+			};
 
-		const message = new AnnouncePleaseMessage({ prefix: "test" });
-		const err = await message.encode(mockWriter);
-		assertEquals(err instanceof Error, true);
-	});
+			const message = new AnnouncePleaseMessage({ prefix: "test" });
+			const err = await message.encode(mockWriter);
+			assertEquals(err instanceof Error, true);
+		},
+	);
 
-	await t.step("encode should return error when writeString fails", async () => {
-		let callCount = 0;
-		const mockWriter: Writer = {
-			async write(p: Uint8Array): Promise<[number, Error | undefined]> {
-				callCount++;
-				if (callCount > 1) {
-					return [0, new Error("Write failed on string")];
-				}
-				return [p.length, undefined];
-			},
-		};
+	await t.step(
+		"encode should return error when writeString fails",
+		async () => {
+			let callCount = 0;
+			const mockWriter: Writer = {
+				async write(p: Uint8Array): Promise<[number, Error | undefined]> {
+					callCount++;
+					if (callCount > 1) {
+						return [0, new Error("Write failed on string")];
+					}
+					return [p.length, undefined];
+				},
+			};
 
-		const message = new AnnouncePleaseMessage({ prefix: "test" });
-		const err = await message.encode(mockWriter);
-		assertEquals(err instanceof Error, true);
-	});
+			const message = new AnnouncePleaseMessage({ prefix: "test" });
+			const err = await message.encode(mockWriter);
+			assertEquals(err instanceof Error, true);
+		},
+	);
 });

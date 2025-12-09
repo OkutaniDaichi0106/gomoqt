@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { SubscribeUpdateMessage } from "./subscribe_update.ts";
-import { Buffer } from "@okudai/golikejs/bytes";
+import { Buffer } from "@okdaichi/golikejs/bytes";
 
 Deno.test("SubscribeUpdateMessage - encode/decode roundtrip - multiple scenarios", async (t) => {
 	const testCases = {

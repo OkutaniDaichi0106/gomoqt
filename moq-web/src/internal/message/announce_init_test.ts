@@ -1,7 +1,7 @@
 import { assertEquals } from "@std/assert";
 import { AnnounceInitMessage } from "./announce_init.ts";
-import { Buffer } from "@okudai/golikejs/bytes";
-import type { Reader, Writer } from "@okudai/golikejs/io";
+import { Buffer } from "@okdaichi/golikejs/bytes";
+import type { Reader, Writer } from "@okdaichi/golikejs/io";
 
 Deno.test("AnnounceInitMessage", async (t) => {
 	await t.step("should encode and decode with suffixes", async () => {

@@ -1,5 +1,5 @@
-import type { Reader } from "@okudai/golikejs/io";
-import { EOFError } from "@okudai/golikejs/io";
+import type { Reader } from "@okdaichi/golikejs/io";
+import { EOFError } from "@okdaichi/golikejs/io";
 import {
 	WebTransportStreamError,
 	WebTransportStreamErrorCode,

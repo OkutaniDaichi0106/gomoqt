@@ -20,8 +20,8 @@ import {
 } from "./internal/webtransport/mod.ts";
 import { Extensions } from "./extensions.ts";
 import { SessionStream } from "./session_stream.ts";
-import { background, withCancelCause } from "@okudai/golikejs/context";
-import type { CancelCauseFunc, Context } from "@okudai/golikejs/context";
+import { background, withCancelCause } from "@okdaichi/golikejs/context";
+import type { CancelCauseFunc, Context } from "@okdaichi/golikejs/context";
 import { AnnouncementReader, AnnouncementWriter } from "./announce_stream.ts";
 import type { TrackPrefix } from "./track_prefix.ts";
 import { ReceiveSubscribeStream, SendSubscribeStream } from "./subscribe_stream.ts";

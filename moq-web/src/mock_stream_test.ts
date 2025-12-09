@@ -7,7 +7,7 @@ import { spy } from "@std/testing/mock";
 import type { Stream } from "./internal/webtransport/stream.ts";
 import type { SendStream } from "./internal/webtransport/send_stream.ts";
 import type { ReceiveStream } from "./internal/webtransport/receive_stream.ts";
-import { EOFError } from "@okudai/golikejs/io";
+import { EOFError } from "@okdaichi/golikejs/io";
 
 /**
  * Mock SendStream that implements the SendStream interface.

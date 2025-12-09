@@ -1,16 +1,16 @@
 import { assertEquals, assertExists } from "@std/assert";
 import { spy } from "@std/testing/mock";
 import { SessionStream } from "./session_stream.ts";
-import { background, withCancelCause } from "@okudai/golikejs/context";
+import { background, withCancelCause } from "@okdaichi/golikejs/context";
 import {
 	SessionClientMessage,
 	SessionServerMessage,
 	SessionUpdateMessage,
 } from "./internal/message/mod.ts";
 import { MockReceiveStream, MockSendStream, MockStream } from "./mock_stream_test.ts";
-import { Buffer } from "@okudai/golikejs/bytes";
+import { Buffer } from "@okdaichi/golikejs/bytes";
 import { DEFAULT_VERSION } from "./version.ts";
-import { EOFError } from "@okudai/golikejs/io";
+import { EOFError } from "@okdaichi/golikejs/io";
 
 Deno.test("SessionStream", async (t) => {
 	await t.step(

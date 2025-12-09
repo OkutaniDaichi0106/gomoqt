@@ -1,6 +1,6 @@
 import { assertEquals, assertInstanceOf } from "@std/assert";
 import { ReceiveStream } from "./receive_stream.ts";
-import { EOFError } from "@okudai/golikejs/io";
+import { EOFError } from "@okdaichi/golikejs/io";
 import { WebTransportStreamError } from "./error.ts";
 
 function setupReader(data: Uint8Array[]) {

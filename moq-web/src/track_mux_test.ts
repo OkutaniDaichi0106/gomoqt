@@ -4,7 +4,7 @@ import { TrackMux } from "./track_mux.ts";
 import type { AnnouncementWriter } from "./announce_stream.ts";
 import { Announcement } from "./announce_stream.ts";
 import type { TrackPrefix } from "./track_prefix.ts";
-import { background, withCancelCause } from "@okudai/golikejs/context";
+import { background, withCancelCause } from "@okdaichi/golikejs/context";
 import type { TrackWriter } from "./track_writer.ts";
 import { SubscribeErrorCode } from "./error.ts";
 

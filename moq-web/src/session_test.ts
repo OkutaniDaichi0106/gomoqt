@@ -14,8 +14,8 @@ import {
 import { BiStreamTypes, UniStreamTypes } from "./stream_type.ts";
 import { TrackMux } from "./track_mux.ts";
 import type { TrackPrefix } from "./track_prefix.ts";
-import { Writer } from "@okudai/golikejs/io";
-import { EOFError } from "@okudai/golikejs/io";
+import { Writer } from "@okdaichi/golikejs/io";
+import { EOFError } from "@okdaichi/golikejs/io";
 import {
 	ReceiveStream,
 	SendStream,

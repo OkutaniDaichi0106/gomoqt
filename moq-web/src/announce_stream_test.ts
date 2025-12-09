@@ -1,14 +1,14 @@
 import { assertEquals, assertExists } from "@std/assert";
 import { spy } from "@std/testing/mock";
 import { Announcement, AnnouncementReader, AnnouncementWriter } from "./announce_stream.ts";
-import { background, withCancelCause } from "@okudai/golikejs/context";
+import { background, withCancelCause } from "@okdaichi/golikejs/context";
 import {
 	AnnounceInitMessage,
 	AnnounceMessage,
 	AnnouncePleaseMessage,
 } from "./internal/message/mod.ts";
 import { MockReceiveStream, MockSendStream, MockStream } from "./mock_stream_test.ts";
-import { Buffer } from "@okudai/golikejs/bytes";
+import { Buffer } from "@okdaichi/golikejs/bytes";
 
 Deno.test("Announcement", async (t) => {
 	await t.step("lifecycle: isActive and ended", async () => {
@@ -382,7 +382,10 @@ Deno.test("AnnouncementReader", async (t) => {
 		"handles ANNOUNCE message with active false ending existing announcement",
 		async () => {
 			const buf = Buffer.make(256);
-			const activeFalseMsg = new AnnounceMessage({ suffix: "a", active: false });
+			const activeFalseMsg = new AnnounceMessage({
+				suffix: "a",
+				active: false,
+			});
 			await activeFalseMsg.encode(buf);
 
 			const mockStream = new MockStream({

@@ -1,6 +1,6 @@
 import type { ReceiveStream, SendStream } from "./internal/webtransport/mod.ts";
-import { withCancelCause } from "@okudai/golikejs/context";
-import type { CancelCauseFunc, Context } from "@okudai/golikejs/context";
+import { withCancelCause } from "@okdaichi/golikejs/context";
+import type { CancelCauseFunc, Context } from "@okdaichi/golikejs/context";
 import { WebTransportStreamError } from "./internal/webtransport/error.ts";
 import type { GroupMessage } from "./internal/message/mod.ts";
 import { readFull, readUint16, writeUint16 } from "./internal/message/mod.ts";

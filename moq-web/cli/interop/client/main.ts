@@ -1,6 +1,6 @@
-import { Client, Frame, TrackMux, TrackWriter } from "@okudai/moq";
-import { background } from "@okudai/golikejs/context";
-import { scope } from "@okudai/golikejs";
+import { Client, Frame, TrackMux, TrackWriter } from "@okdaichi/moq";
+import { background } from "@okdaichi/golikejs/context";
+import { scope } from "@okdaichi/golikejs";
 
 scope(async (defer) => {
 	const client = new Client();

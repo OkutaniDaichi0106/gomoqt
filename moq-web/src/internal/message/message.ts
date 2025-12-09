@@ -3,8 +3,8 @@
  * Go-like design with io.Reader/io.Writer interfaces.
  */
 
-import type { Reader, Writer } from "@okudai/golikejs/io";
-import { EOFError } from "@okudai/golikejs/io";
+import type { Reader, Writer } from "@okdaichi/golikejs/io";
+import { EOFError } from "@okdaichi/golikejs/io";
 import {
 	bytesLen,
 	MAX_VARINT1,

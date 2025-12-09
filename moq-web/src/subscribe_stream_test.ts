@@ -6,8 +6,8 @@ import {
 	SubscribeOkMessage,
 	SubscribeUpdateMessage,
 } from "./internal/message/mod.ts";
-import { background, withCancelCause } from "@okudai/golikejs/context";
-import { EOFError } from "@okudai/golikejs/io";
+import { background, withCancelCause } from "@okdaichi/golikejs/context";
+import { EOFError } from "@okdaichi/golikejs/io";
 import { MockReceiveStream, MockSendStream, MockStream } from "./mock_stream_test.ts";
 
 Deno.test("SendSubscribeStream.update writes update to writable", async () => {

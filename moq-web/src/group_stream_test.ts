@@ -3,11 +3,11 @@ import { spy } from "@std/testing/mock";
 import { GroupReader, GroupSequenceFirst, GroupWriter } from "./group_stream.ts";
 import { GroupMessage, writeUint16 } from "./internal/message/mod.ts";
 import { BytesFrame, Frame } from "./frame.ts";
-import { background, withCancelCause } from "@okudai/golikejs/context";
+import { background, withCancelCause } from "@okdaichi/golikejs/context";
 import { GroupErrorCode } from "./error.ts";
 import { SendStream } from "./internal/webtransport/mod.ts";
 import { ReceiveStream } from "./internal/webtransport/mod.ts";
-import { EOFError } from "@okudai/golikejs/io";
+import { EOFError } from "@okdaichi/golikejs/io";
 import { MockReceiveStream, MockSendStream } from "./mock_stream_test.ts";
 
 Deno.test("GroupWriter", async (t) => {

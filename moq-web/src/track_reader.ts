@@ -1,7 +1,7 @@
 import { GroupReader } from "./group_stream.ts";
 import type { Info } from "./info.ts";
-import type { Context } from "@okudai/golikejs/context";
-import { ContextCancelledError, watchPromise } from "@okudai/golikejs/context";
+import type { Context } from "@okdaichi/golikejs/context";
+import { ContextCancelledError, watchPromise } from "@okdaichi/golikejs/context";
 import type { SendSubscribeStream, TrackConfig } from "./subscribe_stream.ts";
 import type { ReceiveStream } from "./internal/webtransport/mod.ts";
 import { GroupMessage } from "./internal/message/mod.ts";

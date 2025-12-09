@@ -1,7 +1,7 @@
 import { assertEquals, assertInstanceOf } from "@std/assert";
 import { spy } from "@std/testing/mock";
 import { TrackWriter } from "./track_writer.ts";
-import { background, withCancelCause } from "@okudai/golikejs/context";
+import { background, withCancelCause } from "@okdaichi/golikejs/context";
 import { SendStream } from "./internal/webtransport/mod.ts";
 import { MockSendStream, MockStream } from "./mock_stream_test.ts";
 import { ReceiveSubscribeStream } from "./subscribe_stream.ts";

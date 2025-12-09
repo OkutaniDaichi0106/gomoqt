@@ -1,4 +1,4 @@
-import type { Reader, Writer } from "@okudai/golikejs/io";
+import type { Reader, Writer } from "@okdaichi/golikejs/io";
 import { readUint16, writeUint16 } from "./message.ts";
 
 // deno-lint-ignore no-empty-interface

@@ -1,7 +1,7 @@
 import { assertEquals } from "@std/assert";
 import { SessionServerMessage } from "./session_server.ts";
-import { Buffer } from "@okudai/golikejs/bytes";
-import type { Writer } from "@okudai/golikejs/io";
+import { Buffer } from "@okdaichi/golikejs/bytes";
+import type { Writer } from "@okdaichi/golikejs/io";
 
 Deno.test("SessionServerMessage - encode/decode roundtrip - multiple scenarios", async (t) => {
 	const testCases = {

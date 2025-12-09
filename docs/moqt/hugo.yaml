@@ -97,7 +97,7 @@ params:
   social:
     twitter: OD47215  # Your Twitter handle (without @)
     images:
-      - https://go.dev/images/gophers/motorcycle.svg  # Default Gopher image for OG cards
+      - /images/og-image.png  # Default Gopher OG card image (1200x630px)
     author: OD47215
     siteName: gomoqt
     siteDescription: Fast, simply designed MoQ implementation for building scalable real-time apps.

@@ -3,7 +3,7 @@ title: About
 toc: false
 description: gomoqt is an open-source implementation of the Media over QUIC (MoQ) protocol, providing fast, reliable, and scalable real-time media streaming.
 images:
-  - https://go.dev/images/gophers/motorcycle.svg
+  - /images/og-image.png
 ---
 
 ## Project Overview

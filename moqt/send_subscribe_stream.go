@@ -46,7 +46,7 @@ func (sss *sendSubscribeStream) TrackConfig() *TrackConfig {
 	return sss.config
 }
 
-func (sss *sendSubscribeStream) UpdateSubscribe(newConfig *TrackConfig) error {
+func (sss *sendSubscribeStream) updateSubscribe(newConfig *TrackConfig) error {
 	if newConfig == nil {
 		return errors.New("new track config cannot be nil")
 	}

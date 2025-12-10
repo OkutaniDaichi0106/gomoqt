@@ -106,8 +106,8 @@ func TestSendSubscribeStream_UpdateSubscribe(t *testing.T) {
 		TrackPriority: TrackPriority(2),
 	}
 
-	err := sss.UpdateSubscribe(newConfig)
-	assert.NoError(t, err, "UpdateSubscribe() should not return error for valid config")
+	err := sss.updateSubscribe(newConfig)
+	assert.NoError(t, err, "updateSubscribe() should not return error for valid config")
 
 	// Verify config was updated
 	updatedConfig := sss.TrackConfig()
@@ -142,11 +142,11 @@ func TestSendSubscribeStream_UpdateSubscribe_InvalidRange(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			err := sss.UpdateSubscribe(tt.newConfig)
+			err := sss.updateSubscribe(tt.newConfig)
 			if tt.wantError {
-				assert.Error(t, err, "UpdateSubscribe() should return error for %s", name)
+				assert.Error(t, err, "updateSubscribe() should return error for %s", name)
 			} else {
-				assert.NoError(t, err, "UpdateSubscribe() should not return error for %s", name)
+				assert.NoError(t, err, "updateSubscribe() should not return error for %s", name)
 			}
 		})
 	}
@@ -267,7 +267,7 @@ func TestSendSubscribeStream_ConcurrentUpdate(t *testing.T) {
 		newConfig := &TrackConfig{
 			TrackPriority: TrackPriority(2),
 		}
-		err := sss.UpdateSubscribe(newConfig)
+		err := sss.updateSubscribe(newConfig)
 		if err != nil {
 			t.Logf("First concurrent update failed: %v", err)
 		}
@@ -276,7 +276,7 @@ func TestSendSubscribeStream_ConcurrentUpdate(t *testing.T) {
 		newConfig := &TrackConfig{
 			TrackPriority: TrackPriority(3),
 		}
-		err := sss.UpdateSubscribe(newConfig)
+		err := sss.updateSubscribe(newConfig)
 		if err != nil {
 			t.Logf("Second concurrent update failed: %v", err)
 		}
@@ -347,8 +347,8 @@ func TestSendSubscribeStream_UpdateSubscribeWriteError(t *testing.T) {
 		TrackPriority: TrackPriority(2),
 	}
 
-	err := sss.UpdateSubscribe(newConfig)
-	assert.Error(t, err, "UpdateSubscribe() should return error when Write fails")
+	err := sss.updateSubscribe(newConfig)
+	assert.Error(t, err, "updateSubscribe() should return error when Write fails")
 	assert.Error(t, sss.ctx.Err(), "stream should be marked as closed after write error")
 
 	// Check the stored error directly
@@ -385,8 +385,8 @@ func TestSendSubscribeStream_UpdateSubscribeClosedStream(t *testing.T) {
 		TrackPriority: TrackPriority(1),
 	}
 
-	err = sss.UpdateSubscribe(newConfig)
-	assert.Error(t, err, "UpdateSubscribe() should return error on closed stream")
+	err = sss.updateSubscribe(newConfig)
+	assert.Error(t, err, "updateSubscribe() should return error on closed stream")
 
 	mockStream.AssertExpectations(t)
 }
@@ -493,7 +493,7 @@ func TestSendSubscribeStream_UpdateSubscribeValidRangeTransitions(t *testing.T) 
 
 			sss := newSendSubscribeStream(id, mockStream, tt.initialConfig, Info{})
 
-			err := sss.UpdateSubscribe(tt.newConfig)
+			err := sss.updateSubscribe(tt.newConfig)
 			if tt.expectError {
 				assert.Error(t, err, tt.description)
 			} else {

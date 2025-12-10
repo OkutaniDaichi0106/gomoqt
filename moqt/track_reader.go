@@ -155,7 +155,7 @@ func (r *TrackReader) Update(config *TrackConfig) error {
 		return errors.New("subscribe config cannot be nil")
 	}
 
-	return r.sendSubscribeStream.UpdateSubscribe(config)
+	return r.sendSubscribeStream.updateSubscribe(config)
 }
 
 // TrackConfig returns the currently active subscription configuration.

@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [v0.6.2] - 2025-12-10
+
+### Changed
+
+- **API Encapsulation**: Changed `sendSubscribeStream.UpdateSubscribe()` from public to private (`updateSubscribe()`) to improve API boundaries
+  - `TrackReader.Update()` remains the only public API for updating subscription configurations
+  - Prevents unintended direct access to internal implementation methods while maintaining embedding benefits
+
 ## [v0.6.1] - 2025-12-09
 
 ### Added

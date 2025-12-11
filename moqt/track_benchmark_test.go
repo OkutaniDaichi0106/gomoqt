@@ -143,6 +143,8 @@ func BenchmarkTrackWriter_OpenGroup(b *testing.B) {
 			mockStream.On("StreamID").Return(quic.StreamID(1))
 			mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 			mockStream.On("Write", mock.Anything).Return(0, nil)
+			mockStream.On("Close").Return(nil)
+			mockStream.On("Close").Return(nil)
 
 			substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{})
 
@@ -155,13 +157,13 @@ func BenchmarkTrackWriter_OpenGroup(b *testing.B) {
 				mockSendStream := &MockQUICSendStream{}
 				mockSendStream.On("Context").Return(context.Background())
 				mockSendStream.On("CancelWrite", mock.Anything).Return()
-				mockSendStream.On("StreamID").Return(quic.StreamID(streamIdx))
-				streamIdx++
-				mockSendStream.On("Close").Return(nil)
-				mockSendStream.On("Write", mock.Anything).Return(func(b []byte) int {
-					return len(b)
-				}, nil)
-				return mockSendStream, nil
+			mockSendStream.On("StreamID").Return(quic.StreamID(streamIdx))
+			streamIdx++
+			mockSendStream.On("Close").Return(nil)
+			mockSendStream.WriteFunc = func(p []byte) (int, error) {
+				return len(p), nil
+			}
+			return mockSendStream, nil
 			}
 
 			writer := newTrackWriter("/broadcast/path", "track_name", substr, openUniStreamFunc, func() {})
@@ -193,6 +195,8 @@ func BenchmarkTrackWriter_ConcurrentOpenGroup(b *testing.B) {
 			mockStream.On("StreamID").Return(quic.StreamID(1))
 			mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 			mockStream.On("Write", mock.Anything).Return(0, nil)
+			mockStream.On("Close").Return(nil)
+			mockStream.On("Close").Return(nil)
 
 			substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{})
 
@@ -205,13 +209,13 @@ func BenchmarkTrackWriter_ConcurrentOpenGroup(b *testing.B) {
 				mockSendStream := &MockQUICSendStream{}
 				mockSendStream.On("Context").Return(context.Background())
 				mockSendStream.On("CancelWrite", mock.Anything).Return()
-				mockSendStream.On("StreamID").Return(quic.StreamID(streamIdx))
-				streamIdx++
-				mockSendStream.On("Close").Return(nil)
-				mockSendStream.On("Write", mock.Anything).Return(func(b []byte) int {
-					return len(b)
-				}, nil)
-				return mockSendStream, nil
+			mockSendStream.On("StreamID").Return(quic.StreamID(streamIdx))
+			streamIdx++
+			mockSendStream.On("Close").Return(nil)
+			mockSendStream.WriteFunc = func(p []byte) (int, error) {
+				return len(p), nil
+			}
+			return mockSendStream, nil
 			}
 
 			writer := newTrackWriter("/broadcast/path", "track_name", substr, openUniStreamFunc, func() {})
@@ -247,20 +251,21 @@ func BenchmarkTrackWriter_ActiveGroupManagement(b *testing.B) {
 			mockStream.On("StreamID").Return(quic.StreamID(1))
 			mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 			mockStream.On("Write", mock.Anything).Return(0, nil)
+			mockStream.On("Close").Return(nil)
 
 			substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{})
 
 			streamIdx := 0
 			openUniStreamFunc := func() (quic.SendStream, error) {
 				mockSendStream := &MockQUICSendStream{}
+				mockSendStream.WriteFunc = func(p []byte) (int, error) {
+					return len(p), nil
+				}
 				mockSendStream.On("Context").Return(context.Background())
 				mockSendStream.On("CancelWrite", mock.Anything).Return()
 				mockSendStream.On("StreamID").Return(quic.StreamID(streamIdx))
 				streamIdx++
 				mockSendStream.On("Close").Return(nil)
-				mockSendStream.On("Write", mock.Anything).Return(func(b []byte) int {
-					return len(b)
-				}, nil)
 				return mockSendStream, nil
 			}
 
@@ -306,6 +311,7 @@ func BenchmarkTrackWriter_MemoryAllocation(b *testing.B) {
 		mockStream.On("StreamID").Return(quic.StreamID(1))
 		mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 		mockStream.On("Write", mock.Anything).Return(0, nil)
+			mockStream.On("Close").Return(nil)
 
 		substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{})
 
@@ -369,20 +375,21 @@ func BenchmarkTrackWriter_CloseWithActiveGroups(b *testing.B) {
 				mockStream.On("StreamID").Return(quic.StreamID(1))
 				mockStream.On("Read", mock.Anything).Return(0, io.EOF)
 				mockStream.On("Write", mock.Anything).Return(0, nil)
+			mockStream.On("Close").Return(nil)
 
 				substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{})
 
 				streamIdx := 0
 				openUniStreamFunc := func() (quic.SendStream, error) {
 					mockSendStream := &MockQUICSendStream{}
+					mockSendStream.WriteFunc = func(p []byte) (int, error) {
+						return len(p), nil
+					}
 					mockSendStream.On("Context").Return(context.Background())
 					mockSendStream.On("CancelWrite", mock.Anything).Return()
 					mockSendStream.On("StreamID").Return(quic.StreamID(streamIdx))
 					streamIdx++
 					mockSendStream.On("Close").Return(nil)
-					mockSendStream.On("Write", mock.Anything).Return(func(b []byte) int {
-						return len(b)
-					}, nil)
 					return mockSendStream, nil
 				}
 

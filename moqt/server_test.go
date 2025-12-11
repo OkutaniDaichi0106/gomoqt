@@ -564,7 +564,7 @@ func TestServer_SessionManagement(t *testing.T) {
 				Path:             "/test",
 				ClientExtensions: NewExtension(),
 			}
-			sessStream := newSessionStream(mockStream, req, nil)
+			sessStream := newSessionStream(mockStream, req)
 			session := newSession(mockConn, sessStream, nil, slog.Default(), nil)
 
 			// Test adding session
@@ -1064,7 +1064,7 @@ func TestServer_AddRemoveSession(t *testing.T) {
 		Path:             "/test",
 		ClientExtensions: NewExtension(),
 	}
-	sessStream := newSessionStream(mockStream, req, nil)
+	sessStream := newSessionStream(mockStream, req)
 
 	// Create session using newSession but quickly close it to avoid long-running goroutines
 	session := newSession(mockConn, sessStream, nil, slog.Default(), nil)
@@ -1159,7 +1159,7 @@ func TestServer_Shutdown(t *testing.T) {
 					Path:             "/test",
 					ClientExtensions: NewExtension(),
 				}
-				sessStream := newSessionStream(mockStream, req, nil)
+				sessStream := newSessionStream(mockStream, req)
 				session := newSession(mockConn, sessStream, nil, slog.Default(), nil)
 				server.addSession(session)
 				defer func() { _ = session.CloseWithError(NoError, SessionErrorText(NoError)) }()
@@ -1510,7 +1510,7 @@ func TestServer_SessionLifecycle(t *testing.T) {
 					Path:             "/test",
 					ClientExtensions: NewExtension(),
 				}
-				sessStream := newSessionStream(mockStream, req, nil)
+				sessStream := newSessionStream(mockStream, req)
 				session := newSession(mockConn, sessStream, nil, slog.Default(), nil)
 				sessions = append(sessions, session)
 
@@ -1671,7 +1671,7 @@ func TestServer_EdgeCaseOperations(t *testing.T) {
 					Path:             "/test",
 					ClientExtensions: NewExtension(),
 				}
-				sessStream := newSessionStream(mockStream, req, nil)
+				sessStream := newSessionStream(mockStream, req)
 				session := newSession(mockConn, sessStream, nil, slog.Default(), nil)
 
 				assert.NotPanics(t, func() {

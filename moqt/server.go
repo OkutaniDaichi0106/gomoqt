@@ -374,7 +374,7 @@ func acceptSessionStream(acceptCtx context.Context, conn quic.Connection, connLo
 		ClientExtensions: clientParams,
 	}
 
-	return newSessionStream(stream, req, config.newShiftDetector()), nil
+	return newSessionStream(stream, req), nil
 } // ListenAndServe starts the server by listening on the server's Address and serving QUIC connections.
 // TLS configuration must be provided on the Server for ListenAndServe to function properly.
 func (s *Server) ListenAndServe() error {

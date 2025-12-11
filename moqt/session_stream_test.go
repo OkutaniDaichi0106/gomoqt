@@ -28,7 +28,7 @@ func TestNewSessionStream(t *testing.T) {
 		ClientExtensions: NewExtension(),
 	}
 
-	ss := newSessionStream(mockStream, req, nil)
+	ss := newSessionStream(mockStream, req)
 
 	assert.NotNil(t, ss, "newSessionStream should not return nil")
 	assert.NotNil(t, ss.Updated(), "SessionUpdated channel should be initialized")
@@ -51,7 +51,7 @@ func TestSessionStream_updateSession(t *testing.T) {
 		ClientExtensions: NewExtension(),
 	}
 
-	ss := newSessionStream(mockStream, req, nil)
+	ss := newSessionStream(mockStream, req)
 
 	bitrate := uint64(1000000)
 	err := ss.updateSession(bitrate)
@@ -76,7 +76,7 @@ func TestSessionStream_updateSession_WriteError(t *testing.T) {
 		ClientExtensions: NewExtension(),
 	}
 
-	ss := newSessionStream(mockStream, req, nil)
+	ss := newSessionStream(mockStream, req)
 
 	// Error handling depends on implementation, but should not panic
 	assert.NotPanics(t, func() {
@@ -97,7 +97,7 @@ func TestSessionStream_SessionUpdated(t *testing.T) {
 		ClientExtensions: NewExtension(),
 	}
 
-	ss := newSessionStream(mockStream, req, nil)
+	ss := newSessionStream(mockStream, req)
 
 	// Trigger setupDone to start listening for updates
 	ss.handleUpdates()
@@ -121,7 +121,7 @@ func TestSessionStream_updateSession_ZeroBitrate(t *testing.T) {
 		ClientExtensions: NewExtension(),
 	}
 
-	ss := newSessionStream(mockStream, req, nil)
+	ss := newSessionStream(mockStream, req)
 
 	err := ss.updateSession(0)
 	assert.NoError(t, err, "updateSession(0) should not error")
@@ -143,7 +143,7 @@ func TestSessionStream_updateSession_LargeBitrate(t *testing.T) {
 		ClientExtensions: NewExtension(),
 	}
 
-	ss := newSessionStream(mockStream, req, nil)
+	ss := newSessionStream(mockStream, req)
 
 	largeBitrate := uint64(1<<62 - 1) // Large but valid value
 	err := ss.updateSession(largeBitrate)
@@ -219,7 +219,7 @@ func TestSessionStream_listenUpdates(t *testing.T) {
 				ClientExtensions: NewExtension(),
 			}
 
-			ss := newSessionStream(mockStream, req, nil)
+			ss := newSessionStream(mockStream, req)
 
 			// Start listening for updates and wrap ReadFunc to signal reads
 			ss.handleUpdates()
@@ -274,7 +274,7 @@ func TestSessionStream_listenUpdates_StreamClosed(t *testing.T) {
 		ClientExtensions: NewExtension(),
 	}
 
-	ss := newSessionStream(mockStream, req, nil)
+	ss := newSessionStream(mockStream, req)
 
 	// Trigger setupDone to start listening for updates
 	ss.handleUpdates()
@@ -302,7 +302,7 @@ func TestSessionStream_listenUpdates_ContextCancellation(t *testing.T) {
 		ClientExtensions: NewExtension(),
 	}
 
-	ss := newSessionStream(mockStream, req, nil)
+	ss := newSessionStream(mockStream, req)
 
 	// Cancel the context immediately after starting handler
 	cancel()
@@ -332,7 +332,7 @@ func TestSessionStream_ConcurrentAccess(t *testing.T) {
 		ClientExtensions: NewExtension(),
 	}
 
-	ss := newSessionStream(mockStream, req, nil)
+	ss := newSessionStream(mockStream, req)
 
 	// Trigger setupDone to start listening for updates
 	ss.handleUpdates()
@@ -414,7 +414,7 @@ func TestAccept(t *testing.T) {
 				ClientExtensions: NewExtension(),
 			}
 
-			ss := newSessionStream(mockStream, req, nil)
+			ss := newSessionStream(mockStream, req)
 
 			// Create mock connection and server for responseWriter
 			mockConn := &MockQUICConnection{}
@@ -465,7 +465,7 @@ func TestAccept_OnlyOnce(t *testing.T) {
 		ClientExtensions: NewExtension(),
 	}
 
-	ss := newSessionStream(mockStream, req, nil)
+	ss := newSessionStream(mockStream, req)
 
 	// Create mock connection and server for responseWriter
 	mockConn := &MockQUICConnection{}
@@ -516,7 +516,7 @@ func TestAccept_ConcurrentCalls(t *testing.T) {
 		ClientExtensions: NewExtension(),
 	}
 
-	ss := newSessionStream(mockStream, req, nil)
+	ss := newSessionStream(mockStream, req)
 
 	// Create mock connection and server for responseWriter
 	mockConn := &MockQUICConnection{}
@@ -636,7 +636,7 @@ func TestResponse_AwaitAccepted(t *testing.T) {
 				ClientExtensions: NewExtension(),
 			}
 
-			ss := newSessionStream(mockStream, req, nil)
+			ss := newSessionStream(mockStream, req)
 			r := newResponse(ss)
 
 			err := r.AwaitAccepted()
@@ -674,7 +674,7 @@ func TestResponse_AwaitAccepted_OnlyOnce(t *testing.T) {
 		ClientExtensions: NewExtension(),
 	}
 
-	ss := newSessionStream(mockStream, req, nil)
+	ss := newSessionStream(mockStream, req)
 	r := newResponse(ss)
 
 	// First call should read from stream
@@ -711,7 +711,7 @@ func TestResponse_AwaitAccepted_ConcurrentCalls(t *testing.T) {
 		ClientExtensions: NewExtension(),
 	}
 
-	ss := newSessionStream(mockStream, req, nil)
+	ss := newSessionStream(mockStream, req)
 	r := newResponse(ss)
 
 	var wg sync.WaitGroup
@@ -754,7 +754,7 @@ func TestAccept_NilParameters(t *testing.T) {
 		ClientExtensions: NewExtension(),
 	}
 
-	ss := newSessionStream(mockStream, req, nil)
+	ss := newSessionStream(mockStream, req)
 
 	// Create mock connection and server for responseWriter
 	mockConn := &MockQUICConnection{}
@@ -805,7 +805,7 @@ func TestAccept_MultipleVersions(t *testing.T) {
 				ClientExtensions: NewExtension(),
 			}
 
-			ss := newSessionStream(mockStream, req, nil)
+			ss := newSessionStream(mockStream, req)
 
 			// Create mock connection and server for responseWriter
 			mockConn := &MockQUICConnection{}
@@ -887,7 +887,7 @@ func TestResponse_AwaitAccepted_InvalidMessage(t *testing.T) {
 				ClientExtensions: NewExtension(),
 			}
 
-			ss := newSessionStream(mockStream, req, nil)
+			ss := newSessionStream(mockStream, req)
 			r := newResponse(ss)
 
 			err := r.AwaitAccepted()
@@ -931,7 +931,7 @@ func TestResponse_AwaitAccepted_DifferentVersions(t *testing.T) {
 				ClientExtensions: NewExtension(),
 			}
 
-			ss := newSessionStream(mockStream, req, nil)
+			ss := newSessionStream(mockStream, req)
 			r := newResponse(ss)
 
 			err := r.AwaitAccepted()
@@ -956,7 +956,7 @@ func TestSessionStream_listenUpdates_InitialChannelState(t *testing.T) {
 		ClientExtensions: NewExtension(),
 	}
 
-	ss := newSessionStream(mockStream, req, nil)
+	ss := newSessionStream(mockStream, req)
 
 	// Trigger setupDone to start listening for updates
 	ss.handleUpdates()
@@ -981,7 +981,7 @@ func TestSessionStream_Context(t *testing.T) {
 		ClientExtensions: NewExtension(),
 	}
 
-	ss := newSessionStream(mockStream, req, nil)
+	ss := newSessionStream(mockStream, req)
 
 	resultCtx := ss.Context()
 
@@ -1000,7 +1000,7 @@ func TestResponse_Interface(t *testing.T) {
 		ClientExtensions: NewExtension(),
 	}
 
-	ss := newSessionStream(mockStream, req, nil)
+	ss := newSessionStream(mockStream, req)
 	r := newResponse(ss)
 
 	assert.NotNil(t, r, "response should not be nil")
@@ -1064,7 +1064,7 @@ func TestResponse_AwaitAccepted_ErrorHandling(t *testing.T) {
 				ClientExtensions: NewExtension(),
 			}
 
-			ss := newSessionStream(mockStream, req, nil)
+			ss := newSessionStream(mockStream, req)
 			r := newResponse(ss)
 
 			err := r.AwaitAccepted()
@@ -1128,7 +1128,7 @@ func TestAccept_ErrorHandling(t *testing.T) {
 				ClientExtensions: NewExtension(),
 			}
 
-			ss := newSessionStream(mockStream, req, nil)
+			ss := newSessionStream(mockStream, req)
 
 			// Create mock connection and server for responseWriter
 			mockConn := &MockQUICConnection{}
@@ -1208,7 +1208,7 @@ func TestAccept_ParameterHandling(t *testing.T) {
 				ClientExtensions: NewExtension(),
 			}
 
-			ss := newSessionStream(mockStream, req, nil)
+			ss := newSessionStream(mockStream, req)
 
 			// Create mock connection and server for responseWriter
 			mockConn := &MockQUICConnection{}
@@ -1264,7 +1264,7 @@ func TestAccept_BoundaryVersions(t *testing.T) {
 				ClientExtensions: NewExtension(),
 			}
 
-			ss := newSessionStream(mockStream, req, nil)
+			ss := newSessionStream(mockStream, req)
 
 			// Create mock connection and server for responseWriter
 			mockConn := &MockQUICConnection{}
@@ -1325,7 +1325,7 @@ func TestResponse_AwaitAccepted_BoundaryVersions(t *testing.T) {
 				ClientExtensions: NewExtension(),
 			}
 
-			ss := newSessionStream(mockStream, req, nil)
+			ss := newSessionStream(mockStream, req)
 			r := newResponse(ss)
 
 			err := r.AwaitAccepted()
@@ -1352,7 +1352,7 @@ func TestAccept_Race(t *testing.T) {
 		Versions:         []Version{Default, Version(255), Version(65535), Version(4294967295)},
 	}
 
-	ss := newSessionStream(mockStream, req, nil)
+	ss := newSessionStream(mockStream, req)
 
 	// Create mock connection and server for responseWriter
 	mockConn := &MockQUICConnection{}
@@ -1419,7 +1419,7 @@ func TestResponse_AwaitAccepted_Race(t *testing.T) {
 		ClientExtensions: NewExtension(),
 	}
 
-	ss := newSessionStream(mockStream, req, nil)
+	ss := newSessionStream(mockStream, req)
 	r := newResponse(ss)
 
 	const numGoroutines = 100
@@ -1462,7 +1462,7 @@ func TestResponseWriter_SessionStream_Sharing(t *testing.T) {
 		Versions:         []Version{Default},
 	}
 
-	ss := newSessionStream(mockStream, req, nil)
+	ss := newSessionStream(mockStream, req)
 
 	// Create mock connection and server for responseWriter
 	mockConn := &MockQUICConnection{}
@@ -1522,7 +1522,7 @@ func TestResponse_SessionStream_Sharing(t *testing.T) {
 		ClientExtensions: NewExtension(),
 	}
 
-	ss := newSessionStream(mockStream, req, nil)
+	ss := newSessionStream(mockStream, req)
 	r := newResponse(ss)
 
 	err := r.AwaitAccepted()
@@ -1585,7 +1585,7 @@ func TestAccept_ParameterEdgeCases(t *testing.T) {
 				ClientExtensions: NewExtension(),
 			}
 
-			ss := newSessionStream(mockStream, req, nil)
+			ss := newSessionStream(mockStream, req)
 
 			// Create mock connection and server for responseWriter
 			mockConn := &MockQUICConnection{}

@@ -7,19 +7,17 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/okdaichi/gomoqt/moqt/bitrate"
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
 	"github.com/okdaichi/gomoqt/quic"
 )
 
-func newSessionStream(stream quic.Stream, req *SetupRequest, detector bitrate.ShiftDetector) *sessionStream {
+func newSessionStream(stream quic.Stream, req *SetupRequest) *sessionStream {
 	ss := &sessionStream{
 		ctx:          context.WithValue(stream.Context(), &biStreamTypeCtxKey, message.StreamTypeSession),
 		stream:       stream,
 		Version:      DefaultServerVersion, // Default version before setup
 		SetupRequest: req,
 		updatedCh:    make(chan struct{}, 1),
-		detector:     detector,
 	}
 	return ss
 }
@@ -43,9 +41,6 @@ type sessionStream struct {
 
 	// Parameters specified by the server
 	ServerExtensions *Extension
-
-	// Detector of significant BPS changes
-	detector bitrate.ShiftDetector
 
 	listenOnce sync.Once
 }

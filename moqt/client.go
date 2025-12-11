@@ -11,7 +11,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/okdaichi/gomoqt/moqt/bitrate"
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
 	"github.com/okdaichi/gomoqt/quic"
 	"github.com/okdaichi/gomoqt/quic/quicgo"
@@ -171,7 +170,7 @@ func (c *Client) DialWebTransport(ctx context.Context, host, path string, mux *T
 
 	connLogger.Info("WebTransport connection established")
 
-	sessStream, err := openSessionStream(conn, path, webTransportExtensions(), c.Config.newShiftDetector(), connLogger)
+	sessStream, err := openSessionStream(conn, path, webTransportExtensions(), connLogger)
 	if err != nil {
 		connLogger.Error("session establishment failed", "error", err)
 		return nil, err
@@ -235,7 +234,7 @@ func (c *Client) DialQUIC(ctx context.Context, addr, path string, mux *TrackMux)
 
 	connLogger.Info("QUIC connection established")
 
-	sessStream, err := openSessionStream(conn, path, quicExtensions(path), c.Config.newShiftDetector(), connLogger)
+	sessStream, err := openSessionStream(conn, path, quicExtensions(path), connLogger)
 	if err != nil {
 		connLogger.Error("failed to open session stream", "error", err)
 		return nil, err
@@ -266,7 +265,6 @@ func openSessionStream(
 	conn quic.Connection,
 	path string,
 	extensions *Extension,
-	detector bitrate.ShiftDetector,
 	connLogger *slog.Logger,
 ) (*sessionStream, error) {
 	connLogger.Debug("moq: opening session stream")
@@ -316,7 +314,7 @@ func openSessionStream(
 		ctx:              stream.Context(),
 	}
 
-	sessStr := newSessionStream(stream, req, detector)
+	sessStr := newSessionStream(stream, req)
 
 	rsp := newResponse(sessStr)
 

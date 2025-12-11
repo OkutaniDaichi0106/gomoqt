@@ -151,14 +151,11 @@ func (a *Announcement) end() {
 		a.afterHandlers = nil
 		a.mu.Unlock()
 
-		// Guard against nil slice
+		// Count non-nil handlers (ranging over nil slice is safe)
 		handlerCount := 0
-		if handlers != nil {
-			// Count non-nil handlers
-			for _, h := range handlers {
-				if h != nil {
-					handlerCount++
-				}
+		for _, h := range handlers {
+			if h != nil {
+				handlerCount++
 			}
 		}
 

@@ -70,7 +70,7 @@ func BenchmarkSession_Subscribe(b *testing.B) {
 			sessStream := newSessionStream(mockStream, &SetupRequest{
 				Path:             "test/path",
 				ClientExtensions: NewExtension(),
-			}, nil)
+			})
 
 			mux := NewTrackMux()
 			session := newSession(conn, sessStream, mux, slog.New(slog.DiscardHandler), nil)
@@ -147,7 +147,7 @@ func BenchmarkSession_ConcurrentSubscribe(b *testing.B) {
 			sessStream := newSessionStream(mockStream, &SetupRequest{
 				Path:             "test/path",
 				ClientExtensions: NewExtension(),
-			}, nil)
+			})
 
 			mux := NewTrackMux()
 			session := newSession(conn, sessStream, mux, slog.New(slog.DiscardHandler), nil)
@@ -187,7 +187,7 @@ func BenchmarkSession_TrackReaderOperations(b *testing.B) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	}, nil)
+	})
 
 	mux := NewTrackMux()
 	session := newSession(conn, sessStream, mux, slog.New(slog.DiscardHandler), nil)
@@ -237,7 +237,7 @@ func BenchmarkSession_TrackWriterOperations(b *testing.B) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "test/path",
 		ClientExtensions: NewExtension(),
-	}, nil)
+	})
 
 	mux := NewTrackMux()
 	session := newSession(conn, sessStream, mux, slog.New(slog.DiscardHandler), nil)
@@ -292,7 +292,7 @@ func BenchmarkSession_MapLookup(b *testing.B) {
 			sessStream := newSessionStream(mockStream, &SetupRequest{
 				Path:             "test/path",
 				ClientExtensions: NewExtension(),
-			}, nil)
+			})
 
 			mux := NewTrackMux()
 			session := newSession(conn, sessStream, mux, slog.New(slog.DiscardHandler), nil)
@@ -335,42 +335,6 @@ func BenchmarkSession_MapLookup(b *testing.B) {
 	}
 }
 
-// BenchmarkSession_BitrateCalculation benchmarks bitrate calculation operations
-func BenchmarkSession_BitrateCalculation(b *testing.B) {
-	mockStream := &MockQUICStream{}
-	mockStream.On("Context").Return(context.Background())
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
-
-	conn := &MockQUICConnection{}
-	conn.On("Context").Return(context.Background())
-	conn.On("CloseWithError", mock.Anything, mock.Anything).Return(nil)
-	conn.On("AcceptStream", mock.Anything).Return(nil, io.EOF)
-	conn.On("AcceptUniStream", mock.Anything).Return(nil, io.EOF)
-	conn.On("RemoteAddr").Return(&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080})
-
-	sessStream := newSessionStream(mockStream, &SetupRequest{
-		Path:             "test/path",
-		ClientExtensions: NewExtension(),
-	}, nil)
-
-	mux := NewTrackMux()
-	session := newSession(conn, sessStream, mux, slog.New(slog.DiscardHandler), nil)
-
-	b.ReportAllocs()
-
-	// Simulate bitrate calculation
-	for b.Loop() {
-		// Calculate BPS (simulated)
-		bytes := uint64(1024 * 1024) // 1 MB
-		bps := float64(bytes*8) / defaultBPSMonitorInterval.Seconds()
-		kbps := uint64(bps / 1000)
-		_ = kbps
-	}
-
-	b.StopTimer()
-	_ = session.CloseWithError(NoError, "benchmark complete")
-}
-
 // BenchmarkSession_MemoryAllocation benchmarks memory allocation patterns
 func BenchmarkSession_MemoryAllocation(b *testing.B) {
 	sizes := []int{100, 1000, 10000}
@@ -394,7 +358,7 @@ func BenchmarkSession_MemoryAllocation(b *testing.B) {
 				sessStream := newSessionStream(mockStream, &SetupRequest{
 					Path:             "test/path",
 					ClientExtensions: NewExtension(),
-				}, nil)
+				})
 
 				mux := NewTrackMux()
 				session := newSession(conn, sessStream, mux, slog.New(slog.DiscardHandler), nil)
@@ -443,7 +407,7 @@ func BenchmarkSession_ContextCancellation(b *testing.B) {
 		sessStream := newSessionStream(mockStream, &SetupRequest{
 			Path:             "test/path",
 			ClientExtensions: NewExtension(),
-		}, nil)
+		})
 
 		mux := NewTrackMux()
 		session := newSession(conn, sessStream, mux, slog.New(slog.DiscardHandler), nil)

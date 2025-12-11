@@ -124,8 +124,8 @@ func TestClient_ShutdownContextCancel(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "path",
 		ClientExtensions: NewExtension(),
-	}, nil)
-	sess := newSession(mockConn, sessStream, nil, slog.Default(), nil)
+	})
+	sess := newSession(mockConn, sessStream, NewTrackMux(), slog.Default(), nil)
 	c.addSession(sess)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -162,7 +162,7 @@ func TestClient_Dial(t *testing.T) {
 			if tt.shut {
 				c.inShutdown.Store(true)
 			}
-			_, err := c.Dial(context.Background(), tt.urlStr, nil)
+			_, err := c.Dial(context.Background(), tt.urlStr, NewTrackMux())
 			if tt.wantErr {
 				assert.Error(t, err)
 				if tt.wantType != nil {
@@ -196,7 +196,7 @@ func TestClient_DialWebTransport(t *testing.T) {
 				return nil, nil, tt.wtErr
 			}
 			defer func() { c.DialWebTransportFunc = old }()
-			_, err := c.DialWebTransport(context.Background(), uri.Hostname()+":"+uri.Port(), uri.Path, nil)
+			_, err := c.DialWebTransport(context.Background(), uri.Hostname()+":"+uri.Port(), uri.Path, NewTrackMux())
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
@@ -227,7 +227,7 @@ func TestClient_DialQUIC(t *testing.T) {
 				return nil, tt.dialErr
 			}
 			defer func() { c.DialQUICFunc = old }()
-			_, err := c.DialQUIC(context.Background(), uri.Hostname()+":"+uri.Port(), uri.Path, nil)
+			_, err := c.DialQUIC(context.Background(), uri.Hostname()+":"+uri.Port(), uri.Path, NewTrackMux())
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
@@ -349,7 +349,7 @@ func TestClient_openSession(t *testing.T) {
 			if extProvider == nil {
 				extProvider = func() *Extension { return &Extension{} }
 			}
-			_, err := openSessionStream(conn, "/path", extProvider(), nil, slog.Default())
+			_, err := openSessionStream(conn, "/path", extProvider(), slog.Default())
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
@@ -494,7 +494,7 @@ func TestClient_DialWebTransport_CustomDialSuccess(t *testing.T) {
 	c.DialWebTransportFunc = func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, quic.Connection, error) {
 		return &http.Response{}, mockConn, nil
 	}
-	sess, err := c.DialWebTransport(context.Background(), "example.com:443", "/test", nil)
+	sess, err := c.DialWebTransport(context.Background(), "example.com:443", "/test", NewTrackMux())
 	require.NoError(t, err)
 	require.NotNil(t, sess)
 
@@ -560,7 +560,7 @@ func TestClient_DialQUIC_CustomDialSuccess(t *testing.T) {
 	c.DialQUICFunc = func(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (quic.Connection, error) {
 		return mockConn, nil
 	}
-	sess, err := c.DialQUIC(context.Background(), "example.com:443", "/test", nil)
+	sess, err := c.DialQUIC(context.Background(), "example.com:443", "/test", NewTrackMux())
 	require.NoError(t, err)
 	require.NotNil(t, sess)
 
@@ -577,7 +577,7 @@ func TestClient_Dial_ShuttingDown(t *testing.T) {
 	c := &Client{}
 	c.inShutdown.Store(true)
 
-	_, err := c.Dial(context.Background(), "https://example.com", nil)
+	_, err := c.Dial(context.Background(), "https://example.com", NewTrackMux())
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, ErrClientClosed)
 }
@@ -587,7 +587,7 @@ func TestClient_DialWebTransport_ShuttingDown(t *testing.T) {
 	c := &Client{}
 	c.inShutdown.Store(true)
 
-	_, err := c.DialWebTransport(context.Background(), "example.com:443", "/test", nil)
+	_, err := c.DialWebTransport(context.Background(), "example.com:443", "/test", NewTrackMux())
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, ErrClientClosed)
 }
@@ -597,7 +597,7 @@ func TestClient_DialQUIC_ShuttingDown(t *testing.T) {
 	c := &Client{}
 	c.inShutdown.Store(true)
 
-	_, err := c.DialQUIC(context.Background(), "example.com:443", "/test", nil)
+	_, err := c.DialQUIC(context.Background(), "example.com:443", "/test", NewTrackMux())
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, ErrClientClosed)
 }
@@ -648,7 +648,7 @@ func TestClient_OpenSession_NilExtensions(t *testing.T) {
 
 	// Expect panic when extensions is nil
 	assert.Panics(t, func() {
-		_, _ = openSessionStream(mockConn, "/test", nil, nil, slog.Default())
+		_, _ = openSessionStream(mockConn, "/test", nil, slog.Default())
 	})
 }
 
@@ -704,7 +704,7 @@ func TestClient_OpenSession_Success(t *testing.T) {
 	extensions := func() *Extension {
 		return NewExtension()
 	}
-	sessStream, err := openSessionStream(mockConn, "/test", extensions(), nil, slog.Default())
+	sessStream, err := openSessionStream(mockConn, "/test", extensions(), slog.Default())
 	require.NoError(t, err)
 	require.NotNil(t, sessStream)
 
@@ -803,7 +803,7 @@ func TestClient_Dial_URLSchemes(t *testing.T) {
 				return mockConn, nil
 			}
 
-			sess, err := c.Dial(context.Background(), tt.urlStr, nil)
+			sess, err := c.Dial(context.Background(), tt.urlStr, NewTrackMux())
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -983,8 +983,8 @@ func TestClient_Shutdown_Timeout(t *testing.T) {
 	sessStream := newSessionStream(mockStream, &SetupRequest{
 		Path:             "path",
 		ClientExtensions: NewExtension(),
-	}, nil)
-	sess := newSession(mockConn, sessStream, nil, slog.Default(), nil)
+	})
+	sess := newSession(mockConn, sessStream, NewTrackMux(), slog.Default(), nil)
 	c.addSession(sess)
 
 	// Create a context that times out quickly

@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/okdaichi/gomoqt/moqt/bitrate"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -40,33 +39,6 @@ func TestConfig_Clone(t *testing.T) {
 	}
 }
 
-func TestConfig_newShiftDetector(t *testing.T) {
-	t.Run("nil config returns nil", func(t *testing.T) {
-		var c *Config
-		detector := c.newShiftDetector()
-		assert.Nil(t, detector, "nil config should return nil detector")
-	})
-
-	t.Run("config with nil NewShiftDetector returns nil", func(t *testing.T) {
-		c := &Config{
-			NewShiftDetector: nil,
-		}
-		detector := c.newShiftDetector()
-		assert.Nil(t, detector, "config with nil NewShiftDetector should return nil")
-	})
-
-	t.Run("config with NewShiftDetector returns custom detector", func(t *testing.T) {
-		customDetector := bitrate.NewEWMAShiftDetector(0.5, 0.5, 10)
-		c := &Config{
-			NewShiftDetector: func() bitrate.ShiftDetector {
-				return customDetector
-			},
-		}
-		detector := c.newShiftDetector()
-		assert.Equal(t, customDetector, detector, "should return the custom detector")
-	})
-}
-
 func TestConfig_setupTimeout(t *testing.T) {
 	t.Run("nil config returns default", func(t *testing.T) {
 		var c *Config
@@ -96,24 +68,6 @@ func TestConfig_setupTimeout(t *testing.T) {
 		}
 		timeout := c.setupTimeout()
 		assert.Equal(t, 30*time.Second, timeout, "should return configured timeout")
-	})
-}
-
-// TestConfig_newShiftDetector_Integration verifies detector factory integration
-func TestConfig_newShiftDetector_Integration(t *testing.T) {
-	t.Run("detector processes rate correctly", func(t *testing.T) {
-		c := &Config{
-			NewShiftDetector: func() bitrate.ShiftDetector {
-				return bitrate.NewEWMAShiftDetector(0.2, 0.3, 2)
-			},
-		}
-		detector := c.newShiftDetector()
-		assert.NotNil(t, detector)
-
-		// Test basic detection
-		assert.False(t, detector.Detect(1000), "first sample should not trigger")
-		assert.False(t, detector.Detect(1100), "second sample should not trigger")
-		assert.True(t, detector.Detect(2000), "large change should trigger")
 	})
 }
 

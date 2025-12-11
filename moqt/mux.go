@@ -134,8 +134,14 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 	current := &mux.announcementTree
 
 	// Build a list of nodes from root to leaf and add the announcement to each node
-	// Pre-allocate with capacity for typical path depths to reduce allocations
-	nodes := make([]*announcingNode, 0, len(prefixSegments)+1)
+	// Use fixed-size array for typical depths to avoid heap allocation
+	var nodesArray [8]*announcingNode
+	var nodes []*announcingNode
+	if len(prefixSegments)+1 <= len(nodesArray) {
+		nodes = nodesArray[:0]
+	} else {
+		nodes = make([]*announcingNode, 0, len(prefixSegments)+1)
+	}
 	nodes = append(nodes, current)
 	for _, seg := range prefixSegments {
 		current = current.getChild(seg)
@@ -147,7 +153,8 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 		aw *AnnouncementWriter
 		ch chan *Announcement
 	}
-	subs := make([]awChan, 0, 8)
+	var subsArray [8]awChan
+	subs := subsArray[:0]
 
 	for _, node := range nodes {
 		node.addAnnouncement(announcement)
@@ -247,34 +254,27 @@ func (mux *TrackMux) TrackHandler(path BroadcastPath) (*Announcement, TrackHandl
 }
 
 func (mux *TrackMux) findTrackHandler(path BroadcastPath) *announcedTrackHandler {
-	if !isValidPath(path) {
+	// Check path validity first (rare case, should be inlined)
+	if len(path) == 0 || path[0] != '/' {
 		return nil
 	}
 
-	// Fast path: single RLock operation with all checks inside
+	// Fast path: single RLock with minimal work under lock
 	mux.mu.RLock()
 	ath := mux.trackHandlerIndex[path]
-	if ath == nil {
-		mux.mu.RUnlock()
-		return nil
-	}
-	
-	// Check validity while holding lock to ensure consistency
-	ann := ath.Announcement
-	handler := ath.TrackHandler
 	mux.mu.RUnlock()
 	
-	if ann == nil || handler == nil {
-		return nil
+	// Most common case: handler found and valid
+	if ath != nil && ath.Announcement != nil && ath.TrackHandler != nil {
+		// Treat typed-nil handler functions as absent (rare case)
+		if hf, ok := ath.TrackHandler.(TrackHandlerFunc); ok && hf == nil {
+			slog.Warn("mux: handler function is nil for path", "path", path)
+			return nil
+		}
+		return ath
 	}
-
-	// Treat typed-nil handler functions as absent too
-	if hf, ok := handler.(TrackHandlerFunc); ok && hf == nil {
-		slog.Warn("mux: handler function is nil for path", "path", path)
-		return nil
-	}
-
-	return ath
+	
+	return nil
 }
 
 // serveTrack serves the track at the specified path using the appropriate handler.
@@ -469,18 +469,17 @@ type announcingNode struct {
 func (node *announcingNode) getChild(seg prefixSegment) *announcingNode {
 	// Fast path: check with read lock first
 	node.mu.RLock()
-	child, ok := node.children[seg]
+	child := node.children[seg]
 	node.mu.RUnlock()
 	
-	if ok {
+	if child != nil {
 		return child
 	}
 	
 	// Slow path: create new child with write lock
 	node.mu.Lock()
-	// Double-check after acquiring write lock (other goroutine might have created it)
-	child, ok = node.children[seg]
-	if !ok {
+	// Double-check after acquiring write lock (another goroutine might have created it)
+	if child = node.children[seg]; child == nil {
 		child = newAnnouncingNode(seg)
 		child.parent = node
 		node.children[seg] = child
@@ -522,21 +521,15 @@ func (node *announcingNode) createNode(segments []prefixSegment) *announcingNode
 }
 
 func isValidPath(path BroadcastPath) bool {
-	if path == "" {
-		return false
-	}
-
-	p := string(path)
-
-	return strings.HasPrefix(p, "/")
+	// Optimize common case: check length and first char in one go
+	return len(path) > 0 && path[0] == '/'
 }
 
 func isValidPrefix(prefix string) bool {
-	if prefix == "" {
-		return false
-	}
-
-	return strings.HasPrefix(prefix, "/") && strings.HasSuffix(prefix, "/")
+	// Optimize: check length first, then chars
+	// Special case: "/" is valid as root prefix
+	n := len(prefix)
+	return n > 0 && prefix[0] == '/' && (n == 1 || prefix[n-1] == '/')
 }
 
 // TrackHandler handles a published track.
@@ -576,14 +569,27 @@ type announcedTrackHandler struct {
 }
 
 func prefixSegments(prefix string) []prefixSegment {
-	segments := strings.Split(prefix, "/")
-	return segments[1 : len(segments)-1]
+	// Avoid extra allocation by splitting manually or using more efficient approach
+	// For typical paths like "/a/b/c/", skip first and last empty segments
+	if len(prefix) <= 2 {
+		return nil
+	}
+	segments := strings.Split(prefix[1:len(prefix)-1], "/")
+	return segments
 }
 
 func pathSegments(path BroadcastPath) (prefixSegments []prefixSegment, last string) {
-	segments := strings.Split(string(path), "/")
-	if len(segments) < 2 {
-		return nil, string(path)
+	p := string(path)
+	if len(p) <= 1 {
+		return nil, p
 	}
-	return segments[1 : len(segments)-1], segments[len(segments)-1]
+	// Skip leading slash
+	segments := strings.Split(p[1:], "/")
+	if len(segments) == 0 {
+		return nil, p
+	}
+	if len(segments) == 1 {
+		return nil, segments[0]
+	}
+	return segments[:len(segments)-1], segments[len(segments)-1]
 }

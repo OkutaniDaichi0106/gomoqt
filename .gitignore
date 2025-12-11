@@ -17,5 +17,8 @@ coverage_message
 coverage_protocol
 **/coverage/
 
+# Profiles
+**.prof
+
 # Local Environment
 **.pem

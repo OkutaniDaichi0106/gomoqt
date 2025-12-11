@@ -2,5 +2,11 @@
     "files.associations": {
         "*.json": "jsonc"
     },
-    "deno.enable": true
+    "deno.enable": true,
+    "github.copilot.chat.mcp.enabled": true,
+    "github.copilot.chat.mcp.servers": {
+        "pprof-analyzer": {
+            "command": "C:\\Users\\daich\\go\\bin\\pprof-analyzer-mcp.exe"
+        }
+    }
 }

@@ -916,7 +916,6 @@ func TestMux_ServeAnnouncements_InitSendsExistingAnnouncements(t *testing.T) {
 	}
 
 	for name, tc := range tests {
-		tc := tc
 		synctest.Test(t, func(t *testing.T) {
 			mux := NewTrackMux()
 			ctx := context.Background()

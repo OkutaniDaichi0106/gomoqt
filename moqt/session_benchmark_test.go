@@ -35,19 +35,19 @@ func BenchmarkSession_Subscribe(b *testing.B) {
 
 			// Mock OpenStream to return streams that will complete the subscribe handshake
 			streamIndex := 0
-			conn.On("OpenStream").Return(func() quic.Stream {
+			conn.OpenStreamFunc = func() (quic.Stream, error) {
 				mockBiStream := &MockQUICStream{}
 				mockBiStream.On("StreamID").Return(quic.StreamID(streamIndex))
 				streamIndex++
 				mockBiStream.On("Context").Return(context.Background())
 
 				// Mock Write for SUBSCRIBE message
-				mockBiStream.On("Write", mock.Anything).Return(func(b []byte) int {
-					return len(b)
-				}, nil)
+				mockBiStream.WriteFunc = func(b []byte) (int, error) {
+					return len(b), nil
+				}
 
 				// Mock Read for SUBSCRIBE_OK message
-				mockBiStream.On("Read", mock.Anything).Return(func(b []byte) (int, error) {
+				mockBiStream.ReadFunc = func(b []byte) (int, error) {
 					// Encode SUBSCRIBE_OK message
 					msg := message.SubscribeOkMessage{}
 					var buf bytes.Buffer
@@ -58,14 +58,14 @@ func BenchmarkSession_Subscribe(b *testing.B) {
 					data := buf.Bytes()
 					copy(b, data)
 					return len(data), io.EOF
-				})
+				}
 
 				mockBiStream.On("CancelWrite", mock.Anything).Return()
 				mockBiStream.On("CancelRead", mock.Anything).Return()
 				mockBiStream.On("Close").Return(nil)
 
-				return mockBiStream
-			}, nil)
+				return mockBiStream, nil
+			}
 
 			sessStream := newSessionStream(mockStream, &SetupRequest{
 				Path:             "test/path",
@@ -86,7 +86,7 @@ func BenchmarkSession_Subscribe(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 
-			for i := 0; i < b.N; i++ {
+			for i := range b.N {
 				idx := i % size
 				_, _ = session.Subscribe(paths[idx], names[idx], nil)
 			}
@@ -116,7 +116,7 @@ func BenchmarkSession_ConcurrentSubscribe(b *testing.B) {
 
 			var streamMu sync.Mutex
 			streamIndex := 0
-			conn.On("OpenStream").Return(func() quic.Stream {
+			conn.OpenStreamFunc = func() (quic.Stream, error) {
 				streamMu.Lock()
 				defer streamMu.Unlock()
 
@@ -124,10 +124,10 @@ func BenchmarkSession_ConcurrentSubscribe(b *testing.B) {
 				mockBiStream.On("StreamID").Return(quic.StreamID(streamIndex))
 				streamIndex++
 				mockBiStream.On("Context").Return(context.Background())
-				mockBiStream.On("Write", mock.Anything).Return(func(b []byte) int {
-					return len(b)
-				}, nil)
-				mockBiStream.On("Read", mock.Anything).Return(func(b []byte) (int, error) {
+				mockBiStream.WriteFunc = func(b []byte) (int, error) {
+					return len(b), nil
+				}
+				mockBiStream.ReadFunc = func(b []byte) (int, error) {
 					msg := message.SubscribeOkMessage{}
 					var buf bytes.Buffer
 					err := msg.Encode(&buf)
@@ -137,12 +137,12 @@ func BenchmarkSession_ConcurrentSubscribe(b *testing.B) {
 					data := buf.Bytes()
 					copy(b, data)
 					return len(data), io.EOF
-				})
+				}
 				mockBiStream.On("CancelWrite", mock.Anything).Return()
 				mockBiStream.On("CancelRead", mock.Anything).Return()
 				mockBiStream.On("Close").Return(nil)
-				return mockBiStream
-			}, nil)
+				return mockBiStream, nil
+			}
 
 			sessStream := newSessionStream(mockStream, &SetupRequest{
 				Path:             "test/path",
@@ -193,7 +193,6 @@ func BenchmarkSession_TrackReaderOperations(b *testing.B) {
 	session := newSession(conn, sessStream, mux, slog.New(slog.DiscardHandler), nil)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
 		id := SubscribeID(i)
@@ -244,9 +243,8 @@ func BenchmarkSession_TrackWriterOperations(b *testing.B) {
 	session := newSession(conn, sessStream, mux, slog.New(slog.DiscardHandler), nil)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		id := SubscribeID(i)
 
 		// Create mock subscribe stream
@@ -300,7 +298,7 @@ func BenchmarkSession_MapLookup(b *testing.B) {
 			session := newSession(conn, sessStream, mux, slog.New(slog.DiscardHandler), nil)
 
 			// Pre-populate with track readers
-			for i := 0; i < size; i++ {
+			for i := range size {
 				id := SubscribeID(i)
 				mockSubStream := &MockQUICStream{}
 				mockSubStream.On("Context").Return(context.Background())
@@ -359,10 +357,9 @@ func BenchmarkSession_BitrateCalculation(b *testing.B) {
 	session := newSession(conn, sessStream, mux, slog.New(slog.DiscardHandler), nil)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	// Simulate bitrate calculation
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		// Calculate BPS (simulated)
 		bytes := uint64(1024 * 1024) // 1 MB
 		bps := float64(bytes*8) / defaultBPSMonitorInterval.Seconds()
@@ -382,7 +379,7 @@ func BenchmarkSession_MemoryAllocation(b *testing.B) {
 		b.Run(fmt.Sprintf("readers-%d", size), func(b *testing.B) {
 			b.ReportAllocs()
 
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				mockStream := &MockQUICStream{}
 				mockStream.On("Context").Return(context.Background())
 				mockStream.On("Read", mock.Anything).Return(0, io.EOF)
@@ -403,7 +400,7 @@ func BenchmarkSession_MemoryAllocation(b *testing.B) {
 				session := newSession(conn, sessStream, mux, slog.New(slog.DiscardHandler), nil)
 
 				// Create many track readers
-				for j := 0; j < size; j++ {
+				for j := range size {
 					id := SubscribeID(j)
 					mockSubStream := &MockQUICStream{}
 					mockSubStream.On("Context").Return(context.Background())
@@ -429,7 +426,7 @@ func BenchmarkSession_MemoryAllocation(b *testing.B) {
 func BenchmarkSession_ContextCancellation(b *testing.B) {
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		ctx, cancel := context.WithCancel(context.Background())
 
 		mockStream := &MockQUICStream{}

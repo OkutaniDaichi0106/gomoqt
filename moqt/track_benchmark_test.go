@@ -24,7 +24,7 @@ func BenchmarkTrackReader_EnqueueDequeue(b *testing.B) {
 
 			// Pre-create mock receive streams
 			streams := make([]quic.ReceiveStream, size)
-			for i := 0; i < size; i++ {
+			for i := range streams {
 				mockRecvStream := &MockQUICReceiveStream{}
 				mockRecvStream.On("Context").Return(context.Background())
 				streams[i] = mockRecvStream
@@ -33,7 +33,7 @@ func BenchmarkTrackReader_EnqueueDequeue(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 
-			for i := 0; i < b.N; i++ {
+			for i := 0; b.Loop(); i++ {
 				idx := i % size
 
 				// Enqueue
@@ -58,9 +58,8 @@ func BenchmarkTrackReader_AcceptGroup(b *testing.B) {
 	reader := newTrackReader("broadcastPath", "trackName", substr, func() {})
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		// Enqueue a group for this iteration
 		mockRecvStream := &MockQUICReceiveStream{}
 		mockRecvStream.On("Context").Return(ctx)
@@ -87,7 +86,7 @@ func BenchmarkTrackReader_ConcurrentAccess(b *testing.B) {
 			reader := newTrackReader("broadcastPath", "trackName", substr, func() {})
 
 			// Pre-populate queue
-			for i := 0; i < 100; i++ {
+			for i := range 100 {
 				mockRecvStream := &MockQUICReceiveStream{}
 				mockRecvStream.On("Context").Return(ctx)
 				reader.enqueueGroup(GroupSequence(i), mockRecvStream)
@@ -99,7 +98,7 @@ func BenchmarkTrackReader_ConcurrentAccess(b *testing.B) {
 			var wg sync.WaitGroup
 			wg.Add(conc)
 
-			for g := 0; g < conc; g++ {
+			for g := range conc {
 				go func(id int) {
 					defer wg.Done()
 					for i := 0; i < b.N/conc; i++ {
@@ -163,7 +162,7 @@ func BenchmarkTrackWriter_OpenGroup(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 
-			for i := 0; i < b.N; i++ {
+			for i := 0; b.Loop(); i++ {
 				group, err := writer.OpenGroup(GroupSequence(i % size))
 				if err == nil && group != nil {
 					_ = group.Close()
@@ -265,7 +264,7 @@ func BenchmarkTrackWriter_ActiveGroupManagement(b *testing.B) {
 
 			// Pre-create groups
 			groups := make([]*GroupWriter, size)
-			for i := 0; i < size; i++ {
+			for i := range size {
 				group, _ := writer.OpenGroup(GroupSequence(i))
 				groups[i] = group
 			}
@@ -273,7 +272,7 @@ func BenchmarkTrackWriter_ActiveGroupManagement(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 
-			for i := 0; i < b.N; i++ {
+			for i := 0; b.Loop(); i++ {
 				idx := i % size
 
 				// Close and re-open group
@@ -297,7 +296,7 @@ func BenchmarkTrackWriter_ActiveGroupManagement(b *testing.B) {
 func BenchmarkTrackWriter_MemoryAllocation(b *testing.B) {
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		mockStream := &MockQUICStream{}
 		mockStream.On("Context").Return(context.Background())
 		mockStream.On("StreamID").Return(quic.StreamID(1))
@@ -333,7 +332,7 @@ func BenchmarkTrackWriter_MemoryAllocation(b *testing.B) {
 func BenchmarkTrackReader_MemoryAllocation(b *testing.B) {
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		mockStream := &MockQUICStream{}
 		mockStream.On("Context").Return(context.Background())
 		substr := newSendSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{}, Info{})
@@ -361,7 +360,7 @@ func BenchmarkTrackWriter_CloseWithActiveGroups(b *testing.B) {
 		b.Run(fmt.Sprintf("groups-%d", size), func(b *testing.B) {
 			b.ReportAllocs()
 
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				mockStream := &MockQUICStream{}
 				mockStream.On("Context").Return(context.Background())
 				mockStream.On("StreamID").Return(quic.StreamID(1))
@@ -388,7 +387,7 @@ func BenchmarkTrackWriter_CloseWithActiveGroups(b *testing.B) {
 				writer := newTrackWriter("/broadcast/path", "track_name", substr, openUniStreamFunc, func() {})
 
 				// Create many active groups
-				for j := 0; j < size; j++ {
+				for j := range size {
 					_, _ = writer.OpenGroup(GroupSequence(j))
 				}
 

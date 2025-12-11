@@ -17,7 +17,11 @@ var defaultMux = NewTrackMux()
 // It initializes the routing and announcement trees with empty root nodes.
 func NewTrackMux() *TrackMux {
 	return &TrackMux{
-		announcementTree: *newAnnouncingNode(""),
+		announcementTree: announcingNode{
+			children:      make(map[prefixSegment]*announcingNode),
+			subscriptions: make(map[*AnnouncementWriter](chan *Announcement)),
+			announcements: make(map[*Announcement]struct{}),
+		},
 		// Pre-allocate with reasonable capacity to reduce map growth
 		trackHandlerIndex: make(map[BroadcastPath]*announcedTrackHandler, 16),
 	}
@@ -439,17 +443,6 @@ func (mux *TrackMux) serveAnnouncements(aw *AnnouncementWriter) {
 
 // Clear removed: previously used for resetting state in tests. Use NewTrackMux() for test isolation or implement a shutdown API for production.
 
-// newAnnouncingNode creates and initializes a new routing tree node.
-func newAnnouncingNode(prefixSegment prefixSegment) *announcingNode {
-	return &announcingNode{
-		prefixSegment: prefixSegment,
-		// Pre-allocate maps with reasonable initial capacity to reduce allocations
-		announcements: make(map[*Announcement]struct{}, 4),
-		children:      make(map[string]*announcingNode, 4),
-		subscriptions: make(map[*AnnouncementWriter](chan *Announcement), 2),
-	}
-}
-
 type prefixSegment = string
 
 type announcingNode struct {
@@ -481,8 +474,13 @@ func (node *announcingNode) getChild(seg prefixSegment) *announcingNode {
 	node.mu.Lock()
 	// Double-check after acquiring write lock (another goroutine might have created it)
 	if child = node.children[seg]; child == nil {
-		child = newAnnouncingNode(seg)
-		child.parent = node
+		child = &announcingNode{
+			parent:        node,
+			prefixSegment: seg,
+			children:      make(map[prefixSegment]*announcingNode),
+			subscriptions: make(map[*AnnouncementWriter](chan *Announcement)),
+			announcements: make(map[*Announcement]struct{}),
+		}
 		node.children[seg] = child
 	}
 	node.mu.Unlock()
@@ -603,18 +601,25 @@ func pathSegments(path BroadcastPath) (prefixSegments []prefixSegment, last stri
 		return nil, p
 	}
 
-	// Manual scanning to avoid strings.Split allocation
-	// Need to preserve empty segments to match original behavior
-	str := p[1:]                     // Skip leading slash
-	segments := make([]string, 0, 8) // Pre-allocate for typical depth
+	// Count slashes to pre-allocate exact size and avoid allocations
+	str := p[1:] // Skip leading slash
+	slashCount := 0
+	for i := 0; i < len(str); i++ {
+		if str[i] == '/' {
+			slashCount++
+		}
+	}
+
+	// Allocate exact size needed
+	segments := make([]string, 0, slashCount+1)
 	start := 0
 	for i := 0; i < len(str); i++ {
 		if str[i] == '/' {
-			segments = append(segments, str[start:i]) // Include empty strings
+			segments = append(segments, str[start:i])
 			start = i + 1
 		}
 	}
-	// Add last segment (always, even if empty)
+	// Add last segment
 	segments = append(segments, str[start:])
 
 	if len(segments) == 0 {

@@ -129,7 +129,7 @@ func BenchmarkGroupReader_ConcurrentRead(b *testing.B) {
 			var wg sync.WaitGroup
 			wg.Add(conc)
 
-			for g := 0; g < conc; g++ {
+			for range conc {
 				go func() {
 					defer wg.Done()
 
@@ -168,7 +168,7 @@ func BenchmarkGroupWriter_ConcurrentWrite(b *testing.B) {
 			var wg sync.WaitGroup
 			wg.Add(conc)
 
-			for g := 0; g < conc; g++ {
+			for range conc {
 				go func() {
 					defer wg.Done()
 
@@ -246,7 +246,6 @@ func BenchmarkGroupReader_MemoryAllocation(b *testing.B) {
 	repeatingData := bytes.Repeat(encodedData, b.N+1)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
 		reader := bytes.NewReader(repeatingData)
@@ -264,7 +263,6 @@ func BenchmarkGroupWriter_MemoryAllocation(b *testing.B) {
 	frameData := make([]byte, frameSize)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
 		sendStream := &mockSendStream{Writer: io.Discard}
@@ -297,7 +295,7 @@ func BenchmarkFrame_ReuseVsAllocate(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 
-		for i := 0; i < b.N; i++ {
+		for range b.N {
 			frame := NewFrame(frameSize)
 			frame.Write(frameData)
 			_ = frame

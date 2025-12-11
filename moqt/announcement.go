@@ -23,7 +23,7 @@ func NewAnnouncement(ctx context.Context, path BroadcastPath) (*Announcement, En
 		panic("[Announcement] invalid track path: " + string(path))
 	}
 
-	ann := Announcement{
+	ann := &Announcement{
 		path: path,
 		ch:   make(chan struct{}),
 	}
@@ -36,7 +36,7 @@ func NewAnnouncement(ctx context.Context, path BroadcastPath) (*Announcement, En
 
 	context.AfterFunc(ctx, endFunc)
 
-	return &ann, endFunc
+	return ann, endFunc
 }
 
 // Announcement represents the lifecycle of a broadcast.
@@ -56,7 +56,7 @@ type Announcement struct {
 
 	path BroadcastPath
 
-	afterHandlers map[*afterHandler]struct{}
+	afterHandlers []func()
 
 	active atomic.Bool
 	once   sync.Once
@@ -109,23 +109,24 @@ func (a *Announcement) AfterFunc(f func()) (stop func() bool) {
 		return func() bool { return false }
 	}
 
-	handler := &afterHandler{op: f}
 	if a.afterHandlers == nil {
 		// Pre-allocate with small capacity to reduce growth
-		a.afterHandlers = make(map[*afterHandler]struct{}, 2)
+		a.afterHandlers = make([]func(), 0, 2)
 	}
-	a.afterHandlers[handler] = struct{}{}
+	index := len(a.afterHandlers)
+	a.afterHandlers = append(a.afterHandlers, f)
 	a.mu.Unlock()
 
-	// Create stopFunc directly to avoid extra allocations
+	// Create stopFunc that marks the handler as nil instead of removing it
+	// This avoids slice reallocation and index shifting
 	return func() bool {
 		a.mu.Lock()
 		defer a.mu.Unlock()
-		if a.afterHandlers == nil {
+		if a.afterHandlers == nil || index >= len(a.afterHandlers) {
 			return false
 		}
-		if _, exists := a.afterHandlers[handler]; exists {
-			delete(a.afterHandlers, handler)
+		if a.afterHandlers[index] != nil {
+			a.afterHandlers[index] = nil
 			return true
 		}
 		return false
@@ -150,17 +151,24 @@ func (a *Announcement) end() {
 		a.afterHandlers = nil
 		a.mu.Unlock()
 
-		// Guard against nil map
+		// Guard against nil slice
 		handlerCount := 0
 		if handlers != nil {
-			handlerCount = len(handlers)
+			// Count non-nil handlers
+			for _, h := range handlers {
+				if h != nil {
+					handlerCount++
+				}
+			}
 		}
 
 		// Fast path for small number of handlers
 		if handlerCount <= 2 {
 			// Execute handlers inline for small counts to avoid goroutine overhead
-			for handler := range handlers {
-				handler.op()
+			for _, handler := range handlers {
+				if handler != nil {
+					handler()
+				}
 			}
 		} else {
 			// Use worker pool for larger handler counts
@@ -169,8 +177,10 @@ func (a *Announcement) end() {
 
 			// Pre-allocate slice to avoid channel allocation overhead
 			handlerSlice := make([]func(), 0, handlerCount)
-			for handler := range handlers {
-				handlerSlice = append(handlerSlice, handler.op)
+			for _, handler := range handlers {
+				if handler != nil {
+					handlerSlice = append(handlerSlice, handler)
+				}
 			}
 
 			var wg sync.WaitGroup
@@ -200,8 +210,4 @@ func (a *Announcement) end() {
 		// Close the Done channel once (since the once.Do wraps this function)
 		close(a.ch)
 	})
-}
-
-type afterHandler struct {
-	op func()
 }

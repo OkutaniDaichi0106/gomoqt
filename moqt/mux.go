@@ -3,7 +3,6 @@ package moqt
 import (
 	"context"
 	"log/slog"
-	"strings"
 	"sync"
 )
 
@@ -254,27 +253,29 @@ func (mux *TrackMux) TrackHandler(path BroadcastPath) (*Announcement, TrackHandl
 }
 
 func (mux *TrackMux) findTrackHandler(path BroadcastPath) *announcedTrackHandler {
-	// Check path validity first (rare case, should be inlined)
-	if len(path) == 0 || path[0] != '/' {
-		return nil
-	}
-
 	// Fast path: single RLock with minimal work under lock
 	mux.mu.RLock()
 	ath := mux.trackHandlerIndex[path]
 	mux.mu.RUnlock()
 	
-	// Most common case: handler found and valid
-	if ath != nil && ath.Announcement != nil && ath.TrackHandler != nil {
-		// Treat typed-nil handler functions as absent (rare case)
-		if hf, ok := ath.TrackHandler.(TrackHandlerFunc); ok && hf == nil {
-			slog.Warn("mux: handler function is nil for path", "path", path)
-			return nil
-		}
-		return ath
+	// Quick validation: check if path is valid and handler exists
+	// Combine nil check with length check to reduce branches
+	if ath == nil || len(path) == 0 || path[0] != '/' {
+		return nil
 	}
 	
-	return nil
+	// Validate handler is usable
+	if ath.Announcement == nil || ath.TrackHandler == nil {
+		return nil
+	}
+	
+	// Rare case: treat typed-nil handler functions as absent
+	if hf, ok := ath.TrackHandler.(TrackHandlerFunc); ok && hf == nil {
+		slog.Warn("mux: handler function is nil for path", "path", path)
+		return nil
+	}
+	
+	return ath
 }
 
 // serveTrack serves the track at the specified path using the appropriate handler.
@@ -569,22 +570,53 @@ type announcedTrackHandler struct {
 }
 
 func prefixSegments(prefix string) []prefixSegment {
-	// Avoid extra allocation by splitting manually or using more efficient approach
 	// For typical paths like "/a/b/c/", skip first and last empty segments
 	if len(prefix) <= 2 {
+		if prefix == "/" {
+			return []prefixSegment{} // Return empty slice, not nil
+		}
 		return nil
 	}
-	segments := strings.Split(prefix[1:len(prefix)-1], "/")
+	
+	// Manual scanning to avoid strings.Split allocation
+	// Need to preserve empty segments to match original behavior
+	str := prefix[1 : len(prefix)-1] // Skip leading and trailing slashes
+	segments := make([]prefixSegment, 0, 8) // Pre-allocate for typical depth
+	start := 0
+	for i := 0; i < len(str); i++ {
+		if str[i] == '/' {
+			segments = append(segments, str[start:i]) // Include empty strings
+			start = i + 1
+		}
+	}
+	// Add last segment (always, even if empty)
+	segments = append(segments, str[start:])
 	return segments
 }
 
 func pathSegments(path BroadcastPath) (prefixSegments []prefixSegment, last string) {
 	p := string(path)
 	if len(p) <= 1 {
+		if p == "/" {
+			return []prefixSegment{}, "" // Root case: empty slice and empty string
+		}
 		return nil, p
 	}
-	// Skip leading slash
-	segments := strings.Split(p[1:], "/")
+	
+	// Manual scanning to avoid strings.Split allocation
+	// Need to preserve empty segments to match original behavior
+	str := p[1:] // Skip leading slash
+	segments := make([]string, 0, 8) // Pre-allocate for typical depth
+	start := 0
+	for i := 0; i < len(str); i++ {
+		if str[i] == '/' {
+			segments = append(segments, str[start:i]) // Include empty strings
+			start = i + 1
+		}
+	}
+	// Add last segment (always, even if empty)
+	segments = append(segments, str[start:])
+	
 	if len(segments) == 0 {
 		return nil, p
 	}

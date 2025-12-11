@@ -107,14 +107,6 @@ func (m *MockQUICConnection) ConnectionState() quic.ConnectionState {
 	return args.Get(0).(quic.ConnectionState)
 }
 
-func (m *MockQUICConnection) ConnectionStats() quic.ConnectionStats {
-	args := m.Called()
-	if args.Get(0) == nil {
-		return quic.ConnectionStats{}
-	}
-	return args.Get(0).(quic.ConnectionStats)
-}
-
 func (m *MockQUICConnection) Context() context.Context {
 	args := m.Called()
 	return args.Get(0).(context.Context)

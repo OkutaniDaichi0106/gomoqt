@@ -23,9 +23,6 @@ type Connection interface {
 	// ConnectionState returns the current state of the connection.
 	ConnectionState() ConnectionState
 
-	// ConnectionStats returns statistics about the connection.
-	ConnectionStats() ConnectionStats
-
 	// Context returns the connection's context, which is canceled when the connection is closed.
 	Context() context.Context
 
@@ -50,5 +47,3 @@ type Connection interface {
 
 // ConnectionState holds information about the QUIC connection state.
 type ConnectionState = quic.ConnectionState
-
-type ConnectionStats = quic.ConnectionStats

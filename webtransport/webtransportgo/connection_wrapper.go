@@ -36,10 +36,6 @@ func (wrapper *sessionWrapper) ConnectionState() quic.ConnectionState {
 	return wrapper.sess.SessionState().ConnectionState
 }
 
-func (wrapper *sessionWrapper) ConnectionStats() quic.ConnectionStats {
-	return wrapper.sess.ConnectionStats()
-}
-
 func (conn *sessionWrapper) Context() context.Context {
 	return conn.sess.Context()
 }

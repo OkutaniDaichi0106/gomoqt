@@ -8,12 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Performance
 
-- **TrackMux Optimizations**: Improved performance of track handler lookups and announcements
+- **TrackMux Advanced Optimizations**: Further improved performance with lock contention reduction and memory efficiency
+  - **Lock Optimization**: Reduced lock hold time in `findTrackHandler` by performing all checks within single RLock
+  - **Memory Allocation**: Moved handler struct allocation outside critical section in `registerHandler`
+  - **Code Deduplication**: Refactored `serveTrack` to reuse optimized `findTrackHandler`, eliminating duplicate lock acquisition
+  - **Read-Write Lock Pattern**: Implemented double-check locking in `getChild` to minimize write lock contention
+  - **Worker Pool Enhancement**: Optimized `Announcement.end()` with inline execution for small handler counts and efficient work distribution
+  - **Results**: Handler lookup improved to 21-25ns (48-51% from baseline, 12-20% from first optimization)
+
+- **Initial TrackMux Optimizations**: Improved performance of track handler lookups and announcements
   - Reduced lock contention in `findTrackHandler` by simplifying map lookups
   - Pre-allocated maps with initial capacity to reduce allocations during runtime
   - Removed unnecessary defer statements for faster lock/unlock operations
   - Pre-allocated slices in `Announce` function to reduce dynamic allocations
-  - **Results**: Handler lookup improved by 42-67% (41ns → 24ns), ServeTrack improved by 23% (243ns → 187ns)
+  - **Results**: Handler lookup improved by 42-67% (41ns → 24-31ns), ServeTrack improved by 23% (243ns → 187ns), GC overhead reduced from 55% to 25%
 
 ### Fixed
 

@@ -156,35 +156,46 @@ func (a *Announcement) end() {
 			handlerCount = len(handlers)
 		}
 
-		// Determine worker count
-		workerCount := min(runtime.NumCPU(), handlerCount)
-		if workerCount == 0 {
-			workerCount = 1
-		}
+		// Fast path for small number of handlers
+		if handlerCount <= 2 {
+			// Execute handlers inline for small counts to avoid goroutine overhead
+			for handler := range handlers {
+				handler.op()
+			}
+		} else {
+			// Use worker pool for larger handler counts
+			// Limit workers to avoid excessive goroutine creation
+			workerCount := min(runtime.NumCPU(), handlerCount)
 
-		// buffer jobs to avoid blocking producers when many workers are used
-		jobs := make(chan func(), handlerCount)
+			// Pre-allocate slice to avoid channel allocation overhead
+			handlerSlice := make([]func(), 0, handlerCount)
+			for handler := range handlers {
+				handlerSlice = append(handlerSlice, handler.op)
+			}
 
-		var wg sync.WaitGroup
+			var wg sync.WaitGroup
+			wg.Add(handlerCount)
 
-		// spawn workerCount goroutines
-		for i := 0; i < workerCount; i++ {
-			go func() {
-				for f := range jobs {
-					f()
-					wg.Done()
+			// Distribute work among workers
+			chunkSize := (handlerCount + workerCount - 1) / workerCount
+			for i := range workerCount {
+				start := i * chunkSize
+				end := min(start+chunkSize, handlerCount)
+
+				if start >= handlerCount {
+					break
 				}
-			}()
+
+				go func(handlers []func()) {
+					for _, h := range handlers {
+						h()
+						wg.Done()
+					}
+				}(handlerSlice[start:end])
+			}
+
+			wg.Wait()
 		}
-
-		for handler := range handlers {
-			wg.Add(1)
-			jobs <- handler.op
-		}
-
-		close(jobs)
-
-		wg.Wait()
 
 		// Close the Done channel once (since the once.Do wraps this function)
 		close(a.ch)

@@ -81,16 +81,19 @@ func (mux *TrackMux) Publish(ctx context.Context, path BroadcastPath, handler Tr
 
 func (mux *TrackMux) registerHandler(ann *Announcement, handler TrackHandler) *announcedTrackHandler {
 	path := ann.BroadcastPath()
-	mux.mu.Lock()
-	announced, ok := mux.trackHandlerIndex[path]
-
+	
+	// Allocate new handler outside lock to reduce lock hold time
 	newHandler := &announcedTrackHandler{
 		Announcement: ann,
 		TrackHandler: handler,
 	}
+	
+	mux.mu.Lock()
+	announced, ok := mux.trackHandlerIndex[path]
 	mux.trackHandlerIndex[path] = newHandler
 	mux.mu.Unlock()
 
+	// Cleanup old handler outside lock
 	if ok {
 		announced.end()
 	}
@@ -248,17 +251,25 @@ func (mux *TrackMux) findTrackHandler(path BroadcastPath) *announcedTrackHandler
 		return nil
 	}
 
+	// Fast path: single RLock operation with all checks inside
 	mux.mu.RLock()
 	ath := mux.trackHandlerIndex[path]
+	if ath == nil {
+		mux.mu.RUnlock()
+		return nil
+	}
+	
+	// Check validity while holding lock to ensure consistency
+	ann := ath.Announcement
+	handler := ath.TrackHandler
 	mux.mu.RUnlock()
 	
-	// Fast path: check for nil after releasing lock
-	if ath == nil || ath.Announcement == nil || ath.TrackHandler == nil {
+	if ann == nil || handler == nil {
 		return nil
 	}
 
 	// Treat typed-nil handler functions as absent too
-	if hf, ok := ath.TrackHandler.(TrackHandlerFunc); ok && hf == nil {
+	if hf, ok := handler.(TrackHandlerFunc); ok && hf == nil {
 		slog.Warn("mux: handler function is nil for path", "path", path)
 		return nil
 	}
@@ -275,29 +286,22 @@ func (mux *TrackMux) serveTrack(tw *TrackWriter) {
 	}
 
 	path := tw.BroadcastPath
-
-	mux.mu.RLock()
-	announced, ok := mux.trackHandlerIndex[path]
-	mux.mu.RUnlock()
-	if !ok || announced == nil || announced.Announcement == nil {
-		slog.Warn("[TrackMux] no announcement found for path", "path", path)
-		tw.CloseWithError(TrackNotFoundErrorCode)
-		return
-	}
-
-	if announced.TrackHandler == nil {
-		slog.Warn("mux: no handler found for path", "path", path)
+	
+	// Use findTrackHandler for consistent lookup with optimized locking
+	ath := mux.findTrackHandler(path)
+	if ath == nil {
+		slog.Debug("mux: no handler found for path", "path", path)
 		tw.CloseWithError(TrackNotFoundErrorCode)
 		return
 	}
 
 	// Ensure track is closed when announcement ends
-	stop := announced.AfterFunc(func() {
+	stop := ath.Announcement.AfterFunc(func() {
 		tw.Close()
 	})
 	defer stop()
 
-	announced.TrackHandler.ServeTrack(tw)
+	ath.TrackHandler.ServeTrack(tw)
 }
 
 // serveAnnouncements serves announcements for tracks matching the given pattern.
@@ -463,8 +467,19 @@ type announcingNode struct {
 }
 
 func (node *announcingNode) getChild(seg prefixSegment) *announcingNode {
-	node.mu.Lock()
+	// Fast path: check with read lock first
+	node.mu.RLock()
 	child, ok := node.children[seg]
+	node.mu.RUnlock()
+	
+	if ok {
+		return child
+	}
+	
+	// Slow path: create new child with write lock
+	node.mu.Lock()
+	// Double-check after acquiring write lock (other goroutine might have created it)
+	child, ok = node.children[seg]
 	if !ok {
 		child = newAnnouncingNode(seg)
 		child.parent = node

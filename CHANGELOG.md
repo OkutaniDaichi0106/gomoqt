@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- **EWMA Bitrate Notification Removed**: Removed experimental EWMA-based bitrate notification feature (v0.6.0)
+  - Removed `moqt/bitrate/` package (ewma.go, ewma_test.go, shift_detector.go)
+  - Removed `NewShiftDetector` field from `Config`
+  - Removed `ConnectionStats()` method from `quic.Connection` interface
+  - **Reason**: Feature depended on non-public APIs from forked quic-go, causing instability and preventing library users from using the package due to Go module replace directive limitations
+  - **Migration**: This feature has been preserved in the `feature/ewma-bitrate-notification` branch for reference
+  - `Session.goAway()` is now a no-op (graceful shutdown is handled by QUIC connection close)
+
+- **Removed Go Module Replace Directives**: Removed replace directives for forked dependencies
+  - No longer using `github.com/okdaichi/quic-go` or `github.com/okdaichi/webtransport-go`
+  - Now using upstream `github.com/quic-go/quic-go` v0.57.1 and `github.com/quic-go/webtransport-go`
+  - **Impact**: Library can now be used as a dependency without type compatibility issues
+  - All tests passing with upstream dependencies
+
 ### Performance
 
 - **TrackMux Advanced Optimizations**: Further improved performance with lock contention reduction and memory efficiency

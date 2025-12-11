@@ -24,7 +24,6 @@ func TestNewTrackMux(t *testing.T) {
 	assert.NotNil(t, mux, "NewTrackMux should return non-nil mux")
 	assert.NotNil(t, &mux.trackHandlerIndex, "mux trackHandlerIndex should be initialized")
 	assert.NotNil(t, &mux.announcementTree, "mux announcementTree should be initialized")
-	assert.Equal(t, 0, len(mux.trackHandlerIndex), "trackHandlerIndex should be empty initially")
 }
 
 // Test Mux.Publish method

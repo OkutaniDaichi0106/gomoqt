@@ -19,7 +19,8 @@ var defaultMux = NewTrackMux()
 func NewTrackMux() *TrackMux {
 	return &TrackMux{
 		announcementTree:  *newAnnouncingNode(""),
-		trackHandlerIndex: make(map[BroadcastPath]*announcedTrackHandler),
+		// Pre-allocate with reasonable capacity to reduce map growth
+		trackHandlerIndex: make(map[BroadcastPath]*announcedTrackHandler, 16),
 	}
 }
 
@@ -130,7 +131,9 @@ func (mux *TrackMux) Announce(announcement *Announcement, handler TrackHandler) 
 	current := &mux.announcementTree
 
 	// Build a list of nodes from root to leaf and add the announcement to each node
-	nodes := []*announcingNode{current}
+	// Pre-allocate with capacity for typical path depths to reduce allocations
+	nodes := make([]*announcingNode, 0, len(prefixSegments)+1)
+	nodes = append(nodes, current)
 	for _, seg := range prefixSegments {
 		current = current.getChild(seg)
 		nodes = append(nodes, current)
@@ -246,12 +249,10 @@ func (mux *TrackMux) findTrackHandler(path BroadcastPath) *announcedTrackHandler
 	}
 
 	mux.mu.RLock()
-	ath, ok := mux.trackHandlerIndex[path]
+	ath := mux.trackHandlerIndex[path]
 	mux.mu.RUnlock()
-	if !ok {
-		return nil
-	}
-
+	
+	// Fast path: check for nil after releasing lock
 	if ath == nil || ath.Announcement == nil || ath.TrackHandler == nil {
 		return nil
 	}
@@ -434,12 +435,13 @@ func (mux *TrackMux) serveAnnouncements(aw *AnnouncementWriter) {
 // Clear removed: previously used for resetting state in tests. Use NewTrackMux() for test isolation or implement a shutdown API for production.
 
 // newAnnouncingNode creates and initializes a new routing tree node.
-func newAnnouncingNode(segment prefixSegment) *announcingNode {
+func newAnnouncingNode(prefixSegment prefixSegment) *announcingNode {
 	return &announcingNode{
-		prefixSegment: segment,
-		announcements: make(map[*Announcement]struct{}),
-		children:      make(map[string]*announcingNode),
-		subscriptions: make(map[*AnnouncementWriter](chan *Announcement)),
+		prefixSegment: prefixSegment,
+		// Pre-allocate maps with reasonable initial capacity to reduce allocations
+		announcements: make(map[*Announcement]struct{}, 4),
+		children:      make(map[string]*announcingNode, 4),
+		subscriptions: make(map[*AnnouncementWriter](chan *Announcement), 2),
 	}
 }
 
@@ -462,29 +464,21 @@ type announcingNode struct {
 
 func (node *announcingNode) getChild(seg prefixSegment) *announcingNode {
 	node.mu.Lock()
-	defer node.mu.Unlock()
-	if node.children == nil {
-		node.children = make(map[string]*announcingNode)
-	}
 	child, ok := node.children[seg]
 	if !ok {
 		child = newAnnouncingNode(seg)
 		child.parent = node
 		node.children[seg] = child
 	}
+	node.mu.Unlock()
 	return child
 }
 
 // addAnnouncement adds an announcement to the tree by traversing from parent to child nodes.
 func (node *announcingNode) addAnnouncement(announcement *Announcement) {
 	node.mu.Lock()
-	defer node.mu.Unlock()
-
-	if node.announcements == nil {
-		node.announcements = make(map[*Announcement]struct{})
-	}
-
 	node.announcements[announcement] = struct{}{}
+	node.mu.Unlock()
 }
 
 // removeAnnouncement removes an announcement from the tree by traversing from child to parent nodes.
@@ -573,5 +567,8 @@ func prefixSegments(prefix string) []prefixSegment {
 
 func pathSegments(path BroadcastPath) (prefixSegments []prefixSegment, last string) {
 	segments := strings.Split(string(path), "/")
+	if len(segments) < 2 {
+		return nil, string(path)
+	}
 	return segments[1 : len(segments)-1], segments[len(segments)-1]
 }

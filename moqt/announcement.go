@@ -111,12 +111,14 @@ func (a *Announcement) AfterFunc(f func()) (stop func() bool) {
 
 	handler := &afterHandler{op: f}
 	if a.afterHandlers == nil {
-		a.afterHandlers = make(map[*afterHandler]struct{})
+		// Pre-allocate with small capacity to reduce growth
+		a.afterHandlers = make(map[*afterHandler]struct{}, 2)
 	}
 	a.afterHandlers[handler] = struct{}{}
 	a.mu.Unlock()
 
-	stopFunc := func() bool {
+	// Create stopFunc directly to avoid extra allocations
+	return func() bool {
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		if a.afterHandlers == nil {
@@ -128,8 +130,6 @@ func (a *Announcement) AfterFunc(f func()) (stop func() bool) {
 		}
 		return false
 	}
-
-	return stopFunc
 }
 
 // IsActive reports whether the announcement is currently active.

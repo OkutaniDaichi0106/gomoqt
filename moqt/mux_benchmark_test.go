@@ -123,13 +123,16 @@ func BenchmarkTrackMux_ServeAnnouncements(b *testing.B) {
 				mux.Publish(ctx, path, handler)
 			}
 
-			// Create announcement writer
-			mockStream := &MockQUICStream{}
-			announceWriter := newAnnouncementWriter(mockStream, "/room/")
 
-			b.ReportAllocs()
-			b.ResetTimer()
+		// Create announcement writer
+		mockStream := &MockQUICStream{}
+		mockStream.On("Context").Return(ctx)
+		mockStream.On("StreamID").Return(quic.StreamID(1))
+		mockStream.On("Write", mock.Anything).Return(0, nil)
+		announceWriter := newAnnouncementWriter(mockStream, "/room/")
 
+		b.ReportAllocs()
+		b.ResetTimer()
 			for b.Loop() {
 				mux.serveAnnouncements(announceWriter)
 			}

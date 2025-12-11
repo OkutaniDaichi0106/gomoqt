@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Performance
+
+- **TrackMux Optimizations**: Improved performance of track handler lookups and announcements
+  - Reduced lock contention in `findTrackHandler` by simplifying map lookups
+  - Pre-allocated maps with initial capacity to reduce allocations during runtime
+  - Removed unnecessary defer statements for faster lock/unlock operations
+  - Pre-allocated slices in `Announce` function to reduce dynamic allocations
+  - **Results**: Handler lookup improved by 42-67% (41ns → 24ns), ServeTrack improved by 23% (243ns → 187ns)
+
+### Fixed
+
+- **Benchmark Test Mocks**: Fixed `BenchmarkTrackMux_ServeAnnouncements` by adding required mock expectations for `Context()` and `Write()` methods
+
 ## [v0.6.2] - 2025-12-10
 
 ### Changed

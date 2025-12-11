@@ -50,7 +50,7 @@ func BenchmarkGroupReader_ReadFrame(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 
-			for b.Loop() {
+			for i := 0; i < b.N; i++ {
 				frame.Reset()
 				err := groupReader.ReadFrame(frame)
 				if err == io.EOF {
@@ -95,7 +95,7 @@ func BenchmarkGroupWriter_WriteFrame(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 
-			for b.Loop() {
+			for i := 0; i < b.N; i++ {
 				err := groupWriter.WriteFrame(frame)
 				if err != nil {
 					b.Fatalf("WriteFrame failed: %v", err)
@@ -206,7 +206,7 @@ func BenchmarkFrame_EncodeDecodeCycle(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 
-			for b.Loop() {
+			for i := 0; i < b.N; i++ {
 				// Encode
 				writeFrame := NewFrame(size)
 				writeFrame.Write(frameData)
@@ -248,7 +248,7 @@ func BenchmarkGroupReader_MemoryAllocation(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		reader := bytes.NewReader(repeatingData)
 		recvStream := &mockReceiveStream{Reader: reader}
 		groupReader := newGroupReader(GroupSequence(1), recvStream, func() {})
@@ -266,7 +266,7 @@ func BenchmarkGroupWriter_MemoryAllocation(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		sendStream := &mockSendStream{Writer: io.Discard}
 		groupWriter := newGroupWriter(sendStream, GroupSequence(1), func() {})
 		
@@ -287,7 +287,7 @@ func BenchmarkFrame_ReuseVsAllocate(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 
-		for b.Loop() {
+		for i := 0; i < b.N; i++ {
 			frame.Reset()
 			frame.Write(frameData)
 		}
@@ -297,7 +297,7 @@ func BenchmarkFrame_ReuseVsAllocate(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 
-		for b.Loop() {
+		for i := 0; i < b.N; i++ {
 			frame := NewFrame(frameSize)
 			frame.Write(frameData)
 			_ = frame

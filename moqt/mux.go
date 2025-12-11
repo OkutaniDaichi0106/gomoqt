@@ -17,7 +17,7 @@ var defaultMux = NewTrackMux()
 // It initializes the routing and announcement trees with empty root nodes.
 func NewTrackMux() *TrackMux {
 	return &TrackMux{
-		announcementTree:  *newAnnouncingNode(""),
+		announcementTree: *newAnnouncingNode(""),
 		// Pre-allocate with reasonable capacity to reduce map growth
 		trackHandlerIndex: make(map[BroadcastPath]*announcedTrackHandler, 16),
 	}
@@ -80,13 +80,13 @@ func (mux *TrackMux) Publish(ctx context.Context, path BroadcastPath, handler Tr
 
 func (mux *TrackMux) registerHandler(ann *Announcement, handler TrackHandler) *announcedTrackHandler {
 	path := ann.BroadcastPath()
-	
+
 	// Allocate new handler outside lock to reduce lock hold time
 	newHandler := &announcedTrackHandler{
 		Announcement: ann,
 		TrackHandler: handler,
 	}
-	
+
 	mux.mu.Lock()
 	announced, ok := mux.trackHandlerIndex[path]
 	mux.trackHandlerIndex[path] = newHandler
@@ -257,24 +257,24 @@ func (mux *TrackMux) findTrackHandler(path BroadcastPath) *announcedTrackHandler
 	mux.mu.RLock()
 	ath := mux.trackHandlerIndex[path]
 	mux.mu.RUnlock()
-	
+
 	// Quick validation: check if path is valid and handler exists
 	// Combine nil check with length check to reduce branches
 	if ath == nil || len(path) == 0 || path[0] != '/' {
 		return nil
 	}
-	
+
 	// Validate handler is usable
 	if ath.Announcement == nil || ath.TrackHandler == nil {
 		return nil
 	}
-	
+
 	// Rare case: treat typed-nil handler functions as absent
 	if hf, ok := ath.TrackHandler.(TrackHandlerFunc); ok && hf == nil {
 		slog.Warn("mux: handler function is nil for path", "path", path)
 		return nil
 	}
-	
+
 	return ath
 }
 
@@ -287,7 +287,7 @@ func (mux *TrackMux) serveTrack(tw *TrackWriter) {
 	}
 
 	path := tw.BroadcastPath
-	
+
 	// Use findTrackHandler for consistent lookup with optimized locking
 	ath := mux.findTrackHandler(path)
 	if ath == nil {
@@ -472,11 +472,11 @@ func (node *announcingNode) getChild(seg prefixSegment) *announcingNode {
 	node.mu.RLock()
 	child := node.children[seg]
 	node.mu.RUnlock()
-	
+
 	if child != nil {
 		return child
 	}
-	
+
 	// Slow path: create new child with write lock
 	node.mu.Lock()
 	// Double-check after acquiring write lock (another goroutine might have created it)
@@ -577,10 +577,10 @@ func prefixSegments(prefix string) []prefixSegment {
 		}
 		return nil
 	}
-	
+
 	// Manual scanning to avoid strings.Split allocation
 	// Need to preserve empty segments to match original behavior
-	str := prefix[1 : len(prefix)-1] // Skip leading and trailing slashes
+	str := prefix[1 : len(prefix)-1]        // Skip leading and trailing slashes
 	segments := make([]prefixSegment, 0, 8) // Pre-allocate for typical depth
 	start := 0
 	for i := 0; i < len(str); i++ {
@@ -602,10 +602,10 @@ func pathSegments(path BroadcastPath) (prefixSegments []prefixSegment, last stri
 		}
 		return nil, p
 	}
-	
+
 	// Manual scanning to avoid strings.Split allocation
 	// Need to preserve empty segments to match original behavior
-	str := p[1:] // Skip leading slash
+	str := p[1:]                     // Skip leading slash
 	segments := make([]string, 0, 8) // Pre-allocate for typical depth
 	start := 0
 	for i := 0; i < len(str); i++ {
@@ -616,7 +616,7 @@ func pathSegments(path BroadcastPath) (prefixSegments []prefixSegment, last stri
 	}
 	// Add last segment (always, even if empty)
 	segments = append(segments, str[start:])
-	
+
 	if len(segments) == 0 {
 		return nil, p
 	}

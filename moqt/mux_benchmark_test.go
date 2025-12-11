@@ -125,7 +125,7 @@ func BenchmarkTrackMux_ServeAnnouncements(b *testing.B) {
 
 			b.ReportAllocs()
 			b.ResetTimer()
-			
+
 			// Benchmark announcement writer creation (not the blocking operation)
 			for i := 0; i < b.N; i++ {
 				mockStream := &MockQUICStream{}

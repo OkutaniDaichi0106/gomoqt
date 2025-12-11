@@ -27,7 +27,7 @@ func BenchmarkGroupReader_ReadFrame(b *testing.B) {
 			// Create a frame and encode it to get the wire format
 			testFrame := NewFrame(size)
 			testFrame.Write(frameData)
-			
+
 			var buf bytes.Buffer
 			_ = testFrame.encode(&buf)
 			encodedData := buf.Bytes()
@@ -38,7 +38,7 @@ func BenchmarkGroupReader_ReadFrame(b *testing.B) {
 
 			mockStream := &MockQUICSendStream{}
 			mockStream.On("Context").Return(context.Background())
-			
+
 			// Wrap the reader to implement ReceiveStream
 			recvStream := &mockReceiveStream{Reader: reader}
 
@@ -77,7 +77,7 @@ func BenchmarkGroupWriter_WriteFrame(b *testing.B) {
 			// Create mock send stream
 			mockStream := &MockQUICSendStream{}
 			mockStream.On("Context").Return(context.Background())
-			
+
 			// Use a discard writer to avoid memory accumulation
 			sendStream := &mockSendStream{Writer: io.Discard}
 
@@ -116,7 +116,7 @@ func BenchmarkGroupReader_ConcurrentRead(b *testing.B) {
 
 			testFrame := NewFrame(frameSize)
 			testFrame.Write(frameData)
-			
+
 			var buf bytes.Buffer
 			_ = testFrame.encode(&buf)
 			encodedData := buf.Bytes()
@@ -132,7 +132,7 @@ func BenchmarkGroupReader_ConcurrentRead(b *testing.B) {
 			for g := 0; g < conc; g++ {
 				go func() {
 					defer wg.Done()
-					
+
 					reader := bytes.NewReader(repeatingData)
 					recvStream := &mockReceiveStream{Reader: reader}
 					groupReader := newGroupReader(GroupSequence(1), recvStream, func() {})
@@ -171,10 +171,10 @@ func BenchmarkGroupWriter_ConcurrentWrite(b *testing.B) {
 			for g := 0; g < conc; g++ {
 				go func() {
 					defer wg.Done()
-					
+
 					sendStream := &mockSendStream{Writer: io.Discard}
 					groupWriter := newGroupWriter(sendStream, GroupSequence(1), func() {})
-					
+
 					frame := NewFrame(frameSize)
 					frame.Write(frameData)
 
@@ -210,7 +210,7 @@ func BenchmarkFrame_EncodeDecodeCycle(b *testing.B) {
 				// Encode
 				writeFrame := NewFrame(size)
 				writeFrame.Write(frameData)
-				
+
 				var buf bytes.Buffer
 				err := writeFrame.encode(&buf)
 				if err != nil {
@@ -222,7 +222,7 @@ func BenchmarkFrame_EncodeDecodeCycle(b *testing.B) {
 				reader := bytes.NewReader(buf.Bytes())
 				recvStream := &mockReceiveStream{Reader: reader}
 				groupReader := newGroupReader(GroupSequence(1), recvStream, func() {})
-				
+
 				err = groupReader.ReadFrame(readFrame)
 				if err != nil {
 					b.Fatal(err)
@@ -239,7 +239,7 @@ func BenchmarkGroupReader_MemoryAllocation(b *testing.B) {
 
 	testFrame := NewFrame(frameSize)
 	testFrame.Write(frameData)
-	
+
 	var buf bytes.Buffer
 	_ = testFrame.encode(&buf)
 	encodedData := buf.Bytes()
@@ -252,7 +252,7 @@ func BenchmarkGroupReader_MemoryAllocation(b *testing.B) {
 		reader := bytes.NewReader(repeatingData)
 		recvStream := &mockReceiveStream{Reader: reader}
 		groupReader := newGroupReader(GroupSequence(1), recvStream, func() {})
-		
+
 		frame := NewFrame(frameSize)
 		_ = groupReader.ReadFrame(frame)
 	}
@@ -269,7 +269,7 @@ func BenchmarkGroupWriter_MemoryAllocation(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		sendStream := &mockSendStream{Writer: io.Discard}
 		groupWriter := newGroupWriter(sendStream, GroupSequence(1), func() {})
-		
+
 		frame := NewFrame(frameSize)
 		frame.Write(frameData)
 		_ = groupWriter.WriteFrame(frame)
@@ -283,7 +283,7 @@ func BenchmarkFrame_ReuseVsAllocate(b *testing.B) {
 
 	b.Run("reuse", func(b *testing.B) {
 		frame := NewFrame(frameSize)
-		
+
 		b.ReportAllocs()
 		b.ResetTimer()
 
@@ -321,8 +321,8 @@ type mockSendStream struct {
 	io.Writer
 }
 
-func (m *mockSendStream) CancelWrite(quic.StreamErrorCode) {}
-func (m *mockSendStream) Close() error { return nil }
-func (m *mockSendStream) Context() context.Context { return context.Background() }
-func (m *mockSendStream) StreamID() quic.StreamID { return 0 }
+func (m *mockSendStream) CancelWrite(quic.StreamErrorCode)   {}
+func (m *mockSendStream) Close() error                       { return nil }
+func (m *mockSendStream) Context() context.Context           { return context.Background() }
+func (m *mockSendStream) StreamID() quic.StreamID            { return 0 }
 func (m *mockSendStream) SetWriteDeadline(t time.Time) error { return nil }

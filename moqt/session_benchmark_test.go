@@ -40,12 +40,12 @@ func BenchmarkSession_Subscribe(b *testing.B) {
 				mockBiStream.On("StreamID").Return(quic.StreamID(streamIndex))
 				streamIndex++
 				mockBiStream.On("Context").Return(context.Background())
-				
+
 				// Mock Write for SUBSCRIBE message
 				mockBiStream.On("Write", mock.Anything).Return(func(b []byte) int {
 					return len(b)
 				}, nil)
-				
+
 				// Mock Read for SUBSCRIBE_OK message
 				mockBiStream.On("Read", mock.Anything).Return(func(b []byte) (int, error) {
 					// Encode SUBSCRIBE_OK message
@@ -59,11 +59,11 @@ func BenchmarkSession_Subscribe(b *testing.B) {
 					copy(b, data)
 					return len(data), io.EOF
 				})
-				
+
 				mockBiStream.On("CancelWrite", mock.Anything).Return()
 				mockBiStream.On("CancelRead", mock.Anything).Return()
 				mockBiStream.On("Close").Return(nil)
-				
+
 				return mockBiStream
 			}, nil)
 
@@ -119,7 +119,7 @@ func BenchmarkSession_ConcurrentSubscribe(b *testing.B) {
 			conn.On("OpenStream").Return(func() quic.Stream {
 				streamMu.Lock()
 				defer streamMu.Unlock()
-				
+
 				mockBiStream := &MockQUICStream{}
 				mockBiStream.On("StreamID").Return(quic.StreamID(streamIndex))
 				streamIndex++
@@ -197,12 +197,12 @@ func BenchmarkSession_TrackReaderOperations(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		id := SubscribeID(i)
-		
+
 		// Create mock subscribe stream
 		mockSubStream := &MockQUICStream{}
 		mockSubStream.On("Context").Return(context.Background())
 		mockSubStream.On("StreamID").Return(quic.StreamID(i))
-		
+
 		substr := newSendSubscribeStream(id, mockSubStream, &TrackConfig{}, Info{})
 		trackReader := newTrackReader(
 			BroadcastPath("/test"),
@@ -210,10 +210,10 @@ func BenchmarkSession_TrackReaderOperations(b *testing.B) {
 			substr,
 			func() {},
 		)
-		
+
 		// Add track reader
 		session.addTrackReader(id, trackReader)
-		
+
 		// Remove track reader
 		session.removeTrackReader(id)
 	}
@@ -248,12 +248,12 @@ func BenchmarkSession_TrackWriterOperations(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		id := SubscribeID(i)
-		
+
 		// Create mock subscribe stream
 		mockSubStream := &MockQUICStream{}
 		mockSubStream.On("Context").Return(context.Background())
 		mockSubStream.On("StreamID").Return(quic.StreamID(i))
-		
+
 		substr := newReceiveSubscribeStream(id, mockSubStream, &TrackConfig{})
 		trackWriter := newTrackWriter(
 			BroadcastPath("/test"),
@@ -262,10 +262,10 @@ func BenchmarkSession_TrackWriterOperations(b *testing.B) {
 			func() (quic.SendStream, error) { return nil, nil },
 			func() {},
 		)
-		
+
 		// Add track writer
 		session.addTrackWriter(id, trackWriter)
-		
+
 		// Remove track writer
 		session.removeTrackWriter(id)
 	}
@@ -305,7 +305,7 @@ func BenchmarkSession_MapLookup(b *testing.B) {
 				mockSubStream := &MockQUICStream{}
 				mockSubStream.On("Context").Return(context.Background())
 				mockSubStream.On("StreamID").Return(quic.StreamID(i))
-				
+
 				substr := newSendSubscribeStream(id, mockSubStream, &TrackConfig{}, Info{})
 				trackReader := newTrackReader(
 					BroadcastPath("/test"),
@@ -381,7 +381,7 @@ func BenchmarkSession_MemoryAllocation(b *testing.B) {
 	for _, size := range sizes {
 		b.Run(fmt.Sprintf("readers-%d", size), func(b *testing.B) {
 			b.ReportAllocs()
-			
+
 			for i := 0; i < b.N; i++ {
 				mockStream := &MockQUICStream{}
 				mockStream.On("Context").Return(context.Background())
@@ -408,7 +408,7 @@ func BenchmarkSession_MemoryAllocation(b *testing.B) {
 					mockSubStream := &MockQUICStream{}
 					mockSubStream.On("Context").Return(context.Background())
 					mockSubStream.On("StreamID").Return(quic.StreamID(j))
-					
+
 					substr := newSendSubscribeStream(id, mockSubStream, &TrackConfig{}, Info{})
 					trackReader := newTrackReader(
 						BroadcastPath("/test"),
@@ -453,10 +453,10 @@ func BenchmarkSession_ContextCancellation(b *testing.B) {
 
 		// Cancel context
 		cancel()
-		
+
 		// Close session
 		_ = session.CloseWithError(NoError, "benchmark complete")
-		
+
 		// Small delay to allow goroutines to finish
 		time.Sleep(time.Millisecond)
 	}

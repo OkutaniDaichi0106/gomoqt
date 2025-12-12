@@ -1,7 +1,6 @@
 package moqt
 
 import (
-	"net/http"
 	"time"
 )
 
@@ -13,9 +12,8 @@ type Config struct {
 
 	// NewSessionURI string // TODO:
 
-	// CheckHTTPOrigin validates the HTTP Origin header for WebTransport connections.
-	// If nil, all origins are accepted.
-	CheckHTTPOrigin func(*http.Request) bool // TODO: Check HTTP header for security
+	// (previously) CheckHTTPOrigin was moved to Server. Origin checking is now
+	// configured on a per-Server basis.
 
 	// SetupTimeout is the maximum time to wait for session setup to complete.
 	// If zero, a default timeout of 5 seconds is used.
@@ -30,14 +28,6 @@ func (c *Config) setupTimeout() time.Duration {
 	return 5 * time.Second
 }
 
-// checkHTTPOrigin returns the configured CheckHTTPOrigin function or nil.
-func (c *Config) checkHTTPOrigin() func(*http.Request) bool {
-	if c != nil {
-		return c.CheckHTTPOrigin
-	}
-	return nil
-}
-
 // Clone creates a copy of the Config.
 func (c *Config) Clone() *Config {
 	if c == nil {
@@ -48,7 +38,6 @@ func (c *Config) Clone() *Config {
 		// MaxSubscribeID: c.MaxSubscribeID,
 		// NewSessionURI:  c.NewSessionURI,
 		// CheckRoot:      c.CheckRoot,
-		CheckHTTPOrigin: c.CheckHTTPOrigin,
 		SetupTimeout:    c.SetupTimeout,
 	}
 }

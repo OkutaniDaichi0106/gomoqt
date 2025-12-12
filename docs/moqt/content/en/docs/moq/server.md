@@ -20,10 +20,8 @@ func main() {
             Allow0RTT:       true,
             EnableDatagrams: true,
         },
-        Config: &moqt.Config{
-            CheckHTTPOrigin: func(r *http.Request) bool {
-                return r.Header.Get("Origin") == "https://trusted.example.com"
-            },
+        CheckHTTPOrigin: func(r *http.Request) bool {
+            return r.Header.Get("Origin") == "https://trusted.example.com"
         },
         Logger: slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
             Level: slog.LevelInfo,
@@ -83,6 +81,7 @@ The following table describes the public fields of the `Server` struct:
 | `TLSConfig`            | [`*tls.Config`](https://pkg.go.dev/crypto/tls#Config) | TLS configuration for secure connections    |
 | `QUICConfig`           | [`*quic.Config`](https://pkg.go.dev/github.com/okdaichi/gomoqt/quic#Config)              | QUIC protocol configuration                 |
 | `Config`               | [`*moqt.Config`](https://pkg.go.dev/github.com/okdaichi/gomoqt/moqt#Config)                   | MOQ protocol configuration                  |
+| `CheckHTTPOrigin`      | `func(*http.Request) bool`     | Validates the HTTP Origin header for WebTransport connections. If nil, all origins are accepted. |
 | `Handler`              | [`moqt.Handler`](https://pkg.go.dev/github.com/okdaichi/gomoqt/moqt#Handler)                 | Set-up Request handler for routing                 |
 | `ListenFunc`           | [`quic.ListenAddrFunc`](https://pkg.go.dev/github.com/okdaichi/gomoqt/quic#ListenAddrFunc)   | Function to listen for QUIC connections     |
 | `NewWebtransportServerFunc` | `func(checkOrigin func(*http.Request) bool) webtransport.Server` | Function to create a new WebTransport server |

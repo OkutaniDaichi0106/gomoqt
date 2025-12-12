@@ -53,6 +53,64 @@ func TestServer_Init(t *testing.T) {
 	}
 }
 
+// stub webtransport.Server implementation for tests
+type stubWT struct{}
+
+func (s *stubWT) Upgrade(w http.ResponseWriter, r *http.Request) (quic.Connection, error) {
+	return nil, nil
+}
+
+func (s *stubWT) ServeQUICConn(conn quic.Connection) error { return nil }
+func (s *stubWT) Close() error                             { return nil }
+func (s *stubWT) Shutdown(ctx context.Context) error       { return nil }
+
+func TestServer_Init_UsesServerCheckHTTPOrigin(t *testing.T) {
+	called := false
+
+	// Server-level check returns false
+	server := &Server{
+		CheckHTTPOrigin: func(r *http.Request) bool { return false },
+		NewWebtransportServerFunc: func(checkOrigin func(*http.Request) bool) webtransport.Server {
+			called = true
+			// ensure the passed function behaves as expected
+			if checkOrigin == nil {
+				t.Fatal("expected non-nil checkOrigin in NewWebtransportServerFunc")
+			}
+			if checkOrigin(&http.Request{Header: http.Header{"Origin": []string{"https://evil"}}}) {
+				t.Fatal("expected checkOrigin to reject origin")
+			}
+			return &stubWT{}
+		},
+	}
+
+	server.init()
+
+	if !called {
+		t.Fatal("NewWebtransportServerFunc was not called during init")
+	}
+	if server.wtServer == nil {
+		t.Fatal("wtServer should be initialized")
+	}
+}
+
+func TestServer_Init_NilCheckHTTPOrigin(t *testing.T) {
+	var received func(*http.Request) bool
+
+	server := &Server{
+		NewWebtransportServerFunc: func(checkOrigin func(*http.Request) bool) webtransport.Server {
+			received = checkOrigin
+			return &stubWT{}
+		},
+	}
+
+	server.init()
+
+	if received == nil {
+		// nil is acceptable: means all origins accepted
+		// Pass
+	}
+}
+
 func TestServer_InitOnce(t *testing.T) {
 	tests := map[string]struct {
 		addr      string

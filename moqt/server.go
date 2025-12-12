@@ -73,6 +73,10 @@ type Server struct {
 	NewWebtransportServerFunc func(checkOrigin func(*http.Request) bool) webtransport.Server
 	wtServer                  webtransport.Server
 
+	// CheckHTTPOrigin validates the HTTP Origin header for WebTransport connections.
+	// If nil, all origins are accepted.
+	CheckHTTPOrigin func(*http.Request) bool
+
 	/*
 	 * Logger
 	 */
@@ -100,7 +104,8 @@ func (s *Server) init() {
 		s.doneChan = make(chan struct{})
 		s.activeSess = make(map[*Session]struct{})
 		// Initialize WebtransportServer
-		checkOrigin := s.Config.checkHTTPOrigin()
+		// Use Server-level CheckHTTPOrigin. Config no longer holds origin checks.
+		checkOrigin := s.CheckHTTPOrigin
 
 		if s.NewWebtransportServerFunc != nil {
 			s.wtServer = s.NewWebtransportServerFunc(checkOrigin)

@@ -42,10 +42,8 @@ func main() {
 			Allow0RTT:       true,
 			EnableDatagrams: true,
 		},
-		Config: &moqt.Config{
-			CheckHTTPOrigin: func(r *http.Request) bool {
-				return true // TODO: Implement proper origin check
-			},
+		CheckHTTPOrigin: func(r *http.Request) bool {
+			return true // TODO: Implement proper origin check
 		},
 	}
 

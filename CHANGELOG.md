@@ -6,42 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-### Breaking Changes
+### Changed
 
-- **EWMA Bitrate Notification Removed**: Removed experimental EWMA-based bitrate notification feature (v0.6.0)
-  - Removed `moqt/bitrate/` package (ewma.go, ewma_test.go, shift_detector.go)
-  - Removed `NewShiftDetector` field from `Config`
-  - Removed `ConnectionStats()` method from `quic.Connection` interface
-  - **Reason**: Feature depended on non-public APIs from forked quic-go, causing instability and preventing library users from using the package due to Go module replace directive limitations
-  - **Migration**: This feature has been preserved in the `feature/ewma-bitrate-notification` branch for reference
-  - `Session.goAway()` is now a no-op (graceful shutdown is handled by QUIC connection close)
-
-- **Removed Go Module Replace Directives**: Removed replace directives for forked dependencies
-  - No longer using `github.com/okdaichi/quic-go` or `github.com/okdaichi/webtransport-go`
-  - Now using upstream `github.com/quic-go/quic-go` v0.57.1 and `github.com/quic-go/webtransport-go`
-  - **Impact**: Library can now be used as a dependency without type compatibility issues
-  - All tests passing with upstream dependencies
-
-### Performance
-
-- **TrackMux Advanced Optimizations**: Further improved performance with lock contention reduction and memory efficiency
-  - **Lock Optimization**: Reduced lock hold time in `findTrackHandler` by performing all checks within single RLock
-  - **Memory Allocation**: Moved handler struct allocation outside critical section in `registerHandler`
-  - **Code Deduplication**: Refactored `serveTrack` to reuse optimized `findTrackHandler`, eliminating duplicate lock acquisition
-  - **Read-Write Lock Pattern**: Implemented double-check locking in `getChild` to minimize write lock contention
-  - **Worker Pool Enhancement**: Optimized `Announcement.end()` with inline execution for small handler counts and efficient work distribution
-  - **Results**: Handler lookup improved to 21-25ns (48-51% from baseline, 12-20% from first optimization)
-
-- **Initial TrackMux Optimizations**: Improved performance of track handler lookups and announcements
-  - Reduced lock contention in `findTrackHandler` by simplifying map lookups
-  - Pre-allocated maps with initial capacity to reduce allocations during runtime
-  - Removed unnecessary defer statements for faster lock/unlock operations
-  - Pre-allocated slices in `Announce` function to reduce dynamic allocations
-  - **Results**: Handler lookup improved by 42-67% (41ns → 24-31ns), ServeTrack improved by 23% (243ns → 187ns), GC overhead reduced from 55% to 25%
-
-### Fixed
-
-- **Benchmark Test Mocks**: Fixed `BenchmarkTrackMux_ServeAnnouncements` by adding required mock expectations for `Context()` and `Write()` methods
+- Move `CheckHTTPOrigin` from `moqt.Config` to `moqt.Server`. The origin check is now configured per-server via the `Server.CheckHTTPOrigin func(*http.Request) bool` field. Examples, docs, and tests were updated accordingly.
 
 ## [v0.6.2] - 2025-12-10
 

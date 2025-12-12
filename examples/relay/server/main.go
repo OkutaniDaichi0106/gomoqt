@@ -26,11 +26,9 @@ func main() {
 			Allow0RTT:       true,
 			EnableDatagrams: true,
 		},
-		Config: &moqt.Config{
-			CheckHTTPOrigin: func(r *http.Request) bool {
-				slog.Info("HTTP Origin", "origin", r.Header.Get("Origin"))
-				return true // TODO: Implement proper origin check
-			},
+		CheckHTTPOrigin: func(r *http.Request) bool {
+			slog.Info("HTTP Origin", "origin", r.Header.Get("Origin"))
+			return true // TODO: Implement proper origin check
 		},
 		Logger: slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 			Level: slog.LevelDebug,

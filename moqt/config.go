@@ -12,9 +12,6 @@ type Config struct {
 
 	// NewSessionURI string // TODO:
 
-	// (previously) CheckHTTPOrigin was moved to Server. Origin checking is now
-	// configured on a per-Server basis.
-
 	// SetupTimeout is the maximum time to wait for session setup to complete.
 	// If zero, a default timeout of 5 seconds is used.
 	SetupTimeout time.Duration
@@ -38,6 +35,6 @@ func (c *Config) Clone() *Config {
 		// MaxSubscribeID: c.MaxSubscribeID,
 		// NewSessionURI:  c.NewSessionURI,
 		// CheckRoot:      c.CheckRoot,
-		SetupTimeout:    c.SetupTimeout,
+		SetupTimeout: c.SetupTimeout,
 	}
 }

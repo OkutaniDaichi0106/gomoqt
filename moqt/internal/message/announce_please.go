@@ -19,8 +19,7 @@ func (aim AnnouncePleaseMessage) Len() int {
 
 func (aim AnnouncePleaseMessage) Encode(w io.Writer) error {
 	msgLen := aim.Len()
-	b := pool.Get(msgLen + VarintLen(uint64(msgLen)))
-	defer pool.Put(b)
+	b := make([]byte, 0, msgLen+VarintLen(uint64(msgLen)))
 
 	b, _ = WriteMessageLength(b, uint64(msgLen))
 	b, _ = WriteString(b, aim.TrackPrefix)
@@ -36,8 +35,7 @@ func (aim *AnnouncePleaseMessage) Decode(src io.Reader) error {
 		return err
 	}
 
-	b := pool.Get(int(num))[:num]
-	defer pool.Put(b)
+	b := make([]byte, num)
 
 	_, err = io.ReadFull(src, b)
 	if err != nil {

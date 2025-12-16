@@ -6,27 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Message encoding/decoding performance improvement**: Replaced sync.Pool-based buffer pooling with direct allocation
+  - Benchmark results showed that direct allocation (`make([]byte, 0, cap)`) significantly outperforms pool-based allocation for typical message sizes
+  - Small messages (10 bytes): 5.9x faster, 28x less memory with direct allocation
+  - Medium messages (80 bytes): 3.4x faster, 3.8x less memory with direct allocation
+  - Parallel execution: 13.8x faster with direct allocation
+  - Pool overhead (mutex locks, type assertions, pointer operations) exceeds allocation cost for small-to-medium sized messages
+  - Modern Go runtime's allocator is highly optimized for small allocations, making pool unnecessary
+
+### Removed
+
+- `bytes_pool.go` and all `pool.Get()`/`pool.Put()` calls (replaced with `make([]byte, 0, cap)`)
+
 ## [v0.7.0] - 2025-12-16
 
-### Breaking Changes
+### Changed
 
-- **Message Length Encoding Changed to Varint**: Changed message length encoding from uint16 big-endian to QUIC variable-length integer (varint)
+- **Message Length Encoding**: Changed message length encoding from uint16 big-endian to QUIC variable-length integer (varint)
   - Message length is now encoded using standard QUIC varint format (1, 2, 4, or 8 bytes depending on value)
   - This change aligns the implementation with the QUIC specification and improves efficiency for small messages
   - Messages up to 63 bytes now use only 1 byte for length (previously always 2 bytes)
   - Maximum message size increased from 65,535 bytes to 2^62-1 bytes
-  - **Impact**: This is a protocol-breaking change. Old clients and servers cannot communicate with new ones
-  - **Migration**: All endpoints must be updated simultaneously to maintain compatibility
+  - **Breaking Change**: This is a protocol-breaking change. Old clients and servers cannot communicate with new ones
+  - **Migration Guide**: All endpoints must be updated simultaneously to maintain compatibility
 
-- **EWMA Bitrate Notification Removed**: Removed experimental EWMA-based bitrate notification feature (v0.6.0)
+### Removed
+
+- **EWMA Bitrate Notification**: Removed experimental EWMA-based bitrate notification feature (v0.6.0)
   - Removed `moqt/bitrate/` package (ewma.go, ewma_test.go, shift_detector.go)
   - Removed `NewShiftDetector` field from `Config`
   - Removed `ConnectionStats()` method from `quic.Connection` interface
   - **Reason**: Feature depended on non-public APIs from forked quic-go, causing instability and preventing library users from using the package due to Go module replace directive limitations
-  - **Migration**: This feature has been preserved in the `feature/ewma-bitrate-notification` branch for reference
+  - **Migration Guide**: This feature has been preserved in the `feature/ewma-bitrate-notification` branch for reference
   - `Session.goAway()` is now a no-op (graceful shutdown is handled by QUIC connection close)
-
-- **Removed Go Module Replace Directives**: Removed replace directives for forked dependencies
+- **Go Module Replace Directives**: Removed replace directives for forked dependencies
   - No longer using `github.com/okdaichi/quic-go` or `github.com/okdaichi/webtransport-go`
   - Now using upstream `github.com/quic-go/quic-go` v0.57.1 and `github.com/quic-go/webtransport-go`
   - **Impact**: Library can now be used as a dependency without type compatibility issues
@@ -77,11 +92,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed
 
 - **Repository ownership**: Changed GitHub username from `OkutaniDaichi0106` to `okdaichi`
-- Renamed `Session.SessionUpdated()` to `Session.Updated()`
-- Renamed `Session.Terminate()` to `Session.CloseWithError()` for consistency
-- Updated all documentation to align with current implementation and reflect correct GitHub username
-- Improved README formatting and features section clarity across all languages
-- Updated module replace directives to use forked quic-go and webtransport-go commits
+- **Session API naming**: Renamed `Session.SessionUpdated()` to `Session.Updated()`
+- **Session API naming**: Renamed `Session.Terminate()` to `Session.CloseWithError()` for consistency
+- **Documentation**: Updated all documentation to align with current implementation and reflect correct GitHub username
+- **Documentation**: Improved README formatting and features section clarity across all languages
+- **Dependencies**: Updated module replace directives to use forked quic-go and webtransport-go commits
 
 ## [v0.6.0] - 2025-12-05
 
@@ -89,26 +104,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - `bitrate` package: Bitrate monitoring functionality with `ShiftDetector` interface and `EWMAShiftDetector` implementation for detecting bitrate shifts using Exponential Weighted Moving Average
 
-### Fixed
-
-- `AnnouncementWriter`: Avoid deadlock by calling end functions asynchronously
-
 ### Changed
 
 - Modernize test code: Replace traditional for loops with range loops
+
+### Fixed
+
+- `AnnouncementWriter`: Avoid deadlock by calling end functions asynchronously
 
 ## [v0.5.0] - 2025-11-27
 
 ### Changed
 
-- Update Broadcast example: Switch from LiveKit to UDP as media source
-- `Mux`: Return `ErrNoSubscribers` on failure to find subscribers instead of GOAWAY
+- **Broadcast example**: Switch from LiveKit to UDP as media source
+- **Mux error handling**: Return `ErrNoSubscribers` on failure to find subscribers instead of GOAWAY
 
 ## [v0.4.3] - 2025-11-26
 
 ### Changed
 
-- Improve error handling: Distinguish temporary and permanent errors
+- **Error handling**: Distinguish temporary and permanent errors
 
 ## [v0.4.2] - 2025-11-25
 
@@ -120,8 +135,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
-- `TrackWriter.Close()`: Handle stream closure errors
-- `GroupWriter`: Add nil check for frame field to prevent panic
+- **TrackWriter**: Handle stream closure errors in `TrackWriter.Close()`
+- **GroupWriter**: Add nil check for frame field to prevent panic
 
 ## [v0.4.0] - 2025-11-24
 
@@ -134,9 +149,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
-- Replace `TrackPublisher` with new `TrackWriter` API
-- Simplify parallel group writing with direct track writer operations
-- `SendSubscribeStream` now returns `*TrackWriter` instead of `TrackPublisher`
+- **API redesign**: Replace `TrackPublisher` with new `TrackWriter` API
+- **Parallel writing**: Simplify parallel group writing with direct track writer operations
+- **SendSubscribeStream**: Now returns `*TrackWriter` instead of `TrackPublisher`
 
 ### Removed
 
@@ -146,7 +161,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
-- Native QUIC support: Direct QUIC connection examples in `examples/native_quic`
+- **Native QUIC support**: Direct QUIC connection examples in `examples/native_quic`
 - `quic` package: Wrapper for QUIC functionality used by core library and examples
 - Russian translation of README (`README.ru.md`)
 - German translation of README (`README.de.md`)
@@ -154,20 +169,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
-- Reorganize dependencies: Separate QUIC and WebTransport dependencies for flexible usage
-- Update examples to demonstrate both WebTransport and native QUIC usage
+- **Dependencies**: Separate QUIC and WebTransport dependencies for flexible usage
+- **Examples**: Demonstrate both WebTransport and native QUIC usage
 
 ## [v0.2.0] - 2025-11-15
 
 ### Added
 
-- WebTransport support via `webtransport` package
-- Interoperability testing suite in `cmd/interop`
-- TypeScript client implementation in `moq-web`
+- **WebTransport support**: Via `webtransport` package
+- **Interoperability testing**: Testing suite in `cmd/interop`
+- **TypeScript client**: Implementation in `moq-web`
 
 ### Changed
 
 - Improve session management and error handling
+
+### Documentation
+
 - Update documentation with WebTransport examples
 
 ## [v0.1.0] - 2025-11-01
@@ -181,13 +199,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Comprehensive test coverage
 - MIT License
 
-[Unreleased]: https://github.com/OkutaniDaichi0106/gomoqt/compare/v0.6.0...HEAD
-[v0.6.0]: https://github.com/OkutaniDaichi0106/gomoqt/compare/v0.5.0...v0.6.0
-[v0.5.0]: https://github.com/OkutaniDaichi0106/gomoqt/compare/v0.4.3...v0.5.0
-[v0.4.3]: https://github.com/OkutaniDaichi0106/gomoqt/compare/v0.4.2...v0.4.3
-[v0.4.2]: https://github.com/OkutaniDaichi0106/gomoqt/compare/v0.4.1...v0.4.2
-[v0.4.1]: https://github.com/OkutaniDaichi0106/gomoqt/compare/v0.4.0...v0.4.1
-[v0.4.0]: https://github.com/OkutaniDaichi0106/gomoqt/compare/v0.3.0...v0.4.0
-[v0.3.0]: https://github.com/OkutaniDaichi0106/gomoqt/compare/v0.2.0...v0.3.0
-[v0.2.0]: https://github.com/OkutaniDaichi0106/gomoqt/compare/v0.1.0...v0.2.0
-[v0.1.0]: https://github.com/OkutaniDaichi0106/gomoqt/releases/tag/v0.1.0
+[Unreleased]: https://github.com/okdaichi/gomoqt/compare/v0.7.0...HEAD
+[v0.7.0]: https://github.com/okdaichi/gomoqt/compare/v0.6.2...v0.7.0
+[v0.6.2]: https://github.com/okdaichi/gomoqt/compare/v0.6.1...v0.6.2
+[v0.6.1]: https://github.com/okdaichi/gomoqt/compare/v0.6.0...v0.6.1
+[v0.6.0]: https://github.com/okdaichi/gomoqt/compare/v0.5.0...v0.6.0
+[v0.5.0]: https://github.com/okdaichi/gomoqt/compare/v0.4.3...v0.5.0
+[v0.4.3]: https://github.com/okdaichi/gomoqt/compare/v0.4.2...v0.4.3
+[v0.4.2]: https://github.com/okdaichi/gomoqt/compare/v0.4.1...v0.4.2
+[v0.4.1]: https://github.com/okdaichi/gomoqt/compare/v0.4.0...v0.4.1
+[v0.4.0]: https://github.com/okdaichi/gomoqt/compare/v0.3.0...v0.4.0
+[v0.3.0]: https://github.com/okdaichi/gomoqt/compare/v0.2.0...v0.3.0
+[v0.2.0]: https://github.com/okdaichi/gomoqt/compare/v0.1.0...v0.2.0
+[v0.1.0]: https://github.com/okdaichi/gomoqt/releases/tag/v0.1.0

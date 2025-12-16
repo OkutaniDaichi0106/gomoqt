@@ -32,8 +32,7 @@ func (s SubscribeMessage) Len() int {
 
 func (s SubscribeMessage) Encode(w io.Writer) error {
 	msgLen := s.Len()
-	b := pool.Get(msgLen + VarintLen(uint64(msgLen)))
-	defer pool.Put(b)
+	b := make([]byte, 0, msgLen+VarintLen(uint64(msgLen)))
 
 	b, _ = WriteMessageLength(b, uint64(msgLen))
 	b, _ = WriteVarint(b, uint64(s.SubscribeID))
@@ -53,8 +52,7 @@ func (s *SubscribeMessage) Decode(src io.Reader) error {
 		return err
 	}
 
-	b := pool.Get(int(size))[:size]
-	defer pool.Put(b)
+	b := make([]byte, size)
 
 	_, err = io.ReadFull(src, b)
 	if err != nil {

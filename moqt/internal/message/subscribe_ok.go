@@ -18,8 +18,7 @@ func (som SubscribeOkMessage) Len() int {
 
 func (som SubscribeOkMessage) Encode(w io.Writer) error {
 	msgLen := som.Len()
-	b := pool.Get(msgLen + VarintLen(uint64(msgLen)))
-	defer pool.Put(b)
+	b := make([]byte, 0, msgLen+VarintLen(uint64(msgLen)))
 
 	b, _ = WriteMessageLength(b, uint64(msgLen))
 
@@ -34,8 +33,7 @@ func (som *SubscribeOkMessage) Decode(src io.Reader) error {
 		return err
 	}
 
-	b := pool.Get(int(num))[:num]
-	defer pool.Put(b)
+	b := make([]byte, num)
 	_, err = io.ReadFull(src, b)
 	if err != nil {
 		return err

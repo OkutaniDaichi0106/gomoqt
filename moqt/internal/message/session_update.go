@@ -17,8 +17,7 @@ func (sum SessionUpdateMessage) Len() int {
 
 func (sum SessionUpdateMessage) Encode(w io.Writer) error {
 	msgLen := sum.Len()
-	b := pool.Get(msgLen + VarintLen(uint64(msgLen)))
-	defer pool.Put(b)
+	b := make([]byte, 0, msgLen+VarintLen(uint64(msgLen)))
 
 	b, _ = WriteMessageLength(b, uint64(msgLen))
 	b, _ = WriteVarint(b, sum.Bitrate)
@@ -33,8 +32,7 @@ func (sum *SessionUpdateMessage) Decode(src io.Reader) error {
 		return err
 	}
 
-	b := pool.Get(int(size))[:size]
-	defer pool.Put(b)
+	b := make([]byte, size)
 
 	_, err = io.ReadFull(src, b)
 	if err != nil {

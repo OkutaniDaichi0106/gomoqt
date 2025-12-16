@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [v0.8.0] - 2025-12-16
+
 ### Changed
 
 - **Message encoding/decoding performance improvement**: Replaced sync.Pool-based buffer pooling with direct allocation

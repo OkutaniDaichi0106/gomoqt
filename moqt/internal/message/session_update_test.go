@@ -87,8 +87,7 @@ func TestSessionUpdateMessage_DecodeErrors(t *testing.T) {
 	t.Run("extra data", func(t *testing.T) {
 		var sum message.SessionUpdateMessage
 		var buf bytes.Buffer
-		buf.WriteByte(0x00) // length u16 high byte
-		buf.WriteByte(0x03) // length u16 low byte = 3
+		buf.WriteByte(0x03) // length varint = 3
 		buf.WriteByte(0x01) // bitrate
 		buf.WriteByte(0x00) // extra byte 1
 		buf.WriteByte(0x00) // extra byte 2 (fills to 3 bytes)

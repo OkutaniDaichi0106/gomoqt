@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import { SessionUpdateMessage } from "./session_update.ts";
 import { Buffer } from "@okdaichi/golikejs/bytes";
 import type { Writer } from "@okdaichi/golikejs/io";
@@ -42,7 +42,7 @@ Deno.test("SessionUpdateMessage - encode/decode roundtrip - multiple scenarios",
 	}
 
 	await t.step(
-		"decode should return error when readUint16 fails for message length",
+		"decode should return error when readVarint fails for message length",
 		async () => {
 			const buffer = Buffer.make(0); // Empty buffer
 			const message = new SessionUpdateMessage({});
@@ -55,12 +55,12 @@ Deno.test("SessionUpdateMessage - encode/decode roundtrip - multiple scenarios",
 		"decode should return error when readFull fails",
 		async () => {
 			const buffer = Buffer.make(10);
-			// Write message length = 5, but no data follows
-			await buffer.write(new Uint8Array([0x00, 0x05])); // msgLen = 5 (big-endian)
+			// Write message length = 5 (varint), but no data follows
+			await buffer.write(new Uint8Array([0x05]));
 
 			const message = new SessionUpdateMessage({});
 			const err = await message.decode(buffer);
-			assertEquals(err !== undefined, true);
+			assert(err !== undefined);
 		},
 	);
 

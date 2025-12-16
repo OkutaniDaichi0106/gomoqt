@@ -169,8 +169,7 @@ func TestSubscribeMessage_DecodeErrors(t *testing.T) {
 	t.Run("extra data", func(t *testing.T) {
 		var s message.SubscribeMessage
 		var buf bytes.Buffer
-		buf.WriteByte(0x00) // length u16 high byte
-		buf.WriteByte(0x0A) // length u16 low byte = 10
+		buf.WriteByte(0x0A) // length varint = 10
 		buf.WriteByte(0x01) // subscribe id
 		buf.WriteByte(0x01) // broadcast path length 1
 		buf.WriteByte('a')

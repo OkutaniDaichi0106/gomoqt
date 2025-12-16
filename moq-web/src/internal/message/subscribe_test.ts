@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import { SubscribeMessage } from "./subscribe.ts";
 import { Buffer } from "@okdaichi/golikejs/bytes";
 import type { Writer } from "@okdaichi/golikejs/io";
@@ -84,10 +84,11 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 		"decode should return error when reading subscribeId fails",
 		async () => {
 			const buffer = Buffer.make(10);
-			await buffer.write(new Uint8Array([0x00, 0x05])); // message length = 5, but no data
+			// message length = 5 (varint), but no data
+			await buffer.write(new Uint8Array([0x05]));
 			const message = new SubscribeMessage({});
 			const err = await message.decode(buffer);
-			assertEquals(err !== undefined, true);
+			assert(err !== undefined);
 		},
 	);
 
@@ -95,11 +96,11 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 		"decode should return error when reading broadcastPath fails",
 		async () => {
 			const buffer = Buffer.make(10);
-			// message length, subscribeId, but no broadcastPath
-			await buffer.write(new Uint8Array([0x00, 0x05, 0x01]));
+			// message length = 5 (varint), subscribeId = 1 (varint), but no broadcastPath
+			await buffer.write(new Uint8Array([0x05, 0x01]));
 			const message = new SubscribeMessage({});
 			const err = await message.decode(buffer);
-			assertEquals(err !== undefined, true);
+			assert(err !== undefined);
 		},
 	);
 
@@ -107,11 +108,11 @@ Deno.test("SubscribeMessage - encode/decode roundtrip - multiple scenarios", asy
 		"decode should return error when reading trackName fails",
 		async () => {
 			const buffer = Buffer.make(10);
-			// message length, subscribeId, empty broadcastPath, but no trackName
-			await buffer.write(new Uint8Array([0x00, 0x06, 0x01, 0x00]));
+			// message length = 6 (varint), subscribeId = 1 (varint), empty broadcastPath = 0 (varint), but no trackName
+			await buffer.write(new Uint8Array([0x06, 0x01, 0x00]));
 			const message = new SubscribeMessage({});
 			const err = await message.decode(buffer);
-			assertEquals(err !== undefined, true);
+			assert(err !== undefined);
 		},
 	);
 

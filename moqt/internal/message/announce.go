@@ -32,7 +32,7 @@ func (am AnnounceMessage) Encode(w io.Writer) error {
 	b := pool.Get(msgLen + VarintLen(uint64(msgLen)))
 	defer pool.Put(b)
 
-	b, _ = WriteMessageLength(b, uint16(msgLen))
+	b, _ = WriteMessageLength(b, uint64(msgLen))
 	b, _ = WriteVarint(b, uint64(am.AnnounceStatus))
 	b, _ = WriteString(b, am.TrackSuffix)
 

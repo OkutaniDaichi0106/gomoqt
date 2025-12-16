@@ -10,12 +10,10 @@ import {
 	readFull,
 	readString,
 	readStringArray,
-	readUint16,
 	readVarint,
 	writeBytes,
 	writeString,
 	writeStringArray,
-	writeUint16,
 	writeVarint,
 } from "./message.ts";
 import { EOFError } from "@okdaichi/golikejs/io";
@@ -384,46 +382,6 @@ Deno.test("message utilities", async (t) => {
 	});
 
 	// Additional tests for 100% coverage
-	await t.step("writeUint16 - writes correct bytes", async () => {
-		const buffer = Buffer.make(10);
-		const [n, err] = await writeUint16(buffer, 0x1234);
-		assertEquals(n, 2);
-		assertEquals(err, undefined);
-		assertEquals(buffer.bytes(), new Uint8Array([0x12, 0x34]));
-	});
-
-	await t.step("writeUint16 - rejects value above 65535", async () => {
-		const buffer = Buffer.make(10);
-		const [n, err] = await writeUint16(buffer, 65536);
-		assertEquals(n, 0);
-		assertEquals(err?.name, "RangeError");
-	});
-
-	await t.step("writeUint16 - rejects negative value", async () => {
-		const buffer = Buffer.make(10);
-		const [n, err] = await writeUint16(buffer, -1);
-		assertEquals(n, 0);
-		assertEquals(err?.name, "RangeError");
-	});
-
-	await t.step("readUint16 - reads correct value", async () => {
-		const buffer = Buffer.make(10);
-		await buffer.write(new Uint8Array([0x12, 0x34]));
-		const [value, n, err] = await readUint16(buffer);
-		assertEquals(value, 0x1234);
-		assertEquals(n, 2);
-		assertEquals(err, undefined);
-	});
-
-	await t.step("readUint16 - returns error when not enough data", async () => {
-		const buffer = Buffer.make(10);
-		await buffer.write(new Uint8Array([0x12])); // Only 1 byte
-		const [value, n, err] = await readUint16(buffer);
-		assertEquals(value, 0);
-		assertEquals(n, 1);
-		assertEquals(err !== undefined, true);
-	});
-
 	await t.step(
 		"readVarint - returns error when remaining bytes fail",
 		async () => {

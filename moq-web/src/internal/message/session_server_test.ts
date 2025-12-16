@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import { SessionServerMessage } from "./session_server.ts";
 import { Buffer } from "@okdaichi/golikejs/bytes";
 import type { Writer } from "@okdaichi/golikejs/io";
@@ -70,10 +70,11 @@ Deno.test("SessionServerMessage - encode/decode roundtrip - multiple scenarios",
 		"decode should return error when readVarint fails for version",
 		async () => {
 			const buffer = Buffer.make(10);
-			await buffer.write(new Uint8Array([0x00, 0x01])); // message length = 1, but no version data
+			// message length = 1 (varint), but no version data
+			await buffer.write(new Uint8Array([0x01]));
 			const message = new SessionServerMessage({});
 			const err = await message.decode(buffer);
-			assertEquals(err !== undefined, true);
+			assert(err !== undefined);
 		},
 	);
 
@@ -81,11 +82,11 @@ Deno.test("SessionServerMessage - encode/decode roundtrip - multiple scenarios",
 		"decode should return error when readVarint fails for extension count",
 		async () => {
 			const buffer = Buffer.make(10);
-			// message length = 2, version = 1, but no extension count
-			await buffer.write(new Uint8Array([0x00, 0x02, 0x01]));
+			// message length = 2 (varint), version = 1 (varint), but no extension count
+			await buffer.write(new Uint8Array([0x02, 0x01]));
 			const message = new SessionServerMessage({});
 			const err = await message.decode(buffer);
-			assertEquals(err !== undefined, true);
+			assert(err !== undefined);
 		},
 	);
 
@@ -93,11 +94,11 @@ Deno.test("SessionServerMessage - encode/decode roundtrip - multiple scenarios",
 		"decode should return error when reading extension ID fails",
 		async () => {
 			const buffer = Buffer.make(10);
-			// message length = 3, version = 1, extensionCount = 1, but no ID
-			await buffer.write(new Uint8Array([0x00, 0x03, 0x01, 0x01]));
+			// message length = 3 (varint), version = 1 (varint), extensionCount = 1 (varint), but no ID
+			await buffer.write(new Uint8Array([0x03, 0x01, 0x01]));
 			const message = new SessionServerMessage({});
 			const err = await message.decode(buffer);
-			assertEquals(err !== undefined, true);
+			assert(err !== undefined);
 		},
 	);
 
@@ -105,11 +106,11 @@ Deno.test("SessionServerMessage - encode/decode roundtrip - multiple scenarios",
 		"decode should return error when reading extension data fails",
 		async () => {
 			const buffer = Buffer.make(10);
-			// message length = 4, version = 1, extensionCount = 1, ID = 1, but no data
-			await buffer.write(new Uint8Array([0x00, 0x04, 0x01, 0x01, 0x01]));
+			// message length = 4 (varint), version = 1 (varint), extensionCount = 1 (varint), ID = 1 (varint), but no data
+			await buffer.write(new Uint8Array([0x04, 0x01, 0x01, 0x01]));
 			const message = new SessionServerMessage({});
 			const err = await message.decode(buffer);
-			assertEquals(err !== undefined, true);
+			assert(err !== undefined);
 		},
 	);
 

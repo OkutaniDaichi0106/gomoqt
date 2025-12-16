@@ -2,10 +2,10 @@ import type { Reader, Writer } from "@okdaichi/golikejs/io";
 import {
 	parseString,
 	readFull,
-	readUint16,
+	readVarint,
 	stringLen,
 	writeString,
-	writeUint16,
+	writeVarint,
 } from "./message.ts";
 
 export interface AnnouncePleaseMessageInit {
@@ -33,7 +33,7 @@ export class AnnouncePleaseMessage {
 		const msgLen = this.len;
 		let err: Error | undefined;
 
-		[, err] = await writeUint16(w, msgLen);
+		[, err] = await writeVarint(w, msgLen);
 		if (err) return err;
 
 		[, err] = await writeString(w, this.prefix);
@@ -46,7 +46,7 @@ export class AnnouncePleaseMessage {
 	 * Decodes the message from the reader.
 	 */
 	async decode(r: Reader): Promise<Error | undefined> {
-		const [msgLen, , err1] = await readUint16(r);
+		const [msgLen, , err1] = await readVarint(r);
 		if (err1) return err1;
 
 		const buf = new Uint8Array(msgLen);

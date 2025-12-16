@@ -106,8 +106,7 @@ func TestAnnounceInitMessage_DecodeErrors(t *testing.T) {
 	t.Run("extra data", func(t *testing.T) {
 		var aim message.AnnounceInitMessage
 		var buf bytes.Buffer
-		buf.WriteByte(0x00) // length u16 high byte
-		buf.WriteByte(0x05) // length u16 low byte = 5
+		buf.WriteByte(0x05) // length varint = 5
 		buf.WriteByte(0x01) // count 1
 		buf.WriteByte(0x01) // string length 1
 		buf.WriteByte('a')  // string

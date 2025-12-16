@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import { SessionClientMessage } from "./session_client.ts";
 import { Buffer } from "@okdaichi/golikejs/bytes";
 import type { Writer } from "@okdaichi/golikejs/io";
@@ -259,7 +259,7 @@ Deno.test("SessionClientMessage", async (t) => {
 	});
 
 	await t.step(
-		"decode should return error when readUint16 fails for message length",
+		"decode should return error when readVarint fails for message length",
 		async () => {
 			const buffer = Buffer.make(0); // Empty buffer
 			const message = new SessionClientMessage({
@@ -275,15 +275,15 @@ Deno.test("SessionClientMessage", async (t) => {
 		"decode should return error when readFull fails",
 		async () => {
 			const buffer = Buffer.make(10);
-			// Write message length = 10, but no data follows
-			await buffer.write(new Uint8Array([0x00, 0x0a])); // msgLen = 10 (big-endian)
+			// Write message length = 10 (varint), but no data follows
+			await buffer.write(new Uint8Array([0x0a]));
 
 			const message = new SessionClientMessage({
 				versions: new Set<number>(),
 				extensions: new Map<number, Uint8Array>(),
 			});
 			const err = await message.decode(buffer);
-			assertEquals(err !== undefined, true);
+			assert(err !== undefined);
 		},
 	);
 

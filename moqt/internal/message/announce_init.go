@@ -22,7 +22,7 @@ func (aim AnnounceInitMessage) Encode(dst io.Writer) error {
 	b := pool.Get(msgLen + VarintLen(uint64(msgLen)))
 	defer pool.Put(b)
 
-	b, _ = WriteMessageLength(b, uint16(msgLen))
+	b, _ = WriteMessageLength(b, uint64(msgLen))
 	b, _ = WriteStringArray(b, aim.Suffixes)
 
 	_, err := dst.Write(b)

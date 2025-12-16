@@ -6,7 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [v0.7.0] - 2025-12-16
+
 ### Breaking Changes
+
+- **Message Length Encoding Changed to Varint**: Changed message length encoding from uint16 big-endian to QUIC variable-length integer (varint)
+  - Message length is now encoded using standard QUIC varint format (1, 2, 4, or 8 bytes depending on value)
+  - This change aligns the implementation with the QUIC specification and improves efficiency for small messages
+  - Messages up to 63 bytes now use only 1 byte for length (previously always 2 bytes)
+  - Maximum message size increased from 65,535 bytes to 2^62-1 bytes
+  - **Impact**: This is a protocol-breaking change. Old clients and servers cannot communicate with new ones
+  - **Migration**: All endpoints must be updated simultaneously to maintain compatibility
 
 - **EWMA Bitrate Notification Removed**: Removed experimental EWMA-based bitrate notification feature (v0.6.0)
   - Removed `moqt/bitrate/` package (ewma.go, ewma_test.go, shift_detector.go)

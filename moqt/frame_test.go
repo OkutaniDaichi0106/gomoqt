@@ -148,7 +148,7 @@ func TestFrame_EncodeDecode_RoundTrip(t *testing.T) {
 					r := bytes.NewReader(buf.Bytes())
 					n, err := message.ReadMessageLength(r)
 					require.NoError(t, err)
-					require.Equal(t, uint16(len(tt.payload)), n)
+					require.Equal(t, uint64(len(tt.payload)), n)
 
 					// Read the payload and compare exact bytes
 					got := make([]byte, n)
@@ -292,8 +292,8 @@ func TestFrame_Encode(t *testing.T) {
 			var buf bytes.Buffer
 			require.NoError(t, frame.encode(&buf))
 
-			// Build expected bytes: u16(length) followed by payload
-			expectedHeader, _ := message.WriteMessageLength(nil, uint16(len(tt.payload)))
+			// Build expected bytes: varint(length) followed by payload
+			expectedHeader, _ := message.WriteMessageLength(nil, uint64(len(tt.payload)))
 			expected := append(expectedHeader, tt.payload...)
 
 			got := buf.Bytes()

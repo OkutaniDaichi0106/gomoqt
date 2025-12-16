@@ -5,12 +5,12 @@ import { BiStreamTypes, UniStreamTypes } from "./stream_type.ts";
 
 Deno.test("Stream", async (t) => {
 	await t.step("maps id and substreams correctly", () => {
-		const writable = new WritableStream({ write() {} });
+		const writable = new WritableStream({ write() {} }) as any;
 		const readable = new ReadableStream({
 			start(c) {
 				c.close();
 			},
-		});
+		}) as any;
 		const s = new Stream({ streamId: 123n, stream: { writable, readable } });
 		assertEquals(s.id, 123n);
 		assertEquals(s.readable.id, 123n);

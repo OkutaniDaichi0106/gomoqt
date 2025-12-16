@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import { AnnounceMessage } from "./announce.ts";
 import { Buffer } from "@okdaichi/golikejs/bytes";
 import type { Writer } from "@okdaichi/golikejs/io";
@@ -51,7 +51,7 @@ Deno.test("AnnounceMessage - encode/decode roundtrip - multiple scenarios", asyn
 	}
 
 	await t.step(
-		"decode should return error when readUint16 fails for message length",
+		"decode should return error when readVarint fails for message length",
 		async () => {
 			const buffer = Buffer.make(0); // Empty buffer
 			const message = new AnnounceMessage({});
@@ -64,11 +64,11 @@ Deno.test("AnnounceMessage - encode/decode roundtrip - multiple scenarios", asyn
 		"decode should return error when readFull fails",
 		async () => {
 			const buffer = Buffer.make(10);
-			// Write message length = 10 (uint16 big-endian), but no data follows
-			await buffer.write(new Uint8Array([0x00, 0x0a]));
+			// Write message length = 10 as varint (0x0a), but no data follows
+			await buffer.write(new Uint8Array([0x0a]));
 			const message = new AnnounceMessage({});
 			const err = await message.decode(buffer);
-			assertEquals(err !== undefined, true);
+			assert(err !== undefined);
 		},
 	);
 

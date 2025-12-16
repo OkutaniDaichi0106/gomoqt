@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import { SubscribeUpdateMessage } from "./subscribe_update.ts";
 import { Buffer } from "@okdaichi/golikejs/bytes";
 
@@ -54,10 +54,11 @@ Deno.test("SubscribeUpdateMessage - encode/decode roundtrip - multiple scenarios
 		"decode should return error when reading subscribeId fails",
 		async () => {
 			const buffer = Buffer.make(10);
-			await buffer.write(new Uint8Array([0x00, 0x05])); // message length = 5, but no data
+			// message length = 5 (varint), but no data
+			await buffer.write(new Uint8Array([0x05]));
 			const message = new SubscribeUpdateMessage({});
 			const err = await message.decode(buffer);
-			assertEquals(err !== undefined, true);
+			assert(err !== undefined);
 		},
 	);
 });

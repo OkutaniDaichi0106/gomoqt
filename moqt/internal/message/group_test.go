@@ -124,8 +124,7 @@ func TestGroupMessage_DecodeErrors(t *testing.T) {
 	t.Run("extra data", func(t *testing.T) {
 		var g message.GroupMessage
 		var buf bytes.Buffer
-		buf.WriteByte(0x00) // length u16 high byte
-		buf.WriteByte(0x03) // length u16 low byte = 3
+		buf.WriteByte(0x03) // length varint = 3
 		buf.WriteByte(0x01) // subscribe id
 		buf.WriteByte(0x01) // group sequence
 		buf.WriteByte(0x00) // extra (fills to 3 bytes)

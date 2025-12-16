@@ -26,7 +26,7 @@ func (su SubscribeUpdateMessage) Encode(w io.Writer) error {
 	p := pool.Get(msgLen + VarintLen(uint64(msgLen)))
 	defer pool.Put(p)
 
-	p, _ = WriteMessageLength(p, uint16(msgLen))
+	p, _ = WriteMessageLength(p, uint64(msgLen))
 	p, _ = WriteVarint(p, uint64(su.TrackPriority))
 
 	_, err := w.Write(p)

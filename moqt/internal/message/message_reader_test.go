@@ -85,40 +85,54 @@ func TestReadVarint(t *testing.T) {
 func TestReadMessageLength(t *testing.T) {
 	tests := map[string]struct {
 		input    []byte
-		expected uint16
+		expected uint64
 		wantErr  bool
 	}{
 		"zero": {
-			input:    []byte{0x00, 0x00},
+			input:    []byte{0x00},
 			expected: 0,
 			wantErr:  false,
 		},
 		"small value": {
-			input:    []byte{0x00, 0x3f},
+			input:    []byte{0x3f},
 			expected: 63,
 			wantErr:  false,
 		},
-		"medium value": {
-			input:    []byte{0x00, 0x80},
+		"2-byte varint": {
+			input:    []byte{0x40, 0x80},
 			expected: 128,
 			wantErr:  false,
 		},
-		"large value": {
-			input:    []byte{0x01, 0x00},
+		"2-byte varint 256": {
+			input:    []byte{0x41, 0x00},
 			expected: 256,
 			wantErr:  false,
 		},
-		"max value": {
-			input:    []byte{0xff, 0xff},
-			expected: 65535,
+		"2-byte max": {
+			input:    []byte{0x7f, 0xff},
+			expected: 16383,
+			wantErr:  false,
+		},
+		"4-byte varint": {
+			input:    []byte{0x80, 0x01, 0x00, 0x00},
+			expected: 65536,
+			wantErr:  false,
+		},
+		"8-byte varint": {
+			input:    []byte{0xc0, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00},
+			expected: 65536,
 			wantErr:  false,
 		},
 		"empty input": {
 			input:   []byte{},
 			wantErr: true,
 		},
-		"incomplete - 1 byte": {
+		"incomplete 2-byte": {
 			input:   []byte{0x40},
+			wantErr: true,
+		},
+		"incomplete 4-byte": {
+			input:   []byte{0x80, 0x01},
 			wantErr: true,
 		},
 	}

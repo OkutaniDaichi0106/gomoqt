@@ -3,11 +3,10 @@ import {
 	parseString,
 	parseVarint,
 	readFull,
-	readUint16,
+	readVarint,
 	stringLen,
 	varintLen,
 	writeString,
-	writeUint16,
 	writeVarint,
 } from "./message.ts";
 
@@ -40,7 +39,7 @@ export class AnnounceMessage {
 		const msgLen = this.len;
 		let err: Error | undefined;
 
-		[, err] = await writeUint16(w, msgLen);
+		[, err] = await writeVarint(w, msgLen);
 		if (err) return err;
 
 		// Write AnnounceStatus as varint: 0x0 (ENDED) or 0x1 (ACTIVE)
@@ -57,7 +56,7 @@ export class AnnounceMessage {
 	 * Decodes the message from the reader.
 	 */
 	async decode(r: Reader): Promise<Error | undefined> {
-		const [msgLen, , err1] = await readUint16(r);
+		const [msgLen, , err1] = await readVarint(r);
 		if (err1) return err1;
 
 		const buf = new Uint8Array(msgLen);

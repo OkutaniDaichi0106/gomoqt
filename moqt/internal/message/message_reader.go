@@ -1,7 +1,6 @@
 package message
 
 import (
-	"encoding/binary"
 	"io"
 	"math"
 )
@@ -29,14 +28,35 @@ func ReadVarint(b []byte) (uint64, int, error) {
 	return i, l, nil
 }
 
-func ReadMessageLength(r io.Reader) (uint16, error) {
-	buf := [2]byte{}
-	_, err := io.ReadFull(r, buf[:])
+// ReadVarintFromReader reads a QUIC varint from an io.Reader
+func ReadVarintFromReader(r io.Reader) (uint64, error) {
+	// Read first byte to determine length
+	firstByte := make([]byte, 1)
+	_, err := io.ReadFull(r, firstByte)
 	if err != nil {
 		return 0, err
 	}
-	length := binary.BigEndian.Uint16(buf[:])
-	return length, nil
+
+	// Determine the length from the first two bits
+	l := 1 << ((firstByte[0] & 0xc0) >> 6)
+
+	// Read remaining bytes if needed
+	buf := make([]byte, l)
+	buf[0] = firstByte[0]
+	if l > 1 {
+		_, err = io.ReadFull(r, buf[1:])
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	// Parse the varint
+	val, _, err := ReadVarint(buf)
+	return val, err
+}
+
+func ReadMessageLength(r io.Reader) (uint64, error) {
+	return ReadVarintFromReader(r)
 }
 
 func ReadBytes(b []byte) ([]byte, int, error) {

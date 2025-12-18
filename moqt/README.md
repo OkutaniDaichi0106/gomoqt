@@ -8,6 +8,18 @@ Package moqt implements the core MOQ Lite protocol handling for Media over QUIC 
 
 This implementation is based on [Media over QUIC - Lite Draft 01](https://datatracker.ietf.org/doc/html/draft-ietf-moq-lite-01). For detailed specification compliance status and implementation differences, see [SPECIFICATION.md](../SPECIFICATION.md) in the root directory.
 
+## Installation
+
+```go
+import "github.com/okdaichi/gomoqt/moqt"
+```
+
+## Usage
+
+For detailed usage examples and API documentation, see:
+- [Documentation](https://okdaichi.github.io/gomoqt/) - Complete API reference and guides
+- [Examples](../examples/) - Working examples (broadcast, relay, echo)
+
 ## Features & Implementation Status
 
 The following table lists features and tracks implementation progress against

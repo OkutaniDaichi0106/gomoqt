@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/magefile/mage v1.15.0
-	github.com/quic-go/quic-go v0.57.1
+	github.com/quic-go/quic-go v0.58.0
 	github.com/quic-go/webtransport-go v0.9.1-0.20251115050751-b7714a748e1a
 	github.com/stretchr/testify v1.11.1
 )

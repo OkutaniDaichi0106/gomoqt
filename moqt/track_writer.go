@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 
 	"github.com/okdaichi/gomoqt/moqt/internal/message"
 	"github.com/okdaichi/gomoqt/quic"
@@ -44,6 +45,9 @@ type TrackWriter struct {
 	// make the close exclusive with ongoing and future OpenGroup operations
 	// until close completes.
 	closeMu sync.RWMutex
+
+	// groupSequence is atomically incremented for each OpenGroup call
+	groupSequence atomic.Uint64
 
 	openUniStreamFunc func() (quic.SendStream, error)
 
@@ -122,11 +126,35 @@ func (s *TrackWriter) CloseWithError(code SubscribeErrorCode) {
 	}
 }
 
-// OpenGroup opens a new group for the provided group sequence and returns a GroupWriter to write frames into it.
-// If seq is zero an error is returned.
-func (s *TrackWriter) OpenGroup(seq GroupSequence) (*GroupWriter, error) {
-	if seq == 0 {
-		return nil, errors.New("group sequence must not be zero")
+// OpenGroup opens a new group with an automatically incremented sequence number.
+// It delegates to OpenGroupAt for the actual group creation.
+// The sequence now starts at 0 and increments by 1 for each call.
+//
+// This is a convenience method for callers that want to append groups at the
+// next available sequence without managing sequences themselves.
+func (s *TrackWriter) OpenGroup() (*GroupWriter, error) {
+	// Atomically increment the internal next-sequence counter and return the
+	// previously reserved value so the first returned sequence is 0.
+	seq := GroupSequence(s.groupSequence.Add(1) - 1)
+	return s.OpenGroupAt(seq)
+}
+
+// OpenGroupAt is the implementation for opening a group with a specific sequence.
+func (s *TrackWriter) OpenGroupAt(seq GroupSequence) (*GroupWriter, error) {
+	// First, ensure the internal groupSequence is updated to avoid collisions.
+	// We advance the internal *next* counter to at least seq+1 so that
+	// subsequent OpenGroup() calls (which return previous reserved values)
+	// will not produce a duplicate sequence that was explicitly chosen via
+	// OpenGroupAt. Use a CAS loop with Go's builtin max for clarity.
+	for {
+		cur := s.groupSequence.Load()
+		new := max(cur, uint64(seq)+1)
+		if new == cur {
+			break
+		}
+		if s.groupSequence.CompareAndSwap(cur, new) {
+			break
+		}
 	}
 
 	// Avoid accessing s.ctx directly; it can be nil if the receiveSubscribeStream

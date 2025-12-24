@@ -2,34 +2,31 @@ package moqt
 
 import "fmt"
 
-/*
- * Sequence number of a group in a track
- * When this is integer more than 1, the number means the sequence number.
- * When this is 0, it indicates the sequence number is currently unknown .
- * 0 is used to specify "the latest sequence number" or "the final sequence number of an open-ended track", "the first sequence number of the default order".
- */
 const (
-	GroupSequenceNotSpecified GroupSequence = 0
-	GroupSequenceLatest       GroupSequence = 0
-	GroupSequenceLargest      GroupSequence = 0
-	GroupSequenceFirst        GroupSequence = 1
-	MaxGroupSequence          GroupSequence = 0x3FFFFFFFFFFFFFFF // 2^62 - 1, the largest sequence number that can be used in a group
+	// MinGroupSequence is the smallest valid sequence number for a group.
+	MinGroupSequence GroupSequence = 0
+	// MaxGroupSequence is the largest valid sequence number for a group.
+	// It is set to 2^62 - 1, the largest sequence number that can be used in a group.
+	MaxGroupSequence GroupSequence = 0x3FFFFFFFFFFFFFFF
 )
 
 type GroupSequence uint64
 
+// String returns the string representation of the group sequence number.
 func (gs GroupSequence) String() string {
 	return fmt.Sprintf("%d", gs)
 }
 
+// Next returns the next sequence number in the group sequence.
+// If the current sequence is at the maximum, it wraps around to the minimum.
 func (gs GroupSequence) Next() GroupSequence {
-	if gs == GroupSequenceNotSpecified {
+	if gs == MinGroupSequence {
 		return 1
 	}
 
 	if gs == MaxGroupSequence {
-		// WARN: Is this behavior acceptable?
-		return 1
+		// Wrap to the first sequence value
+		return MinGroupSequence
 	}
 
 	return gs + 1

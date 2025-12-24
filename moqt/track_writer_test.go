@@ -77,31 +77,11 @@ func TestTrackWriter_OpenGroup(t *testing.T) {
 	sender := newTrackWriter("/broadcast/path", "track_name", substr, openUniStreamFunc, onCloseTrack)
 
 	// Test opening a group
-	group, err := sender.OpenGroup(GroupSequence(1))
+	group, err := sender.OpenGroup()
 	assert.NoError(t, err, "OpenGroup should not return error")
 	assert.NotNil(t, group, "group should not be nil")
 	assert.True(t, acceptCalled, "accept function should be called")
-}
-
-func TestTrackWriter_OpenGroup_ZeroSequence(t *testing.T) {
-	openUniStreamFunc := func() (quic.SendStream, error) {
-		return nil, nil
-	}
-	mockStream := &MockQUICStream{}
-	mockStream.On("StreamID").Return(quic.StreamID(1))
-	mockStream.On("Context").Return(context.Background())
-	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
-	mockStream.On("Write", mock.Anything).Return(0, nil)
-	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{})
-	onCloseTrack := func() {}
-
-	sender := newTrackWriter("/broadcast/path", "track_name", substr, openUniStreamFunc, onCloseTrack)
-
-	// Test opening a group with zero sequence
-	group, err := sender.OpenGroup(GroupSequence(0))
-	assert.Error(t, err, "OpenGroup should return error for zero sequence")
-	assert.Nil(t, group, "group should be nil for zero sequence")
-	assert.Contains(t, err.Error(), "group sequence must not be zero")
+	assert.Equal(t, GroupSequence(0), group.GroupSequence(), "first group should have sequence 0")
 }
 
 func TestTrackWriter_OpenGroup_ContextCanceled(t *testing.T) {
@@ -122,7 +102,7 @@ func TestTrackWriter_OpenGroup_ContextCanceled(t *testing.T) {
 	sender := newTrackWriter("/broadcast/path", "track_name", substr, openUniStreamFunc, onCloseTrack)
 
 	// Test opening a group with canceled context
-	group, err := sender.OpenGroup(GroupSequence(1))
+	group, err := sender.OpenGroup()
 	assert.Error(t, err, "OpenGroup should return error with canceled context")
 	assert.Nil(t, group, "group should be nil with canceled context")
 	assert.Equal(t, context.Canceled, err, "error should be context.Canceled")
@@ -147,7 +127,7 @@ func TestTrackWriter_OpenGroup_OpenGroupError(t *testing.T) {
 	sender := newTrackWriter("/broadcast/path", "track_name", substr, openUniStreamFunc, onCloseTrack)
 
 	// Test opening a group when openUniStreamFunc returns error
-	group, err := sender.OpenGroup(GroupSequence(1))
+	group, err := sender.OpenGroup()
 	assert.Error(t, err, "OpenGroup should return error when openUniStreamFunc fails")
 	assert.Nil(t, group, "group should be nil when openUniStreamFunc fails")
 	assert.Contains(t, err.Error(), expectedError.Error(), "error should contain the error from openUniStreamFunc")
@@ -183,15 +163,119 @@ func TestTrackWriter_OpenGroup_Success(t *testing.T) {
 	sender := newTrackWriter("/broadcast/path", "track_name", substr, openUniStreamFunc, onCloseTrack)
 
 	// Test successful group opening
-	group, err := sender.OpenGroup(GroupSequence(1))
+	group, err := sender.OpenGroup()
 	assert.NoError(t, err, "OpenGroup should not return error")
 	assert.NotNil(t, group, "group should not be nil")
 	assert.True(t, acceptCalled, "accept function should be called")
-	assert.Equal(t, GroupSequence(1), group.GroupSequence(), "group sequence should match")
+	assert.Equal(t, GroupSequence(0), group.GroupSequence(), "group sequence should be 0")
 
 	// Close the group to trigger removeGroup
 	err = group.Close()
 	assert.NoError(t, err)
+}
+
+func TestTrackWriter_OpenGroupAtAdvancesSequence(t *testing.T) {
+	// Ensure OpenGroupAt advances the internal counter so subsequent OpenGroup
+	// produces a sequence greater than the one specified in OpenGroupAt.
+
+	mockStream := &MockQUICStream{}
+	mockStream.On("StreamID").Return(quic.StreamID(1))
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Write", mock.Anything).Return(0, nil)
+	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{})
+
+	openUniStreamFunc := func() (quic.SendStream, error) {
+		mockSendStream := &MockQUICSendStream{}
+		mockSendStream.On("Context").Return(context.Background())
+		mockSendStream.On("CancelWrite", mock.Anything).Return()
+		mockSendStream.On("StreamID").Return(quic.StreamID(1))
+		mockSendStream.On("Close").Return(nil)
+		mockSendStream.On("Write", mock.Anything).Return(0, nil)
+		return mockSendStream, nil
+	}
+
+	onCloseTrack := func() {}
+
+	sender := newTrackWriter("/broadcast/path", "track_name", substr, openUniStreamFunc, onCloseTrack)
+
+	// Open with an explicit high sequence
+	g1, err := sender.OpenGroupAt(10)
+	assert.NoError(t, err)
+	assert.Equal(t, GroupSequence(10), g1.GroupSequence())
+	_ = g1.Close()
+
+	// Next OpenGroup should return at least sequence 11
+	g2, err := sender.OpenGroup()
+	assert.NoError(t, err)
+	assert.GreaterOrEqual(t, int64(g2.GroupSequence()), int64(11))
+	_ = g2.Close()
+}
+
+func TestTrackWriter_OpenGroupAtConcurrent(t *testing.T) {
+	// Run many concurrent OpenGroup and a single OpenGroupAt to ensure there
+	// are no duplicate sequences after synchronization.
+
+	mockStream := &MockQUICStream{}
+	mockStream.On("StreamID").Return(quic.StreamID(1))
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Write", mock.Anything).Return(0, nil)
+	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{})
+
+	openUniStreamFunc := func() (quic.SendStream, error) {
+		mockSendStream := &MockQUICSendStream{}
+		mockSendStream.On("Context").Return(context.Background())
+		mockSendStream.On("CancelWrite", mock.Anything).Return()
+		mockSendStream.On("StreamID").Return(quic.StreamID(1))
+		mockSendStream.On("Close").Return(nil)
+		mockSendStream.On("Write", mock.Anything).Return(0, nil)
+		return mockSendStream, nil
+	}
+
+	onCloseTrack := func() {}
+
+	sender := newTrackWriter("/broadcast/path", "track_name", substr, openUniStreamFunc, onCloseTrack)
+
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	seqs := make(map[uint64]struct{})
+
+	// spawn goroutines that call OpenGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			g, err := sender.OpenGroup()
+			if err == nil {
+				mu.Lock()
+				seqs[uint64(g.GroupSequence())] = struct{}{}
+				mu.Unlock()
+				_ = g.Close()
+			}
+		}()
+	}
+
+	// Concurrently open an explicit high sequence
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		g, err := sender.OpenGroupAt(100)
+		if err == nil {
+			mu.Lock()
+			seqs[uint64(g.GroupSequence())] = struct{}{}
+			mu.Unlock()
+			_ = g.Close()
+		}
+	}()
+
+	wg.Wait()
+
+	// Ensure we have as many distinct sequences as successful opens
+	assert.GreaterOrEqual(t, len(seqs), 1)
+	// ensure 100 is included
+	_, ok := seqs[100]
+	assert.True(t, ok)
 }
 
 func TestTrackWriter_ContextCancellation(t *testing.T) {
@@ -216,7 +300,7 @@ func TestTrackWriter_ContextCancellation(t *testing.T) {
 	sender := newTrackWriter("/broadcast/path", "track_name", substr, openUniStreamFunc, onCloseTrack)
 
 	// Open a group first
-	group, err := sender.OpenGroup(GroupSequence(1))
+	group, err := sender.OpenGroup()
 	assert.NoError(t, err)
 	assert.NotNil(t, group)
 
@@ -224,7 +308,7 @@ func TestTrackWriter_ContextCancellation(t *testing.T) {
 	cancel()
 
 	// Try to open another group - this should fail due to cancelled context
-	group2, err := sender.OpenGroup(GroupSequence(2))
+	group2, err := sender.OpenGroup()
 	assert.Error(t, err, "OpenGroup should return error with cancelled context")
 	assert.Nil(t, group2, "group should be nil with cancelled context")
 	assert.Equal(t, context.Canceled, err, "error should be context.Canceled")
@@ -328,7 +412,7 @@ func TestTrackWriter_OpenAfterClose(t *testing.T) {
 			}
 		}()
 
-		group, err = sender.OpenGroup(GroupSequence(1))
+		group, err = sender.OpenGroup()
 	}()
 
 	if panicked {
@@ -375,7 +459,7 @@ func TestTrackWriter_OpenWhileClose(t *testing.T) {
 				t.Logf("OpenGroup panicked during concurrent Close: %v", r)
 			}
 		}()
-		group, err := sender.OpenGroup(GroupSequence(1))
+		group, err := sender.OpenGroup()
 		// Because Close is called concurrently, OpenGroup may return nil
 		if err == nil && group != nil {
 			// If it succeeded, ensure group is closed later
@@ -474,4 +558,39 @@ func TestTrackWriter_RemoveGroup(t *testing.T) {
 	// Remove the group
 	sender.removeGroup(group)
 	assert.NotContains(t, sender.activeGroups, group)
+}
+
+func TestTrackWriter_OpenGroup_AutoIncrement(t *testing.T) {
+	mockStream := &MockQUICStream{}
+	mockStream.On("StreamID").Return(quic.StreamID(1))
+	mockStream.On("Context").Return(context.Background())
+	mockStream.On("Read", mock.Anything).Return(0, io.EOF)
+	mockStream.On("Write", mock.Anything).Return(0, nil)
+	substr := newReceiveSubscribeStream(SubscribeID(1), mockStream, &TrackConfig{})
+
+	openUniStreamFunc := func() (quic.SendStream, error) {
+		mockSendStream := &MockQUICSendStream{}
+		mockSendStream.On("Context").Return(context.Background())
+		mockSendStream.On("CancelWrite", mock.Anything).Return()
+		mockSendStream.On("StreamID").Return(quic.StreamID(1))
+		mockSendStream.On("Close").Return(nil)
+		mockSendStream.On("Write", mock.Anything).Return(0, nil)
+		return mockSendStream, nil
+	}
+
+	onCloseTrack := func() {}
+	sender := newTrackWriter("/broadcast/path", "track_name", substr, openUniStreamFunc, onCloseTrack)
+
+	// Test that sequences auto-increment
+	group1, err := sender.OpenGroup()
+	assert.NoError(t, err)
+	assert.Equal(t, GroupSequence(0), group1.GroupSequence())
+
+	group2, err := sender.OpenGroup()
+	assert.NoError(t, err)
+	assert.Equal(t, GroupSequence(1), group2.GroupSequence())
+
+	group3, err := sender.OpenGroup()
+	assert.NoError(t, err)
+	assert.Equal(t, GroupSequence(2), group3.GroupSequence())
 }

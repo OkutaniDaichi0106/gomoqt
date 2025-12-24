@@ -226,7 +226,6 @@ func setupBroadcastServerWithFrameSize(b *testing.B, ctx context.Context, frameS
 
 	// Register broadcast handler
 	PublishFunc(ctx, "/server.broadcast", func(tw *TrackWriter) {
-		seq := GroupSequenceFirst
 		frame := NewFrame(frameSize)
 		ticker := time.NewTicker(33 * time.Millisecond) // ~30fps
 		defer ticker.Stop()
@@ -236,7 +235,7 @@ func setupBroadcastServerWithFrameSize(b *testing.B, ctx context.Context, frameS
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				gw, err := tw.OpenGroup(seq)
+				gw, err := tw.OpenGroup()
 				if err != nil {
 					return
 				}
@@ -245,7 +244,7 @@ func setupBroadcastServerWithFrameSize(b *testing.B, ctx context.Context, frameS
 				// Write realistic frame data
 				data := make([]byte, frameSize)
 				for i := range data {
-					data[i] = byte(seq % 256)
+					data[i] = byte(gw.GroupSequence() % 256)
 				}
 				frame.Write(data)
 
@@ -256,7 +255,6 @@ func setupBroadcastServerWithFrameSize(b *testing.B, ctx context.Context, frameS
 				}
 
 				gw.Close()
-				seq = seq.Next()
 			}
 		}
 	})

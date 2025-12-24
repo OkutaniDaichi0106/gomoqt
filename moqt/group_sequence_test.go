@@ -11,18 +11,15 @@ func TestGroupSequence_String(t *testing.T) {
 		seq  GroupSequence
 		want string
 	}{
-		"not specified": {
-			seq:  GroupSequenceNotSpecified,
+		"min sequence": {
+			seq:  MinGroupSequence,
 			want: "0",
-		},
-		"first sequence": {
-			seq:  GroupSequenceFirst,
-			want: "1",
 		},
 		"normal sequence": {
 			seq:  GroupSequence(42),
 			want: "42",
-		}, "max sequence": {
+		},
+		"max sequence": {
 			seq:  MaxGroupSequence,
 			want: "4611686018427387903",
 		},
@@ -41,21 +38,17 @@ func TestGroupSequence_Next(t *testing.T) {
 		seq  GroupSequence
 		want GroupSequence
 	}{
-		"from not specified": {
-			seq:  GroupSequenceNotSpecified,
+		"from min": {
+			seq:  MinGroupSequence,
 			want: GroupSequence(1),
-		},
-		"from first": {
-			seq:  GroupSequenceFirst,
-			want: GroupSequence(2),
 		},
 		"normal increment": {
 			seq:  GroupSequence(42),
 			want: GroupSequence(43),
 		},
-		"from max wraps to 1": {
+		"from max wraps to min": {
 			seq:  MaxGroupSequence,
-			want: GroupSequence(1),
+			want: MinGroupSequence,
 		},
 		"near max": {
 			seq:  MaxGroupSequence - 1,
@@ -76,11 +69,8 @@ func TestGroupSequence_Constants(t *testing.T) {
 		seq  GroupSequence
 		want GroupSequence
 	}{
-		"not specified": {seq: GroupSequenceNotSpecified, want: GroupSequence(0)},
-		"latest":        {seq: GroupSequenceLatest, want: GroupSequence(0)},
-		"largest":       {seq: GroupSequenceLargest, want: GroupSequence(0)},
-		"first":         {seq: GroupSequenceFirst, want: GroupSequence(1)},
-		"max":           {seq: MaxGroupSequence, want: GroupSequence(0x3FFFFFFFFFFFFFFF)},
+		"min": {seq: MinGroupSequence, want: GroupSequence(0)},
+		"max": {seq: MaxGroupSequence, want: GroupSequence(0x3FFFFFFFFFFFFFFF)},
 	}
 
 	for name, tt := range tests {
@@ -121,7 +111,7 @@ func TestGroupSequence_Comparison(t *testing.T) {
 
 func TestGroupSequence_ZeroValue(t *testing.T) { // Test zero value behavior
 	var seq GroupSequence
-	assert.Equal(t, GroupSequenceNotSpecified, seq)
+	assert.Equal(t, MinGroupSequence, seq)
 	assert.Equal(t, "0", seq.String())
 	assert.Equal(t, GroupSequence(1), seq.Next())
 }
@@ -131,9 +121,9 @@ func TestGroupSequence_MaxBoundary(t *testing.T) {
 	maxSeq := MaxGroupSequence
 	assert.Equal(t, GroupSequence(0x3FFFFFFFFFFFFFFF), maxSeq)
 
-	// Test next wraps to 1
+	// Test next wraps to min
 	nextSeq := maxSeq.Next()
-	assert.Equal(t, GroupSequence(1), nextSeq)
+	assert.Equal(t, MinGroupSequence, nextSeq)
 
 	// Test that we can increment beyond uint32 max since it's uint64
 	largeSeq := GroupSequence(0x100000000) // Beyond uint32

@@ -163,7 +163,7 @@ func BenchmarkTrackWriter_OpenGroup(b *testing.B) {
 			b.ResetTimer()
 
 			for i := 0; b.Loop(); i++ {
-				group, err := writer.OpenGroup(GroupSequence(i % size))
+				group, err := writer.OpenGroup()
 				if err == nil && group != nil {
 					_ = group.Close()
 				}
@@ -215,13 +215,11 @@ func BenchmarkTrackWriter_ConcurrentOpenGroup(b *testing.B) {
 			b.ResetTimer()
 
 			b.RunParallel(func(pb *testing.PB) {
-				i := 0
 				for pb.Next() {
-					group, err := writer.OpenGroup(GroupSequence(i))
+					group, err := writer.OpenGroup()
 					if err == nil && group != nil {
 						_ = group.Close()
 					}
-					i++
 				}
 			})
 
@@ -265,7 +263,7 @@ func BenchmarkTrackWriter_ActiveGroupManagement(b *testing.B) {
 			// Pre-create groups
 			groups := make([]*GroupWriter, size)
 			for i := range size {
-				group, _ := writer.OpenGroup(GroupSequence(i))
+				group, _ := writer.OpenGroup()
 				groups[i] = group
 			}
 
@@ -280,7 +278,7 @@ func BenchmarkTrackWriter_ActiveGroupManagement(b *testing.B) {
 					_ = groups[idx].Close()
 				}
 
-				group, err := writer.OpenGroup(GroupSequence(idx))
+				group, err := writer.OpenGroup()
 				if err == nil {
 					groups[idx] = group
 				}
@@ -319,7 +317,7 @@ func BenchmarkTrackWriter_MemoryAllocation(b *testing.B) {
 		writer := newTrackWriter("/broadcast/path", "track_name", substr, openUniStreamFunc, func() {})
 
 		// Open and close a group
-		group, _ := writer.OpenGroup(GroupSequence(1))
+		group, _ := writer.OpenGroup()
 		if group != nil {
 			_ = group.Close()
 		}
@@ -387,8 +385,8 @@ func BenchmarkTrackWriter_CloseWithActiveGroups(b *testing.B) {
 				writer := newTrackWriter("/broadcast/path", "track_name", substr, openUniStreamFunc, func() {})
 
 				// Create many active groups
-				for j := range size {
-					_, _ = writer.OpenGroup(GroupSequence(j))
+				for range size {
+					_, _ = writer.OpenGroup()
 				}
 
 				// Close all at once

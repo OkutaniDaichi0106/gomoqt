@@ -264,3 +264,43 @@ Deno.test("ReceiveSubscribeStream closeWithError cancels streams and broadcasts 
 	assertEquals(writableCancelCalls.length >= 0, true);
 	assertEquals(readableCancelCalls.length >= 0, true);
 });
+
+Deno.test("ReceiveSubscribeStream writeInfo is only executed once even with concurrent calls", async () => {
+	const [ctx] = withCancelCause(background());
+	const writtenData: Uint8Array[] = [];
+	const mockWritable = new MockSendStream({
+		id: 5n,
+		write: spy(async (p: Uint8Array) => {
+			// artificial delay to simulate race
+			await new Promise((r) => setTimeout(r, 10));
+			writtenData.push(new Uint8Array(p));
+			return [p.length, undefined] as [number, Error | undefined];
+		}),
+	});
+	const mockReadable = new MockReceiveStream({ id: 5n });
+	const s = new MockStream({
+		id: 5n,
+		writable: mockWritable,
+		readable: mockReadable,
+	});
+	const subscribe = new SubscribeMessage({
+		subscribeId: 99,
+		broadcastPath: "/test",
+		trackName: "t",
+		trackPriority: 0,
+	});
+	const rss = new ReceiveSubscribeStream(ctx, s, subscribe);
+
+	// Call writeInfo concurrently
+	const results = await Promise.all([
+		rss.writeInfo({}),
+		rss.writeInfo({}),
+		rss.writeInfo({}),
+	]);
+	// All should be undefined (no error)
+	for (const r of results) {
+		assertEquals(r, undefined);
+	}
+	// Only one SUBSCRIBE_OK should be written
+	assertEquals(writtenData.length, 1);
+});

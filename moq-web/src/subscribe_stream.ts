@@ -2,7 +2,7 @@ import type { SubscribeMessage } from "./internal/message/mod.ts";
 import { SubscribeOkMessage, SubscribeUpdateMessage } from "./internal/message/mod.ts";
 import type { Stream } from "./internal/webtransport/mod.ts";
 import { EOFError } from "@okdaichi/golikejs/io";
-import { Cond, Mutex } from "@okdaichi/golikejs/sync";
+import { Cond, Mutex, Once } from "@okdaichi/golikejs/sync";
 import type { CancelCauseFunc, Context } from "@okdaichi/golikejs/context";
 import { withCancelCause } from "@okdaichi/golikejs/context";
 import { WebTransportStreamError } from "./internal/webtransport/mod.ts";
@@ -76,7 +76,8 @@ export class ReceiveSubscribeStream {
 	#mu: Mutex = new Mutex();
 	#cond: Cond = new Cond(this.#mu);
 	#stream: Stream;
-	#info?: Info;
+	// #info?: Info;
+	#infoOnce: Once = new Once();
 	readonly context: Context;
 	#cancelFunc: CancelCauseFunc;
 
@@ -125,28 +126,52 @@ export class ReceiveSubscribeStream {
 	}
 
 	async writeInfo(_?: Info): Promise<Error | undefined> {
-		if (this.#info) {
-			console.warn(
-				`Info already written for subscribe ID: ${this.subscribeId}`,
-			);
-			return undefined; // Info already written
-		}
+		return await this.#infoOnce.do(async () => {
+			// if (this.#info) {
+			// 	console.warn(
+			// 		`Info already written for subscribe ID: ${this.subscribeId}`,
+			// 	);
+			// 	return undefined; // Info already written
+			// }
 
-		let err = this.context.err();
-		if (err !== undefined) {
-			return err;
-		}
+			let err = this.context.err();
+			if (err !== undefined) {
+				return err;
+			}
 
-		const msg = new SubscribeOkMessage({});
+			const msg = new SubscribeOkMessage({});
 
-		err = await msg.encode(this.#stream.writable);
-		if (err) {
-			return new Error(`moq: failed to encode SUBSCRIBE_OK message: ${err}`);
-		}
+			err = await msg.encode(this.#stream.writable);
+			if (err) {
+				return new Error(`moq: failed to encode SUBSCRIBE_OK message: ${err}`);
+			}
 
-		this.#info = msg;
+			// this.#info = msg;
 
-		return undefined;
+			return undefined;
+		});
+		// if (this.#info) {
+		// 	console.warn(
+		// 		`Info already written for subscribe ID: ${this.subscribeId}`,
+		// 	);
+		// 	return undefined; // Info already written
+		// }
+
+		// let err = this.context.err();
+		// if (err !== undefined) {
+		// 	return err;
+		// }
+
+		// const msg = new SubscribeOkMessage({});
+
+		// err = await msg.encode(this.#stream.writable);
+		// if (err) {
+		// 	return new Error(`moq: failed to encode SUBSCRIBE_OK message: ${err}`);
+		// }
+
+		// this.#info = msg;
+
+		// return undefined;
 	}
 
 	async close(): Promise<void> {

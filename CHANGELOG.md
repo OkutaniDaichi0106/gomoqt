@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- moqt: `OpenGroupAt(seq GroupSequence)` public API to open a group with an explicit sequence number. When a sequence is specified, the internal next-sequence counter is advanced atomically to at least `seq+1` to prevent collisions with subsequently auto-assigned sequences. (See `moqt/track_writer.go` and `moqt/track_writer_test.go`)
+- moq-web: concurrency test for `ReceiveSubscribeStream.writeInfo` ensuring `SUBSCRIBE_OK` is sent only once when `writeInfo` is called concurrently. (See `moq-web/src/subscribe_stream_test.ts`)
+
+### Changed
+
+- moqt: `OpenGroup()` autoincrement behavior adjusted to return sequences starting from `0` (first created group has sequence `0`), and subsequent groups increment from there. Tests updated to reflect the new baseline behavior.
+- moqt: clarified `OpenGroup` / `OpenGroupAt` comments to document caller responsibilities and concurrent behavior.
+- Use Go builtin `max` where appropriate to improve clarity and express intent.
+
+### Removed
+
+- moqt: Removed `SkipGroups` method and associated tests; sequence control is now handled via `OpenGroupAt` and `OpenGroup`.
+
+### Fixed
+
+- moqt: `GroupSequence.Next()` behavior adjusted to wrap from `MaxGroupSequence` to `1` (avoid returning unspecified `0`). Tests updated accordingly.
+
+### Tests
+
+- moqt: Added tests: `TestTrackWriter_OpenGroupAtAdvancesSequence` and `TestTrackWriter_OpenGroupAtConcurrent` to verify explicit sequence assignment advances internal counter and to ensure no duplicate sequences under concurrent usage.
+- moq-web: Added `ReceiveSubscribeStream writeInfo is only executed once even with concurrent calls` test to verify `Once`-based deduplication of `SUBSCRIBE_OK`.
+
+
 ## [v0.8.0] - 2025-12-16
 
 ### Changed

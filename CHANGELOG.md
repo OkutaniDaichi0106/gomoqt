@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+
+## [v0.9.0] - 2025-12-24
+
 ### Added
 
 - moqt: `OpenGroupAt(seq GroupSequence)` public API to open a group with an explicit sequence number. When a sequence is specified, the internal next-sequence counter is advanced atomically to at least `seq+1` to prevent collisions with subsequently auto-assigned sequences. (See `moqt/track_writer.go` and `moqt/track_writer_test.go`)
@@ -16,10 +19,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - moqt: `OpenGroup()` autoincrement behavior adjusted to return sequences starting from `0` (first created group has sequence `0`), and subsequent groups increment from there. Tests updated to reflect the new baseline behavior.
 - moqt: clarified `OpenGroup` / `OpenGroupAt` comments to document caller responsibilities and concurrent behavior.
 - Use Go builtin `max` where appropriate to improve clarity and express intent.
-
-### Removed
-
-- moqt: Removed `SkipGroups` method and associated tests; sequence control is now handled via `OpenGroupAt` and `OpenGroup`.
 
 ### Fixed
 
@@ -226,7 +225,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Comprehensive test coverage
 - MIT License
 
-[Unreleased]: https://github.com/okdaichi/gomoqt/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/okdaichi/gomoqt/compare/v0.9.0...HEAD
+[v0.9.0]: https://github.com/okdaichi/gomoqt/compare/v0.8.0...v0.9.0
+[v0.8.0]: https://github.com/okdaichi/gomoqt/compare/v0.7.0...v0.8.0
 [v0.7.0]: https://github.com/okdaichi/gomoqt/compare/v0.6.2...v0.7.0
 [v0.6.2]: https://github.com/okdaichi/gomoqt/compare/v0.6.1...v0.6.2
 [v0.6.1]: https://github.com/okdaichi/gomoqt/compare/v0.6.0...v0.6.1

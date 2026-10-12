@@ -3,6 +3,7 @@ package moqt
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -36,9 +37,10 @@ type Dialer struct {
 	// idle and handshake timeouts, and datagrams. The packet size and path
 	// MTU discovery have no meaning there.
 	//
-	// KeepAlivePeriod: a negative one sends no pings on any transport. Zero
-	// sends none over QUIC and WebTransport, and is 10 seconds over
-	// WebSocket.
+	// KeepAlivePeriod: zero sends no keep-alives over QUIC and WebTransport,
+	// and is 10 seconds over WebSocket, where a negative one sends none. A
+	// negative one has no meaning to quic-go, which would ping after every
+	// probe timeout, so the default QUIC and WebTransport dials refuse it.
 	QUICConfig *quic.Config
 
 	// Config contains additional configuration options for the Dialer.
@@ -148,7 +150,10 @@ func (d *Dialer) dialWebTransport(ctx context.Context, target *url.URL, mux *Tra
 		dialer = d.DialWebTransportFunc
 	} else {
 		dialer = func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, WebTransportSession, error) {
-			return webtransportgo.Dial(ctx, addr, header, tlsConfig, webTransportQUICConfig(quicDialConfig(d.QUICConfig)), []string{NextProtoMOQ})
+			if err := checkQUICDialConfig(d.QUICConfig); err != nil {
+				return nil, nil, err
+			}
+			return webtransportgo.Dial(ctx, addr, header, tlsConfig, webTransportQUICConfig(d.QUICConfig), []string{NextProtoMOQ})
 		}
 	}
 	_, conn, err := dialer(dialCtx, target.String(), nil, d.TLSConfig)
@@ -170,18 +175,15 @@ func (d *Dialer) dialWebTransport(ctx context.Context, target *url.URL, mux *Tra
 		sessionSetup{path: target.RequestURI()}, nil), nil
 }
 
-// quicDialConfig returns the configuration the default QUIC and WebTransport
-// dials use for c. A negative KeepAlivePeriod means no pings, as it does over
-// WebSocket, but quic-go only takes zero for that and would ping after every
-// probe timeout, so it becomes zero in a copy. Any other c is returned as it
-// is.
-func quicDialConfig(c *quic.Config) *quic.Config {
-	if c == nil || c.KeepAlivePeriod >= 0 {
-		return c
+// checkQUICDialConfig refuses a configuration the default QUIC and
+// WebTransport dials cannot honor: a negative KeepAlivePeriod. Over WebSocket
+// it means no pings, but quic-go takes only zero for that and would ping
+// after every probe timeout instead.
+func checkQUICDialConfig(c *quic.Config) error {
+	if c != nil && c.KeepAlivePeriod < 0 {
+		return fmt.Errorf("moqt: QUICConfig.KeepAlivePeriod is %s: over QUIC and WebTransport use zero for no keep-alives; a negative period only has a meaning over WebSocket", c.KeepAlivePeriod)
 	}
-	c = c.Clone()
-	c.KeepAlivePeriod = 0
-	return c
+	return nil
 }
 
 // dialWebSocket establishes a new session over QMux on WebSocket. target is
@@ -241,7 +243,10 @@ func (d *Dialer) dialQUIC(ctx context.Context, addr, path string, mux *TrackMux)
 		dialFunc = d.DialQUICFunc
 	} else {
 		dialFunc = func(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (StreamConn, error) {
-			return quicgo.DialAddrEarly(ctx, addr, tlsConfig, quicDialConfig(quicConfig))
+			if err := checkQUICDialConfig(quicConfig); err != nil {
+				return nil, err
+			}
+			return quicgo.DialAddrEarly(ctx, addr, tlsConfig, quicConfig)
 		}
 	}
 	conn, err := dialFunc(dialCtx, addr, tlsConfig, d.QUICConfig)

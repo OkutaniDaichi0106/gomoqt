@@ -53,33 +53,62 @@ func TestWebTransportQUICConfig(t *testing.T) {
 	}
 }
 
-func TestQUICDialConfig(t *testing.T) {
+func TestCheckQUICDialConfig(t *testing.T) {
 	tests := map[string]struct {
-		given    *quic.Config
-		want     *quic.Config
-		wantSame bool // the very configuration given comes back
+		given   *quic.Config
+		wantErr bool
 	}{
-		"nil":                     {given: nil, want: nil, wantSame: true},
-		"a positive keep-alive":   {given: &quic.Config{KeepAlivePeriod: time.Second}, want: &quic.Config{KeepAlivePeriod: time.Second}, wantSame: true},
-		"zero":                    {given: &quic.Config{}, want: &quic.Config{}, wantSame: true},
-		"negative becomes zero":   {given: &quic.Config{KeepAlivePeriod: -1, MaxIdleTimeout: time.Minute}, want: &quic.Config{MaxIdleTimeout: time.Minute}},
-		"the smallest negative":   {given: &quic.Config{KeepAlivePeriod: -time.Nanosecond}, want: &quic.Config{}},
-		"negative, others intact": {given: &quic.Config{KeepAlivePeriod: -time.Hour, InitialPacketSize: 1200}, want: &quic.Config{InitialPacketSize: 1200}},
+		"nil":                   {given: nil},
+		"zero":                  {given: &quic.Config{}},
+		"a positive keep-alive": {given: &quic.Config{KeepAlivePeriod: time.Second}},
+		"the smallest positive": {given: &quic.Config{KeepAlivePeriod: time.Nanosecond}},
+		"the smallest negative": {given: &quic.Config{KeepAlivePeriod: -time.Nanosecond}, wantErr: true},
+		"a negative keep-alive": {given: &quic.Config{KeepAlivePeriod: -time.Second}, wantErr: true},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			var before *quic.Config
-			if tt.given != nil {
-				before = tt.given.Clone()
+			err := checkQUICDialConfig(tt.given)
+
+			if tt.wantErr {
+				assert.ErrorContains(t, err, "KeepAlivePeriod")
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}
+
+// The default QUIC and WebTransport dials refuse a negative keep-alive before
+// they dial; the WebSocket dial takes it, as "no pings".
+func TestDialer_Dial_NegativeKeepAlive(t *testing.T) {
+	tests := map[string]struct {
+		target  string
+		refused bool
+	}{
+		"native QUIC":  {target: "moqt://127.0.0.1:1/session", refused: true},
+		"WebTransport": {target: "https://127.0.0.1:1/session", refused: true},
+		"WebSocket":    {target: "wss://127.0.0.1:1/session"},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			given := &quic.Config{KeepAlivePeriod: -1}
+			dialer := &Dialer{
+				TLSConfig:  &tls.Config{InsecureSkipVerify: true},
+				Config:     &Config{SetupTimeout: 200 * time.Millisecond},
+				QUICConfig: given,
 			}
 
-			got := quicDialConfig(tt.given)
+			_, err := dialer.Dial(context.Background(), tt.target, nil)
 
-			assert.Equal(t, tt.want, got)
-			assert.Equal(t, before, tt.given, "the caller's configuration is left alone")
-			if tt.wantSame {
-				assert.Same(t, tt.given, got)
+			// Nothing listens on the port, so the WebSocket dial fails too,
+			// but for that reason and not for the keep-alive.
+			require.Error(t, err)
+			if tt.refused {
+				assert.ErrorContains(t, err, "KeepAlivePeriod")
+			} else {
+				assert.NotContains(t, err.Error(), "KeepAlivePeriod")
 			}
+			assert.Equal(t, &quic.Config{KeepAlivePeriod: -1}, given, "the dialer's configuration is left alone")
 		})
 	}
 }
@@ -99,11 +128,6 @@ func TestDial_WebTransport_QUICConfig(t *testing.T) {
 		// for the connection, as a server's are.
 		"without what WebTransport needs": {
 			given: &quic.Config{MaxIdleTimeout: time.Minute},
-		},
-		// What the default dial turns a negative keep-alive into must still
-		// be a configuration the library takes.
-		"a negative keep-alive": {
-			given: &quic.Config{KeepAlivePeriod: -1},
 		},
 		"no configuration": {
 			given: nil,

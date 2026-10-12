@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.24.0] - 2026-10-12
+
+> **Go only.** `v0.24.0` ships the Go module. `@qumo/moq` on JSR is unchanged and stays at `0.23.0`: nothing under `moq-web` changed, and the MOQ wire protocol is the same, so the two interoperate.
+>
 > **Breaking for callers that set `Dialer.DialWebTransportFunc` or `Dialer.DialWebSocketFunc`**, which take a fifth argument, **and for WebSocket sessions that relied on the default keep-alive**: a zero `KeepAlivePeriod` now sends no pings over WebSocket, as in QUIC, where it used to be 10 seconds. See **Changed** below.
 
 ### Changed

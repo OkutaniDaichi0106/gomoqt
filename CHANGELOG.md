@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **moqt: a WebTransport dial uses `Dialer.QUICConfig`.** `Dial` to an `https://` URL opened its QUIC connection with the library's defaults, whatever the dialer's QUIC configuration said, while a `moqt://` and a WebSocket dial used it. A setting such as `InitialPacketSize`, `MaxIdleTimeout` or `KeepAlivePeriod` now reaches all three. Datagrams and stream reset with partial delivery are turned on for the connection whatever the configuration says, as they are for a server's, since WebTransport needs both and the library refuses a configuration without them; the dialer's own configuration is not modified. A dial through `DialWebTransportFunc` is unchanged: that function takes no QUIC configuration.
+
 ## [v0.23.0] - 2026-10-10
 
 > **Dual release.** `v0.23.0` ships the Go module and `@qumo/moq` on JSR at the same version: `@qumo/moq` goes from `0.22.1` to `0.23.0`. It adds MOQ over QMux on WebSocket, for browsers whose WebTransport does not work (every browser on WebKit). It also fixes stream creation over WebTransport on Safari. Three behaviour changes are visible to callers:

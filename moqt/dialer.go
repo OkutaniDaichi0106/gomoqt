@@ -23,11 +23,16 @@ type Dialer struct {
 	// TLS configuration for WebTransport, QUIC and WebSocket connections.
 	TLSConfig *tls.Config
 
-	// QUIC configuration for raw QUIC connections. A WebSocket session
-	// takes from it the settings QMux shares with QUIC: the stream limits,
-	// the receive windows, the keep-alive period, the idle and handshake
-	// timeouts, and datagrams. A zero KeepAlivePeriod is 10 seconds over
-	// WebSocket; a negative one sends no pings.
+	// QUIC configuration for raw QUIC connections and for the QUIC
+	// connection under a WebTransport session, where datagrams and stream
+	// reset with partial delivery are turned on whatever it says, since
+	// WebTransport needs them. A WebTransport dial through
+	// DialWebTransportFunc does not receive it.
+	//
+	// A WebSocket session takes from it the settings QMux shares with QUIC:
+	// the stream limits, the receive windows, the keep-alive period, the
+	// idle and handshake timeouts, and datagrams. A zero KeepAlivePeriod is
+	// 10 seconds over WebSocket; a negative one sends no pings.
 	QUICConfig *quic.Config
 
 	// Config contains additional configuration options for the Dialer.
@@ -137,7 +142,7 @@ func (d *Dialer) dialWebTransport(ctx context.Context, target *url.URL, mux *Tra
 		dialer = d.DialWebTransportFunc
 	} else {
 		dialer = func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, WebTransportSession, error) {
-			return webtransportgo.Dial(ctx, addr, header, tlsConfig, []string{NextProtoMOQ})
+			return webtransportgo.Dial(ctx, addr, header, tlsConfig, d.QUICConfig, []string{NextProtoMOQ})
 		}
 	}
 	_, conn, err := dialer(dialCtx, target.String(), nil, d.TLSConfig)

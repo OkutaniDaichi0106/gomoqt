@@ -294,9 +294,9 @@ func TestConfigFrom(t *testing.T) {
 		config   *quic.Config
 		expected *qmuxgo.Config
 	}{
-		"no configuration keeps the connection alive": {
+		"no configuration sends no pings": {
 			config:   nil,
-			expected: &qmuxgo.Config{KeepAlivePeriod: defaultKeepAlivePeriod},
+			expected: &qmuxgo.Config{},
 		},
 		"the settings QMux shares with QUIC carry over": {
 			config: &quic.Config{
@@ -320,17 +320,13 @@ func TestConfigFrom(t *testing.T) {
 				EnableDatagrams:                true,
 			},
 		},
-		"a configuration without a keep-alive still gets one": {
+		"a configuration without a keep-alive sends none": {
 			config:   &quic.Config{MaxIncomingStreams: 7},
-			expected: &qmuxgo.Config{MaxIncomingStreams: 7, KeepAlivePeriod: defaultKeepAlivePeriod},
-		},
-		"a negative keep-alive sends none": {
-			config:   &quic.Config{KeepAlivePeriod: -1},
-			expected: &qmuxgo.Config{KeepAlivePeriod: -1},
+			expected: &qmuxgo.Config{MaxIncomingStreams: 7},
 		},
 		"what is QUIC's own is left out": {
 			config:   &quic.Config{Allow0RTT: true, DisablePathMTUDiscovery: true, MaxStreamReceiveWindow: 1 << 20},
-			expected: &qmuxgo.Config{KeepAlivePeriod: defaultKeepAlivePeriod},
+			expected: &qmuxgo.Config{},
 		},
 	}
 	for name, tt := range tests {

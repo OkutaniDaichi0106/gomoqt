@@ -37,9 +37,9 @@ type WebSocketHandler struct {
 	// with QUIC: the stream limits, the receive windows, the keep-alive
 	// period, the idle and handshake timeouts, and datagrams. The rest of
 	// it has no meaning over WebSocket. If nil, Server's QUICConfig is
-	// used. A zero KeepAlivePeriod is 10 seconds here, where QUIC would
-	// send none: an idle WebSocket is closed by the proxies on its way. A
-	// negative one sends none.
+	// used. A zero KeepAlivePeriod sends no pings, as in QUIC: an idle
+	// WebSocket is then closed by the proxies on its way, and the session
+	// has no round-trip time, so a handler usually sets one.
 	QUICConfig *quic.Config
 
 	// Handler handles the session after the upgrade. If nil, no request

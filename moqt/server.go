@@ -83,6 +83,22 @@ type WebTransportConfig struct {
 	MaxIncomingData int64
 }
 
+// webTransportQUICConfig returns the QUIC configuration an endpoint that
+// carries WebTransport runs on: a copy of c, or an empty one for nil, with
+// datagrams and stream reset with partial delivery on. WebTransport needs
+// both, so a caller's configuration need not set them, and it is left as it
+// was.
+func webTransportQUICConfig(c *quic.Config) *quic.Config {
+	if c == nil {
+		c = &quic.Config{}
+	} else {
+		c = c.Clone()
+	}
+	c.EnableDatagrams = true
+	c.EnableStreamResetPartialDelivery = true
+	return c
+}
+
 func resolveWebTransportConfig(wtCfg *WebTransportConfig, quicCfg *quic.Config) *webtransportgo.Config {
 	out := &webtransportgo.Config{
 		MaxIncomingStreams:    DefaultWebTransportMaxStreams,
@@ -614,15 +630,7 @@ func (s *Server) ListenAndServe() error {
 		tlsConfig.NextProtos = []string{NextProtoH3, NextProtoMOQ}
 	}
 
-	// Ensure WebTransport required QUIC flags are enabled.
-	var quicConf *quic.Config
-	if s.QUICConfig == nil {
-		quicConf = &quic.Config{}
-	} else {
-		quicConf = s.QUICConfig.Clone()
-	}
-	quicConf.EnableDatagrams = true
-	quicConf.EnableStreamResetPartialDelivery = true
+	quicConf := webTransportQUICConfig(s.QUICConfig)
 
 	listenFunc := s.ListenFunc
 	if listenFunc == nil {
@@ -659,15 +667,7 @@ func (s *Server) ListenAndServeTLS(certFile, keyFile string) error {
 		NextProtos:   []string{NextProtoH3, NextProtoMOQ},
 	}
 
-	// Ensure WebTransport required QUIC flags are enabled.
-	var quicConf *quic.Config
-	if s.QUICConfig == nil {
-		quicConf = &quic.Config{}
-	} else {
-		quicConf = s.QUICConfig.Clone()
-	}
-	quicConf.EnableDatagrams = true
-	quicConf.EnableStreamResetPartialDelivery = true
+	quicConf := webTransportQUICConfig(s.QUICConfig)
 
 	listenFunc := s.ListenFunc
 	if listenFunc == nil {

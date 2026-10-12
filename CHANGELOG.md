@@ -9,7 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **moqt: a WebTransport dial uses `Dialer.QUICConfig`.** `Dial` to an `https://` URL opened its QUIC connection with the library's defaults, whatever the dialer's QUIC configuration said, while a `moqt://` and a WebSocket dial used it. A setting such as `InitialPacketSize`, `MaxIdleTimeout` or `KeepAlivePeriod` now reaches all three. Datagrams and stream reset with partial delivery are turned on for the connection whatever the configuration says, as they are for a server's, since WebTransport needs both and the library refuses a configuration without them; the dialer's own configuration is not modified. A dial through `DialWebTransportFunc` is unchanged: that function takes no QUIC configuration.
+- **moqt: a WebTransport dial uses `Dialer.QUICConfig`.** `Dial` to an `https://` URL opened its QUIC connection with the library's defaults, whatever the dialer's QUIC configuration said, while a `moqt://` dial used all of it and a WebSocket dial the settings QMux shares with QUIC. `InitialPacketSize` and path MTU discovery now reach a WebTransport session as they do a raw QUIC one, and `MaxIdleTimeout` and `KeepAlivePeriod` reach all three.
+  - **What WebTransport needs is turned on.** Datagrams and stream reset with partial delivery are on for the connection whatever the configuration says, as for a server's, since the library refuses a configuration without them. The dialer's own configuration is not modified.
+  - **A configuration set for `moqt://` now also governs `https://`.** Before, every setting was inert there. One that suits a raw QUIC session only, such as `MaxIncomingUniStreams` below the three streams HTTP/3 opens for itself, now breaks a WebTransport dial that worked.
+  - **A negative `KeepAlivePeriod` sends no pings on any transport.** It already meant that over WebSocket; over QUIC and WebTransport quic-go would have pinged after every probe timeout, so the default dials turn it into zero. A dial through `DialQUICFunc` receives the configuration as it is.
+  - A dial through `DialWebTransportFunc` is unchanged: that function takes no QUIC configuration.
 
 ## [v0.23.0] - 2026-10-10
 

@@ -21,11 +21,6 @@ import (
 	"github.com/qumo-dev/gomoqt/transport"
 )
 
-// defaultKeepAlivePeriod is the interval between QX_PING frames unless the
-// configuration sets one. The pings measure the round-trip time, find a
-// peer that is gone, and keep proxies from closing an idle WebSocket.
-const defaultKeepAlivePeriod = 10 * time.Second
-
 // closeGrace is how long a closing connection waits for the WebSocket
 // closing handshake before it drops the connection.
 const closeGrace = 2 * time.Second
@@ -168,12 +163,12 @@ func Dial(ctx context.Context, rawURL string, header http.Header, tlsConfig *tls
 // rest of a quic.Config is about QUIC's own transport and has no meaning
 // here.
 //
-// The keep-alive is the exception to "as in QUIC". A zero KeepAlivePeriod
-// is defaultKeepAlivePeriod here, where QUIC would send none: a WebSocket
-// goes through proxies that close an idle connection, and QMux measures the
-// round-trip time from its pings alone. A negative period sends none.
+// A zero KeepAlivePeriod sends no QX_PING frames, as it sends no keep-alives
+// in QUIC. A session then has no round-trip time, which QMux measures from
+// its pings alone, and proxies on the way may close it while it is idle, so
+// a WebSocket endpoint usually sets one.
 func configFrom(c *quic.Config) *qmuxgo.Config {
-	config := &qmuxgo.Config{KeepAlivePeriod: defaultKeepAlivePeriod}
+	config := &qmuxgo.Config{}
 	if c == nil {
 		return config
 	}
@@ -184,9 +179,7 @@ func configFrom(c *quic.Config) *qmuxgo.Config {
 	config.MaxIdleTimeout = c.MaxIdleTimeout
 	config.HandshakeIdleTimeout = c.HandshakeIdleTimeout
 	config.EnableDatagrams = c.EnableDatagrams
-	if c.KeepAlivePeriod != 0 {
-		config.KeepAlivePeriod = c.KeepAlivePeriod
-	}
+	config.KeepAlivePeriod = c.KeepAlivePeriod
 	return config
 }
 

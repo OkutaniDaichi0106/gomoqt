@@ -53,7 +53,7 @@ func TestWebTransportQUICConfig(t *testing.T) {
 	}
 }
 
-func TestCheckQUICDialConfig(t *testing.T) {
+func TestCheckKeepAlive(t *testing.T) {
 	tests := map[string]struct {
 		given   *quic.Config
 		wantErr bool
@@ -67,7 +67,7 @@ func TestCheckQUICDialConfig(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			err := checkQUICDialConfig(tt.given)
+			err := checkKeepAlive(tt.given)
 
 			if tt.wantErr {
 				assert.ErrorContains(t, err, "KeepAlivePeriod")
@@ -78,15 +78,13 @@ func TestCheckQUICDialConfig(t *testing.T) {
 	}
 }
 
-// The default QUIC and WebTransport dials refuse a negative keep-alive before
-// they dial; the WebSocket dial takes it, as "no pings".
+// Every default dial refuses a negative keep-alive before it dials.
 func TestDialer_Dial_NegativeKeepAlive(t *testing.T) {
 	tests := map[string]struct {
-		target  string
-		refused bool
+		target string
 	}{
-		"native QUIC":  {target: "moqt://127.0.0.1:1/session", refused: true},
-		"WebTransport": {target: "https://127.0.0.1:1/session", refused: true},
+		"native QUIC":  {target: "moqt://127.0.0.1:1/session"},
+		"WebTransport": {target: "https://127.0.0.1:1/session"},
 		"WebSocket":    {target: "wss://127.0.0.1:1/session"},
 	}
 	for name, tt := range tests {
@@ -100,14 +98,9 @@ func TestDialer_Dial_NegativeKeepAlive(t *testing.T) {
 
 			_, err := dialer.Dial(context.Background(), tt.target, nil)
 
-			// Nothing listens on the port, so the WebSocket dial fails too,
-			// but for that reason and not for the keep-alive.
-			require.Error(t, err)
-			if tt.refused {
-				assert.ErrorContains(t, err, "KeepAlivePeriod")
-			} else {
-				assert.NotContains(t, err.Error(), "KeepAlivePeriod")
-			}
+			// Nothing listens on the port, so a dial that got as far as the
+			// network would fail for that reason instead.
+			assert.ErrorContains(t, err, "KeepAlivePeriod")
 			assert.Equal(t, &quic.Config{KeepAlivePeriod: -1}, given, "the dialer's configuration is left alone")
 		})
 	}
@@ -194,4 +187,22 @@ func TestDial_WebTransport_QUICConfig(t *testing.T) {
 			assert.Equal(t, before, tt.given, "the dialer's configuration is left alone")
 		})
 	}
+}
+
+// A server refuses a negative keep-alive before it listens.
+func TestServer_ListenAndServe_NegativeKeepAlive(t *testing.T) {
+	srv := &Server{
+		Addr: freePort(t),
+		TLSConfig: &tls.Config{
+			NextProtos:   []string{NextProtoH3, NextProtoMOQ},
+			Certificates: []tls.Certificate{generateTestCert(t)},
+		},
+		QUICConfig: &quic.Config{KeepAlivePeriod: -1},
+		Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	t.Cleanup(func() { _ = srv.Close() })
+
+	err := srv.ListenAndServe()
+
+	assert.ErrorContains(t, err, "KeepAlivePeriod")
 }

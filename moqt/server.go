@@ -99,6 +99,16 @@ func webTransportQUICConfig(c *quic.Config) *quic.Config {
 	return c
 }
 
+// checkKeepAlive refuses a negative KeepAlivePeriod. Zero is the way to send
+// no keep-alives, on every transport; a negative period has no meaning, and
+// quic-go, given one, pings after every probe timeout.
+func checkKeepAlive(c *quic.Config) error {
+	if c != nil && c.KeepAlivePeriod < 0 {
+		return fmt.Errorf("moqt: QUICConfig.KeepAlivePeriod is %s: use zero for no keep-alives", c.KeepAlivePeriod)
+	}
+	return nil
+}
+
 func resolveWebTransportConfig(wtCfg *WebTransportConfig, quicCfg *quic.Config) *webtransportgo.Config {
 	out := &webtransportgo.Config{
 		MaxIncomingStreams:    DefaultWebTransportMaxStreams,
@@ -630,6 +640,9 @@ func (s *Server) ListenAndServe() error {
 		tlsConfig.NextProtos = []string{NextProtoH3, NextProtoMOQ}
 	}
 
+	if err := checkKeepAlive(s.QUICConfig); err != nil {
+		return err
+	}
 	quicConf := webTransportQUICConfig(s.QUICConfig)
 
 	listenFunc := s.ListenFunc
@@ -667,6 +680,9 @@ func (s *Server) ListenAndServeTLS(certFile, keyFile string) error {
 		NextProtos:   []string{NextProtoH3, NextProtoMOQ},
 	}
 
+	if err := checkKeepAlive(s.QUICConfig); err != nil {
+		return err
+	}
 	quicConf := webTransportQUICConfig(s.QUICConfig)
 
 	listenFunc := s.ListenFunc

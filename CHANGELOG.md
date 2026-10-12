@@ -7,18 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-> **Breaking for callers that set `Dialer.DialWebTransportFunc` or `Dialer.DialWebSocketFunc`.** Each takes a fifth argument, the dialer's QUIC configuration. See **Changed** below.
+> **Breaking for callers that set `Dialer.DialWebTransportFunc` or `Dialer.DialWebSocketFunc`**, which take a fifth argument, **and for WebSocket sessions that relied on the default keep-alive**: a zero `KeepAlivePeriod` now sends no pings over WebSocket, as in QUIC, where it used to be 10 seconds. See **Changed** below.
 
 ### Changed
 
 - **moqt: `Dialer.DialWebTransportFunc` and `Dialer.DialWebSocketFunc` take the dialer's QUIC configuration.** Each signature gains `quicConfig *quic.Config` after `tlsConfig`, as `DialQUICFunc` has had: `func(ctx, addr, header, tlsConfig, quicConfig)`. They were handed the dialer's TLS configuration but not its QUIC one, so a dial through either dropped `Dialer.QUICConfig` without a sign. All three functions receive the dialer's own value, unchanged and possibly nil. What the default dials do with it is left to the function: turning on datagrams and stream reset with partial delivery for WebTransport, which the WebTransport library requires of any configuration it is given, and refusing a negative keep-alive for QUIC and WebTransport. To migrate, add the parameter, and use it or ignore it.
+
+- **moqt: a zero `KeepAlivePeriod` sends no keep-alives on every transport, and a negative one is refused.** Over WebSocket zero used to be 10 seconds and a negative period the way to send none, the one setting that did not mean what it means in QUIC. Zero now sends no QX_PING frames, as QMux itself and QUIC both read it.
+  - **Set a keep-alive where you relied on the default.** A WebSocket session without pings has no round-trip time, which QMux measures from them alone, and a proxy on the way may close it while idle. A `Dialer` that dials `wss://`, and a `WebSocketHandler` or `Server` that takes WebSocket sessions, should set `QUICConfig.KeepAlivePeriod`, for example to the 10 seconds that was the default.
+  - **A negative period is an error.** `Dial` returns it for all three transports before dialing, and `Server.ListenAndServe` and `ListenAndServeTLS` before listening, naming the field. A function that replaces a dial is not checked.
 
 ### Fixed
 
 - **moqt: a WebTransport dial uses `Dialer.QUICConfig`.** `Dial` to an `https://` URL opened its QUIC connection with the library's defaults, whatever the dialer's QUIC configuration said, while a `moqt://` dial used all of it and a WebSocket dial the settings QMux shares with QUIC. `InitialPacketSize` and path MTU discovery now reach a WebTransport session as they do a raw QUIC one, and `MaxIdleTimeout` and `KeepAlivePeriod` reach all three.
   - **What WebTransport needs is turned on.** Datagrams and stream reset with partial delivery are on for the connection whatever the configuration says, as for a server's, since the library refuses a configuration without them. The dialer's own configuration is not modified.
   - **A configuration set for `moqt://` now also governs `https://`.** Before, every setting was inert there. One that suits a raw QUIC session only, such as `MaxIncomingUniStreams` below the three streams HTTP/3 opens for itself, now breaks a WebTransport dial that worked.
-  - **The default QUIC and WebTransport dials refuse a negative `KeepAlivePeriod`.** Over WebSocket it means no pings, and that is unchanged. quic-go takes only zero for that and, given a negative period, pings after every probe timeout; it did so on `moqt://` already, and this change would have brought it to `https://`. `Dial` now returns an error naming the field instead. A dial through `DialQUICFunc` is not checked.
 
 ## [v0.23.0] - 2026-10-10
 

@@ -48,7 +48,7 @@ The following table describes the public fields of the `moqt.Dialer` struct:
 | `QUICConfig`           | [`*quic.Config`](https://pkg.go.dev/github.com/quic-go/quic-go#Config)              | QUIC configuration for raw QUIC connections and for the connection under a WebTransport session (datagrams and stream reset with partial delivery are turned on there). A WebSocket session takes the settings QMux shares with QUIC. A negative `KeepAlivePeriod` means no pings over WebSocket only; the default QUIC and WebTransport dials refuse it. |
 | `Config`               | [`*moqt.Config`](https://pkg.go.dev/github.com/qumo-dev/gomoqt/moqt#Config)                   | MoQ protocol configuration                  |
 | `DialQUICFunc`         | `func(ctx, addr, tlsConfig, quicConfig) (StreamConn, error)` | Custom QUIC dial function. If nil, the default dialer is used. |
-| `DialWebTransportFunc` | `func(ctx, addr, header, tlsConfig) (*http.Response, WebTransportSession, error)` | Custom WebTransport dial function. If nil, the default dialer is used. |
+| `DialWebTransportFunc` | `func(ctx, addr, header, tlsConfig, quicConfig) (*http.Response, WebTransportSession, error)` | Custom WebTransport dial function. If nil, the default dialer is used. `quicConfig` is `QUICConfig` as it is. |
 | `FetchHandler`         | [`moqt.FetchHandler`](https://pkg.go.dev/github.com/qumo-dev/gomoqt/moqt#FetchHandler) | Handles incoming fetch requests on WebTransport sessions. If nil, fetch requests are not handled. |
 | `OnGoaway`             | `func(newSessionURI string)` | Called when the server requests session migration. The `newSessionURI` parameter contains the redirect URI, which may be empty. |
 | `Logger`               | [`*slog.Logger`](https://pkg.go.dev/log/slog#Logger)              | Logger for connection and session events. If nil, logging is disabled.         |
@@ -91,7 +91,7 @@ To use a custom WebTransport implementation, you need to provide your own dial f
 ```go {filename="gomoqt/moqt/dialer.go",base_url="https://github.com/qumo-dev/gomoqt/tree/main/moqt/dialer.go"}
 type Dialer struct {
     // ...
-	DialWebTransportFunc func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, WebTransportSession, error)
+	DialWebTransportFunc func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config, quicConfig *quic.Config) (*http.Response, WebTransportSession, error)
     // ...
 }
 ```
@@ -106,7 +106,7 @@ type Dialer struct {
 - `moqt://` — Native QUIC
 - `wss://` — QMux over WebSocket, the binding for clients that cannot use WebTransport (`ws://` does without TLS)
 
-Over WebSocket everything shares one TCP connection: a lost segment delays every stream, and there are no unreliable datagrams. Prefer the other two where they work. `Dialer.QUICConfig` configures a WebSocket session too, with the settings QMux shares with QUIC (stream limits, receive windows, keep-alive, idle and handshake timeouts, datagrams), and `Dialer.DialWebSocketFunc` replaces the dial.
+Over WebSocket everything shares one TCP connection: a lost segment delays every stream, and there are no unreliable datagrams. Prefer the other two where they work. `Dialer.QUICConfig` configures a WebSocket session too, with the settings QMux shares with QUIC (stream limits, receive windows, keep-alive, idle and handshake timeouts, datagrams), and `Dialer.DialWebSocketFunc` replaces the dial. Like the other two dial functions it receives `QUICConfig` as it is: what the default dials do with it (turning on what WebTransport needs, and refusing a negative keep-alive) is left to the function.
 
 ```go
 	var mux *moqt.TrackMux

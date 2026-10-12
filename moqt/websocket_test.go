@@ -271,7 +271,7 @@ func TestDialer_Dial_WSSRoutesToDialWebSocket(t *testing.T) {
 			called := false
 			dialer := &Dialer{
 				Config: &Config{SetupTimeout: 50 * time.Millisecond},
-				DialWebSocketFunc: func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, WebTransportSession, error) {
+				DialWebSocketFunc: func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config, quicConfig *quic.Config) (*http.Response, WebTransportSession, error) {
 					called = true
 					_, ok := ctx.Deadline()
 					assert.True(t, ok, "the dial is bounded by the setup timeout")
@@ -300,7 +300,7 @@ func TestDialer_Dial_WSSRoutesToDialWebSocket(t *testing.T) {
 func TestDialer_Dial_WebSocketError(t *testing.T) {
 	want := errors.New("refused")
 	dialer := &Dialer{
-		DialWebSocketFunc: func(context.Context, string, http.Header, *tls.Config) (*http.Response, WebTransportSession, error) {
+		DialWebSocketFunc: func(context.Context, string, http.Header, *tls.Config, *quic.Config) (*http.Response, WebTransportSession, error) {
 			return nil, nil, want
 		},
 	}

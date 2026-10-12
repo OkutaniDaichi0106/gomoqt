@@ -20,7 +20,7 @@ func TestDialer_Dial_HTTPSRoutesToDialWebTransport(t *testing.T) {
 	called := false
 	dialer := &Dialer{
 		Config: &Config{SetupTimeout: 50 * time.Millisecond},
-		DialWebTransportFunc: func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, WebTransportSession, error) {
+		DialWebTransportFunc: func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config, quicConfig *quic.Config) (*http.Response, WebTransportSession, error) {
 			called = true
 			deadline, ok := ctx.Deadline()
 			require.True(t, ok)
@@ -92,7 +92,7 @@ func TestDialer_Dial_WebTransportDefaultPath(t *testing.T) {
 	recordedTarget := ""
 	dialer := &Dialer{
 		Config: &Config{SetupTimeout: 25 * time.Millisecond},
-		DialWebTransportFunc: func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, WebTransportSession, error) {
+		DialWebTransportFunc: func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config, quicConfig *quic.Config) (*http.Response, WebTransportSession, error) {
 			recordedTarget = addr
 			conn := &FakeWebTransportSession{}
 			conn.AcceptStreams = []biStreamResult{{Err: context.Canceled}}
@@ -147,7 +147,7 @@ func TestDialer_Dial_WebTransportCustomDialError(t *testing.T) {
 	dialErr := errors.New("dial failed")
 	dialer := &Dialer{
 		Config: &Config{SetupTimeout: 25 * time.Millisecond},
-		DialWebTransportFunc: func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, WebTransportSession, error) {
+		DialWebTransportFunc: func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config, quicConfig *quic.Config) (*http.Response, WebTransportSession, error) {
 			return nil, nil, dialErr
 		},
 	}
@@ -164,7 +164,7 @@ func TestDialer_Dial_PopulatesSessionPath(t *testing.T) {
 	newWebTransportDialer := func(recordTarget *string) *Dialer {
 		return &Dialer{
 			Config: &Config{SetupTimeout: 50 * time.Millisecond},
-			DialWebTransportFunc: func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, WebTransportSession, error) {
+			DialWebTransportFunc: func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config, quicConfig *quic.Config) (*http.Response, WebTransportSession, error) {
 				*recordTarget = addr
 				conn := &FakeWebTransportSession{}
 				conn.AcceptStreams = []biStreamResult{{Err: context.Canceled}}
@@ -240,7 +240,7 @@ func TestDialer_Dial_PreservesQuery(t *testing.T) {
 	var target string
 	d := &Dialer{
 		Config: &Config{SetupTimeout: 50 * time.Millisecond},
-		DialWebTransportFunc: func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, WebTransportSession, error) {
+		DialWebTransportFunc: func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config, quicConfig *quic.Config) (*http.Response, WebTransportSession, error) {
 			target = addr
 			conn := &FakeWebTransportSession{}
 			conn.AcceptStreams = []biStreamResult{{Err: context.Canceled}}
@@ -266,7 +266,7 @@ func TestDialer_Dial_StripsFragment(t *testing.T) {
 	var target string
 	d := &Dialer{
 		Config: &Config{SetupTimeout: 50 * time.Millisecond},
-		DialWebTransportFunc: func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, WebTransportSession, error) {
+		DialWebTransportFunc: func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config, quicConfig *quic.Config) (*http.Response, WebTransportSession, error) {
 			target = addr
 			conn := &FakeWebTransportSession{}
 			conn.AcceptStreams = []biStreamResult{{Err: context.Canceled}}
@@ -360,7 +360,7 @@ func TestDialer_Dial_DropsUserinfo(t *testing.T) {
 	var target string
 	d := &Dialer{
 		Config: &Config{SetupTimeout: 50 * time.Millisecond},
-		DialWebTransportFunc: func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, WebTransportSession, error) {
+		DialWebTransportFunc: func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config, quicConfig *quic.Config) (*http.Response, WebTransportSession, error) {
 			target = addr
 			conn := &FakeWebTransportSession{}
 			conn.AcceptStreams = []biStreamResult{{Err: context.Canceled}}
@@ -388,7 +388,7 @@ func TestDialer_Dial_BareQuestionMarkIsNotAQuery(t *testing.T) {
 		var target string
 		d := &Dialer{
 			Config: &Config{SetupTimeout: 50 * time.Millisecond},
-			DialWebTransportFunc: func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, WebTransportSession, error) {
+			DialWebTransportFunc: func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config, quicConfig *quic.Config) (*http.Response, WebTransportSession, error) {
 				target = addr
 				conn := &FakeWebTransportSession{}
 				conn.AcceptStreams = []biStreamResult{{Err: context.Canceled}}
@@ -423,4 +423,52 @@ func TestDialer_Dial_BareQuestionMarkIsNotAQuery(t *testing.T) {
 
 		assert.Equal(t, "/live", sess.RequestURI())
 	})
+}
+
+// Each function that replaces a dial is handed the dialer's QUIC
+// configuration as it is: the same value, with nothing turned on, changed or
+// refused, and nil when the dialer has none.
+func TestDialer_Dial_DialFuncsReceiveQUICConfig(t *testing.T) {
+	configs := map[string]*quic.Config{
+		"a configuration":       {InitialPacketSize: 1200},
+		"a negative keep-alive": {KeepAlivePeriod: -1},
+		"none":                  nil,
+	}
+	stop := errors.New("stop here")
+	for name, given := range configs {
+		t.Run(name, func(t *testing.T) {
+			var before *quic.Config
+			if given != nil {
+				before = given.Clone()
+			}
+			var got []*quic.Config
+			dialer := &Dialer{
+				Config:     &Config{SetupTimeout: 50 * time.Millisecond},
+				QUICConfig: given,
+				DialQUICFunc: func(_ context.Context, _ string, _ *tls.Config, quicConfig *quic.Config) (StreamConn, error) {
+					got = append(got, quicConfig)
+					return nil, stop
+				},
+				DialWebTransportFunc: func(_ context.Context, _ string, _ http.Header, _ *tls.Config, quicConfig *quic.Config) (*http.Response, WebTransportSession, error) {
+					got = append(got, quicConfig)
+					return nil, nil, stop
+				},
+				DialWebSocketFunc: func(_ context.Context, _ string, _ http.Header, _ *tls.Config, quicConfig *quic.Config) (*http.Response, WebTransportSession, error) {
+					got = append(got, quicConfig)
+					return nil, nil, stop
+				},
+			}
+
+			for _, target := range []string{"moqt://example.com/session", "https://example.com/session", "wss://example.com/session"} {
+				_, err := dialer.Dial(context.Background(), target, nil)
+				require.ErrorIs(t, err, stop, target)
+			}
+
+			require.Len(t, got, 3, "one call per transport")
+			for _, quicConfig := range got {
+				assert.Same(t, given, quicConfig)
+			}
+			assert.Equal(t, before, given, "left as the caller set it")
+		})
+	}
 }

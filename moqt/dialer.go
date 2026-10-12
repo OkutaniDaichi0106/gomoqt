@@ -29,8 +29,7 @@ type Dialer struct {
 	// reset with partial delivery are turned on whatever it says, since
 	// WebTransport needs them. Every setting applies to both, so one meant
 	// for a raw QUIC session, such as a stream limit too low for HTTP/3's
-	// own streams, also governs a WebTransport one. A WebTransport dial
-	// through DialWebTransportFunc does not receive it.
+	// own streams, also governs a WebTransport one.
 	//
 	// A WebSocket session takes from it the settings QMux shares with QUIC:
 	// the stream limits, the receive windows, the keep-alive period, the
@@ -41,6 +40,11 @@ type Dialer struct {
 	// and is 10 seconds over WebSocket, where a negative one sends none. A
 	// negative one has no meaning to quic-go, which would ping after every
 	// probe timeout, so the default QUIC and WebTransport dials refuse it.
+	//
+	// DialQUICFunc, DialWebTransportFunc and DialWebSocketFunc each receive
+	// it as it is, possibly nil: what the default dials do with it, turning
+	// on what WebTransport needs and refusing a negative keep-alive, is
+	// theirs to do or not.
 	QUICConfig *quic.Config
 
 	// Config contains additional configuration options for the Dialer.
@@ -51,12 +55,13 @@ type Dialer struct {
 	DialQUICFunc func(ctx context.Context, addr string, tlsConfig *tls.Config, quicConfig *quic.Config) (StreamConn, error)
 
 	// DialWebTransportFunc performs the WebTransport handshake and establishes a connection.
-	// If nil, the default dialer is used.
-	DialWebTransportFunc func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, WebTransportSession, error)
+	// If nil, the default dialer is used. quicConfig is the Dialer's QUICConfig.
+	DialWebTransportFunc func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config, quicConfig *quic.Config) (*http.Response, WebTransportSession, error)
 
 	// DialWebSocketFunc opens the WebSocket and starts the QMux session on
-	// it. If nil, the default dialer is used.
-	DialWebSocketFunc func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, WebTransportSession, error)
+	// it. If nil, the default dialer is used. quicConfig is the Dialer's
+	// QUICConfig.
+	DialWebSocketFunc func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config, quicConfig *quic.Config) (*http.Response, WebTransportSession, error)
 
 	// FetchHandler handles incoming fetch requests on WebTransport and
 	// WebSocket sessions. If nil, they are not handled.
@@ -145,18 +150,16 @@ func (d *Dialer) dialWebTransport(ctx context.Context, target *url.URL, mux *Tra
 	dialCtx, cancelDial := context.WithTimeout(ctx, d.Config.setupTimeout())
 	defer cancelDial()
 
-	var dialer func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, WebTransportSession, error)
-	if d.DialWebTransportFunc != nil {
-		dialer = d.DialWebTransportFunc
-	} else {
-		dialer = func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, WebTransportSession, error) {
-			if err := checkQUICDialConfig(d.QUICConfig); err != nil {
+	dial := d.DialWebTransportFunc
+	if dial == nil {
+		dial = func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config, quicConfig *quic.Config) (*http.Response, WebTransportSession, error) {
+			if err := checkQUICDialConfig(quicConfig); err != nil {
 				return nil, nil, err
 			}
-			return webtransportgo.Dial(ctx, addr, header, tlsConfig, webTransportQUICConfig(d.QUICConfig), []string{NextProtoMOQ})
+			return webtransportgo.Dial(ctx, addr, header, tlsConfig, webTransportQUICConfig(quicConfig), []string{NextProtoMOQ})
 		}
 	}
-	_, conn, err := dialer(dialCtx, target.String(), nil, d.TLSConfig)
+	_, conn, err := dial(dialCtx, target.String(), nil, d.TLSConfig, d.QUICConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -195,11 +198,11 @@ func (d *Dialer) dialWebSocket(ctx context.Context, target *url.URL, mux *TrackM
 
 	dial := d.DialWebSocketFunc
 	if dial == nil {
-		dial = func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config) (*http.Response, WebTransportSession, error) {
-			return qmux.Dial(ctx, addr, header, tlsConfig, []string{NextProtoMOQ}, d.QUICConfig)
+		dial = func(ctx context.Context, addr string, header http.Header, tlsConfig *tls.Config, quicConfig *quic.Config) (*http.Response, WebTransportSession, error) {
+			return qmux.Dial(ctx, addr, header, tlsConfig, []string{NextProtoMOQ}, quicConfig)
 		}
 	}
-	_, conn, err := dial(dialCtx, target.String(), nil, d.TLSConfig)
+	_, conn, err := dial(dialCtx, target.String(), nil, d.TLSConfig, d.QUICConfig)
 	if err != nil {
 		return nil, err
 	}

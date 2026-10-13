@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **moqt: `Session.Subscribe` waits for the publisher's answer as long as its context allows.** It used to give up after 30 seconds of its own, cancelling the subscribe stream with `SubscribeErrorCodeTimeout`. A publisher of a live track may withhold SUBSCRIBE_OK until it has a group to start at (moq-lite-05 §5.1.2), so a track that is quiet for the moment, such as a muted speaker's audio or an event track with no event yet, could not be subscribed to for longer than that: the subscription failed on a session that was fine, and a relay dropped its subscribers with it. A subscription that is not answered is now pending; a refusal is the publisher resetting the stream. The wait ends with the subscribe stream or the session, or at the context's deadline when it has one, as before. **Callers that relied on the limit pass a context with a deadline.**
+
 ## [v0.24.0] - 2026-10-12
 
 > **Go only.** `v0.24.0` ships the Go module. `@qumo/moq` on JSR is unchanged and stays at `0.23.0`: nothing under `moq-web` changed, and the MOQ wire protocol is the same, so the two interoperate.

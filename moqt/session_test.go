@@ -557,6 +557,74 @@ func TestSession_Context(t *testing.T) {
 	assert.NotNil(t, ctx, "Context should not be nil")
 }
 
+// A publisher of a live track may withhold SUBSCRIBE_OK until it has a group.
+// The subscription stays pending however long that takes, its stream left
+// alone, and ends with what the publisher does next: an answer, or a reset.
+func TestSession_Subscribe_PendingUntilThePublisherActs(t *testing.T) {
+	var ok bytes.Buffer
+	_, _ = ok.Write([]byte{byte(message.MessageTypeSubscribeOk)})
+	require.NoError(t, message.SubscribeOkMessage{Group: 7}.Encode(&ok))
+	refusal := &transport.StreamError{
+		ErrorCode: transport.StreamErrorCode(SubscribeErrorCodeNotFound),
+		Remote:    true,
+	}
+	tests := map[string]struct {
+		then    streamResult
+		wantErr bool
+	}{
+		"answered": {then: streamResult{Data: ok.Bytes()}},
+		"refused":  {then: streamResult{Err: refusal}, wantErr: true},
+	}
+	type result struct {
+		reader *TrackReader
+		err    error
+	}
+	// t.Run is not supported inside a synctest bubble, so each case gets a
+	// bubble of its own.
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				acts := make(chan struct{})
+				stream := &FakeQUICStream{
+					Reads:    []streamResult{{Block: true}, tt.then, {Block: true}},
+					ReadGate: acts,
+				}
+				conn := &FakeStreamConn{OpenStreams: []biStreamResult{{Stream: stream}}}
+				session := newTestSession(conn)
+				defer session.CloseWithError(NoError, "") //nolint:errcheck // test teardown
+
+				done := make(chan result, 1)
+				go func() {
+					reader, err := session.Subscribe(context.Background(), "/live/quiet", "events", nil)
+					done <- result{reader, err}
+				}()
+
+				time.Sleep(10 * time.Minute)
+				synctest.Wait()
+				select {
+				case got := <-done:
+					t.Fatalf("Subscribe returned while the publisher had not acted: %v", got.err)
+				default:
+				}
+				assert.Empty(t, stream.CancelReadCodes(), "the pending subscribe stream is left alone")
+
+				close(acts)
+
+				got := <-done
+				if tt.wantErr {
+					var subErr *SubscribeError
+					require.ErrorAs(t, got.err, &subErr)
+					assert.Equal(t, SubscribeErrorCodeNotFound, subErr.SubscribeErrorCode())
+					assert.Nil(t, got.reader)
+					return
+				}
+				require.NoError(t, got.err)
+				require.NotNil(t, got.reader)
+			})
+		})
+	}
+}
+
 func TestSession_nextSubscribeID(t *testing.T) {
 	session, _ := newTestSessionWithConn(t)
 

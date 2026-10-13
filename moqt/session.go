@@ -518,8 +518,11 @@ func (sess *Session) Subscribe(ctx context.Context, path BroadcastPath, name Tra
 			track.CloseWithError(SubscribeErrorCodeInternal)
 		}
 	}()
-	ctx, cancel := context.WithTimeout(ctx, sess.timeout())
-	defer cancel()
+	// The wait for the publisher's answer has no limit of its own. A publisher
+	// of a live track may withhold SUBSCRIBE_OK until it has a group to start
+	// at, so a subscription that is not answered yet is pending, not failed; a
+	// publisher that refuses one resets the stream. The read ends with the
+	// stream or the session, or at ctx's deadline when it has one.
 	if deadline, ok := ctx.Deadline(); ok {
 		_ = stream.SetReadDeadline(deadline)
 		defer stream.SetReadDeadline(time.Time{})
@@ -560,10 +563,6 @@ func (sess *Session) Subscribe(ctx context.Context, path BroadcastPath, name Tra
 func (sess *Session) nextSubscribeID() SubscribeID {
 	// Increment and return the previous value atomically
 	return SubscribeID(sess.subscribeIDCounter.Add(1))
-}
-
-func (sess *Session) timeout() time.Duration {
-	return 30 * time.Second
 }
 
 func (sess *Session) Fetch(req *FetchRequest) (*GroupReader, error) {

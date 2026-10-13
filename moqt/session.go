@@ -518,19 +518,26 @@ func (sess *Session) Subscribe(ctx context.Context, path BroadcastPath, name Tra
 			track.CloseWithError(SubscribeErrorCodeInternal)
 		}
 	}()
-	ctx, cancel := context.WithTimeout(ctx, sess.timeout())
-	defer cancel()
-	if deadline, ok := ctx.Deadline(); ok {
-		_ = stream.SetReadDeadline(deadline)
-		defer stream.SetReadDeadline(time.Time{})
-	}
+	// The wait for the publisher's answer has no limit of its own. A publisher
+	// of a live track may withhold SUBSCRIBE_OK until it has a group to start
+	// at, so a subscription that is not answered yet is pending, not failed; a
+	// publisher that refuses one resets the stream. Only ctx ends the wait.
+	abandoned := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		defer close(abandoned)
+		cancelStreamWithError(stream, transport.StreamErrorCode(SubscribeErrorCodeTimeout))
+	})
 
 	resp, err := readSubscribeResponse(stream)
-	if err != nil {
-		if ctx.Err() != nil {
-			cancelStreamWithError(stream, transport.StreamErrorCode(SubscribeErrorCodeTimeout))
+	if !stop() {
+		// ctx ended, and with it the stream, whatever the read returned.
+		<-abandoned
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return nil, fmt.Errorf("subscription timed out: %w", ctx.Err())
 		}
+		return nil, fmt.Errorf("subscription canceled: %w", context.Cause(ctx))
+	}
+	if err != nil {
 		if strErr, ok := errors.AsType[*transport.StreamError](err); ok {
 			return nil, &SubscribeError{StreamError: strErr}
 		}
@@ -560,10 +567,6 @@ func (sess *Session) Subscribe(ctx context.Context, path BroadcastPath, name Tra
 func (sess *Session) nextSubscribeID() SubscribeID {
 	// Increment and return the previous value atomically
 	return SubscribeID(sess.subscribeIDCounter.Add(1))
-}
-
-func (sess *Session) timeout() time.Duration {
-	return 30 * time.Second
 }
 
 func (sess *Session) Fetch(req *FetchRequest) (*GroupReader, error) {

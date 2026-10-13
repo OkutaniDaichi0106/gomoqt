@@ -28,83 +28,61 @@ type subscribeResult struct {
 }
 
 // A publisher of a live track may withhold SUBSCRIBE_OK until it has a group.
-// The subscription stays pending for as long as the caller waits, and is
-// answered when the publisher speaks.
-func TestSession_Subscribe_PendingUntilAnswered(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		answer := make(chan struct{})
-		stream := &FakeQUICStream{
-			Reads:    []streamResult{{Block: true}, {Data: subscribeOkBytes(t, 7)}, {Block: true}},
-			ReadGate: answer,
-		}
-		conn := &FakeStreamConn{OpenStreams: []biStreamResult{{Stream: stream}}}
-		session := newTestSession(conn)
-		defer session.CloseWithError(NoError, "") //nolint:errcheck // test teardown
-
-		done := make(chan subscribeResult, 1)
-		go func() {
-			reader, err := session.Subscribe(context.Background(), "/live/quiet", "events", nil)
-			done <- subscribeResult{reader, err}
-		}()
-
-		time.Sleep(10 * time.Minute)
-		synctest.Wait()
-		select {
-		case got := <-done:
-			t.Fatalf("Subscribe returned while the publisher had not answered: %v", got.err)
-		default:
-		}
-		assert.Empty(t, stream.CancelReadCodes(), "the pending subscribe stream is left alone")
-
-		close(answer)
-
-		got := <-done
-		require.NoError(t, got.err)
-		require.NotNil(t, got.reader)
-	})
-}
-
-// The caller's context is the only limit on the wait: when it ends, the
-// subscribe stream is cancelled and Subscribe reports why.
-func TestSession_Subscribe_PendingEndsWithContext(t *testing.T) {
+// The subscription stays pending however long that takes, its stream left
+// alone, and ends with what the publisher does next: an answer, or a reset.
+func TestSession_Subscribe_PendingUntilThePublisherActs(t *testing.T) {
+	refusal := &transport.StreamError{
+		ErrorCode: transport.StreamErrorCode(SubscribeErrorCodeNotFound),
+		Remote:    true,
+	}
 	tests := map[string]struct {
-		newContext func() (context.Context, context.CancelFunc)
-		wantErr    error
+		then    streamResult
+		wantErr bool
 	}{
-		"deadline": {
-			newContext: func() (context.Context, context.CancelFunc) {
-				return context.WithTimeout(context.Background(), 2*time.Second)
-			},
-			wantErr: context.DeadlineExceeded,
-		},
-		"cancel": {
-			newContext: func() (context.Context, context.CancelFunc) {
-				ctx, cancel := context.WithCancel(context.Background())
-				time.AfterFunc(2*time.Second, cancel)
-				return ctx, cancel
-			},
-			wantErr: context.Canceled,
-		},
+		"answered": {then: streamResult{Data: subscribeOkBytes(t, 7)}},
+		"refused":  {then: streamResult{Err: refusal}, wantErr: true},
 	}
 	// t.Run is not supported inside a synctest bubble, so each case gets a
 	// bubble of its own.
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				stream := &FakeQUICStream{Reads: []streamResult{{Block: true}}}
+				acts := make(chan struct{})
+				stream := &FakeQUICStream{
+					Reads:    []streamResult{{Block: true}, tt.then, {Block: true}},
+					ReadGate: acts,
+				}
 				conn := &FakeStreamConn{OpenStreams: []biStreamResult{{Stream: stream}}}
 				session := newTestSession(conn)
 				defer session.CloseWithError(NoError, "") //nolint:errcheck // test teardown
-				ctx, cancel := tt.newContext()
-				defer cancel()
 
-				reader, err := session.Subscribe(ctx, "/live/quiet", "events", nil)
+				done := make(chan subscribeResult, 1)
+				go func() {
+					reader, err := session.Subscribe(context.Background(), "/live/quiet", "events", nil)
+					done <- subscribeResult{reader, err}
+				}()
 
-				require.ErrorIs(t, err, tt.wantErr)
-				assert.Nil(t, reader)
-				codes := stream.CancelReadCodes()
-				require.NotEmpty(t, codes, "the subscribe stream is cancelled")
-				assert.Equal(t, transport.StreamErrorCode(SubscribeErrorCodeTimeout), codes[0])
+				time.Sleep(10 * time.Minute)
+				synctest.Wait()
+				select {
+				case got := <-done:
+					t.Fatalf("Subscribe returned while the publisher had not acted: %v", got.err)
+				default:
+				}
+				assert.Empty(t, stream.CancelReadCodes(), "the pending subscribe stream is left alone")
+
+				close(acts)
+
+				got := <-done
+				if tt.wantErr {
+					var subErr *SubscribeError
+					require.ErrorAs(t, got.err, &subErr)
+					assert.Equal(t, SubscribeErrorCodeNotFound, subErr.SubscribeErrorCode())
+					assert.Nil(t, got.reader)
+					return
+				}
+				require.NoError(t, got.err)
+				require.NotNil(t, got.reader)
 			})
 		})
 	}

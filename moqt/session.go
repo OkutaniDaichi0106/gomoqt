@@ -521,23 +521,19 @@ func (sess *Session) Subscribe(ctx context.Context, path BroadcastPath, name Tra
 	// The wait for the publisher's answer has no limit of its own. A publisher
 	// of a live track may withhold SUBSCRIBE_OK until it has a group to start
 	// at, so a subscription that is not answered yet is pending, not failed; a
-	// publisher that refuses one resets the stream. Only ctx ends the wait.
-	abandoned := make(chan struct{})
-	stop := context.AfterFunc(ctx, func() {
-		defer close(abandoned)
-		cancelStreamWithError(stream, transport.StreamErrorCode(SubscribeErrorCodeTimeout))
-	})
+	// publisher that refuses one resets the stream. The read ends with the
+	// stream or the session, or at ctx's deadline when it has one.
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = stream.SetReadDeadline(deadline)
+		defer stream.SetReadDeadline(time.Time{})
+	}
 
 	resp, err := readSubscribeResponse(stream)
-	if !stop() {
-		// ctx ended, and with it the stream, whatever the read returned.
-		<-abandoned
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+	if err != nil {
+		if ctx.Err() != nil {
+			cancelStreamWithError(stream, transport.StreamErrorCode(SubscribeErrorCodeTimeout))
 			return nil, fmt.Errorf("subscription timed out: %w", ctx.Err())
 		}
-		return nil, fmt.Errorf("subscription canceled: %w", context.Cause(ctx))
-	}
-	if err != nil {
 		if strErr, ok := errors.AsType[*transport.StreamError](err); ok {
 			return nil, &SubscribeError{StreamError: strErr}
 		}

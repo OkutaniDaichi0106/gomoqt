@@ -625,6 +625,99 @@ func TestSession_Subscribe_PendingUntilThePublisherActs(t *testing.T) {
 	}
 }
 
+func TestSession_Subscribe_PendingEndsWhenTheSubscriberGivesUp(t *testing.T) {
+	tests := map[string]struct {
+		// giveUp ends the subscriber's ctx while the subscription is pending.
+		giveUp   func(cancel context.CancelFunc)
+		timeout  time.Duration
+		wantErr  error
+		wantCode SubscribeErrorCode
+	}{
+		"cancelled": {
+			giveUp:   func(cancel context.CancelFunc) { cancel() },
+			wantErr:  context.Canceled,
+			wantCode: SubscribeErrorCodeInternal,
+		},
+		"deadline": {
+			giveUp:   func(context.CancelFunc) {},
+			timeout:  time.Minute,
+			wantErr:  context.DeadlineExceeded,
+			wantCode: SubscribeErrorCodeTimeout,
+		},
+	}
+	// t.Run is not supported inside a synctest bubble, so each case gets a
+	// bubble of its own.
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				// The publisher never answers.
+				stream := &FakeQUICStream{Reads: []streamResult{{Block: true}}}
+				conn := &FakeStreamConn{OpenStreams: []biStreamResult{{Stream: stream}}}
+				session := newTestSession(conn)
+				defer session.CloseWithError(NoError, "") //nolint:errcheck // test teardown
+
+				ctx, cancel := context.WithCancel(context.Background())
+				if tt.timeout > 0 {
+					ctx, cancel = context.WithTimeout(context.Background(), tt.timeout)
+				}
+				defer cancel()
+				done := make(chan error, 1)
+				go func() {
+					reader, err := session.Subscribe(ctx, "/live/quiet", "events", nil)
+					assert.Nil(t, reader)
+					done <- err
+				}()
+
+				time.Sleep(10 * time.Second)
+				synctest.Wait()
+				tt.giveUp(cancel)
+				time.Sleep(time.Minute)
+				synctest.Wait()
+
+				select {
+				case err := <-done:
+					require.ErrorIs(t, err, tt.wantErr)
+				default:
+					t.Fatal("Subscribe still waits after the subscriber gave up")
+				}
+				assert.Contains(t, stream.CancelReadCodes(), transport.StreamErrorCode(tt.wantCode),
+					"the subscribe stream is reset")
+			})
+		})
+	}
+}
+
+func TestSession_TrackInfo_PendingEndsWhenTheCallerCancels(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		// The publisher never answers.
+		stream := &FakeQUICStream{Reads: []streamResult{{Block: true}}}
+		conn := &FakeStreamConn{OpenStreams: []biStreamResult{{Stream: stream}}}
+		session := newTestSession(conn)
+		defer session.CloseWithError(NoError, "") //nolint:errcheck // test teardown
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		done := make(chan error, 1)
+		go func() {
+			_, err := session.TrackInfo(ctx, "/live/quiet", "events")
+			done <- err
+		}()
+
+		time.Sleep(10 * time.Second)
+		synctest.Wait()
+		cancel()
+		synctest.Wait()
+
+		select {
+		case err := <-done:
+			require.ErrorIs(t, err, context.Canceled)
+		default:
+			t.Fatal("TrackInfo still waits after the caller cancelled")
+		}
+		assert.Contains(t, stream.CancelReadCodes(), transport.StreamErrorCode(SubscribeErrorCodeInternal))
+	})
+}
+
 func TestSession_nextSubscribeID(t *testing.T) {
 	session, _ := newTestSessionWithConn(t)
 

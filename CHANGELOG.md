@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **moqt: a caller that cancels its context ends a pending `Session.Subscribe` or `Session.TrackInfo`.** Both waited for the publisher's answer with a read bounded only by the context's deadline, so cancelling a context without one (a relay draining a route, a process shutting down) did not end the wait; before v0.24.1 the wait's own 30-second limit hid this. The request stream is now reset as soon as the context ends, with `SubscribeErrorCodeTimeout` for a deadline and `SubscribeErrorCodeInternal` for a cancellation, and the call returns an error wrapping the context's error. Ending a pending subscription stays the subscriber's decision: the library still sets no limit of its own.
+
 ## [v0.24.1] - 2026-10-13
 
 > **Go only.** `v0.24.1` ships the Go module. `@qumo/moq` on JSR is unchanged and stays at `0.23.0`: nothing under `moq-web` changed, and the MOQ wire protocol is the same, so the two interoperate.

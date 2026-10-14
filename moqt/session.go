@@ -521,19 +521,15 @@ func (sess *Session) Subscribe(ctx context.Context, path BroadcastPath, name Tra
 	// The wait for the publisher's answer has no limit of its own. A publisher
 	// of a live track may withhold SUBSCRIBE_OK until it has a group to start
 	// at, so a subscription that is not answered yet is pending, not failed; a
-	// publisher that refuses one resets the stream. The read ends with the
-	// stream or the session, or at ctx's deadline when it has one.
-	if deadline, ok := ctx.Deadline(); ok {
-		_ = stream.SetReadDeadline(deadline)
-		defer stream.SetReadDeadline(time.Time{})
-	}
-
+	// publisher that refuses one resets the stream. Only the subscriber gives
+	// up on it: the wait ends with the stream or the session, or when ctx is
+	// cancelled or reaches its deadline, which resets the stream.
+	abandoned := abandonOnDone(ctx, stream)
 	resp, err := readSubscribeResponse(stream)
+	if abandoned() {
+		return nil, abandonedErr("subscription", ctx)
+	}
 	if err != nil {
-		if ctx.Err() != nil {
-			cancelStreamWithError(stream, transport.StreamErrorCode(SubscribeErrorCodeTimeout))
-			return nil, fmt.Errorf("subscription timed out: %w", ctx.Err())
-		}
 		if strErr, ok := errors.AsType[*transport.StreamError](err); ok {
 			return nil, &SubscribeError{StreamError: strErr}
 		}
@@ -1056,13 +1052,13 @@ func (sess *Session) TrackInfo(ctx context.Context, path BroadcastPath, name Tra
 		return nil, fmt.Errorf("failed to encode TRACK message: %w", err)
 	}
 
-	if deadline, ok := ctx.Deadline(); ok {
-		_ = stream.SetReadDeadline(deadline)
-		defer stream.SetReadDeadline(time.Time{})
-	}
-
+	// As for SUBSCRIBE, only the caller gives up on the answer.
+	abandoned := abandonOnDone(ctx, stream)
 	var tim message.TrackInfoMessage
 	err = tim.Decode(stream)
+	if abandoned() {
+		return nil, abandonedErr("track info request", ctx)
+	}
 	if err != nil {
 		if strErr, ok := errors.AsType[*transport.StreamError](err); ok {
 			return nil, &SubscribeError{StreamError: strErr}
@@ -1208,6 +1204,29 @@ func (sess *Session) removeTrackReader(id SubscribeID) {
 	defer sess.trackReaderMapLocker.Unlock()
 
 	delete(sess.trackReaders, id)
+}
+
+// abandonOnDone resets stream when ctx ends (the caller cancelled it or its
+// deadline passed) while a response is awaited on it, which ends the read. The
+// returned function stops watching and reports whether the stream was reset,
+// in which case the caller has given up and the response, if any, is void.
+func abandonOnDone(ctx context.Context, stream transport.Stream) func() bool {
+	stop := context.AfterFunc(ctx, func() {
+		code := SubscribeErrorCodeInternal
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			code = SubscribeErrorCodeTimeout
+		}
+		cancelStreamWithError(stream, transport.StreamErrorCode(code))
+	})
+	return func() bool { return !stop() }
+}
+
+// abandonedErr is the error for a request the caller gave up on.
+func abandonedErr(what string, ctx context.Context) error {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return fmt.Errorf("%s timed out: %w", what, ctx.Err())
+	}
+	return fmt.Errorf("%s canceled: %w", what, ctx.Err())
 }
 
 func cancelStreamWithError(stream transport.Stream, code transport.StreamErrorCode) {

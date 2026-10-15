@@ -3,7 +3,9 @@ package moqt
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
+	"unicode"
 )
 
 // ErrInvalidPathPattern is returned for a path pattern that is not a
@@ -12,21 +14,110 @@ import (
 var ErrInvalidPathPattern = errors.New("moqt: invalid path pattern")
 
 // PathPattern matches broadcast paths the way an http.ServeMux pattern
-// without wildcards matches URL paths, and the way TrackMux and
-// Session.AcceptAnnounce read paths and prefixes: "/room/1/alice" matches
-// that path alone, and a pattern ending in "/", such as "/room/1/", matches
-// every path beneath it. "/" matches every path.
+// matches URL paths, and the way TrackMux and Session.AcceptAnnounce read
+// paths and prefixes: "/room/1/alice" matches that path alone, and a pattern
+// ending in "/", such as "/room/1/", matches every path beneath it. "/"
+// matches every path.
+//
+// A segment may be a wildcard. "{name}" matches any one non-empty segment, so
+// "/room/{id}/host" matches "/room/1/host", and "/room/{id}/" matches every
+// path beneath any room. "{name...}" as the last segment matches the rest of
+// the path, even an empty rest, so "/room/{rest...}" matches what "/room/"
+// does. "{$}" as the last segment matches only the "/" before it:
+// "/room/{$}" matches "/room/" alone. A name is letters, digits and "_", not
+// starting with a digit, as in net/http, and unique within a pattern.
+//
+// PathPatterns are comparable: two are equal when they were parsed from the
+// same string.
 type PathPattern struct {
 	raw string
+	// wild is whether a segment is a wildcard.
+	wild bool
 }
 
-// ParsePathPattern parses s: a path starting with "/", with no empty segment
-// before its last. "{" and "}" are reserved for wildcards and rejected.
+// ParsePathPattern parses s: a path starting with "/" whose wildcards are
+// whole segments. An empty segment, as in "/room//x", is a literal one.
 func ParsePathPattern(s string) (PathPattern, error) {
-	if !isValidPath(BroadcastPath(s)) || strings.Contains(s, "//") || strings.ContainsAny(s, "{}") {
+	if !isValidPath(BroadcastPath(s)) {
 		return PathPattern{}, fmt.Errorf("%w: %q", ErrInvalidPathPattern, s)
 	}
-	return PathPattern{raw: s}, nil
+	if !strings.ContainsAny(s, "{}") {
+		return PathPattern{raw: s}, nil
+	}
+
+	trailing := strings.HasSuffix(s, "/")
+	var names []string
+	for segs := strings.TrimSuffix(s[1:], "/"); ; {
+		seg, next, more := strings.Cut(segs, "/")
+		if strings.ContainsAny(seg, "{}") {
+			name, kind := parseWildcard(seg)
+			last := !more && !trailing
+			switch {
+			case kind == segInvalid,
+				kind == segAnchor && !last,
+				kind == segRest && !last,
+				slices.Contains(names, name):
+				return PathPattern{}, fmt.Errorf("%w: %q", ErrInvalidPathPattern, s)
+			}
+			if name != "" {
+				names = append(names, name)
+			}
+		}
+		if !more {
+			return PathPattern{raw: s, wild: true}, nil
+		}
+		segs = next
+	}
+}
+
+// Kinds of pattern segment.
+const (
+	segInvalid  = iota
+	segLiteral  // a literal segment
+	segWildcard // "{name}"
+	segRest     // "{name...}"
+	segAnchor   // "{$}"
+)
+
+// parseWildcard reads a segment: its kind, and the wildcard's name.
+func parseWildcard(seg string) (name string, kind int) {
+	inner, ok := strings.CutPrefix(seg, "{")
+	if !ok {
+		if strings.ContainsAny(seg, "{}") {
+			return "", segInvalid
+		}
+		return "", segLiteral
+	}
+	if inner, ok = strings.CutSuffix(inner, "}"); !ok {
+		return "", segInvalid
+	}
+	if inner == "$" {
+		return "", segAnchor
+	}
+	kind = segWildcard
+	if name, ok = strings.CutSuffix(inner, "..."); ok {
+		kind = segRest
+	} else {
+		name = inner
+	}
+	if !isWildcardName(name) {
+		return "", segInvalid
+	}
+	return name, kind
+}
+
+// isWildcardName reports whether s is a wildcard name as net/http reads it:
+// letters, digits and "_", not starting with a digit.
+func isWildcardName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, c := range s {
+		if !unicode.IsLetter(c) && c != '_' && (i == 0 || !unicode.IsDigit(c)) {
+			return false
+		}
+	}
+	return true
 }
 
 // MustParsePathPattern is like ParsePathPattern but panics on an invalid
@@ -47,8 +138,75 @@ func (p PathPattern) String() string {
 // Match reports whether path is in the pattern's set. The zero PathPattern
 // matches nothing.
 func (p PathPattern) Match(path BroadcastPath) bool {
+	if p.wild {
+		return p.matchSegments(path, nil)
+	}
 	if isValidPrefix(p.raw) {
 		return path.HasPrefix(p.raw)
 	}
 	return p.raw != "" && string(path) == p.raw
+}
+
+// Values reports whether path is in the pattern's set and, if it is, returns
+// the value each named wildcard matched, like http.Request.PathValue: for
+// "/room/{id}/{rest...}", the path "/room/1/a/b" gives id "1" and rest "a/b".
+// A pattern without a named wildcard gives a nil map.
+func (p PathPattern) Values(path BroadcastPath) (map[string]string, bool) {
+	if !p.wild {
+		return nil, p.Match(path)
+	}
+	var values map[string]string
+	if !p.matchSegments(path, &values) {
+		return nil, false
+	}
+	return values, true
+}
+
+// matchSegments matches path against a pattern with a wildcard, recording
+// what each named wildcard matched into *values unless values is nil.
+func (p PathPattern) matchSegments(path BroadcastPath, values *map[string]string) bool {
+	if !isValidPath(path) {
+		return false
+	}
+	record := func(name, value string) {
+		if values == nil {
+			return
+		}
+		if *values == nil {
+			*values = make(map[string]string)
+		}
+		(*values)[name] = value
+	}
+
+	trailing := strings.HasSuffix(p.raw, "/")
+	rest := string(path[1:])
+	for segs := strings.TrimSuffix(p.raw[1:], "/"); ; {
+		seg, nextSegs, moreSegs := strings.Cut(segs, "/")
+		name, kind := parseWildcard(seg)
+		switch kind {
+		case segAnchor:
+			return rest == ""
+		case segRest:
+			record(name, rest)
+			return true
+		}
+		got, after, more := strings.Cut(rest, "/")
+		if kind == segWildcard {
+			if got == "" {
+				return false
+			}
+			record(name, got)
+		} else if got != seg {
+			return false
+		}
+		if !moreSegs {
+			// The pattern's segments are used up: an exact pattern needs the
+			// path to end here, and a prefix needs it to go on.
+			return more == trailing
+		}
+		if !more {
+			return false
+		}
+		segs, rest = nextSegs, after
+	}
 }

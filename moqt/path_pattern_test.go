@@ -31,6 +31,9 @@ func TestParsePathPattern(t *testing.T) {
 		"duplicate name":          {input: "/{id}/{id}", wantErr: true},
 		"rest wildcard not last":  {input: "/{rest...}/host", wantErr: true},
 		"rest wildcard then /":    {input: "/{rest...}/", wantErr: true},
+		"anchor":                  {input: "/room/{$}"},
+		"anchor not last":         {input: "/{$}/room", wantErr: true},
+		"anchor then /":           {input: "/room/{$}/", wantErr: true},
 	}
 
 	for name, tt := range tests {
@@ -71,8 +74,13 @@ func TestPathPattern_Match(t *testing.T) {
 		"wildcard needs its literal before":    {pattern: "/room/{id}/", path: "/lobby/1/alice", want: false},
 		"rest wildcard matches one segment":    {pattern: "/room/{rest...}", path: "/room/1", want: true},
 		"rest wildcard matches deeper":         {pattern: "/room/{rest...}", path: "/room/1/a/b", want: true},
-		"rest wildcard needs a segment":        {pattern: "/room/{rest...}", path: "/room/", want: false},
+		"rest wildcard matches an empty rest":  {pattern: "/room/{rest...}", path: "/room/", want: true},
 		"rest wildcard needs its stem":         {pattern: "/room/{rest...}", path: "/room", want: false},
+		"anchor matches its trailing /":        {pattern: "/room/{$}", path: "/room/", want: true},
+		"anchor matches nothing beneath":       {pattern: "/room/{$}", path: "/room/1", want: false},
+		"anchor needs its trailing /":          {pattern: "/room/{$}", path: "/room", want: false},
+		"anchor at the root matches only /":    {pattern: "/{$}", path: "/room", want: false},
+		"anchor after a wildcard":              {pattern: "/room/{id}/{$}", path: "/room/1/", want: true},
 		"wildcard matches no invalid path":     {pattern: "/{id}", path: "room", want: false},
 	}
 

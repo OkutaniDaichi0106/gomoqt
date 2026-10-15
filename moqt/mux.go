@@ -284,8 +284,8 @@ func (mux *TrackMux) serveTrack(tw *TrackWriter) {
 	ath.TrackHandler.ServeTrack(tw)
 }
 
-// serveAnnouncements serves announcements for tracks matching the given pattern.
-// It registers the AnnouncementWriter and sends announcements for matching tracks.
+// serveAnnouncements serves the announcements under the writer's prefix.
+// It registers the AnnouncementWriter and sends the matching announcements.
 func (mux *TrackMux) serveAnnouncements(aw *AnnouncementWriter) {
 	if aw == nil {
 		return

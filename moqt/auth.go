@@ -80,6 +80,10 @@ func grantFromMessage(m message.AuthOkMessage) (Grant, error) {
 		Subscribe: m.SubscribePatterns,
 		MaxAge:    time.Duration(m.Expires) * time.Millisecond,
 	}
+	if m.Expires > math.MaxInt64/uint64(time.Millisecond) {
+		// Beyond what a time.Duration holds, some 292 years.
+		g.MaxAge = math.MaxInt64
+	}
 	if _, err := parseGrant(g); err != nil {
 		return Grant{}, err
 	}
@@ -200,11 +204,14 @@ type AuthWriter struct {
 // is never trimmed: the token is refused with NOT_SUPPORTED instead, and the
 // returned error says so.
 func (w *AuthWriter) Grant(g Grant) error {
+	if g.MaxAge < 0 {
+		return fmt.Errorf("moqt: negative MaxAge %v", g.MaxAge)
+	}
 	sg, err := parseGrant(g)
 	if err != nil {
 		return err
 	}
-	// A time.Duration in milliseconds stays below maxAuthExpires.
+	// A non-negative time.Duration in milliseconds stays below maxAuthExpires.
 	m := g.message()
 
 	w.mu.Lock()
@@ -682,13 +689,12 @@ func (sess *Session) mayServe(path BroadcastPath) bool {
 }
 
 // addScoped adds k to m, one of the session's scoped maps, so rescope reaches
-// it, and returns the func that removes it. A rescope follows, for a scope
-// change made after k was judged and before it was added.
+// it, and returns the func that removes it. A scope change made after k was
+// judged and before it was added does not reach it: the caller checks again.
 func addScoped[K comparable, V any](sess *Session, m map[K]V, k K, v V) (remove func()) {
 	sess.scopedMu.Lock()
 	m[k] = v
 	sess.scopedMu.Unlock()
-	sess.requestRescope()
 	return func() {
 		sess.scopedMu.Lock()
 		delete(m, k)
@@ -737,8 +743,8 @@ func (sess *Session) rescope() {
 	}
 
 	sess.scopedMu.Lock()
-	for stream, path := range sess.fetches {
-		if !sess.scope.canSubscribe(path) {
+	for req, stream := range sess.fetches {
+		if !sess.scope.canSubscribe(req.BroadcastPath) {
 			cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeUnauthorized))
 		}
 	}

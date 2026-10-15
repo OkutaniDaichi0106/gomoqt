@@ -36,6 +36,16 @@ func TestAuthWriter_Grant_ReusedSlice(t *testing.T) {
 	assert.Equal(t, 2, changes, "editing the slice in place and granting again changes the scope")
 }
 
+func TestAuthWriter_Grant_NegativeMaxAge(t *testing.T) {
+	scope := newAuthScope(func() {})
+	w := &AuthWriter{scope: scope}
+
+	err := w.Grant(Grant{Subscribe: []string{"/"}, MaxAge: -time.Second})
+
+	assert.Error(t, err)
+	assert.False(t, scope.canSubscribe("/room/1"), "the invalid grant is not applied")
+}
+
 func TestAuthWriter_Grant_MaxAge(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		scope := newAuthScope(func() {})

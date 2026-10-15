@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"math"
 	"net/url"
 	"strings"
 	"testing"
@@ -517,11 +518,20 @@ func TestReadAuthReply_Violation(t *testing.T) {
 	}
 }
 
-func TestReadAuthReply_Limits(t *testing.T) {
-	tests := map[string]interface{ Encode(io.Writer) error }{
-		"latest expiry":  message.AuthOkMessage{Expires: maxAuthExpires},
-		"largest code":   message.AuthErrorMessage{Code: 1<<32 - 1},
-		"longest reason": message.AuthErrorMessage{Reason: strings.Repeat("a", maxAuthReasonLength)},
+func TestReadAuthReply_LatestExpiry(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, message.AuthOkMessage{Expires: maxAuthExpires}.Encode(&buf))
+
+	g, err := readAuthReply(&buf)
+
+	require.NoError(t, err)
+	assert.Equal(t, time.Duration(math.MaxInt64), g.MaxAge, "an expiry beyond a time.Duration is the longest one")
+}
+
+func TestReadAuthReply_ErrorLimits(t *testing.T) {
+	tests := map[string]message.AuthErrorMessage{
+		"largest code":   {Code: 1<<32 - 1},
+		"longest reason": {Code: 0x2, Reason: strings.Repeat("a", maxAuthReasonLength)},
 	}
 
 	for name, m := range tests {
@@ -531,7 +541,10 @@ func TestReadAuthReply_Limits(t *testing.T) {
 
 			_, err := readAuthReply(&buf)
 
-			assert.NotErrorIs(t, err, errAuthViolation)
+			var authErr *AuthError
+			require.ErrorAs(t, err, &authErr)
+			assert.Equal(t, SessionErrorCode(m.Code), authErr.Code)
+			assert.Equal(t, m.Reason, authErr.Reason)
 		})
 	}
 }

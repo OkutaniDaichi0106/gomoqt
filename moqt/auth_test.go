@@ -181,6 +181,42 @@ func TestSession_Auth(t *testing.T) {
 	})
 }
 
+func TestCredential_Grant_Regrant(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	regrant := make(chan struct{})
+	handler := AuthHandlerFunc(func(w *AuthWriter, r *AuthRequest) {
+		if len(r.Token) == 0 {
+			<-r.Context().Done()
+			return
+		}
+		if err := w.Grant(Grant{Subscribe: []PathPattern{MustParsePathPattern("/room/1/")}}); err != nil {
+			return
+		}
+		select {
+		case <-regrant:
+		case <-r.Context().Done():
+			return
+		}
+		if err := w.Grant(Grant{Subscribe: []PathPattern{MustParsePathPattern("/room/2/")}}); err != nil {
+			return
+		}
+		<-r.Context().Done()
+	})
+	addr := startAuthServer(t, ctx, handler, nil)
+	sess := dialAuth(t, ctx, "moqt://"+addr+"/app", nil)
+	cred, err := sess.Auth(ctx, []byte("room"))
+	require.NoError(t, err)
+	defer func() { _ = cred.Close() }() // not actionable: the test is over
+
+	close(regrant)
+
+	assert.Eventually(t, func() bool {
+		g := cred.Grant()
+		return len(g.Subscribe) == 1 && g.Subscribe[0].String() == "/room/2/"
+	}, 5*time.Second, 10*time.Millisecond, "a further AUTH_OK replaces the grant")
+}
+
 func TestCredential_Context(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

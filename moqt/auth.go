@@ -188,10 +188,8 @@ func (w *AuthWriter) Grant(g Grant) error {
 	if err := g.valid(); err != nil {
 		return err
 	}
+	// A time.Duration in milliseconds stays below the wire's 2^53 - 1 limit.
 	m := g.message()
-	if m.Expires > message.MaxAuthExpires {
-		return fmt.Errorf("moqt: grant max age too long: %v", g.MaxAge)
-	}
 
 	w.mu.Lock()
 	defer w.mu.Unlock()

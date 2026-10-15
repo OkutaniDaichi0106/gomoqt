@@ -77,6 +77,9 @@ Deno.test("readAuthReply - a malformed answer is a violation", async (t) => {
 			encoded(new AuthErrorMessage({ code: 2, reason: "a".repeat(8193) })),
 		"reason not UTF-8": () => Promise.resolve(new Uint8Array([1, 3, 2, 1, 0xff])),
 		"unknown reply type": () => Promise.resolve(new Uint8Array([7])),
+		"expires past 2^53 - 1": () =>
+			encoded(new AuthOkMessage({ root: "/r/", expires: 2 ** 53 })),
+		"code over 32 bits": () => encoded(new AuthErrorMessage({ code: 2 ** 33, reason: "" })),
 	};
 	for (const [name, bytes] of Object.entries(cases)) {
 		await t.step(name, async () => {

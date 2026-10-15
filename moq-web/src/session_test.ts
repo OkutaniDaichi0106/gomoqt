@@ -17,13 +17,19 @@ import {
 	writeVarint,
 } from "./internal/message/mod.ts";
 import { BiStreamTypes, UniStreamTypes } from "./stream_type.ts";
-import { AuthError, SessionErrorCode } from "./error.ts";
+import { AuthError, AuthNotSupportedError, SessionErrorCode } from "./error.ts";
 import { AuthViolation } from "./auth.ts";
 import { TrackMux } from "./track_mux.ts";
 import type { TrackPrefix } from "./track_prefix.ts";
 import { Writer } from "@okdaichi/golikejs/io";
 import { EOFError } from "@okdaichi/golikejs/io";
-import { ReceiveStream, SendStream, Stream, StreamConn } from "./internal/webtransport/mod.ts";
+import {
+	ReceiveStream,
+	SendStream,
+	Stream,
+	StreamConn,
+	WebTransportStreamError,
+} from "./internal/webtransport/mod.ts";
 import { FetchRequest } from "./fetch.ts";
 import type { FetchHandler } from "./fetch.ts";
 import type { GroupWriter } from "./group_stream.ts";
@@ -55,6 +61,9 @@ async function encodeMessageToUint8Array(
 // Mock WebTransportSession implementation
 interface MockWebTransportSessionInit {
 	openStreamResponses?: Uint8Array[];
+	// openStreamEnds, per opened stream, is the error its reads return once its
+	// data is read, in place of EOF; a reset, for example.
+	openStreamEnds?: (Error | undefined)[];
 	openUniStreamCount?: number;
 	acceptStreamData?: Array<{ type: number; data: Uint8Array }>;
 	acceptUniStreamData?: Array<{ type: number; data: Uint8Array }>;
@@ -94,6 +103,7 @@ async function peerSetupUniStream(
 
 export class MockWebTransportSession implements StreamConn {
 	#openStreamResponses: Uint8Array[];
+	#openStreamEnds: (Error | undefined)[];
 	#openStreamIndex = 0;
 	#openStreamWrittenData: Uint8Array[][] = [];
 	#acceptStreamData: Array<{ type: number; data: Uint8Array }>;
@@ -112,6 +122,7 @@ export class MockWebTransportSession implements StreamConn {
 
 	constructor(options: MockWebTransportSessionInit = {}) {
 		this.#openStreamResponses = options.openStreamResponses ?? [];
+		this.#openStreamEnds = options.openStreamEnds ?? [];
 		this.#acceptStreamData = options.acceptStreamData ?? [];
 		this.#acceptUniStreamData = options.acceptUniStreamData ?? [];
 		this.protocol = options.protocol ?? "";
@@ -143,6 +154,7 @@ export class MockWebTransportSession implements StreamConn {
 
 		const data = this.#openStreamResponses[this.#openStreamIndex] ??
 			new Uint8Array();
+		const end = this.#openStreamEnds[this.#openStreamIndex] ?? new EOFError();
 		this.#openStreamIndex++;
 
 		// Create inline mock stream
@@ -161,7 +173,7 @@ export class MockWebTransportSession implements StreamConn {
 		const readable = {
 			read: spy(async (p: Uint8Array) => {
 				if (readOffset >= data.length) {
-					return [0, new EOFError()] as [number, Error | undefined];
+					return [0, end] as [number, Error | undefined];
 				}
 				const n = Math.min(p.length, data.length - readOffset);
 				p.set(data.subarray(readOffset, readOffset + n));
@@ -1338,6 +1350,56 @@ Deno.test({
 			assertEquals(cred, undefined);
 			assertInstanceOf(err, AuthViolation);
 			await session.closed;
+		});
+
+		await t.step("auth reads a reset before any answer as no Auth Stream", async () => {
+			const reset = new WebTransportStreamError(
+				{ source: "stream", streamErrorCode: 0 },
+				true,
+			);
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [new Uint8Array(0)],
+				openStreamEnds: [reset],
+			});
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			const [cred, err] = await session.auth(new TextEncoder().encode("room1"));
+
+			assertEquals(cred, undefined);
+			assertInstanceOf(err, AuthNotSupportedError);
+			await session.close();
+		});
+
+		await t.step("auth fails on a closed session", async () => {
+			const mock = new MockWebTransportSession({});
+			const session = new Session({ transport: mock });
+			await session.ready;
+			await session.close();
+
+			const [cred, err] = await session.auth();
+
+			assertEquals(cred, undefined);
+			assertInstanceOf(err, Error);
+		});
+
+		await t.step("a malformed later answer is a protocol violation", async () => {
+			const ok = await encodeMessageToUint8Array((w) =>
+				new AuthOkMessage({ root: "/room/1/", subscribePatterns: ["/"] }).encode(w)
+			);
+			// Then a reply of an unknown type.
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [new Uint8Array([...ok, 9])],
+			});
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			const [cred] = await session.auth(new TextEncoder().encode("room1"));
+			assertExists(cred);
+			const info = await session.closed;
+
+			assertEquals(info.code, SessionErrorCode.ProtocolViolation);
+			assertInstanceOf(cred.context.err(), AuthViolation);
 		});
 
 		await t.step("auth gives up when its signal settles first", async () => {

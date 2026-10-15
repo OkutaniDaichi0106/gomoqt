@@ -87,6 +87,56 @@ Deno.test("TrackReader", async (t) => {
 	);
 
 	await t.step(
+		"TrackReader.acceptGroup returns when the track's context ends while it waits",
+		async () => {
+			const [ctx, cancel] = withCancelCause(background());
+			const subscribe = new SubscribeMessage({
+				subscribeId: 45,
+				broadcastPath: "/test",
+				trackName: "name",
+			});
+			const sss = new SendSubscribeStream(
+				ctx,
+				new MockStream({}),
+				subscribe,
+				new SubscribeOkMessage({}),
+			);
+			const tr = new TrackReader("/test", "name", sss, new Queue<[any, any]>(), () => {});
+
+			const pending = tr.acceptGroup(new Promise(() => {}));
+			cancel(new Error("track ended"));
+			const [grp, err] = await pending;
+
+			assertEquals(grp, undefined);
+			assertEquals(err?.message.includes("track ended"), true);
+		},
+	);
+
+	await t.step(
+		"TrackReader.acceptGroup returns when its signal settles while it waits",
+		async () => {
+			const [ctx] = withCancelCause(background());
+			const subscribe = new SubscribeMessage({
+				subscribeId: 46,
+				broadcastPath: "/test",
+				trackName: "name",
+			});
+			const sss = new SendSubscribeStream(
+				ctx,
+				new MockStream({}),
+				subscribe,
+				new SubscribeOkMessage({}),
+			);
+			const tr = new TrackReader("/test", "name", sss, new Queue<[any, any]>(), () => {});
+
+			const [grp, err] = await tr.acceptGroup(new Promise((r) => setTimeout(r, 5)));
+
+			assertEquals(grp, undefined);
+			assertExists(err);
+		},
+	);
+
+	await t.step(
 		"TrackReader.acceptGroup returns GroupReader when group is available",
 		async () => {
 			const [ctx] = withCancelCause(background());

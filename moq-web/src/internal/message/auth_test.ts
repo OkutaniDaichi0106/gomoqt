@@ -154,3 +154,29 @@ Deno.test("AuthOkMessage - decode refuses trailing bytes", async () => {
 
 	assertInstanceOf(await m.decode(r), Error);
 });
+
+Deno.test("Auth messages - decode refuses a malformed body", async (t) => {
+	const cases: Record<
+		string,
+		[() => { decode(r: Buffer): Promise<Error | undefined> }, Uint8Array]
+	> = {
+		"AUTH with trailing bytes": [() => new AuthMessage(), new Uint8Array([2, 0, 0])],
+		"AUTH token past the body": [() => new AuthMessage(), new Uint8Array([1, 5])],
+		"AUTH_ERROR reason past the body": [
+			() => new AuthErrorMessage(),
+			new Uint8Array([2, 2, 9]),
+		],
+		"AUTH_ERROR with trailing bytes": [
+			() => new AuthErrorMessage(),
+			new Uint8Array([3, 2, 0, 0]),
+		],
+		"varint wider than the body": [() => new AuthErrorMessage(), new Uint8Array([1, 0xc0])],
+		// A body length of 0x10001, over 64 KiB.
+		"body over 64 KiB": [() => new AuthMessage(), new Uint8Array([0x80, 0x01, 0x00, 0x01])],
+	};
+	for (const [name, [make, bytes]] of Object.entries(cases)) {
+		await t.step(name, async () => {
+			assertInstanceOf(await make().decode(reader(bytes)), Error);
+		});
+	}
+});

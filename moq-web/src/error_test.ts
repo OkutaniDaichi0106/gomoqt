@@ -2,6 +2,8 @@ import { assertEquals } from "@std/assert";
 import {
 	AnnounceError,
 	AnnounceErrorCode,
+	AuthError,
+	AuthNotSupportedError,
 	FetchError,
 	FetchErrorCode,
 	GroupError,
@@ -198,4 +200,15 @@ Deno.test("Error", async (t) => {
 		assertEquals(GroupError.textOf(code), `unknown group error (${code})`);
 		assertEquals(FetchError.textOf(code), `unknown fetch error (${code})`);
 	});
+});
+
+Deno.test("AuthError - names its code and reason", () => {
+	const withReason = new AuthError(SessionErrorCode.Unauthorized, "unknown ticket");
+	const bare = new AuthError(SessionErrorCode.Unauthorized, "");
+
+	assertEquals(withReason.message, "unauthorized: unknown ticket");
+	assertEquals(withReason.code, SessionErrorCode.Unauthorized);
+	assertEquals(withReason.reason, "unknown ticket");
+	assertEquals(bare.message, "unauthorized");
+	assertEquals(new AuthNotSupportedError().name, "AuthNotSupportedError");
 });

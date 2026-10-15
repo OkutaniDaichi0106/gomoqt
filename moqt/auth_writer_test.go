@@ -22,6 +22,21 @@ func TestAuthWriter_Grant_InvalidPattern(t *testing.T) {
 	assert.False(t, scope.canSubscribe("/room/1"), "the invalid grant is not applied")
 }
 
+func TestAuthWriter_Grant_ReusedSlice(t *testing.T) {
+	changes := 0
+	scope := newAuthScope(func() { changes++ })
+	w := &AuthWriter{scope: scope}
+	g := Grant{Subscribe: []string{"/room/1/"}}
+	require.NoError(t, w.Grant(g))
+
+	g.Subscribe[0] = "/room/2/"
+	require.NoError(t, w.Grant(g))
+
+	assert.False(t, scope.canSubscribe("/room/1/host"))
+	assert.True(t, scope.canSubscribe("/room/2/host"))
+	assert.Equal(t, 2, changes, "editing the slice in place and granting again changes the scope")
+}
+
 func TestAuthWriter_Grant_MaxAge(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		scope := newAuthScope(func() {})

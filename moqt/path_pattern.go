@@ -8,16 +8,27 @@ import (
 	"unicode"
 )
 
-// ErrInvalidPathPattern is returned for a path pattern that is not a
-// broadcast path or a prefix of them. Received on an Auth Stream, it is a
-// protocol violation.
+// ErrInvalidPathPattern is returned for a path pattern that does not follow
+// the syntax documented on Grant: one that is not a broadcast path or a prefix
+// of them, or whose wildcard is malformed, misplaced or named twice. Received
+// on an Auth Stream, it is a protocol violation.
 var ErrInvalidPathPattern = errors.New("moqt: invalid path pattern")
 
 // pathPattern is a parsed path pattern; Grant documents the syntax.
 type pathPattern struct {
 	raw string
-	// wild is whether a segment is a wildcard.
-	wild bool
+	// segs holds the segments of a pattern with a wildcard, and is nil for
+	// one without.
+	segs []patternSeg
+	// trailing is whether the pattern ends in "/".
+	trailing bool
+}
+
+// patternSeg is a segment of a pattern with a wildcard.
+type patternSeg struct {
+	kind int
+	// lit is the text of a literal segment.
+	lit string
 }
 
 // parsePathPattern parses s: a path starting with "/" whose wildcards are
@@ -30,26 +41,25 @@ func parsePathPattern(s string) (pathPattern, error) {
 		return pathPattern{raw: s}, nil
 	}
 
-	trailing := strings.HasSuffix(s, "/")
+	p := pathPattern{raw: s, trailing: strings.HasSuffix(s, "/")}
 	var names []string
 	for segs := strings.TrimSuffix(s[1:], "/"); ; {
 		seg, next, more := strings.Cut(segs, "/")
-		if strings.ContainsAny(seg, "{}") {
-			name, kind := parseWildcard(seg)
-			last := !more && !trailing
-			switch {
-			case kind == segInvalid,
-				kind == segAnchor && !last,
-				kind == segRest && !last,
-				slices.Contains(names, name):
-				return pathPattern{}, fmt.Errorf("%w: %q", ErrInvalidPathPattern, s)
-			}
-			if name != "" {
-				names = append(names, name)
-			}
+		name, kind := parseWildcard(seg)
+		last := !more && !p.trailing
+		switch {
+		case kind == segInvalid,
+			kind == segAnchor && !last,
+			kind == segRest && !last,
+			name != "" && slices.Contains(names, name):
+			return pathPattern{}, fmt.Errorf("%w: %q", ErrInvalidPathPattern, s)
 		}
+		if name != "" {
+			names = append(names, name)
+		}
+		p.segs = append(p.segs, patternSeg{kind: kind, lit: seg})
 		if !more {
-			return pathPattern{raw: s, wild: true}, nil
+			return p, nil
 		}
 		segs = next
 	}
@@ -108,7 +118,7 @@ func isWildcardName(s string) bool {
 // match reports whether path is in the pattern's set. The zero pathPattern
 // matches nothing.
 func (p pathPattern) match(path BroadcastPath) bool {
-	if p.wild {
+	if p.segs != nil {
 		return p.matchSegments(path)
 	}
 	if isValidPrefix(p.raw) {
@@ -122,33 +132,31 @@ func (p pathPattern) matchSegments(path BroadcastPath) bool {
 	if !isValidPath(path) {
 		return false
 	}
-	trailing := strings.HasSuffix(p.raw, "/")
 	rest := string(path[1:])
-	for segs := strings.TrimSuffix(p.raw[1:], "/"); ; {
-		seg, nextSegs, moreSegs := strings.Cut(segs, "/")
-		_, kind := parseWildcard(seg)
-		switch kind {
+	for i, seg := range p.segs {
+		switch seg.kind {
 		case segAnchor:
 			return rest == ""
 		case segRest:
 			return true
 		}
 		got, after, more := strings.Cut(rest, "/")
-		if kind == segWildcard {
+		if seg.kind == segWildcard {
 			if got == "" {
 				return false
 			}
-		} else if got != seg {
+		} else if got != seg.lit {
 			return false
 		}
-		if !moreSegs {
+		if i == len(p.segs)-1 {
 			// The pattern's segments are used up: an exact pattern needs the
 			// path to end here, and a prefix needs it to go on.
-			return more == trailing
+			return more == p.trailing
 		}
 		if !more {
 			return false
 		}
-		segs, rest = nextSegs, after
+		rest = after
 	}
+	return false
 }

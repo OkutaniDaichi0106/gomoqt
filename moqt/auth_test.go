@@ -458,3 +458,12 @@ func TestSession_Announcements_PeerPublishesOnlyItsScope(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, BroadcastPath("/room/1/carol"), ann.BroadcastPath())
 }
+
+func TestCredential_Grant_Copy(t *testing.T) {
+	cred := &Credential{grant: Grant{Subscribe: []string{"/room/1/"}}}
+
+	g := cred.Grant()
+	g.Subscribe[0] = "/"
+
+	assert.Equal(t, []string{"/room/1/"}, cred.Grant().Subscribe)
+}

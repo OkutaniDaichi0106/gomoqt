@@ -58,6 +58,13 @@ func (g Grant) samePatterns(h Grant) bool {
 	return slices.Equal(g.Publish, h.Publish) && slices.Equal(g.Subscribe, h.Subscribe)
 }
 
+// clone returns g with its own copies of the pattern slices.
+func (g Grant) clone() Grant {
+	g.Publish = slices.Clone(g.Publish)
+	g.Subscribe = slices.Clone(g.Subscribe)
+	return g
+}
+
 func (g Grant) message() message.AuthOkMessage {
 	m := message.AuthOkMessage{
 		PublishPatterns:   g.Publish,
@@ -91,8 +98,10 @@ type scopeGrant struct {
 }
 
 // parseGrant parses g's patterns, reporting ErrInvalidPathPattern for one
-// that is not a pattern.
+// that is not a pattern. The result keeps its own copy of g, so the caller
+// may reuse g's slices.
 func parseGrant(g Grant) (scopeGrant, error) {
+	g = g.clone()
 	publish, err := parsePatterns(g.Publish)
 	if err != nil {
 		return scopeGrant{}, err
@@ -449,7 +458,7 @@ type Credential struct {
 func (c *Credential) Grant() Grant {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.grant
+	return c.grant.clone()
 }
 
 // Context returns a context that is canceled when the credential's grant

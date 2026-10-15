@@ -87,7 +87,6 @@ type TrackMux struct {
 	trackHandlerIndex map[BroadcastPath]*announcedTrackHandler
 
 	announcementTree announcingNode
-	// treeMu           sync.RWMutex
 }
 
 // PublishFunc registers a simple function handler for the provided path on

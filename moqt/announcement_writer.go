@@ -289,7 +289,7 @@ func (aw *AnnouncementWriter) registerEndHandler(sfx suffix, ann *Announcement) 
 }
 
 // end stops watching active and sends ENDED for it, unless its own end
-// handler already has. It takes aw.mu.
+// handler already has or the writer has been closed since. It takes aw.mu.
 func (aw *AnnouncementWriter) end(sfx suffix, active *activeAnnouncement) {
 	if active.stop == nil || !active.stop() {
 		return
@@ -298,8 +298,8 @@ func (aw *AnnouncementWriter) end(sfx suffix, active *activeAnnouncement) {
 	defer aw.mu.Unlock()
 	if aw.actives[sfx] == active {
 		delete(aw.actives, sfx)
+		aw.sendEnded(sfx)
 	}
-	aw.sendEnded(sfx)
 }
 
 // sendEnded sends ANNOUNCE_BROADCAST ENDED for sfx. A stream that has already

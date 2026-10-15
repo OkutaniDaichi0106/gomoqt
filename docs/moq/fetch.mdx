@@ -135,7 +135,7 @@ For simple handlers, use the convenience type `FetchHandlerFunc`:
 
 ## Error Handling
 
-Fetch operations may return `*moqt.FetchError` or `*moqt.SessionError`. Use type assertions for specific handling:
+Fetch operations may return `*moqt.FetchError` or `*moqt.SessionError`. Match them with `errors.As`, which also finds an error wrapped with `%w`:
 
 ```go
     gr, err := sess.Fetch(req)

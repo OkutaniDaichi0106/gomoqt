@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **moqt: `AnnouncementWriter.Close` finishes the announce stream without sending ANNOUNCE_BROADCAST ENDED for each active announcement.** moq-lite-05 §5.1.1 has the subscriber treat every broadcast as ended when the stream is closed, so the messages were redundant; and when the session had closed, they were written onto the dead stream, so every normal session close logged `failed to encode ANNOUNCE end message` at ERROR. `CloseWithError` sends none either. An announcement that ends while the stream is open still gets its ENDED, unless the stream has ended by then. **A moq-web reader before the fix in this release does not end its announcements at the end of the stream**: against it, an announce stream a Go peer closes while the session stays up leaves its announcements active.
+- **moqt: `AnnouncementWriter.Close` finishes the announce stream without sending ANNOUNCE_BROADCAST ENDED for each active announcement.** moq-lite-05 §5.1.1 has the subscriber treat every broadcast as ended when the stream is closed, so the messages were redundant; and when the session had closed, they were written onto the dead stream, so every normal session close logged `failed to encode ANNOUNCE end message` at ERROR. `CloseWithError` sends none either. An announcement that ends while the stream is open still gets its ENDED, unless the stream has ended by then. **The moq-web `AnnouncementReader` in `@qumo/moq` 0.23.0 and earlier does not end its announcements at the end of the stream**: against it, an announce stream a Go peer closes or resets while the session stays up leaves its announcements active.
 
 ## [v0.24.2] - 2026-10-14
 

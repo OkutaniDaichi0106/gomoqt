@@ -227,6 +227,10 @@ func TestGroupErrorCode_String(t *testing.T) {
 			code:   InvalidSubscribeIDErrorCode,
 			expect: "moqt: invalid subscribe id",
 		},
+		"unauthorized error code": {
+			code:   UnauthorizedGroupErrorCode,
+			expect: "moqt: unauthorized",
+		},
 		"unknown code": {
 			code:   GroupErrorCode(0xFF), // Some arbitrary value not defined
 			expect: "",
@@ -846,10 +850,6 @@ func TestFetchErrorCode_String(t *testing.T) {
 		"timeout error code": {
 			code:   FetchErrorCodeTimeout,
 			expect: "moqt: timeout",
-		},
-		"unauthorized error code": {
-			code:   FetchErrorCodeUnauthorized,
-			expect: "moqt: unauthorized",
 		},
 		"unknown code": {
 			code:   FetchErrorCode(0xFF),

@@ -316,35 +316,32 @@ func TestSession_Subscribe_Scope(t *testing.T) {
 }
 
 func TestSession_Fetch_Scope(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	addr := startAuthServer(t, ctx, roomTicketHandler, nil)
-	sess := dialAuth(t, ctx, "moqt://"+addr+"/app", nil)
-	cred, err := sess.Auth(ctx, []byte("room1"))
-	require.NoError(t, err)
-	defer func() { _ = cred.Close() }() // not actionable: the test is over
+	tests := map[string]struct {
+		path        BroadcastPath
+		wantRefused bool
+	}{
+		"outside the scope": {path: authRoom2Path, wantRefused: true},
+		"within the scope":  {path: authRoom1Path},
+	}
 
-	_, err = sess.Fetch(&FetchRequest{BroadcastPath: authRoom2Path, TrackName: "audio"})
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			addr := startAuthServer(t, ctx, roomTicketHandler, nil)
+			sess := dialAuth(t, ctx, "moqt://"+addr+"/app", nil)
+			cred, err := sess.Auth(ctx, []byte("room1"))
+			require.NoError(t, err)
+			defer func() { _ = cred.Close() }() // not actionable: the test is over
 
-	var fetchErr *FetchError
-	require.ErrorAs(t, err, &fetchErr)
-	assert.Equal(t, FetchErrorCodeUnauthorized, fetchErr.FetchErrorCode())
-}
+			gr, err := sess.Fetch(&FetchRequest{BroadcastPath: tt.path, TrackName: "audio"})
+			require.NoError(t, err)
+			err = gr.ReadFrame(NewFrame(0))
 
-func TestSession_Fetch_InScope(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	addr := startAuthServer(t, ctx, roomTicketHandler, nil)
-	sess := dialAuth(t, ctx, "moqt://"+addr+"/app", nil)
-	cred, err := sess.Auth(ctx, []byte("room1"))
-	require.NoError(t, err)
-	defer func() { _ = cred.Close() }() // not actionable: the test is over
-
-	_, err = sess.Fetch(&FetchRequest{BroadcastPath: authRoom1Path, TrackName: "audio"})
-
-	var fetchErr *FetchError
-	if errors.As(err, &fetchErr) {
-		assert.NotEqual(t, FetchErrorCodeUnauthorized, fetchErr.FetchErrorCode(), "a fetch within the scope is served")
+			var groupErr *GroupError
+			refused := errors.As(err, &groupErr) && groupErr.GroupErrorCode() == UnauthorizedGroupErrorCode
+			assert.Equal(t, tt.wantRefused, refused, "read error: %v", err)
+		})
 	}
 }
 

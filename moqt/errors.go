@@ -159,10 +159,6 @@ type FetchErrorCode uint32
 const (
 	FetchErrorCodeInternal FetchErrorCode = 0x00
 	FetchErrorCodeTimeout  FetchErrorCode = 0x01
-
-	// FetchErrorCodeUnauthorized refuses a fetch the session's scope does not
-	// cover (see AuthHandler).
-	FetchErrorCodeUnauthorized FetchErrorCode = 0x02
 )
 
 // String returns a text for the fetch error code.
@@ -173,8 +169,6 @@ func (code FetchErrorCode) String() string {
 		return "moqt: internal error"
 	case FetchErrorCodeTimeout:
 		return "moqt: timeout"
-	case FetchErrorCodeUnauthorized:
-		return "moqt: unauthorized"
 	default:
 		return ""
 	}
@@ -333,6 +327,9 @@ const (
 	PublishAbortedErrorCode     GroupErrorCode = 0x05
 	ClosedSessionGroupErrorCode GroupErrorCode = 0x06
 	InvalidSubscribeIDErrorCode GroupErrorCode = 0x07
+	// UnauthorizedGroupErrorCode refuses a group the session's scope does not
+	// cover, such as the one a FETCH outside it asks for (see AuthHandler).
+	UnauthorizedGroupErrorCode GroupErrorCode = 0x08
 )
 
 // String returns a text for the group error code.
@@ -353,6 +350,8 @@ func (code GroupErrorCode) String() string {
 		return "moqt: session closed"
 	case InvalidSubscribeIDErrorCode:
 		return "moqt: invalid subscribe id"
+	case UnauthorizedGroupErrorCode:
+		return "moqt: unauthorized"
 	default:
 		return ""
 	}

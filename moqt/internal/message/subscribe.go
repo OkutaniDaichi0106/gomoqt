@@ -67,18 +67,7 @@ func (s SubscribeMessage) Encode(w io.Writer) error {
 }
 
 func (s *SubscribeMessage) Decode(src io.Reader) error {
-	size, err := ReadMessageLength(src)
-	if err != nil {
-		return err
-	}
-
-	if size > MaxMessageSize {
-		return ErrMessageTooLarge
-	}
-
-	b := make([]byte, size)
-
-	_, err = io.ReadFull(src, b)
+	b, err := readBody(src)
 	if err != nil {
 		return err
 	}

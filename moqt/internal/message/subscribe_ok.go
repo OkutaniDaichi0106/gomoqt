@@ -49,17 +49,7 @@ func (som SubscribeOkMessage) Encode(w io.Writer) error {
 }
 
 func (som *SubscribeOkMessage) Decode(src io.Reader) error {
-	num, err := ReadMessageLength(src)
-	if err != nil {
-		return err
-	}
-
-	if num > MaxMessageSize {
-		return ErrMessageTooLarge
-	}
-
-	b := make([]byte, num)
-	_, err = io.ReadFull(src, b)
+	b, err := readBody(src)
 	if err != nil {
 		return err
 	}

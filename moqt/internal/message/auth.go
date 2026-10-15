@@ -233,21 +233,3 @@ func (aem *AuthErrorMessage) Decode(src io.Reader) error {
 func (aem AuthErrorMessage) valid() bool {
 	return aem.Code <= 1<<32-1 && len(aem.Reason) <= MaxAuthReasonLength && utf8.ValidString(aem.Reason)
 }
-
-// readBody reads a length-prefixed message body.
-func readBody(src io.Reader) ([]byte, error) {
-	num, err := ReadMessageLength(src)
-	if err != nil {
-		return nil, err
-	}
-
-	if num > MaxMessageSize {
-		return nil, ErrMessageTooLarge
-	}
-
-	b := make([]byte, num)
-	if _, err := io.ReadFull(src, b); err != nil {
-		return nil, err
-	}
-	return b, nil
-}

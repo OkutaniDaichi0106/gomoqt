@@ -138,7 +138,7 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// As on WebTransport, the session takes its values from the upgrade
 	// request and ends with the transport, which carries the close reason.
-	setup := sessionSetup{path: requestPath(r), ctx: r.Context(), lifetime: context.Background(), authHandler: h.AuthHandler}
+	setup := sessionSetup{path: requestPath(r), ctx: r.Context(), lifetime: context.Background()}
 	var manager *connManager
 	if s != nil {
 		// The upgrade took time: the Server may have shut down meanwhile,
@@ -154,7 +154,7 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ctx := s.connContext(r.Context(), conn)
 		setup.ctx, setup.lifetime = ctx, ctx
 	}
-	sess := newSession(conn, h.TrackMux, manager, h.Config, h.FetchHandler, nil, h.Logger, setup, nil)
+	sess := newSession(conn, h.TrackMux, manager, h.Config, h.FetchHandler, h.AuthHandler, nil, h.Logger, setup, nil)
 	// Clean up when the Handler returns, even if it did not close the
 	// session itself. Idempotent.
 	defer sess.CloseWithError(NoError, "session ended")

@@ -144,7 +144,7 @@ func TestSession_HandleTrackStream(t *testing.T) {
 			}
 
 			conn := &FakeStreamConn{}
-			sess := newSession(conn, mux, nil, nil, nil, nil, nil, sessionSetup{}, nil)
+			sess := newSession(conn, mux, nil, nil, nil, nil, nil, nil, sessionSetup{}, nil)
 			defer sess.CloseWithError(NoError, "")
 
 			sess.handleTrackStream(stream)

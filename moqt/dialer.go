@@ -174,7 +174,7 @@ func (d *Dialer) dialWebTransport(ctx context.Context, target *url.URL, mux *Tra
 	// WebTransport binds the request path in the HTTP handshake, so the peer
 	// learns it from the request URI and this endpoint must not send a SETUP
 	// Path parameter.
-	return newSession(conn, mux, nil, d.Config, d.FetchHandler, d.OnGoaway, d.Logger,
+	return newSession(conn, mux, nil, d.Config, d.FetchHandler, nil, d.OnGoaway, d.Logger,
 		sessionSetup{path: target.RequestURI()}, nil), nil
 }
 
@@ -206,7 +206,7 @@ func (d *Dialer) dialWebSocket(ctx context.Context, target *url.URL, mux *TrackM
 		)
 	}
 
-	return newSession(conn, mux, nil, d.Config, d.FetchHandler, d.OnGoaway, d.Logger,
+	return newSession(conn, mux, nil, d.Config, d.FetchHandler, nil, d.OnGoaway, d.Logger,
 		sessionSetup{path: target.RequestURI()}, nil), nil
 }
 
@@ -251,6 +251,6 @@ func (d *Dialer) dialQUIC(ctx context.Context, addr, path string, mux *TrackMux)
 
 	// Native QUIC has no handshake-time request URI, so the client is the one
 	// role that conveys the request path in its own SETUP. sendPath drives that.
-	return newSession(conn, mux, nil, d.Config, d.FetchHandler, d.OnGoaway, d.Logger,
+	return newSession(conn, mux, nil, d.Config, d.FetchHandler, nil, d.OnGoaway, d.Logger,
 		sessionSetup{path: path, sendPath: true}, nil), nil
 }

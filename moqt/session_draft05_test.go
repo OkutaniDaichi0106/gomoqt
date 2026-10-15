@@ -84,13 +84,13 @@ func TestReadClientSetup_ExtractsPathAndProbe(t *testing.T) {
 // TestSession_RequestURI verifies Session.RequestURI reports the path the binding resolved,
 // and that a session whose binding supplied none reports "".
 func TestSession_RequestURI(t *testing.T) {
-	sess := newSession(&FakeStreamConn{}, NewTrackMux(0), nil, nil, nil, nil, nil,
+	sess := newSession(&FakeStreamConn{}, NewTrackMux(0), nil, nil, nil, nil, nil, nil,
 		sessionSetup{path: "/live/alice"}, nil)
 	defer sess.CloseWithError(NoError, "")
 
 	assert.Equal(t, "/live/alice", sess.RequestURI())
 
-	bare := newSession(&FakeStreamConn{}, NewTrackMux(0), nil, nil, nil, nil, nil,
+	bare := newSession(&FakeStreamConn{}, NewTrackMux(0), nil, nil, nil, nil, nil, nil,
 		sessionSetup{}, nil)
 	defer bare.CloseWithError(NoError, "")
 
@@ -105,7 +105,7 @@ func TestNewSession_InjectedPeerSetup(t *testing.T) {
 	conn := &FakeStreamConn{}
 	var sm message.SetupMessage
 	sm.AddProbe(message.ProbeLevelReport)
-	sess := newSession(conn, NewTrackMux(0), nil, nil, nil, nil, nil, sessionSetup{peerSetup: &sm}, nil)
+	sess := newSession(conn, NewTrackMux(0), nil, nil, nil, nil, nil, nil, sessionSetup{peerSetup: &sm}, nil)
 	defer sess.CloseWithError(NoError, "")
 
 	select {
@@ -128,7 +128,7 @@ func TestSession_ProcessBiStream_TrackStream(t *testing.T) {
 	mux.Publish(context.Background(), "/live", b)
 
 	conn := &FakeStreamConn{}
-	sess := newSession(conn, mux, nil, nil, nil, nil, nil, sessionSetup{}, nil)
+	sess := newSession(conn, mux, nil, nil, nil, nil, nil, nil, sessionSetup{}, nil)
 	defer sess.CloseWithError(NoError, "")
 
 	var req bytes.Buffer
@@ -159,7 +159,7 @@ func TestSession_ProcessBiStream_ProbeResetsWhenUnadvertised(t *testing.T) {
 	// noStatsConn does not implement probeStatsProvider, so localProbeLevel
 	// stays None and the Probe Stream must be reset.
 	conn := noStatsConn{}
-	sess := newSession(conn, NewTrackMux(0), nil, nil, nil, nil, nil, sessionSetup{}, nil)
+	sess := newSession(conn, NewTrackMux(0), nil, nil, nil, nil, nil, nil, sessionSetup{}, nil)
 	defer sess.CloseWithError(NoError, "")
 	require.Equal(t, message.ProbeLevelNone, sess.localProbeLevel)
 
@@ -211,7 +211,7 @@ func TestSession_TrackInfo_DecodeError(t *testing.T) {
 // the stream rather than panicking.
 func TestSession_HandleTrackStream_DecodeError(t *testing.T) {
 	conn := &FakeStreamConn{}
-	sess := newSession(conn, NewTrackMux(0), nil, nil, nil, nil, nil, sessionSetup{}, nil)
+	sess := newSession(conn, NewTrackMux(0), nil, nil, nil, nil, nil, nil, sessionSetup{}, nil)
 	defer sess.CloseWithError(NoError, "")
 
 	stream := &FakeQUICStream{
@@ -230,7 +230,7 @@ func TestSession_HandleTrackStream_EncodeError(t *testing.T) {
 		PublishInfo{Timescale: 1000}, TrackHandlerFunc(func(*TrackWriter) {})))
 	mux.Publish(context.Background(), "/live", b)
 
-	sess := newSession(noStatsConn{}, mux, nil, nil, nil, nil, nil, sessionSetup{}, nil)
+	sess := newSession(noStatsConn{}, mux, nil, nil, nil, nil, nil, nil, sessionSetup{}, nil)
 	defer sess.CloseWithError(NoError, "")
 
 	var req bytes.Buffer
@@ -323,7 +323,7 @@ func TestSession_TrackInfo_WithDeadline(t *testing.T) {
 // protocol-violation branch.
 func TestSession_HandleSetupStream_MalformedSetup(t *testing.T) {
 	conn := &FakeStreamConn{}
-	sess := newSession(conn, NewTrackMux(0), nil, nil, nil, nil, nil, sessionSetup{}, nil)
+	sess := newSession(conn, NewTrackMux(0), nil, nil, nil, nil, nil, nil, sessionSetup{}, nil)
 	// one mark: the setup goroutine closes the session; defer keeps it tidy.
 	defer sess.CloseWithError(NoError, "")
 
@@ -349,7 +349,7 @@ func TestSession_Probe_WaitPeerSetup_SessionCanceled(t *testing.T) {
 		// sess.ctx cancels on close and waitPeerSetup unblocks. Peer SETUP is
 		// never delivered, so waitPeerSetup blocks until that cancellation.
 		conn := &FakeStreamConn{}
-		sess := newSession(conn, NewTrackMux(0), nil, nil, nil, nil, nil, sessionSetup{}, nil)
+		sess := newSession(conn, NewTrackMux(0), nil, nil, nil, nil, nil, nil, sessionSetup{}, nil)
 
 		probeErr := make(chan error, 1)
 		go func() {

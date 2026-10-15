@@ -213,8 +213,9 @@ export class Session {
 		// and resolve `closed` with a MOQ-level description. A local close()/
 		// closeWithError() resolves `closed` first, so its info wins; a later
 		// resolve here is a no-op.
-		const onTransportClosed = (info: WebTransportCloseInfo): void => {
-			const unexpected = info.closeCode === undefined && info.reason === undefined;
+		const onTransportClosed = (info: WebTransportCloseInfo | undefined): void => {
+			// Some runtimes close with no info at all.
+			const unexpected = info?.closeCode === undefined && info?.reason === undefined;
 			if (!this.#ctx.err()) {
 				cancel(
 					unexpected
@@ -223,7 +224,7 @@ export class Session {
 				);
 			}
 			this.#resolveClosed({
-				code: unexpected ? SessionErrorCode.InternalError : (info.closeCode ?? 0),
+				code: unexpected ? SessionErrorCode.InternalError : (info?.closeCode ?? 0),
 				reason: unexpected ? "connection closed unexpectedly" : "session closed",
 			});
 		};
@@ -610,25 +611,19 @@ export class Session {
 	}
 
 	/**
-	 * Request a track's immutable publisher properties (TRACK_INFO) over a
-	 * Track Stream, including the timescale needed to interpret frame
-	 * timestamps. The returned properties are fixed for the lifetime of the
-	 * track and should be cached by the caller.
-	 *
-	 * Mirrors Go's `Session.TrackInfo(ctx, path, name) (*PublishInfo, error)`.
-	 */
-	/**
 	 * Presents token to the peer on a new Auth Stream and waits for its first
 	 * answer. An empty token presents the credential the connection itself
 	 * carried. Returns an {@link AuthError} when the peer refuses the token, and
 	 * an {@link AuthNotSupportedError} when the peer does not support the Auth
 	 * Stream. The grant lasts until {@link Credential.close} withdraws the
-	 * token, the peer revokes it, or the session ends.
+	 * token, the peer revokes it, or the session ends. `signal`, when it
+	 * settles first, abandons the wait for the answer.
 	 *
 	 * Mirrors Go's `Session.Auth(ctx, token) (*Credential, error)`.
 	 */
 	async auth(
 		token: Uint8Array = new Uint8Array(0),
+		signal?: Promise<void>,
 	): Promise<[Credential, undefined] | [undefined, Error]> {
 		if (this.#ctx.err()) {
 			return [undefined, new Error("session is closing")];
@@ -651,7 +646,15 @@ export class Session {
 		const violate = (reason: string): void => {
 			this.closeWithError(SessionErrorCode.ProtocolViolation, reason).catch(() => {});
 		};
+		let abandoned = false;
+		signal?.then(() => {
+			abandoned = true;
+			cancelStreamWithError(stream, authStreamCancelled);
+		}, () => {});
 		const [grant, replyErr] = await readAuthReply(stream);
+		if (abandoned) {
+			return [undefined, new Error("moq: auth abandoned")];
+		}
 		if (replyErr) {
 			cancelStreamWithError(stream, authStreamCancelled);
 			if (replyErr instanceof AuthError) {
@@ -674,8 +677,21 @@ export class Session {
 
 	// handleAuthStream answers a token the peer presents. This endpoint verifies
 	// no tokens, so it refuses each with NOT_SUPPORTED, as a Go session with no
-	// AuthHandler does.
+	// AuthHandler does. A malformed AUTH is a protocol violation.
 	async #handleAuthStream(stream: Stream): Promise<void> {
+		const decodeErr = await new AuthMessage().decode(stream.readable);
+		if (decodeErr) {
+			cancelStreamWithError(stream, authStreamCancelled);
+			if (
+				!(decodeErr instanceof EOFError) && !(decodeErr instanceof WebTransportStreamError)
+			) {
+				this.closeWithError(
+					SessionErrorCode.ProtocolViolation,
+					`AUTH: ${decodeErr.message}`,
+				).catch(() => {});
+			}
+			return;
+		}
 		const err = await new AuthErrorMessage({
 			code: SessionErrorCode.NotSupported,
 			reason: "tokens are not verified in band",
@@ -688,6 +704,14 @@ export class Session {
 		await stream.readable.cancel(authStreamCancelled).catch(() => {});
 	}
 
+	/**
+	 * Request a track's immutable publisher properties (TRACK_INFO) over a
+	 * Track Stream, including the timescale needed to interpret frame
+	 * timestamps. The returned properties are fixed for the lifetime of the
+	 * track and should be cached by the caller.
+	 *
+	 * Mirrors Go's `Session.TrackInfo(ctx, path, name) (*PublishInfo, error)`.
+	 */
 	async trackInfo(
 		path: BroadcastPath,
 		name: TrackName,

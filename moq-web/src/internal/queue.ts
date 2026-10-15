@@ -37,7 +37,12 @@ export class Queue<T> {
 		}
 	}
 
-	async dequeue(): Promise<T | undefined> {
+	/**
+	 * Takes the first item, waiting for one. Returns undefined once the queue
+	 * is closed and empty, or when `stop` settles first; a stopped wait takes
+	 * no item, so none is lost to it.
+	 */
+	async dequeue(stop?: Promise<unknown>): Promise<T | undefined> {
 		while (true) {
 			await this.#mutex.lock();
 
@@ -73,7 +78,15 @@ export class Queue<T> {
 				// Release lock before waiting
 				this.#mutex.unlock();
 
-				await chan;
+				if (stop) {
+					const stopped = await Promise.race([
+						chan.then(() => false),
+						stop.then(() => true, () => true),
+					]);
+					if (stopped) return undefined;
+				} else {
+					await chan;
+				}
 			} catch (e) {
 				this.#mutex.unlock();
 				throw e;

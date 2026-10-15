@@ -9,6 +9,7 @@ import {
 	readAuthReplyType,
 } from "./internal/message/mod.ts";
 import { AuthError } from "./error.ts";
+import { WebTransportStreamError } from "./internal/webtransport/mod.ts";
 
 /**
  * What the peer allows for a token: a root, the directory of broadcast paths it
@@ -34,7 +35,19 @@ export class AuthViolation extends Error {
 	}
 }
 
+// Limits of the Auth Stream's fields, as in Go.
+const maxAuthExpires = Number.MAX_SAFE_INTEGER; // 2^53 - 1 milliseconds
+const maxAuthReasonLength = 8192;
+
 const utf8 = new TextDecoder("utf-8", { fatal: true });
+
+// decodeViolation classifies a decode error: the stream ending or being reset
+// is not the peer's message, while anything else it sent wrong is a protocol
+// violation.
+function decodeViolation(what: string, err: Error): Error {
+	if (err instanceof EOFError || err instanceof WebTransportStreamError) return err;
+	return new AuthViolation(`${what}: ${err.message}`);
+}
 
 /**
  * Reads one acceptor message: the grant of an AUTH_OK, or an {@link AuthError}
@@ -48,16 +61,13 @@ export async function readAuthReply(
 	switch (type) {
 		case AuthReplyTypes.Ok: {
 			const m = new AuthOkMessage();
-			let err: Error | undefined;
-			try {
-				err = await m.decode(stream.readable);
-			} catch (e) {
-				return [undefined, new AuthViolation(`AUTH_OK: ${e}`)];
+			const err = await m.decode(stream.readable);
+			if (err) return [undefined, decodeViolation("AUTH_OK", err)];
+			if (m.expires > maxAuthExpires) {
+				return [undefined, new AuthViolation(`AUTH_OK expires ${m.expires} ms`)];
 			}
-			if (err) return [undefined, err];
-			if (!grantInRoot(m)) {
-				return [undefined, new AuthViolation("AUTH_OK patterns outside a root")];
-			}
+			const invalid = invalidGrant(m);
+			if (invalid) return [undefined, new AuthViolation(`AUTH_OK ${invalid}`)];
 			return [{
 				root: m.root,
 				publish: m.publishPatterns,
@@ -67,21 +77,16 @@ export async function readAuthReply(
 		}
 		case AuthReplyTypes.Error: {
 			const m = new AuthErrorMessage();
-			let err: Error | undefined;
-			try {
-				err = await m.decode(stream.readable);
-			} catch (e) {
-				return [undefined, new AuthViolation(`AUTH_ERROR: ${e}`)];
+			const err = await m.decode(stream.readable);
+			if (err) return [undefined, decodeViolation("AUTH_ERROR", err)];
+			if (m.code > 0xffffffff || m.reason.length > maxAuthReasonLength) {
+				return [undefined, new AuthViolation("malformed AUTH_ERROR")];
 			}
-			if (err) return [undefined, err];
 			let reason: string;
 			try {
 				reason = utf8.decode(m.reason);
 			} catch {
 				return [undefined, new AuthViolation("AUTH_ERROR reason is not UTF-8")];
-			}
-			if (m.code > 0xffffffff) {
-				return [undefined, new AuthViolation("AUTH_ERROR code over 32 bits")];
 			}
 			return [undefined, new AuthError(m.code, reason)];
 		}
@@ -90,13 +95,56 @@ export async function readAuthReply(
 	}
 }
 
-// grantInRoot reports whether m's root is a prefix of broadcast paths, or
-// empty with no patterns, and each pattern lies beneath it.
-function grantInRoot(m: AuthOkMessage): boolean {
+// invalidGrant describes what makes m's grant invalid, as Go's parseGrant
+// judges it, or returns undefined for a valid one: a root is a prefix of
+// broadcast paths without wildcards, a grant without one has no patterns, and
+// each pattern is a path pattern beneath it.
+function invalidGrant(m: AuthOkMessage): string | undefined {
 	const patterns = [...m.publishPatterns, ...m.subscribePatterns];
-	if (m.root === "") return patterns.length === 0;
-	if (!m.root.startsWith("/") || !m.root.endsWith("/") || /[{}]/.test(m.root)) return false;
-	return patterns.every((p) => p.startsWith("/"));
+	if (m.root === "") {
+		return patterns.length === 0 ? undefined : "patterns without a root";
+	}
+	if (
+		!m.root.startsWith("/") || !(m.root === "/" || m.root.endsWith("/")) || /[{}]/.test(m.root)
+	) {
+		return `root ${JSON.stringify(m.root)}`;
+	}
+	for (const p of patterns) {
+		if (!p.startsWith("/") || !validPattern(m.root.slice(0, -1) + p)) {
+			return `pattern ${JSON.stringify(p)}`;
+		}
+	}
+	return undefined;
+}
+
+const wildcardName = /^[\p{L}_][\p{L}\p{Nd}_]*$/u;
+
+// validPattern reports whether s is a path pattern as Go's parsePathPattern
+// reads it: a path whose wildcards are whole segments, "{name}" anywhere,
+// "{name...}" and "{$}" only as the last segment, and each name used once.
+function validPattern(s: string): boolean {
+	if (!s.startsWith("/")) return false;
+	if (!/[{}]/.test(s)) return true;
+	const trailing = s.endsWith("/");
+	const segs = (trailing ? s.slice(1, -1) : s.slice(1)).split("/");
+	const names = new Set<string>();
+	for (let i = 0; i < segs.length; i++) {
+		const seg = segs[i] ?? "";
+		if (!/[{}]/.test(seg)) continue;
+		const last = i === segs.length - 1 && !trailing;
+		if (!seg.startsWith("{") || !seg.endsWith("}")) return false;
+		const inner = seg.slice(1, -1);
+		if (inner === "$") {
+			if (!last) return false;
+			continue;
+		}
+		const rest = inner.endsWith("...");
+		const name = rest ? inner.slice(0, -3) : inner;
+		if (rest && !last) return false;
+		if (!wildcardName.test(name) || names.has(name)) return false;
+		names.add(name);
+	}
+	return true;
 }
 
 /**

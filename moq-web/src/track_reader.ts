@@ -57,22 +57,18 @@ export class TrackReader {
 
 		while (true) {
 			const ctx = watchPromise(this.context, signal);
-			const dequeued = await Promise.race([
-				this.#queue.dequeue(),
-				ctx.done().then(() => {
-					return new ContextCancelledError() as Error;
-				}),
-				this.context.done().then(() => {
-					return new Error(
-						`track reader context cancelled: ${this.context.err()?.message}`,
-					);
-				}),
-			]);
+			// A stopped wait takes no group from the queue, so none is lost.
+			const dequeued = await this.#queue.dequeue(ctx.done());
 
-			if (dequeued instanceof Error) {
-				return [undefined, dequeued];
-			}
 			if (dequeued === undefined) {
+				if (this.context.err()) {
+					return [
+						undefined,
+						new Error(
+							`track reader context cancelled: ${this.context.err()?.message}`,
+						),
+					];
+				}
 				return [undefined, new ContextCancelledError()];
 			}
 

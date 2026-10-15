@@ -1340,6 +1340,40 @@ Deno.test({
 			await session.closed;
 		});
 
+		await t.step("auth gives up when its signal settles first", async () => {
+			const mock = new MockWebTransportSession({ openStreamResponses: [new Uint8Array(0)] });
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			const [cred, err] = await session.auth(
+				new TextEncoder().encode("room1"),
+				Promise.resolve(),
+			);
+
+			assertEquals(cred, undefined);
+			assertEquals(err?.message, "moq: auth abandoned");
+			await session.close();
+		});
+
+		await t.step("a malformed incoming AUTH is a protocol violation", async () => {
+			// The stream type, then an AUTH whose token runs past its body.
+			const buf = await encodeMessageToUint8Array(async (w) => {
+				await writeVarint(w, BiStreamTypes.AuthStreamType);
+				const [, err] = await w.write(new Uint8Array([1, 9]));
+				return err;
+			});
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [],
+				acceptStreamData: [{ type: BiStreamTypes.AuthStreamType, data: buf }],
+			});
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			const info = await session.closed;
+
+			assertEquals(info.code, SessionErrorCode.ProtocolViolation);
+		});
+
 		await t.step("an incoming auth stream is refused as not supported", async () => {
 			const buf = await encodeMessageToUint8Array(async (w) => {
 				await writeVarint(w, BiStreamTypes.AuthStreamType);

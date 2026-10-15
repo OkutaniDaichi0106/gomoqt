@@ -1,5 +1,59 @@
 import type { Reader, Writer } from "@okdaichi/golikejs/io";
-import { MessageDecoder, MessageEncoder, putVarint, readFull, readVarint } from "./message.ts";
+import { MessageEncoder, parseVarint, putVarint, readFull, readVarint } from "./message.ts";
+
+/**
+ * Reads the fields of a message body, throwing a RangeError for a field that
+ * runs past the body rather than reading zeros, as MessageDecoder does.
+ */
+class BodyReader {
+	readonly #buf: Uint8Array;
+	#offset = 0;
+
+	constructor(buf: Uint8Array) {
+		this.#buf = buf;
+	}
+
+	#need(n: number): void {
+		if (this.#offset + n > this.#buf.length) {
+			throw new RangeError("field runs past the message");
+		}
+	}
+
+	varint(): number {
+		this.#need(1);
+		this.#need(1 << ((this.#buf[this.#offset] ?? 0) >> 6));
+		const [v, n] = parseVarint(this.#buf, this.#offset);
+		this.#offset += n;
+		return v;
+	}
+
+	bytes(): Uint8Array {
+		const n = this.varint();
+		this.#need(n);
+		const out = this.#buf.slice(this.#offset, this.#offset + n);
+		this.#offset += n;
+		return out;
+	}
+
+	string(): string {
+		return new TextDecoder().decode(this.bytes());
+	}
+
+	stringArray(): string[] {
+		const count = this.varint();
+		// Each string takes at least its length byte.
+		this.#need(count);
+		const out: string[] = [];
+		for (let i = 0; i < count; i++) {
+			out.push(this.string());
+		}
+		return out;
+	}
+
+	eof(): boolean {
+		return this.#offset >= this.#buf.length;
+	}
+}
 
 /** The Type that leads each message the acceptor sends on an Auth Stream. */
 export const AuthReplyTypes = {
@@ -18,9 +72,15 @@ export async function readAuthReplyType(
 	return [t, undefined];
 }
 
+// The largest message body read, as Go's message.MaxMessageSize.
+const maxMessageSize = 64 * 1024;
+
 async function readBody(r: Reader): Promise<[Uint8Array, undefined] | [undefined, Error]> {
 	const [len, , err1] = await readVarint(r);
 	if (err1) return [undefined, err1];
+	if (len > maxMessageSize) {
+		return [undefined, new Error(`moq: message of ${len} bytes is too large`)];
+	}
 	const buf = new Uint8Array(len);
 	const [, err2] = await readFull(r, buf);
 	if (err2) return [undefined, err2];
@@ -62,8 +122,13 @@ export class AuthMessage {
 	async decode(r: Reader): Promise<Error | undefined> {
 		const [buf, err] = await readBody(r);
 		if (err) return err;
-		const d = new MessageDecoder(buf);
-		this.token = d.bytes(d.varint()).slice();
+		try {
+			const d = new BodyReader(buf);
+			this.token = d.bytes();
+			if (!d.eof()) return new Error("moq: AUTH longer than its fields");
+		} catch (e) {
+			return e instanceof Error ? e : new Error(String(e));
+		}
 		return undefined;
 	}
 }
@@ -119,12 +184,16 @@ export class AuthOkMessage {
 	async decode(r: Reader): Promise<Error | undefined> {
 		const [buf, err] = await readBody(r);
 		if (err) return err;
-		const d = new MessageDecoder(buf);
-		this.root = d.string();
-		this.publishPatterns = d.stringArray();
-		this.subscribePatterns = d.stringArray();
-		this.expires = d.varint();
-		if (!d.eof()) return new Error("moq: AUTH_OK longer than its fields");
+		try {
+			const d = new BodyReader(buf);
+			this.root = d.string();
+			this.publishPatterns = d.stringArray();
+			this.subscribePatterns = d.stringArray();
+			this.expires = d.varint();
+			if (!d.eof()) return new Error("moq: AUTH_OK longer than its fields");
+		} catch (e) {
+			return e instanceof Error ? e : new Error(String(e));
+		}
 		return undefined;
 	}
 }
@@ -163,10 +232,14 @@ export class AuthErrorMessage {
 	async decode(r: Reader): Promise<Error | undefined> {
 		const [buf, err] = await readBody(r);
 		if (err) return err;
-		const d = new MessageDecoder(buf);
-		this.code = d.varint();
-		this.reason = d.bytes(d.varint()).slice();
-		if (!d.eof()) return new Error("moq: AUTH_ERROR longer than its fields");
+		try {
+			const d = new BodyReader(buf);
+			this.code = d.varint();
+			this.reason = d.bytes();
+			if (!d.eof()) return new Error("moq: AUTH_ERROR longer than its fields");
+		} catch (e) {
+			return e instanceof Error ? e : new Error(String(e));
+		}
 		return undefined;
 	}
 }

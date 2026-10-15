@@ -308,10 +308,19 @@ export class AnnouncementReader {
 		signal: Promise<void>,
 	): Promise<[Announcement, undefined] | [undefined, Error]> {
 		const ctx = watchPromise(this.context, signal);
+		let stopped = false;
+		const stop = signal.then(() => {
+			stopped = true;
+		}, () => {
+			stopped = true;
+		});
 
 		while (true) {
-			const announcement = await this.#queue.dequeue();
+			const announcement = await this.#queue.dequeue(stop);
 			if (announcement === undefined) {
+				if (stopped) {
+					return [undefined, ctx.err() ?? new Error("moq: receive canceled")];
+				}
 				// Queue closed (reader failed/closed). Surface the cause, if any.
 				return [undefined, ctx.err() ?? new Error("Queue is closed and empty")];
 			}

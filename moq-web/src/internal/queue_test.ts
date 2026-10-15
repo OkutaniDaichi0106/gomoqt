@@ -152,3 +152,18 @@ Deno.test("internal/queue - basic enqueue/dequeue and close behavior", async (t)
 		assertEquals(q.closed, true);
 	});
 });
+
+Deno.test("Queue - a stopped dequeue returns and takes no item", async () => {
+	const q = new Queue<number>();
+	let stop = () => {};
+	const stopped = new Promise<void>((r) => {
+		stop = r;
+	});
+
+	const pending = q.dequeue(stopped);
+	stop();
+	assertEquals(await pending, undefined);
+	await q.enqueue(1);
+
+	assertEquals(await q.dequeue(), 1, "the item enqueued after the stop is still there");
+});

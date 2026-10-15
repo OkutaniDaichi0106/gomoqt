@@ -1,10 +1,6 @@
 import type { Reader } from "@okdaichi/golikejs/io";
 import { EOFError } from "@okdaichi/golikejs/io";
-import {
-	WebTransportStreamError,
-	WebTransportStreamErrorCode,
-	WebTransportStreamErrorInfo,
-} from "./error.ts";
+import { WebTransportStreamError, WebTransportStreamErrorCode } from "./error.ts";
 
 export interface ReceiveStream extends Reader {
 	cancel(code: WebTransportStreamErrorCode): Promise<void>;
@@ -83,22 +79,8 @@ class ReceiveStreamClass implements ReceiveStream {
 			if (this.#err) {
 				return [0, this.#err];
 			}
-
-			if (err instanceof Error) {
-				return [0, err];
-			}
-			const wtErr = err as WebTransportError;
-			if (wtErr.source === "stream") {
-				if (wtErr.streamErrorCode !== null) {
-					this.#err = new WebTransportStreamError(
-						wtErr as WebTransportStreamErrorInfo,
-						true,
-					);
-				} else {
-					this.#err = new EOFError();
-				}
-			}
-			return [0, new Error(`Failed to read from stream: ${err}`)];
+			this.#err = streamReadError(err);
+			return [0, this.#err];
 		}
 	}
 
@@ -139,3 +121,39 @@ class ReceiveStreamClass implements ReceiveStream {
 export const ReceiveStream: {
 	new (init: ReceiveStreamInit): ReceiveStream;
 } = ReceiveStreamClass;
+
+// The first HTTP/3 error code WebTransport maps application stream error codes
+// onto (draft-ietf-webtrans-http3, "Resetting Data Streams").
+const http3ErrorCodeFirst = 0x52e4a40fa8db;
+
+/**
+ * Turns the error a stream read failed with into the error the reader
+ * returns: a reset by the peer is a {@link WebTransportStreamError} with its
+ * application code, whether the runtime reports it as a WebTransportError
+ * (browsers) or as an error naming the HTTP/3 code (Deno).
+ */
+export function streamReadError(err: unknown): Error {
+	if (typeof err === "object" && err !== null && "source" in err && err.source === "stream") {
+		const code = (err as { streamErrorCode?: number | null }).streamErrorCode;
+		if (typeof code === "number") {
+			return new WebTransportStreamError({ source: "stream", streamErrorCode: code }, true);
+		}
+	}
+	if (err instanceof Error) {
+		const match = /stream reset by peer: error (\d+)/.exec(err.message);
+		if (match) {
+			const h3 = Number(match[1]);
+			if (h3 >= http3ErrorCodeFirst) {
+				const d = h3 - http3ErrorCodeFirst;
+				// Every 0x1f-th code point is reserved (a GREASE value) and skipped.
+				const code = d - Math.floor(d / 0x1f);
+				return new WebTransportStreamError(
+					{ source: "stream", streamErrorCode: code },
+					true,
+				);
+			}
+		}
+		return err;
+	}
+	return new Error(`Failed to read from stream: ${err}`);
+}

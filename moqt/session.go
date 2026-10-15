@@ -54,6 +54,9 @@ type sessionSetup struct {
 	// from Server.ConnContext, so an application cancelling that still ends
 	// the session.
 	lifetime context.Context
+	// authHandler, when set, verifies the peer's tokens and makes the session
+	// enforce the union of its grants (see AuthHandler).
+	authHandler AuthHandler
 }
 
 // Session represents an active MOQ session over a QUIC connection.
@@ -121,6 +124,24 @@ type Session struct {
 	bitrateTracker bitrateTracker
 
 	probeMonitorOnce sync.Once // starts the bitrate monitor lazily (only when a probe stream arrives)
+
+	// authHandler verifies the peer's tokens, and scope is the union of what
+	// they grant; both are nil when the session enforces nothing.
+	authHandler AuthHandler
+	scope       *authScope
+
+	// The announce streams scope applies to, rescoped when it changes:
+	// announcement writers serving the peer's ANNOUNCE_REQUESTs, and readers
+	// of the peer's own announcements.
+	scopedMu        sync.Mutex
+	announceWriters map[*AnnouncementWriter]struct{}
+	announceReaders map[*AnnouncementReader]struct{}
+	// fetches are the FETCHes being served, cancelled too when the scope no
+	// longer covers them.
+	fetches map[*servedFetch]struct{}
+
+	// rescopeCh wakes the loop that applies scope changes one at a time.
+	rescopeCh chan struct{}
 }
 
 func newSession(
@@ -172,6 +193,11 @@ func newSession(
 		probeResponseCh: make(chan ProbeResult, 1), // latest-value semantics
 		probeTargetsCh:  make(chan ProbeResult, 1), // latest-value semantics
 		counters:        counters,
+		authHandler:     setup.authHandler,
+		announceWriters: make(map[*AnnouncementWriter]struct{}),
+		announceReaders: make(map[*AnnouncementReader]struct{}),
+		fetches:         make(map[*servedFetch]struct{}),
+		rescopeCh:       make(chan struct{}, 1),
 	}
 
 	// When the native-QUIC router has already consumed the peer's Setup Stream
@@ -195,6 +221,21 @@ func newSession(
 		// The bitrate tracker can measure and report the current sending
 		// rate, so advertise the Report capability in SETUP.
 		sess.localProbeLevel = message.ProbeLevelReport
+	}
+
+	if sess.authHandler != nil {
+		// The connection's own credential is answered first, so the requests
+		// that arrive before it are judged against its grant.
+		sess.scope = newAuthScope(sess.requestRescope)
+		sess.wg.Go(sess.rescopeLoop)
+		conn := &AuthWriter{scope: sess.scope}
+		sess.scope.conn = conn
+		sess.wg.Go(func() {
+			r := &AuthRequest{RequestURI: sess.path, ctx: sess.ctx}
+			if err := safeServeAuth(sess.authHandler, conn, r); err != nil {
+				sess.logError("auth handler error", err)
+			}
+		})
 	}
 
 	// Advertise capabilities on the mandatory Setup Stream.
@@ -632,6 +673,12 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 		return nil, ErrClosedSession
 	}
 
+	// Announcements are judged against the connection's own grant from the
+	// start.
+	if !sess.scope.wait(sess.ctx) {
+		return nil, Cause(sess.ctx)
+	}
+
 	stream, err := sess.conn.OpenStreamSync(sess.ctx)
 	if err != nil {
 		if appErr, ok := errors.AsType[*transport.ApplicationError](err); ok {
@@ -674,7 +721,24 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 		return nil, fmt.Errorf("failed to send ANNOUNCE_REQUEST message: %w", err)
 	}
 
-	return newAnnouncementReader(stream, prefix, nil), nil
+	if sess.scope == nil {
+		return newAnnouncementReader(stream, prefix, nil), nil
+	}
+
+	// What the peer may not publish is held back from the reader.
+	ar := newScopedAnnouncementReader(stream, prefix, nil, sess.scope.canPublish)
+	sess.scopedMu.Lock()
+	sess.announceReaders[ar] = struct{}{}
+	sess.scopedMu.Unlock()
+	context.AfterFunc(ar.Context(), func() {
+		sess.scopedMu.Lock()
+		delete(sess.announceReaders, ar)
+		sess.scopedMu.Unlock()
+	})
+	// The reader judged what it read before it was registered against the
+	// scope of the time; a change since then reaches it here.
+	sess.requestRescope()
+	return ar, nil
 }
 
 // SessionStats is a point-in-time snapshot of a Session's operational metrics.
@@ -848,6 +912,8 @@ func (sess *Session) processBiStream(stream transport.Stream) {
 		sess.handleFetchStream(stream)
 	case message.StreamTypeTrack:
 		sess.handleTrackStream(stream)
+	case message.StreamTypeAuth:
+		sess.handleAuthStream(stream)
 	case message.StreamTypeProbe:
 		if sess.localProbeLevel == message.ProbeLevelNone {
 			// We did not advertise the Probe capability; the spec requires
@@ -889,6 +955,22 @@ func (sess *Session) handleAnnounceStream(stream transport.Stream) {
 
 	annstr := newAnnouncementWriter(stream, prefix, sess.mux.hopID, aim.ExcludeHop, sess.logger)
 
+	if sess.scope != nil {
+		// The peer discovers only what it may subscribe to.
+		if !sess.scope.wait(sess.ctx) {
+			return
+		}
+		annstr.allow = sess.scope.canSubscribe
+		sess.scopedMu.Lock()
+		sess.announceWriters[annstr] = struct{}{}
+		sess.scopedMu.Unlock()
+		defer func() {
+			sess.scopedMu.Lock()
+			delete(sess.announceWriters, annstr)
+			sess.scopedMu.Unlock()
+		}()
+	}
+
 	sess.mux.serveAnnouncements(annstr)
 
 	// Ensure the announcement writer is closed when done
@@ -929,6 +1011,12 @@ func (sess *Session) handleSubscribeStream(stream transport.Stream) {
 	if sess.counters != nil {
 		sess.counters.SubscribesReceived.Add(1)
 	}
+
+	if !sess.mayServe(BroadcastPath(sm.BroadcastPath)) {
+		cancelStreamWithError(stream, transport.StreamErrorCode(SubscribeErrorCodeUnauthorized))
+		return
+	}
+
 	config := &SubscribeConfig{
 		Priority:   TrackPriority(sm.SubscriberPriority),
 		Ordered:    boolFromWireFlag(sm.SubscriberOrdered),
@@ -958,6 +1046,13 @@ func (sess *Session) handleSubscribeStream(stream transport.Stream) {
 	track.ctx = context.WithValue(trackCtx, biStreamTypeCtxKey, message.StreamTypeSubscribe)
 	sess.addTrackWriter(SubscribeID(sm.SubscribeID), track)
 
+	// A scope change between mayServe and addTrackWriter missed the writer.
+	if sess.scope != nil && !sess.scope.canSubscribe(track.BroadcastPath) {
+		track.CloseWithError(SubscribeErrorCodeUnauthorized)
+		cancelTrack()
+		return
+	}
+
 	if sess.counters != nil {
 		sess.counters.SubscribesServed.Add(1)
 	}
@@ -978,6 +1073,11 @@ func (sess *Session) handleTrackStream(stream transport.Stream) {
 	if err := tm.Decode(stream); err != nil {
 		sess.logError("failed to decode TRACK message", err)
 		cancelStreamWithError(stream, transport.StreamErrorCode(SubscribeErrorCodeInternal))
+		return
+	}
+
+	if !sess.mayServe(BroadcastPath(tm.BroadcastPath)) {
+		cancelStreamWithError(stream, transport.StreamErrorCode(SubscribeErrorCodeUnauthorized))
 		return
 	}
 
@@ -1092,6 +1192,11 @@ func (sess *Session) handleFetchStream(stream transport.Stream) {
 		return
 	}
 
+	if !sess.mayServe(BroadcastPath(fm.BroadcastPath)) {
+		cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeUnauthorized))
+		return
+	}
+
 	handler := sess.fetchHandler
 
 	reqCtx, cancelReq := sess.streamContext(stream)
@@ -1119,6 +1224,23 @@ func (sess *Session) handleFetchStream(stream transport.Stream) {
 		group.CancelWrite(ExpiredGroupErrorCode)
 	})
 	defer stop()
+
+	if sess.scope != nil {
+		f := &servedFetch{path: req.BroadcastPath, stream: stream}
+		sess.scopedMu.Lock()
+		sess.fetches[f] = struct{}{}
+		sess.scopedMu.Unlock()
+		defer func() {
+			sess.scopedMu.Lock()
+			delete(sess.fetches, f)
+			sess.scopedMu.Unlock()
+		}()
+		// A scope change between mayServe and the registration missed it.
+		if !sess.scope.canSubscribe(f.path) {
+			cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeUnauthorized))
+			return
+		}
+	}
 
 	err = safeServeFetch(handler, group, req)
 	if err != nil {

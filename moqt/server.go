@@ -214,6 +214,12 @@ type Server struct {
 	// If nil, FETCH requests are rejected with an internal stream error.
 	FetchHandler FetchHandler
 
+	// AuthHandler, when set, verifies the tokens peers present on Auth
+	// Streams and the credential their connections carry, and makes each
+	// session enforce the union of what they grant. If nil, sessions refuse
+	// tokens with NOT_SUPPORTED and enforce nothing.
+	AuthHandler AuthHandler
+
 	// Logger for server events and errors. Optional; if nil, logging is disabled.
 	Logger *slog.Logger
 
@@ -279,6 +285,7 @@ func (s *Server) defaultWebTransportHandler() http.Handler {
 		TrackMux:     s.TrackMux,
 		Handler:      s.Handler,
 		FetchHandler: s.FetchHandler,
+		AuthHandler:  s.AuthHandler,
 		Logger:       s.Logger,
 	}
 }
@@ -449,6 +456,10 @@ type WebTransportHandler struct {
 	// FetchHandler handles incoming fetch requests on WebTransport sessions. Optional; when nil, fetch requests are not handled.
 	FetchHandler FetchHandler
 
+	// AuthHandler verifies the tokens of WebTransport sessions (see
+	// Server.AuthHandler). Optional.
+	AuthHandler AuthHandler
+
 	// UpgradeFunc performs a custom upgrade from HTTP request to QUIC StreamConn.
 	// If nil, the default WebTransport upgrader is used.
 	UpgradeFunc func(w http.ResponseWriter, r *http.Request) (WebTransportSession, error)
@@ -525,7 +536,7 @@ func (u *WebTransportHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		lifetime = context.Background()
 	}
 	sess := newSession(conn, u.TrackMux, manager, u.Config, u.FetchHandler, nil, u.Logger,
-		sessionSetup{path: requestPath(r), ctx: r.Context(), lifetime: lifetime}, nil)
+		sessionSetup{path: requestPath(r), ctx: r.Context(), lifetime: lifetime, authHandler: u.AuthHandler}, nil)
 	// Ensure the session is cleaned up (conn removed from the manager) when
 	// the Handler returns, even if it did not call CloseWithError itself (e.g.
 	// the peer closed the connection). Idempotent.
@@ -583,7 +594,7 @@ func (s *Server) handleNativeQUIC(conn StreamConn) error {
 	// WebTransport's r.URL.RequestURI()) along with the decoded SETUP, so it seeds
 	// peer-probe state without re-reading the consumed stream.
 	sess := newSession(conn, s.TrackMux, s.currentConnManager(), s.Config, s.FetchHandler, nil, s.Logger,
-		sessionSetup{path: path, peerSetup: &sm, ctx: s.connContext(conn.Context(), conn)}, s.Counters)
+		sessionSetup{path: path, peerSetup: &sm, ctx: s.connContext(conn.Context(), conn), authHandler: s.AuthHandler}, s.Counters)
 	if s.Counters != nil {
 		s.Counters.NativeSessions.Add(1)
 	}

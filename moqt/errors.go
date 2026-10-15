@@ -148,6 +148,10 @@ type FetchErrorCode uint32
 const (
 	FetchErrorCodeInternal FetchErrorCode = 0x00
 	FetchErrorCodeTimeout  FetchErrorCode = 0x01
+
+	// FetchErrorCodeUnauthorized refuses a fetch the session's scope does not
+	// cover (see AuthHandler).
+	FetchErrorCodeUnauthorized FetchErrorCode = 0x02
 )
 
 // String returns a text for the fetch error code.
@@ -158,6 +162,8 @@ func (code FetchErrorCode) String() string {
 		return "moqt: internal error"
 	case FetchErrorCodeTimeout:
 		return "moqt: timeout"
+	case FetchErrorCodeUnauthorized:
+		return "moqt: unauthorized"
 	default:
 		return ""
 	}
@@ -234,6 +240,10 @@ const (
 	UnsupportedVersionErrorCode      SessionErrorCode = 0x12
 
 	SetupFailedErrorCode SessionErrorCode = 0x13
+
+	// NotSupportedErrorCode refuses a token, or a grant, that the acceptor
+	// cannot verify or express (see AuthWriter).
+	NotSupportedErrorCode SessionErrorCode = 0x30
 )
 
 // String returns a text for the session error code.
@@ -258,6 +268,8 @@ func (code SessionErrorCode) String() string {
 		return "moqt: unsupported version"
 	case SetupFailedErrorCode:
 		return "moqt: setup failed"
+	case NotSupportedErrorCode:
+		return "moqt: not supported"
 	default:
 		return ""
 	}

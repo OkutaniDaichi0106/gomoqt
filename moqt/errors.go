@@ -74,6 +74,8 @@ func (code AnnounceErrorCode) String() string {
 // AnnounceError wraps a QUIC stream error with announcement-specific error codes.
 type AnnounceError struct{ *transport.StreamError }
 
+// Error returns the text of the announce error code, or the stream error's text
+// when the code is unknown.
 func (err *AnnounceError) Error() string {
 	text := err.AnnounceErrorCode().String()
 	if text != "" {
@@ -82,6 +84,7 @@ func (err *AnnounceError) Error() string {
 	return err.StreamError.Error()
 }
 
+// AnnounceErrorCode returns the announce error code the stream was reset with.
 func (err *AnnounceError) AnnounceErrorCode() AnnounceErrorCode {
 	return AnnounceErrorCode(err.ErrorCode)
 }
@@ -131,6 +134,8 @@ func (code SubscribeErrorCode) String() string {
 // SubscribeError wraps a QUIC stream error with subscription-specific error codes.
 type SubscribeError struct{ *transport.StreamError }
 
+// Error returns the text of the subscribe error code, or the stream error's text
+// when the code is unknown.
 func (err *SubscribeError) Error() string {
 	text := err.SubscribeErrorCode().String()
 	if text != "" {
@@ -139,6 +144,7 @@ func (err *SubscribeError) Error() string {
 	return err.StreamError.Error()
 }
 
+// SubscribeErrorCode returns the subscribe error code the stream was reset with.
 func (err *SubscribeError) SubscribeErrorCode() SubscribeErrorCode {
 	return SubscribeErrorCode(err.ErrorCode)
 }
@@ -171,6 +177,8 @@ func (code FetchErrorCode) String() string {
 
 type FetchError struct{ *transport.StreamError }
 
+// Error returns the text of the fetch error code, or the stream error's text
+// when the code is unknown.
 func (err *FetchError) Error() string {
 	text := err.FetchErrorCode().String()
 	if text != "" {
@@ -179,6 +187,7 @@ func (err *FetchError) Error() string {
 	return err.StreamError.Error()
 }
 
+// FetchErrorCode returns the fetch error code the stream was reset with.
 func (err *FetchError) FetchErrorCode() FetchErrorCode {
 	return FetchErrorCode(err.ErrorCode)
 }
@@ -208,6 +217,8 @@ func (code ProbeErrorCode) String() string {
 
 type ProbeError struct{ *transport.StreamError }
 
+// Error returns the text of the probe error code, or the stream error's text
+// when the code is unknown.
 func (err *ProbeError) Error() string {
 	text := err.ProbeErrorCode().String()
 	if text != "" {
@@ -216,6 +227,7 @@ func (err *ProbeError) Error() string {
 	return err.StreamError.Error()
 }
 
+// ProbeErrorCode returns the probe error code the stream was reset with.
 func (err *ProbeError) ProbeErrorCode() ProbeErrorCode {
 	return ProbeErrorCode(err.ErrorCode)
 }
@@ -278,6 +290,9 @@ func (code SessionErrorCode) String() string {
 // SessionError wraps a QUIC application error with session-specific error codes.
 type SessionError struct{ *transport.ApplicationError }
 
+// Error returns the text of the session error code and whether the local or
+// the remote endpoint closed the session, or the application error's text
+// when the code is unknown.
 func (err *SessionError) Error() string {
 	var role string
 	if err.Remote {
@@ -292,6 +307,7 @@ func (err *SessionError) Error() string {
 	return err.ApplicationError.Error()
 }
 
+// SessionErrorCode returns the session error code the session was closed with.
 func (err *SessionError) SessionErrorCode() SessionErrorCode {
 	return SessionErrorCode(err.ErrorCode)
 }
@@ -340,6 +356,8 @@ func (code GroupErrorCode) String() string {
 // GroupError wraps a QUIC stream error with group-specific error codes.
 type GroupError struct{ *transport.StreamError }
 
+// Error returns the text of the group error code, or the stream error's text
+// when the code is unknown.
 func (err *GroupError) Error() string {
 	text := err.GroupErrorCode().String()
 	if text != "" {
@@ -348,6 +366,7 @@ func (err *GroupError) Error() string {
 	return err.StreamError.Error()
 }
 
+// GroupErrorCode returns the group error code the stream was reset with.
 func (err *GroupError) GroupErrorCode() GroupErrorCode {
 	return GroupErrorCode(err.ErrorCode)
 }

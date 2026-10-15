@@ -40,18 +40,18 @@ func TestParsePathPattern(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			p, err := ParsePathPattern(tt.input)
+			p, err := parsePathPattern(tt.input)
 			if tt.wantErr {
 				assert.ErrorIs(t, err, ErrInvalidPathPattern)
 				return
 			}
 			require.NoError(t, err)
-			assert.Equal(t, tt.input, p.String())
+			assert.Equal(t, tt.input, p.raw)
 		})
 	}
 }
 
-func TestPathPattern_Match(t *testing.T) {
+func TestPathPattern_match(t *testing.T) {
 	tests := map[string]struct {
 		pattern string
 		path    BroadcastPath
@@ -93,52 +93,17 @@ func TestPathPattern_Match(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			p := MustParsePathPattern(tt.pattern)
+			p, err := parsePathPattern(tt.pattern)
+			require.NoError(t, err)
 
-			assert.Equal(t, tt.want, p.Match(tt.path))
+			assert.Equal(t, tt.want, p.match(tt.path))
 		})
 	}
 }
 
-func TestPathPattern_Values(t *testing.T) {
-	tests := map[string]struct {
-		pattern string
-		path    BroadcastPath
-		want    map[string]string
-		wantOK  bool
-	}{
-		"segment wildcards":     {pattern: "/room/{id}/{name}", path: "/room/1/alice", want: map[string]string{"id": "1", "name": "alice"}, wantOK: true},
-		"wildcard prefix":       {pattern: "/room/{id}/", path: "/room/1/a/b", want: map[string]string{"id": "1"}, wantOK: true},
-		"rest wildcard":         {pattern: "/room/{id}/{rest...}", path: "/room/1/a/b", want: map[string]string{"id": "1", "rest": "a/b"}, wantOK: true},
-		"empty rest":            {pattern: "/room/{rest...}", path: "/room/", want: map[string]string{"rest": ""}, wantOK: true},
-		"anchor names nothing":  {pattern: "/room/{id}/{$}", path: "/room/1/", want: map[string]string{"id": "1"}, wantOK: true},
-		"no wildcard":           {pattern: "/room/1/", path: "/room/1/alice", want: nil, wantOK: true},
-		"no match gives no map": {pattern: "/room/{id}/host", path: "/room/1/guest", want: nil, wantOK: false},
-	}
+func TestPathPattern_match_ZeroValue(t *testing.T) {
+	var p pathPattern
 
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			p := MustParsePathPattern(tt.pattern)
-
-			got, ok := p.Values(tt.path)
-
-			assert.Equal(t, tt.wantOK, ok)
-			assert.Equal(t, tt.want, got)
-		})
-	}
-}
-
-func TestPathPattern_Match_ZeroValue(t *testing.T) {
-	var p PathPattern
-
-	assert.False(t, p.Match("/"))
-	assert.False(t, p.Match("/room"))
-}
-
-func TestPathPattern_Comparable(t *testing.T) {
-	a := MustParsePathPattern("/room/{id}/")
-
-	assert.Equal(t, a, MustParsePathPattern("/room/{id}/"))
-	assert.True(t, a == MustParsePathPattern("/room/{id}/"))
-	assert.False(t, a == MustParsePathPattern("/room/{name}/"))
+	assert.False(t, p.match("/"))
+	assert.False(t, p.match("/room"))
 }

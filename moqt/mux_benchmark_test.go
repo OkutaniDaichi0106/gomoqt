@@ -77,8 +77,8 @@ func BenchmarkTrackMux_Handler(b *testing.B) {
 	}
 }
 
-// BenchmarkTrackMux_ServeTrack benchmarks track serving
-func BenchmarkTrackMux_ServeTrack(b *testing.B) {
+// BenchmarkTrackMux_serveTrack benchmarks track serving
+func BenchmarkTrackMux_serveTrack(b *testing.B) {
 	mux := NewTrackMux(0)
 	ctx := context.Background()
 	path := BroadcastPath("/test/path")

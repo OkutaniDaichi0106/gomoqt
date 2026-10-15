@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"slices"
 	"strings"
 	"sync"
@@ -13,6 +14,14 @@ import (
 
 	"github.com/qumo-dev/gomoqt/moqt/internal/message"
 	"github.com/qumo-dev/gomoqt/transport"
+)
+
+// Limits of the Auth Stream's fields.
+const (
+	// maxAuthExpires is the largest AUTH_OK Expires, in milliseconds.
+	maxAuthExpires = 1<<53 - 1
+	// maxAuthReasonLength is the longest AUTH_ERROR Reason Phrase, in bytes.
+	maxAuthReasonLength = 8192
 )
 
 var (
@@ -52,13 +61,6 @@ type Grant struct {
 	MaxAge time.Duration
 }
 
-// clone returns g with its own copies of the pattern slices.
-func (g Grant) clone() Grant {
-	g.Publish = slices.Clone(g.Publish)
-	g.Subscribe = slices.Clone(g.Subscribe)
-	return g
-}
-
 func (g Grant) message() message.AuthOkMessage {
 	m := message.AuthOkMessage{
 		PublishPatterns:   g.Publish,
@@ -92,11 +94,9 @@ type scopeGrant struct {
 
 // samePatterns reports whether g and h hold the same patterns.
 func (g scopeGrant) samePatterns(h scopeGrant) bool {
-	return slices.EqualFunc(g.publish, h.publish, samePattern) &&
-		slices.EqualFunc(g.subscribe, h.subscribe, samePattern)
+	same := func(p, q pathPattern) bool { return p.raw == q.raw }
+	return slices.EqualFunc(g.publish, h.publish, same) && slices.EqualFunc(g.subscribe, h.subscribe, same)
 }
-
-func samePattern(p, q pathPattern) bool { return p.raw == q.raw }
 
 // parseGrant parses g's patterns, reporting ErrInvalidPathPattern for one
 // that is not a pattern.
@@ -204,7 +204,7 @@ func (w *AuthWriter) Grant(g Grant) error {
 	if err != nil {
 		return err
 	}
-	// A time.Duration in milliseconds stays below the wire's 2^53 - 1 limit.
+	// A time.Duration in milliseconds stays below maxAuthExpires.
 	m := g.message()
 
 	w.mu.Lock()
@@ -215,11 +215,11 @@ func (w *AuthWriter) Grant(g Grant) error {
 
 	if m.Len() > message.MaxMessageSize {
 		tooLarge := fmt.Errorf("moqt: grant too large for AUTH_OK: %d bytes", m.Len())
-		return errors.Join(tooLarge, w.refuse(NotSupportedErrorCode, "grant too large"))
+		return errors.Join(tooLarge, w.refuseLocked(NotSupportedErrorCode, "grant too large"))
 	}
 
 	w.scope.set(w, sg)
-	w.expireAfter(g.MaxAge)
+	w.expireAfterLocked(g.MaxAge)
 	if w.stream == nil {
 		return nil
 	}
@@ -229,9 +229,9 @@ func (w *AuthWriter) Grant(g Grant) error {
 	return nil
 }
 
-// expireAfter revokes the grant just set once d passes, or never for 0, in
+// expireAfterLocked revokes the grant just set once d passes, or never for 0, in
 // place of any earlier expiry. Caller MUST hold w.mu.
-func (w *AuthWriter) expireAfter(d time.Duration) {
+func (w *AuthWriter) expireAfterLocked(d time.Duration) {
 	w.generation++
 	if w.expiry != nil {
 		w.expiry.Stop()
@@ -249,7 +249,7 @@ func (w *AuthWriter) expireAfter(d time.Duration) {
 		}
 		// not actionable: the grant is revoked either way, and a failure to
 		// tell the presenter is the stream failing.
-		_ = w.refuse(UnauthorizedSessionErrorCode, "grant expired")
+		_ = w.refuseLocked(UnauthorizedSessionErrorCode, "grant expired")
 	})
 }
 
@@ -261,12 +261,12 @@ func (w *AuthWriter) Refuse(code SessionErrorCode, reason string) error {
 	if w.ended {
 		return ErrAuthEnded
 	}
-	return w.refuse(code, reason)
+	return w.refuseLocked(code, reason)
 }
 
-// refuse ends the token with AUTH_ERROR. Caller MUST hold w.mu.
-func (w *AuthWriter) refuse(code SessionErrorCode, reason string) error {
-	w.end()
+// refuseLocked ends the token with AUTH_ERROR. Caller MUST hold w.mu.
+func (w *AuthWriter) refuseLocked(code SessionErrorCode, reason string) error {
+	w.endLocked()
 	if w.stream == nil {
 		return nil
 	}
@@ -283,13 +283,13 @@ func sendAuthError(stream transport.Stream, code SessionErrorCode, reason string
 	return nil
 }
 
-// finish ends the token's grant, if it has not ended, once its handler
+// end ends the token's grant, if it has not ended, once its handler
 // returned or its presenter withdrew it.
-func (w *AuthWriter) finish() {
+func (w *AuthWriter) end() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if !w.ended {
-		w.end()
+		w.endLocked()
 	}
 }
 
@@ -298,18 +298,18 @@ func (w *AuthWriter) finish() {
 // character boundary.
 func authReason(reason string) string {
 	reason = strings.ToValidUTF8(reason, "�")
-	if len(reason) <= message.MaxAuthReasonLength {
+	if len(reason) <= maxAuthReasonLength {
 		return reason
 	}
-	cut := message.MaxAuthReasonLength
+	cut := maxAuthReasonLength
 	for cut > 0 && !utf8.RuneStart(reason[cut]) {
 		cut--
 	}
 	return reason[:cut]
 }
 
-// end removes the grant from the scope. Caller MUST hold w.mu.
-func (w *AuthWriter) end() {
+// endLocked removes the grant from the scope. Caller MUST hold w.mu.
+func (w *AuthWriter) endLocked() {
 	w.ended = true
 	if w.expiry != nil {
 		w.expiry.Stop()
@@ -321,7 +321,7 @@ func (w *AuthWriter) end() {
 // safeServeAuth runs handler, recovering a panic, and ends the grant when it
 // returns.
 func safeServeAuth(handler AuthHandler, w *AuthWriter, r *AuthRequest) (err error) {
-	defer w.finish()
+	defer w.end()
 	defer func() {
 		if p := recover(); p != nil {
 			err = fmt.Errorf("panic during auth handling: %v", p)
@@ -336,22 +336,25 @@ type authScope struct {
 	mu     sync.RWMutex
 	grants map[*AuthWriter]scopeGrant
 
-	// ready is closed once the connection's own credential was answered, so
-	// requests that arrive first are judged against its grant.
+	// conn answers the credential the connection itself carried. ready is
+	// closed once it has, so requests that arrive first are judged against
+	// its grant.
+	conn      *AuthWriter
 	ready     chan struct{}
 	readyOnce sync.Once
-	conn      *AuthWriter
 
 	// changed is called, without mu, after the union changed.
 	changed func()
 }
 
 func newAuthScope(changed func()) *authScope {
-	return &authScope{
+	s := &authScope{
 		grants:  make(map[*AuthWriter]scopeGrant),
 		ready:   make(chan struct{}),
 		changed: changed,
 	}
+	s.conn = &AuthWriter{scope: s}
+	return s
 }
 
 func (s *authScope) set(w *AuthWriter, g scopeGrant) {
@@ -457,7 +460,10 @@ type Credential struct {
 func (c *Credential) Grant() Grant {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.grant.clone()
+	g := c.grant
+	g.Publish = slices.Clone(g.Publish)
+	g.Subscribe = slices.Clone(g.Subscribe)
+	return g
 }
 
 // Context returns a context that is canceled when the credential's grant
@@ -514,6 +520,9 @@ func readAuthReply(r io.Reader) (Grant, error) {
 		if err := m.Decode(r); err != nil {
 			return Grant{}, decodeViolation("AUTH_OK", err)
 		}
+		if m.Expires > maxAuthExpires {
+			return Grant{}, fmt.Errorf("%w: AUTH_OK expires %d ms", errAuthViolation, m.Expires)
+		}
 		g, err := grantFromMessage(m)
 		if err != nil {
 			return Grant{}, err
@@ -523,6 +532,9 @@ func readAuthReply(r io.Reader) (Grant, error) {
 		var m message.AuthErrorMessage
 		if err := m.Decode(r); err != nil {
 			return Grant{}, decodeViolation("AUTH_ERROR", err)
+		}
+		if m.Code > math.MaxUint32 || len(m.Reason) > maxAuthReasonLength || !utf8.ValidString(m.Reason) {
+			return Grant{}, fmt.Errorf("%w: malformed AUTH_ERROR", errAuthViolation)
 		}
 		return Grant{}, &AuthError{Code: SessionErrorCode(m.Code), Reason: m.Reason}
 	default:
@@ -649,7 +661,7 @@ func (sess *Session) handleAuthStream(stream transport.Stream) {
 		if n > 0 {
 			sess.terminateProtocolViolation("message after AUTH")
 		}
-		w.finish()
+		w.end()
 		withdraw()
 	})
 
@@ -669,23 +681,17 @@ func (sess *Session) mayServe(path BroadcastPath) bool {
 	return sess.scope.wait(sess.ctx) && sess.scope.canSubscribe(path)
 }
 
-// servedFetch is a FETCH being served on stream for path.
-type servedFetch struct {
-	path   BroadcastPath
-	stream transport.Stream
-}
-
-// addScoped adds x to set, one of the session's scoped sets, so rescope
-// reaches it, and returns the func that removes it. A rescope follows, for a
-// scope change made after x was judged and before it was added.
-func addScoped[T comparable](sess *Session, set map[T]struct{}, x T) (remove func()) {
+// addScoped adds k to m, one of the session's scoped maps, so rescope reaches
+// it, and returns the func that removes it. A rescope follows, for a scope
+// change made after k was judged and before it was added.
+func addScoped[K comparable, V any](sess *Session, m map[K]V, k K, v V) (remove func()) {
 	sess.scopedMu.Lock()
-	set[x] = struct{}{}
+	m[k] = v
 	sess.scopedMu.Unlock()
 	sess.requestRescope()
 	return func() {
 		sess.scopedMu.Lock()
-		delete(set, x)
+		delete(m, k)
 		sess.scopedMu.Unlock()
 	}
 }
@@ -731,9 +737,9 @@ func (sess *Session) rescope() {
 	}
 
 	sess.scopedMu.Lock()
-	for f := range sess.fetches {
-		if !sess.scope.canSubscribe(f.path) {
-			cancelStreamWithError(f.stream, transport.StreamErrorCode(FetchErrorCodeUnauthorized))
+	for stream, path := range sess.fetches {
+		if !sess.scope.canSubscribe(path) {
+			cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeUnauthorized))
 		}
 	}
 	writers := make([]*AnnouncementWriter, 0, len(sess.announceWriters))

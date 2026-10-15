@@ -1,20 +1,8 @@
 package message
 
 import (
-	"errors"
 	"io"
-	"unicode/utf8"
 )
-
-// MaxAuthExpires is the largest AUTH_OK Expires, in milliseconds: 2^53 - 1.
-const MaxAuthExpires = 1<<53 - 1
-
-// MaxAuthReasonLength is the longest AUTH_ERROR Reason Phrase, in bytes.
-const MaxAuthReasonLength = 8192
-
-// ErrInvalidAuthMessage is returned when an Auth Stream message decodes but
-// breaks a rule of its fields, which is a protocol violation.
-var ErrInvalidAuthMessage = errors.New("invalid auth message")
 
 // AuthReplyType is the Type that leads each message the acceptor sends on an
 // Auth Stream.
@@ -106,10 +94,6 @@ func (aom AuthOkMessage) Len() int {
 
 // Encode writes the message with its leading Type.
 func (aom AuthOkMessage) Encode(w io.Writer) error {
-	if aom.Expires > MaxAuthExpires {
-		return ErrInvalidAuthMessage
-	}
-
 	msgLen := aom.Len()
 	b := make([]byte, 0, 1+msgLen+VarintLen(uint64(msgLen)))
 
@@ -155,10 +139,6 @@ func (aom *AuthOkMessage) Decode(src io.Reader) error {
 		return ErrMessageTooShort
 	}
 
-	if aom.Expires > MaxAuthExpires {
-		return ErrInvalidAuthMessage
-	}
-
 	return nil
 }
 
@@ -182,10 +162,6 @@ func (aem AuthErrorMessage) Len() int {
 
 // Encode writes the message with its leading Type.
 func (aem AuthErrorMessage) Encode(w io.Writer) error {
-	if !aem.valid() {
-		return ErrInvalidAuthMessage
-	}
-
 	msgLen := aem.Len()
 	b := make([]byte, 0, 1+msgLen+VarintLen(uint64(msgLen)))
 
@@ -223,13 +199,5 @@ func (aem *AuthErrorMessage) Decode(src io.Reader) error {
 		return ErrMessageTooShort
 	}
 
-	if !aem.valid() {
-		return ErrInvalidAuthMessage
-	}
-
 	return nil
-}
-
-func (aem AuthErrorMessage) valid() bool {
-	return aem.Code <= 1<<32-1 && len(aem.Reason) <= MaxAuthReasonLength && utf8.ValidString(aem.Reason)
 }

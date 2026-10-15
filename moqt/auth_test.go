@@ -1,16 +1,19 @@
 package moqt
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
 	"io"
 	"log/slog"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/quic-go/quic-go"
+	"github.com/qumo-dev/gomoqt/moqt/internal/message"
 	"github.com/qumo-dev/gomoqt/transport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -491,5 +494,44 @@ func TestCredential_Context_HandlerReturns(t *testing.T) {
 	case <-cred.Context().Done():
 	case <-waitCtx.Done():
 		t.Fatal("the credential outlived its handler")
+	}
+}
+
+func TestReadAuthReply_Violation(t *testing.T) {
+	tests := map[string]interface{ Encode(io.Writer) error }{
+		"expires too late":    message.AuthOkMessage{Expires: maxAuthExpires + 1},
+		"code over 32 bits":   message.AuthErrorMessage{Code: 1 << 32},
+		"reason too long":     message.AuthErrorMessage{Reason: strings.Repeat("a", maxAuthReasonLength+1)},
+		"reason is not UTF-8": message.AuthErrorMessage{Reason: string([]byte{0xff})},
+	}
+
+	for name, m := range tests {
+		t.Run(name, func(t *testing.T) {
+			var buf bytes.Buffer
+			require.NoError(t, m.Encode(&buf))
+
+			_, err := readAuthReply(&buf)
+
+			assert.ErrorIs(t, err, errAuthViolation)
+		})
+	}
+}
+
+func TestReadAuthReply_Limits(t *testing.T) {
+	tests := map[string]interface{ Encode(io.Writer) error }{
+		"latest expiry":  message.AuthOkMessage{Expires: maxAuthExpires},
+		"largest code":   message.AuthErrorMessage{Code: 1<<32 - 1},
+		"longest reason": message.AuthErrorMessage{Reason: strings.Repeat("a", maxAuthReasonLength)},
+	}
+
+	for name, m := range tests {
+		t.Run(name, func(t *testing.T) {
+			var buf bytes.Buffer
+			require.NoError(t, m.Encode(&buf))
+
+			_, err := readAuthReply(&buf)
+
+			assert.NotErrorIs(t, err, errAuthViolation)
+		})
 	}
 }

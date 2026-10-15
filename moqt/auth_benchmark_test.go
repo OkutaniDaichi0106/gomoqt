@@ -159,9 +159,7 @@ func BenchmarkAuthWriter_Grant(b *testing.B) {
 					b.Fatal(err)
 				}
 			}
-			w.mu.Lock()
 			w.end()
-			w.mu.Unlock()
 		})
 	}
 }
@@ -193,7 +191,7 @@ func BenchmarkAnnouncementWriter_rescope(b *testing.B) {
 						stop:         func() bool { return true },
 					}
 					held, _ := NewAnnouncement(ctx, BroadcastPath(fmt.Sprintf("/lobby/user%d", i)))
-					aw.hide(held)
+					aw.hideLocked(held)
 				}
 				aw.mu.Unlock()
 				b.ReportAllocs()

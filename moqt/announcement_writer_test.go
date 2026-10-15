@@ -506,7 +506,7 @@ func TestAnnouncementWriter_Close_SendsNoEnded(t *testing.T) {
 	}
 }
 
-func TestAnnouncementWriter_RegisterEndHandler_StreamEnded(t *testing.T) {
+func TestAnnouncementWriter_RegisterEndHandlerLocked_StreamEnded(t *testing.T) {
 	streamCtx, endStream := context.WithCancel(t.Context())
 	stream := &FakeQUICStream{ParentCtx: streamCtx}
 	aw := newAnnouncementWriter(stream, "/test/", 0, 0, nil)
@@ -522,7 +522,7 @@ func TestAnnouncementWriter_RegisterEndHandler_StreamEnded(t *testing.T) {
 	assert.Empty(t, aw.actives)
 }
 
-func TestAnnouncementWriter_RegisterEndHandler_Closed(t *testing.T) {
+func TestAnnouncementWriter_RegisterEndHandlerLocked_Closed(t *testing.T) {
 	aw := newTestAnnouncementWriter(t)
 	require.NoError(t, aw.init(map[*Announcement]struct{}{}))
 	ann, end := NewAnnouncement(t.Context(), BroadcastPath("/test/active"))
@@ -530,7 +530,7 @@ func TestAnnouncementWriter_RegisterEndHandler_Closed(t *testing.T) {
 	aw.stopAll()
 
 	aw.mu.Lock()
-	assert.NotPanics(t, func() { aw.registerEndHandler("active", ann) })
+	assert.NotPanics(t, func() { aw.registerEndHandlerLocked("active", ann) })
 	aw.mu.Unlock()
 }
 

@@ -138,7 +138,7 @@ type Session struct {
 	announceReaders map[*AnnouncementReader]struct{}
 	// fetches are the FETCHes being served, cancelled too when the scope no
 	// longer covers them.
-	fetches map[*servedFetch]struct{}
+	fetches map[transport.Stream]BroadcastPath
 
 	// rescopeCh wakes the loop that applies scope changes one at a time.
 	rescopeCh chan struct{}
@@ -196,7 +196,7 @@ func newSession(
 		authHandler:     setup.authHandler,
 		announceWriters: make(map[*AnnouncementWriter]struct{}),
 		announceReaders: make(map[*AnnouncementReader]struct{}),
-		fetches:         make(map[*servedFetch]struct{}),
+		fetches:         make(map[transport.Stream]BroadcastPath),
 		rescopeCh:       make(chan struct{}, 1),
 	}
 
@@ -228,8 +228,7 @@ func newSession(
 		// that arrive before it are judged against its grant.
 		sess.scope = newAuthScope(sess.requestRescope)
 		sess.wg.Go(sess.rescopeLoop)
-		conn := &AuthWriter{scope: sess.scope}
-		sess.scope.conn = conn
+		conn := sess.scope.conn
 		sess.wg.Go(func() {
 			r := &AuthRequest{RequestURI: sess.path, ctx: sess.ctx}
 			if err := safeServeAuth(sess.authHandler, conn, r); err != nil {
@@ -722,7 +721,7 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 
 	// What the peer may not publish is held back from the reader.
 	ar := newScopedAnnouncementReader(stream, prefix, nil, sess.scope.canPublish)
-	context.AfterFunc(ar.Context(), addScoped(sess, sess.announceReaders, ar))
+	context.AfterFunc(ar.Context(), addScoped(sess, sess.announceReaders, ar, struct{}{}))
 	return ar, nil
 }
 
@@ -946,7 +945,7 @@ func (sess *Session) handleAnnounceStream(stream transport.Stream) {
 			return
 		}
 		annstr.allow = sess.scope.canSubscribe
-		defer addScoped(sess, sess.announceWriters, annstr)()
+		defer addScoped(sess, sess.announceWriters, annstr, struct{}{})()
 	}
 
 	sess.mux.serveAnnouncements(annstr)
@@ -1198,8 +1197,7 @@ func (sess *Session) handleFetchStream(stream transport.Stream) {
 	defer stop()
 
 	if sess.scope != nil {
-		f := &servedFetch{path: req.BroadcastPath, stream: stream}
-		defer addScoped(sess, sess.fetches, f)()
+		defer addScoped(sess, sess.fetches, stream, req.BroadcastPath)()
 	}
 
 	err = safeServeFetch(handler, group, req)

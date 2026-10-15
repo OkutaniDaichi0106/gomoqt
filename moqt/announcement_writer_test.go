@@ -417,6 +417,38 @@ func TestAnnouncementWriter_SendAnnouncement_WriteError(t *testing.T) {
 	}
 }
 
+func TestAnnouncementWriter_LogError(t *testing.T) {
+	tests := map[string]struct {
+		err   error
+		level string
+	}{
+		"peer closed the session": {
+			err:   &transport.ApplicationError{ErrorCode: 0, Remote: true},
+			level: "level=DEBUG",
+		},
+		"peer reset the stream": {
+			err:   &transport.StreamError{ErrorCode: 1, Remote: true},
+			level: "level=DEBUG",
+		},
+		"local failure": {
+			err:   errors.New("encode failed"),
+			level: "level=ERROR",
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			var buf bytes.Buffer
+			logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+			aw := newAnnouncementWriter(&FakeQUICStream{}, "/test/", 0, 0, logger)
+
+			aw.logError("failed to encode ANNOUNCE end message", fmt.Errorf("encode: %w", tt.err))
+
+			assert.Contains(t, buf.String(), tt.level)
+		})
+	}
+}
+
 func TestAnnouncementWriter_Close(t *testing.T) {
 	t.Run("closes with no active announcements", func(t *testing.T) {
 		aw := newTestAnnouncementWriter(t)

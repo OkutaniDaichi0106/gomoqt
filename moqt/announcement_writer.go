@@ -60,9 +60,18 @@ func (aw *AnnouncementWriter) logError(msg string, err error, args ...any) {
 	if aw == nil || err == nil {
 		return
 	}
-	if aw.logger != nil {
-		aw.logger.Error(msg, append(args, "error", err)...)
+	if aw.logger == nil {
+		return
 	}
+	// A write fails once the peer has closed the session or the stream. The
+	// peer no longer reads it, so that is not a local failure.
+	level := slog.LevelError
+	if _, ok := errors.AsType[*transport.ApplicationError](err); ok {
+		level = slog.LevelDebug
+	} else if _, ok := errors.AsType[*transport.StreamError](err); ok {
+		level = slog.LevelDebug
+	}
+	aw.logger.Log(aw.ctx, level, msg, append(args, "error", err)...)
 }
 
 // shouldExclude returns true if the announcement should be skipped because

@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **moqt: `PathPattern` matches broadcast paths the way `TrackMux` and `AcceptAnnounce` read paths and prefixes:** `/room/1/alice` matches that path, and a pattern ending in `/` matches every path beneath it. Like an `http.ServeMux` pattern, a segment may be a wildcard: `{name}` matches one non-empty segment, `{name...}` the rest of the path, and `{$}` only a trailing `/`, so one grant such as `/room/{id}/host` reaches the same place in every room. `PathPattern.Values` returns what each named wildcard matched. An empty segment, as in `/room//x`, is a literal one.
 - **moqt: `TrackMux.Handle` and `HandleFunc` serve broadcast paths by `PathPattern`, as `http.ServeMux` serves URL paths.** A pattern announces nothing: it serves subscriptions to paths no Announcement covers, such as broadcasts made on demand, and the handler reads what its wildcards matched with the new `TrackWriter.PathValue`. An announced path keeps its own handler; among patterns, the most specific serves, and `Handle` panics on a pattern that conflicts with a registered one, as `http.ServeMux` does. A TRACK request for a path a pattern serves is answered only when the handler is a `TrackInfoProvider`. `TrackMux` is a `TrackHandler` again through `TrackMux.ServeTrack`, so a handler that rewrites `TrackWriter.BroadcastPath` to proxy can hand the track to another `TrackMux`, which routes it again and sets `PathValue` anew.
 
+### Changed
+
+- **moqt: the error types `AnnounceError`, `SubscribeError`, `FetchError`, `ProbeError`, `SessionError` and `GroupError` implement `error` only as pointers,** like `AuthError`. The library has always returned them as pointers, but their value receivers let a value also satisfy `error`, so `var e moqt.SubscribeError; errors.As(err, &e)` compiled and never matched. Now `go vet` reports that call. **Callers holding these errors as values** take their address or match `*moqt.SubscribeError` as before.
+
+### Fixed
+
+- **moqt: an announcement that ends after the peer has closed the session or the announce stream no longer logs an ERROR.** Ending the announcements a session served, as closing a session does, wrote ANNOUNCE_BROADCAST ENDED onto a stream that was gone and logged `failed to encode ANNOUNCE end message` at ERROR on every normal close. Such a write is now logged at DEBUG; other write failures stay at ERROR.
+
 ## [v0.24.2] - 2026-10-14
 
 > **Go only.** `v0.24.2` ships the Go module. `@qumo/moq` on JSR is unchanged and stays at `0.23.0`: nothing under `moq-web` changed, and the MOQ wire protocol is the same, so the two interoperate.

@@ -73,10 +73,11 @@ func TestAuthScope_set_SamePatterns(t *testing.T) {
 	w := &AuthWriter{scope: scope}
 	g, err := parseGrant(Grant{Subscribe: []string{"/room/1/"}})
 	require.NoError(t, err)
+	again, err := parseGrant(Grant{Subscribe: []string{"/room/1/"}, MaxAge: time.Minute})
+	require.NoError(t, err)
 
 	scope.set(w, g)
-	g.MaxAge = time.Minute
-	scope.set(w, g)
+	scope.set(w, again)
 
 	assert.Equal(t, 1, changes, "extending a grant does not change the scope")
 }

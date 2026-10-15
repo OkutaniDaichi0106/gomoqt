@@ -52,12 +52,6 @@ type Grant struct {
 	MaxAge time.Duration
 }
 
-// samePatterns reports whether g and h carry the same patterns, whatever
-// their max age.
-func (g Grant) samePatterns(h Grant) bool {
-	return slices.Equal(g.Publish, h.Publish) && slices.Equal(g.Subscribe, h.Subscribe)
-}
-
 // clone returns g with its own copies of the pattern slices.
 func (g Grant) clone() Grant {
 	g.Publish = slices.Clone(g.Publish)
@@ -90,18 +84,23 @@ func grantFromMessage(m message.AuthOkMessage) (Grant, error) {
 	return g, nil
 }
 
-// scopeGrant is a grant with its patterns parsed, as a session's scope holds
-// it.
+// scopeGrant is a grant's patterns parsed, as a session's scope holds them.
+// It shares nothing with the Grant, so the caller may reuse its slices.
 type scopeGrant struct {
-	Grant
 	publish, subscribe []pathPattern
 }
 
+// samePatterns reports whether g and h hold the same patterns.
+func (g scopeGrant) samePatterns(h scopeGrant) bool {
+	return slices.EqualFunc(g.publish, h.publish, samePattern) &&
+		slices.EqualFunc(g.subscribe, h.subscribe, samePattern)
+}
+
+func samePattern(p, q pathPattern) bool { return p.raw == q.raw }
+
 // parseGrant parses g's patterns, reporting ErrInvalidPathPattern for one
-// that is not a pattern. The result keeps its own copy of g, so the caller
-// may reuse g's slices.
+// that is not a pattern.
 func parseGrant(g Grant) (scopeGrant, error) {
-	g = g.clone()
 	publish, err := parsePatterns(g.Publish)
 	if err != nil {
 		return scopeGrant{}, err
@@ -110,7 +109,7 @@ func parseGrant(g Grant) (scopeGrant, error) {
 	if err != nil {
 		return scopeGrant{}, err
 	}
-	return scopeGrant{Grant: g, publish: publish, subscribe: subscribe}, nil
+	return scopeGrant{publish: publish, subscribe: subscribe}, nil
 }
 
 func parsePatterns(ss []string) ([]pathPattern, error) {
@@ -357,7 +356,7 @@ func (s *authScope) set(w *AuthWriter, g scopeGrant) {
 	s.mu.Unlock()
 	s.answered(w)
 	// A grant sent again to extend it changes nothing.
-	if !had || !old.samePatterns(g.Grant) {
+	if !had || !old.samePatterns(g) {
 		s.changed()
 	}
 }

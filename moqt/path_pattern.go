@@ -20,14 +20,14 @@ type pathPattern struct {
 	// segs holds the segments of a pattern with a wildcard, and is nil for
 	// one without.
 	segs []patternSeg
-	// trailing is whether the pattern ends in "/".
+	// trailing is whether a pattern with a wildcard ends in "/".
 	trailing bool
 }
 
 // patternSeg is a segment of a pattern with a wildcard.
 type patternSeg struct {
-	kind int
-	// lit is the text of a literal segment.
+	kind segKind
+	// lit is the text of a literal segment, and empty for a wildcard.
 	lit string
 }
 
@@ -57,7 +57,11 @@ func parsePathPattern(s string) (pathPattern, error) {
 		if name != "" {
 			names = append(names, name)
 		}
-		p.segs = append(p.segs, patternSeg{kind: kind, lit: seg})
+		ps := patternSeg{kind: kind}
+		if kind == segLiteral {
+			ps.lit = seg
+		}
+		p.segs = append(p.segs, ps)
 		if !more {
 			return p, nil
 		}
@@ -65,9 +69,11 @@ func parsePathPattern(s string) (pathPattern, error) {
 	}
 }
 
-// Kinds of pattern segment.
+// segKind is the kind of a pattern segment.
+type segKind int
+
 const (
-	segInvalid  = iota
+	segInvalid segKind = iota
 	segLiteral  // a literal segment
 	segWildcard // "{name}"
 	segRest     // "{name...}"
@@ -75,7 +81,7 @@ const (
 )
 
 // parseWildcard reads a segment: its kind, and the wildcard's name.
-func parseWildcard(seg string) (name string, kind int) {
+func parseWildcard(seg string) (name string, kind segKind) {
 	inner, ok := strings.CutPrefix(seg, "{")
 	if !ok {
 		if strings.ContainsAny(seg, "{}") {

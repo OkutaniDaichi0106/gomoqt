@@ -784,9 +784,10 @@ func (sess *Session) rescopeLoop() {
 }
 
 // rescope applies a change of the peer's scope: it cancels each subscription
-// and fetch the scope no longer covers, and each announce stream whose prefix
-// no longer lies within a root, with UNAUTHORIZED, and re-filters the
-// announcements the peer publishes.
+// the scope no longer covers, and each announce stream whose prefix no longer
+// lies within a root, with UNAUTHORIZED, and re-filters the announcements the
+// peer publishes. A fetch being served is one group, judged when requested,
+// and runs to its end.
 func (sess *Session) rescope() {
 	sess.trackWriterMapLocker.RLock()
 	var revoked []*TrackWriter
@@ -800,14 +801,6 @@ func (sess *Session) rescope() {
 	for _, tw := range revoked {
 		tw.CloseWithError(SubscribeErrorCodeUnauthorized)
 	}
-
-	sess.fetchesMu.Lock()
-	for req, stream := range sess.fetches {
-		if !sess.scope.canSubscribe(req.BroadcastPath) {
-			cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeUnauthorized))
-		}
-	}
-	sess.fetchesMu.Unlock()
 
 	for _, w := range sess.scope.watching() {
 		w.rescope()

@@ -18,12 +18,12 @@ The following error types are defined to represent specific protocol error scena
 
 | Error Type           | Description                                                      | Returned By                                      |
 |----------------------|------------------------------------------------------------------|--------------------------------------------------|
-| `moqt.SessionError`  | Error related to session management and protocol                 | `moqt.Session`, or instance originating from it  |
-| `moqt.SubscribeError`| Error during subscribe negotiation or operation                  | `moqt.TrackWriter`, `moqt.TrackReader`           |
-| `moqt.AnnounceError` | Error during announcement phase (e.g., broadcast path issues)    | `moqt.AnnouncementWriter`, `moqt.AnnouncementReader` |
-| `moqt.GroupError`    | Error in group operations (e.g., out of range, expired group)    | `moqt.GroupWriter`, `moqt.GroupReader`           |
-| `moqt.FetchError`    | Error during fetch operations                                    | `Session.Fetch`                             |
-| `moqt.ProbeError`    | Error during probe operations                                    | `Session.Probe`                             |
+| `*moqt.SessionError` | Error related to session management and protocol                 | `moqt.Session`, or instance originating from it  |
+| `*moqt.SubscribeError`| Error during subscribe negotiation or operation                  | `moqt.TrackWriter`, `moqt.TrackReader`           |
+| `*moqt.AnnounceError` | Error during announcement phase (e.g., broadcast path issues)    | `moqt.AnnouncementWriter`, `moqt.AnnouncementReader` |
+| `*moqt.GroupError`   | Error in group operations (e.g., out of range, expired group)    | `moqt.GroupWriter`, `moqt.GroupReader`           |
+| `*moqt.FetchError`   | Error during fetch operations                                    | `Session.Fetch`                             |
+| `*moqt.ProbeError`   | Error during probe operations                                    | `Session.Probe`                             |
 
 ### Relationship with QUIC errors
 
@@ -34,7 +34,7 @@ The concrete MoQ error types map directly onto the QUIC error primitives:
 
 This mapping allows protocol-specific error types to be propagated over QUIC using the appropriate QUIC error mechanism.
 
-Each error type implements the `error` interface and works with Go's standard error utilities (`errors.Is`, `errors.As`).
+Each error type implements the `error` interface as a pointer, which is how the library returns it: match it with `errors.As` and a target such as `var subErr *moqt.SubscribeError`. A target of the value type is reported by `go vet`, and makes `errors.As` panic.
 
 ## Built-in Error Codes
 

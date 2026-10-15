@@ -15,11 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **moqt: the error types `AnnounceError`, `SubscribeError`, `FetchError`, `ProbeError`, `SessionError` and `GroupError` implement `error` only as pointers,** like `AuthError`. The library has always returned them as pointers, but their value receivers let a value also satisfy `error`, so `var e moqt.SubscribeError; errors.As(err, &e)` compiled and never matched. Now `go vet` reports that call, and a value target `go vet` cannot see, such as one passed as `any`, makes `errors.As` panic. **Callers holding these errors as values** take their address or match `*moqt.SubscribeError`.
+- **Breaking: moqt: the error types `AnnounceError`, `SubscribeError`, `FetchError`, `ProbeError`, `SessionError` and `GroupError` implement `error` only as pointers,** like `AuthError`. The library has always returned them as pointers, but their value receivers let a value also satisfy `error`, so `var e moqt.SubscribeError; errors.As(err, &e)` compiled and never matched. Now `go vet` reports that call, and a value target `go vet` cannot see, such as one passed as `any`, makes `errors.As` panic. **Callers holding these errors as values** take their address or match `*moqt.SubscribeError`.
 
 ### Fixed
 
-- **moqt: closing an announce stream no longer writes to a stream that has already ended.** `AnnouncementWriter.Close` sent ANNOUNCE_BROADCAST ENDED for each active announcement even when the stream had ended with the session, so every normal session close logged `failed to encode ANNOUNCE end message` at ERROR. `Close` now sends ENDED only on a stream that is still open, and `CloseWithError` sends none, since the reset it makes discards them and ends every announcement on the peer.
+- **moqt: an `AnnouncementWriter` no longer writes ANNOUNCE_BROADCAST ENDED onto a stream that has already ended.** When the session closed, `Close` sent ENDED for every active announcement onto the dead stream, and so could an announcement ending or a scope change in the same moment, so every normal session close logged `failed to encode ANNOUNCE end message` at ERROR. ENDED is now sent only while the stream is open, and `CloseWithError` sends none, since the reset it makes discards them and ends every announcement on the peer. A graceful `Close` of an open stream still sends them.
 
 ## [v0.24.2] - 2026-10-14
 

@@ -515,6 +515,34 @@ func TestAnnouncementWriter_Close_EndedMessages(t *testing.T) {
 	}
 }
 
+func TestAnnouncementWriter_AnnouncementEnds_StreamEnded(t *testing.T) {
+	streamCtx, endStream := context.WithCancel(context.Background())
+	stream := &FakeQUICStream{ParentCtx: streamCtx}
+	aw := newAnnouncementWriter(stream, "/test/", 0, 0, nil)
+	require.NoError(t, aw.init(map[*Announcement]struct{}{}))
+	ann, end := NewAnnouncement(context.Background(), BroadcastPath("/test/active"))
+	require.NoError(t, aw.SendAnnouncement(ann))
+	endStream()
+	before := len(stream.Written())
+
+	end()
+
+	assert.Empty(t, stream.Written()[before:])
+	assert.Empty(t, aw.actives)
+}
+
+func TestAnnouncementWriter_RegisterEndHandler_Closed(t *testing.T) {
+	aw := newTestAnnouncementWriter(t)
+	require.NoError(t, aw.init(map[*Announcement]struct{}{}))
+	ann, end := NewAnnouncement(context.Background(), BroadcastPath("/test/active"))
+	defer end()
+	aw.takeActives()
+
+	aw.mu.Lock()
+	assert.NotPanics(t, func() { aw.registerEndHandler("active", ann) })
+	aw.mu.Unlock()
+}
+
 func TestAnnouncementWriter_CloseWithError(t *testing.T) {
 	t.Run("closes with error and no active announcements", func(t *testing.T) {
 		tests := map[string]struct {

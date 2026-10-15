@@ -89,7 +89,7 @@ The probe loop timing can be tuned via `moqt.Config`:
 
 ## Error Handling
 
-Probe operations may return `moqt.ProbeError` or `moqt.SessionError`:
+Probe operations may return `*moqt.ProbeError` or `*moqt.SessionError`:
 
 ```go
     probeCh, err := sess.Probe(5_000_000)

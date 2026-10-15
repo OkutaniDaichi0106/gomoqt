@@ -97,7 +97,13 @@ func startAuthServer(t *testing.T, ctx context.Context, handler AuthHandler, ses
 		QUICConfig:  &quic.Config{EnableDatagrams: true},
 		TrackMux:    mux,
 		AuthHandler: handler,
-		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		FetchHandler: FetchHandlerFunc(func(w *GroupWriter, _ *FetchRequest) {
+			frame := NewFrame(0)
+			_, _ = frame.Write([]byte("fetched"))
+			_ = w.WriteFrame(frame)
+			_ = w.Close()
+		}),
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Handler: HandleFunc(func(sess *Session) {
 			// The readiness probe below is not a session the test dialed.
 			if sessions != nil && sess.RequestURI() != authProbePath {
@@ -316,35 +322,38 @@ func TestSession_Subscribe_Scope(t *testing.T) {
 }
 
 func TestSession_Fetch_Scope(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	addr := startAuthServer(t, ctx, roomTicketHandler, nil)
-	sess := dialAuth(t, ctx, "moqt://"+addr+"/app", nil)
-	cred, err := sess.Auth(ctx, []byte("room1"))
-	require.NoError(t, err)
-	defer func() { _ = cred.Close() }() // not actionable: the test is over
+	tests := map[string]struct {
+		path        BroadcastPath
+		wantRefused bool
+	}{
+		"outside the scope": {path: authRoom2Path, wantRefused: true},
+		"within the scope":  {path: authRoom1Path},
+	}
 
-	_, err = sess.Fetch(&FetchRequest{BroadcastPath: authRoom2Path, TrackName: "audio"})
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			addr := startAuthServer(t, ctx, roomTicketHandler, nil)
+			sess := dialAuth(t, ctx, "moqt://"+addr+"/app", nil)
+			cred, err := sess.Auth(ctx, []byte("room1"))
+			require.NoError(t, err)
+			defer func() { _ = cred.Close() }() // not actionable: the test is over
 
-	var fetchErr *FetchError
-	require.ErrorAs(t, err, &fetchErr)
-	assert.Equal(t, FetchErrorCodeUnauthorized, fetchErr.FetchErrorCode())
-}
+			gr, err := sess.Fetch((&FetchRequest{BroadcastPath: tt.path, TrackName: "audio"}).WithContext(ctx))
+			require.NoError(t, err)
+			frame := NewFrame(0)
+			err = gr.ReadFrame(frame)
 
-func TestSession_Fetch_InScope(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	addr := startAuthServer(t, ctx, roomTicketHandler, nil)
-	sess := dialAuth(t, ctx, "moqt://"+addr+"/app", nil)
-	cred, err := sess.Auth(ctx, []byte("room1"))
-	require.NoError(t, err)
-	defer func() { _ = cred.Close() }() // not actionable: the test is over
-
-	_, err = sess.Fetch(&FetchRequest{BroadcastPath: authRoom1Path, TrackName: "audio"})
-
-	var fetchErr *FetchError
-	if errors.As(err, &fetchErr) {
-		assert.NotEqual(t, FetchErrorCodeUnauthorized, fetchErr.FetchErrorCode(), "a fetch within the scope is served")
+			if tt.wantRefused {
+				var groupErr *GroupError
+				require.ErrorAs(t, err, &groupErr)
+				assert.Equal(t, UnauthorizedGroupErrorCode, groupErr.GroupErrorCode())
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, []byte("fetched"), frame.Body())
+		})
 	}
 }
 

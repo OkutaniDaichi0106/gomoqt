@@ -581,11 +581,10 @@ func (sess *Session) nextSubscribeID() SubscribeID {
 	return SubscribeID(sess.subscribeIDCounter.Add(1))
 }
 
-// Fetch requests one group of a track and waits for its first byte. A
-// publisher that refuses the fetch, by resetting the stream before any of the
-// group, makes Fetch return a *FetchError; a reset while the group is read is
-// a *GroupError from GroupReader.ReadFrame. The request's context bounds the
-// wait (see FetchRequest.WithContext).
+// Fetch requests one group of a track and returns its reader. The answer is
+// the group itself: a publisher that refuses the fetch resets it, so the
+// refusal is a *GroupError from GroupReader.ReadFrame, such as
+// UnauthorizedGroupErrorCode outside the session's scope.
 func (sess *Session) Fetch(req *FetchRequest) (*GroupReader, error) {
 	if sess.closed.Load() {
 		return nil, ErrClosedSession
@@ -631,54 +630,17 @@ func (sess *Session) Fetch(req *FetchRequest) (*GroupReader, error) {
 		return nil, fmt.Errorf("failed to encode FETCH message: %w", err)
 	}
 
+	group := newGroupReader(req.GroupSequence, stream, nil)
+
 	// Cancel the stream when the request's context ends first. Once the group
 	// has ended, stop watching, so a long-lived context does not keep every
-	// finished fetch reachable until it ends.
-	ctx := req.Context()
-	stop := context.AfterFunc(ctx, func() {
+	// finished fetch reachable until it ends. The callback cancels the stream
+	// itself rather than through the reader: it may run before stop is set.
+	group.stop = context.AfterFunc(req.Context(), func() {
 		stream.CancelRead(transport.StreamErrorCode(ExpiredGroupErrorCode))
 	})
 
-	// The publisher answers with the group, or refuses the fetch by resetting
-	// the stream before any of it, so wait for the first byte: a refusal is
-	// the error of Fetch, and an error while reading the group a *GroupError.
-	var head [1]byte
-	n, err := io.ReadAtLeast(stream, head[:], 1)
-	if err != nil && !errors.Is(err, io.EOF) {
-		stop()
-		cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeInternal))
-		// The publisher's refusal wins over a context that ended meanwhile.
-		if strErr, ok := errors.AsType[*transport.StreamError](err); ok && strErr.Remote {
-			return nil, &FetchError{StreamError: strErr}
-		}
-		if ctx.Err() != nil {
-			return nil, context.Cause(ctx)
-		}
-		if appErr, ok := errors.AsType[*transport.ApplicationError](err); ok {
-			return nil, &SessionError{ApplicationError: appErr}
-		}
-		return nil, fmt.Errorf("failed to read the fetched group: %w", err)
-	}
-
-	group := newGroupReader(req.GroupSequence, &headStream{ReceiveStream: stream, head: head[:n]}, nil)
-	group.stop = stop
 	return group, nil
-}
-
-// headStream is a stream whose first bytes were read ahead, and reads them
-// again first.
-type headStream struct {
-	transport.ReceiveStream
-	head []byte
-}
-
-func (s *headStream) Read(p []byte) (int, error) {
-	if len(s.head) > 0 {
-		n := copy(p, s.head)
-		s.head = s.head[n:]
-		return n, nil
-	}
-	return s.ReceiveStream.Read(p)
 }
 
 // AcceptAnnounce requests announcements from the remote peer that match the
@@ -1167,12 +1129,13 @@ func (sess *Session) handleFetchStream(stream transport.Stream) {
 	err := fm.Decode(stream)
 	if err != nil {
 		sess.logError("failed to decode FETCH message", err)
-		cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeInternal))
+		// The answer to a fetch is its group, so it is reset with a group code.
+		cancelStreamWithError(stream, transport.StreamErrorCode(InternalGroupErrorCode))
 		return
 	}
 
 	if !sess.mayServe(BroadcastPath(fm.BroadcastPath)) {
-		cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeUnauthorized))
+		cancelStreamWithError(stream, transport.StreamErrorCode(UnauthorizedGroupErrorCode))
 		return
 	}
 
@@ -1207,7 +1170,7 @@ func (sess *Session) handleFetchStream(stream transport.Stream) {
 	err = safeServeFetch(handler, group, req)
 	if err != nil {
 		sess.logError("fetch handler error", err)
-		cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeInternal))
+		cancelStreamWithError(stream, transport.StreamErrorCode(InternalGroupErrorCode))
 		return
 	}
 }

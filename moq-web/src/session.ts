@@ -19,8 +19,6 @@ import {
 	StreamConn,
 	StreamConnError,
 	StreamConnErrorInfo,
-	WebTransportStreamError,
-	type WebTransportStreamErrorCode,
 } from "./internal/webtransport/mod.ts";
 import { Channel } from "@okdaichi/golikejs";
 import { background, withCancelCause } from "@okdaichi/golikejs/context";
@@ -44,14 +42,7 @@ import { Queue } from "./internal/queue.ts";
 import type { SubscribeID, TrackName } from "./alias.ts";
 import { FetchRequest } from "./fetch.ts";
 import type { FetchHandler } from "./fetch.ts";
-import {
-	FetchError,
-	FetchErrorCode,
-	GroupErrorCode,
-	ProbeErrorCode,
-	SessionErrorCode,
-	SubscribeErrorCode,
-} from "./error.ts";
+import { GroupErrorCode, ProbeErrorCode, SessionErrorCode, SubscribeErrorCode } from "./error.ts";
 import type { MoqOptions } from "./options.ts";
 import { defaultProbeIntervalMs, defaultProbeMaxAgeMs, defaultProbeMaxDelta } from "./options.ts";
 import { ProbeResult } from "./probe.ts";
@@ -593,39 +584,17 @@ export class Session {
 			return [undefined, err];
 		}
 
-		// Cancel the stream when the request is done.
-		let requestDone = false;
-		req.done().then(() => {
-			requestDone = true;
-			stream.readable.cancel(GroupErrorCode.ExpiredGroup);
-		}).catch(() => {});
-
-		// The publisher answers with the group, or refuses the fetch by
-		// resetting the stream before any of it, so wait for the first byte: a
-		// refusal is the error of fetch, and an error while reading the group
-		// is the group's.
-		const head = new Uint8Array(1);
-		const [n, readErr] = await stream.readable.read(head);
-		if (readErr && !(readErr instanceof EOFError)) {
-			// The publisher's refusal wins over a request done meanwhile.
-			if (readErr instanceof WebTransportStreamError && readErr.remote) {
-				return [undefined, new FetchError(readErr.code, readErr.remote)];
-			}
-			if (requestDone) {
-				return [undefined, new Error("moq: fetch request done", { cause: readErr })];
-			}
-			return [undefined, readErr];
-		}
-
 		const group = new GroupReader(
 			this.#ctx,
-			new HeadReceiveStream(stream.readable, head.subarray(0, n)),
+			stream.readable,
 			new GroupMessage({ sequence: req.groupSequence }),
 		);
-		// The group, too, ends when the request is done.
+
+		// Cancel the group when the request is done
 		req.done().then(() => {
 			group.cancel(GroupErrorCode.ExpiredGroup);
 		}).catch(() => {});
+
 		return [group, undefined];
 	}
 
@@ -855,7 +824,7 @@ export class Session {
 	async #handleFetchStream(stream: Stream): Promise<void> {
 		const handler = this.#fetchHandler;
 		if (!handler) {
-			cancelStreamWithError(stream, FetchErrorCode.InternalError);
+			cancelStreamWithError(stream, GroupErrorCode.InternalError);
 			return;
 		}
 
@@ -863,7 +832,7 @@ export class Session {
 		const err = await fm.decode(stream.readable);
 		if (err) {
 			console.error("Failed to decode FetchMessage:", err);
-			cancelStreamWithError(stream, FetchErrorCode.InternalError);
+			cancelStreamWithError(stream, GroupErrorCode.InternalError);
 			return;
 		}
 
@@ -887,7 +856,7 @@ export class Session {
 			await handler.serveFetch(group, req);
 		} catch (e) {
 			console.error("moq: fetch handler error:", e);
-			await group.cancel(FetchErrorCode.InternalError).catch(() => {});
+			await group.cancel(GroupErrorCode.InternalError).catch(() => {});
 		} finally {
 			cancelFetch(undefined);
 		}
@@ -1244,34 +1213,5 @@ class BitrateTracker {
 		}
 		const diff = Math.abs(newVal - oldVal);
 		return diff / oldVal >= maxDelta;
-	}
-}
-
-/** A receive stream whose first bytes were read ahead, and reads them again first. */
-class HeadReceiveStream implements ReceiveStream {
-	readonly #stream: ReceiveStream;
-	#head: Uint8Array;
-
-	constructor(stream: ReceiveStream, head: Uint8Array) {
-		this.#stream = stream;
-		this.#head = head;
-	}
-
-	read(p: Uint8Array): Promise<[number, Error | undefined]> {
-		if (this.#head.length > 0) {
-			const n = Math.min(p.length, this.#head.length);
-			p.set(this.#head.subarray(0, n));
-			this.#head = this.#head.subarray(n);
-			return Promise.resolve([n, undefined]);
-		}
-		return this.#stream.read(p);
-	}
-
-	cancel(code: WebTransportStreamErrorCode): Promise<void> {
-		return this.#stream.cancel(code);
-	}
-
-	closed(): Promise<void> {
-		return this.#stream.closed();
 	}
 }

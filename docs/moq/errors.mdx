@@ -89,6 +89,7 @@ Error codes for each custom error type are summarized below. Click each section 
 | `moqt.PublishAbortedErrorCode`      | 0x05  | Publish aborted               |
 | `moqt.ClosedSessionGroupErrorCode`  | 0x06  | Closed session                |
 | `moqt.InvalidSubscribeIDErrorCode`  | 0x07  | Invalid subscribe ID          |
+| `moqt.UnauthorizedGroupErrorCode`   | 0x08  | Outside the session's scope, as for a refused fetch |
 </Tab>
 
 <Tab title="FetchErrorCode">
@@ -96,9 +97,8 @@ Error codes for each custom error type are summarized below. Click each section 
 |------------------------------|-------|-------------------------------|
 | `moqt.FetchErrorCodeInternal`       | 0x00  | Internal error                |
 | `moqt.FetchErrorCodeTimeout`        | 0x01  | Fetch timeout                 |
-| `moqt.FetchErrorCodeUnauthorized`   | 0x02  | Outside the session's scope   |
 
-`Session.Fetch` waits for the first byte of the group, so a publisher that refuses the fetch, by resetting the stream before any of the group, makes `Session.Fetch` return a `*moqt.FetchError`. A reset while the group is read is a `*moqt.GroupError` from `GroupReader.ReadFrame`.
+A fetch's answer is the group itself, so a publisher that refuses a fetch resets the group: the refusal is a `*moqt.GroupError` from `GroupReader.ReadFrame`, such as `UnauthorizedGroupErrorCode`.
 </Tab>
 
 <Tab title="ProbeErrorCode">

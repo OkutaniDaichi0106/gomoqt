@@ -194,8 +194,6 @@ export const FetchErrorCode = {
 	InternalError: 0x00,
 	/** Timeout */
 	Timeout: 0x01,
-	/** The session's scope does not cover the fetch */
-	Unauthorized: 0x02,
 } as const;
 
 /** Numeric fetch error code type. */
@@ -213,8 +211,6 @@ export class FetchError extends WebTransportStreamError {
 				return "internal error";
 			case FetchErrorCode.Timeout:
 				return "timeout";
-			case FetchErrorCode.Unauthorized:
-				return "unauthorized";
 			default:
 				return `unknown fetch error (${code})`;
 		}
@@ -248,6 +244,8 @@ export const GroupErrorCode = {
 	ClosedSession: 0x06,
 	/** Invalid subscribe ID */
 	InvalidSubscribeID: 0x07,
+	/** The session's scope does not cover the group, as for a refused fetch */
+	Unauthorized: 0x08,
 } as const;
 
 /** Numeric group error code type. */
@@ -275,6 +273,8 @@ export class GroupError extends WebTransportStreamError {
 				return "closed session";
 			case GroupErrorCode.InvalidSubscribeID:
 				return "invalid subscribe id";
+			case GroupErrorCode.Unauthorized:
+				return "unauthorized";
 			default:
 				return `unknown group error (${code})`;
 		}

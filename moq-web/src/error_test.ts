@@ -130,6 +130,7 @@ Deno.test("Error", async (t) => {
 			GroupError.textOf(GroupErrorCode.InvalidSubscribeID),
 			"invalid subscribe id",
 		);
+		assertEquals(GroupError.textOf(GroupErrorCode.Unauthorized), "unauthorized");
 		assertEquals(GroupError.textOf(9999), "unknown group error (9999)");
 	});
 
@@ -173,7 +174,6 @@ Deno.test("Error", async (t) => {
 			"internal error",
 		);
 		assertEquals(FetchError.textOf(FetchErrorCode.Timeout), "timeout");
-		assertEquals(FetchError.textOf(FetchErrorCode.Unauthorized), "unauthorized");
 		assertEquals(FetchError.textOf(9999), "unknown fetch error (9999)");
 	});
 

@@ -803,3 +803,16 @@ func TestAnnouncementReader_StreamErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestNewAnnouncementReader_InitSuffixesOutsideScope(t *testing.T) {
+	scope := newAuthScope(func() {})
+	require.NoError(t, (&AuthWriter{scope: scope}).Grant(Grant{Root: "/room/1/", Publish: []string{"/"}}))
+
+	ar := newAnnouncementReader(&FakeQUICStream{}, "/room/", []suffix{"1/alice", "2/bob"}, scope)
+	defer func() { _ = ar.Close() }() // not actionable: the test is over
+
+	ar.announcementsMu.Lock()
+	defer ar.announcementsMu.Unlock()
+	assert.Contains(t, ar.actives, "1/alice")
+	assert.NotContains(t, ar.actives, "2/bob", "a suffix the peer may not publish is dropped")
+}

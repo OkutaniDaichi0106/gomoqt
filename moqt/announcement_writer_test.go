@@ -470,15 +470,14 @@ func TestAnnouncementWriter_Close(t *testing.T) {
 	})
 }
 
-func TestAnnouncementWriter_Close_EndedMessages(t *testing.T) {
+func TestAnnouncementWriter_Close_SendsNoEnded(t *testing.T) {
 	tests := map[string]struct {
 		streamEnded bool
 		reset       bool
-		wantEnded   bool
 	}{
-		"Close on a live stream sends ENDED":      {wantEnded: true},
-		"Close on an ended stream writes nothing": {streamEnded: true},
-		"CloseWithError writes nothing":           {reset: true},
+		"Close on a live stream":   {},
+		"Close on an ended stream": {streamEnded: true},
+		"CloseWithError":           {reset: true},
 	}
 
 	for name, tt := range tests {
@@ -502,15 +501,7 @@ func TestAnnouncementWriter_Close_EndedMessages(t *testing.T) {
 			}
 			end()
 
-			written := stream.Written()[before:]
-			if !tt.wantEnded {
-				assert.Empty(t, written)
-				return
-			}
-			var msg message.AnnounceBroadcastMessage
-			require.NoError(t, msg.Decode(bytes.NewReader(written)))
-			assert.Equal(t, message.ENDED, msg.AnnounceStatus)
-			assert.Equal(t, "active", msg.BroadcastPathSuffix)
+			assert.Empty(t, stream.Written()[before:], "the end of the stream ends the announcement; ending it afterwards sends nothing")
 		})
 	}
 }
@@ -536,7 +527,7 @@ func TestAnnouncementWriter_RegisterEndHandler_Closed(t *testing.T) {
 	require.NoError(t, aw.init(map[*Announcement]struct{}{}))
 	ann, end := NewAnnouncement(context.Background(), BroadcastPath("/test/active"))
 	defer end()
-	aw.takeActives()
+	aw.stopAll()
 
 	aw.mu.Lock()
 	assert.NotPanics(t, func() { aw.registerEndHandler("active", ann) })

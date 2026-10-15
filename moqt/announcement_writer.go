@@ -403,39 +403,33 @@ func (aw *AnnouncementWriter) SendAnnouncement(announcement *Announcement) error
 	return nil
 }
 
-// Close gracefully closes the AnnouncementWriter, sending ANNOUNCE_BROADCAST
-// ENDED for each active announcement first: a moq-web reader does not end its
-// announcements at the end of the stream. A stream that has already ended is
-// not written to.
+// Close finishes the stream. The peer then treats every announcement on it as
+// ended (moq-lite-05 §5.1.1), so no ENDED is sent.
 func (aw *AnnouncementWriter) Close() error {
-	for sfx, active := range aw.takeActives() {
-		aw.end(sfx, active)
-	}
+	aw.stopAll()
 	return aw.stream.Close()
 }
 
 // CloseWithError resets the stream with the given code, which ends every
-// active announcement on the peer; no ENDED is sent, as the reset would
-// discard it.
+// active announcement on the peer as well.
 func (aw *AnnouncementWriter) CloseWithError(code AnnounceErrorCode) error {
-	for _, active := range aw.takeActives() {
-		if active.stop != nil {
-			active.stop()
-		}
-	}
+	aw.stopAll()
 	cancelStreamWithError(aw.stream, transport.StreamErrorCode(code))
 	return nil
 }
 
-// takeActives empties the writer, returning the announcements that were
-// active so the caller can end them without holding aw.mu.
-func (aw *AnnouncementWriter) takeActives() map[suffix]*activeAnnouncement {
+// stopAll empties the writer and stops watching the announcements that were
+// active, sending nothing.
+func (aw *AnnouncementWriter) stopAll() {
 	aw.mu.Lock()
 	defer aw.mu.Unlock()
-	actives := aw.actives
+	for _, active := range aw.actives {
+		if active.stop != nil {
+			active.stop()
+		}
+	}
 	aw.actives = nil
 	aw.dropHidden()
-	return actives
 }
 
 // Context returns the AnnouncementWriter's context.

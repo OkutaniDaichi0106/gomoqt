@@ -379,6 +379,44 @@ type authScope struct {
 
 	// changed is called, without mu, after the union changed.
 	changed func()
+
+	// watchers are the announce streams the scope applies to, which rescope
+	// on each change. They have their own lock, apart from the grants that
+	// every request reads.
+	watchersMu sync.Mutex
+	watchers   map[scopeWatcher]struct{}
+}
+
+// scopeWatcher re-applies the scope after it changed.
+type scopeWatcher interface {
+	rescope()
+}
+
+// watch makes w rescope on each change of the scope until the returned func
+// is called.
+func (s *authScope) watch(w scopeWatcher) (unwatch func()) {
+	s.watchersMu.Lock()
+	if s.watchers == nil {
+		s.watchers = make(map[scopeWatcher]struct{})
+	}
+	s.watchers[w] = struct{}{}
+	s.watchersMu.Unlock()
+	return func() {
+		s.watchersMu.Lock()
+		delete(s.watchers, w)
+		s.watchersMu.Unlock()
+	}
+}
+
+// watching returns the watchers there are now.
+func (s *authScope) watching() []scopeWatcher {
+	s.watchersMu.Lock()
+	defer s.watchersMu.Unlock()
+	ws := make([]scopeWatcher, 0, len(s.watchers))
+	for w := range s.watchers {
+		ws = append(ws, w)
+	}
+	return ws
 }
 
 func newAuthScope(changed func()) *authScope {
@@ -722,20 +760,6 @@ func (sess *Session) mayServe(path BroadcastPath) bool {
 	return sess.scope.wait(sess.ctx) && sess.scope.canSubscribe(path)
 }
 
-// addScoped adds k to m, one of the session's scoped maps, so rescope reaches
-// it, and returns the func that removes it. A scope change made after k was
-// judged and before it was added does not reach it: the caller checks again.
-func addScoped[K comparable, V any](sess *Session, m map[K]V, k K, v V) (remove func()) {
-	sess.scopedMu.Lock()
-	m[k] = v
-	sess.scopedMu.Unlock()
-	return func() {
-		sess.scopedMu.Lock()
-		delete(m, k)
-		sess.scopedMu.Unlock()
-	}
-}
-
 // requestRescope asks rescopeLoop to apply a change of the scope. It never
 // blocks: changes made while a pass runs are applied by one more pass.
 func (sess *Session) requestRescope() {
@@ -777,28 +801,15 @@ func (sess *Session) rescope() {
 		tw.CloseWithError(SubscribeErrorCodeUnauthorized)
 	}
 
-	sess.scopedMu.Lock()
+	sess.fetchesMu.Lock()
 	for req, stream := range sess.fetches {
 		if !sess.scope.canSubscribe(req.BroadcastPath) {
 			cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeUnauthorized))
 		}
 	}
-	var unlisted []*AnnouncementWriter
-	for aw := range sess.announceWriters {
-		if !sess.scope.canList(aw.prefix) {
-			unlisted = append(unlisted, aw)
-		}
-	}
-	readers := make([]*AnnouncementReader, 0, len(sess.announceReaders))
-	for ar := range sess.announceReaders {
-		readers = append(readers, ar)
-	}
-	sess.scopedMu.Unlock()
+	sess.fetchesMu.Unlock()
 
-	for _, aw := range unlisted {
-		_ = aw.CloseWithError(AnnounceErrorCodeUnauthorized) // not actionable: it only resets the stream
-	}
-	for _, ar := range readers {
-		ar.rescope()
+	for _, w := range sess.scope.watching() {
+		w.rescope()
 	}
 }

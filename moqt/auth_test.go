@@ -333,6 +333,25 @@ func TestSession_Fetch_Scope(t *testing.T) {
 	assert.Equal(t, FetchErrorCodeUnauthorized, fetchErr.FetchErrorCode())
 }
 
+func TestSession_Fetch_InScope(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	addr := startAuthServer(t, ctx, roomTicketHandler, nil)
+	sess := dialAuth(t, ctx, "moqt://"+addr+"/app", nil)
+	cred, err := sess.Auth(ctx, []byte("room1"))
+	require.NoError(t, err)
+	defer func() { _ = cred.Close() }() // not actionable: the test is over
+
+	gr, err := sess.Fetch(&FetchRequest{BroadcastPath: authRoom1Path, TrackName: "audio"})
+	require.NoError(t, err)
+	err = gr.ReadFrame(NewFrame(0))
+
+	var fetchErr *FetchError
+	if errors.As(err, &fetchErr) {
+		assert.NotEqual(t, FetchErrorCodeUnauthorized, fetchErr.FetchErrorCode(), "a fetch within the scope is served")
+	}
+}
+
 func TestSession_Auth_WithdrawCancelsOnlyItsSubscriptions(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

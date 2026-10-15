@@ -9,14 +9,10 @@ import (
 	"github.com/qumo-dev/gomoqt/transport"
 )
 
-func newAnnouncementReader(stream transport.Stream, prefix prefix, initSuffixes []suffix) *AnnouncementReader {
-	return newScopedAnnouncementReader(stream, prefix, initSuffixes, nil)
-}
-
-// newScopedAnnouncementReader is newAnnouncementReader with allow, which, when
-// set, reports whether the peer may publish a broadcast path. An announcement
-// it refuses is held back until rescope allows it.
-func newScopedAnnouncementReader(stream transport.Stream, prefix prefix, initSuffixes []suffix, allow func(BroadcastPath) bool) *AnnouncementReader {
+// newAnnouncementReader reads the peer's announcements under prefix. scope,
+// when set, is what the peer may publish: an announcement outside it is
+// dropped.
+func newAnnouncementReader(stream transport.Stream, prefix prefix, initSuffixes []suffix, scope *authScope) *AnnouncementReader {
 	if !isValidPrefix(prefix) {
 		panic("invalid prefix for AnnouncementReader")
 	}
@@ -31,10 +27,18 @@ func newScopedAnnouncementReader(stream transport.Stream, prefix prefix, initSuf
 		pendings:    make([]*Announcement, 0),
 		announcedCh: make(chan struct{}, 1),
 		cancelCause: cancelCause,
-		allow:       allow,
+		scope:       scope,
+	}
+
+	if scope != nil {
+		// Watching from before the first read, no scope change misses it.
+		context.AfterFunc(ar.ctx, scope.watch(ar))
 	}
 
 	for _, suffix := range initSuffixes {
+		if scope != nil && !scope.canPublish(BroadcastPath(prefix+suffix)) {
+			continue
+		}
 		ann, _ := NewAnnouncement(readerCtx, BroadcastPath(prefix+suffix))
 		ar.actives[suffix] = ann
 		ar.pendings = append(ar.pendings, ann)
@@ -91,7 +95,7 @@ func newScopedAnnouncementReader(stream transport.Stream, prefix prefix, initSuf
 						hopIDs := appendHopID(am.HopIDs, peerHopID)
 						// A broadcast the peer may not publish is dropped, not
 						// kept for a later scope that might allow it.
-						if ar.allow != nil && !ar.allow(BroadcastPath(ar.prefix+suffix)) {
+						if ar.scope != nil && !ar.scope.canPublish(BroadcastPath(ar.prefix+suffix)) {
 							delete(ar.actives, suffix)
 							return
 						}
@@ -116,7 +120,7 @@ func newScopedAnnouncementReader(stream transport.Stream, prefix prefix, initSuf
 					}()
 					// A scoped reader dropped or ended the broadcasts outside
 					// its scope, so their ENDED finds nothing.
-					if ar.allow != nil {
+					if ar.scope != nil {
 						handled = true
 					}
 					if handled {
@@ -167,9 +171,9 @@ type AnnouncementReader struct {
 	pendings    []*Announcement
 	announcedCh chan struct{} // notify when new announcement is available
 
-	// allow, when set, reports whether the peer may publish a broadcast path.
-	// A broadcast it refuses is dropped.
-	allow func(BroadcastPath) bool
+	// scope, when set, is what the peer may publish; a broadcast outside it is
+	// dropped.
+	scope *authScope
 
 	// cancelCause cancels readerCtx (and thus ar.ctx) when the announce
 	// goroutine hits a fatal decode error, so ReceiveAnnouncement unblocks.
@@ -189,11 +193,11 @@ func (ar *AnnouncementReader) activateLocked(sfx suffix, hopIDs []uint64) {
 	}
 }
 
-// rescope re-applies allow after it changed: it ends each active announcement
+// rescope re-applies the scope after it changed: it ends each active announcement
 // the peer may no longer publish. One the peer announced while it was refused
 // stays dropped until the peer announces it again.
 func (ar *AnnouncementReader) rescope() {
-	if ar.allow == nil {
+	if ar.scope == nil {
 		return
 	}
 
@@ -204,7 +208,7 @@ func (ar *AnnouncementReader) rescope() {
 	}
 
 	for sfx, ann := range ar.actives {
-		if ar.allow(ann.BroadcastPath()) {
+		if ar.scope.canPublish(ann.BroadcastPath()) {
 			continue
 		}
 		ann.end()

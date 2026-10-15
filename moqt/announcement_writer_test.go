@@ -25,14 +25,14 @@ func newTestAnnouncementWriter(t *testing.T, opts ...func(*FakeQUICStream)) *Ann
 			f(mockStream)
 		}
 	}
-	return newAnnouncementWriter(mockStream, "/test/", 0, 0, nil)
+	return newAnnouncementWriter(mockStream, "/test/", 0, 0, nil, nil)
 }
 
 func TestNewAnnouncementWriter(t *testing.T) {
 	mockStream := &FakeQUICStream{}
 	prefix := "/test/"
 	logger := &slog.Logger{}
-	aw := newAnnouncementWriter(mockStream, prefix, 0, 0, logger)
+	aw := newAnnouncementWriter(mockStream, prefix, 0, 0, logger, nil)
 
 	require.NotNil(t, aw)
 	assert.Equal(t, "/test/", aw.prefix)
@@ -485,7 +485,7 @@ func TestAnnouncementWriter_Close_SendsNoEnded(t *testing.T) {
 			streamCtx, endStream := context.WithCancel(t.Context())
 			defer endStream()
 			stream := &FakeQUICStream{ParentCtx: streamCtx}
-			aw := newAnnouncementWriter(stream, "/test/", 0, 0, nil)
+			aw := newAnnouncementWriter(stream, "/test/", 0, 0, nil, nil)
 			require.NoError(t, aw.init(map[*Announcement]struct{}{}))
 			ann, end := NewAnnouncement(t.Context(), BroadcastPath("/test/active"))
 			require.NoError(t, aw.SendAnnouncement(ann))
@@ -509,7 +509,7 @@ func TestAnnouncementWriter_Close_SendsNoEnded(t *testing.T) {
 func TestAnnouncementWriter_RegisterEndHandlerLocked_StreamEnded(t *testing.T) {
 	streamCtx, endStream := context.WithCancel(t.Context())
 	stream := &FakeQUICStream{ParentCtx: streamCtx}
-	aw := newAnnouncementWriter(stream, "/test/", 0, 0, nil)
+	aw := newAnnouncementWriter(stream, "/test/", 0, 0, nil, nil)
 	require.NoError(t, aw.init(map[*Announcement]struct{}{}))
 	ann, end := NewAnnouncement(t.Context(), BroadcastPath("/test/active"))
 	require.NoError(t, aw.SendAnnouncement(ann))
@@ -730,7 +730,7 @@ func TestAnnouncementWriter_BoundaryValues(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			mockStream := &FakeQUICStream{}
-			aw := newAnnouncementWriter(mockStream, tt.prefix, 0, 0, nil)
+			aw := newAnnouncementWriter(mockStream, tt.prefix, 0, 0, nil, nil)
 			ann, _ := NewAnnouncement(context.Background(), BroadcastPath(tt.broadcastPath))
 
 			// Initialize the AnnouncementWriter first

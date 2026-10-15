@@ -232,6 +232,29 @@ func TestSession_Fetch_Answer(t *testing.T) {
 		assert.Equal(t, FetchErrorCodeUnauthorized, fetchErr.FetchErrorCode())
 	})
 
+	t.Run("session closed before the group", func(t *testing.T) {
+		closed := &transport.ApplicationError{ErrorCode: transport.ApplicationErrorCode(NoError), Remote: true}
+		stream := &FakeQUICStream{Reads: []streamResult{{Err: closed}}}
+		session := newTestSession(&FakeStreamConn{OpenStreams: []biStreamResult{{Stream: stream}}})
+		defer func() { _ = session.CloseWithError(NoError, "") }() // not actionable: the test is over
+
+		_, err := session.Fetch(&FetchRequest{BroadcastPath: "/test", TrackName: "video"})
+
+		var sessErr *SessionError
+		assert.ErrorAs(t, err, &sessErr)
+	})
+
+	t.Run("other read error", func(t *testing.T) {
+		readErr := errors.New("read failed")
+		stream := &FakeQUICStream{Reads: []streamResult{{Err: readErr}}}
+		session := newTestSession(&FakeStreamConn{OpenStreams: []biStreamResult{{Stream: stream}}})
+		defer func() { _ = session.CloseWithError(NoError, "") }() // not actionable: the test is over
+
+		_, err := session.Fetch(&FetchRequest{BroadcastPath: "/test", TrackName: "video"})
+
+		assert.ErrorIs(t, err, readErr)
+	})
+
 	t.Run("reset during the group", func(t *testing.T) {
 		stream := &FakeQUICStream{Reads: []streamResult{{Data: encoded.Bytes()[:1]}, {Err: outOfRange}}}
 		session := newTestSession(&FakeStreamConn{OpenStreams: []biStreamResult{{Stream: stream}}})

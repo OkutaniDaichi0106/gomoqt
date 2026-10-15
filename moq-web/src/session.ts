@@ -593,17 +593,11 @@ export class Session {
 			return [undefined, err];
 		}
 
-		// Cancel the stream, or the group once there is one, when the request
-		// is done.
+		// Cancel the stream when the request is done.
 		let requestDone = false;
-		let group: GroupReader | undefined;
 		req.done().then(() => {
 			requestDone = true;
-			if (group) {
-				group.cancel(GroupErrorCode.ExpiredGroup);
-			} else {
-				stream.readable.cancel(GroupErrorCode.ExpiredGroup);
-			}
+			stream.readable.cancel(GroupErrorCode.ExpiredGroup);
 		}).catch(() => {});
 
 		// The publisher answers with the group, or refuses the fetch by
@@ -623,11 +617,15 @@ export class Session {
 			return [undefined, readErr];
 		}
 
-		group = new GroupReader(
+		const group = new GroupReader(
 			this.#ctx,
 			new HeadReceiveStream(stream.readable, head.subarray(0, n)),
 			new GroupMessage({ sequence: req.groupSequence }),
 		);
+		// The group, too, ends when the request is done.
+		req.done().then(() => {
+			group.cancel(GroupErrorCode.ExpiredGroup);
+		}).catch(() => {});
 		return [group, undefined];
 	}
 

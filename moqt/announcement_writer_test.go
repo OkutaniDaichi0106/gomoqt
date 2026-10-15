@@ -417,38 +417,6 @@ func TestAnnouncementWriter_SendAnnouncement_WriteError(t *testing.T) {
 	}
 }
 
-func TestAnnouncementWriter_LogError(t *testing.T) {
-	tests := map[string]struct {
-		err   error
-		level string
-	}{
-		"peer closed the session": {
-			err:   &transport.ApplicationError{ErrorCode: 0, Remote: true},
-			level: "level=DEBUG",
-		},
-		"peer reset the stream": {
-			err:   &transport.StreamError{ErrorCode: 1, Remote: true},
-			level: "level=DEBUG",
-		},
-		"local failure": {
-			err:   errors.New("encode failed"),
-			level: "level=ERROR",
-		},
-	}
-
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			var buf bytes.Buffer
-			logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-			aw := newAnnouncementWriter(&FakeQUICStream{}, "/test/", 0, 0, logger)
-
-			aw.logError("failed to encode ANNOUNCE end message", fmt.Errorf("encode: %w", tt.err))
-
-			assert.Contains(t, buf.String(), tt.level)
-		})
-	}
-}
-
 func TestAnnouncementWriter_Close(t *testing.T) {
 	t.Run("closes with no active announcements", func(t *testing.T) {
 		aw := newTestAnnouncementWriter(t)
@@ -500,6 +468,51 @@ func TestAnnouncementWriter_Close(t *testing.T) {
 		assert.NotNil(t, aw.initDone)
 
 	})
+}
+
+func TestAnnouncementWriter_Close_EndedMessages(t *testing.T) {
+	tests := map[string]struct {
+		streamEnded bool
+		reset       bool
+		wantEnded   bool
+	}{
+		"Close on a live stream sends ENDED":      {wantEnded: true},
+		"Close on an ended stream writes nothing": {streamEnded: true},
+		"CloseWithError writes nothing":           {reset: true},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			streamCtx, endStream := context.WithCancel(context.Background())
+			defer endStream()
+			stream := &FakeQUICStream{ParentCtx: streamCtx}
+			aw := newAnnouncementWriter(stream, "/test/", 0, 0, nil)
+			require.NoError(t, aw.init(map[*Announcement]struct{}{}))
+			ann, end := NewAnnouncement(context.Background(), BroadcastPath("/test/active"))
+			require.NoError(t, aw.SendAnnouncement(ann))
+			if tt.streamEnded {
+				endStream()
+			}
+			before := len(stream.Written())
+
+			if tt.reset {
+				assert.NoError(t, aw.CloseWithError(AnnounceErrorCodeInternal))
+			} else {
+				assert.NoError(t, aw.Close())
+			}
+			end()
+
+			written := stream.Written()[before:]
+			if !tt.wantEnded {
+				assert.Empty(t, written)
+				return
+			}
+			var msg message.AnnounceBroadcastMessage
+			require.NoError(t, msg.Decode(bytes.NewReader(written)))
+			assert.Equal(t, message.ENDED, msg.AnnounceStatus)
+			assert.Equal(t, "active", msg.BroadcastPathSuffix)
+		})
+	}
 }
 
 func TestAnnouncementWriter_CloseWithError(t *testing.T) {

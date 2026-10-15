@@ -60,18 +60,9 @@ func (aw *AnnouncementWriter) logError(msg string, err error, args ...any) {
 	if aw == nil || err == nil {
 		return
 	}
-	if aw.logger == nil {
-		return
+	if aw.logger != nil {
+		aw.logger.Error(msg, append(args, "error", err)...)
 	}
-	// A write fails once the peer has closed the session or the stream. The
-	// peer no longer reads it, so that is not a local failure.
-	level := slog.LevelError
-	if _, ok := errors.AsType[*transport.ApplicationError](err); ok {
-		level = slog.LevelDebug
-	} else if _, ok := errors.AsType[*transport.StreamError](err); ok {
-		level = slog.LevelDebug
-	}
-	aw.logger.Log(aw.ctx, level, msg, append(args, "error", err)...)
 }
 
 // shouldExclude returns true if the announcement should be skipped because
@@ -299,6 +290,7 @@ func (aw *AnnouncementWriter) registerEndHandler(sfx suffix, ann *Announcement) 
 		}
 	})
 
+	aw.actives[sfx].stop = stop
 	aw.actives[sfx].end = func() {
 		if !stop() {
 			return
@@ -404,8 +396,15 @@ func (aw *AnnouncementWriter) SendAnnouncement(announcement *Announcement) error
 	return nil
 }
 
-// Close gracefully closes the AnnouncementWriter and ends all active announcements.
+// Close gracefully closes the AnnouncementWriter, sending ANNOUNCE_BROADCAST
+// ENDED for each active announcement first. A stream that has already ended,
+// as it does when the session closes, is not written to.
 func (aw *AnnouncementWriter) Close() error {
+	if aw.ctx.Err() != nil {
+		aw.stopAll()
+		return aw.stream.Close()
+	}
+
 	aw.mu.Lock()
 	// Collect end functions to call after releasing the lock
 	var endFuncs []func()
@@ -426,24 +425,25 @@ func (aw *AnnouncementWriter) Close() error {
 	return aw.stream.Close()
 }
 
-// CloseWithError ends all active announcements and signals an error condition via the given code.
-func (aw *AnnouncementWriter) CloseWithError(code AnnounceErrorCode) error {
+// stopAll forgets every active announcement without sending ENDED, for a
+// stream that ends in a way that already ends them all on the peer.
+func (aw *AnnouncementWriter) stopAll() {
 	aw.mu.Lock()
-	// Collect end functions to call after releasing the lock
-	var endFuncs []func()
+	defer aw.mu.Unlock()
 	for _, active := range aw.actives {
-		if active.end != nil {
-			endFuncs = append(endFuncs, active.end)
+		if active.stop != nil {
+			active.stop()
 		}
 	}
 	aw.actives = nil
 	aw.dropHidden()
-	aw.mu.Unlock()
+}
 
-	// Call end functions without holding the lock to avoid deadlock
-	for _, endFunc := range endFuncs {
-		endFunc()
-	}
+// CloseWithError resets the stream with the given code, which ends every
+// active announcement on the peer; no ENDED is sent, as the reset would
+// discard it.
+func (aw *AnnouncementWriter) CloseWithError(code AnnounceErrorCode) error {
+	aw.stopAll()
 
 	cancelStreamWithError(aw.stream, transport.StreamErrorCode(code))
 
@@ -463,5 +463,6 @@ func (aw *AnnouncementWriter) Context() context.Context {
 // activeAnnouncement represents an active announcement being managed by AnnouncementWriter.
 type activeAnnouncement struct {
 	announcement *Announcement
-	end          func() // Function to clean up the activeAnnouncement
+	end          func()      // Function to clean up the activeAnnouncement
+	stop         func() bool // stops watching the announcement without sending ENDED
 }

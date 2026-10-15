@@ -15,11 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **moqt: the error types `AnnounceError`, `SubscribeError`, `FetchError`, `ProbeError`, `SessionError` and `GroupError` implement `error` only as pointers,** like `AuthError`. The library has always returned them as pointers, but their value receivers let a value also satisfy `error`, so `var e moqt.SubscribeError; errors.As(err, &e)` compiled and never matched. Now `go vet` reports that call. **Callers holding these errors as values** take their address or match `*moqt.SubscribeError` as before.
+- **moqt: the error types `AnnounceError`, `SubscribeError`, `FetchError`, `ProbeError`, `SessionError` and `GroupError` implement `error` only as pointers,** like `AuthError`. The library has always returned them as pointers, but their value receivers let a value also satisfy `error`, so `var e moqt.SubscribeError; errors.As(err, &e)` compiled and never matched. Now `go vet` reports that call, and a value target `go vet` cannot see, such as one passed as `any`, makes `errors.As` panic. **Callers holding these errors as values** take their address or match `*moqt.SubscribeError`.
 
 ### Fixed
 
-- **moqt: an announcement that ends after the peer has closed the session or the announce stream no longer logs an ERROR.** Ending the announcements a session served, as closing a session does, wrote ANNOUNCE_BROADCAST ENDED onto a stream that was gone and logged `failed to encode ANNOUNCE end message` at ERROR on every normal close. Such a write is now logged at DEBUG; other write failures stay at ERROR.
+- **moqt: closing an announce stream no longer writes to a stream that has already ended.** `AnnouncementWriter.Close` sent ANNOUNCE_BROADCAST ENDED for each active announcement even when the stream had ended with the session, so every normal session close logged `failed to encode ANNOUNCE end message` at ERROR. `Close` now sends ENDED only on a stream that is still open, and `CloseWithError` sends none, since the reset it makes discards them and ends every announcement on the peer.
 
 ## [v0.24.2] - 2026-10-14
 

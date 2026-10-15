@@ -23,6 +23,7 @@ func TestParsePathPattern(t *testing.T) {
 		"wildcard":                     {input: "/room/{id}/host"},
 		"wildcard prefix":              {input: "/room/{id}/"},
 		"rest wildcard":                {input: "/room/{rest...}"},
+		"keyword name":                 {input: "/room/{type}"},
 		"two wildcards":                {input: "/room/{id}/{name}"},
 		"wildcard inside segment":      {input: "/room/a{id}", wantErr: true},
 		"unclosed wildcard":            {input: "/room/{id", wantErr: true},
@@ -111,7 +112,7 @@ func TestPathPattern_Values(t *testing.T) {
 		"rest wildcard":         {pattern: "/room/{id}/{rest...}", path: "/room/1/a/b", want: map[string]string{"id": "1", "rest": "a/b"}, wantOK: true},
 		"empty rest":            {pattern: "/room/{rest...}", path: "/room/", want: map[string]string{"rest": ""}, wantOK: true},
 		"anchor names nothing":  {pattern: "/room/{id}/{$}", path: "/room/1/", want: map[string]string{"id": "1"}, wantOK: true},
-		"no wildcard":           {pattern: "/room/1/", path: "/room/1/alice", want: map[string]string{}, wantOK: true},
+		"no wildcard":           {pattern: "/room/1/", path: "/room/1/alice", want: nil, wantOK: true},
 		"no match gives no map": {pattern: "/room/{id}/host", path: "/room/1/guest", want: nil, wantOK: false},
 	}
 
@@ -132,4 +133,12 @@ func TestPathPattern_Match_ZeroValue(t *testing.T) {
 
 	assert.False(t, p.Match("/"))
 	assert.False(t, p.Match("/room"))
+}
+
+func TestPathPattern_Comparable(t *testing.T) {
+	a := MustParsePathPattern("/room/{id}/")
+
+	assert.Equal(t, a, MustParsePathPattern("/room/{id}/"))
+	assert.True(t, a == MustParsePathPattern("/room/{id}/"))
+	assert.False(t, a == MustParsePathPattern("/room/{name}/"))
 }

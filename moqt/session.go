@@ -632,17 +632,52 @@ func (sess *Session) Fetch(req *FetchRequest) (*GroupReader, error) {
 		return nil, fmt.Errorf("failed to encode FETCH message: %w", err)
 	}
 
-	group := newFetchGroupReader(req.GroupSequence, stream)
-
 	// Cancel the stream when the request's context ends first. Once the group
 	// has ended, stop watching, so a long-lived context does not keep every
-	// finished fetch reachable until it ends. The callback cancels the stream
-	// itself rather than through the reader: it may run before stop is set.
-	group.stop = context.AfterFunc(req.Context(), func() {
+	// finished fetch reachable until it ends.
+	ctx := req.Context()
+	stop := context.AfterFunc(ctx, func() {
 		stream.CancelRead(transport.StreamErrorCode(ExpiredGroupErrorCode))
 	})
 
+	// The publisher answers with the group, or refuses the fetch by resetting
+	// the stream before any of it, so wait for the first byte: a refusal is
+	// the error of Fetch, and an error while reading the group a *GroupError.
+	var head [1]byte
+	n, err := io.ReadAtLeast(stream, head[:], 1)
+	if err != nil && !errors.Is(err, io.EOF) {
+		stop()
+		if ctx.Err() != nil {
+			return nil, context.Cause(ctx)
+		}
+		if strErr, ok := errors.AsType[*transport.StreamError](err); ok {
+			return nil, &FetchError{StreamError: strErr}
+		}
+		if appErr, ok := errors.AsType[*transport.ApplicationError](err); ok {
+			return nil, &SessionError{ApplicationError: appErr}
+		}
+		return nil, fmt.Errorf("failed to read the fetched group: %w", err)
+	}
+
+	group := newGroupReader(req.GroupSequence, &headStream{ReceiveStream: stream, head: head[:n]}, nil)
+	group.stop = stop
 	return group, nil
+}
+
+// headStream is a stream whose first bytes were read ahead, and reads them
+// again first.
+type headStream struct {
+	transport.ReceiveStream
+	head []byte
+}
+
+func (s *headStream) Read(p []byte) (int, error) {
+	if len(s.head) > 0 {
+		n := copy(p, s.head)
+		s.head = s.head[n:]
+		return n, nil
+	}
+	return s.ReceiveStream.Read(p)
 }
 
 // AcceptAnnounce requests announcements from the remote peer that match the

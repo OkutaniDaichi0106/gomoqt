@@ -9,14 +9,6 @@ import (
 	"github.com/qumo-dev/gomoqt/transport"
 )
 
-// newFetchGroupReader returns the reader of the group a FETCH answers on
-// stream.
-func newFetchGroupReader(sequence GroupSequence, stream transport.ReceiveStream) *GroupReader {
-	r := newGroupReader(sequence, stream, nil)
-	r.fetch = true
-	return r
-}
-
 func newGroupReader(sequence GroupSequence, stream transport.ReceiveStream, groupManager *groupReaderManager) *GroupReader {
 	r := &GroupReader{
 		sequence:     sequence,
@@ -45,10 +37,6 @@ type GroupReader struct {
 
 	groupManager *groupReaderManager
 
-	// fetch is whether the group answers a FETCH, whose own refusals reset
-	// the stream with a FetchErrorCode.
-	fetch bool
-
 	// stop, when set, stops Fetch watching the request's context. It is
 	// called when the group ends for this reader (ReadFrame returns an error,
 	// or CancelRead is called); like any context.AfterFunc stop, it is safe
@@ -63,9 +51,7 @@ func (s *GroupReader) GroupSequence() GroupSequence {
 
 // ReadFrame decodes the next Frame from the group stream into the provided frame buffer.
 // If io.EOF is returned, the group stream has been closed. A reset is a
-// *GroupError, except on the group a FETCH answers, where a reset with a code
-// only a fetch uses, FetchErrorCodeTimeout or FetchErrorCodeUnauthorized, is
-// a *FetchError.
+// *GroupError.
 func (s *GroupReader) ReadFrame(frame *Frame) error {
 	if frame == nil {
 		panic("nil frame")
@@ -81,9 +67,6 @@ func (s *GroupReader) ReadFrame(frame *Frame) error {
 		}
 
 		if strErr, ok := errors.AsType[*transport.StreamError](err); ok {
-			if s.fetch && isFetchOnlyCode(FetchErrorCode(strErr.ErrorCode)) {
-				return &FetchError{StreamError: strErr}
-			}
 			return &GroupError{StreamError: strErr}
 		}
 
@@ -131,10 +114,4 @@ func (s *GroupReader) Frames(buf *Frame) iter.Seq[*Frame] {
 			}
 		}
 	}
-}
-
-// isFetchOnlyCode reports whether code is a FetchErrorCode no GroupErrorCode
-// shares, so a reset with it is the fetch's refusal rather than the group's.
-func isFetchOnlyCode(code FetchErrorCode) bool {
-	return code == FetchErrorCodeTimeout || code == FetchErrorCodeUnauthorized
 }

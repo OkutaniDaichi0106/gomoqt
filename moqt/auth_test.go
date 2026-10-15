@@ -324,9 +324,7 @@ func TestSession_Fetch_Scope(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = cred.Close() }() // not actionable: the test is over
 
-	gr, err := sess.Fetch(&FetchRequest{BroadcastPath: authRoom2Path, TrackName: "audio"})
-	require.NoError(t, err)
-	err = gr.ReadFrame(NewFrame(0))
+	_, err = sess.Fetch(&FetchRequest{BroadcastPath: authRoom2Path, TrackName: "audio"})
 
 	var fetchErr *FetchError
 	require.ErrorAs(t, err, &fetchErr)
@@ -342,9 +340,7 @@ func TestSession_Fetch_InScope(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = cred.Close() }() // not actionable: the test is over
 
-	gr, err := sess.Fetch(&FetchRequest{BroadcastPath: authRoom1Path, TrackName: "audio"})
-	require.NoError(t, err)
-	err = gr.ReadFrame(NewFrame(0))
+	_, err = sess.Fetch(&FetchRequest{BroadcastPath: authRoom1Path, TrackName: "audio"})
 
 	var fetchErr *FetchError
 	if errors.As(err, &fetchErr) {

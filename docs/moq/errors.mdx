@@ -22,7 +22,7 @@ The following error types are defined to represent specific protocol error scena
 | `*moqt.SubscribeError`| Error during subscribe negotiation or operation                  | `moqt.TrackWriter`, `moqt.TrackReader`           |
 | `*moqt.AnnounceError` | Error during announcement phase (e.g., broadcast path issues)    | `moqt.AnnouncementWriter`, `moqt.AnnouncementReader` |
 | `*moqt.GroupError`   | Error in group operations (e.g., out of range, expired group)    | `moqt.GroupWriter`, `moqt.GroupReader`           |
-| `*moqt.FetchError`   | Error during fetch operations                                    | `Session.Fetch`, and `GroupReader.ReadFrame` on a fetch's group |
+| `*moqt.FetchError`   | Error during fetch operations                                    | `Session.Fetch`                             |
 | `*moqt.ProbeError`   | Error during probe operations                                    | `Session.Probe`                             |
 
 ### Relationship with QUIC errors
@@ -98,7 +98,7 @@ Error codes for each custom error type are summarized below. Click each section 
 | `moqt.FetchErrorCodeTimeout`        | 0x01  | Fetch timeout                 |
 | `moqt.FetchErrorCodeUnauthorized`   | 0x08  | Outside the session's scope   |
 
-A fetch's answer is a group, so its stream may be reset with a `GroupErrorCode` too. `FetchErrorCodeTimeout` and `FetchErrorCodeUnauthorized` take values no `GroupErrorCode` takes, and `GroupReader.ReadFrame` on a fetch's group returns a `*moqt.FetchError` for them, and a `*moqt.GroupError` for any other reset.
+`Session.Fetch` waits for the first byte of the group, so a publisher that refuses the fetch, by resetting the stream before any of the group, makes `Session.Fetch` return a `*moqt.FetchError`. A reset while the group is read is a `*moqt.GroupError` from `GroupReader.ReadFrame`.
 </Tab>
 
 <Tab title="ProbeErrorCode">

@@ -196,3 +196,53 @@ func TestSession_Fetch_ContextLifecycle(t *testing.T) {
 		}
 	})
 }
+
+// TestSession_Fetch_Answer verifies a refusal before any of the group is the
+// error of Fetch, and that the group reads whole after Fetch read ahead.
+func TestSession_Fetch_Answer(t *testing.T) {
+	frame := NewFrame(0)
+	_, _ = frame.Write([]byte("body"))
+	var encoded bytes.Buffer
+	require.NoError(t, frame.encode(&encoded, 0))
+	unauthorized := &transport.StreamError{ErrorCode: transport.StreamErrorCode(FetchErrorCodeUnauthorized), Remote: true}
+	outOfRange := &transport.StreamError{ErrorCode: transport.StreamErrorCode(OutOfRangeErrorCode), Remote: true}
+
+	t.Run("the group", func(t *testing.T) {
+		stream := &FakeQUICStream{Reads: []streamResult{{Data: encoded.Bytes()}, {Err: io.EOF}}}
+		session := newTestSession(&FakeStreamConn{OpenStreams: []biStreamResult{{Stream: stream}}})
+		defer func() { _ = session.CloseWithError(NoError, "") }() // not actionable: the test is over
+
+		group, err := session.Fetch(&FetchRequest{BroadcastPath: "/test", TrackName: "video"})
+		require.NoError(t, err)
+		got := NewFrame(0)
+		require.NoError(t, group.ReadFrame(got))
+
+		assert.Equal(t, []byte("body"), got.Body())
+	})
+
+	t.Run("refused before the group", func(t *testing.T) {
+		stream := &FakeQUICStream{Reads: []streamResult{{Err: unauthorized}}}
+		session := newTestSession(&FakeStreamConn{OpenStreams: []biStreamResult{{Stream: stream}}})
+		defer func() { _ = session.CloseWithError(NoError, "") }() // not actionable: the test is over
+
+		_, err := session.Fetch(&FetchRequest{BroadcastPath: "/test", TrackName: "video"})
+
+		var fetchErr *FetchError
+		require.ErrorAs(t, err, &fetchErr)
+		assert.Equal(t, FetchErrorCodeUnauthorized, fetchErr.FetchErrorCode())
+	})
+
+	t.Run("reset during the group", func(t *testing.T) {
+		stream := &FakeQUICStream{Reads: []streamResult{{Data: encoded.Bytes()[:1]}, {Err: outOfRange}}}
+		session := newTestSession(&FakeStreamConn{OpenStreams: []biStreamResult{{Stream: stream}}})
+		defer func() { _ = session.CloseWithError(NoError, "") }() // not actionable: the test is over
+
+		group, err := session.Fetch(&FetchRequest{BroadcastPath: "/test", TrackName: "video"})
+		require.NoError(t, err)
+		err = group.ReadFrame(NewFrame(0))
+
+		var groupErr *GroupError
+		require.ErrorAs(t, err, &groupErr)
+		assert.Equal(t, OutOfRangeErrorCode, groupErr.GroupErrorCode())
+	})
+}

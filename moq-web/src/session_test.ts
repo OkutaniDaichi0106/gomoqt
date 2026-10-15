@@ -14,12 +14,18 @@ import {
 	writeVarint,
 } from "./internal/message/mod.ts";
 import { BiStreamTypes, UniStreamTypes } from "./stream_type.ts";
-import { SessionErrorCode } from "./error.ts";
+import { FetchError, FetchErrorCode, SessionErrorCode } from "./error.ts";
 import { TrackMux } from "./track_mux.ts";
 import type { TrackPrefix } from "./track_prefix.ts";
 import { Writer } from "@okdaichi/golikejs/io";
 import { EOFError } from "@okdaichi/golikejs/io";
-import { ReceiveStream, SendStream, Stream, StreamConn } from "./internal/webtransport/mod.ts";
+import {
+	ReceiveStream,
+	SendStream,
+	Stream,
+	StreamConn,
+	WebTransportStreamError,
+} from "./internal/webtransport/mod.ts";
 import { FetchRequest } from "./fetch.ts";
 import type { FetchHandler } from "./fetch.ts";
 import type { GroupWriter } from "./group_stream.ts";
@@ -51,6 +57,9 @@ async function encodeMessageToUint8Array(
 // Mock WebTransportSession implementation
 interface MockWebTransportSessionInit {
 	openStreamResponses?: Uint8Array[];
+	// openStreamEnds, per opened stream, is the error its reads return once its
+	// data is read, in place of EOF; a reset, for example.
+	openStreamEnds?: (Error | undefined)[];
 	openUniStreamCount?: number;
 	acceptStreamData?: Array<{ type: number; data: Uint8Array }>;
 	acceptUniStreamData?: Array<{ type: number; data: Uint8Array }>;
@@ -90,6 +99,7 @@ async function peerSetupUniStream(
 
 export class MockWebTransportSession implements StreamConn {
 	#openStreamResponses: Uint8Array[];
+	#openStreamEnds: (Error | undefined)[];
 	#openStreamIndex = 0;
 	#openStreamWrittenData: Uint8Array[][] = [];
 	#acceptStreamData: Array<{ type: number; data: Uint8Array }>;
@@ -108,6 +118,7 @@ export class MockWebTransportSession implements StreamConn {
 
 	constructor(options: MockWebTransportSessionInit = {}) {
 		this.#openStreamResponses = options.openStreamResponses ?? [];
+		this.#openStreamEnds = options.openStreamEnds ?? [];
 		this.#acceptStreamData = options.acceptStreamData ?? [];
 		this.#acceptUniStreamData = options.acceptUniStreamData ?? [];
 		this.protocol = options.protocol ?? "";
@@ -139,6 +150,7 @@ export class MockWebTransportSession implements StreamConn {
 
 		const data = this.#openStreamResponses[this.#openStreamIndex] ??
 			new Uint8Array();
+		const end = this.#openStreamEnds[this.#openStreamIndex] ?? new EOFError();
 		this.#openStreamIndex++;
 
 		// Create inline mock stream
@@ -157,7 +169,7 @@ export class MockWebTransportSession implements StreamConn {
 		const readable = {
 			read: spy(async (p: Uint8Array) => {
 				if (readOffset >= data.length) {
-					return [0, new EOFError()] as [number, Error | undefined];
+					return [0, end] as [number, Error | undefined];
 				}
 				const n = Math.min(p.length, data.length - readOffset);
 				p.set(data.subarray(readOffset, readOffset + n));
@@ -1027,6 +1039,60 @@ Deno.test({
 			assertExists(group);
 			assertEquals(err, undefined);
 
+			await session.close();
+		});
+
+		await t.step("fetch reads the group after waiting for its first byte", async () => {
+			// A frame: timestamp delta 0, length 4, "body".
+			const frame = new Uint8Array([0x00, 0x04, ...new TextEncoder().encode("body")]);
+			const mock = new MockWebTransportSession({ openStreamResponses: [frame] });
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			const [group, err] = await session.fetch(
+				new FetchRequest({
+					broadcastPath: "/live/stream",
+					trackName: "video",
+					priority: 0,
+					groupSequence: 1,
+				}),
+			);
+			assertEquals(err, undefined);
+			assertExists(group);
+			let body: Uint8Array | undefined;
+			const readErr = await group.readFrame((b) => {
+				body = b;
+			});
+
+			assertEquals(readErr, undefined);
+			assertEquals(new TextDecoder().decode(body), "body");
+			await session.close();
+		});
+
+		await t.step("fetch returns the refusal as a FetchError", async () => {
+			const reset = new WebTransportStreamError(
+				{ source: "stream", streamErrorCode: FetchErrorCode.Unauthorized },
+				true,
+			);
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [new Uint8Array(0)],
+				openStreamEnds: [reset],
+			});
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			const [group, err] = await session.fetch(
+				new FetchRequest({
+					broadcastPath: "/live/stream",
+					trackName: "video",
+					priority: 0,
+					groupSequence: 1,
+				}),
+			);
+
+			assertEquals(group, undefined);
+			assertInstanceOf(err, FetchError);
+			assertEquals(err.code, FetchErrorCode.Unauthorized);
 			await session.close();
 		});
 

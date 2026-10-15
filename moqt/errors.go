@@ -161,8 +161,7 @@ const (
 	FetchErrorCodeTimeout  FetchErrorCode = 0x01
 
 	// FetchErrorCodeUnauthorized refuses a fetch the session's scope does not
-	// cover (see AuthHandler). Like FetchErrorCodeTimeout, it is a value no
-	// GroupErrorCode takes, as both reset the stream a fetch answers on.
+	// cover (see AuthHandler).
 	FetchErrorCodeUnauthorized FetchErrorCode = 0x08
 )
 

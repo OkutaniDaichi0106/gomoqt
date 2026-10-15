@@ -162,7 +162,7 @@ const (
 
 	// FetchErrorCodeUnauthorized refuses a fetch the session's scope does not
 	// cover (see AuthHandler).
-	FetchErrorCodeUnauthorized FetchErrorCode = 0x08
+	FetchErrorCodeUnauthorized FetchErrorCode = 0x02
 )
 
 // String returns a text for the fetch error code.

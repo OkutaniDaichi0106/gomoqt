@@ -96,7 +96,7 @@ Error codes for each custom error type are summarized below. Click each section 
 |------------------------------|-------|-------------------------------|
 | `moqt.FetchErrorCodeInternal`       | 0x00  | Internal error                |
 | `moqt.FetchErrorCodeTimeout`        | 0x01  | Fetch timeout                 |
-| `moqt.FetchErrorCodeUnauthorized`   | 0x08  | Outside the session's scope   |
+| `moqt.FetchErrorCodeUnauthorized`   | 0x02  | Outside the session's scope   |
 
 `Session.Fetch` waits for the first byte of the group, so a publisher that refuses the fetch, by resetting the stream before any of the group, makes `Session.Fetch` return a `*moqt.FetchError`. A reset while the group is read is a `*moqt.GroupError` from `GroupReader.ReadFrame`.
 </Tab>

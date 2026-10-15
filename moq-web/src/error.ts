@@ -195,7 +195,7 @@ export const FetchErrorCode = {
 	/** Timeout */
 	Timeout: 0x01,
 	/** The session's scope does not cover the fetch */
-	Unauthorized: 0x08,
+	Unauthorized: 0x02,
 } as const;
 
 /** Numeric fetch error code type. */

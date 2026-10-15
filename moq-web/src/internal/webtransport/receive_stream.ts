@@ -65,13 +65,16 @@ class ReceiveStreamClass implements ReceiveStream {
 
 		// Read from the underlying stream
 		try {
-			const { done, value } = await this.#pull.read();
-			if (done) {
-				return [0, new EOFError()];
-			}
-			if (!value || value.length === 0) {
-				return [0, undefined];
-			}
+			// An empty chunk carries nothing: read on rather than return 0 bytes
+			// with no error, which readers such as readFull take for the end.
+			let value: Uint8Array | undefined;
+			do {
+				const res = await this.#pull.read();
+				if (res.done) {
+					return [0, new EOFError()];
+				}
+				value = res.value;
+			} while (!value || value.length === 0);
 
 			const n = Math.min(p.length, value.length);
 			p.set(value.subarray(0, n));

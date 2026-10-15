@@ -34,11 +34,11 @@ type Grant struct {
 	// Subscribe matches the paths the presenter may subscribe to, fetch, and
 	// discover through announcements.
 	Subscribe []PathPattern
-	// Expires is how long until the grant lapses, or 0 for never. It tells the
+	// MaxAge is how long the grant lasts, or 0 for no limit. It tells the
 	// presenter when to present a replacement token, at millisecond precision.
 	// Unless the handler grants again first, the grant is revoked with
 	// UNAUTHORIZED when it lapses.
-	Expires time.Duration
+	MaxAge time.Duration
 }
 
 // valid reports an error for a pattern the grant cannot carry: the zero
@@ -83,9 +83,9 @@ func (g Grant) message() message.AuthOkMessage {
 	m := message.AuthOkMessage{
 		PublishPatterns:   make([]string, len(g.Publish)),
 		SubscribePatterns: make([]string, len(g.Subscribe)),
-		Expires:           uint64(g.Expires.Milliseconds()),
+		Expires:           uint64(g.MaxAge.Milliseconds()),
 	}
-	if g.Expires > 0 && m.Expires == 0 {
+	if g.MaxAge > 0 && m.Expires == 0 {
 		// Below a millisecond, the grant lapses at once rather than never.
 		m.Expires = 1
 	}
@@ -102,7 +102,7 @@ func grantFromMessage(m message.AuthOkMessage) (Grant, error) {
 	g := Grant{
 		Publish:   make([]PathPattern, len(m.PublishPatterns)),
 		Subscribe: make([]PathPattern, len(m.SubscribePatterns)),
-		Expires:   time.Duration(m.Expires) * time.Millisecond,
+		MaxAge:    time.Duration(m.Expires) * time.Millisecond,
 	}
 	var err error
 	for i, s := range m.PublishPatterns {
@@ -188,10 +188,8 @@ func (w *AuthWriter) Grant(g Grant) error {
 	if err := g.valid(); err != nil {
 		return err
 	}
+	// A time.Duration in milliseconds stays below the wire's 2^53 - 1 limit.
 	m := g.message()
-	if m.Expires > message.MaxAuthExpires {
-		return fmt.Errorf("moqt: grant expires too late: %v", g.Expires)
-	}
 
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -205,7 +203,7 @@ func (w *AuthWriter) Grant(g Grant) error {
 	}
 
 	w.scope.set(w, g)
-	w.expireAfter(g.Expires)
+	w.expireAfter(g.MaxAge)
 	if w.stream == nil {
 		return nil
 	}
@@ -427,67 +425,63 @@ func (err *AuthError) Error() string {
 	return text
 }
 
-// AuthGrant is a token presented to the peer, and what the peer granted for
-// it. The grant lasts until Close withdraws the token, the peer revokes it,
-// or the session ends.
-type AuthGrant struct {
+// Credential is a token presented to the peer, and what the peer granted for
+// it. It lasts until Close withdraws the token, the peer revokes it, or the
+// session ends.
+type Credential struct {
 	stream transport.Stream
+	ctx    context.Context
+	cancel context.CancelCauseFunc
 
 	mu    sync.Mutex
 	grant Grant
-	err   error
-
-	done chan struct{}
 }
 
 // Grant returns the latest grant the peer sent for the token.
-func (ag *AuthGrant) Grant() Grant {
-	ag.mu.Lock()
-	defer ag.mu.Unlock()
-	return ag.grant
+func (c *Credential) Grant() Grant {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.grant
 }
 
-// Done is closed when the grant ends.
-func (ag *AuthGrant) Done() <-chan struct{} {
-	return ag.done
-}
-
-// Err returns why the grant ended once Done is closed: an *AuthError when
-// the peer revoked it, or nil when it ended without a reason.
-func (ag *AuthGrant) Err() error {
-	ag.mu.Lock()
-	defer ag.mu.Unlock()
-	return ag.err
+// Context returns a context that is canceled when the credential's grant
+// ends. Its cause, from context.Cause, is an *AuthError when the peer revoked
+// the grant, and the session's cause when the session ended.
+func (c *Credential) Context() context.Context {
+	return c.ctx
 }
 
 // Close withdraws the token, which ends its grant on the peer.
-func (ag *AuthGrant) Close() error {
-	return ag.stream.Close()
+func (c *Credential) Close() error {
+	return c.stream.Close()
 }
 
 // readReplies follows the peer's answers after the first: a further AUTH_OK
 // replaces the grant, and AUTH_ERROR or the end of the stream ends it.
-func (ag *AuthGrant) readReplies(violation func(string)) {
-	defer close(ag.done)
+func (c *Credential) readReplies(violation func(string)) {
 	for {
-		g, err := readAuthReply(ag.stream)
+		g, err := readAuthReply(c.stream)
 		if err != nil {
+			var cause error
 			var authErr *AuthError
+			var connErr *transport.ApplicationError
 			switch {
 			case errors.As(err, &authErr):
-				ag.mu.Lock()
-				ag.err = authErr
-				ag.mu.Unlock()
+				cause = authErr
+			case errors.As(err, &connErr):
+				// The session ended; its context may not have yet.
+				cause = connErr
 			case errors.Is(err, io.EOF):
 			case isProtocolViolation(err):
 				violation(err.Error())
 			}
-			cancelStreamWithError(ag.stream, authStreamCancelled)
+			cancelStreamWithError(c.stream, authStreamCancelled)
+			c.cancel(cause)
 			return
 		}
-		ag.mu.Lock()
-		ag.grant = g
-		ag.mu.Unlock()
+		c.mu.Lock()
+		c.grant = g
+		c.mu.Unlock()
 	}
 }
 
@@ -547,9 +541,9 @@ const authStreamCancelled transport.StreamErrorCode = 0x1
 // carried. It returns an *AuthError when the peer refuses the token, and
 // ErrAuthNotSupported when the peer does not support the Auth Stream.
 //
-// The grant lasts until AuthGrant.Close withdraws the token, the peer
+// The grant lasts until Credential.Close withdraws the token, the peer
 // revokes it, or the session ends. ctx bounds only the wait for the answer.
-func (sess *Session) Auth(ctx context.Context, token []byte) (*AuthGrant, error) {
+func (sess *Session) Auth(ctx context.Context, token []byte) (*Credential, error) {
 	if ctx == nil {
 		return nil, errors.New("nil context")
 	}
@@ -599,11 +593,12 @@ func (sess *Session) Auth(ctx context.Context, token []byte) (*AuthGrant, error)
 		return nil, fmt.Errorf("failed to read auth reply: %w", err)
 	}
 
-	ag := &AuthGrant{stream: stream, grant: g, done: make(chan struct{})}
+	cctx, cancel := context.WithCancelCause(sess.ctx)
+	c := &Credential{stream: stream, ctx: cctx, cancel: cancel, grant: g}
 	sess.wg.Go(func() {
-		ag.readReplies(sess.terminateProtocolViolation)
+		c.readReplies(sess.terminateProtocolViolation)
 	})
-	return ag, nil
+	return c, nil
 }
 
 // handleAuthStream reads the peer's AUTH and serves it to the AuthHandler for

@@ -49,8 +49,9 @@ var (
 // the way an http.ServeMux pattern matches URL paths, and the way
 // Session.AcceptAnnounce reads paths and prefixes: "/alice" matches that path
 // alone, a pattern ending in "/" matches every path beneath it, and "/"
-// matches every path beneath the root. A segment may be a wildcard. "{name}" matches any one non-empty segment, so
-// "/{user}/audio" matches "/alice/audio". "{name...}" as the last segment
+// matches every path beneath the root. A segment may be a wildcard. "{name}"
+// matches any one non-empty segment, so "/{user}/audio" matches
+// "/alice/audio". "{name...}" as the last segment
 // matches the rest of the path, even an empty rest, and "{$}" as the last
 // segment matches only the "/" before it. A name is letters, digits and "_",
 // not starting with a digit, as in net/http, and unique within a pattern. An

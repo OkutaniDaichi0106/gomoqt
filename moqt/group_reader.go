@@ -37,6 +37,10 @@ type GroupReader struct {
 
 	groupManager *groupReaderManager
 
+	// fetch is whether the group answers a FETCH, whose own refusals reset
+	// the stream with a FetchErrorCode.
+	fetch bool
+
 	// stop, when set, stops Fetch watching the request's context. It is
 	// called when the group ends for this reader (ReadFrame returns an error,
 	// or CancelRead is called); like any context.AfterFunc stop, it is safe
@@ -66,11 +70,10 @@ func (s *GroupReader) ReadFrame(frame *Frame) error {
 		}
 
 		if strErr, ok := errors.AsType[*transport.StreamError](err); ok {
-			grpErr := &GroupError{
-				StreamError: strErr,
+			if s.fetch && isFetchOnlyCode(FetchErrorCode(strErr.ErrorCode)) {
+				return &FetchError{StreamError: strErr}
 			}
-
-			return grpErr
+			return &GroupError{StreamError: strErr}
 		}
 
 		return err
@@ -117,4 +120,10 @@ func (s *GroupReader) Frames(buf *Frame) iter.Seq[*Frame] {
 			}
 		}
 	}
+}
+
+// isFetchOnlyCode reports whether code is a FetchErrorCode no GroupErrorCode
+// shares, so a reset with it is the fetch's refusal rather than the group's.
+func isFetchOnlyCode(code FetchErrorCode) bool {
+	return code == FetchErrorCodeTimeout || code == FetchErrorCodeUnauthorized
 }

@@ -640,6 +640,7 @@ func (sess *Session) Fetch(req *FetchRequest) (*GroupReader, error) {
 	}
 
 	group := newGroupReader(req.GroupSequence, stream, nil)
+	group.fetch = true
 
 	// Cancel the stream when the request's context ends first. Once the group
 	// has ended, stop watching, so a long-lived context does not keep every

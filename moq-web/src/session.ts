@@ -594,6 +594,8 @@ export class Session {
 			this.#ctx,
 			stream.readable,
 			new GroupMessage({ sequence: req.groupSequence }),
+			undefined,
+			true,
 		);
 
 		// Cancel the group when the request is done

@@ -847,6 +847,10 @@ func TestFetchErrorCode_String(t *testing.T) {
 			code:   FetchErrorCodeTimeout,
 			expect: "moqt: timeout",
 		},
+		"unauthorized error code": {
+			code:   FetchErrorCodeUnauthorized,
+			expect: "moqt: unauthorized",
+		},
 		"unknown code": {
 			code:   FetchErrorCode(0xFF),
 			expect: "",

@@ -10,7 +10,7 @@ import {
 	zigzagDecode,
 	zigzagEncode,
 } from "./internal/message/mod.ts";
-import { GroupErrorCode } from "./error.ts";
+import { FetchError, FetchErrorCode, GroupErrorCode } from "./error.ts";
 import { GroupSequence } from "./alias.ts";
 import { BytesBuffer, ByteSink, ByteSinkFunc, ByteSource, Frame } from "./frame.ts";
 import { EOFError } from "@okdaichi/golikejs/io";
@@ -135,6 +135,9 @@ export class GroupReader {
 	readonly context: Context;
 	#cancelFunc: CancelCauseFunc;
 	#onDone?: () => void;
+	// Whether the group answers a FETCH, whose own refusals reset the stream
+	// with a FetchErrorCode.
+	readonly #fetch: boolean;
 	// Previous frame's timestamp on this stream, used to resolve the next
 	// frame's delta-encoded timestamp.
 	#prevTimestamp: number = 0;
@@ -146,10 +149,12 @@ export class GroupReader {
 		reader: ReceiveStream,
 		group: GroupMessage,
 		onDone?: () => void,
+		fetch = false,
 	) {
 		this.sequence = group.sequence;
 		this.#reader = reader;
 		this.#onDone = onDone;
+		this.#fetch = fetch;
 		[this.context, this.#cancelFunc] = withCancelCause(trackCtx);
 
 		trackCtx.done().then(() => {
@@ -165,6 +170,14 @@ export class GroupReader {
 	 */
 	#streamEnded(err: Error): Error {
 		this.#onDone?.();
+		// On the group a FETCH answers, a reset with a code only a fetch uses
+		// is the fetch's refusal.
+		if (
+			this.#fetch && err instanceof WebTransportStreamError &&
+			(err.code === FetchErrorCode.Timeout || err.code === FetchErrorCode.Unauthorized)
+		) {
+			return new FetchError(err.code, err.remote);
+		}
 		return err;
 	}
 

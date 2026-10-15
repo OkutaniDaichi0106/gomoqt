@@ -639,8 +639,7 @@ func (sess *Session) Fetch(req *FetchRequest) (*GroupReader, error) {
 		return nil, fmt.Errorf("failed to encode FETCH message: %w", err)
 	}
 
-	group := newGroupReader(req.GroupSequence, stream, nil)
-	group.fetch = true
+	group := newFetchGroupReader(req.GroupSequence, stream)
 
 	// Cancel the stream when the request's context ends first. Once the group
 	// has ended, stop watching, so a long-lived context does not keep every

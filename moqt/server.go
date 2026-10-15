@@ -438,8 +438,10 @@ type WebTransportHandler struct {
 	Config   *Config
 	TrackMux *TrackMux
 
-	// CheckOrigin validates the origin of an incoming upgrade request.
-	// If nil, defaults may allow all origins (behavior defined by upgrader implementation).
+	// CheckOrigin validates the Origin of an upgrade request. A browser page
+	// served from another origin than the server, such as an app on one host
+	// and its relay on another, needs it set. If nil, a request with an Origin
+	// is accepted only when the Origin's host and port are the request's.
 	CheckOrigin func(r *http.Request) bool
 
 	// ApplicationProtocols lists ALPN tokens supported for WebTransport upgrades.

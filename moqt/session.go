@@ -1129,7 +1129,8 @@ func (sess *Session) handleFetchStream(stream transport.Stream) {
 	err := fm.Decode(stream)
 	if err != nil {
 		sess.logError("failed to decode FETCH message", err)
-		cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeInternal))
+		// The answer to a fetch is its group, so it is reset with a group code.
+		cancelStreamWithError(stream, transport.StreamErrorCode(InternalGroupErrorCode))
 		return
 	}
 
@@ -1169,7 +1170,7 @@ func (sess *Session) handleFetchStream(stream transport.Stream) {
 	err = safeServeFetch(handler, group, req)
 	if err != nil {
 		sess.logError("fetch handler error", err)
-		cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeInternal))
+		cancelStreamWithError(stream, transport.StreamErrorCode(InternalGroupErrorCode))
 		return
 	}
 }

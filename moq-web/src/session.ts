@@ -42,13 +42,7 @@ import { Queue } from "./internal/queue.ts";
 import type { SubscribeID, TrackName } from "./alias.ts";
 import { FetchRequest } from "./fetch.ts";
 import type { FetchHandler } from "./fetch.ts";
-import {
-	FetchErrorCode,
-	GroupErrorCode,
-	ProbeErrorCode,
-	SessionErrorCode,
-	SubscribeErrorCode,
-} from "./error.ts";
+import { GroupErrorCode, ProbeErrorCode, SessionErrorCode, SubscribeErrorCode } from "./error.ts";
 import type { MoqOptions } from "./options.ts";
 import { defaultProbeIntervalMs, defaultProbeMaxAgeMs, defaultProbeMaxDelta } from "./options.ts";
 import { ProbeResult } from "./probe.ts";
@@ -830,7 +824,7 @@ export class Session {
 	async #handleFetchStream(stream: Stream): Promise<void> {
 		const handler = this.#fetchHandler;
 		if (!handler) {
-			cancelStreamWithError(stream, FetchErrorCode.InternalError);
+			cancelStreamWithError(stream, GroupErrorCode.InternalError);
 			return;
 		}
 
@@ -838,7 +832,7 @@ export class Session {
 		const err = await fm.decode(stream.readable);
 		if (err) {
 			console.error("Failed to decode FetchMessage:", err);
-			cancelStreamWithError(stream, FetchErrorCode.InternalError);
+			cancelStreamWithError(stream, GroupErrorCode.InternalError);
 			return;
 		}
 
@@ -862,7 +856,7 @@ export class Session {
 			await handler.serveFetch(group, req);
 		} catch (e) {
 			console.error("moq: fetch handler error:", e);
-			await group.cancel(FetchErrorCode.InternalError).catch(() => {});
+			await group.cancel(GroupErrorCode.InternalError).catch(() => {});
 		} finally {
 			cancelFetch(undefined);
 		}

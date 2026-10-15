@@ -151,6 +151,13 @@ Fetch operations may return `*moqt.FetchError` or `*moqt.SessionError`. Match th
             // Handle session-level error
         }
     }
+
+    if err := gr.ReadFrame(frame); err != nil {
+        var groupErr *moqt.GroupError
+        if errors.As(err, &groupErr) && groupErr.GroupErrorCode() == moqt.UnauthorizedGroupErrorCode {
+            // The publisher refused the fetch: outside the session's scope
+        }
+    }
 ```
 
 See [Built-in Error Codes](/moq/errors#built-in-error-codes) for `FetchErrorCode` values.

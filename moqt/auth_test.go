@@ -97,7 +97,13 @@ func startAuthServer(t *testing.T, ctx context.Context, handler AuthHandler, ses
 		QUICConfig:  &quic.Config{EnableDatagrams: true},
 		TrackMux:    mux,
 		AuthHandler: handler,
-		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		FetchHandler: FetchHandlerFunc(func(w *GroupWriter, _ *FetchRequest) {
+			frame := NewFrame(0)
+			_, _ = frame.Write([]byte("fetched"))
+			_ = w.WriteFrame(frame)
+			_ = w.Close()
+		}),
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Handler: HandleFunc(func(sess *Session) {
 			// The readiness probe below is not a session the test dialed.
 			if sessions != nil && sess.RequestURI() != authProbePath {
@@ -334,13 +340,19 @@ func TestSession_Fetch_Scope(t *testing.T) {
 			require.NoError(t, err)
 			defer func() { _ = cred.Close() }() // not actionable: the test is over
 
-			gr, err := sess.Fetch(&FetchRequest{BroadcastPath: tt.path, TrackName: "audio"})
+			gr, err := sess.Fetch((&FetchRequest{BroadcastPath: tt.path, TrackName: "audio"}).WithContext(ctx))
 			require.NoError(t, err)
-			err = gr.ReadFrame(NewFrame(0))
+			frame := NewFrame(0)
+			err = gr.ReadFrame(frame)
 
-			var groupErr *GroupError
-			refused := errors.As(err, &groupErr) && groupErr.GroupErrorCode() == UnauthorizedGroupErrorCode
-			assert.Equal(t, tt.wantRefused, refused, "read error: %v", err)
+			if tt.wantRefused {
+				var groupErr *GroupError
+				require.ErrorAs(t, err, &groupErr)
+				assert.Equal(t, UnauthorizedGroupErrorCode, groupErr.GroupErrorCode())
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, []byte("fetched"), frame.Body())
 		})
 	}
 }

@@ -196,3 +196,20 @@ func TestSession_Fetch_ContextLifecycle(t *testing.T) {
 		}
 	})
 }
+
+// TestSession_Fetch_ResetDuringGroup verifies a reset of a fetch's group is a
+// *GroupError from ReadFrame.
+func TestSession_Fetch_ResetDuringGroup(t *testing.T) {
+	refused := &transport.StreamError{ErrorCode: transport.StreamErrorCode(UnauthorizedGroupErrorCode), Remote: true}
+	stream := &FakeQUICStream{Reads: []streamResult{{Err: refused}}}
+	session := newTestSession(&FakeStreamConn{OpenStreams: []biStreamResult{{Stream: stream}}})
+	defer func() { _ = session.CloseWithError(NoError, "") }() // not actionable: the test is over
+
+	group, err := session.Fetch(&FetchRequest{BroadcastPath: "/test", TrackName: "video"})
+	require.NoError(t, err)
+	err = group.ReadFrame(NewFrame(0))
+
+	var groupErr *GroupError
+	require.ErrorAs(t, err, &groupErr)
+	assert.Equal(t, UnauthorizedGroupErrorCode, groupErr.GroupErrorCode())
+}

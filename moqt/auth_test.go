@@ -29,14 +29,14 @@ var roomTicketHandler = AuthHandlerFunc(func(w *AuthWriter, r *AuthRequest) {
 	switch string(r.Token) {
 	case "":
 		if u, err := url.Parse(r.RequestURI); err == nil && u.Query().Has("admin") {
-			g.Subscribe = []PathPattern{MustParsePathPattern("/")}
+			g.Subscribe = []string{"/"}
 		}
 	case "room1":
-		g.Subscribe = []PathPattern{MustParsePathPattern("/room/1/")}
+		g.Subscribe = []string{"/room/1/"}
 	case "room2":
-		g.Subscribe = []PathPattern{MustParsePathPattern("/room/2/")}
+		g.Subscribe = []string{"/room/2/"}
 	case "publish":
-		g.Publish = []PathPattern{MustParsePathPattern("/room/1/")}
+		g.Publish = []string{"/room/1/"}
 	default:
 		_ = w.Refuse(UnauthorizedSessionErrorCode, "unknown ticket")
 		return
@@ -158,7 +158,7 @@ func TestSession_Auth(t *testing.T) {
 
 		g := cred.Grant()
 		require.Len(t, g.Subscribe, 1)
-		assert.Equal(t, "/room/1/", g.Subscribe[0].String())
+		assert.Equal(t, "/room/1/", g.Subscribe[0])
 		assert.Empty(t, g.Publish)
 		assert.Zero(t, g.MaxAge)
 	})
@@ -190,7 +190,7 @@ func TestCredential_Grant_Regrant(t *testing.T) {
 			<-r.Context().Done()
 			return
 		}
-		if err := w.Grant(Grant{Subscribe: []PathPattern{MustParsePathPattern("/room/1/")}}); err != nil {
+		if err := w.Grant(Grant{Subscribe: []string{"/room/1/"}}); err != nil {
 			return
 		}
 		select {
@@ -198,7 +198,7 @@ func TestCredential_Grant_Regrant(t *testing.T) {
 		case <-r.Context().Done():
 			return
 		}
-		if err := w.Grant(Grant{Subscribe: []PathPattern{MustParsePathPattern("/room/2/")}}); err != nil {
+		if err := w.Grant(Grant{Subscribe: []string{"/room/2/"}}); err != nil {
 			return
 		}
 		<-r.Context().Done()
@@ -213,7 +213,7 @@ func TestCredential_Grant_Regrant(t *testing.T) {
 
 	assert.Eventually(t, func() bool {
 		g := cred.Grant()
-		return len(g.Subscribe) == 1 && g.Subscribe[0].String() == "/room/2/"
+		return len(g.Subscribe) == 1 && g.Subscribe[0] == "/room/2/"
 	}, 5*time.Second, 10*time.Millisecond, "a further AUTH_OK replaces the grant")
 }
 
@@ -362,7 +362,7 @@ func TestSession_Auth_RefusalAfterGrantRevokes(t *testing.T) {
 			<-r.Context().Done()
 			return
 		}
-		_ = w.Grant(Grant{Subscribe: []PathPattern{MustParsePathPattern("/room/1/")}})
+		_ = w.Grant(Grant{Subscribe: []string{"/room/1/"}})
 		select {
 		case <-revoke:
 			_ = w.Refuse(UnauthorizedSessionErrorCode, "key retired")

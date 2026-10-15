@@ -12,11 +12,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAuthWriter_Grant_ZeroPattern(t *testing.T) {
+func TestAuthWriter_Grant_InvalidPattern(t *testing.T) {
 	scope := newAuthScope(func() {})
 	w := &AuthWriter{scope: scope}
 
-	err := w.Grant(Grant{Subscribe: []PathPattern{{}}})
+	err := w.Grant(Grant{Subscribe: []string{"/room/1/", "room"}})
 
 	assert.ErrorIs(t, err, ErrInvalidPathPattern)
 	assert.False(t, scope.canSubscribe("/room/1"), "the invalid grant is not applied")
@@ -26,7 +26,7 @@ func TestAuthWriter_Grant_MaxAge(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		scope := newAuthScope(func() {})
 		w := &AuthWriter{scope: scope}
-		require.NoError(t, w.Grant(Grant{Subscribe: []PathPattern{MustParsePathPattern("/")}, MaxAge: time.Second}))
+		require.NoError(t, w.Grant(Grant{Subscribe: []string{"/"}, MaxAge: time.Second}))
 
 		time.Sleep(2 * time.Second)
 		synctest.Wait()
@@ -40,7 +40,7 @@ func TestAuthWriter_Grant_RegrantExtends(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		scope := newAuthScope(func() {})
 		w := &AuthWriter{scope: scope}
-		g := Grant{Subscribe: []PathPattern{MustParsePathPattern("/")}, MaxAge: time.Second}
+		g := Grant{Subscribe: []string{"/"}, MaxAge: time.Second}
 		require.NoError(t, w.Grant(g))
 
 		time.Sleep(700 * time.Millisecond)
@@ -56,7 +56,8 @@ func TestAuthScope_set_SamePatterns(t *testing.T) {
 	changes := 0
 	scope := newAuthScope(func() { changes++ })
 	w := &AuthWriter{scope: scope}
-	g := Grant{Subscribe: []PathPattern{MustParsePathPattern("/room/1/")}}
+	g, err := parseGrant(Grant{Subscribe: []string{"/room/1/"}})
+	require.NoError(t, err)
 
 	scope.set(w, g)
 	g.MaxAge = time.Minute

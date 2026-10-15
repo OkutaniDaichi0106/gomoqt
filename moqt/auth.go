@@ -26,14 +26,25 @@ var (
 )
 
 // Grant is what an acceptor allows for one token: the broadcast paths the
-// presenter may publish to it and subscribe to from it, as patterns relative
-// to the session.
+// presenter may publish to it and subscribe to from it, as path patterns
+// relative to the session.
+//
+// A pattern matches broadcast paths the way an http.ServeMux pattern matches
+// URL paths, and the way Session.AcceptAnnounce reads paths and prefixes:
+// "/room/1/alice" matches that path alone, a pattern ending in "/", such as
+// "/room/1/", matches every path beneath it, and "/" matches every path. A
+// segment may be a wildcard. "{name}" matches any one non-empty segment, so
+// "/room/{id}/host" matches "/room/1/host". "{name...}" as the last segment
+// matches the rest of the path, even an empty rest, and "{$}" as the last
+// segment matches only the "/" before it. A name is letters, digits and "_",
+// not starting with a digit, as in net/http, and unique within a pattern. An
+// empty segment, as in "/room//x", is a literal one.
 type Grant struct {
 	// Publish matches the paths the presenter may announce and serve.
-	Publish []PathPattern
+	Publish []string
 	// Subscribe matches the paths the presenter may subscribe to, fetch, and
 	// discover through announcements.
-	Subscribe []PathPattern
+	Subscribe []string
 	// MaxAge is how long the grant lasts, or 0 for no limit. It tells the
 	// presenter when to present a replacement token, at millisecond precision.
 	// Unless the handler grants again first, the grant is revoked with
@@ -41,81 +52,77 @@ type Grant struct {
 	MaxAge time.Duration
 }
 
-// valid reports an error for a pattern the grant cannot carry: the zero
-// PathPattern.
-func (g Grant) valid() error {
-	for _, p := range slices.Concat(g.Publish, g.Subscribe) {
-		if p.String() == "" {
-			return fmt.Errorf("%w: the zero PathPattern", ErrInvalidPathPattern)
-		}
-	}
-	return nil
-}
-
-// samePatterns reports whether g and h match the same patterns, whatever
-// their expiry.
+// samePatterns reports whether g and h carry the same patterns, whatever
+// their max age.
 func (g Grant) samePatterns(h Grant) bool {
-	same := func(a, b PathPattern) bool { return a.String() == b.String() }
-	return slices.EqualFunc(g.Publish, h.Publish, same) && slices.EqualFunc(g.Subscribe, h.Subscribe, same)
-}
-
-// CanPublish reports whether one of the grant's publish patterns matches path.
-func (g Grant) CanPublish(path BroadcastPath) bool {
-	return matchAny(g.Publish, path)
-}
-
-// CanSubscribe reports whether one of the grant's subscribe patterns matches
-// path.
-func (g Grant) CanSubscribe(path BroadcastPath) bool {
-	return matchAny(g.Subscribe, path)
-}
-
-func matchAny(patterns []PathPattern, path BroadcastPath) bool {
-	for _, p := range patterns {
-		if p.Match(path) {
-			return true
-		}
-	}
-	return false
+	return slices.Equal(g.Publish, h.Publish) && slices.Equal(g.Subscribe, h.Subscribe)
 }
 
 func (g Grant) message() message.AuthOkMessage {
 	m := message.AuthOkMessage{
-		PublishPatterns:   make([]string, len(g.Publish)),
-		SubscribePatterns: make([]string, len(g.Subscribe)),
+		PublishPatterns:   g.Publish,
+		SubscribePatterns: g.Subscribe,
 		Expires:           uint64(g.MaxAge.Milliseconds()),
 	}
 	if g.MaxAge > 0 && m.Expires == 0 {
 		// Below a millisecond, the grant lapses at once rather than never.
 		m.Expires = 1
 	}
-	for i, p := range g.Publish {
-		m.PublishPatterns[i] = p.String()
-	}
-	for i, p := range g.Subscribe {
-		m.SubscribePatterns[i] = p.String()
-	}
 	return m
 }
 
 func grantFromMessage(m message.AuthOkMessage) (Grant, error) {
 	g := Grant{
-		Publish:   make([]PathPattern, len(m.PublishPatterns)),
-		Subscribe: make([]PathPattern, len(m.SubscribePatterns)),
+		Publish:   m.PublishPatterns,
+		Subscribe: m.SubscribePatterns,
 		MaxAge:    time.Duration(m.Expires) * time.Millisecond,
 	}
-	var err error
-	for i, s := range m.PublishPatterns {
-		if g.Publish[i], err = ParsePathPattern(s); err != nil {
-			return Grant{}, err
-		}
-	}
-	for i, s := range m.SubscribePatterns {
-		if g.Subscribe[i], err = ParsePathPattern(s); err != nil {
-			return Grant{}, err
-		}
+	if _, err := parseGrant(g); err != nil {
+		return Grant{}, err
 	}
 	return g, nil
+}
+
+// scopeGrant is a grant with its patterns parsed, as a session's scope holds
+// it.
+type scopeGrant struct {
+	Grant
+	publish, subscribe []pathPattern
+}
+
+// parseGrant parses g's patterns, reporting ErrInvalidPathPattern for one
+// that is not a pattern.
+func parseGrant(g Grant) (scopeGrant, error) {
+	publish, err := parsePatterns(g.Publish)
+	if err != nil {
+		return scopeGrant{}, err
+	}
+	subscribe, err := parsePatterns(g.Subscribe)
+	if err != nil {
+		return scopeGrant{}, err
+	}
+	return scopeGrant{Grant: g, publish: publish, subscribe: subscribe}, nil
+}
+
+func parsePatterns(ss []string) ([]pathPattern, error) {
+	patterns := make([]pathPattern, len(ss))
+	for i, s := range ss {
+		p, err := parsePathPattern(s)
+		if err != nil {
+			return nil, err
+		}
+		patterns[i] = p
+	}
+	return patterns, nil
+}
+
+func matchAny(patterns []pathPattern, path BroadcastPath) bool {
+	for _, p := range patterns {
+		if p.match(path) {
+			return true
+		}
+	}
+	return false
 }
 
 // AuthHandler verifies the tokens a peer presents and grants what each allows.
@@ -185,7 +192,8 @@ type AuthWriter struct {
 // is never trimmed: the token is refused with NOT_SUPPORTED instead, and the
 // returned error says so.
 func (w *AuthWriter) Grant(g Grant) error {
-	if err := g.valid(); err != nil {
+	sg, err := parseGrant(g)
+	if err != nil {
 		return err
 	}
 	// A time.Duration in milliseconds stays below the wire's 2^53 - 1 limit.
@@ -202,7 +210,7 @@ func (w *AuthWriter) Grant(g Grant) error {
 		return errors.Join(tooLarge, w.refuse(NotSupportedErrorCode, "grant too large"))
 	}
 
-	w.scope.set(w, g)
+	w.scope.set(w, sg)
 	w.expireAfter(g.MaxAge)
 	if w.stream == nil {
 		return nil
@@ -313,7 +321,7 @@ func safeServeAuth(handler AuthHandler, w *AuthWriter, r *AuthRequest) (err erro
 // authScope is a session's scope: the union of the grants in force on it.
 type authScope struct {
 	mu     sync.RWMutex
-	grants map[*AuthWriter]Grant
+	grants map[*AuthWriter]scopeGrant
 
 	// ready is closed once the connection's own credential was answered, so
 	// requests that arrive first are judged against its grant.
@@ -327,20 +335,20 @@ type authScope struct {
 
 func newAuthScope(changed func()) *authScope {
 	return &authScope{
-		grants:  make(map[*AuthWriter]Grant),
+		grants:  make(map[*AuthWriter]scopeGrant),
 		ready:   make(chan struct{}),
 		changed: changed,
 	}
 }
 
-func (s *authScope) set(w *AuthWriter, g Grant) {
+func (s *authScope) set(w *AuthWriter, g scopeGrant) {
 	s.mu.Lock()
 	old, had := s.grants[w]
 	s.grants[w] = g
 	s.mu.Unlock()
 	s.answered(w)
 	// A grant sent again to extend it changes nothing.
-	if !had || !old.samePatterns(g) {
+	if !had || !old.samePatterns(g.Grant) {
 		s.changed()
 	}
 }
@@ -385,7 +393,7 @@ func (s *authScope) canPublish(path BroadcastPath) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, g := range s.grants {
-		if g.CanPublish(path) {
+		if matchAny(g.publish, path) {
 			return true
 		}
 	}
@@ -401,7 +409,7 @@ func (s *authScope) canSubscribe(path BroadcastPath) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, g := range s.grants {
-		if g.CanSubscribe(path) {
+		if matchAny(g.subscribe, path) {
 			return true
 		}
 	}

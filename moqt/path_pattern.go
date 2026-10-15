@@ -32,10 +32,10 @@ type PathPattern struct {
 	segs []string
 }
 
-// ParsePathPattern parses s: a path starting with "/", with no empty segment
-// before its last, whose wildcards are whole segments.
+// ParsePathPattern parses s: a path starting with "/" whose wildcards are
+// whole segments. An empty segment, as in "/room//x", is a literal one.
 func ParsePathPattern(s string) (PathPattern, error) {
-	if !isValidPath(BroadcastPath(s)) || strings.Contains(s, "//") {
+	if !isValidPath(BroadcastPath(s)) {
 		return PathPattern{}, fmt.Errorf("%w: %q", ErrInvalidPathPattern, s)
 	}
 	if !strings.ContainsAny(s, "{}") {
@@ -97,8 +97,26 @@ func (p PathPattern) String() string {
 // Match reports whether path is in the pattern's set. The zero PathPattern
 // matches nothing.
 func (p PathPattern) Match(path BroadcastPath) bool {
+	return p.match(path, nil)
+}
+
+// Values reports whether path is in the pattern's set and, if it is, returns
+// the value each named wildcard matched, like http.Request.PathValue: for
+// "/room/{id}/{rest...}", the path "/room/1/a/b" gives id "1" and rest "a/b".
+// A pattern without a named wildcard gives an empty map.
+func (p PathPattern) Values(path BroadcastPath) (map[string]string, bool) {
+	values := make(map[string]string)
+	if !p.match(path, values) {
+		return nil, false
+	}
+	return values, true
+}
+
+// match reports whether path is in the pattern's set, recording wildcard
+// values into values unless it is nil.
+func (p PathPattern) match(path BroadcastPath, values map[string]string) bool {
 	if p.segs != nil {
-		return p.matchSegments(path)
+		return p.matchSegments(path, values)
 	}
 	if isValidPrefix(p.raw) {
 		return path.HasPrefix(p.raw)
@@ -107,23 +125,29 @@ func (p PathPattern) Match(path BroadcastPath) bool {
 }
 
 // matchSegments matches path against a pattern with a wildcard.
-func (p PathPattern) matchSegments(path BroadcastPath) bool {
+func (p PathPattern) matchSegments(path BroadcastPath, values map[string]string) bool {
 	if !isValidPath(path) {
 		return false
 	}
 	prefix := strings.HasSuffix(p.raw, "/")
 	rest := string(path[1:])
 	for i, seg := range p.segs {
-		switch {
-		case seg == anchorSegment:
+		if seg == anchorSegment {
 			return rest == ""
-		case strings.HasSuffix(seg, "...}"):
+		}
+		if name, ok := strings.CutSuffix(seg, "...}"); ok {
+			if values != nil {
+				values[name[1:]] = rest
+			}
 			return true
 		}
 		got, after, more := strings.Cut(rest, "/")
 		if strings.HasPrefix(seg, "{") {
 			if got == "" {
 				return false
+			}
+			if values != nil {
+				values[seg[1:len(seg)-1]] = got
 			}
 		} else if got != seg {
 			return false

@@ -89,11 +89,12 @@ func newScopedAnnouncementReader(stream transport.Stream, prefix prefix, initSuf
 						// Reconstruct the full hop path: the broadcast's Hop ID
 						// list plus the peer's implicit ANNOUNCE_OK Hop ID.
 						hopIDs := appendHopID(am.HopIDs, peerHopID)
+						// A broadcast the peer may not publish is dropped, not
+						// kept for a later scope that might allow it.
 						if ar.allow != nil && !ar.allow(BroadcastPath(ar.prefix+suffix)) {
-							ar.hideLocked(suffix, hopIDs)
+							delete(ar.actives, suffix)
 							return
 						}
-						delete(ar.hidden, suffix)
 						ar.activateLocked(suffix, hopIDs)
 					}()
 				}
@@ -112,11 +113,12 @@ func newScopedAnnouncementReader(stream transport.Stream, prefix prefix, initSuf
 							delete(ar.actives, suffix)
 							handled = true
 						}
-						if _, held := ar.hidden[suffix]; held {
-							delete(ar.hidden, suffix)
-							handled = true
-						}
 					}()
+					// A scoped reader dropped or ended the broadcasts outside
+					// its scope, so their ENDED finds nothing.
+					if ar.allow != nil {
+						handled = true
+					}
 					if handled {
 						continue
 					}
@@ -165,24 +167,13 @@ type AnnouncementReader struct {
 	pendings    []*Announcement
 	announcedCh chan struct{} // notify when new announcement is available
 
-	// allow, when set, reports whether the peer may publish a broadcast
-	// path; hidden holds the Hop IDs of each active broadcast it refused.
-	allow  func(BroadcastPath) bool
-	hidden map[suffix][]uint64
+	// allow, when set, reports whether the peer may publish a broadcast path.
+	// A broadcast it refuses is dropped.
+	allow func(BroadcastPath) bool
 
 	// cancelCause cancels readerCtx (and thus ar.ctx) when the announce
 	// goroutine hits a fatal decode error, so ReceiveAnnouncement unblocks.
 	cancelCause context.CancelCauseFunc
-}
-
-// hideLocked holds sfx back, out of actives, with the hop IDs to announce it with
-// once rescope allows it. Caller MUST hold announcementsMu.
-func (ar *AnnouncementReader) hideLocked(sfx suffix, hopIDs []uint64) {
-	delete(ar.actives, sfx)
-	if ar.hidden == nil {
-		ar.hidden = make(map[suffix][]uint64)
-	}
-	ar.hidden[sfx] = hopIDs
 }
 
 // activateLocked makes a new active announcement for suffix and queues it for
@@ -199,8 +190,8 @@ func (ar *AnnouncementReader) activateLocked(sfx suffix, hopIDs []uint64) {
 }
 
 // rescope re-applies allow after it changed: it ends each active announcement
-// the peer may no longer publish, holding it back, and activates each
-// held-back one it now may.
+// the peer may no longer publish. One the peer announced while it was refused
+// stays dropped until the peer announces it again.
 func (ar *AnnouncementReader) rescope() {
 	if ar.allow == nil {
 		return
@@ -217,13 +208,7 @@ func (ar *AnnouncementReader) rescope() {
 			continue
 		}
 		ann.end()
-		ar.hideLocked(sfx, ann.HopIDs())
-	}
-	for sfx, hopIDs := range ar.hidden {
-		if ar.allow(BroadcastPath(ar.prefix + sfx)) {
-			delete(ar.hidden, sfx)
-			ar.activateLocked(sfx, hopIDs)
-		}
+		delete(ar.actives, sfx)
 	}
 }
 

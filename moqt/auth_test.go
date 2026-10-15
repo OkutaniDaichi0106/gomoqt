@@ -453,8 +453,8 @@ func TestSession_Announcements_PeerPublishesOnlyItsScope(t *testing.T) {
 	sessions := make(chan *Session, 1)
 	addr := startAuthServer(t, ctx, roomTicketHandler, sessions)
 	clientMux := NewTrackMux(0)
-	clientMux.PublishFunc(ctx, "/room/1/carol", authGroupHandler)
-	clientMux.PublishFunc(ctx, "/room/2/dave", authGroupHandler)
+	// Announced before any grant allows it: dropped, and not shown later.
+	clientMux.PublishFunc(ctx, "/room/1/dave", authGroupHandler)
 	sess := dialAuth(t, ctx, "moqt://"+addr+"/app", clientMux)
 	var server *Session
 	select {
@@ -466,7 +466,6 @@ func TestSession_Announcements_PeerPublishesOnlyItsScope(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = ar.Close() }() // not actionable: the test is over
 
-	// Nothing is published before a grant allows it.
 	short, scancel := context.WithTimeout(ctx, 200*time.Millisecond)
 	defer scancel()
 	_, err = ar.ReceiveAnnouncement(short)
@@ -475,12 +474,20 @@ func TestSession_Announcements_PeerPublishesOnlyItsScope(t *testing.T) {
 	cred, err := sess.Auth(ctx, []byte("publish"))
 	require.NoError(t, err)
 	defer func() { _ = cred.Close() }() // not actionable: the test is over
+	// Announced once the grant allows it.
+	clientMux.PublishFunc(ctx, "/room/1/carol", authGroupHandler)
+	clientMux.PublishFunc(ctx, "/room/2/erin", authGroupHandler)
 
 	actx, acancel := context.WithTimeout(ctx, 5*time.Second)
 	defer acancel()
 	ann, err := ar.ReceiveAnnouncement(actx)
 	require.NoError(t, err)
 	assert.Equal(t, BroadcastPath("/room/1/carol"), ann.BroadcastPath())
+
+	short2, scancel2 := context.WithTimeout(ctx, 200*time.Millisecond)
+	defer scancel2()
+	_, err = ar.ReceiveAnnouncement(short2)
+	assert.ErrorIs(t, err, context.DeadlineExceeded, "neither the early nor the out-of-scope broadcast is shown")
 }
 
 func TestCredential_Grant_Copy(t *testing.T) {

@@ -31,6 +31,10 @@ func newAnnouncementWriter(stream transport.Stream, prefix prefix, localHopID ui
 	return sas
 }
 
+// errAnnouncementWriterClosed is the init error of a writer closed before its
+// init could take the active announcements.
+var errAnnouncementWriterClosed = errors.New("moqt: announcement writer closed")
+
 // AnnouncementWriter manages the sending of announcements for a specified prefix.
 // It handles initialization, sending active announcements, and cleanup.
 type AnnouncementWriter struct {
@@ -43,6 +47,9 @@ type AnnouncementWriter struct {
 
 	mu      sync.RWMutex
 	actives map[suffix]*activeAnnouncement
+	// closed is set once Close or CloseWithError has run; the writer then
+	// takes no more announcements, even from an init still running.
+	closed bool
 
 	initDone chan struct{}
 	initOnce sync.Once
@@ -112,6 +119,12 @@ func (aw *AnnouncementWriter) init(announcements map[*Announcement]struct{}) err
 		}
 
 		aw.mu.Lock()
+		if aw.closed {
+			err = errAnnouncementWriterClosed
+			aw.initErr = err
+			aw.mu.Unlock()
+			return
+		}
 		aw.actives = actives
 		aw.mu.Unlock()
 
@@ -259,11 +272,9 @@ func (aw *AnnouncementWriter) SendAnnouncement(announcement *Announcement) error
 	aw.mu.Lock()
 	defer aw.mu.Unlock()
 
-	// The writer may have been Closed (or CloseWithError'd) while the lock was
-	// released above to call the previous announcement's end handler -- Close
-	// nils aw.actives. Re-check before encoding: assigning into a nil map panics,
-	// and we must not encode onto a closing stream.
-	if aw.actives == nil {
+	// The writer may have been closed while the lock was released above to
+	// end the previous announcement; it must not encode onto a closing stream.
+	if aw.closed {
 		return nil
 	}
 
@@ -315,6 +326,7 @@ func (aw *AnnouncementWriter) stopAll() {
 		}
 	}
 	aw.actives = nil
+	aw.closed = true
 }
 
 // Context returns the AnnouncementWriter's context.

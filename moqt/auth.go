@@ -194,8 +194,8 @@ type AuthRequest struct {
 	// request URI, a client certificate, or nothing.
 	Token []byte
 
-	// RequestURI is the session's request URI (see Session.RequestURI). Grant
-	// patterns are relative to its path.
+	// RequestURI is the session's request URI (see Session.RequestURI). A
+	// grant's root is relative to its path.
 	RequestURI string
 
 	ctx context.Context
@@ -436,40 +436,31 @@ func (s *authScope) wait(ctx context.Context) bool {
 // canList reports whether pfx lies within the root of a grant in force, so
 // the peer may request announcements for it. A nil scope enforces nothing.
 func (s *authScope) canList(pfx prefix) bool {
-	if s == nil {
-		return true
-	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	for _, g := range s.grants {
-		if g.root != "" && strings.HasPrefix(pfx, g.root) {
-			return true
-		}
-	}
-	return false
+	return s.anyGrant(func(g scopeGrant) bool { return g.root != "" && strings.HasPrefix(pfx, g.root) })
 }
 
 // canPublish reports whether a grant in force lets the peer publish path. A
 // nil scope enforces nothing.
 func (s *authScope) canPublish(path BroadcastPath) bool {
-	return s.allows(path, func(g scopeGrant) []pathPattern { return g.publish })
+	return s.anyGrant(func(g scopeGrant) bool { return matchAny(g.publish, path) })
 }
 
 // canSubscribe reports whether a grant in force lets the peer subscribe to
 // path. A nil scope enforces nothing.
 func (s *authScope) canSubscribe(path BroadcastPath) bool {
-	return s.allows(path, func(g scopeGrant) []pathPattern { return g.subscribe })
+	return s.anyGrant(func(g scopeGrant) bool { return matchAny(g.subscribe, path) })
 }
 
-// allows reports whether the patterns of a grant in force match path.
-func (s *authScope) allows(path BroadcastPath, patterns func(scopeGrant) []pathPattern) bool {
+// anyGrant reports whether ok holds for a grant in force. A nil scope
+// enforces nothing, so it reports true.
+func (s *authScope) anyGrant(ok func(scopeGrant) bool) bool {
 	if s == nil {
 		return true
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, g := range s.grants {
-		if matchAny(patterns(g), path) {
+		if ok(g) {
 			return true
 		}
 	}

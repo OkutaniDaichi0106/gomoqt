@@ -55,8 +55,8 @@ func BenchmarkPathPattern_match(b *testing.B) {
 	}
 }
 
-// benchScope returns a scope holding one grant per room, each a prefix like
-// the ticket of one room, or a wildcard pattern shared by every room.
+// benchScope returns a scope holding one grant per i, each with the pattern
+// pattern(i) returns.
 func benchScope(b *testing.B, grants int, pattern func(i int) string) *authScope {
 	b.Helper()
 	scope := newAuthScope(func() {})
@@ -71,6 +71,7 @@ func benchScope(b *testing.B, grants int, pattern func(i int) string) *authScope
 
 func roomPrefix(i int) string { return fmt.Sprintf("/room/%d/", i) }
 
+// roomWildcard returns a distinct wildcard pattern for each i.
 func roomWildcard(i int) string { return fmt.Sprintf("/room/{id}/host%d", i) }
 
 // BenchmarkAuthScope_canSubscribe checks a path no grant covers, so every
@@ -95,15 +96,19 @@ func BenchmarkAuthScope_canSubscribe(b *testing.B) {
 	}
 }
 
+// BenchmarkAuthScope_canSubscribe_Parallel checks the same refused path as
+// BenchmarkAuthScope_canSubscribe from every core at once, as the requests of
+// one session may.
 func BenchmarkAuthScope_canSubscribe_Parallel(b *testing.B) {
 	for _, n := range []int{1, 10, 100} {
-		b.Run(fmt.Sprintf("grants=%d", n), func(b *testing.B) {
+		b.Run(fmt.Sprintf("prefix/grants=%d", n), func(b *testing.B) {
 			scope := benchScope(b, n, roomPrefix)
 			b.ReportAllocs()
 			b.RunParallel(func(pb *testing.PB) {
 				for pb.Next() {
-					if !scope.canSubscribe("/room/0/host") {
-						b.Fatal("missing grant")
+					if scope.canSubscribe("/lobby/1/host") {
+						b.Error("unexpected grant")
+						return
 					}
 				}
 			})
@@ -112,20 +117,31 @@ func BenchmarkAuthScope_canSubscribe_Parallel(b *testing.B) {
 }
 
 func BenchmarkAuthWriter_Grant(b *testing.B) {
-	grants := map[string]Grant{
-		"prefix":   {Subscribe: []string{"/room/123/"}, Publish: []string{"/room/123/alice"}},
-		"wildcard": {Subscribe: []string{"/room/{id}/host"}, Publish: []string{"/room/{id}/{rest...}"}},
+	grants := []struct {
+		name string
+		// a and b are grants of the same kind with other patterns.
+		a, b Grant
+	}{
+		{
+			"prefix",
+			Grant{Subscribe: []string{"/room/123/"}, Publish: []string{"/room/123/alice"}},
+			Grant{Subscribe: []string{"/room/124/"}, Publish: []string{"/room/124/alice"}},
+		},
+		{
+			"wildcard",
+			Grant{Subscribe: []string{"/room/{id}/host"}, Publish: []string{"/room/{id}/{rest...}"}},
+			Grant{Subscribe: []string{"/room/{id}/guest"}, Publish: []string{"/room/{id}/{tail...}"}},
+		},
 	}
-	for name, g := range grants {
+	for _, gc := range grants {
 		// Each grant replaces one with other patterns, so the scope changes.
-		b.Run(name+"/change", func(b *testing.B) {
+		b.Run(gc.name+"/change", func(b *testing.B) {
 			w := &AuthWriter{scope: newAuthScope(func() {})}
-			other := Grant{Subscribe: []string{"/other/"}}
 			b.ReportAllocs()
 			for i := 0; b.Loop(); i++ {
-				next := g
+				next := gc.a
 				if i%2 == 1 {
-					next = other
+					next = gc.b
 				}
 				if err := w.Grant(next); err != nil {
 					b.Fatal(err)
@@ -133,13 +149,13 @@ func BenchmarkAuthWriter_Grant(b *testing.B) {
 			}
 		})
 		// The same grant sent again with a max age, as a refresh does.
-		b.Run(name+"/extend", func(b *testing.B) {
+		b.Run(gc.name+"/extend", func(b *testing.B) {
 			w := &AuthWriter{scope: newAuthScope(func() {})}
-			g := g
-			g.MaxAge = time.Minute
+			ext := gc.a
+			ext.MaxAge = time.Minute
 			b.ReportAllocs()
 			for b.Loop() {
-				if err := w.Grant(g); err != nil {
+				if err := w.Grant(ext); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -151,9 +167,11 @@ func BenchmarkAuthWriter_Grant(b *testing.B) {
 }
 
 // BenchmarkAnnouncementWriter_rescope measures a pass over an announce stream
-// after the scope changed in a way that leaves every announcement allowed, as
-// when a grant for another room is added: each announcement is checked
-// against every grant, and nothing is sent.
+// after the scope changed in a way that changes nothing on it, as when a grant
+// for another room is added: each active announcement stays allowed and each
+// held-back one stays refused, so each is checked against every grant and
+// nothing is sent. The writer's state is set directly, as init and
+// SendAnnouncement would leave it, to keep the stream out of the measurement.
 func BenchmarkAnnouncementWriter_rescope(b *testing.B) {
 	for _, anns := range []int{10, 100, 1000} {
 		for _, grants := range []int{1, 10} {
@@ -166,13 +184,18 @@ func BenchmarkAnnouncementWriter_rescope(b *testing.B) {
 				close(aw.initDone)
 				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()
-				for i := range anns {
+				aw.mu.Lock()
+				// Half are active and allowed, half held back and refused.
+				for i := range anns / 2 {
 					ann, _ := NewAnnouncement(ctx, BroadcastPath(fmt.Sprintf("/room/%d/user%d", grants-1, i)))
 					aw.actives[suffix(fmt.Sprintf("room/%d/user%d", grants-1, i))] = &activeAnnouncement{
 						announcement: ann,
 						stop:         func() bool { return true },
 					}
+					held, _ := NewAnnouncement(ctx, BroadcastPath(fmt.Sprintf("/lobby/user%d", i)))
+					aw.hide(held)
 				}
+				aw.mu.Unlock()
 				b.ReportAllocs()
 				for b.Loop() {
 					aw.rescope()

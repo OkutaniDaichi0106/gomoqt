@@ -7,7 +7,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/qumo-dev/gomoqt/moqt/internal/message"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -35,6 +34,16 @@ func TestAuthWriter_Grant_ReusedSlice(t *testing.T) {
 	assert.False(t, scope.canSubscribe("/room/1/host"))
 	assert.True(t, scope.canSubscribe("/room/2/host"))
 	assert.Equal(t, 2, changes, "editing the slice in place and granting again changes the scope")
+}
+
+func TestAuthWriter_Grant_NegativeMaxAge(t *testing.T) {
+	scope := newAuthScope(func() {})
+	w := &AuthWriter{scope: scope}
+
+	err := w.Grant(Grant{Subscribe: []string{"/"}, MaxAge: -time.Second})
+
+	assert.Error(t, err)
+	assert.False(t, scope.canSubscribe("/room/1"), "the invalid grant is not applied")
 }
 
 func TestAuthWriter_Grant_MaxAge(t *testing.T) {
@@ -83,14 +92,14 @@ func TestAuthScope_set_SamePatterns(t *testing.T) {
 }
 
 func TestAuthReason(t *testing.T) {
-	long := strings.Repeat("あ", message.MaxAuthReasonLength)
+	long := strings.Repeat("あ", maxAuthReasonLength)
 	tests := map[string]struct {
 		reason string
 		want   string
 	}{
 		"valid":        {reason: "unknown ticket", want: "unknown ticket"},
 		"invalid utf8": {reason: "bad\xffbyte", want: "bad�byte"},
-		"too long":     {reason: long, want: long[:message.MaxAuthReasonLength-message.MaxAuthReasonLength%3]},
+		"too long":     {reason: long, want: long[:maxAuthReasonLength-maxAuthReasonLength%3]},
 	}
 
 	for name, tt := range tests {
@@ -99,7 +108,7 @@ func TestAuthReason(t *testing.T) {
 
 			assert.Equal(t, tt.want, got)
 			assert.True(t, utf8.ValidString(got))
-			assert.LessOrEqual(t, len(got), message.MaxAuthReasonLength)
+			assert.LessOrEqual(t, len(got), maxAuthReasonLength)
 		})
 	}
 }

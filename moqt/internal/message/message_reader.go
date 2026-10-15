@@ -125,3 +125,21 @@ func ReadStringArray(b []byte) ([]string, int, error) {
 
 // ErrMessageTooLarge is returned when a parsed message size exceeds MaxMessageSize.
 var ErrMessageTooLarge = errors.New("message too large")
+
+// readBody reads a length-prefixed message body.
+func readBody(src io.Reader) ([]byte, error) {
+	num, err := ReadMessageLength(src)
+	if err != nil {
+		return nil, err
+	}
+
+	if num > MaxMessageSize {
+		return nil, ErrMessageTooLarge
+	}
+
+	b := make([]byte, num)
+	if _, err := io.ReadFull(src, b); err != nil {
+		return nil, err
+	}
+	return b, nil
+}

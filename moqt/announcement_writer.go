@@ -98,14 +98,14 @@ func (aw *AnnouncementWriter) holdBack(ann *Announcement) bool {
 		return false
 	}
 	if !held {
-		aw.hide(ann)
+		aw.hideLocked(ann)
 	}
 	return true
 }
 
-// hide keeps ann in hidden until a rescope shows it, and forgets it when it
+// hideLocked keeps ann in hidden until a rescope shows it, and forgets it when it
 // ends. Caller MUST hold aw.mu.
-func (aw *AnnouncementWriter) hide(ann *Announcement) {
+func (aw *AnnouncementWriter) hideLocked(ann *Announcement) {
 	if _, held := aw.hidden[ann]; held {
 		return
 	}
@@ -157,7 +157,7 @@ func (aw *AnnouncementWriter) rescope() {
 	aw.mu.Lock()
 	for _, ann := range withdrawn {
 		if ann.IsActive() && aw.actives != nil {
-			aw.hide(ann)
+			aw.hideLocked(ann)
 		}
 	}
 	aw.mu.Unlock()
@@ -169,8 +169,8 @@ func (aw *AnnouncementWriter) rescope() {
 	}
 }
 
-// dropHidden forgets every held-back announcement. Caller MUST hold aw.mu.
-func (aw *AnnouncementWriter) dropHidden() {
+// dropHiddenLocked forgets every held-back announcement. Caller MUST hold aw.mu.
+func (aw *AnnouncementWriter) dropHiddenLocked() {
 	for _, stop := range aw.hidden {
 		stop()
 	}
@@ -257,7 +257,7 @@ func (aw *AnnouncementWriter) init(announcements map[*Announcement]struct{}) err
 			}
 
 			aw.mu.Lock()
-			aw.registerEndHandler(sfx, active.announcement)
+			aw.registerEndHandlerLocked(sfx, active.announcement)
 			aw.mu.Unlock()
 		}
 	})
@@ -270,22 +270,15 @@ func (aw *AnnouncementWriter) init(announcements map[*Announcement]struct{}) err
 	return aw.initErr
 }
 
-// registerEndHandler watches the active announcement for sfx, ending it on
+// registerEndHandlerLocked watches the active announcement for sfx, ending it on
 // the peer when it ends. Caller MUST hold aw.mu.
-func (aw *AnnouncementWriter) registerEndHandler(sfx suffix, ann *Announcement) {
+func (aw *AnnouncementWriter) registerEndHandlerLocked(sfx suffix, ann *Announcement) {
 	active, ok := aw.actives[sfx]
 	if !ok || active.announcement != ann {
 		// The writer was closed while the caller had released aw.mu.
 		return
 	}
-	active.stop = ann.AfterFunc(func() {
-		aw.mu.Lock()
-		defer aw.mu.Unlock()
-		if aw.actives[sfx] == active {
-			delete(aw.actives, sfx)
-			aw.sendEnded(sfx)
-		}
-	})
+	active.stop = ann.AfterFunc(func() { aw.remove(sfx, active) })
 }
 
 // end stops watching active and sends ENDED for it, unless its own end
@@ -294,18 +287,24 @@ func (aw *AnnouncementWriter) end(sfx suffix, active *activeAnnouncement) {
 	if active.stop == nil || !active.stop() {
 		return
 	}
+	aw.remove(sfx, active)
+}
+
+// remove forgets active and sends ENDED for it, unless the writer has been
+// closed or sfx announced again since. It takes aw.mu.
+func (aw *AnnouncementWriter) remove(sfx suffix, active *activeAnnouncement) {
 	aw.mu.Lock()
 	defer aw.mu.Unlock()
 	if aw.actives[sfx] == active {
 		delete(aw.actives, sfx)
-		aw.sendEnded(sfx)
+		aw.sendEndedLocked(sfx)
 	}
 }
 
-// sendEnded sends ANNOUNCE_BROADCAST ENDED for sfx. A stream that has already
+// sendEndedLocked sends ANNOUNCE_BROADCAST ENDED for sfx. A stream that has already
 // ended, as it has once the session closes, is not written to: its end ends
 // every announcement on the peer. Caller MUST hold aw.mu.
-func (aw *AnnouncementWriter) sendEnded(sfx suffix) {
+func (aw *AnnouncementWriter) sendEndedLocked(sfx suffix) {
 	if aw.ctx.Err() != nil {
 		return
 	}
@@ -398,7 +397,7 @@ func (aw *AnnouncementWriter) SendAnnouncement(announcement *Announcement) error
 	}
 
 	aw.actives[suffix] = &activeAnnouncement{announcement: announcement}
-	aw.registerEndHandler(suffix, announcement)
+	aw.registerEndHandlerLocked(suffix, announcement)
 
 	return nil
 }
@@ -429,7 +428,7 @@ func (aw *AnnouncementWriter) stopAll() {
 		}
 	}
 	aw.actives = nil
-	aw.dropHidden()
+	aw.dropHiddenLocked()
 }
 
 // Context returns the AnnouncementWriter's context.
@@ -445,5 +444,5 @@ func (aw *AnnouncementWriter) Context() context.Context {
 // activeAnnouncement represents an active announcement being managed by AnnouncementWriter.
 type activeAnnouncement struct {
 	announcement *Announcement
-	stop         func() bool // stops the watch registerEndHandler set, if it has not run
+	stop         func() bool // stops the watch registerEndHandlerLocked set, if it has not run
 }

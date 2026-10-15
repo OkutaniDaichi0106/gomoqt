@@ -161,7 +161,7 @@ func BenchmarkTrackMux_ServeAnnouncements(b *testing.B) {
 			// Block until init has fully completed. The fan-out path in
 			// Announce does a non-blocking channel send and, on overflow, closes
 			// the writer (setting aw.actives = nil); if a Publish raced init's
-			// registerEndHandler it would nil-deref. initDone is closed at the
+			// registerEndHandlerLocked it would nil-deref. initDone is closed at the
 			// end of the writer's one-shot init, so waiting on it guarantees no
 			// concurrent Publish until init is done.
 			select {
@@ -607,7 +607,7 @@ func BenchmarkTrackMux_AnnouncementTree(b *testing.B) {
 			})
 
 			// Block until init completes; see ServeAnnouncements for why this
-			// prevents a Publish from racing init's registerEndHandler.
+			// prevents a Publish from racing init's registerEndHandlerLocked.
 			select {
 			case <-aw.initDone:
 			case <-awCtx.Done():

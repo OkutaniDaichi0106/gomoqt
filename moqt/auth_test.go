@@ -1,16 +1,20 @@
 package moqt
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
 	"io"
 	"log/slog"
+	"math"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/quic-go/quic-go"
+	"github.com/qumo-dev/gomoqt/moqt/internal/message"
 	"github.com/qumo-dev/gomoqt/transport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -466,4 +470,81 @@ func TestCredential_Grant_Copy(t *testing.T) {
 	g.Subscribe[0] = "/"
 
 	assert.Equal(t, []string{"/room/1/"}, cred.Grant().Subscribe)
+}
+
+func TestCredential_Context_HandlerReturns(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	handler := AuthHandlerFunc(func(w *AuthWriter, r *AuthRequest) {
+		if len(r.Token) == 0 {
+			<-r.Context().Done()
+			return
+		}
+		// The grant ends as the handler returns.
+		_ = w.Grant(Grant{Subscribe: []string{"/room/1/"}})
+	})
+	addr := startAuthServer(t, ctx, handler, nil)
+	sess := dialAuth(t, ctx, "moqt://"+addr+"/app", nil)
+	cred, err := sess.Auth(ctx, []byte("room1"))
+	require.NoError(t, err)
+	defer func() { _ = cred.Close() }() // not actionable: the test is over
+
+	waitCtx, waitCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer waitCancel()
+	select {
+	case <-cred.Context().Done():
+	case <-waitCtx.Done():
+		t.Fatal("the credential outlived its handler")
+	}
+}
+
+func TestReadAuthReply_Violation(t *testing.T) {
+	tests := map[string]interface{ Encode(io.Writer) error }{
+		"expires too late":    message.AuthOkMessage{Expires: maxAuthExpires + 1},
+		"code over 32 bits":   message.AuthErrorMessage{Code: 1 << 32},
+		"reason too long":     message.AuthErrorMessage{Reason: strings.Repeat("a", maxAuthReasonLength+1)},
+		"reason is not UTF-8": message.AuthErrorMessage{Reason: string([]byte{0xff})},
+	}
+
+	for name, m := range tests {
+		t.Run(name, func(t *testing.T) {
+			var buf bytes.Buffer
+			require.NoError(t, m.Encode(&buf))
+
+			_, err := readAuthReply(&buf)
+
+			assert.ErrorIs(t, err, errAuthViolation)
+		})
+	}
+}
+
+func TestReadAuthReply_LatestExpiry(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, message.AuthOkMessage{Expires: maxAuthExpires}.Encode(&buf))
+
+	g, err := readAuthReply(&buf)
+
+	require.NoError(t, err)
+	assert.Equal(t, time.Duration(math.MaxInt64), g.MaxAge, "an expiry beyond a time.Duration is the longest one")
+}
+
+func TestReadAuthReply_ErrorLimits(t *testing.T) {
+	tests := map[string]message.AuthErrorMessage{
+		"largest code":   {Code: 1<<32 - 1},
+		"longest reason": {Code: 0x2, Reason: strings.Repeat("a", maxAuthReasonLength)},
+	}
+
+	for name, m := range tests {
+		t.Run(name, func(t *testing.T) {
+			var buf bytes.Buffer
+			require.NoError(t, m.Encode(&buf))
+
+			_, err := readAuthReply(&buf)
+
+			var authErr *AuthError
+			require.ErrorAs(t, err, &authErr)
+			assert.Equal(t, SessionErrorCode(m.Code), authErr.Code)
+			assert.Equal(t, m.Reason, authErr.Reason)
+		})
+	}
 }

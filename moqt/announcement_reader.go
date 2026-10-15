@@ -90,15 +90,11 @@ func newScopedAnnouncementReader(stream transport.Stream, prefix prefix, initSuf
 						// list plus the peer's implicit ANNOUNCE_OK Hop ID.
 						hopIDs := appendHopID(am.HopIDs, peerHopID)
 						if ar.allow != nil && !ar.allow(BroadcastPath(ar.prefix+suffix)) {
-							delete(ar.actives, suffix)
-							if ar.hidden == nil {
-								ar.hidden = make(map[string][]uint64)
-							}
-							ar.hidden[suffix] = hopIDs
+							ar.hideLocked(suffix, hopIDs)
 							return
 						}
 						delete(ar.hidden, suffix)
-						ar.activate(suffix, hopIDs)
+						ar.activateLocked(suffix, hopIDs)
 					}()
 				}
 			case message.ENDED:
@@ -179,9 +175,19 @@ type AnnouncementReader struct {
 	cancelCause context.CancelCauseFunc
 }
 
-// activate makes a new active announcement for suffix and queues it for
+// hideLocked holds sfx back, out of actives, with the hop IDs to announce it with
+// once rescope allows it. Caller MUST hold announcementsMu.
+func (ar *AnnouncementReader) hideLocked(sfx suffix, hopIDs []uint64) {
+	delete(ar.actives, sfx)
+	if ar.hidden == nil {
+		ar.hidden = make(map[suffix][]uint64)
+	}
+	ar.hidden[sfx] = hopIDs
+}
+
+// activateLocked makes a new active announcement for suffix and queues it for
 // ReceiveAnnouncement. Caller MUST hold announcementsMu.
-func (ar *AnnouncementReader) activate(sfx suffix, hopIDs []uint64) {
+func (ar *AnnouncementReader) activateLocked(sfx suffix, hopIDs []uint64) {
 	ann, _ := NewAnnouncement(ar.ctx, BroadcastPath(ar.prefix+sfx))
 	ann.hopIDs = hopIDs
 	ar.actives[sfx] = ann
@@ -211,16 +217,12 @@ func (ar *AnnouncementReader) rescope() {
 			continue
 		}
 		ann.end()
-		delete(ar.actives, sfx)
-		if ar.hidden == nil {
-			ar.hidden = make(map[suffix][]uint64)
-		}
-		ar.hidden[sfx] = ann.HopIDs()
+		ar.hideLocked(sfx, ann.HopIDs())
 	}
 	for sfx, hopIDs := range ar.hidden {
 		if ar.allow(BroadcastPath(ar.prefix + sfx)) {
 			delete(ar.hidden, sfx)
-			ar.activate(sfx, hopIDs)
+			ar.activateLocked(sfx, hopIDs)
 		}
 	}
 }

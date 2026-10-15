@@ -277,23 +277,22 @@ export class AnnouncementReader {
 				// Surface the failure rather than swallowing it: cancel the
 				// context with the cause and close the queue so receive()
 				// unblocks instead of hanging on an empty, open queue.
-				this.#fail(err, "ANNOUNCE_OK");
+				this.#fail(err);
 				return;
 			}
 			this.#peerHopID = okMsg.hopID;
 			// Start reading announcements after ANNOUNCE_OK
 			this.#readNext();
 		}).catch((err) => {
-			this.#fail(err, "ANNOUNCE_OK");
+			this.#fail(err);
 		});
 	}
 
 	// fail cancels the reader context with cause and closes the queue, the two
-	// things receive() needs to unblock with an error instead of hanging. what
-	// names the message being read, for a cause that is not an Error.
-	#fail(err: unknown, what: string): void {
+	// things receive() needs to unblock with an error instead of hanging.
+	#fail(err: unknown): void {
 		this.#cancelFunc(
-			err instanceof Error ? err : new Error(`moq: failed to read ${what}: ${err}`),
+			err instanceof Error ? err : new Error("moq: announce stream failed", { cause: err }),
 		);
 		this.#queue.close();
 	}
@@ -340,11 +339,11 @@ export class AnnouncementReader {
 				// and ends every announcement still active, as their signal is
 				// the reader's context.
 				if (err instanceof EOFError) {
-					this.#fail(err, "ANNOUNCE");
+					this.#fail(err);
 					return;
 				}
 				if (err instanceof WebTransportStreamError) {
-					this.#fail(new AnnounceError(err.code, err.remote), "ANNOUNCE");
+					this.#fail(new AnnounceError(err.code, err.remote));
 					return;
 				}
 
@@ -357,7 +356,7 @@ export class AnnouncementReader {
 				) {
 					console.error(`moq: failed to read ANNOUNCE message: ${err}`);
 				}
-				this.#fail(err, "ANNOUNCE");
+				this.#fail(err);
 				return;
 			}
 
@@ -404,7 +403,7 @@ export class AnnouncementReader {
 
 			queueMicrotask(() => this.#readNext());
 		}).catch((err) => {
-			this.#fail(err, "ANNOUNCE");
+			this.#fail(err);
 		});
 	}
 

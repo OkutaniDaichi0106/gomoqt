@@ -138,7 +138,7 @@ type Session struct {
 	announceReaders map[*AnnouncementReader]struct{}
 	// fetches are the FETCHes being served, cancelled too when the scope no
 	// longer covers them.
-	fetches map[*servedFetch]struct{}
+	fetches map[*FetchRequest]transport.Stream
 
 	// rescopeCh wakes the loop that applies scope changes one at a time.
 	rescopeCh chan struct{}
@@ -196,7 +196,7 @@ func newSession(
 		authHandler:     setup.authHandler,
 		announceWriters: make(map[*AnnouncementWriter]struct{}),
 		announceReaders: make(map[*AnnouncementReader]struct{}),
-		fetches:         make(map[*servedFetch]struct{}),
+		fetches:         make(map[*FetchRequest]transport.Stream),
 		rescopeCh:       make(chan struct{}, 1),
 	}
 
@@ -228,8 +228,7 @@ func newSession(
 		// that arrive before it are judged against its grant.
 		sess.scope = newAuthScope(sess.requestRescope)
 		sess.wg.Go(sess.rescopeLoop)
-		conn := &AuthWriter{scope: sess.scope}
-		sess.scope.conn = conn
+		conn := sess.scope.conn
 		sess.wg.Go(func() {
 			r := &AuthRequest{RequestURI: sess.path, ctx: sess.ctx}
 			if err := safeServeAuth(sess.authHandler, conn, r); err != nil {
@@ -498,14 +497,9 @@ func (sess *Session) Subscribe(ctx context.Context, path BroadcastPath, name Tra
 
 	id := sess.nextSubscribeID()
 
-	stream, err := sess.conn.OpenStreamSync(ctx)
+	stream, err := sess.openStream(ctx, "subscribe")
 	if err != nil {
-		if appErr, ok := errors.AsType[*transport.ApplicationError](err); ok {
-			return nil, &SessionError{
-				ApplicationError: appErr,
-			}
-		}
-		return nil, fmt.Errorf("failed to open bidirectional stream: %w", err)
+		return nil, err
 	}
 
 	err = message.StreamTypeSubscribe.Encode(stream)
@@ -607,14 +601,9 @@ func (sess *Session) Fetch(req *FetchRequest) (*GroupReader, error) {
 		return nil, ErrClosedSession
 	}
 
-	stream, err := sess.conn.OpenStreamSync(sess.ctx)
+	stream, err := sess.openStream(sess.ctx, "fetch")
 	if err != nil {
-		if appErr, ok := errors.AsType[*transport.ApplicationError](err); ok {
-			return nil, &SessionError{
-				ApplicationError: appErr,
-			}
-		}
-		return nil, fmt.Errorf("failed to open stream for fetch: %w", err)
+		return nil, err
 	}
 
 	// A fetch delivers a single group on its own stream, so there is no group
@@ -679,15 +668,9 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 		return nil, Cause(sess.ctx)
 	}
 
-	stream, err := sess.conn.OpenStreamSync(sess.ctx)
+	stream, err := sess.openStream(sess.ctx, "announce")
 	if err != nil {
-		if appErr, ok := errors.AsType[*transport.ApplicationError](err); ok {
-			return nil, &SessionError{
-				ApplicationError: appErr,
-			}
-		}
-
-		return nil, fmt.Errorf("failed to open stream for announce: %w", err)
+		return nil, err
 	}
 
 	err = message.StreamTypeAnnounce.Encode(stream)
@@ -727,16 +710,9 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 
 	// What the peer may not publish is held back from the reader.
 	ar := newScopedAnnouncementReader(stream, prefix, nil, sess.scope.canPublish)
-	sess.scopedMu.Lock()
-	sess.announceReaders[ar] = struct{}{}
-	sess.scopedMu.Unlock()
-	context.AfterFunc(ar.Context(), func() {
-		sess.scopedMu.Lock()
-		delete(sess.announceReaders, ar)
-		sess.scopedMu.Unlock()
-	})
-	// The reader judged what it read before it was registered against the
-	// scope of the time; a change since then reaches it here.
+	context.AfterFunc(ar.Context(), addScoped(sess, sess.announceReaders, ar, struct{}{}))
+	// The reader judged what it read before it was added against the scope of
+	// the time; a change since then reaches it here.
 	sess.requestRescope()
 	return ar, nil
 }
@@ -796,12 +772,9 @@ func (sess *Session) Probe(targetBitrate uint64) (<-chan ProbeResult, error) {
 	probeStream := sess.outgoingProbeStream
 	// Lazily open the probe stream.
 	if probeStream == nil || probeStream.Context().Err() != nil {
-		stream, err := sess.conn.OpenStreamSync(sess.ctx)
+		stream, err := sess.openStream(sess.ctx, "probe")
 		if err != nil {
-			if appErr, ok := errors.AsType[*transport.ApplicationError](err); ok {
-				return nil, &SessionError{ApplicationError: appErr}
-			}
-			return nil, fmt.Errorf("failed to open stream for probe: %w", err)
+			return nil, err
 		}
 
 		if err := message.StreamTypeProbe.Encode(stream); err != nil {
@@ -961,14 +934,7 @@ func (sess *Session) handleAnnounceStream(stream transport.Stream) {
 			return
 		}
 		annstr.allow = sess.scope.canSubscribe
-		sess.scopedMu.Lock()
-		sess.announceWriters[annstr] = struct{}{}
-		sess.scopedMu.Unlock()
-		defer func() {
-			sess.scopedMu.Lock()
-			delete(sess.announceWriters, annstr)
-			sess.scopedMu.Unlock()
-		}()
+		defer addScoped(sess, sess.announceWriters, annstr, struct{}{})()
 	}
 
 	sess.mux.serveAnnouncements(annstr)
@@ -1127,14 +1093,9 @@ func (sess *Session) TrackInfo(ctx context.Context, path BroadcastPath, name Tra
 		return nil, fmt.Errorf("invalid broadcast path: %q", path)
 	}
 
-	stream, err := sess.conn.OpenStreamSync(ctx)
+	stream, err := sess.openStream(ctx, "track info")
 	if err != nil {
-		if appErr, ok := errors.AsType[*transport.ApplicationError](err); ok {
-			return nil, &SessionError{
-				ApplicationError: appErr,
-			}
-		}
-		return nil, fmt.Errorf("failed to open stream for track info: %w", err)
+		return nil, err
 	}
 
 	err = message.StreamTypeTrack.Encode(stream)
@@ -1226,17 +1187,9 @@ func (sess *Session) handleFetchStream(stream transport.Stream) {
 	defer stop()
 
 	if sess.scope != nil {
-		f := &servedFetch{path: req.BroadcastPath, stream: stream}
-		sess.scopedMu.Lock()
-		sess.fetches[f] = struct{}{}
-		sess.scopedMu.Unlock()
-		defer func() {
-			sess.scopedMu.Lock()
-			delete(sess.fetches, f)
-			sess.scopedMu.Unlock()
-		}()
-		// A scope change between mayServe and the registration missed it.
-		if !sess.scope.canSubscribe(f.path) {
+		defer addScoped(sess, sess.fetches, req, stream)()
+		// A scope change between mayServe and addScoped missed the fetch.
+		if !sess.scope.canSubscribe(req.BroadcastPath) {
 			cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeUnauthorized))
 			return
 		}
@@ -1349,6 +1302,19 @@ func abandonedErr(what string, ctx context.Context) error {
 		return fmt.Errorf("%s timed out: %w", what, ctx.Err())
 	}
 	return fmt.Errorf("%s canceled: %w", what, ctx.Err())
+}
+
+// openStream opens a bidirectional stream for what, returning a
+// *SessionError when the session has closed.
+func (sess *Session) openStream(ctx context.Context, what string) (transport.Stream, error) {
+	stream, err := sess.conn.OpenStreamSync(ctx)
+	if err != nil {
+		if appErr, ok := errors.AsType[*transport.ApplicationError](err); ok {
+			return nil, &SessionError{ApplicationError: appErr}
+		}
+		return nil, fmt.Errorf("failed to open stream for %s: %w", what, err)
+	}
+	return stream, nil
 }
 
 func cancelStreamWithError(stream transport.Stream, code transport.StreamErrorCode) {

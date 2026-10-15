@@ -68,7 +68,6 @@ func TestSession_OpenSetupStream_WebTransportClientOmitsPath(t *testing.T) {
 	// WebTransport: the path is known but sendPath is false → Path is omitted.
 	sess := newSession(conn, NewTrackMux(0), nil, nil, nil, nil, nil, nil,
 		sessionSetup{path: "/live"}, nil)
-
 	defer sess.CloseWithError(NoError, "")
 
 	sm := decodeSetupBytes(t, wait())

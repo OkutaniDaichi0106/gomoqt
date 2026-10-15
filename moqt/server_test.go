@@ -1175,3 +1175,4 @@ func TestWebTransportHandler_ServeHTTP_ProtocolMismatchFallsBack(t *testing.T) {
 	assert.True(t, fallbackCalled, "unmatched application protocol should trigger fallback")
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
+

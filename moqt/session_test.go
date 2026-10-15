@@ -103,6 +103,32 @@ func TestNewSession(t *testing.T) {
 	}
 }
 
+func TestNewSession_AuthHandler(t *testing.T) {
+	tests := map[string]struct {
+		handler   AuthHandler
+		wantScope bool
+	}{
+		"with a handler, the session enforces a scope": {
+			handler:   AuthHandlerFunc(func(w *AuthWriter, r *AuthRequest) { <-r.Context().Done() }),
+			wantScope: true,
+		},
+		"without one, it enforces nothing": {},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			conn := &FakeStreamConn{}
+			conn.OpenStreams = []biStreamResult{{Err: io.EOF}}
+
+			session := newSession(conn, NewTrackMux(0), nil, nil, nil, tt.handler, nil, nil, sessionSetup{}, nil)
+			defer func() { _ = session.CloseWithError(NoError, "") }() // not actionable: the test is over
+
+			assert.Equal(t, tt.wantScope, session.authHandler != nil)
+			assert.Equal(t, tt.wantScope, session.scope != nil)
+		})
+	}
+}
+
 func TestNewSessionConnectionState(t *testing.T) {
 	session, _ := newTestSessionWithConn(t, func(conn *FakeStreamConn) {
 		conn.TLSState = &tls.ConnectionState{NegotiatedProtocol: NextProtoMOQ}
@@ -1231,7 +1257,6 @@ func TestSession_ProcessBiStream_Subscribe(t *testing.T) {
 
 	session := newSession(conn, NewTrackMux(0), nil, nil, nil, nil, nil, nil,
 		sessionSetup{ctx: context.WithValue(context.Background(), connValueKey{}, "conn-value")}, nil)
-
 	blockHandler := make(chan struct{})
 	trackReady := make(chan *TrackWriter, 1)
 	session.mux.PublishFunc(context.Background(), BroadcastPath("/test/path"), func(tw *TrackWriter) {
@@ -1635,9 +1660,7 @@ func TestSession_ProcessBiStream_ProbeMultipleMessages(t *testing.T) {
 
 	session := newSession(conn, NewTrackMux(0), nil,
 		&Config{ProbeInterval: 5 * time.Millisecond, ProbeMaxAge: 15 * time.Millisecond},
-		nil, nil,
-
-		nil, nil, sessionSetup{}, nil)
+		nil, nil, nil, nil, sessionSetup{}, nil)
 
 	probeStream := &FakeQUICStream{ParentCtx: session.Context()}
 

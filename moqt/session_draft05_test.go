@@ -86,14 +86,12 @@ func TestReadClientSetup_ExtractsPathAndProbe(t *testing.T) {
 func TestSession_RequestURI(t *testing.T) {
 	sess := newSession(&FakeStreamConn{}, NewTrackMux(0), nil, nil, nil, nil, nil, nil,
 		sessionSetup{path: "/live/alice"}, nil)
-
 	defer sess.CloseWithError(NoError, "")
 
 	assert.Equal(t, "/live/alice", sess.RequestURI())
 
 	bare := newSession(&FakeStreamConn{}, NewTrackMux(0), nil, nil, nil, nil, nil, nil,
 		sessionSetup{}, nil)
-
 	defer bare.CloseWithError(NoError, "")
 
 	assert.Empty(t, bare.RequestURI())

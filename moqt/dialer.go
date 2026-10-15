@@ -175,8 +175,7 @@ func (d *Dialer) dialWebTransport(ctx context.Context, target *url.URL, mux *Tra
 	// learns it from the request URI and this endpoint must not send a SETUP
 	// Path parameter.
 	return newSession(conn, mux, nil, d.Config, d.FetchHandler, nil, d.OnGoaway, d.Logger,
-			sessionSetup{path: target.RequestURI()}, nil),
-		nil
+		sessionSetup{path: target.RequestURI()}, nil), nil
 }
 
 // dialWebSocket establishes a new session over QMux on WebSocket. target is
@@ -208,8 +207,7 @@ func (d *Dialer) dialWebSocket(ctx context.Context, target *url.URL, mux *TrackM
 	}
 
 	return newSession(conn, mux, nil, d.Config, d.FetchHandler, nil, d.OnGoaway, d.Logger,
-			sessionSetup{path: target.RequestURI()}, nil),
-		nil
+		sessionSetup{path: target.RequestURI()}, nil), nil
 }
 
 // dialQUIC establishes a new session over native QUIC by dialing the provided
@@ -254,6 +252,5 @@ func (d *Dialer) dialQUIC(ctx context.Context, addr, path string, mux *TrackMux)
 	// Native QUIC has no handshake-time request URI, so the client is the one
 	// role that conveys the request path in its own SETUP. sendPath drives that.
 	return newSession(conn, mux, nil, d.Config, d.FetchHandler, nil, d.OnGoaway, d.Logger,
-			sessionSetup{path: path, sendPath: true}, nil),
-		nil
+		sessionSetup{path: path, sendPath: true}, nil), nil
 }

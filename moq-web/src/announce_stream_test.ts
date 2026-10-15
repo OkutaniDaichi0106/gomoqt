@@ -1,4 +1,4 @@
-import { assertEquals, assertExists } from "@std/assert";
+import { assertEquals, assertExists, assertInstanceOf, assertStrictEquals } from "@std/assert";
 import { spy } from "@std/testing/mock";
 import { Announcement, AnnouncementReader, AnnouncementWriter } from "./announce_stream.ts";
 import { background, withCancelCause } from "@okdaichi/golikejs/context";
@@ -430,12 +430,12 @@ Deno.test("AnnouncementReader", async (t) => {
 		const malformed = new Error("malformed message");
 		const broken = new Error("read failed");
 		// after is what reading past the buffered messages gives: a result, or
-		// a thrown error; wantErr checks what receive() then returns.
+		// a thrown error; checkErr asserts what receive() then returns.
 		const cases: Record<string, {
 			after?: () => Promise<[number, Error | undefined]>;
-			wantErr: (err: Error | undefined) => boolean;
+			checkErr: (err: Error | undefined) => void;
 		}> = {
-			"end of stream": { wantErr: (err) => err instanceof EOFError },
+			"end of stream": { checkErr: (err) => assertInstanceOf(err, EOFError) },
 			"stream reset": {
 				after: () =>
 					Promise.resolve([
@@ -445,15 +445,15 @@ Deno.test("AnnouncementReader", async (t) => {
 							true,
 						),
 					]),
-				wantErr: (err) => err instanceof AnnounceError,
+				checkErr: (err) => assertInstanceOf(err, AnnounceError),
 			},
 			"read error": {
 				after: () => Promise.resolve([0, malformed]),
-				wantErr: (err) => err === malformed,
+				checkErr: (err) => assertStrictEquals(err, malformed),
 			},
 			"read throws": {
 				after: () => Promise.reject(broken),
-				wantErr: (err) => err === broken,
+				checkErr: (err) => assertStrictEquals(err, broken),
 			},
 		};
 		for (const [name, c] of Object.entries(cases)) {
@@ -482,7 +482,7 @@ Deno.test("AnnouncementReader", async (t) => {
 				assertEquals(ann.isActive(), false);
 				const [next, err] = await ar.receive(new Promise(() => {}));
 				assertEquals(next, undefined);
-				assertEquals(c.wantErr(err), true, `${err}`);
+				c.checkErr(err);
 				cancel(new Error("test cleanup"));
 			});
 		}
@@ -505,7 +505,7 @@ Deno.test("AnnouncementReader", async (t) => {
 				new AnnounceRequestMessage({ prefix: "/" }),
 			);
 			const [, endErr] = await ar.receive(new Promise(() => {}));
-			assertEquals(endErr instanceof EOFError, true);
+			assertInstanceOf(endErr, EOFError);
 
 			await ar.close();
 

@@ -251,7 +251,7 @@ export class AnnouncementReader {
 	#cancelFunc: CancelCauseFunc;
 	#mu: Mutex = new Mutex();
 	#cond: Cond = new Cond(this.#mu);
-	#sessCtx: Context;
+	readonly #sessCtx: Context;
 	#closed = false;
 
 	constructor(

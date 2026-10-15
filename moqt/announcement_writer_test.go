@@ -482,12 +482,12 @@ func TestAnnouncementWriter_Close_SendsNoEnded(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			streamCtx, endStream := context.WithCancel(context.Background())
+			streamCtx, endStream := context.WithCancel(t.Context())
 			defer endStream()
 			stream := &FakeQUICStream{ParentCtx: streamCtx}
 			aw := newAnnouncementWriter(stream, "/test/", 0, 0, nil)
 			require.NoError(t, aw.init(map[*Announcement]struct{}{}))
-			ann, end := NewAnnouncement(context.Background(), BroadcastPath("/test/active"))
+			ann, end := NewAnnouncement(t.Context(), BroadcastPath("/test/active"))
 			require.NoError(t, aw.SendAnnouncement(ann))
 			if tt.streamEnded {
 				endStream()
@@ -506,12 +506,12 @@ func TestAnnouncementWriter_Close_SendsNoEnded(t *testing.T) {
 	}
 }
 
-func TestAnnouncementWriter_AnnouncementEnds_StreamEnded(t *testing.T) {
-	streamCtx, endStream := context.WithCancel(context.Background())
+func TestAnnouncementWriter_RegisterEndHandler_StreamEnded(t *testing.T) {
+	streamCtx, endStream := context.WithCancel(t.Context())
 	stream := &FakeQUICStream{ParentCtx: streamCtx}
 	aw := newAnnouncementWriter(stream, "/test/", 0, 0, nil)
 	require.NoError(t, aw.init(map[*Announcement]struct{}{}))
-	ann, end := NewAnnouncement(context.Background(), BroadcastPath("/test/active"))
+	ann, end := NewAnnouncement(t.Context(), BroadcastPath("/test/active"))
 	require.NoError(t, aw.SendAnnouncement(ann))
 	endStream()
 	before := len(stream.Written())
@@ -525,7 +525,7 @@ func TestAnnouncementWriter_AnnouncementEnds_StreamEnded(t *testing.T) {
 func TestAnnouncementWriter_RegisterEndHandler_Closed(t *testing.T) {
 	aw := newTestAnnouncementWriter(t)
 	require.NoError(t, aw.init(map[*Announcement]struct{}{}))
-	ann, end := NewAnnouncement(context.Background(), BroadcastPath("/test/active"))
+	ann, end := NewAnnouncement(t.Context(), BroadcastPath("/test/active"))
 	defer end()
 	aw.stopAll()
 

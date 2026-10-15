@@ -65,16 +65,10 @@ class ReceiveStreamClass implements ReceiveStream {
 
 		// Read from the underlying stream
 		try {
-			// An empty chunk carries nothing: read on rather than return 0 bytes
-			// with no error, which readers such as readFull take for the end.
-			let value: Uint8Array | undefined;
-			do {
-				const res = await this.#pull.read();
-				if (res.done) {
-					return [0, new EOFError()];
-				}
-				value = res.value;
-			} while (!value || value.length === 0);
+			const value = await this.#nextChunk();
+			if (value === undefined) {
+				return [0, new EOFError()];
+			}
 
 			const n = Math.min(p.length, value.length);
 			p.set(value.subarray(0, n));
@@ -105,6 +99,21 @@ class ReceiveStreamClass implements ReceiveStream {
 				}
 			}
 			return [0, new Error(`Failed to read from stream: ${err}`)];
+		}
+	}
+
+	// nextChunk returns the next non-empty chunk, or undefined at the end of
+	// the stream. An empty chunk carries nothing, and returning 0 bytes with no
+	// error for it would read as the end to readers such as readFull.
+	async #nextChunk(): Promise<Uint8Array | undefined> {
+		while (true) {
+			const { done, value } = await this.#pull.read();
+			if (done) {
+				return undefined;
+			}
+			if (value.length > 0) {
+				return value;
+			}
 		}
 	}
 

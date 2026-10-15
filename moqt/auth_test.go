@@ -69,11 +69,11 @@ func authGroupHandler(tw *TrackWriter) {
 	}
 }
 
-// startAuthServer serves authRoom1Path and authRoom2Path behind handler. The
-// handler on the server side receives every session it accepts.
 // authProbePath is the path startAuthServer dials to learn the server is up.
 const authProbePath = "/probe"
 
+// startAuthServer serves authRoom1Path and authRoom2Path behind handler. The
+// handler on the server side receives every session it accepts.
 func startAuthServer(t *testing.T, ctx context.Context, handler AuthHandler, sessions chan<- *Session) string {
 	t.Helper()
 

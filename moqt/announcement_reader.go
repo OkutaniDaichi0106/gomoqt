@@ -10,6 +10,13 @@ import (
 )
 
 func newAnnouncementReader(stream transport.Stream, prefix prefix, initSuffixes []suffix) *AnnouncementReader {
+	return newScopedAnnouncementReader(stream, prefix, initSuffixes, nil)
+}
+
+// newScopedAnnouncementReader is newAnnouncementReader with allow, which, when
+// set, reports whether the peer may publish a broadcast path. An announcement
+// it refuses is held back until rescope allows it.
+func newScopedAnnouncementReader(stream transport.Stream, prefix prefix, initSuffixes []suffix, allow func(BroadcastPath) bool) *AnnouncementReader {
 	if !isValidPrefix(prefix) {
 		panic("invalid prefix for AnnouncementReader")
 	}
@@ -24,6 +31,7 @@ func newAnnouncementReader(stream transport.Stream, prefix prefix, initSuffixes 
 		pendings:    make([]*Announcement, 0),
 		announcedCh: make(chan struct{}, 1),
 		cancelCause: cancelCause,
+		allow:       allow,
 	}
 
 	for _, suffix := range initSuffixes {
@@ -78,16 +86,19 @@ func newAnnouncementReader(stream transport.Stream, prefix prefix, initSuffixes 
 						if ok && old.IsActive() {
 							old.end()
 						}
-						ann, _ := NewAnnouncement(ar.ctx, BroadcastPath(ar.prefix+suffix))
 						// Reconstruct the full hop path: the broadcast's Hop ID
 						// list plus the peer's implicit ANNOUNCE_OK Hop ID.
-						ann.hopIDs = appendHopID(am.HopIDs, peerHopID)
-						ar.actives[suffix] = ann
-						ar.pendings = append(ar.pendings, ann)
-						select {
-						case ar.announcedCh <- struct{}{}:
-						default:
+						hopIDs := appendHopID(am.HopIDs, peerHopID)
+						if ar.allow != nil && !ar.allow(BroadcastPath(ar.prefix+suffix)) {
+							delete(ar.actives, suffix)
+							if ar.hidden == nil {
+								ar.hidden = make(map[string][]uint64)
+							}
+							ar.hidden[suffix] = hopIDs
+							return
 						}
+						delete(ar.hidden, suffix)
+						ar.activate(suffix, hopIDs)
 					}()
 				}
 			case message.ENDED:
@@ -103,6 +114,10 @@ func newAnnouncementReader(stream transport.Stream, prefix prefix, initSuffixes 
 						if ok && old.IsActive() {
 							old.end()
 							delete(ar.actives, suffix)
+							handled = true
+						}
+						if _, held := ar.hidden[suffix]; held {
+							delete(ar.hidden, suffix)
 							handled = true
 						}
 					}()
@@ -154,9 +169,60 @@ type AnnouncementReader struct {
 	pendings    []*Announcement
 	announcedCh chan struct{} // notify when new announcement is available
 
+	// allow, when set, reports whether the peer may publish a broadcast
+	// path; hidden holds the Hop IDs of each active broadcast it refused.
+	allow  func(BroadcastPath) bool
+	hidden map[suffix][]uint64
+
 	// cancelCause cancels readerCtx (and thus ar.ctx) when the announce
 	// goroutine hits a fatal decode error, so ReceiveAnnouncement unblocks.
 	cancelCause context.CancelCauseFunc
+}
+
+// activate makes a new active announcement for suffix and queues it for
+// ReceiveAnnouncement. Caller MUST hold announcementsMu.
+func (ar *AnnouncementReader) activate(sfx suffix, hopIDs []uint64) {
+	ann, _ := NewAnnouncement(ar.ctx, BroadcastPath(ar.prefix+sfx))
+	ann.hopIDs = hopIDs
+	ar.actives[sfx] = ann
+	ar.pendings = append(ar.pendings, ann)
+	select {
+	case ar.announcedCh <- struct{}{}:
+	default:
+	}
+}
+
+// rescope re-applies allow after it changed: it ends each active announcement
+// the peer may no longer publish, holding it back, and activates each
+// held-back one it now may.
+func (ar *AnnouncementReader) rescope() {
+	if ar.allow == nil {
+		return
+	}
+
+	ar.announcementsMu.Lock()
+	defer ar.announcementsMu.Unlock()
+	if ar.ctx.Err() != nil {
+		return
+	}
+
+	for sfx, ann := range ar.actives {
+		if ar.allow(ann.BroadcastPath()) {
+			continue
+		}
+		ann.end()
+		delete(ar.actives, sfx)
+		if ar.hidden == nil {
+			ar.hidden = make(map[suffix][]uint64)
+		}
+		ar.hidden[sfx] = ann.HopIDs()
+	}
+	for sfx, hopIDs := range ar.hidden {
+		if ar.allow(BroadcastPath(ar.prefix + sfx)) {
+			delete(ar.hidden, sfx)
+			ar.activate(sfx, hopIDs)
+		}
+	}
 }
 
 // fail cancels the reader context with cause, unblocking ReceiveAnnouncement.

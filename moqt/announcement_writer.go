@@ -41,8 +41,15 @@ type AnnouncementWriter struct {
 	localHopID uint64 // this node's Hop ID to append when forwarding
 	excludeHop uint64 // skip announcements whose HopIDs contain this value
 
+	// allow, when set, reports whether the peer may see a broadcast path. An
+	// announcement it refuses is held back in hidden until rescope allows it.
+	allow func(BroadcastPath) bool
+
 	mu      sync.RWMutex
 	actives map[suffix]*activeAnnouncement
+	// hidden maps each held-back announcement to the stop of the watch that
+	// forgets it when it ends.
+	hidden map[*Announcement]func() bool
 
 	initDone chan struct{}
 	initOnce sync.Once
@@ -69,6 +76,92 @@ func (aw *AnnouncementWriter) shouldExclude(ann *Announcement) bool {
 		return true
 	}
 	return slices.Contains(ann.HopIDs(), aw.excludeHop)
+}
+
+// holdBack reports whether ann is outside what the peer may see, and if so
+// keeps it in hidden for a later rescope. An allowed announcement is dropped
+// from hidden.
+func (aw *AnnouncementWriter) holdBack(ann *Announcement) bool {
+	if aw.allow == nil {
+		return false
+	}
+	allowed := aw.allow(ann.BroadcastPath())
+
+	aw.mu.Lock()
+	defer aw.mu.Unlock()
+	stop, held := aw.hidden[ann]
+	if allowed {
+		if held {
+			stop()
+			delete(aw.hidden, ann)
+		}
+		return false
+	}
+	if !held {
+		if aw.hidden == nil {
+			aw.hidden = make(map[*Announcement]func() bool)
+		}
+		aw.hidden[ann] = ann.AfterFunc(func() {
+			aw.mu.Lock()
+			defer aw.mu.Unlock()
+			delete(aw.hidden, ann)
+		})
+	}
+	return true
+}
+
+// rescope re-applies allow after it changed: it ends each active announcement
+// the peer may no longer see, holding it back, and announces each held-back
+// one it now may.
+func (aw *AnnouncementWriter) rescope() {
+	if aw.allow == nil {
+		return
+	}
+	select {
+	case <-aw.initDone:
+	case <-aw.ctx.Done():
+		return
+	}
+
+	aw.mu.Lock()
+	var ends []func()
+	var withdrawn, shown []*Announcement
+	for _, active := range aw.actives {
+		if active.end != nil && !aw.allow(active.announcement.BroadcastPath()) {
+			ends = append(ends, active.end)
+			withdrawn = append(withdrawn, active.announcement)
+		}
+	}
+	for ann := range aw.hidden {
+		if aw.allow(ann.BroadcastPath()) {
+			shown = append(shown, ann)
+		}
+	}
+	aw.mu.Unlock()
+
+	// The end functions take aw.mu themselves.
+	for _, end := range ends {
+		end()
+	}
+	for _, ann := range withdrawn {
+		if ann.IsActive() {
+			aw.holdBack(ann)
+		}
+	}
+	for _, ann := range shown {
+		if err := aw.SendAnnouncement(ann); err != nil {
+			aw.logError("failed to send a newly allowed announcement", err)
+			return
+		}
+	}
+}
+
+// dropHidden forgets every held-back announcement. Caller MUST hold aw.mu.
+func (aw *AnnouncementWriter) dropHidden() {
+	for _, stop := range aw.hidden {
+		stop()
+	}
+	aw.hidden = nil
 }
 
 // buildHopIDs returns the Hop ID list to encode in the outgoing
@@ -105,6 +198,9 @@ func (aw *AnnouncementWriter) init(announcements map[*Announcement]struct{}) err
 				continue
 			}
 			if aw.shouldExclude(ann) {
+				continue
+			}
+			if aw.holdBack(ann) {
 				continue
 			}
 			// Always replace with the latest active announcement for the suffix.
@@ -223,6 +319,10 @@ func (aw *AnnouncementWriter) SendAnnouncement(announcement *Announcement) error
 		return nil
 	}
 
+	if aw.holdBack(announcement) {
+		return nil
+	}
+
 	// Get suffix for this announcement
 	suffix, ok := announcement.BroadcastPath().GetSuffix(aw.prefix)
 	if !ok {
@@ -293,6 +393,7 @@ func (aw *AnnouncementWriter) Close() error {
 		}
 	}
 	aw.actives = nil
+	aw.dropHidden()
 	aw.mu.Unlock()
 
 	// Call end functions without holding the lock to avoid deadlock
@@ -314,6 +415,7 @@ func (aw *AnnouncementWriter) CloseWithError(code AnnounceErrorCode) error {
 		}
 	}
 	aw.actives = nil
+	aw.dropHidden()
 	aw.mu.Unlock()
 
 	// Call end functions without holding the lock to avoid deadlock

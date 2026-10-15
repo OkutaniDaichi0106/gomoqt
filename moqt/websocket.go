@@ -50,6 +50,10 @@ type WebSocketHandler struct {
 	// fetch requests are not handled.
 	FetchHandler FetchHandler
 
+	// AuthHandler verifies the tokens of the sessions (see
+	// Server.AuthHandler). Optional.
+	AuthHandler AuthHandler
+
 	// Server, if set, is the Server the sessions of this handler belong
 	// to: its Shutdown and Close reach them, it stops the handler from
 	// taking new ones, its QUICConfig configures them unless QUICConfig
@@ -134,7 +138,7 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// As on WebTransport, the session takes its values from the upgrade
 	// request and ends with the transport, which carries the close reason.
-	setup := sessionSetup{path: requestPath(r), ctx: r.Context(), lifetime: context.Background()}
+	setup := sessionSetup{path: requestPath(r), ctx: r.Context(), lifetime: context.Background(), authHandler: h.AuthHandler}
 	var manager *connManager
 	if s != nil {
 		// The upgrade took time: the Server may have shut down meanwhile,

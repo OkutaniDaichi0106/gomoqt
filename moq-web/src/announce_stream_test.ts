@@ -9,6 +9,16 @@ import {
 } from "./internal/message/mod.ts";
 import { MockReceiveStream, MockSendStream, MockStream } from "./mock_stream_test.ts";
 import { Buffer } from "@okdaichi/golikejs/bytes";
+import { EOFError } from "@okdaichi/golikejs/io";
+import { AnnounceError, AnnounceErrorCode } from "./error.ts";
+import { WebTransportStreamError } from "./internal/webtransport/error.ts";
+
+// openRead serves buf, then parks like a peer that keeps the stream open:
+// a reader handed buf.read directly sees the end of the stream once buf is
+// drained, which ends every announcement it holds.
+function openRead(buf: Buffer): (p: Uint8Array) => Promise<[number, Error | undefined]> {
+	return (p) => buf.len() > 0 ? buf.read(p) : new Promise(() => {});
+}
 
 Deno.test("Announcement", async (t) => {
 	await t.step("lifecycle: isActive and ended", async () => {
@@ -220,7 +230,7 @@ Deno.test("AnnouncementReader", async (t) => {
 		const am = new AnnounceBroadcastMessage({ suffix: "a", active: true });
 		await am.encode(buf);
 		const mockStream = new MockStream({
-			readable: new MockReceiveStream({ read: (p) => buf.read(p) }),
+			readable: new MockReceiveStream({ read: openRead(buf) }),
 		});
 		const req = new AnnounceRequestMessage({ prefix: "/x/" });
 		const reader = new AnnouncementReader(ctx, mockStream, req);
@@ -249,7 +259,7 @@ Deno.test("AnnouncementReader", async (t) => {
 			const writableCancel = spy(async (_code: number) => {});
 			const mockStream = new MockStream({
 				writable: new MockSendStream({ cancel: writableCancel }),
-				readable: new MockReceiveStream({ read: (p) => buf.read(p) }),
+				readable: new MockReceiveStream({ read: openRead(buf) }),
 			});
 			const req = new AnnounceRequestMessage({ prefix: "/" });
 			const reader = new AnnouncementReader(ctx, mockStream, req);
@@ -359,7 +369,7 @@ Deno.test("AnnouncementReader", async (t) => {
 			await activeTrueMsg.encode(buf);
 
 			const mockStream = new MockStream({
-				readable: new MockReceiveStream({ read: (p) => buf.read(p) }),
+				readable: new MockReceiveStream({ read: openRead(buf) }),
 			});
 
 			const apm = new AnnounceRequestMessage({ prefix: "/" });
@@ -412,6 +422,94 @@ Deno.test("AnnouncementReader", async (t) => {
 
 			// The announcement should now be ended
 			assertEquals(ann1?.isActive(), false);
+			cancel(new Error("test cleanup"));
+		},
+	);
+
+	await t.step("the stream ending ends every active announcement", async (t) => {
+		const malformed = new Error("malformed message");
+		const broken = new Error("read failed");
+		// after is what reading past the buffered messages gives: a result, or
+		// a thrown error; wantErr checks what receive() then returns.
+		const cases: Record<string, {
+			after?: () => Promise<[number, Error | undefined]>;
+			wantErr: (err: Error | undefined) => boolean;
+		}> = {
+			"end of stream": { wantErr: (err) => err instanceof EOFError },
+			"stream reset": {
+				after: () =>
+					Promise.resolve([
+						0,
+						new WebTransportStreamError(
+							{ source: "stream", streamErrorCode: AnnounceErrorCode.InternalError },
+							true,
+						),
+					]),
+				wantErr: (err) => err instanceof AnnounceError,
+			},
+			"read error": {
+				after: () => Promise.resolve([0, malformed]),
+				wantErr: (err) => err === malformed,
+			},
+			"read throws": {
+				after: () => Promise.reject(broken),
+				wantErr: (err) => err === broken,
+			},
+		};
+		for (const [name, c] of Object.entries(cases)) {
+			await t.step(name, async () => {
+				const buf = Buffer.make(256);
+				await new AnnounceOkMessage({}).encode(buf);
+				await new AnnounceBroadcastMessage({ suffix: "a", active: true }).encode(buf);
+				const after = c.after;
+				const mockStream = new MockStream({
+					readable: new MockReceiveStream({
+						read: (p) => after && buf.len() === 0 ? after() : buf.read(p),
+					}),
+				});
+				const [ctx, cancel] = withCancelCause(background());
+				const ar = new AnnouncementReader(
+					ctx,
+					mockStream,
+					new AnnounceRequestMessage({ prefix: "/" }),
+				);
+				const [ann, recvErr] = await ar.receive(Promise.resolve());
+				assertEquals(recvErr, undefined);
+				assertExists(ann);
+
+				await ann.ended();
+
+				assertEquals(ann.isActive(), false);
+				const [next, err] = await ar.receive(new Promise(() => {}));
+				assertEquals(next, undefined);
+				assertEquals(c.wantErr(err), true, `${err}`);
+				cancel(new Error("test cleanup"));
+			});
+		}
+	});
+
+	await t.step(
+		"close after the publisher ended the stream closes the reader's side",
+		async () => {
+			const buf = Buffer.make(64);
+			await new AnnounceOkMessage({}).encode(buf);
+			const writableClose = spy(async () => {});
+			const mockStream = new MockStream({
+				writable: new MockSendStream({ close: writableClose }),
+				readable: new MockReceiveStream({ read: (p) => buf.read(p) }),
+			});
+			const [ctx, cancel] = withCancelCause(background());
+			const ar = new AnnouncementReader(
+				ctx,
+				mockStream,
+				new AnnounceRequestMessage({ prefix: "/" }),
+			);
+			const [, endErr] = await ar.receive(new Promise(() => {}));
+			assertEquals(endErr instanceof EOFError, true);
+
+			await ar.close();
+
+			assertEquals(writableClose.calls.length, 1);
 			cancel(new Error("test cleanup"));
 		},
 	);

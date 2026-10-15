@@ -44,6 +44,17 @@ Deno.test("ReceiveStream", async (t) => {
 		},
 	);
 
+	await t.step("read - skips empty chunks", async () => {
+		const { reader } = setupReader([new Uint8Array(0), new Uint8Array([7])]);
+
+		const buf = new Uint8Array(1);
+		const [n, err] = await reader.read(buf);
+
+		assertEquals(err, undefined);
+		assertEquals(n, 1);
+		assertEquals(buf, new Uint8Array([7]));
+	});
+
 	await t.step("read - should handle partial reads", async () => {
 		const { reader } = setupReader([new Uint8Array([1, 2, 3, 4, 5])]);
 

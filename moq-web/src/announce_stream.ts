@@ -251,6 +251,8 @@ export class AnnouncementReader {
 	#cancelFunc: CancelCauseFunc;
 	#mu: Mutex = new Mutex();
 	#cond: Cond = new Cond(this.#mu);
+	#sessCtx: Context;
+	#closed = false;
 
 	constructor(
 		sessCtx: Context,
@@ -258,6 +260,7 @@ export class AnnouncementReader {
 		announceInterest: AnnounceRequestMessage,
 	) {
 		this.#stream = stream;
+		this.#sessCtx = sessCtx;
 		const prefix = announceInterest.prefix;
 		if (!isValidPrefix(prefix)) {
 			throw new Error(`[AnnouncementReader] invalid prefix: ${prefix}.`);
@@ -274,27 +277,24 @@ export class AnnouncementReader {
 				// Surface the failure rather than swallowing it: cancel the
 				// context with the cause and close the queue so receive()
 				// unblocks instead of hanging on an empty, open queue.
-				this.#fail(
-					err instanceof Error
-						? err
-						: new Error(`moq: failed to read ANNOUNCE_OK: ${err}`),
-				);
+				this.#fail(err, "ANNOUNCE_OK");
 				return;
 			}
 			this.#peerHopID = okMsg.hopID;
 			// Start reading announcements after ANNOUNCE_OK
 			this.#readNext();
 		}).catch((err) => {
-			this.#fail(
-				err instanceof Error ? err : new Error(`moq: failed to read ANNOUNCE_OK: ${err}`),
-			);
+			this.#fail(err, "ANNOUNCE_OK");
 		});
 	}
 
 	// fail cancels the reader context with cause and closes the queue, the two
-	// things receive() needs to unblock with an error instead of hanging.
-	#fail(err: Error): void {
-		this.#cancelFunc(err);
+	// things receive() needs to unblock with an error instead of hanging. what
+	// names the message being read, for a cause that is not an Error.
+	#fail(err: unknown, what: string): void {
+		this.#cancelFunc(
+			err instanceof Error ? err : new Error(`moq: failed to read ${what}: ${err}`),
+		);
 		this.#queue.close();
 	}
 
@@ -335,12 +335,17 @@ export class AnnouncementReader {
 		const msg = new AnnounceBroadcastMessage({});
 		msg.decode(this.#stream.readable).then(async (err) => {
 			if (err) {
-				// EOFError and connection closed errors are expected during normal shutdown
+				// The peer ended or reset the stream, or sent a malformed
+				// message. Cancel the reader: that releases a blocked receive()
+				// and ends every announcement still active, as their signal is
+				// the reader's context.
 				if (err instanceof EOFError) {
+					this.#fail(err, "ANNOUNCE");
 					return;
 				}
 				if (err instanceof WebTransportStreamError) {
-					throw new AnnounceError(err.code, err.remote);
+					this.#fail(new AnnounceError(err.code, err.remote), "ANNOUNCE");
+					return;
 				}
 
 				// Only log as error if context is still active (not shutting down)
@@ -352,6 +357,7 @@ export class AnnouncementReader {
 				) {
 					console.error(`moq: failed to read ANNOUNCE message: ${err}`);
 				}
+				this.#fail(err, "ANNOUNCE");
 				return;
 			}
 
@@ -397,14 +403,18 @@ export class AnnouncementReader {
 			}
 
 			queueMicrotask(() => this.#readNext());
-		}).catch(() => {});
+		}).catch((err) => {
+			this.#fail(err, "ANNOUNCE");
+		});
 	}
 
 	async close(): Promise<void> {
-		if (this.context.err()) {
-			// If already closed, do nothing
+		// A reader that failed because the publisher ended the stream still
+		// closes its own side; one whose session has ended has nothing to close.
+		if (this.#closed || this.#sessCtx.err()) {
 			return;
 		}
+		this.#closed = true;
 
 		this.#cancelFunc(undefined);
 
@@ -414,10 +424,10 @@ export class AnnouncementReader {
 	}
 
 	async closeWithError(code: AnnounceErrorCode): Promise<void> {
-		if (this.context.err()) {
-			// If already closed, do nothing
+		if (this.#closed || this.#sessCtx.err()) {
 			return;
 		}
+		this.#closed = true;
 		const cause = new WebTransportStreamError(
 			{ source: "stream", streamErrorCode: code },
 			false,

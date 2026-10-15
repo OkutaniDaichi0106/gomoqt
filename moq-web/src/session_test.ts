@@ -14,7 +14,7 @@ import {
 	writeVarint,
 } from "./internal/message/mod.ts";
 import { BiStreamTypes, UniStreamTypes } from "./stream_type.ts";
-import { FetchError, FetchErrorCode, SessionErrorCode } from "./error.ts";
+import { FetchError, FetchErrorCode, GroupErrorCode, SessionErrorCode } from "./error.ts";
 import { TrackMux } from "./track_mux.ts";
 import type { TrackPrefix } from "./track_prefix.ts";
 import { Writer } from "@okdaichi/golikejs/io";
@@ -1093,6 +1093,87 @@ Deno.test({
 			assertEquals(group, undefined);
 			assertInstanceOf(err, FetchError);
 			assertEquals(err.code, FetchErrorCode.Unauthorized);
+			await session.close();
+		});
+
+		await t.step("fetch reports a request done while it waits", async () => {
+			const local = new WebTransportStreamError(
+				{ source: "stream", streamErrorCode: GroupErrorCode.ExpiredGroup },
+				false,
+			);
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [new Uint8Array(0)],
+				openStreamEnds: [local],
+			});
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			const [group, err] = await session.fetch(
+				new FetchRequest({
+					broadcastPath: "/live/stream",
+					trackName: "video",
+					priority: 0,
+					groupSequence: 1,
+					done: Promise.resolve(),
+				}),
+			);
+
+			assertEquals(group, undefined);
+			assertInstanceOf(err, Error);
+			assertEquals(err.message, "moq: fetch request done");
+			await session.close();
+		});
+
+		await t.step("fetch returns a local read error as it is", async () => {
+			const local = new WebTransportStreamError(
+				{ source: "stream", streamErrorCode: GroupErrorCode.ExpiredGroup },
+				false,
+			);
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [new Uint8Array(0)],
+				openStreamEnds: [local],
+			});
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			const [group, err] = await session.fetch(
+				new FetchRequest({
+					broadcastPath: "/live/stream",
+					trackName: "video",
+					priority: 0,
+					groupSequence: 1,
+				}),
+			);
+
+			assertEquals(group, undefined);
+			assertEquals(err, local);
+			await session.close();
+		});
+
+		await t.step("the fetched group ends when the request is done", async () => {
+			const frame = new Uint8Array([0x00, 0x04, ...new TextEncoder().encode("body")]);
+			const mock = new MockWebTransportSession({ openStreamResponses: [frame] });
+			const session = new Session({ transport: mock });
+			await session.ready;
+			let finish = () => {};
+			const done = new Promise<void>((resolve) => {
+				finish = resolve;
+			});
+
+			const [group] = await session.fetch(
+				new FetchRequest({
+					broadcastPath: "/live/stream",
+					trackName: "video",
+					priority: 0,
+					groupSequence: 1,
+					done,
+				}),
+			);
+			assertExists(group);
+			finish();
+			await group.context.done();
+
+			assertEquals(group.context.err() !== undefined, true);
 			await session.close();
 		});
 

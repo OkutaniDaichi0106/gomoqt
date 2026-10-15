@@ -127,11 +127,6 @@ type Session struct {
 	authHandler AuthHandler
 	scope       *authScope
 
-	// fetches are the FETCHes being served, cancelled too when the scope no
-	// longer covers them.
-	fetchesMu sync.Mutex
-	fetches   map[*FetchRequest]transport.Stream
-
 	// rescopeCh wakes the loop that applies scope changes one at a time.
 	rescopeCh chan struct{}
 }
@@ -187,7 +182,6 @@ func newSession(
 		probeTargetsCh:  make(chan ProbeResult, 1), // latest-value semantics
 		counters:        counters,
 		authHandler:     authHandler,
-		fetches:         make(map[*FetchRequest]transport.Stream),
 		rescopeCh:       make(chan struct{}, 1),
 	}
 
@@ -1209,22 +1203,6 @@ func (sess *Session) handleFetchStream(stream transport.Stream) {
 		group.CancelWrite(ExpiredGroupErrorCode)
 	})
 	defer stop()
-
-	if sess.scope != nil {
-		sess.fetchesMu.Lock()
-		sess.fetches[req] = stream
-		sess.fetchesMu.Unlock()
-		defer func() {
-			sess.fetchesMu.Lock()
-			delete(sess.fetches, req)
-			sess.fetchesMu.Unlock()
-		}()
-		// A scope change between mayServe and the registration missed the fetch.
-		if !sess.scope.canSubscribe(req.BroadcastPath) {
-			cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeUnauthorized))
-			return
-		}
-	}
 
 	err = safeServeFetch(handler, group, req)
 	if err != nil {

@@ -130,9 +130,7 @@ type Session struct {
 	// The announce streams scope applies to, rescoped when it changes:
 	// announcement writers serving the peer's ANNOUNCE_REQUESTs, and readers
 	// of the peer's own announcements.
-	scopedMu        sync.Mutex
-	announceWriters map[*AnnouncementWriter]struct{}
-	announceReaders map[*AnnouncementReader]struct{}
+	fetchesMu sync.Mutex
 	// fetches are the FETCHes being served, cancelled too when the scope no
 	// longer covers them.
 	fetches map[*FetchRequest]transport.Stream
@@ -192,8 +190,6 @@ func newSession(
 		probeTargetsCh:  make(chan ProbeResult, 1), // latest-value semantics
 		counters:        counters,
 		authHandler:     authHandler,
-		announceWriters: make(map[*AnnouncementWriter]struct{}),
-		announceReaders: make(map[*AnnouncementReader]struct{}),
 		fetches:         make(map[*FetchRequest]transport.Stream),
 		rescopeCh:       make(chan struct{}, 1),
 	}
@@ -702,17 +698,7 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 		return nil, fmt.Errorf("failed to send ANNOUNCE_REQUEST message: %w", err)
 	}
 
-	if sess.scope == nil {
-		return newAnnouncementReader(stream, prefix, nil), nil
-	}
-
-	// What the peer may not publish is held back from the reader.
-	ar := newScopedAnnouncementReader(stream, prefix, nil, sess.scope.canPublish)
-	context.AfterFunc(ar.Context(), addScoped(sess, sess.announceReaders, ar, struct{}{}))
-	// The reader judged what it read before it was added against the scope of
-	// the time; a change since then reaches it here.
-	sess.requestRescope()
-	return ar, nil
+	return newAnnouncementReader(stream, prefix, nil, sess.scope), nil
 }
 
 // SessionStats is a point-in-time snapshot of a Session's operational metrics.
@@ -924,20 +910,15 @@ func (sess *Session) handleAnnounceStream(stream transport.Stream) {
 
 	prefix := aim.BroadcastPathPrefix
 
-	annstr := newAnnouncementWriter(stream, prefix, sess.mux.hopID, aim.ExcludeHop, sess.logger)
-
-	if sess.scope != nil {
-		// The peer lists only prefixes within the root of a grant.
-		if !sess.scope.wait(sess.ctx) {
-			return
-		}
-		defer addScoped(sess, sess.announceWriters, annstr, struct{}{})()
-		// A scope change between the check and addScoped would miss the
-		// writer, so the check follows addScoped.
-		if !sess.scope.canList(prefix) {
-			_ = annstr.CloseWithError(AnnounceErrorCodeUnauthorized) // not actionable: it only resets the stream
-			return
-		}
+	if !sess.scope.wait(sess.ctx) {
+		return
+	}
+	annstr := newAnnouncementWriter(stream, prefix, sess.mux.hopID, aim.ExcludeHop, sess.logger, sess.scope)
+	// The peer lists only prefixes within the root of a grant. The writer
+	// watches the scope from its making, so the check follows it.
+	if !sess.scope.canList(prefix) {
+		_ = annstr.CloseWithError(AnnounceErrorCodeUnauthorized) // not actionable: it only resets the stream
+		return
 	}
 
 	sess.mux.serveAnnouncements(annstr)
@@ -1190,8 +1171,15 @@ func (sess *Session) handleFetchStream(stream transport.Stream) {
 	defer stop()
 
 	if sess.scope != nil {
-		defer addScoped(sess, sess.fetches, req, stream)()
-		// A scope change between mayServe and addScoped missed the fetch.
+		sess.fetchesMu.Lock()
+		sess.fetches[req] = stream
+		sess.fetchesMu.Unlock()
+		defer func() {
+			sess.fetchesMu.Lock()
+			delete(sess.fetches, req)
+			sess.fetchesMu.Unlock()
+		}()
+		// A scope change between mayServe and the registration missed the fetch.
 		if !sess.scope.canSubscribe(req.BroadcastPath) {
 			cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeUnauthorized))
 			return

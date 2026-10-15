@@ -12,7 +12,10 @@ import (
 )
 
 // newAnnouncementWriter creates a new AnnouncementWriter for the given stream and prefix.
-func newAnnouncementWriter(stream transport.Stream, prefix prefix, localHopID uint64, excludeHop uint64, logger *slog.Logger) *AnnouncementWriter {
+// newAnnouncementWriter serves the peer's announcement request for prefix.
+// scope, when set, is what the peer may list: the writer closes with
+// UNAUTHORIZED once prefix lies within no root of it.
+func newAnnouncementWriter(stream transport.Stream, prefix prefix, localHopID uint64, excludeHop uint64, logger *slog.Logger, scope *authScope) *AnnouncementWriter {
 	if !isValidPrefix(prefix) {
 		panic("invalid prefix for AnnouncementWriter")
 	}
@@ -26,9 +29,21 @@ func newAnnouncementWriter(stream transport.Stream, prefix prefix, localHopID ui
 		logger:     logger,
 		localHopID: localHopID,
 		excludeHop: excludeHop,
+		scope:      scope,
+	}
+	if scope != nil {
+		context.AfterFunc(sas.ctx, scope.watch(sas))
 	}
 
 	return sas
+}
+
+// rescope closes the writer with UNAUTHORIZED once its prefix lies within no
+// root of the scope.
+func (aw *AnnouncementWriter) rescope() {
+	if !aw.scope.canList(aw.prefix) {
+		_ = aw.CloseWithError(AnnounceErrorCodeUnauthorized) // not actionable: it only resets the stream
+	}
 }
 
 // errAnnouncementWriterClosed is the init error of a writer closed before its
@@ -44,6 +59,7 @@ type AnnouncementWriter struct {
 	logger     *slog.Logger
 	localHopID uint64 // this node's Hop ID to append when forwarding
 	excludeHop uint64 // skip announcements whose HopIDs contain this value
+	scope      *authScope
 
 	mu      sync.RWMutex
 	actives map[suffix]*activeAnnouncement

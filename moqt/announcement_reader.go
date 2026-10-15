@@ -90,11 +90,7 @@ func newScopedAnnouncementReader(stream transport.Stream, prefix prefix, initSuf
 						// list plus the peer's implicit ANNOUNCE_OK Hop ID.
 						hopIDs := appendHopID(am.HopIDs, peerHopID)
 						if ar.allow != nil && !ar.allow(BroadcastPath(ar.prefix+suffix)) {
-							delete(ar.actives, suffix)
-							if ar.hidden == nil {
-								ar.hidden = make(map[string][]uint64)
-							}
-							ar.hidden[suffix] = hopIDs
+							ar.hide(suffix, hopIDs)
 							return
 						}
 						delete(ar.hidden, suffix)
@@ -179,6 +175,16 @@ type AnnouncementReader struct {
 	cancelCause context.CancelCauseFunc
 }
 
+// hide holds sfx back, out of actives, with the hop IDs to announce it with
+// once rescope allows it. Caller MUST hold announcementsMu.
+func (ar *AnnouncementReader) hide(sfx suffix, hopIDs []uint64) {
+	delete(ar.actives, sfx)
+	if ar.hidden == nil {
+		ar.hidden = make(map[suffix][]uint64)
+	}
+	ar.hidden[sfx] = hopIDs
+}
+
 // activate makes a new active announcement for suffix and queues it for
 // ReceiveAnnouncement. Caller MUST hold announcementsMu.
 func (ar *AnnouncementReader) activate(sfx suffix, hopIDs []uint64) {
@@ -211,11 +217,7 @@ func (ar *AnnouncementReader) rescope() {
 			continue
 		}
 		ann.end()
-		delete(ar.actives, sfx)
-		if ar.hidden == nil {
-			ar.hidden = make(map[suffix][]uint64)
-		}
-		ar.hidden[sfx] = ann.HopIDs()
+		ar.hide(sfx, ann.HopIDs())
 	}
 	for sfx, hopIDs := range ar.hidden {
 		if ar.allow(BroadcastPath(ar.prefix + sfx)) {

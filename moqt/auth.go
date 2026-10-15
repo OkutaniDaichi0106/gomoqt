@@ -270,8 +270,13 @@ func (w *AuthWriter) refuse(code SessionErrorCode, reason string) error {
 	if w.stream == nil {
 		return nil
 	}
-	err := message.AuthErrorMessage{Code: uint64(code), Reason: authReason(reason)}.Encode(w.stream)
-	_ = w.stream.Close() // not actionable: the stream is done either way
+	return sendAuthError(w.stream, code, reason)
+}
+
+// sendAuthError ends stream with AUTH_ERROR.
+func sendAuthError(stream transport.Stream, code SessionErrorCode, reason string) error {
+	err := message.AuthErrorMessage{Code: uint64(code), Reason: authReason(reason)}.Encode(stream)
+	_ = stream.Close() // not actionable: the stream is done either way
 	if err != nil {
 		return fmt.Errorf("moqt: send AUTH_ERROR: %w", err)
 	}
@@ -395,29 +400,24 @@ func (s *authScope) wait(ctx context.Context) bool {
 // canPublish reports whether a grant in force lets the peer publish path. A
 // nil scope enforces nothing.
 func (s *authScope) canPublish(path BroadcastPath) bool {
-	if s == nil {
-		return true
-	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	for _, g := range s.grants {
-		if matchAny(g.publish, path) {
-			return true
-		}
-	}
-	return false
+	return s.allows(path, func(g scopeGrant) []pathPattern { return g.publish })
 }
 
 // canSubscribe reports whether a grant in force lets the peer subscribe to
 // path. A nil scope enforces nothing.
 func (s *authScope) canSubscribe(path BroadcastPath) bool {
+	return s.allows(path, func(g scopeGrant) []pathPattern { return g.subscribe })
+}
+
+// allows reports whether the patterns of a grant in force match path.
+func (s *authScope) allows(path BroadcastPath, patterns func(scopeGrant) []pathPattern) bool {
 	if s == nil {
 		return true
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, g := range s.grants {
-		if matchAny(g.subscribe, path) {
+		if matchAny(patterns(g), path) {
 			return true
 		}
 	}
@@ -568,12 +568,9 @@ func (sess *Session) Auth(ctx context.Context, token []byte) (*Credential, error
 		return nil, ErrClosedSession
 	}
 
-	stream, err := sess.conn.OpenStreamSync(ctx)
+	stream, err := sess.openStream(ctx, "auth")
 	if err != nil {
-		if appErr, ok := errors.AsType[*transport.ApplicationError](err); ok {
-			return nil, &SessionError{ApplicationError: appErr}
-		}
-		return nil, fmt.Errorf("failed to open stream for auth: %w", err)
+		return nil, err
 	}
 
 	if err := message.StreamTypeAuth.Encode(stream); err != nil {
@@ -630,12 +627,8 @@ func (sess *Session) handleAuthStream(stream transport.Stream) {
 	}
 
 	if sess.authHandler == nil {
-		err := message.AuthErrorMessage{
-			Code:   uint64(NotSupportedErrorCode),
-			Reason: "tokens are not verified in band",
-		}.Encode(stream)
-		if err != nil {
-			sess.logError("failed to send AUTH_ERROR", err)
+		if err := sendAuthError(stream, NotSupportedErrorCode, "tokens are not verified in band"); err != nil {
+			sess.logError("failed to refuse a token", err)
 		}
 		stream.CancelRead(authStreamCancelled)
 		return
@@ -680,6 +673,21 @@ func (sess *Session) mayServe(path BroadcastPath) bool {
 type servedFetch struct {
 	path   BroadcastPath
 	stream transport.Stream
+}
+
+// addScoped adds x to set, one of the session's scoped sets, so rescope
+// reaches it, and returns the func that removes it. A rescope follows, for a
+// scope change made after x was judged and before it was added.
+func addScoped[T comparable](sess *Session, set map[T]struct{}, x T) (remove func()) {
+	sess.scopedMu.Lock()
+	set[x] = struct{}{}
+	sess.scopedMu.Unlock()
+	sess.requestRescope()
+	return func() {
+		sess.scopedMu.Lock()
+		delete(set, x)
+		sess.scopedMu.Unlock()
+	}
 }
 
 // requestRescope asks rescopeLoop to apply a change of the scope. It never

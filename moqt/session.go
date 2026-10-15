@@ -498,14 +498,9 @@ func (sess *Session) Subscribe(ctx context.Context, path BroadcastPath, name Tra
 
 	id := sess.nextSubscribeID()
 
-	stream, err := sess.conn.OpenStreamSync(ctx)
+	stream, err := sess.openStream(ctx, "subscribe")
 	if err != nil {
-		if appErr, ok := errors.AsType[*transport.ApplicationError](err); ok {
-			return nil, &SessionError{
-				ApplicationError: appErr,
-			}
-		}
-		return nil, fmt.Errorf("failed to open bidirectional stream: %w", err)
+		return nil, err
 	}
 
 	err = message.StreamTypeSubscribe.Encode(stream)
@@ -727,17 +722,7 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 
 	// What the peer may not publish is held back from the reader.
 	ar := newScopedAnnouncementReader(stream, prefix, nil, sess.scope.canPublish)
-	sess.scopedMu.Lock()
-	sess.announceReaders[ar] = struct{}{}
-	sess.scopedMu.Unlock()
-	context.AfterFunc(ar.Context(), func() {
-		sess.scopedMu.Lock()
-		delete(sess.announceReaders, ar)
-		sess.scopedMu.Unlock()
-	})
-	// The reader judged what it read before it was registered against the
-	// scope of the time; a change since then reaches it here.
-	sess.requestRescope()
+	context.AfterFunc(ar.Context(), addScoped(sess, sess.announceReaders, ar))
 	return ar, nil
 }
 
@@ -961,14 +946,7 @@ func (sess *Session) handleAnnounceStream(stream transport.Stream) {
 			return
 		}
 		annstr.allow = sess.scope.canSubscribe
-		sess.scopedMu.Lock()
-		sess.announceWriters[annstr] = struct{}{}
-		sess.scopedMu.Unlock()
-		defer func() {
-			sess.scopedMu.Lock()
-			delete(sess.announceWriters, annstr)
-			sess.scopedMu.Unlock()
-		}()
+		defer addScoped(sess, sess.announceWriters, annstr)()
 	}
 
 	sess.mux.serveAnnouncements(annstr)
@@ -1046,11 +1024,10 @@ func (sess *Session) handleSubscribeStream(stream transport.Stream) {
 	track.ctx = context.WithValue(trackCtx, biStreamTypeCtxKey, message.StreamTypeSubscribe)
 	sess.addTrackWriter(SubscribeID(sm.SubscribeID), track)
 
-	// A scope change between mayServe and addTrackWriter missed the writer.
-	if sess.scope != nil && !sess.scope.canSubscribe(track.BroadcastPath) {
-		track.CloseWithError(SubscribeErrorCodeUnauthorized)
-		cancelTrack()
-		return
+	if sess.scope != nil {
+		// A rescope reaches the writer now, for a scope change made after
+		// mayServe and before addTrackWriter.
+		sess.requestRescope()
 	}
 
 	if sess.counters != nil {
@@ -1127,14 +1104,9 @@ func (sess *Session) TrackInfo(ctx context.Context, path BroadcastPath, name Tra
 		return nil, fmt.Errorf("invalid broadcast path: %q", path)
 	}
 
-	stream, err := sess.conn.OpenStreamSync(ctx)
+	stream, err := sess.openStream(ctx, "track info")
 	if err != nil {
-		if appErr, ok := errors.AsType[*transport.ApplicationError](err); ok {
-			return nil, &SessionError{
-				ApplicationError: appErr,
-			}
-		}
-		return nil, fmt.Errorf("failed to open stream for track info: %w", err)
+		return nil, err
 	}
 
 	err = message.StreamTypeTrack.Encode(stream)
@@ -1227,19 +1199,7 @@ func (sess *Session) handleFetchStream(stream transport.Stream) {
 
 	if sess.scope != nil {
 		f := &servedFetch{path: req.BroadcastPath, stream: stream}
-		sess.scopedMu.Lock()
-		sess.fetches[f] = struct{}{}
-		sess.scopedMu.Unlock()
-		defer func() {
-			sess.scopedMu.Lock()
-			delete(sess.fetches, f)
-			sess.scopedMu.Unlock()
-		}()
-		// A scope change between mayServe and the registration missed it.
-		if !sess.scope.canSubscribe(f.path) {
-			cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeUnauthorized))
-			return
-		}
+		defer addScoped(sess, sess.fetches, f)()
 	}
 
 	err = safeServeFetch(handler, group, req)
@@ -1349,6 +1309,19 @@ func abandonedErr(what string, ctx context.Context) error {
 		return fmt.Errorf("%s timed out: %w", what, ctx.Err())
 	}
 	return fmt.Errorf("%s canceled: %w", what, ctx.Err())
+}
+
+// openStream opens a bidirectional stream for what, returning a
+// *SessionError when the session has closed.
+func (sess *Session) openStream(ctx context.Context, what string) (transport.Stream, error) {
+	stream, err := sess.conn.OpenStreamSync(ctx)
+	if err != nil {
+		if appErr, ok := errors.AsType[*transport.ApplicationError](err); ok {
+			return nil, &SessionError{ApplicationError: appErr}
+		}
+		return nil, fmt.Errorf("failed to open stream for %s: %w", what, err)
+	}
+	return stream, nil
 }
 
 func cancelStreamWithError(stream transport.Stream, code transport.StreamErrorCode) {

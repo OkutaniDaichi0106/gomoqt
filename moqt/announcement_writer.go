@@ -278,14 +278,7 @@ func (aw *AnnouncementWriter) registerEndHandler(sfx suffix, ann *Announcement) 
 		// The writer was closed while the caller had released aw.mu.
 		return
 	}
-	active.stop = ann.AfterFunc(func() {
-		aw.mu.Lock()
-		defer aw.mu.Unlock()
-		if aw.actives[sfx] == active {
-			delete(aw.actives, sfx)
-			aw.sendEnded(sfx)
-		}
-	})
+	active.stop = ann.AfterFunc(func() { aw.remove(sfx, active) })
 }
 
 // end stops watching active and sends ENDED for it, unless its own end
@@ -294,6 +287,12 @@ func (aw *AnnouncementWriter) end(sfx suffix, active *activeAnnouncement) {
 	if active.stop == nil || !active.stop() {
 		return
 	}
+	aw.remove(sfx, active)
+}
+
+// remove forgets active and sends ENDED for it, unless the writer has been
+// closed or sfx announced again since. It takes aw.mu.
+func (aw *AnnouncementWriter) remove(sfx suffix, active *activeAnnouncement) {
 	aw.mu.Lock()
 	defer aw.mu.Unlock()
 	if aw.actives[sfx] == active {

@@ -467,3 +467,29 @@ func TestCredential_Grant_Copy(t *testing.T) {
 
 	assert.Equal(t, []string{"/room/1/"}, cred.Grant().Subscribe)
 }
+
+func TestCredential_Context_HandlerReturns(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	handler := AuthHandlerFunc(func(w *AuthWriter, r *AuthRequest) {
+		if len(r.Token) == 0 {
+			<-r.Context().Done()
+			return
+		}
+		// The grant ends as the handler returns.
+		_ = w.Grant(Grant{Subscribe: []string{"/room/1/"}})
+	})
+	addr := startAuthServer(t, ctx, handler, nil)
+	sess := dialAuth(t, ctx, "moqt://"+addr+"/app", nil)
+	cred, err := sess.Auth(ctx, []byte("room1"))
+	require.NoError(t, err)
+	defer func() { _ = cred.Close() }() // not actionable: the test is over
+
+	waitCtx, waitCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer waitCancel()
+	select {
+	case <-cred.Context().Done():
+	case <-waitCtx.Done():
+		t.Fatal("the credential outlived its handler")
+	}
+}

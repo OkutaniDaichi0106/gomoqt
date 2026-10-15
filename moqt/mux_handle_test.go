@@ -2,12 +2,21 @@ package moqt
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// patternHandlersOf snapshots mux's pattern handlers under its lock: a
+// replaced or ended handler is removed from another goroutine.
+func patternHandlersOf(mux *TrackMux) []*patternHandler {
+	mux.mu.RLock()
+	defer mux.mu.RUnlock()
+	return slices.Clone(mux.patternHandlers)
+}
 
 // servedBy registers a handler for each pattern on mux and reports which
 // pattern serves a subscription to path, "" for none.
@@ -137,7 +146,7 @@ func TestTrackMux_Handle_ReplacesSamePattern(t *testing.T) {
 	mux.serveTrack(&TrackWriter{BroadcastPath: "/room/1"})
 
 	assert.Equal(t, "second", served)
-	assert.Len(t, mux.patternHandlers, 1)
+	assert.Len(t, patternHandlersOf(mux), 1)
 }
 
 func TestTrackMux_Handle_EndsWithContext(t *testing.T) {
@@ -247,12 +256,12 @@ func TestTrackMux_Handle_RejectsUnusableHandlers(t *testing.T) {
 func TestTrackMux_Handle_ReplacementEndsTheOldHandler(t *testing.T) {
 	mux := NewTrackMux(0)
 	mux.HandleFunc(t.Context(), "/room/{id}", func(*TrackWriter) {})
-	old := mux.patternHandlers[0]
+	old := patternHandlersOf(mux)[0]
 
 	mux.HandleFunc(t.Context(), "/room/{id}", func(*TrackWriter) {})
 
 	assert.Error(t, old.ctx.Err(), "the tracks the old handler serves are closed")
-	assert.NotSame(t, old, mux.patternHandlers[0])
+	assert.NotSame(t, old, patternHandlersOf(mux)[0])
 }
 
 func TestTrackMux_Handle_EndedContext(t *testing.T) {
@@ -262,5 +271,5 @@ func TestTrackMux_Handle_EndedContext(t *testing.T) {
 
 	mux.HandleFunc(ctx, "/room/{id}", func(*TrackWriter) {})
 
-	assert.Empty(t, mux.patternHandlers)
+	assert.Empty(t, patternHandlersOf(mux))
 }

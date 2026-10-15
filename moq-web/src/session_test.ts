@@ -4,6 +4,9 @@ import { Session } from "./session.ts";
 import type { SessionStats } from "./session.ts";
 import {
 	AnnounceRequestMessage,
+	AuthErrorMessage,
+	AuthMessage,
+	AuthOkMessage,
 	FetchMessage,
 	GroupMessage,
 	ProbeLevels,
@@ -14,7 +17,8 @@ import {
 	writeVarint,
 } from "./internal/message/mod.ts";
 import { BiStreamTypes, UniStreamTypes } from "./stream_type.ts";
-import { SessionErrorCode } from "./error.ts";
+import { AuthError, SessionErrorCode } from "./error.ts";
+import { AuthViolation } from "./auth.ts";
 import { TrackMux } from "./track_mux.ts";
 import type { TrackPrefix } from "./track_prefix.ts";
 import { Writer } from "@okdaichi/golikejs/io";
@@ -1217,6 +1221,149 @@ Deno.test({
 				await session.close();
 			},
 		);
+
+		await t.step("auth returns the grant and follows later answers", async () => {
+			const ok1 = await encodeMessageToUint8Array((w) =>
+				new AuthOkMessage({ root: "/room/1/", subscribePatterns: ["/"] }).encode(w)
+			);
+			const ok2 = await encodeMessageToUint8Array((w) =>
+				new AuthOkMessage({ root: "/room/1/", subscribePatterns: ["/host"], expires: 1000 })
+					.encode(w)
+			);
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [new Uint8Array([...ok1, ...ok2])],
+			});
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			const [cred, err] = await session.auth(new TextEncoder().encode("room1"));
+			assertEquals(err, undefined);
+			assertExists(cred);
+			assertEquals(cred.grant().root, "/room/1/");
+			// The stream then ends: the second answer replaces the grant, and
+			// the end of the stream ends the credential.
+			await cred.context.done();
+
+			assertEquals(cred.grant().subscribe, ["/host"]);
+			assertEquals(cred.grant().maxAge, 1000);
+			assertInstanceOf(cred.context.err(), Error);
+			const written = mock.openStreamWrittenData[0] ?? [];
+			assertEquals(written[0], new Uint8Array([BiStreamTypes.AuthStreamType]));
+			await session.close();
+		});
+
+		await t.step("auth returns the refusal as an AuthError", async () => {
+			const refusal = await encodeMessageToUint8Array((w) =>
+				new AuthErrorMessage({
+					code: SessionErrorCode.Unauthorized,
+					reason: "unknown ticket",
+				}).encode(w)
+			);
+			const mock = new MockWebTransportSession({ openStreamResponses: [refusal] });
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			const [cred, err] = await session.auth(new TextEncoder().encode("bad"));
+
+			assertEquals(cred, undefined);
+			assertInstanceOf(err, AuthError);
+			assertEquals(err.code, SessionErrorCode.Unauthorized);
+			assertEquals(err.reason, "unknown ticket");
+			await session.close();
+		});
+
+		await t.step("a revoked grant ends the credential with an AuthError", async () => {
+			const ok = await encodeMessageToUint8Array((w) =>
+				new AuthOkMessage({ root: "/room/1/", subscribePatterns: ["/"] }).encode(w)
+			);
+			const revoke = await encodeMessageToUint8Array((w) =>
+				new AuthErrorMessage({
+					code: SessionErrorCode.Unauthorized,
+					reason: "grant expired",
+				}).encode(w)
+			);
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [new Uint8Array([...ok, ...revoke])],
+			});
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			const [cred] = await session.auth(new TextEncoder().encode("room1"));
+			assertExists(cred);
+			await cred.context.done();
+
+			assertInstanceOf(cred.context.err(), AuthError);
+			await session.close();
+		});
+
+		await t.step("closing a credential withdraws its token and ends it", async () => {
+			const ok = await encodeMessageToUint8Array((w) =>
+				new AuthOkMessage({ root: "/room/1/", subscribePatterns: ["/"] }).encode(w)
+			);
+			const mock = new MockWebTransportSession({ openStreamResponses: [ok] });
+			const session = new Session({ transport: mock });
+			await session.ready;
+			const [cred] = await session.auth(new TextEncoder().encode("room1"));
+			assertExists(cred);
+
+			await cred.close();
+
+			assertEquals(cred.context.err()?.message, "moq: credential closed");
+			await session.close();
+		});
+
+		await t.step("auth with no answer ends", async () => {
+			const mock = new MockWebTransportSession({ openStreamResponses: [new Uint8Array(0)] });
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			const [cred, err] = await session.auth();
+
+			assertEquals(cred, undefined);
+			assertInstanceOf(err, Error);
+			assertEquals(err.message, "moq: auth ended");
+			await session.close();
+		});
+
+		await t.step("a grant with patterns but no root is a protocol violation", async () => {
+			const bad = await encodeMessageToUint8Array((w) =>
+				new AuthOkMessage({ subscribePatterns: ["/"] }).encode(w)
+			);
+			const mock = new MockWebTransportSession({ openStreamResponses: [bad] });
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			const [cred, err] = await session.auth();
+
+			assertEquals(cred, undefined);
+			assertInstanceOf(err, AuthViolation);
+			await session.closed;
+		});
+
+		await t.step("an incoming auth stream is refused as not supported", async () => {
+			const buf = await encodeMessageToUint8Array(async (w) => {
+				await writeVarint(w, BiStreamTypes.AuthStreamType);
+				return await new AuthMessage({ token: new TextEncoder().encode("t") }).encode(w);
+			});
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [],
+				acceptStreamData: [{ type: BiStreamTypes.AuthStreamType, data: buf }],
+			});
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			await new Promise((resolve) => setTimeout(resolve, 10));
+
+			const written = (mock.acceptStreamWrittenData[0] ?? []).flatMap((b) => [...b]);
+			const refusal = await encodeMessageToUint8Array((w) =>
+				new AuthErrorMessage({
+					code: SessionErrorCode.NotSupported,
+					reason: "tokens are not verified in band",
+				}).encode(w)
+			);
+			assertEquals(new Uint8Array(written), refusal);
+			await session.close();
+		});
 
 		await t.step("getStats returns zero values when transport has no getStats", async () => {
 			const mock = new MockWebTransportSession({});

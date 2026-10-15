@@ -14,3 +14,4 @@ export * from "./subscribe_drop.ts";
 export * from "./fetch.ts";
 export * from "./group.ts";
 export * from "./goaway.ts";
+export * from "./auth.ts";

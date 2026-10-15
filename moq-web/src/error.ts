@@ -331,3 +331,33 @@ export class ProbeError extends WebTransportStreamError {
 		Object.setPrototypeOf(this, ProbeError.prototype);
 	}
 }
+
+// =============================================================================
+// Auth Stream errors
+// =============================================================================
+
+/** A token refused, or a grant revoked, by the peer (AUTH_ERROR). */
+export class AuthError extends Error {
+	/** A session error code, such as {@link SessionErrorCode.Unauthorized}. */
+	readonly code: SessionErrorCode;
+	/** The peer's reason phrase. */
+	readonly reason: string;
+
+	constructor(code: SessionErrorCode, reason: string) {
+		const text = SessionError.textOf(code);
+		super(reason === "" ? text : `${text}: ${reason}`);
+		this.code = code;
+		this.reason = reason;
+		this.name = "AuthError";
+		Object.setPrototypeOf(this, AuthError.prototype);
+	}
+}
+
+/** The peer reset the Auth Stream before answering, as a peer without it does. */
+export class AuthNotSupportedError extends Error {
+	constructor() {
+		super("moq: peer does not support the auth stream");
+		this.name = "AuthNotSupportedError";
+		Object.setPrototypeOf(this, AuthNotSupportedError.prototype);
+	}
+}

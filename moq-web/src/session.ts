@@ -593,9 +593,17 @@ export class Session {
 			return [undefined, err];
 		}
 
-		// Cancel the stream when the request is done
+		// Cancel the stream, or the group once there is one, when the request
+		// is done.
+		let requestDone = false;
+		let group: GroupReader | undefined;
 		req.done().then(() => {
-			stream.readable.cancel(GroupErrorCode.ExpiredGroup);
+			requestDone = true;
+			if (group) {
+				group.cancel(GroupErrorCode.ExpiredGroup);
+			} else {
+				stream.readable.cancel(GroupErrorCode.ExpiredGroup);
+			}
 		}).catch(() => {});
 
 		// The publisher answers with the group, or refuses the fetch by
@@ -605,13 +613,17 @@ export class Session {
 		const head = new Uint8Array(1);
 		const [n, readErr] = await stream.readable.read(head);
 		if (readErr && !(readErr instanceof EOFError)) {
-			if (readErr instanceof WebTransportStreamError) {
+			// The publisher's refusal wins over a request done meanwhile.
+			if (readErr instanceof WebTransportStreamError && readErr.remote) {
 				return [undefined, new FetchError(readErr.code, readErr.remote)];
+			}
+			if (requestDone) {
+				return [undefined, new Error("moq: fetch request done", { cause: readErr })];
 			}
 			return [undefined, readErr];
 		}
 
-		const group = new GroupReader(
+		group = new GroupReader(
 			this.#ctx,
 			new HeadReceiveStream(stream.readable, head.subarray(0, n)),
 			new GroupMessage({ sequence: req.groupSequence }),

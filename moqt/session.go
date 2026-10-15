@@ -587,6 +587,11 @@ func (sess *Session) nextSubscribeID() SubscribeID {
 	return SubscribeID(sess.subscribeIDCounter.Add(1))
 }
 
+// Fetch requests one group of a track and waits for its first byte. A
+// publisher that refuses the fetch, by resetting the stream before any of the
+// group, makes Fetch return a *FetchError; a reset while the group is read is
+// a *GroupError from GroupReader.ReadFrame. The request's context bounds the
+// wait (see FetchRequest.WithContext).
 func (sess *Session) Fetch(req *FetchRequest) (*GroupReader, error) {
 	if sess.closed.Load() {
 		return nil, ErrClosedSession
@@ -647,11 +652,13 @@ func (sess *Session) Fetch(req *FetchRequest) (*GroupReader, error) {
 	n, err := io.ReadAtLeast(stream, head[:], 1)
 	if err != nil && !errors.Is(err, io.EOF) {
 		stop()
+		cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeInternal))
+		// The publisher's refusal wins over a context that ended meanwhile.
+		if strErr, ok := errors.AsType[*transport.StreamError](err); ok && strErr.Remote {
+			return nil, &FetchError{StreamError: strErr}
+		}
 		if ctx.Err() != nil {
 			return nil, context.Cause(ctx)
-		}
-		if strErr, ok := errors.AsType[*transport.StreamError](err); ok {
-			return nil, &FetchError{StreamError: strErr}
 		}
 		if appErr, ok := errors.AsType[*transport.ApplicationError](err); ok {
 			return nil, &SessionError{ApplicationError: appErr}

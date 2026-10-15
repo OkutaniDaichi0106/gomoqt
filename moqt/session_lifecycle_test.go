@@ -246,3 +246,25 @@ func TestSession_Fetch_Answer(t *testing.T) {
 		assert.Equal(t, OutOfRangeErrorCode, groupErr.GroupErrorCode())
 	})
 }
+
+// TestSession_Fetch_ContextEndsWhileWaiting verifies the request's context
+// ends a Fetch still waiting for the group, with the context's cause.
+func TestSession_Fetch_ContextEndsWhileWaiting(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		stream := &FakeQUICStream{Reads: []streamResult{{Block: true}}}
+		session := newTestSession(&FakeStreamConn{OpenStreams: []biStreamResult{{Stream: stream}}})
+		defer func() { _ = session.CloseWithError(NoError, "") }() // not actionable: the test is over
+		ctx, cancel := context.WithCancelCause(context.Background())
+		cause := errors.New("gave up")
+
+		errc := make(chan error, 1)
+		go func() {
+			_, err := session.Fetch((&FetchRequest{BroadcastPath: "/test", TrackName: "video"}).WithContext(ctx))
+			errc <- err
+		}()
+		synctest.Wait()
+		cancel(cause)
+
+		assert.ErrorIs(t, <-errc, cause)
+	})
+}

@@ -517,7 +517,7 @@ func TestServer_addRemoveSession_ShutdownCompletesWhenLastSessionLeaves(t *testi
 
 	conn := &FakeStreamConn{}
 
-	sess := newSession(conn, nil, nil, nil, nil, nil, nil, sessionSetup{}, nil)
+	sess := newSession(conn, nil, nil, nil, nil, nil, nil, nil, sessionSetup{}, nil)
 	t.Cleanup(func() { _ = sess.CloseWithError(NoError, "") })
 
 	s.connManager.addConn(conn)
@@ -1175,4 +1175,3 @@ func TestWebTransportHandler_ServeHTTP_ProtocolMismatchFallsBack(t *testing.T) {
 	assert.True(t, fallbackCalled, "unmatched application protocol should trigger fallback")
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
-

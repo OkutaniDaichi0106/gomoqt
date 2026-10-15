@@ -54,9 +54,6 @@ type sessionSetup struct {
 	// from Server.ConnContext, so an application cancelling that still ends
 	// the session.
 	lifetime context.Context
-	// authHandler, when set, verifies the peer's tokens and makes the session
-	// enforce the union of its grants (see AuthHandler).
-	authHandler AuthHandler
 }
 
 // Session represents an active MOQ session over a QUIC connection.
@@ -150,6 +147,7 @@ func newSession(
 	manager *connManager,
 	config *Config,
 	fetchHandler FetchHandler,
+	authHandler AuthHandler,
 	onGoaway func(newSessionURI string),
 	logger *slog.Logger,
 	setup sessionSetup,
@@ -193,7 +191,7 @@ func newSession(
 		probeResponseCh: make(chan ProbeResult, 1), // latest-value semantics
 		probeTargetsCh:  make(chan ProbeResult, 1), // latest-value semantics
 		counters:        counters,
-		authHandler:     setup.authHandler,
+		authHandler:     authHandler,
 		announceWriters: make(map[*AnnouncementWriter]struct{}),
 		announceReaders: make(map[*AnnouncementReader]struct{}),
 		fetches:         make(map[*FetchRequest]transport.Stream),

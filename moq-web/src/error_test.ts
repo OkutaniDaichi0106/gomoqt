@@ -43,6 +43,7 @@ Deno.test("Error", async (t) => {
 			SessionError.textOf(SessionErrorCode.GoAwayTimeout),
 			"goaway timeout",
 		);
+		assertEquals(SessionError.textOf(SessionErrorCode.NotSupported), "not supported");
 		assertEquals(SessionError.textOf(9999), "unknown session error (9999)");
 	});
 
@@ -71,6 +72,7 @@ Deno.test("Error", async (t) => {
 			AnnounceError.textOf(AnnounceErrorCode.InvalidPrefix),
 			"invalid prefix",
 		);
+		assertEquals(AnnounceError.textOf(AnnounceErrorCode.Unauthorized), "unauthorized");
 		assertEquals(AnnounceError.textOf(9999), "unknown announce error (9999)");
 	});
 
@@ -171,6 +173,7 @@ Deno.test("Error", async (t) => {
 			"internal error",
 		);
 		assertEquals(FetchError.textOf(FetchErrorCode.Timeout), "timeout");
+		assertEquals(FetchError.textOf(FetchErrorCode.Unauthorized), "unauthorized");
 		assertEquals(FetchError.textOf(9999), "unknown fetch error (9999)");
 	});
 

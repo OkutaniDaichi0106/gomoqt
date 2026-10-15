@@ -5,7 +5,9 @@ import { GroupMessage, writeVarint } from "./internal/message/mod.ts";
 import { Buffer } from "@okdaichi/golikejs/bytes";
 import { Frame } from "./frame.ts";
 import { background, withCancelCause } from "@okdaichi/golikejs/context";
-import { GroupErrorCode } from "./error.ts";
+import { FetchError, FetchErrorCode, GroupErrorCode } from "./error.ts";
+import { WebTransportStreamError } from "./internal/webtransport/error.ts";
+import { MockReceiveStream } from "./mock_stream_test.ts";
 import { SendStream } from "./internal/webtransport/mod.ts";
 import { ReceiveStream } from "./internal/webtransport/mod.ts";
 import { EOFError } from "@okdaichi/golikejs/io";
@@ -449,4 +451,54 @@ Deno.test("GroupReader.readFrame tells its owner when the stream ends", async (t
 		assertInstanceOf(err, Error);
 		assertEquals(onDone.calls.length, 0);
 	});
+});
+
+Deno.test("GroupReader - a reset on a fetch's group", async (t) => {
+	const cases = [
+		{
+			name: "fetch, unauthorized",
+			fetch: true,
+			code: FetchErrorCode.Unauthorized,
+			wantFetch: true,
+		},
+		{ name: "fetch, timeout", fetch: true, code: FetchErrorCode.Timeout, wantFetch: true },
+		{
+			name: "fetch, out of range",
+			fetch: true,
+			code: GroupErrorCode.OutOfRange,
+			wantFetch: false,
+		},
+		{
+			name: "subscription, unauthorized code",
+			fetch: false,
+			code: FetchErrorCode.Unauthorized,
+			wantFetch: false,
+		},
+	] as const;
+
+	for (const c of cases) {
+		await t.step(c.name, async () => {
+			const reset = new WebTransportStreamError(
+				{ source: "stream", streamErrorCode: c.code },
+				true,
+			);
+			const rs = new MockReceiveStream({ read: async () => [0, reset] });
+			const gr = new GroupReader(
+				background(),
+				rs,
+				new GroupMessage({ sequence: 1 }),
+				undefined,
+				c.fetch,
+			);
+
+			const err = await gr.readFrame(new Frame(new ArrayBuffer(0)));
+
+			if (c.wantFetch) {
+				assertInstanceOf(err, FetchError);
+				assertEquals(err.code, c.code);
+			} else {
+				assertEquals(err, reset);
+			}
+		});
+	}
 });

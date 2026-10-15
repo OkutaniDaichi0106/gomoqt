@@ -22,6 +22,8 @@ export const SessionErrorCode = {
 	TooManySubscribers: 0x6,
 	/** GOAWAY timeout */
 	GoAwayTimeout: 0x10,
+	/** The peer does not verify tokens on an Auth Stream */
+	NotSupported: 0x30,
 } as const;
 
 /** Numeric session error code type. */
@@ -51,6 +53,8 @@ export class SessionError extends StreamConnError {
 				return "too many subscribers";
 			case SessionErrorCode.GoAwayTimeout:
 				return "goaway timeout";
+			case SessionErrorCode.NotSupported:
+				return "not supported";
 			default:
 				return `unknown session error (${code})`;
 		}
@@ -82,6 +86,8 @@ export const AnnounceErrorCode = {
 	BannedPrefix: 0x04,
 	/** Invalid prefix */
 	InvalidPrefix: 0x05,
+	/** The prefix lies outside the root of every grant in force */
+	Unauthorized: 0x06,
 } as const;
 
 /** Numeric announce error code type. */
@@ -107,6 +113,8 @@ export class AnnounceError extends WebTransportStreamError {
 				return "banned prefix";
 			case AnnounceErrorCode.InvalidPrefix:
 				return "invalid prefix";
+			case AnnounceErrorCode.Unauthorized:
+				return "unauthorized";
 			default:
 				return `unknown announce error (${code})`;
 		}
@@ -186,6 +194,8 @@ export const FetchErrorCode = {
 	InternalError: 0x00,
 	/** Timeout */
 	Timeout: 0x01,
+	/** The session's scope does not cover the fetch */
+	Unauthorized: 0x08,
 } as const;
 
 /** Numeric fetch error code type. */
@@ -203,6 +213,8 @@ export class FetchError extends WebTransportStreamError {
 				return "internal error";
 			case FetchErrorCode.Timeout:
 				return "timeout";
+			case FetchErrorCode.Unauthorized:
+				return "unauthorized";
 			default:
 				return `unknown fetch error (${code})`;
 		}

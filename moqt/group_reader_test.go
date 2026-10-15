@@ -372,3 +372,46 @@ func TestGroupReader_Frames(t *testing.T) {
 		assert.Equal(t, 0, frameCount)
 	})
 }
+
+func TestIsFetchOnlyCode_NoGroupErrorCode(t *testing.T) {
+	for _, code := range []FetchErrorCode{FetchErrorCodeTimeout, FetchErrorCodeUnauthorized} {
+		assert.True(t, isFetchOnlyCode(code))
+		assert.Empty(t, GroupErrorCode(code).String(), "fetch-only code %#x is also a GroupErrorCode", uint32(code))
+	}
+}
+
+func TestGroupReader_ReadFrame_Reset(t *testing.T) {
+	tests := map[string]struct {
+		fetch     bool
+		code      transport.StreamErrorCode
+		wantFetch bool
+	}{
+		"fetch, unauthorized":     {fetch: true, code: transport.StreamErrorCode(FetchErrorCodeUnauthorized), wantFetch: true},
+		"fetch, timeout":          {fetch: true, code: transport.StreamErrorCode(FetchErrorCodeTimeout), wantFetch: true},
+		"fetch, internal":         {fetch: true, code: transport.StreamErrorCode(FetchErrorCodeInternal)},
+		"fetch, out of range":     {fetch: true, code: transport.StreamErrorCode(OutOfRangeErrorCode)},
+		"subscription, 0x08 code": {code: transport.StreamErrorCode(FetchErrorCodeUnauthorized)},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			stream := &FakeQUICReceiveStream{Reads: []streamResult{{Err: &transport.StreamError{ErrorCode: tt.code, Remote: true}}}}
+			r := newGroupReader(0, stream, nil)
+			if tt.fetch {
+				r = newFetchGroupReader(0, stream)
+			}
+
+			err := r.ReadFrame(NewFrame(0))
+
+			if tt.wantFetch {
+				var fetchErr *FetchError
+				require.ErrorAs(t, err, &fetchErr)
+				assert.Equal(t, FetchErrorCode(tt.code), fetchErr.FetchErrorCode())
+				return
+			}
+			var groupErr *GroupError
+			require.ErrorAs(t, err, &groupErr)
+			assert.Equal(t, GroupErrorCode(tt.code), groupErr.GroupErrorCode())
+		})
+	}
+}

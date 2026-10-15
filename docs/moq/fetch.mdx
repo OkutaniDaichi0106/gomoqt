@@ -135,7 +135,7 @@ For simple handlers, use the convenience type `FetchHandlerFunc`:
 
 ## Error Handling
 
-Fetch operations may return `*moqt.FetchError` or `*moqt.SessionError`. Match them with `errors.As`, which also finds an error wrapped with `%w`:
+Fetch operations may return `*moqt.FetchError` or `*moqt.SessionError`. Match them with `errors.As`, which also finds an error wrapped with `%w`. A publisher that refuses the fetch, for example because it lies outside the session's scope, does so once the request is sent, so `Session.Fetch` succeeds and `ReadFrame` returns the `*moqt.FetchError`; match its error the same way:
 
 ```go
     gr, err := sess.Fetch(req)
@@ -149,6 +149,13 @@ Fetch operations may return `*moqt.FetchError` or `*moqt.SessionError`. Match th
         var sessErr *moqt.SessionError
         if errors.As(err, &sessErr) {
             // Handle session-level error
+        }
+    }
+
+    if err := gr.ReadFrame(frame); err != nil {
+        var fetchErr *moqt.FetchError
+        if errors.As(err, &fetchErr) && fetchErr.FetchErrorCode() == moqt.FetchErrorCodeUnauthorized {
+            // The session's scope does not cover the fetch
         }
     }
 ```

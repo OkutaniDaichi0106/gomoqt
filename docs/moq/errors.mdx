@@ -22,7 +22,7 @@ The following error types are defined to represent specific protocol error scena
 | `*moqt.SubscribeError`| Error during subscribe negotiation or operation                  | `moqt.TrackWriter`, `moqt.TrackReader`           |
 | `*moqt.AnnounceError` | Error during announcement phase (e.g., broadcast path issues)    | `moqt.AnnouncementWriter`, `moqt.AnnouncementReader` |
 | `*moqt.GroupError`   | Error in group operations (e.g., out of range, expired group)    | `moqt.GroupWriter`, `moqt.GroupReader`           |
-| `*moqt.FetchError`   | Error during fetch operations                                    | `Session.Fetch`                             |
+| `*moqt.FetchError`   | Error during fetch operations                                    | `Session.Fetch`, and `GroupReader.ReadFrame` on a fetch's group |
 | `*moqt.ProbeError`   | Error during probe operations                                    | `Session.Probe`                             |
 
 ### Relationship with QUIC errors
@@ -53,6 +53,7 @@ Error codes for each custom error type are summarized below. Click each section 
 | `moqt.GoAwayTimeoutErrorCode`       | 0x10  | GoAway timeout                |
 | `moqt.UnsupportedVersionErrorCode`  | 0x12  | Unsupported version           |
 | `moqt.SetupFailedErrorCode`         | 0x13  | Setup failed                  |
+| `moqt.NotSupportedErrorCode`        | 0x30  | Tokens are not verified on an Auth Stream |
 </Tab>
 
 <Tab title="AnnounceErrorCode">
@@ -64,6 +65,7 @@ Error codes for each custom error type are summarized below. Click each section 
 | `moqt.UninterestedErrorCode`         | 0x3   | Uninterested                  |
 | `moqt.BannedPrefixErrorCode`         | 0x4   | Banned prefix                 |
 | `moqt.AnnounceErrorCodeInvalidPrefix`| 0x5   | Invalid prefix                |
+| `moqt.AnnounceErrorCodeUnauthorized` | 0x6   | Prefix outside the root of every grant |
 </Tab>
 
 <Tab title="SubscribeErrorCode">
@@ -94,6 +96,9 @@ Error codes for each custom error type are summarized below. Click each section 
 |------------------------------|-------|-------------------------------|
 | `moqt.FetchErrorCodeInternal`       | 0x00  | Internal error                |
 | `moqt.FetchErrorCodeTimeout`        | 0x01  | Fetch timeout                 |
+| `moqt.FetchErrorCodeUnauthorized`   | 0x08  | Outside the session's scope   |
+
+A fetch's answer is a group, so its stream may be reset with a `GroupErrorCode` too. `FetchErrorCodeTimeout` and `FetchErrorCodeUnauthorized` take values no `GroupErrorCode` takes, and `GroupReader.ReadFrame` on a fetch's group returns a `*moqt.FetchError` for them, and a `*moqt.GroupError` for any other reset.
 </Tab>
 
 <Tab title="ProbeErrorCode">

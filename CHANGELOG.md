@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **moqt: the Auth Stream (stream type 0x7) grants and withdraws access on a long-lived session.** A client presents one token per stream with `Session.Auth`, for example one ticket per room, and gets an `AuthGrant` that follows the server's later answers; `Close` withdraws the token. A server verifies each token in an `AuthHandler` set on `Server`, `WebTransportHandler` or `WebSocketHandler`: `AuthWriter.Grant` sends the broadcast paths the token allows publishing and subscribing to, as `PathPattern`s, and `AuthWriter.Refuse` refuses or revokes it. The handler is also called once with an empty token for the credential the connection itself carried. The session's scope is the union of every grant in force, and the session enforces it: SUBSCRIBE and TRACK outside it are refused with `SubscribeErrorCodeUnauthorized`, FETCH with the new `FetchErrorCodeUnauthorized`, and announcements are filtered in both directions. When the scope shrinks, the subscriptions, fetches and announcements it no longer covers end with UNAUTHORIZED while the session stays up; when it grows, held-back announcements are shown. A grant lapses at its `Expires` unless granted again. A server without an `AuthHandler` answers every token with AUTH_ERROR `NotSupportedErrorCode` (0x30) and enforces nothing, as before.
+- **moqt: `PathPattern` matches broadcast paths the way `TrackMux` and `AcceptAnnounce` read paths and prefixes:** `/room/1/alice` matches that path, and a pattern ending in `/` matches every path beneath it.
+
 ## [v0.24.2] - 2026-10-14
 
 > **Go only.** `v0.24.2` ships the Go module. `@qumo/moq` on JSR is unchanged and stays at `0.23.0`: nothing under `moq-web` changed, and the MOQ wire protocol is the same, so the two interoperate.

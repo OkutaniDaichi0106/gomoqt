@@ -73,11 +73,11 @@ func parsePathPattern(s string) (pathPattern, error) {
 type segKind int
 
 const (
-	segInvalid segKind = iota
-	segLiteral  // a literal segment
-	segWildcard // "{name}"
-	segRest     // "{name...}"
-	segAnchor   // "{$}"
+	segInvalid  segKind = iota
+	segLiteral          // a literal segment
+	segWildcard         // "{name}"
+	segRest             // "{name...}"
+	segAnchor           // "{$}"
 )
 
 // parseWildcard reads a segment: its kind, and the wildcard's name.

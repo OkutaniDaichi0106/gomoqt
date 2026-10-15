@@ -71,6 +71,9 @@ func authGroupHandler(tw *TrackWriter) {
 
 // startAuthServer serves authRoom1Path and authRoom2Path behind handler. The
 // handler on the server side receives every session it accepts.
+// authProbePath is the path startAuthServer dials to learn the server is up.
+const authProbePath = "/probe"
+
 func startAuthServer(t *testing.T, ctx context.Context, handler AuthHandler, sessions chan<- *Session) string {
 	t.Helper()
 
@@ -91,7 +94,8 @@ func startAuthServer(t *testing.T, ctx context.Context, handler AuthHandler, ses
 		AuthHandler: handler,
 		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Handler: HandleFunc(func(sess *Session) {
-			if sessions != nil {
+			// The readiness probe below is not a session the test dialed.
+			if sessions != nil && sess.RequestURI() != authProbePath {
 				sessions <- sess
 			}
 			<-sess.Context().Done()
@@ -105,7 +109,7 @@ func startAuthServer(t *testing.T, ctx context.Context, handler AuthHandler, ses
 	t.Cleanup(func() { closeServer(t, srv) })
 
 	require.Eventually(t, func() bool {
-		sess, err := (&Dialer{TLSConfig: &tls.Config{InsecureSkipVerify: true}}).Dial(ctx, "moqt://"+addr, nil)
+		sess, err := (&Dialer{TLSConfig: &tls.Config{InsecureSkipVerify: true}}).Dial(ctx, "moqt://"+addr+authProbePath, nil)
 		if err != nil {
 			return false
 		}

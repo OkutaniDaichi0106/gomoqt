@@ -135,9 +135,9 @@ func (aw *AnnouncementWriter) rescope() {
 	aw.mu.Lock()
 	var ends []func()
 	var withdrawn, shown []*Announcement
-	for _, active := range aw.actives {
-		if active.end != nil && !aw.allow(active.announcement.BroadcastPath()) {
-			ends = append(ends, active.end)
+	for sfx, active := range aw.actives {
+		if active.stop != nil && !aw.allow(active.announcement.BroadcastPath()) {
+			ends = append(ends, func() { aw.end(sfx, active) })
 			withdrawn = append(withdrawn, active.announcement)
 		}
 	}
@@ -148,7 +148,7 @@ func (aw *AnnouncementWriter) rescope() {
 	}
 	aw.mu.Unlock()
 
-	// The end functions take aw.mu themselves.
+	// end takes aw.mu itself.
 	for _, end := range ends {
 		end()
 	}
@@ -270,39 +270,51 @@ func (aw *AnnouncementWriter) init(announcements map[*Announcement]struct{}) err
 	return aw.initErr
 }
 
-// registerEndHandler registers handlers for when the announcement ends.
-// It sets up AfterFunc to clean up when the announcement becomes inactive.
-// Caller MUST hold aw.mu.
+// registerEndHandler watches the active announcement for sfx, ending it on
+// the peer when it ends. Caller MUST hold aw.mu.
 func (aw *AnnouncementWriter) registerEndHandler(sfx suffix, ann *Announcement) {
-	stop := ann.AfterFunc(func() {
+	active, ok := aw.actives[sfx]
+	if !ok || active.announcement != ann {
+		// The writer was closed while the caller had released aw.mu.
+		return
+	}
+	active.stop = ann.AfterFunc(func() {
 		aw.mu.Lock()
 		defer aw.mu.Unlock()
-		current, exists := aw.actives[sfx]
-		if exists && current.announcement == ann {
+		if aw.actives[sfx] == active {
 			delete(aw.actives, sfx)
-			err := message.AnnounceBroadcastMessage{
-				AnnounceStatus:      message.ENDED,
-				BroadcastPathSuffix: sfx,
-			}.Encode(aw.stream)
-			if err != nil {
-				aw.logError("failed to encode ANNOUNCE end message", err)
-			}
+			aw.sendEnded(sfx)
 		}
 	})
+}
 
-	aw.actives[sfx].end = func() {
-		if !stop() {
-			return
-		}
-		aw.mu.Lock()
-		defer aw.mu.Unlock()
+// end stops watching active and sends ENDED for it, unless its own end
+// handler already has or the writer has been closed since. It takes aw.mu.
+func (aw *AnnouncementWriter) end(sfx suffix, active *activeAnnouncement) {
+	if active.stop == nil || !active.stop() {
+		return
+	}
+	aw.mu.Lock()
+	defer aw.mu.Unlock()
+	if aw.actives[sfx] == active {
 		delete(aw.actives, sfx)
-		if err := (message.AnnounceBroadcastMessage{
-			AnnounceStatus:      message.ENDED,
-			BroadcastPathSuffix: sfx,
-		}).Encode(aw.stream); err != nil {
-			aw.logError("failed to encode ANNOUNCE end message", err)
-		}
+		aw.sendEnded(sfx)
+	}
+}
+
+// sendEnded sends ANNOUNCE_BROADCAST ENDED for sfx. A stream that has already
+// ended, as it has once the session closes, is not written to: its end ends
+// every announcement on the peer. Caller MUST hold aw.mu.
+func (aw *AnnouncementWriter) sendEnded(sfx suffix) {
+	if aw.ctx.Err() != nil {
+		return
+	}
+	err := message.AnnounceBroadcastMessage{
+		AnnounceStatus:      message.ENDED,
+		BroadcastPathSuffix: sfx,
+	}.Encode(aw.stream)
+	if err != nil {
+		aw.logError("failed to encode ANNOUNCE end message", err)
 	}
 }
 
@@ -352,14 +364,10 @@ func (aw *AnnouncementWriter) SendAnnouncement(announcement *Announcement) error
 
 	// If there's an existing announcement for this suffix, end it first.
 	// Release lock before calling end() since it acquires the lock internally.
-	var endFunc func()
-	if exists && active.end != nil {
-		endFunc = active.end
-	}
 	aw.mu.Unlock()
 
-	if endFunc != nil {
-		endFunc()
+	if exists {
+		aw.end(suffix, active)
 	}
 
 	aw.mu.Lock()
@@ -395,50 +403,33 @@ func (aw *AnnouncementWriter) SendAnnouncement(announcement *Announcement) error
 	return nil
 }
 
-// Close gracefully closes the AnnouncementWriter and ends all active announcements.
+// Close finishes the stream. The peer then treats every announcement on it as
+// ended (moq-lite-05 §5.1.1), so no ENDED is sent.
 func (aw *AnnouncementWriter) Close() error {
-	aw.mu.Lock()
-	// Collect end functions to call after releasing the lock
-	var endFuncs []func()
-	for _, active := range aw.actives {
-		if active.end != nil {
-			endFuncs = append(endFuncs, active.end)
-		}
-	}
-	aw.actives = nil
-	aw.dropHidden()
-	aw.mu.Unlock()
-
-	// Call end functions without holding the lock to avoid deadlock
-	for _, endFunc := range endFuncs {
-		endFunc()
-	}
-
+	aw.stopAll()
 	return aw.stream.Close()
 }
 
-// CloseWithError ends all active announcements and signals an error condition via the given code.
+// CloseWithError resets the stream with the given code, which ends every
+// active announcement on the peer as well.
 func (aw *AnnouncementWriter) CloseWithError(code AnnounceErrorCode) error {
+	aw.stopAll()
+	cancelStreamWithError(aw.stream, transport.StreamErrorCode(code))
+	return nil
+}
+
+// stopAll empties the writer and stops watching the announcements that were
+// active, sending nothing.
+func (aw *AnnouncementWriter) stopAll() {
 	aw.mu.Lock()
-	// Collect end functions to call after releasing the lock
-	var endFuncs []func()
+	defer aw.mu.Unlock()
 	for _, active := range aw.actives {
-		if active.end != nil {
-			endFuncs = append(endFuncs, active.end)
+		if active.stop != nil {
+			active.stop()
 		}
 	}
 	aw.actives = nil
 	aw.dropHidden()
-	aw.mu.Unlock()
-
-	// Call end functions without holding the lock to avoid deadlock
-	for _, endFunc := range endFuncs {
-		endFunc()
-	}
-
-	cancelStreamWithError(aw.stream, transport.StreamErrorCode(code))
-
-	return nil
 }
 
 // Context returns the AnnouncementWriter's context.
@@ -454,5 +445,5 @@ func (aw *AnnouncementWriter) Context() context.Context {
 // activeAnnouncement represents an active announcement being managed by AnnouncementWriter.
 type activeAnnouncement struct {
 	announcement *Announcement
-	end          func() // Function to clean up the activeAnnouncement
+	stop         func() bool // stops the watch registerEndHandler set, if it has not run
 }

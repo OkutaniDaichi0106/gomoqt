@@ -470,6 +470,70 @@ func TestAnnouncementWriter_Close(t *testing.T) {
 	})
 }
 
+func TestAnnouncementWriter_Close_SendsNoEnded(t *testing.T) {
+	tests := map[string]struct {
+		streamEnded bool
+		reset       bool
+	}{
+		"Close on a live stream":   {},
+		"Close on an ended stream": {streamEnded: true},
+		"CloseWithError":           {reset: true},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			streamCtx, endStream := context.WithCancel(context.Background())
+			defer endStream()
+			stream := &FakeQUICStream{ParentCtx: streamCtx}
+			aw := newAnnouncementWriter(stream, "/test/", 0, 0, nil)
+			require.NoError(t, aw.init(map[*Announcement]struct{}{}))
+			ann, end := NewAnnouncement(context.Background(), BroadcastPath("/test/active"))
+			require.NoError(t, aw.SendAnnouncement(ann))
+			if tt.streamEnded {
+				endStream()
+			}
+			before := len(stream.Written())
+
+			if tt.reset {
+				assert.NoError(t, aw.CloseWithError(AnnounceErrorCodeInternal))
+			} else {
+				assert.NoError(t, aw.Close())
+			}
+			end()
+
+			assert.Empty(t, stream.Written()[before:], "the end of the stream ends the announcement; ending it afterwards sends nothing")
+		})
+	}
+}
+
+func TestAnnouncementWriter_AnnouncementEnds_StreamEnded(t *testing.T) {
+	streamCtx, endStream := context.WithCancel(context.Background())
+	stream := &FakeQUICStream{ParentCtx: streamCtx}
+	aw := newAnnouncementWriter(stream, "/test/", 0, 0, nil)
+	require.NoError(t, aw.init(map[*Announcement]struct{}{}))
+	ann, end := NewAnnouncement(context.Background(), BroadcastPath("/test/active"))
+	require.NoError(t, aw.SendAnnouncement(ann))
+	endStream()
+	before := len(stream.Written())
+
+	end()
+
+	assert.Empty(t, stream.Written()[before:])
+	assert.Empty(t, aw.actives)
+}
+
+func TestAnnouncementWriter_RegisterEndHandler_Closed(t *testing.T) {
+	aw := newTestAnnouncementWriter(t)
+	require.NoError(t, aw.init(map[*Announcement]struct{}{}))
+	ann, end := NewAnnouncement(context.Background(), BroadcastPath("/test/active"))
+	defer end()
+	aw.stopAll()
+
+	aw.mu.Lock()
+	assert.NotPanics(t, func() { aw.registerEndHandler("active", ann) })
+	aw.mu.Unlock()
+}
+
 func TestAnnouncementWriter_CloseWithError(t *testing.T) {
 	t.Run("closes with error and no active announcements", func(t *testing.T) {
 		tests := map[string]struct {

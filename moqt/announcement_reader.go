@@ -234,6 +234,8 @@ func (ar *AnnouncementReader) fail(err error) {
 
 // ReceiveAnnouncement blocks until an announcement for the configured prefix is available or until ctx or the reader's context is canceled.
 // It returns the next pending Announcement or an error describing the cancellation cause.
+// Each broadcast path is returned when it becomes active; its ending is not
+// returned again but observed on the Announcement (Done, IsActive, AfterFunc).
 func (ras *AnnouncementReader) ReceiveAnnouncement(ctx context.Context) (*Announcement, error) {
 	for {
 		ras.announcementsMu.Lock()
@@ -269,6 +271,8 @@ func (ras *AnnouncementReader) ReceiveAnnouncement(ctx context.Context) (*Announ
 }
 
 // Announcements returns an iterator that yields Announcement values for the configured prefix until ctx or the reader's context is canceled.
+// It yields each broadcast path when it becomes active, as ReceiveAnnouncement
+// returns it; an ending is observed on the Announcement itself.
 func (ras *AnnouncementReader) Announcements(ctx context.Context) iter.Seq[*Announcement] {
 	return func(yield func(*Announcement) bool) {
 		for {

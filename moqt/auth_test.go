@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/quic-go/quic-go"
+	"github.com/qumo-dev/gomoqt/transport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -151,15 +152,15 @@ func TestSession_Auth(t *testing.T) {
 	sess := dialAuth(t, ctx, "moqt://"+addr+"/app", nil)
 
 	t.Run("a ticket returns its grant", func(t *testing.T) {
-		grant, err := sess.Auth(ctx, []byte("room1"))
+		cred, err := sess.Auth(ctx, []byte("room1"))
 		require.NoError(t, err)
-		defer func() { _ = grant.Close() }() // not actionable: the test is over
+		defer func() { _ = cred.Close() }() // not actionable: the test is over
 
-		g := grant.Grant()
+		g := cred.Grant()
 		require.Len(t, g.Subscribe, 1)
 		assert.Equal(t, "/room/1/", g.Subscribe[0].String())
 		assert.Empty(t, g.Publish)
-		assert.Zero(t, g.Expires)
+		assert.Zero(t, g.MaxAge)
 	})
 
 	t.Run("an unknown ticket is refused", func(t *testing.T) {
@@ -172,11 +173,49 @@ func TestSession_Auth(t *testing.T) {
 	})
 
 	t.Run("an empty token returns the connection's grant", func(t *testing.T) {
-		grant, err := sess.Auth(ctx, nil)
+		cred, err := sess.Auth(ctx, nil)
 		require.NoError(t, err)
-		defer func() { _ = grant.Close() }() // not actionable: the test is over
+		defer func() { _ = cred.Close() }() // not actionable: the test is over
 
-		assert.Empty(t, grant.Grant().Subscribe)
+		assert.Empty(t, cred.Grant().Subscribe)
+	})
+}
+
+func TestCredential_Context(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	addr := startAuthServer(t, ctx, roomTicketHandler, nil)
+
+	t.Run("Close withdrawing the token ends it", func(t *testing.T) {
+		sess := dialAuth(t, ctx, "moqt://"+addr+"/app", nil)
+		cred, err := sess.Auth(ctx, []byte("room1"))
+		require.NoError(t, err)
+
+		require.NoError(t, cred.Close())
+
+		select {
+		case <-cred.Context().Done():
+		case <-ctx.Done():
+			t.Fatal("credential did not end")
+		}
+		assert.ErrorIs(t, context.Cause(cred.Context()), context.Canceled)
+	})
+
+	t.Run("the session ending ends it with the session's cause", func(t *testing.T) {
+		sess := dialAuth(t, ctx, "moqt://"+addr+"/app", nil)
+		cred, err := sess.Auth(ctx, []byte("room1"))
+		require.NoError(t, err)
+
+		require.NoError(t, sess.CloseWithError(NoError, "done"))
+
+		select {
+		case <-cred.Context().Done():
+		case <-ctx.Done():
+			t.Fatal("credential did not end")
+		}
+		var connErr *transport.ApplicationError
+		require.ErrorAs(t, context.Cause(cred.Context()), &connErr)
+		assert.Equal(t, transport.ConnErrorCode(NoError), connErr.ErrorCode)
 	})
 }
 
@@ -224,9 +263,9 @@ func TestSession_Subscribe_Scope(t *testing.T) {
 			addr := startAuthServer(t, ctx, roomTicketHandler, nil)
 			sess := dialAuth(t, ctx, "moqt://"+addr+tt.url, nil)
 			for _, ticket := range tt.tickets {
-				grant, err := sess.Auth(ctx, []byte(ticket))
+				cred, err := sess.Auth(ctx, []byte(ticket))
 				require.NoError(t, err)
-				defer func() { _ = grant.Close() }() // not actionable: the test is over
+				defer func() { _ = cred.Close() }() // not actionable: the test is over
 			}
 
 			got := subscribeCode(t, ctx, sess, tt.path)
@@ -296,7 +335,7 @@ func TestSession_Auth_RefusalAfterGrantRevokes(t *testing.T) {
 	})
 	addr := startAuthServer(t, ctx, handler, nil)
 	sess := dialAuth(t, ctx, "moqt://"+addr+"/app", nil)
-	grant, err := sess.Auth(ctx, []byte("room1"))
+	cred, err := sess.Auth(ctx, []byte("room1"))
 	require.NoError(t, err)
 	tr, err := sess.Subscribe(ctx, authRoom1Path, "audio", nil)
 	require.NoError(t, err)
@@ -305,12 +344,12 @@ func TestSession_Auth_RefusalAfterGrantRevokes(t *testing.T) {
 	close(revoke)
 
 	select {
-	case <-grant.Done():
+	case <-cred.Context().Done():
 	case <-ctx.Done():
 		t.Fatal("grant did not end")
 	}
 	var authErr *AuthError
-	require.ErrorAs(t, grant.Err(), &authErr)
+	require.ErrorAs(t, context.Cause(cred.Context()), &authErr)
 	assert.Equal(t, "key retired", authErr.Reason)
 	assert.Equal(t, int(SubscribeErrorCodeUnauthorized), subscribeCode(t, ctx, sess, authRoom1Path))
 	assert.NoError(t, sess.Context().Err())
@@ -321,7 +360,7 @@ func TestSession_AcceptAnnounce_PeerSeesOnlyItsScope(t *testing.T) {
 	defer cancel()
 	addr := startAuthServer(t, ctx, roomTicketHandler, nil)
 	sess := dialAuth(t, ctx, "moqt://"+addr+"/app", nil)
-	grant, err := sess.Auth(ctx, []byte("room1"))
+	cred, err := sess.Auth(ctx, []byte("room1"))
 	require.NoError(t, err)
 	ar, err := sess.AcceptAnnounce("/room/")
 	require.NoError(t, err)
@@ -340,7 +379,7 @@ func TestSession_AcceptAnnounce_PeerSeesOnlyItsScope(t *testing.T) {
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
 
 	// Withdrawing the ticket ends room 1's announcement.
-	require.NoError(t, grant.Close())
+	require.NoError(t, cred.Close())
 	select {
 	case <-ann.Done():
 	case <-ctx.Done():
@@ -373,9 +412,9 @@ func TestSession_Announcements_PeerPublishesOnlyItsScope(t *testing.T) {
 	_, err = ar.ReceiveAnnouncement(short)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 
-	grant, err := sess.Auth(ctx, []byte("publish"))
+	cred, err := sess.Auth(ctx, []byte("publish"))
 	require.NoError(t, err)
-	defer func() { _ = grant.Close() }() // not actionable: the test is over
+	defer func() { _ = cred.Close() }() // not actionable: the test is over
 
 	actx, acancel := context.WithTimeout(ctx, 5*time.Second)
 	defer acancel()

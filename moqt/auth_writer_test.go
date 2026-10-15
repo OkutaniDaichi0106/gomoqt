@@ -22,11 +22,11 @@ func TestAuthWriter_Grant_ZeroPattern(t *testing.T) {
 	assert.False(t, scope.canSubscribe("/room/1"), "the invalid grant is not applied")
 }
 
-func TestAuthWriter_Grant_Expires(t *testing.T) {
+func TestAuthWriter_Grant_MaxAge(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		scope := newAuthScope(func() {})
 		w := &AuthWriter{scope: scope}
-		require.NoError(t, w.Grant(Grant{Subscribe: []PathPattern{MustParsePathPattern("/")}, Expires: time.Second}))
+		require.NoError(t, w.Grant(Grant{Subscribe: []PathPattern{MustParsePathPattern("/")}, MaxAge: time.Second}))
 
 		time.Sleep(2 * time.Second)
 		synctest.Wait()
@@ -40,7 +40,7 @@ func TestAuthWriter_Grant_RegrantExtends(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		scope := newAuthScope(func() {})
 		w := &AuthWriter{scope: scope}
-		g := Grant{Subscribe: []PathPattern{MustParsePathPattern("/")}, Expires: time.Second}
+		g := Grant{Subscribe: []PathPattern{MustParsePathPattern("/")}, MaxAge: time.Second}
 		require.NoError(t, w.Grant(g))
 
 		time.Sleep(700 * time.Millisecond)
@@ -59,7 +59,7 @@ func TestAuthScope_set_SamePatterns(t *testing.T) {
 	g := Grant{Subscribe: []PathPattern{MustParsePathPattern("/room/1/")}}
 
 	scope.set(w, g)
-	g.Expires = time.Minute
+	g.MaxAge = time.Minute
 	scope.set(w, g)
 
 	assert.Equal(t, 1, changes, "extending a grant does not change the scope")

@@ -4,6 +4,9 @@ import { Session } from "./session.ts";
 import type { SessionStats } from "./session.ts";
 import {
 	AnnounceRequestMessage,
+	AuthErrorMessage,
+	AuthMessage,
+	AuthOkMessage,
 	FetchMessage,
 	GroupMessage,
 	ProbeLevels,
@@ -14,12 +17,19 @@ import {
 	writeVarint,
 } from "./internal/message/mod.ts";
 import { BiStreamTypes, UniStreamTypes } from "./stream_type.ts";
-import { SessionErrorCode } from "./error.ts";
+import { AuthError, AuthNotSupportedError, SessionErrorCode } from "./error.ts";
+import { AuthViolation } from "./auth.ts";
 import { TrackMux } from "./track_mux.ts";
 import type { TrackPrefix } from "./track_prefix.ts";
 import { Writer } from "@okdaichi/golikejs/io";
 import { EOFError } from "@okdaichi/golikejs/io";
-import { ReceiveStream, SendStream, Stream, StreamConn } from "./internal/webtransport/mod.ts";
+import {
+	ReceiveStream,
+	SendStream,
+	Stream,
+	StreamConn,
+	WebTransportStreamError,
+} from "./internal/webtransport/mod.ts";
 import { FetchRequest } from "./fetch.ts";
 import type { FetchHandler } from "./fetch.ts";
 import type { GroupWriter } from "./group_stream.ts";
@@ -51,6 +61,9 @@ async function encodeMessageToUint8Array(
 // Mock WebTransportSession implementation
 interface MockWebTransportSessionInit {
 	openStreamResponses?: Uint8Array[];
+	// openStreamEnds, per opened stream, is the error its reads return once its
+	// data is read, in place of EOF; a reset, for example.
+	openStreamEnds?: (Error | undefined)[];
 	openUniStreamCount?: number;
 	acceptStreamData?: Array<{ type: number; data: Uint8Array }>;
 	acceptUniStreamData?: Array<{ type: number; data: Uint8Array }>;
@@ -90,6 +103,7 @@ async function peerSetupUniStream(
 
 export class MockWebTransportSession implements StreamConn {
 	#openStreamResponses: Uint8Array[];
+	#openStreamEnds: (Error | undefined)[];
 	#openStreamIndex = 0;
 	#openStreamWrittenData: Uint8Array[][] = [];
 	#acceptStreamData: Array<{ type: number; data: Uint8Array }>;
@@ -108,6 +122,7 @@ export class MockWebTransportSession implements StreamConn {
 
 	constructor(options: MockWebTransportSessionInit = {}) {
 		this.#openStreamResponses = options.openStreamResponses ?? [];
+		this.#openStreamEnds = options.openStreamEnds ?? [];
 		this.#acceptStreamData = options.acceptStreamData ?? [];
 		this.#acceptUniStreamData = options.acceptUniStreamData ?? [];
 		this.protocol = options.protocol ?? "";
@@ -139,6 +154,7 @@ export class MockWebTransportSession implements StreamConn {
 
 		const data = this.#openStreamResponses[this.#openStreamIndex] ??
 			new Uint8Array();
+		const end = this.#openStreamEnds[this.#openStreamIndex] ?? new EOFError();
 		this.#openStreamIndex++;
 
 		// Create inline mock stream
@@ -157,7 +173,7 @@ export class MockWebTransportSession implements StreamConn {
 		const readable = {
 			read: spy(async (p: Uint8Array) => {
 				if (readOffset >= data.length) {
-					return [0, new EOFError()] as [number, Error | undefined];
+					return [0, end] as [number, Error | undefined];
 				}
 				const n = Math.min(p.length, data.length - readOffset);
 				p.set(data.subarray(readOffset, readOffset + n));
@@ -1217,6 +1233,233 @@ Deno.test({
 				await session.close();
 			},
 		);
+
+		await t.step("auth returns the grant and follows later answers", async () => {
+			const ok1 = await encodeMessageToUint8Array((w) =>
+				new AuthOkMessage({ root: "/room/1/", subscribePatterns: ["/"] }).encode(w)
+			);
+			const ok2 = await encodeMessageToUint8Array((w) =>
+				new AuthOkMessage({ root: "/room/1/", subscribePatterns: ["/host"], expires: 1000 })
+					.encode(w)
+			);
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [new Uint8Array([...ok1, ...ok2])],
+			});
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			const [cred, err] = await session.auth(new TextEncoder().encode("room1"));
+			assertEquals(err, undefined);
+			assertExists(cred);
+			assertEquals(cred.grant().root, "/room/1/");
+			// The stream then ends: the second answer replaces the grant, and
+			// the end of the stream ends the credential.
+			await cred.context.done();
+
+			assertEquals(cred.grant().subscribe, ["/host"]);
+			assertEquals(cred.grant().maxAge, 1000);
+			assertInstanceOf(cred.context.err(), Error);
+			const written = mock.openStreamWrittenData[0] ?? [];
+			assertEquals(written[0], new Uint8Array([BiStreamTypes.AuthStreamType]));
+			await session.close();
+		});
+
+		await t.step("auth returns the refusal as an AuthError", async () => {
+			const refusal = await encodeMessageToUint8Array((w) =>
+				new AuthErrorMessage({
+					code: SessionErrorCode.Unauthorized,
+					reason: "unknown ticket",
+				}).encode(w)
+			);
+			const mock = new MockWebTransportSession({ openStreamResponses: [refusal] });
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			const [cred, err] = await session.auth(new TextEncoder().encode("bad"));
+
+			assertEquals(cred, undefined);
+			assertInstanceOf(err, AuthError);
+			assertEquals(err.code, SessionErrorCode.Unauthorized);
+			assertEquals(err.reason, "unknown ticket");
+			await session.close();
+		});
+
+		await t.step("a revoked grant ends the credential with an AuthError", async () => {
+			const ok = await encodeMessageToUint8Array((w) =>
+				new AuthOkMessage({ root: "/room/1/", subscribePatterns: ["/"] }).encode(w)
+			);
+			const revoke = await encodeMessageToUint8Array((w) =>
+				new AuthErrorMessage({
+					code: SessionErrorCode.Unauthorized,
+					reason: "grant expired",
+				}).encode(w)
+			);
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [new Uint8Array([...ok, ...revoke])],
+			});
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			const [cred] = await session.auth(new TextEncoder().encode("room1"));
+			assertExists(cred);
+			await cred.context.done();
+
+			assertInstanceOf(cred.context.err(), AuthError);
+			await session.close();
+		});
+
+		await t.step("closing a credential withdraws its token and ends it", async () => {
+			const ok = await encodeMessageToUint8Array((w) =>
+				new AuthOkMessage({ root: "/room/1/", subscribePatterns: ["/"] }).encode(w)
+			);
+			const mock = new MockWebTransportSession({ openStreamResponses: [ok] });
+			const session = new Session({ transport: mock });
+			await session.ready;
+			const [cred] = await session.auth(new TextEncoder().encode("room1"));
+			assertExists(cred);
+
+			await cred.close();
+
+			assertEquals(cred.context.err()?.message, "moq: credential closed");
+			await session.close();
+		});
+
+		await t.step("auth with no answer ends", async () => {
+			const mock = new MockWebTransportSession({ openStreamResponses: [new Uint8Array(0)] });
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			const [cred, err] = await session.auth();
+
+			assertEquals(cred, undefined);
+			assertInstanceOf(err, Error);
+			assertEquals(err.message, "moq: auth ended");
+			await session.close();
+		});
+
+		await t.step("a grant with patterns but no root is a protocol violation", async () => {
+			const bad = await encodeMessageToUint8Array((w) =>
+				new AuthOkMessage({ subscribePatterns: ["/"] }).encode(w)
+			);
+			const mock = new MockWebTransportSession({ openStreamResponses: [bad] });
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			const [cred, err] = await session.auth();
+
+			assertEquals(cred, undefined);
+			assertInstanceOf(err, AuthViolation);
+			await session.closed;
+		});
+
+		await t.step("auth reads a reset before any answer as no Auth Stream", async () => {
+			const reset = new WebTransportStreamError(
+				{ source: "stream", streamErrorCode: 0 },
+				true,
+			);
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [new Uint8Array(0)],
+				openStreamEnds: [reset],
+			});
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			const [cred, err] = await session.auth(new TextEncoder().encode("room1"));
+
+			assertEquals(cred, undefined);
+			assertInstanceOf(err, AuthNotSupportedError);
+			await session.close();
+		});
+
+		await t.step("auth fails on a closed session", async () => {
+			const mock = new MockWebTransportSession({});
+			const session = new Session({ transport: mock });
+			await session.ready;
+			await session.close();
+
+			const [cred, err] = await session.auth();
+
+			assertEquals(cred, undefined);
+			assertInstanceOf(err, Error);
+		});
+
+		await t.step("a malformed later answer is a protocol violation", async () => {
+			const ok = await encodeMessageToUint8Array((w) =>
+				new AuthOkMessage({ root: "/room/1/", subscribePatterns: ["/"] }).encode(w)
+			);
+			// Then a reply of an unknown type.
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [new Uint8Array([...ok, 9])],
+			});
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			const [cred] = await session.auth(new TextEncoder().encode("room1"));
+			assertExists(cred);
+			const info = await session.closed;
+
+			assertEquals(info.code, SessionErrorCode.ProtocolViolation);
+			assertInstanceOf(cred.context.err(), AuthViolation);
+		});
+
+		await t.step("auth gives up when its signal settles first", async () => {
+			const mock = new MockWebTransportSession({ openStreamResponses: [new Uint8Array(0)] });
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			const [cred, err] = await session.auth(
+				new TextEncoder().encode("room1"),
+				Promise.resolve(),
+			);
+
+			assertEquals(cred, undefined);
+			assertEquals(err?.message, "moq: auth abandoned");
+			await session.close();
+		});
+
+		await t.step("a malformed incoming AUTH is a protocol violation", async () => {
+			// The stream type, then an AUTH whose token runs past its body.
+			const buf = await encodeMessageToUint8Array(async (w) => {
+				await writeVarint(w, BiStreamTypes.AuthStreamType);
+				const [, err] = await w.write(new Uint8Array([1, 9]));
+				return err;
+			});
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [],
+				acceptStreamData: [{ type: BiStreamTypes.AuthStreamType, data: buf }],
+			});
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			const info = await session.closed;
+
+			assertEquals(info.code, SessionErrorCode.ProtocolViolation);
+		});
+
+		await t.step("an incoming auth stream is refused as not supported", async () => {
+			const buf = await encodeMessageToUint8Array(async (w) => {
+				await writeVarint(w, BiStreamTypes.AuthStreamType);
+				return await new AuthMessage({ token: new TextEncoder().encode("t") }).encode(w);
+			});
+			const mock = new MockWebTransportSession({
+				openStreamResponses: [],
+				acceptStreamData: [{ type: BiStreamTypes.AuthStreamType, data: buf }],
+			});
+			const session = new Session({ transport: mock });
+			await session.ready;
+
+			await new Promise((resolve) => setTimeout(resolve, 10));
+
+			const written = (mock.acceptStreamWrittenData[0] ?? []).flatMap((b) => [...b]);
+			const refusal = await encodeMessageToUint8Array((w) =>
+				new AuthErrorMessage({
+					code: SessionErrorCode.NotSupported,
+					reason: "tokens are not verified in band",
+				}).encode(w)
+			);
+			assertEquals(new Uint8Array(written), refusal);
+			await session.close();
+		});
 
 		await t.step("getStats returns zero values when transport has no getStats", async () => {
 			const mock = new MockWebTransportSession({});

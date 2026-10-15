@@ -234,7 +234,7 @@ Deno.test("AnnouncementReader", async (t) => {
 		});
 		const req = new AnnounceRequestMessage({ prefix: "/x/" });
 		const reader = new AnnouncementReader(ctx, mockStream, req);
-		const [ann, err] = await reader.receive(Promise.resolve());
+		const [ann, err] = await reader.receive(new Promise(() => {}));
 		assertEquals(err, undefined);
 		assertExists(ann);
 		if (ann) {
@@ -266,7 +266,7 @@ Deno.test("AnnouncementReader", async (t) => {
 			await new Promise((r) => setTimeout(r, 10));
 			// The stream is not reset; the replacement announcement is active.
 			assertEquals(writableCancel.calls.length, 0);
-			const [ann, err] = await reader.receive(Promise.resolve());
+			const [ann, err] = await reader.receive(new Promise(() => {}));
 			assertEquals(err, undefined);
 			assertEquals(ann?.broadcastPath, "/a");
 			assertEquals(ann?.isActive(), true);
@@ -305,6 +305,39 @@ Deno.test("AnnouncementReader", async (t) => {
 			cancel(new Error("test cleanup"));
 		},
 	);
+
+	await t.step("receive returns when its signal settles while it waits", async () => {
+		const [ctx, cancel] = withCancelCause(background());
+		const buf = Buffer.make(64);
+		await new AnnounceOkMessage({}).encode(buf);
+		const mockStream = new MockStream({
+			readable: new MockReceiveStream({
+				// ANNOUNCE_OK, then nothing more: reads wait.
+				read: (() => {
+					const first = openRead(buf);
+					let sent = false;
+					return async (p: Uint8Array) => {
+						if (!sent) {
+							sent = true;
+							return await first(p);
+						}
+						return await new Promise<[number, Error | undefined]>(() => {});
+					};
+				})(),
+			}),
+		});
+		const reader = new AnnouncementReader(
+			ctx,
+			mockStream,
+			new AnnounceRequestMessage({ prefix: "/x/" }),
+		);
+
+		const [ann, err] = await reader.receive(new Promise((r) => setTimeout(r, 10)));
+
+		assertEquals(ann, undefined);
+		assertExists(err);
+		cancel(new Error("test cleanup"));
+	});
 
 	await t.step("receive returns error when queue closed", async () => {
 		const [ctx, cancel] = withCancelCause(background());
@@ -379,7 +412,7 @@ Deno.test("AnnouncementReader", async (t) => {
 			await new Promise((r) => setTimeout(r, 30));
 
 			// Should have enqueued one announcement
-			const [ann, err] = await ar.receive(Promise.resolve());
+			const [ann, err] = await ar.receive(new Promise(() => {}));
 			assertEquals(err, undefined);
 			assertExists(ann);
 			assertEquals(ann?.broadcastPath, "/x");
@@ -411,7 +444,7 @@ Deno.test("AnnouncementReader", async (t) => {
 			const ar = new AnnouncementReader(ctx, mockStream, apm);
 
 			// First receive the announcement from the stream
-			const [ann1, err1] = await ar.receive(Promise.resolve());
+			const [ann1, err1] = await ar.receive(new Promise(() => {}));
 			assertEquals(err1, undefined);
 			assertExists(ann1);
 			assertEquals(ann1?.broadcastPath, "/a");
@@ -473,7 +506,7 @@ Deno.test("AnnouncementReader", async (t) => {
 					mockStream,
 					new AnnounceRequestMessage({ prefix: "/" }),
 				);
-				const [ann, recvErr] = await ar.receive(Promise.resolve());
+				const [ann, recvErr] = await ar.receive(new Promise(() => {}));
 				assertEquals(recvErr, undefined);
 				assertExists(ann);
 

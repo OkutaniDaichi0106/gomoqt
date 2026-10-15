@@ -35,6 +35,8 @@ export * from "./track_reader.ts";
 export * from "./track_mux.ts";
 export * from "./broadcast.ts";
 export * from "./error.ts";
+export { Credential } from "./auth.ts";
+export type { Grant } from "./auth.ts";
 export * from "./fetch.ts";
 export * from "./frame.ts";
 export * from "./probe.ts";

@@ -12,6 +12,8 @@ export const BiStreamTypes = {
 	GoawayStreamType: 0x05,
 	/** Track stream for fetching immutable publisher properties. */
 	TrackStreamType: 0x06,
+	/** Auth stream for presenting a token and following its grant. */
+	AuthStreamType: 0x07,
 } as const;
 
 /** Stream type identifiers for unidirectional streams as defined in MOQ Lite. */

@@ -1,5 +1,6 @@
 import { assertEquals, assertInstanceOf } from "@std/assert";
 import { ReceiveStream } from "./receive_stream.ts";
+import { streamReadError } from "./receive_stream.ts";
 import { EOFError } from "@okdaichi/golikejs/io";
 import { WebTransportStreamError } from "./error.ts";
 
@@ -203,4 +204,40 @@ Deno.test("ReceiveStream", async (t) => {
 			assertEquals(canceled, true);
 		},
 	);
+});
+
+Deno.test("streamReadError - a peer's reset carries its application code", async (t) => {
+	const cases = [
+		{
+			name: "browser WebTransportError",
+			err: { source: "stream", streamErrorCode: 5 },
+			code: 5,
+		},
+		{
+			name: "Deno reset naming the HTTP/3 code",
+			err: new Error("stream reset by peer: error 91141958510815"),
+			code: 4,
+		},
+		{
+			name: "Deno reset skipping a reserved code",
+			err: new Error("stream reset by peer: error 91141958510817"),
+			code: 6,
+		},
+	];
+	for (const c of cases) {
+		await t.step(c.name, () => {
+			const err = streamReadError(c.err);
+
+			assertInstanceOf(err, WebTransportStreamError);
+			assertEquals(err.code, c.code);
+			assertEquals(err.remote, true);
+		});
+	}
+});
+
+Deno.test("streamReadError - keeps other errors", () => {
+	const other = new Error("connection lost");
+
+	assertEquals(streamReadError(other), other);
+	assertInstanceOf(streamReadError("gone"), Error);
 });

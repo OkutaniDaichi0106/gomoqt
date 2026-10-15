@@ -1,5 +1,7 @@
 import {
 	AnnounceRequestMessage,
+	AuthErrorMessage,
+	AuthMessage,
 	FetchMessage,
 	GoawayMessage,
 	GroupMessage,
@@ -19,7 +21,9 @@ import {
 	StreamConn,
 	StreamConnError,
 	StreamConnErrorInfo,
+	WebTransportStreamError,
 } from "./internal/webtransport/mod.ts";
+import { authStreamCancelled, AuthViolation, Credential, readAuthReply } from "./auth.ts";
 import { Channel } from "@okdaichi/golikejs";
 import { background, withCancelCause } from "@okdaichi/golikejs/context";
 import type { CancelCauseFunc, Context } from "@okdaichi/golikejs/context";
@@ -42,7 +46,14 @@ import { Queue } from "./internal/queue.ts";
 import type { SubscribeID, TrackName } from "./alias.ts";
 import { FetchRequest } from "./fetch.ts";
 import type { FetchHandler } from "./fetch.ts";
-import { GroupErrorCode, ProbeErrorCode, SessionErrorCode, SubscribeErrorCode } from "./error.ts";
+import {
+	AuthError,
+	AuthNotSupportedError,
+	GroupErrorCode,
+	ProbeErrorCode,
+	SessionErrorCode,
+	SubscribeErrorCode,
+} from "./error.ts";
 import type { MoqOptions } from "./options.ts";
 import { defaultProbeIntervalMs, defaultProbeMaxAgeMs, defaultProbeMaxDelta } from "./options.ts";
 import { ProbeResult } from "./probe.ts";
@@ -202,8 +213,9 @@ export class Session {
 		// and resolve `closed` with a MOQ-level description. A local close()/
 		// closeWithError() resolves `closed` first, so its info wins; a later
 		// resolve here is a no-op.
-		const onTransportClosed = (info: WebTransportCloseInfo): void => {
-			const unexpected = info.closeCode === undefined && info.reason === undefined;
+		const onTransportClosed = (info: WebTransportCloseInfo | undefined): void => {
+			// Some runtimes close with no info at all.
+			const unexpected = info?.closeCode === undefined && info?.reason === undefined;
 			if (!this.#ctx.err()) {
 				cancel(
 					unexpected
@@ -212,7 +224,7 @@ export class Session {
 				);
 			}
 			this.#resolveClosed({
-				code: unexpected ? SessionErrorCode.InternalError : (info.closeCode ?? 0),
+				code: unexpected ? SessionErrorCode.InternalError : (info?.closeCode ?? 0),
 				reason: unexpected ? "connection closed unexpectedly" : "session closed",
 			});
 		};
@@ -599,6 +611,100 @@ export class Session {
 	}
 
 	/**
+	 * Presents token to the peer on a new Auth Stream and waits for its first
+	 * answer. An empty token presents the credential the connection itself
+	 * carried. Returns an {@link AuthError} when the peer refuses the token, and
+	 * an {@link AuthNotSupportedError} when the peer does not support the Auth
+	 * Stream. The grant lasts until {@link Credential.close} withdraws the
+	 * token, the peer revokes it, or the session ends. `signal`, when it
+	 * settles first, abandons the wait for the answer.
+	 *
+	 * Mirrors Go's `Session.Auth(ctx, token) (*Credential, error)`.
+	 */
+	async auth(
+		token: Uint8Array = new Uint8Array(0),
+		signal?: Promise<void>,
+	): Promise<[Credential, undefined] | [undefined, Error]> {
+		if (this.#ctx.err()) {
+			return [undefined, new Error("session is closing")];
+		}
+
+		const [stream, openErr] = await this.#webtransport.openStream();
+		if (openErr) {
+			return [undefined, openErr];
+		}
+
+		let [, err] = await writeVarint(stream.writable, BiStreamTypes.AuthStreamType);
+		if (!err) {
+			err = await new AuthMessage({ token }).encode(stream.writable);
+		}
+		if (err) {
+			cancelStreamWithError(stream, authStreamCancelled);
+			return [undefined, err];
+		}
+
+		const violate = (reason: string): void => {
+			this.closeWithError(SessionErrorCode.ProtocolViolation, reason).catch(() => {});
+		};
+		let abandoned = false;
+		signal?.then(() => {
+			abandoned = true;
+			cancelStreamWithError(stream, authStreamCancelled);
+		}, () => {});
+		const [grant, replyErr] = await readAuthReply(stream);
+		if (abandoned) {
+			return [undefined, new Error("moq: auth abandoned")];
+		}
+		if (replyErr) {
+			cancelStreamWithError(stream, authStreamCancelled);
+			if (replyErr instanceof AuthError) {
+				return [undefined, replyErr];
+			}
+			if (replyErr instanceof WebTransportStreamError) {
+				return [undefined, new AuthNotSupportedError()];
+			}
+			if (replyErr instanceof EOFError) {
+				return [undefined, new Error("moq: auth ended", { cause: replyErr })];
+			}
+			if (replyErr instanceof AuthViolation) {
+				violate(replyErr.message);
+			}
+			return [undefined, replyErr];
+		}
+
+		return [new Credential(stream, grant, this.#ctx, violate), undefined];
+	}
+
+	// handleAuthStream answers a token the peer presents. This endpoint verifies
+	// no tokens, so it refuses each with NOT_SUPPORTED, as a Go session with no
+	// AuthHandler does. A malformed AUTH is a protocol violation.
+	async #handleAuthStream(stream: Stream): Promise<void> {
+		const decodeErr = await new AuthMessage().decode(stream.readable);
+		if (decodeErr) {
+			cancelStreamWithError(stream, authStreamCancelled);
+			if (
+				!(decodeErr instanceof EOFError) && !(decodeErr instanceof WebTransportStreamError)
+			) {
+				this.closeWithError(
+					SessionErrorCode.ProtocolViolation,
+					`AUTH: ${decodeErr.message}`,
+				).catch(() => {});
+			}
+			return;
+		}
+		const err = await new AuthErrorMessage({
+			code: SessionErrorCode.NotSupported,
+			reason: "tokens are not verified in band",
+		}).encode(stream.writable);
+		if (err) {
+			cancelStreamWithError(stream, authStreamCancelled);
+			return;
+		}
+		await stream.writable.close().catch(() => {});
+		await stream.readable.cancel(authStreamCancelled).catch(() => {});
+	}
+
+	/**
 	 * Request a track's immutable publisher properties (TRACK_INFO) over a
 	 * Track Stream, including the timescale needed to interpret frame
 	 * timestamps. The returned properties are fixed for the lifetime of the
@@ -914,6 +1020,9 @@ export class Session {
 						break;
 					case BiStreamTypes.TrackStreamType:
 						pendingHandles.push(this.#handleTrackStream(stream));
+						break;
+					case BiStreamTypes.AuthStreamType:
+						pendingHandles.push(this.#handleAuthStream(stream));
 						break;
 					default:
 						cancelStreamWithError(stream, SessionErrorCode.InternalError);

@@ -21,8 +21,10 @@ var ErrInvalidPathPattern = errors.New("moqt: invalid path pattern")
 // A segment may be a wildcard. "{name}" matches any one non-empty segment, so
 // "/room/{id}/host" matches "/room/1/host", and "/room/{id}/" matches every
 // path beneath any room. "{name...}" as the last segment matches the rest of
-// the path, one segment or more. Names are Go identifiers, unique within a
-// pattern.
+// the path, even an empty rest, so "/room/{rest...}" matches what "/room/"
+// does. "{$}" as the last segment matches only the "/" before it:
+// "/room/{$}" matches "/room/" alone. Names are Go identifiers, unique within
+// a pattern.
 type PathPattern struct {
 	raw string
 	// segs holds the segments of a pattern with a wildcard, without the
@@ -46,6 +48,12 @@ func ParsePathPattern(s string) (PathPattern, error) {
 		if !strings.ContainsAny(seg, "{}") {
 			continue
 		}
+		if seg == anchorSegment {
+			if i != len(segs)-1 || strings.HasSuffix(s, "/") {
+				return PathPattern{}, fmt.Errorf("%w: %q", ErrInvalidPathPattern, s)
+			}
+			continue
+		}
 		name, rest, ok := parseWildcard(seg)
 		if !ok || names[name] || rest && (i != len(segs)-1 || strings.HasSuffix(s, "/")) {
 			return PathPattern{}, fmt.Errorf("%w: %q", ErrInvalidPathPattern, s)
@@ -54,6 +62,9 @@ func ParsePathPattern(s string) (PathPattern, error) {
 	}
 	return PathPattern{raw: s, segs: segs}, nil
 }
+
+// anchorSegment ends a pattern that matches its own trailing "/" alone.
+const anchorSegment = "{$}"
 
 // parseWildcard reads a "{name}" or "{name...}" segment.
 func parseWildcard(seg string) (name string, rest, ok bool) {
@@ -103,8 +114,11 @@ func (p PathPattern) matchSegments(path BroadcastPath) bool {
 	prefix := strings.HasSuffix(p.raw, "/")
 	rest := string(path[1:])
 	for i, seg := range p.segs {
-		if strings.HasSuffix(seg, "...}") {
-			return rest != ""
+		switch {
+		case seg == anchorSegment:
+			return rest == ""
+		case strings.HasSuffix(seg, "...}"):
+			return true
 		}
 		got, after, more := strings.Cut(rest, "/")
 		if strings.HasPrefix(seg, "{") {

@@ -48,6 +48,9 @@ const (
 	// Publisher-side errors.
 	BannedPrefixErrorCode          AnnounceErrorCode = 0x4
 	AnnounceErrorCodeInvalidPrefix AnnounceErrorCode = 0x5
+	// AnnounceErrorCodeUnauthorized refuses, or ends, announcements for a
+	// prefix outside the root of every grant in force on the session.
+	AnnounceErrorCodeUnauthorized AnnounceErrorCode = 0x6
 )
 
 // String returns a text for the announce error code.
@@ -66,6 +69,8 @@ func (code AnnounceErrorCode) String() string {
 		return "moqt: banned prefix"
 	case AnnounceErrorCodeInvalidPrefix:
 		return "moqt: invalid prefix"
+	case AnnounceErrorCodeUnauthorized:
+		return "moqt: unauthorized"
 	default:
 		return ""
 	}

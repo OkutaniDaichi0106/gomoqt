@@ -213,3 +213,15 @@ func TestSession_Fetch_ResetDuringGroup(t *testing.T) {
 	require.ErrorAs(t, err, &groupErr)
 	assert.Equal(t, UnauthorizedGroupErrorCode, groupErr.GroupErrorCode())
 }
+
+// TestSession_handleFetchStream_Malformed verifies a FETCH that cannot be
+// decoded is answered with a reset of its group.
+func TestSession_handleFetchStream_Malformed(t *testing.T) {
+	session := newTestSession(&FakeStreamConn{})
+	defer func() { _ = session.CloseWithError(NoError, "") }() // not actionable: the test is over
+	stream := &FakeQUICStream{Reads: []streamResult{{Err: io.ErrUnexpectedEOF}}}
+
+	session.handleFetchStream(stream)
+
+	assert.Contains(t, stream.CancelWriteCodes(), transport.StreamErrorCode(InternalGroupErrorCode))
+}

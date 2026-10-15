@@ -1184,6 +1184,40 @@ Deno.test({
 			},
 		);
 
+		await t.step(
+			"incoming fetch stream with a malformed FETCH cancels stream",
+			async () => {
+				let served = false;
+				const handler: FetchHandler = {
+					serveFetch: () => {
+						served = true;
+						return Promise.resolve();
+					},
+				};
+				// The stream type, then a FETCH cut short of its length.
+				const buf = await encodeMessageToUint8Array(async (w) => {
+					await writeVarint(w, BiStreamTypes.FetchStreamType);
+					const [, err] = await writeVarint(w, 9);
+					return err;
+				});
+
+				const mock = new MockWebTransportSession({
+					openStreamResponses: [],
+					acceptStreamData: [{
+						type: BiStreamTypes.FetchStreamType,
+						data: buf,
+					}],
+				});
+
+				const session = new Session({ transport: mock, fetchHandler: handler });
+				await session.ready;
+
+				await new Promise((resolve) => setTimeout(resolve, 10));
+				assertEquals(served, false);
+				await session.close();
+			},
+		);
+
 		await t.step("getStats returns zero values when transport has no getStats", async () => {
 			const mock = new MockWebTransportSession({});
 

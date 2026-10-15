@@ -11,7 +11,6 @@ import (
 	"github.com/qumo-dev/gomoqt/transport"
 )
 
-// newAnnouncementWriter creates a new AnnouncementWriter for the given stream and prefix.
 // newAnnouncementWriter serves the peer's announcement request for prefix.
 // scope, when set, is what the peer may list: the writer closes with
 // UNAUTHORIZED once prefix lies within no root of it.
@@ -41,6 +40,14 @@ func newAnnouncementWriter(stream transport.Stream, prefix prefix, localHopID ui
 // rescope closes the writer with UNAUTHORIZED once its prefix lies within no
 // root of the scope.
 func (aw *AnnouncementWriter) rescope() {
+	aw.mu.RLock()
+	closed := aw.closed
+	aw.mu.RUnlock()
+	// A writer already closed ended its stream; a reset would undo a clean
+	// end.
+	if closed || aw.ctx.Err() != nil {
+		return
+	}
 	if !aw.scope.canList(aw.prefix) {
 		_ = aw.CloseWithError(AnnounceErrorCodeUnauthorized) // not actionable: it only resets the stream
 	}

@@ -1,12 +1,14 @@
 package moqt
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
 	"unicode/utf8"
 
+	"github.com/qumo-dev/gomoqt/transport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -171,4 +173,60 @@ func TestAuthReason(t *testing.T) {
 			assert.LessOrEqual(t, len(got), maxAuthReasonLength)
 		})
 	}
+}
+
+// fakeScopeWatcher counts its rescopes.
+type fakeScopeWatcher struct{ rescopes int }
+
+func (w *fakeScopeWatcher) rescope() { w.rescopes++ }
+
+var _ scopeWatcher = (*fakeScopeWatcher)(nil)
+
+func TestAuthScope_watch(t *testing.T) {
+	scope := newAuthScope(func() {})
+	w := &fakeScopeWatcher{}
+
+	unwatch := scope.watch(w)
+	require.Equal(t, []scopeWatcher{w}, scope.watching())
+	unwatch()
+
+	assert.Empty(t, scope.watching())
+}
+
+func TestAnnouncementWriter_rescope(t *testing.T) {
+	tests := map[string]struct {
+		prefix      prefix
+		closedFirst bool
+		wantReset   bool
+	}{
+		"within the root":           {prefix: "/room/1/"},
+		"outside every root":        {prefix: "/room/2/", wantReset: true},
+		"outside, but closed first": {prefix: "/room/2/", closedFirst: true},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			scope := newAuthScope(func() {})
+			require.NoError(t, (&AuthWriter{scope: scope}).Grant(Grant{Root: "/room/1/"}))
+			stream := &FakeQUICStream{}
+			aw := newAnnouncementWriter(stream, tt.prefix, 0, 0, nil, scope)
+			if tt.closedFirst {
+				require.NoError(t, aw.Close())
+			}
+
+			aw.rescope()
+
+			assert.Equal(t, tt.wantReset, slices.Contains(stream.CancelWriteCodes(), transport.StreamErrorCode(AnnounceErrorCodeUnauthorized)))
+		})
+	}
+}
+
+func TestNewAnnouncementWriter_UnwatchesWhenTheStreamEnds(t *testing.T) {
+	scope := newAuthScope(func() {})
+	aw := newAnnouncementWriter(&FakeQUICStream{}, "/room/1/", 0, 0, nil, scope)
+	require.Len(t, scope.watching(), 1)
+
+	require.NoError(t, aw.Close())
+
+	assert.Eventually(t, func() bool { return len(scope.watching()) == 0 }, time.Second, time.Millisecond)
 }

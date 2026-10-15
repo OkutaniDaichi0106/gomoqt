@@ -36,6 +36,9 @@ func newAnnouncementReader(stream transport.Stream, prefix prefix, initSuffixes 
 	}
 
 	for _, suffix := range initSuffixes {
+		if scope != nil && !scope.canPublish(BroadcastPath(prefix+suffix)) {
+			continue
+		}
 		ann, _ := NewAnnouncement(readerCtx, BroadcastPath(prefix+suffix))
 		ar.actives[suffix] = ann
 		ar.pendings = append(ar.pendings, ann)

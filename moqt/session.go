@@ -127,13 +127,10 @@ type Session struct {
 	authHandler AuthHandler
 	scope       *authScope
 
-	// The announce streams scope applies to, rescoped when it changes:
-	// announcement writers serving the peer's ANNOUNCE_REQUESTs, and readers
-	// of the peer's own announcements.
-	fetchesMu sync.Mutex
 	// fetches are the FETCHes being served, cancelled too when the scope no
 	// longer covers them.
-	fetches map[*FetchRequest]transport.Stream
+	fetchesMu sync.Mutex
+	fetches   map[*FetchRequest]transport.Stream
 
 	// rescopeCh wakes the loop that applies scope changes one at a time.
 	rescopeCh chan struct{}
@@ -911,6 +908,7 @@ func (sess *Session) handleAnnounceStream(stream transport.Stream) {
 	prefix := aim.BroadcastPathPrefix
 
 	if !sess.scope.wait(sess.ctx) {
+		cancelStreamWithError(stream, transport.StreamErrorCode(AnnounceErrorCodeInternal))
 		return
 	}
 	annstr := newAnnouncementWriter(stream, prefix, sess.mux.hopID, aim.ExcludeHop, sess.logger, sess.scope)

@@ -381,8 +381,10 @@ type authScope struct {
 	changed func()
 
 	// watchers are the announce streams the scope applies to, which rescope
-	// on each change.
-	watchers map[scopeWatcher]struct{}
+	// on each change. They have their own lock, apart from the grants that
+	// every request reads.
+	watchersMu sync.Mutex
+	watchers   map[scopeWatcher]struct{}
 }
 
 // scopeWatcher re-applies the scope after it changed.
@@ -393,23 +395,23 @@ type scopeWatcher interface {
 // watch makes w rescope on each change of the scope until the returned func
 // is called.
 func (s *authScope) watch(w scopeWatcher) (unwatch func()) {
-	s.mu.Lock()
+	s.watchersMu.Lock()
 	if s.watchers == nil {
 		s.watchers = make(map[scopeWatcher]struct{})
 	}
 	s.watchers[w] = struct{}{}
-	s.mu.Unlock()
+	s.watchersMu.Unlock()
 	return func() {
-		s.mu.Lock()
+		s.watchersMu.Lock()
 		delete(s.watchers, w)
-		s.mu.Unlock()
+		s.watchersMu.Unlock()
 	}
 }
 
 // watching returns the watchers there are now.
 func (s *authScope) watching() []scopeWatcher {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.watchersMu.Lock()
+	defer s.watchersMu.Unlock()
 	ws := make([]scopeWatcher, 0, len(s.watchers))
 	for w := range s.watchers {
 		ws = append(ws, w)

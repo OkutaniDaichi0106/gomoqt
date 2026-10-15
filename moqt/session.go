@@ -136,6 +136,12 @@ type Session struct {
 	scopedMu        sync.Mutex
 	announceWriters map[*AnnouncementWriter]struct{}
 	announceReaders map[*AnnouncementReader]struct{}
+	// fetches are the FETCHes being served, cancelled too when the scope no
+	// longer covers them.
+	fetches map[*servedFetch]struct{}
+
+	// rescopeCh wakes the loop that applies scope changes one at a time.
+	rescopeCh chan struct{}
 }
 
 func newSession(
@@ -190,6 +196,8 @@ func newSession(
 		authHandler:     setup.authHandler,
 		announceWriters: make(map[*AnnouncementWriter]struct{}),
 		announceReaders: make(map[*AnnouncementReader]struct{}),
+		fetches:         make(map[*servedFetch]struct{}),
+		rescopeCh:       make(chan struct{}, 1),
 	}
 
 	// When the native-QUIC router has already consumed the peer's Setup Stream
@@ -218,7 +226,8 @@ func newSession(
 	if sess.authHandler != nil {
 		// The connection's own credential is answered first, so the requests
 		// that arrive before it are judged against its grant.
-		sess.scope = newAuthScope(sess.rescope)
+		sess.scope = newAuthScope(sess.requestRescope)
+		sess.wg.Go(sess.rescopeLoop)
 		conn := &AuthWriter{scope: sess.scope}
 		sess.scope.conn = conn
 		sess.wg.Go(func() {
@@ -726,6 +735,9 @@ func (sess *Session) AcceptAnnounce(prefix string) (*AnnouncementReader, error) 
 		delete(sess.announceReaders, ar)
 		sess.scopedMu.Unlock()
 	})
+	// The reader judged what it read before it was registered against the
+	// scope of the time; a change since then reaches it here.
+	sess.requestRescope()
 	return ar, nil
 }
 
@@ -1034,6 +1046,13 @@ func (sess *Session) handleSubscribeStream(stream transport.Stream) {
 	track.ctx = context.WithValue(trackCtx, biStreamTypeCtxKey, message.StreamTypeSubscribe)
 	sess.addTrackWriter(SubscribeID(sm.SubscribeID), track)
 
+	// A scope change between mayServe and addTrackWriter missed the writer.
+	if sess.scope != nil && !sess.scope.canSubscribe(track.BroadcastPath) {
+		track.CloseWithError(SubscribeErrorCodeUnauthorized)
+		cancelTrack()
+		return
+	}
+
 	if sess.counters != nil {
 		sess.counters.SubscribesServed.Add(1)
 	}
@@ -1205,6 +1224,23 @@ func (sess *Session) handleFetchStream(stream transport.Stream) {
 		group.CancelWrite(ExpiredGroupErrorCode)
 	})
 	defer stop()
+
+	if sess.scope != nil {
+		f := &servedFetch{path: req.BroadcastPath, stream: stream}
+		sess.scopedMu.Lock()
+		sess.fetches[f] = struct{}{}
+		sess.scopedMu.Unlock()
+		defer func() {
+			sess.scopedMu.Lock()
+			delete(sess.fetches, f)
+			sess.scopedMu.Unlock()
+		}()
+		// A scope change between mayServe and the registration missed it.
+		if !sess.scope.canSubscribe(f.path) {
+			cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeUnauthorized))
+			return
+		}
+	}
 
 	err = safeServeFetch(handler, group, req)
 	if err != nil {

@@ -149,7 +149,7 @@ func TestSession_Auth(t *testing.T) {
 	t.Run("a ticket returns its grant", func(t *testing.T) {
 		grant, err := sess.Auth(ctx, []byte("room1"))
 		require.NoError(t, err)
-		defer grant.Close()
+		defer func() { _ = grant.Close() }() // not actionable: the test is over
 
 		g := grant.Grant()
 		require.Len(t, g.Subscribe, 1)
@@ -170,7 +170,7 @@ func TestSession_Auth(t *testing.T) {
 	t.Run("an empty token returns the connection's grant", func(t *testing.T) {
 		grant, err := sess.Auth(ctx, nil)
 		require.NoError(t, err)
-		defer grant.Close()
+		defer func() { _ = grant.Close() }() // not actionable: the test is over
 
 		assert.Empty(t, grant.Grant().Subscribe)
 	})
@@ -222,7 +222,7 @@ func TestSession_Subscribe_Scope(t *testing.T) {
 			for _, ticket := range tt.tickets {
 				grant, err := sess.Auth(ctx, []byte(ticket))
 				require.NoError(t, err)
-				defer grant.Close()
+				defer func() { _ = grant.Close() }() // not actionable: the test is over
 			}
 
 			got := subscribeCode(t, ctx, sess, tt.path)
@@ -239,15 +239,15 @@ func TestSession_Auth_WithdrawCancelsOnlyItsSubscriptions(t *testing.T) {
 	sess := dialAuth(t, ctx, "moqt://"+addr+"/app", nil)
 	room1, err := sess.Auth(ctx, []byte("room1"))
 	require.NoError(t, err)
-	defer room1.Close()
+	defer func() { _ = room1.Close() }() // not actionable: the test is over
 	room2, err := sess.Auth(ctx, []byte("room2"))
 	require.NoError(t, err)
 	tr1, err := sess.Subscribe(ctx, authRoom1Path, "audio", nil)
 	require.NoError(t, err)
-	defer tr1.Close()
+	defer func() { _ = tr1.Close() }() // not actionable: the test is over
 	tr2, err := sess.Subscribe(ctx, authRoom2Path, "audio", nil)
 	require.NoError(t, err)
-	defer tr2.Close()
+	defer func() { _ = tr2.Close() }() // not actionable: the test is over
 
 	require.NoError(t, room2.Close())
 
@@ -296,7 +296,7 @@ func TestSession_Auth_RefusalAfterGrantRevokes(t *testing.T) {
 	require.NoError(t, err)
 	tr, err := sess.Subscribe(ctx, authRoom1Path, "audio", nil)
 	require.NoError(t, err)
-	defer tr.Close()
+	defer func() { _ = tr.Close() }() // not actionable: the test is over
 
 	close(revoke)
 
@@ -321,7 +321,7 @@ func TestSession_AcceptAnnounce_PeerSeesOnlyItsScope(t *testing.T) {
 	require.NoError(t, err)
 	ar, err := sess.AcceptAnnounce("/room/")
 	require.NoError(t, err)
-	defer ar.Close()
+	defer func() { _ = ar.Close() }() // not actionable: the test is over
 
 	actx, acancel := context.WithTimeout(ctx, 5*time.Second)
 	defer acancel()
@@ -361,7 +361,7 @@ func TestSession_Announcements_PeerPublishesOnlyItsScope(t *testing.T) {
 	}
 	ar, err := server.AcceptAnnounce("/room/")
 	require.NoError(t, err)
-	defer ar.Close()
+	defer func() { _ = ar.Close() }() // not actionable: the test is over
 
 	// Nothing is published before a grant allows it.
 	short, scancel := context.WithTimeout(ctx, 200*time.Millisecond)
@@ -371,7 +371,7 @@ func TestSession_Announcements_PeerPublishesOnlyItsScope(t *testing.T) {
 
 	grant, err := sess.Auth(ctx, []byte("publish"))
 	require.NoError(t, err)
-	defer grant.Close()
+	defer func() { _ = grant.Close() }() // not actionable: the test is over
 
 	actx, acancel := context.WithTimeout(ctx, 5*time.Second)
 	defer acancel()

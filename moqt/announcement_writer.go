@@ -98,16 +98,25 @@ func (aw *AnnouncementWriter) holdBack(ann *Announcement) bool {
 		return false
 	}
 	if !held {
-		if aw.hidden == nil {
-			aw.hidden = make(map[*Announcement]func() bool)
-		}
-		aw.hidden[ann] = ann.AfterFunc(func() {
-			aw.mu.Lock()
-			defer aw.mu.Unlock()
-			delete(aw.hidden, ann)
-		})
+		aw.hide(ann)
 	}
 	return true
+}
+
+// hide keeps ann in hidden until a rescope shows it, and forgets it when it
+// ends. Caller MUST hold aw.mu.
+func (aw *AnnouncementWriter) hide(ann *Announcement) {
+	if _, held := aw.hidden[ann]; held {
+		return
+	}
+	if aw.hidden == nil {
+		aw.hidden = make(map[*Announcement]func() bool)
+	}
+	aw.hidden[ann] = ann.AfterFunc(func() {
+		aw.mu.Lock()
+		defer aw.mu.Unlock()
+		delete(aw.hidden, ann)
+	})
 }
 
 // rescope re-applies allow after it changed: it ends each active announcement
@@ -143,11 +152,15 @@ func (aw *AnnouncementWriter) rescope() {
 	for _, end := range ends {
 		end()
 	}
+	// A withdrawn announcement is held back even if allow changed again since:
+	// the rescope that change triggered shows it then.
+	aw.mu.Lock()
 	for _, ann := range withdrawn {
-		if ann.IsActive() {
-			aw.holdBack(ann)
+		if ann.IsActive() && aw.actives != nil {
+			aw.hide(ann)
 		}
 	}
+	aw.mu.Unlock()
 	for _, ann := range shown {
 		if err := aw.SendAnnouncement(ann); err != nil {
 			aw.logError("failed to send a newly allowed announcement", err)

@@ -5,8 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/qumo-dev/gomoqt/moqt/internal/message"
 	"github.com/qumo-dev/gomoqt/transport"
@@ -33,7 +36,27 @@ type Grant struct {
 	Subscribe []PathPattern
 	// Expires is how long until the grant lapses, or 0 for never. It tells the
 	// presenter when to present a replacement token, at millisecond precision.
+	// Unless the handler grants again first, the grant is revoked with
+	// UNAUTHORIZED when it lapses.
 	Expires time.Duration
+}
+
+// valid reports an error for a pattern the grant cannot carry: the zero
+// PathPattern.
+func (g Grant) valid() error {
+	for _, p := range slices.Concat(g.Publish, g.Subscribe) {
+		if p.String() == "" {
+			return fmt.Errorf("%w: the zero PathPattern", ErrInvalidPathPattern)
+		}
+	}
+	return nil
+}
+
+// samePatterns reports whether g and h match the same patterns, whatever
+// their expiry.
+func (g Grant) samePatterns(h Grant) bool {
+	same := func(a, b PathPattern) bool { return a.String() == b.String() }
+	return slices.EqualFunc(g.Publish, h.Publish, same) && slices.EqualFunc(g.Subscribe, h.Subscribe, same)
 }
 
 // CanPublish reports whether one of the grant's publish patterns matches path.
@@ -151,6 +174,10 @@ type AuthWriter struct {
 
 	mu    sync.Mutex
 	ended bool
+	// expiry revokes the grant when it lapses; generation tells it whether
+	// the grant it was set for is still the one in force.
+	expiry     *time.Timer
+	generation uint64
 }
 
 // Grant grants g for the token, replacing any earlier grant: it applies g to
@@ -158,6 +185,9 @@ type AuthWriter struct {
 // is never trimmed: the token is refused with NOT_SUPPORTED instead, and the
 // returned error says so.
 func (w *AuthWriter) Grant(g Grant) error {
+	if err := g.valid(); err != nil {
+		return err
+	}
 	m := g.message()
 	if m.Expires > message.MaxAuthExpires {
 		return fmt.Errorf("moqt: grant expires too late: %v", g.Expires)
@@ -175,6 +205,7 @@ func (w *AuthWriter) Grant(g Grant) error {
 	}
 
 	w.scope.set(w, g)
+	w.expireAfter(g.Expires)
 	if w.stream == nil {
 		return nil
 	}
@@ -182,6 +213,30 @@ func (w *AuthWriter) Grant(g Grant) error {
 		return fmt.Errorf("moqt: send AUTH_OK: %w", err)
 	}
 	return nil
+}
+
+// expireAfter revokes the grant just set once d passes, or never for 0, in
+// place of any earlier expiry. Caller MUST hold w.mu.
+func (w *AuthWriter) expireAfter(d time.Duration) {
+	w.generation++
+	if w.expiry != nil {
+		w.expiry.Stop()
+		w.expiry = nil
+	}
+	if d <= 0 {
+		return
+	}
+	generation := w.generation
+	w.expiry = time.AfterFunc(d, func() {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		if w.ended || w.generation != generation {
+			return
+		}
+		// not actionable: the grant is revoked either way, and a failure to
+		// tell the presenter is the stream failing.
+		_ = w.refuse(UnauthorizedSessionErrorCode, "grant expired")
+	})
 }
 
 // Refuse refuses the token, or revokes its grant, with a session error code
@@ -201,7 +256,7 @@ func (w *AuthWriter) refuse(code SessionErrorCode, reason string) error {
 	if w.stream == nil {
 		return nil
 	}
-	err := message.AuthErrorMessage{Code: uint64(code), Reason: reason}.Encode(w.stream)
+	err := message.AuthErrorMessage{Code: uint64(code), Reason: authReason(reason)}.Encode(w.stream)
 	_ = w.stream.Close() // not actionable: the stream is done either way
 	if err != nil {
 		return fmt.Errorf("moqt: send AUTH_ERROR: %w", err)
@@ -219,9 +274,28 @@ func (w *AuthWriter) finish() {
 	}
 }
 
+// authReason makes reason fit AUTH_ERROR, so a refusal always carries its
+// code: invalid UTF-8 is replaced, and a reason too long is cut at a
+// character boundary.
+func authReason(reason string) string {
+	reason = strings.ToValidUTF8(reason, "�")
+	if len(reason) <= message.MaxAuthReasonLength {
+		return reason
+	}
+	cut := message.MaxAuthReasonLength
+	for cut > 0 && !utf8.RuneStart(reason[cut]) {
+		cut--
+	}
+	return reason[:cut]
+}
+
 // end removes the grant from the scope. Caller MUST hold w.mu.
 func (w *AuthWriter) end() {
 	w.ended = true
+	if w.expiry != nil {
+		w.expiry.Stop()
+		w.expiry = nil
+	}
 	w.scope.remove(w)
 }
 
@@ -263,10 +337,14 @@ func newAuthScope(changed func()) *authScope {
 
 func (s *authScope) set(w *AuthWriter, g Grant) {
 	s.mu.Lock()
+	old, had := s.grants[w]
 	s.grants[w] = g
 	s.mu.Unlock()
 	s.answered(w)
-	s.changed()
+	// A grant sent again to extend it changes nothing.
+	if !had || !old.samePatterns(g) {
+		s.changed()
+	}
 }
 
 func (s *authScope) remove(w *AuthWriter) {
@@ -404,7 +482,7 @@ func (ag *AuthGrant) readReplies(violation func(string)) {
 			case isProtocolViolation(err):
 				violation(err.Error())
 			}
-			cancelStreamWithError(ag.stream, transport.StreamErrorCode(SubscribeErrorCodeInternal))
+			cancelStreamWithError(ag.stream, authStreamCancelled)
 			return
 		}
 		ag.mu.Lock()
@@ -497,9 +575,11 @@ func (sess *Session) Auth(ctx context.Context, token []byte) (*AuthGrant, error)
 		return nil, fmt.Errorf("failed to encode AUTH message: %w", err)
 	}
 
-	abandoned := abandonOnDone(ctx, stream)
+	stop := context.AfterFunc(ctx, func() {
+		cancelStreamWithError(stream, authStreamCancelled)
+	})
 	g, err := readAuthReply(stream)
-	if abandoned() {
+	if !stop() {
 		return nil, abandonedErr("auth", ctx)
 	}
 	if err != nil {
@@ -585,8 +665,37 @@ func (sess *Session) mayServe(path BroadcastPath) bool {
 	return sess.scope.wait(sess.ctx) && sess.scope.canSubscribe(path)
 }
 
+// servedFetch is a FETCH being served on stream for path.
+type servedFetch struct {
+	path   BroadcastPath
+	stream transport.Stream
+}
+
+// requestRescope asks rescopeLoop to apply a change of the scope. It never
+// blocks: changes made while a pass runs are applied by one more pass.
+func (sess *Session) requestRescope() {
+	select {
+	case sess.rescopeCh <- struct{}{}:
+	default:
+	}
+}
+
+// rescopeLoop applies scope changes one pass at a time until the session
+// ends, so a grant or refusal never waits on a slow peer stream, and two
+// passes never interleave.
+func (sess *Session) rescopeLoop() {
+	for {
+		select {
+		case <-sess.rescopeCh:
+			sess.rescope()
+		case <-sess.ctx.Done():
+			return
+		}
+	}
+}
+
 // rescope applies a change of the peer's scope: it cancels each subscription
-// the scope no longer covers with UNAUTHORIZED, and re-filters the
+// and fetch the scope no longer covers with UNAUTHORIZED, and re-filters the
 // announcements on every scoped announce stream.
 func (sess *Session) rescope() {
 	sess.trackWriterMapLocker.RLock()
@@ -603,6 +712,11 @@ func (sess *Session) rescope() {
 	}
 
 	sess.scopedMu.Lock()
+	for f := range sess.fetches {
+		if !sess.scope.canSubscribe(f.path) {
+			cancelStreamWithError(f.stream, transport.StreamErrorCode(FetchErrorCodeUnauthorized))
+		}
+	}
 	writers := make([]*AnnouncementWriter, 0, len(sess.announceWriters))
 	for aw := range sess.announceWriters {
 		writers = append(writers, aw)

@@ -34,25 +34,33 @@ var (
 	ErrAuthEnded = errors.New("moqt: auth ended")
 )
 
-// Grant is what an acceptor allows for one token: the broadcast paths the
-// presenter may publish to it and subscribe to from it, as path patterns
-// relative to the session.
+// Grant is what an acceptor allows for one token: a root, the directory of
+// broadcast paths it applies to, and beneath it the paths the presenter may
+// publish to the acceptor and subscribe to from it.
 //
-// A pattern matches broadcast paths the way an http.ServeMux pattern matches
-// URL paths, and the way Session.AcceptAnnounce reads paths and prefixes:
-// "/room/1/alice" matches that path alone, a pattern ending in "/", such as
-// "/room/1/", matches every path beneath it, and "/" matches every path. A
-// segment may be a wildcard. "{name}" matches any one non-empty segment, so
-// "/room/{id}/host" matches "/room/1/host". "{name...}" as the last segment
+// Root is a prefix of broadcast paths relative to the session, such as
+// "/room/1/". The presenter may request announcements for a prefix only when
+// the prefix lies within the root of a grant in force, as a directory is
+// listed only by one who may read it. A grant with an empty Root grants
+// nothing.
+//
+// Publish and Subscribe are path patterns relative to Root: with Root
+// "/room/1/", "/alice" is "/room/1/alice". A pattern matches broadcast paths
+// the way an http.ServeMux pattern matches URL paths, and the way
+// Session.AcceptAnnounce reads paths and prefixes: "/alice" matches that path
+// alone, a pattern ending in "/" matches every path beneath it, and "/"
+// matches every path beneath the root. A segment may be a wildcard. "{name}" matches any one non-empty segment, so
+// "/{user}/audio" matches "/alice/audio". "{name...}" as the last segment
 // matches the rest of the path, even an empty rest, and "{$}" as the last
 // segment matches only the "/" before it. A name is letters, digits and "_",
 // not starting with a digit, as in net/http, and unique within a pattern. An
 // empty segment, as in "/room//x", is a literal one.
 type Grant struct {
+	// Root is the directory the grant applies to, ending in "/".
+	Root string
 	// Publish matches the paths the presenter may announce and serve.
 	Publish []string
-	// Subscribe matches the paths the presenter may subscribe to, fetch, and
-	// discover through announcements.
+	// Subscribe matches the paths the presenter may subscribe to and fetch.
 	Subscribe []string
 	// MaxAge is how long the grant lasts, or 0 for no limit. It tells the
 	// presenter when to present a replacement token, at millisecond precision.
@@ -63,6 +71,7 @@ type Grant struct {
 
 func (g Grant) message() message.AuthOkMessage {
 	m := message.AuthOkMessage{
+		Root:              g.Root,
 		PublishPatterns:   g.Publish,
 		SubscribePatterns: g.Subscribe,
 		Expires:           uint64(g.MaxAge.Milliseconds()),
@@ -76,6 +85,7 @@ func (g Grant) message() message.AuthOkMessage {
 
 func grantFromMessage(m message.AuthOkMessage) (Grant, error) {
 	g := Grant{
+		Root:      m.Root,
 		Publish:   m.PublishPatterns,
 		Subscribe: m.SubscribePatterns,
 		MaxAge:    time.Duration(m.Expires) * time.Millisecond,
@@ -90,36 +100,52 @@ func grantFromMessage(m message.AuthOkMessage) (Grant, error) {
 	return g, nil
 }
 
-// scopeGrant is a grant's patterns parsed, as a session's scope holds them.
-// It shares nothing with the Grant, so the caller may reuse its slices.
+// scopeGrant is a grant parsed, as a session's scope holds it: its root, and
+// its patterns joined to the root. It shares nothing with the Grant, so the
+// caller may reuse its slices.
 type scopeGrant struct {
+	root               prefix
 	publish, subscribe []pathPattern
 }
 
-// samePatterns reports whether g and h hold the same patterns.
-func (g scopeGrant) samePatterns(h scopeGrant) bool {
+// sameScope reports whether g and h allow the same, whatever their max age.
+func (g scopeGrant) sameScope(h scopeGrant) bool {
 	same := func(p, q pathPattern) bool { return p.raw == q.raw }
-	return slices.EqualFunc(g.publish, h.publish, same) && slices.EqualFunc(g.subscribe, h.subscribe, same)
+	return g.root == h.root &&
+		slices.EqualFunc(g.publish, h.publish, same) && slices.EqualFunc(g.subscribe, h.subscribe, same)
 }
 
-// parseGrant parses g's patterns, reporting ErrInvalidPathPattern for one
-// that is not a pattern.
+// parseGrant parses g, reporting ErrInvalidPathPattern for a root that is not
+// a prefix, or a pattern that is not one.
 func parseGrant(g Grant) (scopeGrant, error) {
-	publish, err := parsePatterns(g.Publish)
+	if g.Root == "" {
+		if len(g.Publish) > 0 || len(g.Subscribe) > 0 {
+			return scopeGrant{}, fmt.Errorf("%w: patterns without a root", ErrInvalidPathPattern)
+		}
+		return scopeGrant{}, nil
+	}
+	if !isValidPrefix(g.Root) || strings.ContainsAny(g.Root, "{}") {
+		return scopeGrant{}, fmt.Errorf("%w: root %q", ErrInvalidPathPattern, g.Root)
+	}
+	publish, err := parsePatterns(g.Root, g.Publish)
 	if err != nil {
 		return scopeGrant{}, err
 	}
-	subscribe, err := parsePatterns(g.Subscribe)
+	subscribe, err := parsePatterns(g.Root, g.Subscribe)
 	if err != nil {
 		return scopeGrant{}, err
 	}
-	return scopeGrant{publish: publish, subscribe: subscribe}, nil
+	return scopeGrant{root: g.Root, publish: publish, subscribe: subscribe}, nil
 }
 
-func parsePatterns(ss []string) ([]pathPattern, error) {
+// parsePatterns parses each of ss joined to root.
+func parsePatterns(root prefix, ss []string) ([]pathPattern, error) {
 	patterns := make([]pathPattern, len(ss))
 	for i, s := range ss {
-		p, err := parsePathPattern(s)
+		if !strings.HasPrefix(s, "/") {
+			return nil, fmt.Errorf("%w: %q", ErrInvalidPathPattern, s)
+		}
+		p, err := parsePathPattern(strings.TrimSuffix(root, "/") + s)
 		if err != nil {
 			return nil, err
 		}
@@ -371,7 +397,7 @@ func (s *authScope) set(w *AuthWriter, g scopeGrant) {
 	s.mu.Unlock()
 	s.answered(w)
 	// A grant sent again to extend it changes nothing.
-	if !had || !old.samePatterns(g) {
+	if !had || !old.sameScope(g) {
 		s.changed()
 	}
 }
@@ -405,6 +431,22 @@ func (s *authScope) wait(ctx context.Context) bool {
 	case <-ctx.Done():
 		return false
 	}
+}
+
+// canList reports whether pfx lies within the root of a grant in force, so
+// the peer may request announcements for it. A nil scope enforces nothing.
+func (s *authScope) canList(pfx prefix) bool {
+	if s == nil {
+		return true
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, g := range s.grants {
+		if g.root != "" && strings.HasPrefix(pfx, g.root) {
+			return true
+		}
+	}
+	return false
 }
 
 // canPublish reports whether a grant in force lets the peer publish path. A
@@ -726,8 +768,9 @@ func (sess *Session) rescopeLoop() {
 }
 
 // rescope applies a change of the peer's scope: it cancels each subscription
-// and fetch the scope no longer covers with UNAUTHORIZED, and re-filters the
-// announcements on every scoped announce stream.
+// and fetch the scope no longer covers, and each announce stream whose prefix
+// no longer lies within a root, with UNAUTHORIZED, and re-filters the
+// announcements the peer publishes.
 func (sess *Session) rescope() {
 	sess.trackWriterMapLocker.RLock()
 	var revoked []*TrackWriter
@@ -748,9 +791,11 @@ func (sess *Session) rescope() {
 			cancelStreamWithError(stream, transport.StreamErrorCode(FetchErrorCodeUnauthorized))
 		}
 	}
-	writers := make([]*AnnouncementWriter, 0, len(sess.announceWriters))
+	var unlisted []*AnnouncementWriter
 	for aw := range sess.announceWriters {
-		writers = append(writers, aw)
+		if !sess.scope.canList(aw.prefix) {
+			unlisted = append(unlisted, aw)
+		}
 	}
 	readers := make([]*AnnouncementReader, 0, len(sess.announceReaders))
 	for ar := range sess.announceReaders {
@@ -758,8 +803,8 @@ func (sess *Session) rescope() {
 	}
 	sess.scopedMu.Unlock()
 
-	for _, aw := range writers {
-		aw.rescope()
+	for _, aw := range unlisted {
+		_ = aw.CloseWithError(AnnounceErrorCodeUnauthorized) // not actionable: it only resets the stream
 	}
 	for _, ar := range readers {
 		ar.rescope()

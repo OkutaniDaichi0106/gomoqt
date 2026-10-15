@@ -33,14 +33,14 @@ var roomTicketHandler = AuthHandlerFunc(func(w *AuthWriter, r *AuthRequest) {
 	switch string(r.Token) {
 	case "":
 		if u, err := url.Parse(r.RequestURI); err == nil && u.Query().Has("admin") {
-			g.Subscribe = []string{"/"}
+			g = Grant{Root: "/", Subscribe: []string{"/"}}
 		}
 	case "room1":
-		g.Subscribe = []string{"/room/1/"}
+		g = Grant{Root: "/room/1/", Subscribe: []string{"/"}}
 	case "room2":
-		g.Subscribe = []string{"/room/2/"}
+		g = Grant{Root: "/room/2/", Subscribe: []string{"/"}}
 	case "publish":
-		g.Publish = []string{"/room/1/"}
+		g = Grant{Root: "/room/1/", Publish: []string{"/"}}
 	default:
 		_ = w.Refuse(UnauthorizedSessionErrorCode, "unknown ticket")
 		return
@@ -161,8 +161,8 @@ func TestSession_Auth(t *testing.T) {
 		defer func() { _ = cred.Close() }() // not actionable: the test is over
 
 		g := cred.Grant()
-		require.Len(t, g.Subscribe, 1)
-		assert.Equal(t, "/room/1/", g.Subscribe[0])
+		assert.Equal(t, "/room/1/", g.Root)
+		assert.Equal(t, []string{"/"}, g.Subscribe)
 		assert.Empty(t, g.Publish)
 		assert.Zero(t, g.MaxAge)
 	})
@@ -194,7 +194,7 @@ func TestCredential_Grant_Regrant(t *testing.T) {
 			<-r.Context().Done()
 			return
 		}
-		if err := w.Grant(Grant{Subscribe: []string{"/room/1/"}}); err != nil {
+		if err := w.Grant(Grant{Root: "/room/1/", Subscribe: []string{"/"}}); err != nil {
 			return
 		}
 		select {
@@ -202,7 +202,7 @@ func TestCredential_Grant_Regrant(t *testing.T) {
 		case <-r.Context().Done():
 			return
 		}
-		if err := w.Grant(Grant{Subscribe: []string{"/room/2/"}}); err != nil {
+		if err := w.Grant(Grant{Root: "/room/2/", Subscribe: []string{"/"}}); err != nil {
 			return
 		}
 		<-r.Context().Done()
@@ -217,7 +217,7 @@ func TestCredential_Grant_Regrant(t *testing.T) {
 
 	assert.Eventually(t, func() bool {
 		g := cred.Grant()
-		return len(g.Subscribe) == 1 && g.Subscribe[0] == "/room/2/"
+		return g.Root == "/room/2/"
 	}, 5*time.Second, 10*time.Millisecond, "a further AUTH_OK replaces the grant")
 }
 
@@ -366,7 +366,7 @@ func TestSession_Auth_RefusalAfterGrantRevokes(t *testing.T) {
 			<-r.Context().Done()
 			return
 		}
-		_ = w.Grant(Grant{Subscribe: []string{"/room/1/"}})
+		_ = w.Grant(Grant{Root: "/room/1/", Subscribe: []string{"/"}})
 		select {
 		case <-revoke:
 			_ = w.Refuse(UnauthorizedSessionErrorCode, "key retired")
@@ -395,14 +395,14 @@ func TestSession_Auth_RefusalAfterGrantRevokes(t *testing.T) {
 	assert.NoError(t, sess.Context().Err())
 }
 
-func TestSession_AcceptAnnounce_PeerSeesOnlyItsScope(t *testing.T) {
+func TestSession_AcceptAnnounce_PrefixWithinRoot(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	addr := startAuthServer(t, ctx, roomTicketHandler, nil)
 	sess := dialAuth(t, ctx, "moqt://"+addr+"/app", nil)
 	cred, err := sess.Auth(ctx, []byte("room1"))
 	require.NoError(t, err)
-	ar, err := sess.AcceptAnnounce("/room/")
+	ar, err := sess.AcceptAnnounce("/room/1/")
 	require.NoError(t, err)
 	defer func() { _ = ar.Close() }() // not actionable: the test is over
 
@@ -412,19 +412,39 @@ func TestSession_AcceptAnnounce_PeerSeesOnlyItsScope(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, authRoom1Path, ann.BroadcastPath())
 
-	// Room 2 is never announced.
-	short, scancel := context.WithTimeout(ctx, 200*time.Millisecond)
-	defer scancel()
-	_, err = ar.ReceiveAnnouncement(short)
-	assert.ErrorIs(t, err, context.DeadlineExceeded)
-
-	// Withdrawing the ticket ends room 1's announcement.
+	// Withdrawing the ticket ends the stream, and with it room 1's announcement.
 	require.NoError(t, cred.Close())
 	select {
 	case <-ann.Done():
 	case <-ctx.Done():
 		t.Fatal("announcement did not end")
 	}
+	_, err = ar.ReceiveAnnouncement(actx)
+	var annErr *AnnounceError
+	require.ErrorAs(t, err, &annErr)
+	assert.Equal(t, AnnounceErrorCodeUnauthorized, annErr.AnnounceErrorCode())
+}
+
+func TestSession_AcceptAnnounce_PrefixOutsideRoots(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	addr := startAuthServer(t, ctx, roomTicketHandler, nil)
+	sess := dialAuth(t, ctx, "moqt://"+addr+"/app", nil)
+	cred, err := sess.Auth(ctx, []byte("room1"))
+	require.NoError(t, err)
+	defer func() { _ = cred.Close() }() // not actionable: the test is over
+
+	// "/room/" holds room 2 as well, outside the ticket's root.
+	ar, err := sess.AcceptAnnounce("/room/")
+	if err == nil {
+		actx, acancel := context.WithTimeout(ctx, 5*time.Second)
+		defer acancel()
+		_, err = ar.ReceiveAnnouncement(actx)
+	}
+
+	var annErr *AnnounceError
+	require.ErrorAs(t, err, &annErr)
+	assert.Equal(t, AnnounceErrorCodeUnauthorized, annErr.AnnounceErrorCode())
 }
 
 func TestSession_Announcements_PeerPublishesOnlyItsScope(t *testing.T) {
@@ -464,12 +484,12 @@ func TestSession_Announcements_PeerPublishesOnlyItsScope(t *testing.T) {
 }
 
 func TestCredential_Grant_Copy(t *testing.T) {
-	cred := &Credential{grant: Grant{Subscribe: []string{"/room/1/"}}}
+	cred := &Credential{grant: Grant{Root: "/room/1/", Subscribe: []string{"/"}}}
 
 	g := cred.Grant()
-	g.Subscribe[0] = "/"
+	g.Subscribe[0] = "/host"
 
-	assert.Equal(t, []string{"/room/1/"}, cred.Grant().Subscribe)
+	assert.Equal(t, []string{"/"}, cred.Grant().Subscribe)
 }
 
 func TestCredential_Context_HandlerReturns(t *testing.T) {
@@ -481,7 +501,7 @@ func TestCredential_Context_HandlerReturns(t *testing.T) {
 			return
 		}
 		// The grant ends as the handler returns.
-		_ = w.Grant(Grant{Subscribe: []string{"/room/1/"}})
+		_ = w.Grant(Grant{Root: "/room/1/", Subscribe: []string{"/"}})
 	})
 	addr := startAuthServer(t, ctx, handler, nil)
 	sess := dialAuth(t, ctx, "moqt://"+addr+"/app", nil)

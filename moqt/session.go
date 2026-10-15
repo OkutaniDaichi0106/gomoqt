@@ -929,12 +929,17 @@ func (sess *Session) handleAnnounceStream(stream transport.Stream) {
 	annstr := newAnnouncementWriter(stream, prefix, sess.mux.hopID, aim.ExcludeHop, sess.logger)
 
 	if sess.scope != nil {
-		// The peer discovers only what it may subscribe to.
+		// The peer lists only prefixes within the root of a grant.
 		if !sess.scope.wait(sess.ctx) {
 			return
 		}
-		annstr.allow = sess.scope.canSubscribe
 		defer addScoped(sess, sess.announceWriters, annstr, struct{}{})()
+		// A scope change between the check and addScoped would miss the
+		// writer, so the check follows addScoped.
+		if !sess.scope.canList(prefix) {
+			_ = annstr.CloseWithError(AnnounceErrorCodeUnauthorized) // not actionable: it only resets the stream
+			return
+		}
 	}
 
 	sess.mux.serveAnnouncements(annstr)

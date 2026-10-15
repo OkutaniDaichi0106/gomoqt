@@ -41,15 +41,8 @@ type AnnouncementWriter struct {
 	localHopID uint64 // this node's Hop ID to append when forwarding
 	excludeHop uint64 // skip announcements whose HopIDs contain this value
 
-	// allow, when set, reports whether the peer may see a broadcast path. An
-	// announcement it refuses is held back in hidden until rescope allows it.
-	allow func(BroadcastPath) bool
-
 	mu      sync.RWMutex
 	actives map[suffix]*activeAnnouncement
-	// hidden maps each held-back announcement to the stop of the watch that
-	// forgets it when it ends.
-	hidden map[*Announcement]func() bool
 
 	initDone chan struct{}
 	initOnce sync.Once
@@ -76,105 +69,6 @@ func (aw *AnnouncementWriter) shouldExclude(ann *Announcement) bool {
 		return true
 	}
 	return slices.Contains(ann.HopIDs(), aw.excludeHop)
-}
-
-// holdBack reports whether ann is outside what the peer may see, and if so
-// keeps it in hidden for a later rescope. An allowed announcement is dropped
-// from hidden.
-func (aw *AnnouncementWriter) holdBack(ann *Announcement) bool {
-	if aw.allow == nil {
-		return false
-	}
-	allowed := aw.allow(ann.BroadcastPath())
-
-	aw.mu.Lock()
-	defer aw.mu.Unlock()
-	stop, held := aw.hidden[ann]
-	if allowed {
-		if held {
-			stop()
-			delete(aw.hidden, ann)
-		}
-		return false
-	}
-	if !held {
-		aw.hideLocked(ann)
-	}
-	return true
-}
-
-// hideLocked keeps ann in hidden until a rescope shows it, and forgets it when it
-// ends. Caller MUST hold aw.mu.
-func (aw *AnnouncementWriter) hideLocked(ann *Announcement) {
-	if _, held := aw.hidden[ann]; held {
-		return
-	}
-	if aw.hidden == nil {
-		aw.hidden = make(map[*Announcement]func() bool)
-	}
-	aw.hidden[ann] = ann.AfterFunc(func() {
-		aw.mu.Lock()
-		defer aw.mu.Unlock()
-		delete(aw.hidden, ann)
-	})
-}
-
-// rescope re-applies allow after it changed: it ends each active announcement
-// the peer may no longer see, holding it back, and announces each held-back
-// one it now may.
-func (aw *AnnouncementWriter) rescope() {
-	if aw.allow == nil {
-		return
-	}
-	select {
-	case <-aw.initDone:
-	case <-aw.ctx.Done():
-		return
-	}
-
-	aw.mu.Lock()
-	var ends []func()
-	var withdrawn, shown []*Announcement
-	for sfx, active := range aw.actives {
-		if active.stop != nil && !aw.allow(active.announcement.BroadcastPath()) {
-			ends = append(ends, func() { aw.end(sfx, active) })
-			withdrawn = append(withdrawn, active.announcement)
-		}
-	}
-	for ann := range aw.hidden {
-		if aw.allow(ann.BroadcastPath()) {
-			shown = append(shown, ann)
-		}
-	}
-	aw.mu.Unlock()
-
-	// end takes aw.mu itself.
-	for _, end := range ends {
-		end()
-	}
-	// A withdrawn announcement is held back even if allow changed again since:
-	// the rescope that change triggered shows it then.
-	aw.mu.Lock()
-	for _, ann := range withdrawn {
-		if ann.IsActive() && aw.actives != nil {
-			aw.hideLocked(ann)
-		}
-	}
-	aw.mu.Unlock()
-	for _, ann := range shown {
-		if err := aw.SendAnnouncement(ann); err != nil {
-			aw.logError("failed to send a newly allowed announcement", err)
-			return
-		}
-	}
-}
-
-// dropHiddenLocked forgets every held-back announcement. Caller MUST hold aw.mu.
-func (aw *AnnouncementWriter) dropHiddenLocked() {
-	for _, stop := range aw.hidden {
-		stop()
-	}
-	aw.hidden = nil
 }
 
 // buildHopIDs returns the Hop ID list to encode in the outgoing
@@ -211,9 +105,6 @@ func (aw *AnnouncementWriter) init(announcements map[*Announcement]struct{}) err
 				continue
 			}
 			if aw.shouldExclude(ann) {
-				continue
-			}
-			if aw.holdBack(ann) {
 				continue
 			}
 			// Always replace with the latest active announcement for the suffix.
@@ -343,10 +234,6 @@ func (aw *AnnouncementWriter) SendAnnouncement(announcement *Announcement) error
 		return nil
 	}
 
-	if aw.holdBack(announcement) {
-		return nil
-	}
-
 	// Get suffix for this announcement
 	suffix, ok := announcement.BroadcastPath().GetSuffix(aw.prefix)
 	if !ok {
@@ -428,7 +315,6 @@ func (aw *AnnouncementWriter) stopAll() {
 		}
 	}
 	aw.actives = nil
-	aw.dropHiddenLocked()
 }
 
 // Context returns the AnnouncementWriter's context.

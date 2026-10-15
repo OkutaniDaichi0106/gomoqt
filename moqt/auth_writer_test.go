@@ -15,7 +15,7 @@ func TestAuthWriter_Grant_InvalidPattern(t *testing.T) {
 	scope := newAuthScope(func() {})
 	w := &AuthWriter{scope: scope}
 
-	err := w.Grant(Grant{Subscribe: []string{"/room/1/", "room"}})
+	err := w.Grant(Grant{Root: "/", Subscribe: []string{"/room/1/", "room"}})
 
 	assert.ErrorIs(t, err, ErrInvalidPathPattern)
 	assert.False(t, scope.canSubscribe("/room/1"), "the invalid grant is not applied")
@@ -25,7 +25,7 @@ func TestAuthWriter_Grant_ReusedSlice(t *testing.T) {
 	changes := 0
 	scope := newAuthScope(func() { changes++ })
 	w := &AuthWriter{scope: scope}
-	g := Grant{Subscribe: []string{"/room/1/"}}
+	g := Grant{Root: "/", Subscribe: []string{"/room/1/"}}
 	require.NoError(t, w.Grant(g))
 
 	g.Subscribe[0] = "/room/2/"
@@ -36,11 +36,71 @@ func TestAuthWriter_Grant_ReusedSlice(t *testing.T) {
 	assert.Equal(t, 2, changes, "editing the slice in place and granting again changes the scope")
 }
 
+func TestParseGrant(t *testing.T) {
+	tests := map[string]struct {
+		grant   Grant
+		wantErr bool
+	}{
+		"empty grants nothing":        {grant: Grant{}},
+		"root only":                   {grant: Grant{Root: "/room/1/"}},
+		"patterns under a root":       {grant: Grant{Root: "/room/1/", Subscribe: []string{"/"}, Publish: []string{"/{user}/audio"}}},
+		"patterns without a root":     {grant: Grant{Subscribe: []string{"/"}}, wantErr: true},
+		"root that is a path":         {grant: Grant{Root: "/room/1"}, wantErr: true},
+		"root with a wildcard":        {grant: Grant{Root: "/room/{id}/"}, wantErr: true},
+		"pattern without a slash":     {grant: Grant{Root: "/room/1/", Subscribe: []string{"host"}}, wantErr: true},
+		"pattern with a bad wildcard": {grant: Grant{Root: "/room/1/", Subscribe: []string{"/{a"}}, wantErr: true},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := parseGrant(tt.grant)
+
+			if tt.wantErr {
+				assert.ErrorIs(t, err, ErrInvalidPathPattern)
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}
+
+func TestParseGrant_PatternsJoinRoot(t *testing.T) {
+	g, err := parseGrant(Grant{Root: "/room/1/", Subscribe: []string{"/{user}/audio"}})
+	require.NoError(t, err)
+
+	assert.True(t, matchAny(g.subscribe, "/room/1/alice/audio"))
+	assert.False(t, matchAny(g.subscribe, "/room/2/alice/audio"))
+	assert.False(t, matchAny(g.subscribe, "/alice/audio"))
+}
+
+func TestAuthScope_canList(t *testing.T) {
+	scope := newAuthScope(func() {})
+	w := &AuthWriter{scope: scope}
+	require.NoError(t, w.Grant(Grant{Root: "/room/1/"}))
+
+	tests := map[string]struct {
+		prefix prefix
+		want   bool
+	}{
+		"the root":         {prefix: "/room/1/", want: true},
+		"beneath the root": {prefix: "/room/1/alice/", want: true},
+		"above the root":   {prefix: "/room/", want: false},
+		"another root":     {prefix: "/room/2/", want: false},
+		"a sibling path":   {prefix: "/room/10/", want: false},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tt.want, scope.canList(tt.prefix))
+		})
+	}
+}
+
 func TestAuthWriter_Grant_NegativeMaxAge(t *testing.T) {
 	scope := newAuthScope(func() {})
 	w := &AuthWriter{scope: scope}
 
-	err := w.Grant(Grant{Subscribe: []string{"/"}, MaxAge: -time.Second})
+	err := w.Grant(Grant{Root: "/", Subscribe: []string{"/"}, MaxAge: -time.Second})
 
 	assert.Error(t, err)
 	assert.False(t, scope.canSubscribe("/room/1"), "the invalid grant is not applied")
@@ -50,7 +110,7 @@ func TestAuthWriter_Grant_MaxAge(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		scope := newAuthScope(func() {})
 		w := &AuthWriter{scope: scope}
-		require.NoError(t, w.Grant(Grant{Subscribe: []string{"/"}, MaxAge: time.Second}))
+		require.NoError(t, w.Grant(Grant{Root: "/", Subscribe: []string{"/"}, MaxAge: time.Second}))
 
 		time.Sleep(2 * time.Second)
 		synctest.Wait()
@@ -64,7 +124,7 @@ func TestAuthWriter_Grant_RegrantExtends(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		scope := newAuthScope(func() {})
 		w := &AuthWriter{scope: scope}
-		g := Grant{Subscribe: []string{"/"}, MaxAge: time.Second}
+		g := Grant{Root: "/", Subscribe: []string{"/"}, MaxAge: time.Second}
 		require.NoError(t, w.Grant(g))
 
 		time.Sleep(700 * time.Millisecond)
@@ -80,9 +140,9 @@ func TestAuthScope_set_SamePatterns(t *testing.T) {
 	changes := 0
 	scope := newAuthScope(func() { changes++ })
 	w := &AuthWriter{scope: scope}
-	g, err := parseGrant(Grant{Subscribe: []string{"/room/1/"}})
+	g, err := parseGrant(Grant{Root: "/", Subscribe: []string{"/room/1/"}})
 	require.NoError(t, err)
-	again, err := parseGrant(Grant{Subscribe: []string{"/room/1/"}, MaxAge: time.Minute})
+	again, err := parseGrant(Grant{Root: "/", Subscribe: []string{"/room/1/"}, MaxAge: time.Minute})
 	require.NoError(t, err)
 
 	scope.set(w, g)

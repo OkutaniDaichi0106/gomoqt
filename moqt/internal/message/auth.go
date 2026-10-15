@@ -73,6 +73,7 @@ func (am *AuthMessage) Decode(src io.Reader) error {
  *	AUTH_OK Message {
  *	  Type (i) = 0x0
  *	  Message Length (i)
+ *	  Root (s)
  *	  Publish Count (i)
  *	  Publish Pattern (s) ...
  *	  Subscribe Count (i)
@@ -81,6 +82,7 @@ func (am *AuthMessage) Decode(src io.Reader) error {
  *	}
  */
 type AuthOkMessage struct {
+	Root              string
 	PublishPatterns   []string
 	SubscribePatterns []string
 	// Expires is the number of milliseconds until the grant lapses, or 0 for
@@ -89,7 +91,7 @@ type AuthOkMessage struct {
 }
 
 func (aom AuthOkMessage) Len() int {
-	return StringArrayLen(aom.PublishPatterns) + StringArrayLen(aom.SubscribePatterns) + VarintLen(aom.Expires)
+	return StringLen(aom.Root) + StringArrayLen(aom.PublishPatterns) + StringArrayLen(aom.SubscribePatterns) + VarintLen(aom.Expires)
 }
 
 // Encode writes the message with its leading Type.
@@ -99,6 +101,7 @@ func (aom AuthOkMessage) Encode(w io.Writer) error {
 
 	b, _ = WriteVarint(b, uint64(AuthReplyOK))
 	b, _ = WriteMessageLength(b, uint64(msgLen))
+	b, _ = WriteString(b, aom.Root)
 	b, _ = WriteStringArray(b, aom.PublishPatterns)
 	b, _ = WriteStringArray(b, aom.SubscribePatterns)
 	b, _ = WriteVarint(b, aom.Expires)
@@ -113,6 +116,13 @@ func (aom *AuthOkMessage) Decode(src io.Reader) error {
 	if err != nil {
 		return err
 	}
+
+	root, n, err := ReadString(b)
+	if err != nil {
+		return err
+	}
+	aom.Root = root
+	b = b[n:]
 
 	publish, n, err := ReadStringArray(b)
 	if err != nil {

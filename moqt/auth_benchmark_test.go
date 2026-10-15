@@ -1,7 +1,6 @@
 package moqt
 
 import (
-	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -62,7 +61,7 @@ func benchScope(b *testing.B, grants int, pattern func(i int) string) *authScope
 	scope := newAuthScope(func() {})
 	for i := range grants {
 		w := &AuthWriter{scope: scope}
-		if err := w.Grant(Grant{Subscribe: []string{pattern(i)}}); err != nil {
+		if err := w.Grant(Grant{Root: "/", Subscribe: []string{pattern(i)}}); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -124,13 +123,13 @@ func BenchmarkAuthWriter_Grant(b *testing.B) {
 	}{
 		{
 			"prefix",
-			Grant{Subscribe: []string{"/room/123/"}, Publish: []string{"/room/123/alice"}},
-			Grant{Subscribe: []string{"/room/124/"}, Publish: []string{"/room/124/alice"}},
+			Grant{Root: "/", Subscribe: []string{"/room/123/"}, Publish: []string{"/room/123/alice"}},
+			Grant{Root: "/", Subscribe: []string{"/room/124/"}, Publish: []string{"/room/124/alice"}},
 		},
 		{
 			"wildcard",
-			Grant{Subscribe: []string{"/room/{id}/host"}, Publish: []string{"/room/{id}/{rest...}"}},
-			Grant{Subscribe: []string{"/room/{id}/guest"}, Publish: []string{"/room/{id}/{tail...}"}},
+			Grant{Root: "/", Subscribe: []string{"/room/{id}/host"}, Publish: []string{"/room/{id}/{rest...}"}},
+			Grant{Root: "/", Subscribe: []string{"/room/{id}/guest"}, Publish: []string{"/room/{id}/{tail...}"}},
 		},
 	}
 	for _, gc := range grants {
@@ -161,44 +160,5 @@ func BenchmarkAuthWriter_Grant(b *testing.B) {
 			}
 			w.end()
 		})
-	}
-}
-
-// BenchmarkAnnouncementWriter_rescope measures a pass over an announce stream
-// after the scope changed in a way that changes nothing on it, as when a grant
-// for another room is added: each active announcement stays allowed and each
-// held-back one stays refused, so each is checked against every grant and
-// nothing is sent. The writer's state is set directly, as init and
-// SendAnnouncement would leave it, to keep the stream out of the measurement.
-func BenchmarkAnnouncementWriter_rescope(b *testing.B) {
-	for _, anns := range []int{10, 100, 1000} {
-		for _, grants := range []int{1, 10} {
-			b.Run(fmt.Sprintf("announcements=%d/grants=%d", anns, grants), func(b *testing.B) {
-				// Rooms 0..grants-1 are granted, and every announcement is under
-				// the last one, so each check scans every grant.
-				scope := benchScope(b, grants, roomPrefix)
-				aw := newAnnouncementWriter(&FakeQUICStream{}, "/", 0, 0, nil)
-				aw.allow = scope.canSubscribe
-				close(aw.initDone)
-				ctx, cancel := context.WithCancel(context.Background())
-				defer cancel()
-				aw.mu.Lock()
-				// Half are active and allowed, half held back and refused.
-				for i := range anns / 2 {
-					ann, _ := NewAnnouncement(ctx, BroadcastPath(fmt.Sprintf("/room/%d/user%d", grants-1, i)))
-					aw.actives[suffix(fmt.Sprintf("room/%d/user%d", grants-1, i))] = &activeAnnouncement{
-						announcement: ann,
-						stop:         func() bool { return true },
-					}
-					held, _ := NewAnnouncement(ctx, BroadcastPath(fmt.Sprintf("/lobby/user%d", i)))
-					aw.hideLocked(held)
-				}
-				aw.mu.Unlock()
-				b.ReportAllocs()
-				for b.Loop() {
-					aw.rescope()
-				}
-			})
-		}
 	}
 }

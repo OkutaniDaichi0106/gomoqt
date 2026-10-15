@@ -51,14 +51,16 @@ func TestAuthOkMessage_EncodeDecode(t *testing.T) {
 		},
 		"subscribe only, never expires": {
 			input: message.AuthOkMessage{
+				Root:              "/room/1/",
 				PublishPatterns:   []string{},
-				SubscribePatterns: []string{"/room/1/"},
+				SubscribePatterns: []string{"/"},
 			},
 		},
 		"both, with expiry": {
 			input: message.AuthOkMessage{
-				PublishPatterns:   []string{"/room/1/alice"},
-				SubscribePatterns: []string{"/room/1/", "/lobby"},
+				Root:              "/room/1/",
+				PublishPatterns:   []string{"/alice"},
+				SubscribePatterns: []string{"/", "/{user}/audio"},
 				Expires:           60_000,
 			},
 		},

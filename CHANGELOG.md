@@ -7,9 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.25.1] - 2026-10-16
+
+> **Go only.** `@qumo/moq` stays at `0.25.0`: nothing on the wire changes. It exports the path patterns a `Grant` is read with, for an application that grants by the same rules outside MoQ, and documents what `WebTransportHandler.CheckOrigin` decides.
+
 ### Added
 
 - **Path patterns are exported (`moqt`).** `ParsePathPattern` parses an absolute pattern and `ParseGrantPattern` one relative to a root, as a `Grant` reads them; `PathPattern.Match` reports whether a broadcast path is in it. `Grant.Validate` makes the one check `AuthWriter.Grant` makes, its size for one AUTH_OK included; its error wraps `ErrInvalidPathPattern` for the root or a pattern, and the new `ErrInvalidGrant` otherwise. `Match` compares segments as written, so a caller matching a path from a URL passes one with no `.` or `..` segment. An application that grants by the same rules elsewhere, such as an HTTP endpoint beside a relay, matches with these instead of a copy of the syntax.
+
+### Changed
+
+- **`WebTransportHandler.CheckOrigin` says what it decides (`moqt`, docs).** Browsers apply no CORS to WebTransport, so it decides which pages may open sessions. Nil accepts a request with no Origin, and one whose Origin host, port as written, equals the request's Host; it is not called when `UpgradeFunc` is set; with `Server`, set it on a handler passed through `Server.WebTransportServer`.
 
 ## [v0.25.0] - 2026-10-16
 

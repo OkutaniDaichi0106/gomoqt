@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.26.0] - 2026-10-17
+
+> **Dual release.** `v0.26.0` ships the Go module and `@qumo/moq` on JSR at the same version (`@qumo/moq` 0.25.0 → 0.26.0). An MSF catalog subscription now stays open and gets each change; a subscriber that waits for the catalog track to end now waits for the broadcast to end.
+
 ### Added
 
 - **`msf.Broadcast.Close` ends a broadcast (`msf`).** It ends every catalog subscription after sending any pending change and closes the registered tracks; a catalog subscription made after `Close` gets the catalog once and ends. `close()` on `@qumo/moq/msf`'s `Broadcast` now does the same.

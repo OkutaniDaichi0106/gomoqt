@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Path patterns are exported (`moqt`).** `ParsePathPattern` parses an absolute pattern and `ParseGrantPattern` one relative to a root, as a `Grant` reads them; `PathPattern.Match` reports whether a broadcast path is in it. `Grant.Validate` checks a grant as `AuthWriter.Grant` would. An application that grants by the same rules elsewhere, such as an HTTP endpoint beside a relay, matches with these instead of a copy of the syntax.
+- **Path patterns are exported (`moqt`).** `ParsePathPattern` parses an absolute pattern and `ParseGrantPattern` one relative to a root, as a `Grant` reads them; `PathPattern.Match` reports whether a broadcast path is in it. `Grant.Validate` makes the one check `AuthWriter.Grant` makes, its size for one AUTH_OK included; its error wraps `ErrInvalidPathPattern` for the root or a pattern, and the new `ErrInvalidGrant` otherwise. `Match` compares segments as written, so a caller matching a path from a URL passes one with no `.` or `..` segment. An application that grants by the same rules elsewhere, such as an HTTP endpoint beside a relay, matches with these instead of a copy of the syntax.
 
 ## [v0.25.0] - 2026-10-16
 

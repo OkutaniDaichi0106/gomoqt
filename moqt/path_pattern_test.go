@@ -1,7 +1,9 @@
 package moqt
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -149,6 +151,8 @@ func TestGrant_Validate(t *testing.T) {
 		"a root that is no prefix": {grant: Grant{Root: "/room"}, wantErr: true},
 		"a malformed pattern":      {grant: Grant{Root: "/", Publish: []string{"x"}}, wantErr: true},
 		"a negative max age":       {grant: Grant{MaxAge: -1}, wantErr: true},
+		"a max age":                {grant: Grant{Root: "/", Subscribe: []string{"/"}, MaxAge: time.Minute}},
+		"too large for AUTH_OK":    {grant: Grant{Root: "/", Subscribe: manyPatterns(20000)}, wantErr: true},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -157,4 +161,19 @@ func TestGrant_Validate(t *testing.T) {
 			assert.Equal(t, tt.wantErr, err != nil, "%v", err)
 		})
 	}
+}
+
+func TestGrant_Validate_Errors(t *testing.T) {
+	assert.ErrorIs(t, Grant{Root: "/room"}.Validate(), ErrInvalidPathPattern, "a root that is no prefix")
+	assert.ErrorIs(t, Grant{MaxAge: -1}.Validate(), ErrInvalidGrant)
+	assert.ErrorIs(t, Grant{Root: "/", Subscribe: manyPatterns(20000)}.Validate(), ErrInvalidGrant)
+}
+
+// manyPatterns returns n distinct patterns.
+func manyPatterns(n int) []string {
+	patterns := make([]string, n)
+	for i := range patterns {
+		patterns[i] = fmt.Sprintf("/broadcast-%d", i)
+	}
+	return patterns
 }

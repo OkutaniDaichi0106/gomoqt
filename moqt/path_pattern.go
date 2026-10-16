@@ -125,8 +125,11 @@ func isWildcardName(s string) bool {
 	return true
 }
 
-// Match reports whether path is in the pattern's set. The zero PathPattern
-// matches nothing.
+// Match reports whether path is in the pattern's set, comparing segments as
+// written, as a session does: "/room/1/../2" is a path beneath "/room/1/",
+// not "/room/2". A caller matching a path from elsewhere, such as a URL,
+// passes it as the broadcast path it names, with no "." or ".." segment for
+// anything downstream to resolve. The zero PathPattern matches nothing.
 func (p PathPattern) Match(path BroadcastPath) bool {
 	if p.segs != nil {
 		return p.matchSegments(path)
@@ -180,8 +183,22 @@ func (p PathPattern) String() string {
 // are read: with root "/room/1/", "/alice" is "/room/1/alice". root must be a
 // prefix, ending in "/", and pattern start with "/".
 func ParseGrantPattern(root, pattern string) (PathPattern, error) {
-	if !isValidPrefix(root) || strings.ContainsAny(root, "{}") || !strings.HasPrefix(pattern, "/") {
-		return PathPattern{}, fmt.Errorf("%w: %q under %q", ErrInvalidPathPattern, pattern, root)
+	if !isValidGrantRoot(root) {
+		return PathPattern{}, fmt.Errorf("%w: root %q", ErrInvalidPathPattern, root)
+	}
+	return joinPattern(root, pattern)
+}
+
+// isValidGrantRoot reports whether root may be a Grant's root: a prefix with
+// no wildcard.
+func isValidGrantRoot(root string) bool {
+	return isValidPrefix(root) && !strings.ContainsAny(root, "{}")
+}
+
+// joinPattern parses pattern relative to root, which the caller has checked.
+func joinPattern(root, pattern string) (PathPattern, error) {
+	if !strings.HasPrefix(pattern, "/") {
+		return PathPattern{}, fmt.Errorf("%w: %q", ErrInvalidPathPattern, pattern)
 	}
 	return ParsePathPattern(strings.TrimSuffix(root, "/") + pattern)
 }

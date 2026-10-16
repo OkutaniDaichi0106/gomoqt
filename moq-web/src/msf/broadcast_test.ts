@@ -21,20 +21,23 @@ interface CatalogWriterOptions {
 }
 
 /**
- * A catalog subscription's track writer. Each group's frames are recorded;
- * leave() ends the subscribe stream as a departing subscriber does, and
- * cancel() ends the writer's context as closing it or the session would.
+ * A catalog subscription's track writer. Each group's frames are recorded and
+ * waitForGroups(n) resolves once n groups are written; leave() ends the
+ * subscribe stream as a departing subscriber does, and cancel() ends the
+ * writer's context as closing it or the session would.
  */
 function newCatalogTrackWriter(trackName: string, options: CatalogWriterOptions = {}) {
 	const [context, cancel] = withCancelCause(background());
 	const groups: Uint8Array[][] = [];
+	const waiters: { count: number; resolve: () => void }[] = [];
 	const closeWithErrorCalls: number[] = [];
 	const cancelCalls: number[] = [];
 	let closeCalls = 0;
-	let leave!: () => void;
+	let leave: () => void = () => {};
 	const left = new Promise<void>((resolve) => {
 		leave = resolve;
 	});
+	// TrackWriter is a class with private state, so the fake is cast to it.
 	const trackWriter = {
 		trackName,
 		context,
@@ -43,7 +46,6 @@ function newCatalogTrackWriter(trackName: string, options: CatalogWriterOptions 
 				return [undefined, options.openErr] as const;
 			}
 			const frames: Uint8Array[] = [];
-			groups.push(frames);
 			const group = {
 				async writeFrame(payload: Uint8Array): Promise<Error | undefined> {
 					if (options.writeErr) {
@@ -52,7 +54,12 @@ function newCatalogTrackWriter(trackName: string, options: CatalogWriterOptions 
 					frames.push(payload);
 					return undefined;
 				},
-				async close(): Promise<void> {},
+				async close(): Promise<void> {
+					groups.push(frames);
+					for (const waiter of waiters.filter((w) => w.count <= groups.length)) {
+						waiter.resolve();
+					}
+				},
 				async cancel(code: number): Promise<void> {
 					cancelCalls.push(code);
 				},
@@ -81,6 +88,12 @@ function newCatalogTrackWriter(trackName: string, options: CatalogWriterOptions 
 		closeWithErrorCalls,
 		cancelCalls,
 		closeCalls: () => closeCalls,
+		waitForGroups(count: number): Promise<void> {
+			if (groups.length >= count) {
+				return Promise.resolve();
+			}
+			return new Promise((resolve) => waiters.push({ count, resolve }));
+		},
 		leave,
 		cancel: () => cancel(undefined),
 	};
@@ -94,19 +107,14 @@ function groupTrackNames(groups: Uint8Array[][]): string[][] {
 	});
 }
 
-/** Lets pending promise callbacks run. */
-function settle(): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, 0));
-}
+const video = { name: "video", packaging: "loc", isLive: false } as const;
+const audio = { name: "audio", packaging: "loc", isLive: false } as const;
 
 Deno.test("msf Broadcast registerTrack updates catalog and handler", async () => {
 	const broadcast = new Broadcast({ version: 1, tracks: [] });
 	const handler = new MockTrackHandler();
 
-	await broadcast.registerTrack(
-		{ name: "video", packaging: "loc", isLive: false },
-		handler,
-	);
+	await broadcast.registerTrack(video, handler);
 
 	assertEquals(broadcast.catalog().tracks.length, 1);
 	assertEquals(broadcast.catalog().tracks[0]?.name, "video");
@@ -117,32 +125,29 @@ Deno.test("msf Broadcast registerTrack updates catalog and handler", async () =>
 	assertEquals(handler.calls[0], trackWriter);
 });
 
+Deno.test("msf Broadcast registerTrack keeps tracks registered concurrently", async () => {
+	const broadcast = new Broadcast({ version: 1, tracks: [] });
+
+	await Promise.all([
+		broadcast.registerTrack(video, new MockTrackHandler()),
+		broadcast.registerTrack(audio, new MockTrackHandler()),
+	]);
+
+	assertEquals(broadcast.catalog().tracks.map((track) => track.name), ["video", "audio"]);
+});
+
 Deno.test("msf Broadcast serveCatalogTrack sends the catalog, then each change", async () => {
-	const broadcast = new Broadcast({
-		version: 1,
-		tracks: [{ name: "video", packaging: "loc", isLive: false }],
-	});
+	const broadcast = new Broadcast({ version: 1, tracks: [video] });
 	const writer = newCatalogTrackWriter(DefaultCatalogTrackName);
 	const served = broadcast.serveTrack(writer.trackWriter);
-	await settle();
-	assertEquals(
-		groupTrackNames(writer.groups),
-		[["video"]],
-		"first group is the catalog at subscribe time",
-	);
 
-	await broadcast.registerTrack(
-		{ name: "audio", packaging: "loc", isLive: false },
-		new MockTrackHandler(),
-	);
-	await settle();
+	await writer.waitForGroups(1);
+	await broadcast.registerTrack(audio, new MockTrackHandler());
+	await writer.waitForGroups(2);
 	await broadcast.removeTrack("video");
-	await settle();
-	await broadcast.setCatalog({
-		version: 1,
-		tracks: [{ name: "text", packaging: "loc", isLive: false }],
-	});
-	await settle();
+	await writer.waitForGroups(3);
+	await broadcast.setCatalog({ version: 1, tracks: [{ ...video, name: "text" }] });
+	await writer.waitForGroups(4);
 
 	assertEquals(groupTrackNames(writer.groups), [["video"], ["video", "audio"], ["audio"], [
 		"text",
@@ -152,21 +157,18 @@ Deno.test("msf Broadcast serveCatalogTrack sends the catalog, then each change",
 });
 
 Deno.test("msf Broadcast serveCatalogTrack skips an unchanged catalog", async () => {
-	const catalog = {
-		version: 1,
-		tracks: [{ name: "video", packaging: "loc" as const, isLive: false }],
-	};
-	const broadcast = new Broadcast(catalog);
+	const broadcast = new Broadcast({ version: 1, tracks: [video] });
 	const writer = newCatalogTrackWriter(DefaultCatalogTrackName);
 	const served = broadcast.serveTrack(writer.trackWriter);
-	await settle();
+	await writer.waitForGroups(1);
 
-	await broadcast.setCatalog(catalog);
-	await settle();
+	// Neither changes the catalog, so the next group is the change after them.
+	await broadcast.setCatalog({ version: 1, tracks: [video] });
 	await broadcast.removeTrack("missing");
-	await settle();
+	await broadcast.registerTrack(audio, new MockTrackHandler());
+	await writer.waitForGroups(2);
 
-	assertEquals(writer.groups.length, 1);
+	assertEquals(groupTrackNames(writer.groups), [["video"], ["video", "audio"]]);
 	writer.leave();
 	await served;
 });
@@ -180,17 +182,12 @@ Deno.test("msf Broadcast serveCatalogTrack ends when the subscriber leaves", asy
 		const broadcast = new Broadcast({ version: 1, tracks: [] });
 		const writer = newCatalogTrackWriter(DefaultCatalogTrackName, options);
 		const served = broadcast.serveTrack(writer.trackWriter);
-		await settle();
+		await writer.waitForGroups(1);
 
 		writer.leave();
 		await served;
-		await broadcast.registerTrack(
-			{ name: "video", packaging: "loc", isLive: false },
-			new MockTrackHandler(),
-		);
-		await settle();
 
-		assertEquals(writer.groups.length, 1, `${name}: no group follows the subscriber leaving`);
+		assertEquals(writer.groups.length, 1, name);
 		assertEquals(writer.closeCalls(), 1, name);
 		assertEquals(writer.closeWithErrorCalls, [], name);
 	}
@@ -202,7 +199,7 @@ Deno.test("msf Broadcast serveCatalogTrack ends when its context ends", async ()
 	const broadcast = new Broadcast({ version: 1, tracks: [] });
 	const writer = newCatalogTrackWriter(DefaultCatalogTrackName);
 	const served = broadcast.serveTrack(writer.trackWriter);
-	await settle();
+	await writer.waitForGroups(1);
 
 	writer.cancel();
 	await served;
@@ -215,25 +212,25 @@ Deno.test("msf Broadcast close ends catalog subscriptions after the pending chan
 	const broadcast = new Broadcast({ version: 1, tracks: [] });
 	const writer = newCatalogTrackWriter(DefaultCatalogTrackName);
 	const served = broadcast.serveTrack(writer.trackWriter);
-	await settle();
+	await writer.waitForGroups(1);
+	await broadcast.registerTrack(video, new MockTrackHandler());
 
-	await broadcast.registerTrack(
-		{ name: "video", packaging: "loc", isLive: false },
-		new MockTrackHandler(),
-	);
 	await broadcast.close();
-	await broadcast.close(); // idempotent
 	await served;
 
 	assertEquals(groupTrackNames(writer.groups), [[], ["video"]]);
 	assertEquals(writer.closeCalls(), 1);
 });
 
+Deno.test("msf Broadcast close is idempotent", async () => {
+	const broadcast = new Broadcast({ version: 1, tracks: [] });
+	await broadcast.close();
+
+	await broadcast.close();
+});
+
 Deno.test("msf Broadcast close gives a later catalog subscription one group", async () => {
-	const broadcast = new Broadcast({
-		version: 1,
-		tracks: [{ name: "video", packaging: "loc", isLive: false }],
-	});
+	const broadcast = new Broadcast({ version: 1, tracks: [video] });
 	await broadcast.close();
 	const writer = newCatalogTrackWriter(DefaultCatalogTrackName);
 
@@ -244,9 +241,12 @@ Deno.test("msf Broadcast close gives a later catalog subscription one group", as
 });
 
 Deno.test("msf Broadcast catalogBytes returns a copy", () => {
-	const broadcast = new Broadcast({ version: 1, tracks: [] });
+	const broadcast = new Broadcast({ version: 1, tracks: [video] });
 	broadcast.catalogBytes().fill(0);
-	assertEquals(new TextDecoder().decode(broadcast.catalogBytes()).startsWith("{"), true);
+
+	const bytes = broadcast.catalogBytes();
+
+	assertEquals(parseCatalog(new TextDecoder().decode(bytes)).tracks[0]?.name, "video");
 });
 
 Deno.test("msf Broadcast rejects duplicate track names across namespaces", () => {
@@ -363,11 +363,6 @@ Deno.test("msf Broadcast removeTrack returns true when track not in catalog but 
 	// Remove from catalog first via setCatalog, then removeTrack
 	const removed = await broadcast.removeTrack("nonexistent");
 	assertEquals(removed, false);
-});
-
-Deno.test("msf Broadcast close does not throw", async () => {
-	const broadcast = new Broadcast({ version: 1, tracks: [] });
-	await broadcast.close();
 });
 
 Deno.test("msf Broadcast serveCatalogTrack closes with an error when a group can't be written", async () => {

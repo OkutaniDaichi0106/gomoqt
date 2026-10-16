@@ -80,35 +80,22 @@ export class Broadcast implements TrackHandler {
 			throw new Error(`msf: \"${track.name}\" is reserved for the catalog track`);
 		}
 		const trackName = track.name;
-
 		const trackClone = cloneTrack(track);
-		const updated = cloneCatalog(this.#catalog);
-		const nextId = trackId(trackClone, updated.defaultNamespace);
 
-		let replaced = false;
-		for (let i = 0; i < updated.tracks.length; i++) {
-			const current = updated.tracks[i]!;
-			if (current.name !== trackClone.name) {
-				continue;
-			}
-			if (trackId(current, updated.defaultNamespace) !== nextId) {
-				throw new Error(
-					`msf: broadcast requires unique track names across namespaces; duplicate name ${
-						JSON.stringify(trackClone.name)
-					} found`,
-				);
-			}
-			updated.tracks[i] = trackClone;
-			replaced = true;
-			break;
-		}
-		if (!replaced) {
-			updated.tracks.push(trackClone);
-		}
-		validateCatalog(updated);
-		validateCatalogForBroadcast(updated, this.#catalogTrackName);
-
+		// Refuse a track the catalog can't take before registering its handler.
+		withTrack(this.#catalog, trackClone, this.#catalogTrackName);
 		await this.#tracks.register(trackName, handler);
+
+		// List the track only once its handler serves it, so a subscriber that
+		// reads it from the catalog finds it. The catalog is read again after
+		// the await: a change made meanwhile is kept, not overwritten.
+		let updated: Catalog;
+		try {
+			updated = withTrack(this.#catalog, trackClone, this.#catalogTrackName);
+		} catch (e) {
+			await this.#tracks.remove(trackName);
+			throw e;
+		}
 		this.#catalog = updated;
 		this.#catalogChanged();
 	}
@@ -211,12 +198,12 @@ async function writeCatalogGroup(
 ): Promise<Error | undefined> {
 	const [group, openErr] = await trackWriter.openGroup();
 	if (openErr || !group) {
-		return new Error(`msf: open catalog group: ${openErr}`);
+		return new Error("msf: open catalog group", { cause: openErr });
 	}
 	const writeErr = await group.writeFrame(payload);
 	if (writeErr) {
 		await group.cancel(GroupErrorCode.InternalError);
-		return new Error(`msf: write catalog group: ${writeErr}`);
+		return new Error("msf: write catalog group", { cause: writeErr });
 	}
 	await group.close();
 	return undefined;
@@ -239,19 +226,23 @@ function subscriberGone(trackWriter: TrackWriter): Promise<void> {
 				}
 			}
 		} catch {
-			// A reset stream has ended too.
+			// reason: a read that throws means the stream was reset, which ends
+			// the subscription just as a closed stream does.
 		}
 	})();
 	return Promise.race([trackWriter.context.done(), streamEnded]).then(() => {});
 }
 
+/** A one-shot notification: promise settles once resolve is called. */
 interface Signal {
-	promise: Promise<void>;
-	resolve: () => void;
+	readonly promise: Promise<void>;
+	readonly resolve: () => void;
 }
 
 function newSignal(): Signal {
-	let resolve!: () => void;
+	// Promise.withResolvers would do, but Node 20, which this package supports,
+	// lacks it.
+	let resolve: () => void = () => {};
 	const promise = new Promise<void>((r) => {
 		resolve = r;
 	});
@@ -259,6 +250,9 @@ function newSignal(): Signal {
 }
 
 function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+	if (a === b) {
+		return true;
+	}
 	if (a.length !== b.length) {
 		return false;
 	}
@@ -268,6 +262,31 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
 		}
 	}
 	return true;
+}
+
+/**
+ * Returns a copy of catalog with track added, or replacing the track of the
+ * same name. Throws if the result is not a valid broadcast catalog.
+ */
+function withTrack(catalog: Catalog, track: Track, catalogTrackName: string): Catalog {
+	const updated = cloneCatalog(catalog);
+	const nextId = trackId(track, updated.defaultNamespace);
+	const index = updated.tracks.findIndex((current) => current.name === track.name);
+	const current = updated.tracks[index];
+	if (current === undefined) {
+		updated.tracks.push(track);
+	} else if (trackId(current, updated.defaultNamespace) !== nextId) {
+		throw new Error(
+			`msf: broadcast requires unique track names across namespaces; duplicate name ${
+				JSON.stringify(track.name)
+			} found`,
+		);
+	} else {
+		updated.tracks[index] = track;
+	}
+	validateCatalog(updated);
+	validateCatalogForBroadcast(updated, catalogTrackName);
+	return updated;
 }
 
 function staleTrackNamesFrom(previous: Catalog, next: Catalog): string[] {

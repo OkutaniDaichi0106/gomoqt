@@ -9,8 +9,8 @@
 //
 // Most of the package is transport-agnostic and can be used in pure
 // data-processing tools or tests. The optional Broadcast helper integrates an
-// MSF catalog snapshot with moqt.TrackHandler routing for publishers that want
-// a small in-memory track registry.
+// MSF catalog with moqt.TrackHandler routing for publishers that want a small
+// in-memory track registry, and sends each catalog change to its subscribers.
 //
 // Most optional catalog fields use pointer types so that the distinction
 // between "field absent" and "field present with zero value" is preserved

@@ -23,7 +23,7 @@ func BenchmarkParsePathPattern(b *testing.B) {
 		b.Run(bp.name, func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
-				if _, err := parsePathPattern(bp.pattern); err != nil {
+				if _, err := ParsePathPattern(bp.pattern); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -33,7 +33,7 @@ func BenchmarkParsePathPattern(b *testing.B) {
 
 func BenchmarkPathPattern_match(b *testing.B) {
 	for _, bp := range benchPatterns {
-		p, err := parsePathPattern(bp.pattern)
+		p, err := ParsePathPattern(bp.pattern)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -45,7 +45,7 @@ func BenchmarkPathPattern_match(b *testing.B) {
 			b.Run(bp.name+"/"+c.name, func(b *testing.B) {
 				b.ReportAllocs()
 				for b.Loop() {
-					if p.match(c.path) != c.want {
+					if p.Match(c.path) != c.want {
 						b.Fatal("unexpected match result")
 					}
 				}

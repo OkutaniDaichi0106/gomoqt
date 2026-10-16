@@ -106,14 +106,25 @@ func grantFromMessage(m message.AuthOkMessage) (Grant, error) {
 // caller may reuse its slices.
 type scopeGrant struct {
 	root               prefix
-	publish, subscribe []pathPattern
+	publish, subscribe []PathPattern
 }
 
 // sameScope reports whether g and h allow the same, whatever their max age.
 func (g scopeGrant) sameScope(h scopeGrant) bool {
-	same := func(p, q pathPattern) bool { return p.raw == q.raw }
+	same := func(p, q PathPattern) bool { return p.raw == q.raw }
 	return g.root == h.root &&
 		slices.EqualFunc(g.publish, h.publish, same) && slices.EqualFunc(g.subscribe, h.subscribe, same)
+}
+
+// Validate reports whether g is a grant AuthWriter.Grant takes: a root that is
+// a prefix, or empty with no patterns, and patterns that parse beneath it. An
+// error wraps ErrInvalidPathPattern, or says MaxAge is negative.
+func (g Grant) Validate() error {
+	if g.MaxAge < 0 {
+		return fmt.Errorf("moqt: negative MaxAge %v", g.MaxAge)
+	}
+	_, err := parseGrant(g)
+	return err
 }
 
 // parseGrant parses g, reporting ErrInvalidPathPattern for a root that is not
@@ -140,13 +151,10 @@ func parseGrant(g Grant) (scopeGrant, error) {
 }
 
 // parsePatterns parses each of ss joined to root.
-func parsePatterns(root prefix, ss []string) ([]pathPattern, error) {
-	patterns := make([]pathPattern, len(ss))
+func parsePatterns(root prefix, ss []string) ([]PathPattern, error) {
+	patterns := make([]PathPattern, len(ss))
 	for i, s := range ss {
-		if !strings.HasPrefix(s, "/") {
-			return nil, fmt.Errorf("%w: %q", ErrInvalidPathPattern, s)
-		}
-		p, err := parsePathPattern(strings.TrimSuffix(root, "/") + s)
+		p, err := ParseGrantPattern(root, s)
 		if err != nil {
 			return nil, err
 		}
@@ -155,9 +163,9 @@ func parsePatterns(root prefix, ss []string) ([]pathPattern, error) {
 	return patterns, nil
 }
 
-func matchAny(patterns []pathPattern, path BroadcastPath) bool {
+func matchAny(patterns []PathPattern, path BroadcastPath) bool {
 	for _, p := range patterns {
-		if p.match(path) {
+		if p.Match(path) {
 			return true
 		}
 	}

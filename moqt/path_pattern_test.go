@@ -40,7 +40,7 @@ func TestParsePathPattern(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			p, err := parsePathPattern(tt.input)
+			p, err := ParsePathPattern(tt.input)
 			if tt.wantErr {
 				assert.ErrorIs(t, err, ErrInvalidPathPattern)
 				return
@@ -93,17 +93,68 @@ func TestPathPattern_match(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			p, err := parsePathPattern(tt.pattern)
+			p, err := ParsePathPattern(tt.pattern)
 			require.NoError(t, err)
 
-			assert.Equal(t, tt.want, p.match(tt.path))
+			assert.Equal(t, tt.want, p.Match(tt.path))
 		})
 	}
 }
 
-func TestPathPattern_match_ZeroValue(t *testing.T) {
-	var p pathPattern
+func TestPathPattern_Match_ZeroValue(t *testing.T) {
+	var p PathPattern
 
-	assert.False(t, p.match("/"))
-	assert.False(t, p.match("/room"))
+	assert.False(t, p.Match("/"))
+	assert.False(t, p.Match("/room"))
+}
+
+func TestParseGrantPattern(t *testing.T) {
+	tests := map[string]struct {
+		root, pattern string
+		want          string
+		wantErr       bool
+	}{
+		"a path beneath the root":  {root: "/room/1/", pattern: "/alice", want: "/room/1/alice"},
+		"everything beneath":       {root: "/room/1/", pattern: "/", want: "/room/1/"},
+		"a wildcard":               {root: "/room/", pattern: "/{id}/audio", want: "/room/{id}/audio"},
+		"the root /":               {root: "/", pattern: "/x", want: "/x"},
+		"a root not ending in /":   {root: "/room/1", pattern: "/alice", wantErr: true},
+		"a root with a wildcard":   {root: "/{room}/", pattern: "/alice", wantErr: true},
+		"a pattern not starting /": {root: "/room/1/", pattern: "alice", wantErr: true},
+		"an empty root":            {root: "", pattern: "/alice", wantErr: true},
+		"a malformed wildcard":     {root: "/room/", pattern: "/{id", wantErr: true},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			p, err := ParseGrantPattern(tt.root, tt.pattern)
+
+			if tt.wantErr {
+				assert.ErrorIs(t, err, ErrInvalidPathPattern)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, p.String())
+		})
+	}
+}
+
+func TestGrant_Validate(t *testing.T) {
+	tests := map[string]struct {
+		grant   Grant
+		wantErr bool
+	}{
+		"a root with patterns":     {grant: Grant{Root: "/room/1/", Publish: []string{"/7"}, Subscribe: []string{"/"}}},
+		"nothing":                  {grant: Grant{}},
+		"patterns without root":    {grant: Grant{Subscribe: []string{"/"}}, wantErr: true},
+		"a root that is no prefix": {grant: Grant{Root: "/room"}, wantErr: true},
+		"a malformed pattern":      {grant: Grant{Root: "/", Publish: []string{"x"}}, wantErr: true},
+		"a negative max age":       {grant: Grant{MaxAge: -1}, wantErr: true},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			err := tt.grant.Validate()
+
+			assert.Equal(t, tt.wantErr, err != nil, "%v", err)
+		})
+	}
 }

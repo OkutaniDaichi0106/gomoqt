@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Path patterns are exported (`moqt`).** `ParsePathPattern` parses an absolute pattern and `ParseGrantPattern` one relative to a root, as a `Grant` reads them; `PathPattern.Match` reports whether a broadcast path is in it. `Grant.Validate` checks a grant as `AuthWriter.Grant` would. An application that grants by the same rules elsewhere, such as an HTTP endpoint beside a relay, matches with these instead of a copy of the syntax.
+
 ## [v0.25.0] - 2026-10-16
 
 > **Dual release.** `v0.25.0` ships the Go module and `@qumo/moq` on JSR at the same version: `@qumo/moq` goes from `0.23.0` to `0.25.0`. It adds the Auth Stream, which grants and withdraws access per stream on one long-lived session, and makes the error types pointer-only.

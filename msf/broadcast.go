@@ -35,6 +35,9 @@ type Broadcast struct {
 
 	catalogTrackName moqt.TrackName
 	catalog          Catalog
+	// payload is catalog encoded for the catalog track, or nil until a
+	// catalog subscriber next needs it; it is never modified once set.
+	payload []byte
 	// changed is closed and replaced each time the catalog changes, waking
 	// every catalog subscriber at once.
 	changed chan struct{}
@@ -54,6 +57,7 @@ func (b *Broadcast) initLocked() {
 
 // catalogChangedLocked wakes the catalog subscribers while b.mu is held.
 func (b *Broadcast) catalogChangedLocked() {
+	b.payload = nil
 	if b.closed {
 		return
 	}
@@ -278,8 +282,7 @@ func (b *Broadcast) serveCatalogTrack(tw *moqt.TrackWriter) {
 	ctx := tw.Context()
 	var sent []byte
 	for {
-		catalog, changed, closed := b.catalogState()
-		payload, err := catalog.MarshalJSON()
+		payload, changed, closed, err := b.catalogState()
 		if err != nil {
 			tw.CloseWithError(moqt.SubscribeErrorCodeInternal)
 			return
@@ -288,6 +291,9 @@ func (b *Broadcast) serveCatalogTrack(tw *moqt.TrackWriter) {
 		// SetCatalog with the same catalog, sends nothing.
 		if sent == nil || !bytes.Equal(payload, sent) {
 			if err := writeCatalogGroup(tw, payload); err != nil {
+				if ctx.Err() != nil {
+					return // the subscriber left mid-write
+				}
 				tw.CloseWithError(moqt.SubscribeErrorCodeInternal)
 				return
 			}
@@ -307,13 +313,28 @@ func (b *Broadcast) serveCatalogTrack(tw *moqt.TrackWriter) {
 	}
 }
 
-// catalogState returns the current catalog, the channel closed at its next
-// change, and whether the broadcast is closed.
-func (b *Broadcast) catalogState() (Catalog, <-chan struct{}, bool) {
+// catalogState returns the current catalog encoded for the catalog track, the
+// channel closed at its next change, and whether the broadcast is closed. The
+// catalog is encoded once per change, by the first subscriber to need it.
+func (b *Broadcast) catalogState() ([]byte, <-chan struct{}, bool, error) {
+	b.mu.RLock()
+	payload, changed, closed := b.payload, b.changed, b.closed
+	b.mu.RUnlock()
+	if payload != nil && changed != nil {
+		return payload, changed, closed, nil
+	}
+
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.initLocked()
-	return b.catalog.Clone(), b.changed, b.closed
+	if b.payload == nil {
+		encoded, err := b.catalog.MarshalJSON()
+		if err != nil {
+			return nil, nil, false, fmt.Errorf("msf: encode catalog: %w", err)
+		}
+		b.payload = encoded
+	}
+	return b.payload, b.changed, b.closed, nil
 }
 
 // writeCatalogGroup writes payload to tw as one group of one frame.

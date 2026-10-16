@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/qumo-dev/gomoqt/moqt"
 	"github.com/quic-go/quic-go"
+	"github.com/qumo-dev/gomoqt/moqt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,7 +23,7 @@ func TestBroadcast_ServeCatalogTrack_SendsEachChange(t *testing.T) {
 	defer cancel()
 	broadcast, err := NewBroadcast(Catalog{Version: 1})
 	require.NoError(t, err)
-	catalog := subscribeTestCatalog(t, ctx, broadcast)
+	catalog, _ := subscribeTestCatalog(t, ctx, broadcast)
 
 	assert.Empty(t, readTestCatalog(t, ctx, catalog).Tracks, "first group is the catalog at subscribe time")
 
@@ -42,7 +42,7 @@ func TestBroadcast_ServeCatalogTrack_SkipsUnchangedCatalog(t *testing.T) {
 	defer cancel()
 	broadcast, err := NewBroadcast(Catalog{Version: 1})
 	require.NoError(t, err)
-	catalog := subscribeTestCatalog(t, ctx, broadcast)
+	catalog, _ := subscribeTestCatalog(t, ctx, broadcast)
 	readTestCatalog(t, ctx, catalog)
 
 	// Setting the same catalog sends nothing, so the next group is the
@@ -58,7 +58,7 @@ func TestBroadcast_Close_EndsCatalogSubscription(t *testing.T) {
 	defer cancel()
 	broadcast, err := NewBroadcast(Catalog{Version: 1})
 	require.NoError(t, err)
-	catalog := subscribeTestCatalog(t, ctx, broadcast)
+	catalog, _ := subscribeTestCatalog(t, ctx, broadcast)
 	readTestCatalog(t, ctx, catalog)
 
 	broadcast.Close()
@@ -76,7 +76,7 @@ func TestBroadcast_Close_LaterSubscriptionGetsOneGroup(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, broadcast.RegisterTrack(Track{Name: "video", Packaging: PackagingLOC, IsLive: new(true)}, &FakeTrackHandler{}))
 	broadcast.Close()
-	catalog := subscribeTestCatalog(t, ctx, broadcast)
+	catalog, _ := subscribeTestCatalog(t, ctx, broadcast)
 
 	assert.Equal(t, []string{"video"}, testTrackNames(readTestCatalog(t, ctx, catalog)))
 	_, err = catalog.AcceptGroup(ctx)
@@ -84,13 +84,33 @@ func TestBroadcast_Close_LaterSubscriptionGetsOneGroup(t *testing.T) {
 	assert.NoError(t, ctx.Err(), "the subscription ended rather than timing out")
 }
 
+func TestBroadcast_ServeCatalogTrack_EndsWithAnnouncement(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	broadcast, err := NewBroadcast(Catalog{Version: 1})
+	require.NoError(t, err)
+	catalog, endAnnouncement := subscribeTestCatalog(t, ctx, broadcast)
+	readTestCatalog(t, ctx, catalog)
+
+	// A publisher that stops publishing ends the announcement, not the
+	// Broadcast; the mux closes the catalog writer and the handler returns.
+	endAnnouncement()
+
+	_, err = catalog.AcceptGroup(ctx)
+	assert.Error(t, err, "no group follows the announcement's end")
+	assert.NoError(t, ctx.Err(), "the subscription ended rather than timing out")
+}
+
 // subscribeTestCatalog serves broadcast from a loopback MoQ server and returns
-// a client subscription to its catalog track.
-func subscribeTestCatalog(tb testing.TB, ctx context.Context, broadcast *Broadcast) *moqt.TrackReader {
+// a client subscription to its catalog track, and a function that ends the
+// broadcast's announcement.
+func subscribeTestCatalog(tb testing.TB, ctx context.Context, broadcast *Broadcast) (*moqt.TrackReader, context.CancelFunc) {
 	tb.Helper()
 
 	mux := moqt.NewTrackMux(0)
-	mux.Publish(ctx, testBroadcastPath, broadcast)
+	announced, endAnnouncement := context.WithCancel(ctx)
+	tb.Cleanup(endAnnouncement)
+	mux.Publish(announced, testBroadcastPath, broadcast)
 	server := &moqt.Server{
 		Addr: testFreeAddr(tb),
 		TLSConfig: &tls.Config{
@@ -124,7 +144,7 @@ func subscribeTestCatalog(tb testing.TB, ctx context.Context, broadcast *Broadca
 	catalog, err := sess.Subscribe(ctx, testBroadcastPath, DefaultCatalogTrackName, nil)
 	require.NoError(tb, err)
 	tb.Cleanup(func() { _ = catalog.Close() })
-	return catalog
+	return catalog, endAnnouncement
 }
 
 // readTestCatalog reads the next catalog group.

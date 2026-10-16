@@ -1,7 +1,7 @@
 package msf
 
 import (
-	"context"
+	"bytes"
 	"fmt"
 	"sync"
 
@@ -19,6 +19,13 @@ const DefaultCatalogTrackName moqt.TrackName = "catalog"
 // removal close any active TrackWriter values for that track; handlers are
 // expected to return once their writer is closed.
 //
+// A catalog subscription stays open for the life of the broadcast: the
+// subscriber receives the current catalog as its first group, and a new group
+// with the whole catalog each time SetCatalog, RegisterTrack or RemoveTrack
+// changes it. Changes made while a group is being written are combined into
+// the next one, so a slow subscriber skips intermediate catalogs rather than
+// holding up the broadcast. Close ends every catalog subscription.
+//
 // Because the underlying moqt routing key is a single TrackName, Broadcast
 // requires track names to be unique across namespaces within the current
 // catalog snapshot. Catalogs that contain the same track name in multiple
@@ -28,7 +35,11 @@ type Broadcast struct {
 
 	catalogTrackName moqt.TrackName
 	catalog          Catalog
-	tracks           moqt.Broadcast
+	// changed is closed and replaced each time the catalog changes, waking
+	// every catalog subscriber at once.
+	changed chan struct{}
+	closed  bool
+	tracks  moqt.Broadcast
 }
 
 // initLocked initializes lazily allocated broadcast defaults while b.mu is held.
@@ -36,6 +47,18 @@ func (b *Broadcast) initLocked() {
 	if b.catalogTrackName == "" {
 		b.catalogTrackName = DefaultCatalogTrackName
 	}
+	if b.changed == nil {
+		b.changed = make(chan struct{})
+	}
+}
+
+// catalogChangedLocked wakes the catalog subscribers while b.mu is held.
+func (b *Broadcast) catalogChangedLocked() {
+	if b.closed {
+		return
+	}
+	close(b.changed)
+	b.changed = make(chan struct{})
 }
 
 // NewBroadcast constructs a Broadcast using an initial independent catalog.
@@ -109,6 +132,7 @@ func (b *Broadcast) SetCatalog(catalog Catalog) error {
 	b.initLocked()
 	staleTrackNames := b.staleTrackNamesLocked(clone)
 	b.catalog = clone
+	b.catalogChangedLocked()
 	for _, name := range staleTrackNames {
 		b.tracks.Remove(name)
 	}
@@ -164,8 +188,12 @@ func (b *Broadcast) RegisterTrack(track Track, handler moqt.TrackHandler) error 
 		return err
 	}
 
+	if err := b.tracks.Register(moqt.TrackName(trackClone.Name), handler); err != nil {
+		return err
+	}
 	b.catalog = updated
-	return b.tracks.Register(moqt.TrackName(trackClone.Name), handler)
+	b.catalogChangedLocked()
+	return nil
 }
 
 // RemoveTrack removes the named track (and its handler) from the broadcast.
@@ -190,10 +218,32 @@ func (b *Broadcast) RemoveTrack(name moqt.TrackName) bool {
 		}
 	}
 
-	b.catalog = updated
+	if removed {
+		b.catalog = updated
+		b.catalogChangedLocked()
+	}
 	removedFromTracks := b.tracks.Remove(name)
 
 	return removed || removedFromTracks
+}
+
+// Close ends every catalog subscription and closes the TrackWriter values the
+// registered track handlers are serving. The catalog is kept, but later
+// catalog subscriptions end after their first group. Close is idempotent.
+func (b *Broadcast) Close() {
+	if b == nil {
+		return
+	}
+
+	b.mu.Lock()
+	b.initLocked()
+	if !b.closed {
+		b.closed = true
+		close(b.changed)
+	}
+	b.mu.Unlock()
+
+	b.tracks.Close()
 }
 
 // Handler returns the TrackHandler responsible for serving the named track.
@@ -221,32 +271,67 @@ func (b *Broadcast) ServeTrack(tw *moqt.TrackWriter) {
 	b.Handler(tw.TrackName).ServeTrack(tw)
 }
 
-// serveCatalogTrack serializes the current catalog snapshot onto the reserved catalog track.
+// serveCatalogTrack writes the current catalog onto the reserved catalog
+// track, then a new group each time the catalog changes, until the subscriber
+// leaves or the broadcast is closed.
 func (b *Broadcast) serveCatalogTrack(tw *moqt.TrackWriter) {
-	payload, err := b.CatalogBytes()
-	if err != nil {
-		tw.CloseWithError(moqt.SubscribeErrorCodeInternal)
-		return
-	}
+	ctx := tw.Context()
+	var sent []byte
+	for {
+		catalog, changed, closed := b.catalogState()
+		payload, err := catalog.MarshalJSON()
+		if err != nil {
+			tw.CloseWithError(moqt.SubscribeErrorCodeInternal)
+			return
+		}
+		// A change that leaves the encoded catalog as it was, such as
+		// SetCatalog with the same catalog, sends nothing.
+		if sent == nil || !bytes.Equal(payload, sent) {
+			if err := writeCatalogGroup(tw, payload); err != nil {
+				tw.CloseWithError(moqt.SubscribeErrorCodeInternal)
+				return
+			}
+			sent = payload
+		}
+		if closed {
+			_ = tw.Close() // not actionable: the subscription is over either way
+			return
+		}
 
-	group, err := tw.OpenGroup(context.Background())
-	if err != nil {
-		tw.CloseWithError(moqt.SubscribeErrorCodeInternal)
-		return
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			_ = tw.Close() // not actionable: the subscriber is gone
+			return
+		}
 	}
+}
 
+// catalogState returns the current catalog, the channel closed at its next
+// change, and whether the broadcast is closed.
+func (b *Broadcast) catalogState() (Catalog, <-chan struct{}, bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.initLocked()
+	return b.catalog.Clone(), b.changed, b.closed
+}
+
+// writeCatalogGroup writes payload to tw as one group of one frame.
+func writeCatalogGroup(tw *moqt.TrackWriter, payload []byte) error {
+	group, err := tw.OpenGroup(tw.Context())
+	if err != nil {
+		return fmt.Errorf("msf: open catalog group: %w", err)
+	}
 	frame := moqt.NewFrame(len(payload))
-	_, _ = frame.Write(payload)
+	_, _ = frame.Write(payload) // not actionable: a Frame grows to fit
 	if err := group.WriteFrame(frame); err != nil {
 		group.CancelWrite(moqt.InternalGroupErrorCode)
-		tw.CloseWithError(moqt.SubscribeErrorCodeInternal)
-		return
+		return fmt.Errorf("msf: write catalog group: %w", err)
 	}
 	if err := group.Close(); err != nil {
-		tw.CloseWithError(moqt.SubscribeErrorCodeInternal)
-		return
+		return fmt.Errorf("msf: close catalog group: %w", err)
 	}
-	_ = tw.Close()
+	return nil
 }
 
 // validateTrackHandler performs a small sanity check on a TrackHandler

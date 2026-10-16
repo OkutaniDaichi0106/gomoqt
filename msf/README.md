@@ -91,6 +91,7 @@ if err != nil {
 - Unknown JSON properties are preserved in `ExtraFields` so catalogs can be round-tripped without dropping extensions.
 - `Catalog` and `CatalogDelta` are intentionally separate types so independent snapshots and incremental updates cannot be confused accidentally.
 - `Broadcast` routes non-catalog tracks by `Track.Name`, so it rejects catalogs that reuse the same name in multiple namespaces.
+- A `Broadcast` catalog subscription stays open: it gets the current catalog as its first group, then a new group with the whole catalog each time `SetCatalog`, `RegisterTrack` or `RemoveTrack` changes it. `Close` ends the catalog subscriptions and closes the registered tracks' writers.
 
 ## References
 

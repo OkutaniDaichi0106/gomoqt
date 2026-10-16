@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`msf.Broadcast.Close` ends a broadcast (`msf`).** It ends every catalog subscription and closes the TrackWriter values the registered track handlers serve, as `moqt.Broadcast.Close` does. A catalog subscription made after `Close` gets the catalog once and ends.
+
+### Fixed
+
+- **A catalog subscriber of `msf.Broadcast` receives each change to the catalog (`msf`).** The catalog track sent the catalog once and closed, so a subscriber saw it only as it was when it subscribed: a player that subscribed before a publisher's tracks were registered got an empty catalog and never learned of them, and a track replaced later, such as one with a new codec configuration, never reached it. A catalog subscription now stays open and gets a new group with the whole catalog each time `SetCatalog`, `RegisterTrack` or `RemoveTrack` changes it; changes made while a group is being written are combined into the next one, and a change that leaves the catalog as it was sends nothing. The subscription ends when the subscriber leaves, the broadcast's announcement ends, or `Close` is called. **Subscribers that read one catalog group and close** are unaffected; **ones that wait for the track to end** now wait for the broadcast to end.
+
 ## [v0.25.1] - 2026-10-16
 
 > **Go only.** `@qumo/moq` stays at `0.25.0`: nothing on the wire changes. It exports the path patterns a `Grant` is read with, for an application that grants by the same rules outside MoQ, and documents what `WebTransportHandler.CheckOrigin` decides.

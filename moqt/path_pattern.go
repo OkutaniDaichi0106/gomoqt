@@ -14,8 +14,10 @@ import (
 // on an Auth Stream, it is a protocol violation.
 var ErrInvalidPathPattern = errors.New("moqt: invalid path pattern")
 
-// pathPattern is a parsed path pattern; Grant documents the syntax.
-type pathPattern struct {
+// PathPattern is a parsed path pattern, a set of broadcast paths; Grant
+// documents the syntax. An application that grants by the same rules as a
+// session enforces, such as for requests outside MoQ, matches with it.
+type PathPattern struct {
 	raw string
 	// segs holds the segments of a pattern with a wildcard, and is nil for
 	// one without.
@@ -31,17 +33,19 @@ type patternSeg struct {
 	lit string
 }
 
-// parsePathPattern parses s: a path starting with "/" whose wildcards are
-// whole segments. An empty segment, as in "/room//x", is a literal one.
-func parsePathPattern(s string) (pathPattern, error) {
+// ParsePathPattern parses s, an absolute pattern: a path starting with "/"
+// whose wildcards are whole segments. An empty segment, as in "/room//x", is
+// a literal one. ParseGrantPattern reads one relative to a root, as a Grant's
+// are.
+func ParsePathPattern(s string) (PathPattern, error) {
 	if !isValidPath(BroadcastPath(s)) {
-		return pathPattern{}, fmt.Errorf("%w: %q", ErrInvalidPathPattern, s)
+		return PathPattern{}, fmt.Errorf("%w: %q", ErrInvalidPathPattern, s)
 	}
 	if !strings.ContainsAny(s, "{}") {
-		return pathPattern{raw: s}, nil
+		return PathPattern{raw: s}, nil
 	}
 
-	p := pathPattern{raw: s, trailing: strings.HasSuffix(s, "/")}
+	p := PathPattern{raw: s, trailing: strings.HasSuffix(s, "/")}
 	var names []string
 	for segs := strings.TrimSuffix(s[1:], "/"); ; {
 		seg, next, more := strings.Cut(segs, "/")
@@ -52,7 +56,7 @@ func parsePathPattern(s string) (pathPattern, error) {
 			kind == segAnchor && !last,
 			kind == segRest && !last,
 			name != "" && slices.Contains(names, name):
-			return pathPattern{}, fmt.Errorf("%w: %q", ErrInvalidPathPattern, s)
+			return PathPattern{}, fmt.Errorf("%w: %q", ErrInvalidPathPattern, s)
 		}
 		if name != "" {
 			names = append(names, name)
@@ -121,9 +125,12 @@ func isWildcardName(s string) bool {
 	return true
 }
 
-// match reports whether path is in the pattern's set. The zero pathPattern
-// matches nothing.
-func (p pathPattern) match(path BroadcastPath) bool {
+// Match reports whether path is in the pattern's set, comparing segments as
+// written, as a session does: "/room/1/../2" is a path beneath "/room/1/",
+// not "/room/2". A caller matching a path from elsewhere, such as a URL,
+// passes it as the broadcast path it names, with no "." or ".." segment for
+// anything downstream to resolve. The zero PathPattern matches nothing.
+func (p PathPattern) Match(path BroadcastPath) bool {
 	if p.segs != nil {
 		return p.matchSegments(path)
 	}
@@ -134,7 +141,7 @@ func (p pathPattern) match(path BroadcastPath) bool {
 }
 
 // matchSegments matches path against a pattern with a wildcard.
-func (p pathPattern) matchSegments(path BroadcastPath) bool {
+func (p PathPattern) matchSegments(path BroadcastPath) bool {
 	if !isValidPath(path) {
 		return false
 	}
@@ -165,4 +172,33 @@ func (p pathPattern) matchSegments(path BroadcastPath) bool {
 		rest = after
 	}
 	return false
+}
+
+// String returns the pattern as it was parsed.
+func (p PathPattern) String() string {
+	return p.raw
+}
+
+// ParseGrantPattern parses pattern relative to root, as a Grant's patterns
+// are read: with root "/room/1/", "/alice" is "/room/1/alice". root must be a
+// prefix, ending in "/", and pattern start with "/".
+func ParseGrantPattern(root, pattern string) (PathPattern, error) {
+	if !isValidGrantRoot(root) {
+		return PathPattern{}, fmt.Errorf("%w: root %q", ErrInvalidPathPattern, root)
+	}
+	return joinPattern(root, pattern)
+}
+
+// isValidGrantRoot reports whether root may be a Grant's root: a prefix with
+// no wildcard.
+func isValidGrantRoot(root string) bool {
+	return isValidPrefix(root) && !strings.ContainsAny(root, "{}")
+}
+
+// joinPattern parses pattern relative to root, which the caller has checked.
+func joinPattern(root, pattern string) (PathPattern, error) {
+	if !strings.HasPrefix(pattern, "/") {
+		return PathPattern{}, fmt.Errorf("%w: %q", ErrInvalidPathPattern, pattern)
+	}
+	return ParsePathPattern(strings.TrimSuffix(root, "/") + pattern)
 }

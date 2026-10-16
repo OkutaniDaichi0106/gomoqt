@@ -32,6 +32,11 @@ var (
 	// ErrAuthEnded is returned by AuthWriter methods once the token's grant
 	// has ended: refused, withdrawn by the presenter, or its handler returned.
 	ErrAuthEnded = errors.New("moqt: auth ended")
+
+	// ErrInvalidGrant is a grant AuthWriter.Grant does not take for a reason
+	// other than its root or patterns: a negative MaxAge, or one too large
+	// for one AUTH_OK.
+	ErrInvalidGrant = errors.New("moqt: invalid grant")
 )
 
 // Grant is what an acceptor allows for one token: a root, the directory of
@@ -106,14 +111,46 @@ func grantFromMessage(m message.AuthOkMessage) (Grant, error) {
 // caller may reuse its slices.
 type scopeGrant struct {
 	root               prefix
-	publish, subscribe []pathPattern
+	publish, subscribe []PathPattern
 }
 
 // sameScope reports whether g and h allow the same, whatever their max age.
 func (g scopeGrant) sameScope(h scopeGrant) bool {
-	same := func(p, q pathPattern) bool { return p.raw == q.raw }
+	same := func(p, q PathPattern) bool { return p.raw == q.raw }
 	return g.root == h.root &&
 		slices.EqualFunc(g.publish, h.publish, same) && slices.EqualFunc(g.subscribe, h.subscribe, same)
+}
+
+// Validate reports whether g is a grant AuthWriter.Grant takes: a root that is
+// a prefix, or empty with no patterns, patterns that parse beneath it, a
+// MaxAge that is not negative, and a size that fits one AUTH_OK. An error
+// wraps ErrInvalidPathPattern for the root or a pattern, and ErrInvalidGrant
+// otherwise.
+func (g Grant) Validate() error {
+	_, _, err := g.check()
+	return err
+}
+
+// errGrantTooLarge is a grant too large for one AUTH_OK, which AuthWriter.Grant
+// answers with NOT_SUPPORTED.
+var errGrantTooLarge = fmt.Errorf("%w: too large for AUTH_OK", ErrInvalidGrant)
+
+// check is the one check AuthWriter.Grant and Validate make: it parses g and
+// encodes the AUTH_OK that grants it.
+func (g Grant) check() (scopeGrant, message.AuthOkMessage, error) {
+	if g.MaxAge < 0 {
+		return scopeGrant{}, message.AuthOkMessage{}, fmt.Errorf("%w: negative MaxAge %v", ErrInvalidGrant, g.MaxAge)
+	}
+	sg, err := parseGrant(g)
+	if err != nil {
+		return scopeGrant{}, message.AuthOkMessage{}, err
+	}
+	// A non-negative time.Duration in milliseconds stays below maxAuthExpires.
+	m := g.message()
+	if n := m.Len(); n > message.MaxMessageSize {
+		return scopeGrant{}, message.AuthOkMessage{}, fmt.Errorf("%w: %d bytes", errGrantTooLarge, n)
+	}
+	return sg, m, nil
 }
 
 // parseGrant parses g, reporting ErrInvalidPathPattern for a root that is not
@@ -125,7 +162,7 @@ func parseGrant(g Grant) (scopeGrant, error) {
 		}
 		return scopeGrant{}, nil
 	}
-	if !isValidPrefix(g.Root) || strings.ContainsAny(g.Root, "{}") {
+	if !isValidGrantRoot(g.Root) {
 		return scopeGrant{}, fmt.Errorf("%w: root %q", ErrInvalidPathPattern, g.Root)
 	}
 	publish, err := parsePatterns(g.Root, g.Publish)
@@ -140,13 +177,10 @@ func parseGrant(g Grant) (scopeGrant, error) {
 }
 
 // parsePatterns parses each of ss joined to root.
-func parsePatterns(root prefix, ss []string) ([]pathPattern, error) {
-	patterns := make([]pathPattern, len(ss))
+func parsePatterns(root prefix, ss []string) ([]PathPattern, error) {
+	patterns := make([]PathPattern, len(ss))
 	for i, s := range ss {
-		if !strings.HasPrefix(s, "/") {
-			return nil, fmt.Errorf("%w: %q", ErrInvalidPathPattern, s)
-		}
-		p, err := parsePathPattern(strings.TrimSuffix(root, "/") + s)
+		p, err := joinPattern(root, s)
 		if err != nil {
 			return nil, err
 		}
@@ -155,9 +189,9 @@ func parsePatterns(root prefix, ss []string) ([]pathPattern, error) {
 	return patterns, nil
 }
 
-func matchAny(patterns []pathPattern, path BroadcastPath) bool {
+func matchAny(patterns []PathPattern, path BroadcastPath) bool {
 	for _, p := range patterns {
-		if p.match(path) {
+		if p.Match(path) {
 			return true
 		}
 	}
@@ -231,15 +265,11 @@ type AuthWriter struct {
 // is never trimmed: the token is refused with NOT_SUPPORTED instead, and the
 // returned error says so.
 func (w *AuthWriter) Grant(g Grant) error {
-	if g.MaxAge < 0 {
-		return fmt.Errorf("moqt: negative MaxAge %v", g.MaxAge)
-	}
-	sg, err := parseGrant(g)
-	if err != nil {
+	sg, m, err := g.check()
+	tooLarge := errors.Is(err, errGrantTooLarge)
+	if err != nil && !tooLarge {
 		return err
 	}
-	// A non-negative time.Duration in milliseconds stays below maxAuthExpires.
-	m := g.message()
 
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -247,9 +277,8 @@ func (w *AuthWriter) Grant(g Grant) error {
 		return ErrAuthEnded
 	}
 
-	if m.Len() > message.MaxMessageSize {
-		tooLarge := fmt.Errorf("moqt: grant too large for AUTH_OK: %d bytes", m.Len())
-		return errors.Join(tooLarge, w.refuseLocked(NotSupportedErrorCode, "grant too large"))
+	if tooLarge {
+		return errors.Join(err, w.refuseLocked(NotSupportedErrorCode, "grant too large"))
 	}
 
 	w.scope.set(w, sg)

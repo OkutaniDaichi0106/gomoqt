@@ -9,11 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`msf.Broadcast.Close` ends a broadcast (`msf`).** It ends every catalog subscription and closes the TrackWriter values the registered track handlers serve, as `moqt.Broadcast.Close` does. A catalog subscription made after `Close` gets the catalog once and ends.
+- **`msf.Broadcast.Close` ends a broadcast (`msf`).** It ends every catalog subscription after sending any pending change and closes the registered tracks; a catalog subscription made after `Close` gets the catalog once and ends. `close()` on `@qumo/moq/msf`'s `Broadcast` now does the same.
 
 ### Fixed
 
-- **A catalog subscriber of `msf.Broadcast` receives each change to the catalog (`msf`).** The catalog track sent the catalog once and closed, so a subscriber saw it only as it was when it subscribed: a player that subscribed before a publisher's tracks were registered got an empty catalog and never learned of them, and a track replaced later, such as one with a new codec configuration, never reached it. A catalog subscription now stays open and gets a new group with the whole catalog each time `SetCatalog`, `RegisterTrack` or `RemoveTrack` changes it; changes made while a group is being written are combined into the next one, and a change that leaves the catalog as it was sends nothing. The subscription ends when the subscriber leaves, the broadcast's announcement ends, or `Close` is called. **Subscribers that read one catalog group and close** are unaffected; **ones that wait for the track to end** now wait for the broadcast to end.
+- **Catalog subscribers receive each change to the catalog (`msf`, `@qumo/moq/msf`).** The catalog track sent one snapshot and closed, so a player that subscribed before a publisher's tracks were registered never learned of them; now each change by `SetCatalog`/`RegisterTrack`/`RemoveTrack` (`setCatalog`/`registerTrack`/`removeTrack` in TypeScript) sends a new group with the whole catalog, until the subscriber leaves, the announcement ends or the broadcast is closed. Subscribers that read one group and close are unaffected; ones that wait for the track to end now wait for the broadcast to end.
 
 ## [v0.25.1] - 2026-10-16
 

@@ -31,7 +31,8 @@ func ReadVarint(b []byte) (uint64, int, error) {
 // ReadMessageLength reads a QUIC varint length prefix from r. On the
 // io.ByteReader fast path (bytes.Reader, bufio.Reader, QUIC streams, etc.) it
 // reads byte-by-byte and allocates nothing; other readers fall back to the
-// allocating ReadFull path. Behavior is unchanged for all callers.
+// allocating ReadFull path. io.EOF means r ended before the varint began; a
+// varint cut short after its first byte is io.ErrUnexpectedEOF.
 func ReadMessageLength(r io.Reader) (uint64, error) {
 	if br, ok := r.(io.ByteReader); ok {
 		first, err := br.ReadByte()
@@ -43,6 +44,9 @@ func ReadMessageLength(r io.Reader) (uint64, error) {
 		for i := 1; i < l; i++ {
 			b, err := br.ReadByte()
 			if err != nil {
+				if errors.Is(err, io.EOF) {
+					return 0, io.ErrUnexpectedEOF
+				}
 				return 0, err
 			}
 			val = val<<8 | uint64(b)
@@ -60,6 +64,9 @@ func ReadMessageLength(r io.Reader) (uint64, error) {
 	if l > 1 {
 		_, err = io.ReadFull(r, buf[1:l])
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return 0, io.ErrUnexpectedEOF
+			}
 			return 0, err
 		}
 	}

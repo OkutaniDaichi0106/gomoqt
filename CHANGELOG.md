@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A group's frames can be written and read outside a stream (`moqt`).** `FrameWriter` and `FrameReader` write and read FRAME messages to and from an `io.Writer`/`io.Reader`, byte for byte as a group stream carries them after its GROUP header, so a store can keep a group's frames and replay them unchanged.
+
+### Fixed
+
+- **A truncated frame no longer reads as the end of a group (`moqt`).** `GroupReader.ReadFrame` returned `io.EOF`, the clean end, for a group cut off inside a frame's varints or before its payload's first byte; it now returns `io.ErrUnexpectedEOF`. A frame whose timestamp delta goes below zero returns `ErrTimestampOutOfRange` instead of wrapping.
+
 ## [v0.26.0] - 2026-10-17
 
 > **Dual release.** `v0.26.0` ships the Go module and `@qumo/moq` on JSR at the same version (`@qumo/moq` 0.25.0 → 0.26.0). An MSF catalog subscription now stays open and gets each change; a subscriber that waits for the catalog track to end now waits for the broadcast to end.

@@ -23,9 +23,11 @@ var (
 	ErrProbeNotSupported = errors.New("moqt: peer does not support probing")
 
 	// ErrTimestampOutOfRange is returned when a frame's timestamp delta
-	// relative to the previous frame cannot be encoded in a 62-bit varint.
-	// This cannot arise from a well-formed publisher but guards a relay
-	// re-publishing frames reconstructed from a malicious upstream.
+	// relative to the previous frame cannot be encoded in a 62-bit varint,
+	// or when a frame read carries a delta that takes its timestamp below
+	// zero. Neither arises from a well-formed publisher; they guard a relay
+	// re-publishing frames from a malicious upstream, and a reader of stored
+	// frames from a corrupt payload.
 	ErrTimestampOutOfRange = errors.New("moqt: frame timestamp delta out of range")
 )
 

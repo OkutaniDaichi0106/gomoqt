@@ -7,10 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- **A group's frames can be written and read outside a stream (`moqt`).** `FrameWriter` and `FrameReader` write and read FRAME messages to and from an `io.Writer`/`io.Reader`, byte for byte as a group stream carries them after its GROUP header, so a store can keep a group's frames and replay them unchanged.
-
 ### Fixed
 
 - **A truncated frame no longer reads as the end of a group (`moqt`).** `GroupReader.ReadFrame` returned `io.EOF`, the clean end, for a group cut off inside a frame's varints or before its payload's first byte; it now returns `io.ErrUnexpectedEOF`. A frame whose timestamp delta goes below zero returns `ErrTimestampOutOfRange` instead of wrapping.

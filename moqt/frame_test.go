@@ -375,3 +375,49 @@ func TestFrame_decode_LargePayload(t *testing.T) {
 		})
 	}
 }
+
+// TestFrame_decode_Truncated ensures a stream that ends anywhere inside a
+// frame, even before its payload's first byte, is a truncated frame, while one
+// that ends before the frame is the clean end of the group, through a reader
+// that is an io.ByteReader and through one that is not.
+func TestFrame_decode_Truncated(t *testing.T) {
+	tests := map[string]struct {
+		wire []byte
+		want error
+	}{
+		"before the frame":           {wire: nil, want: io.EOF},
+		"inside the timestamp delta": {wire: []byte{0x40}, want: io.ErrUnexpectedEOF},
+		"before the length":          {wire: []byte{0x00}, want: io.ErrUnexpectedEOF},
+		"inside the length":          {wire: []byte{0x00, 0x40}, want: io.ErrUnexpectedEOF},
+		"before the payload":         {wire: []byte{0x00, 0x02}, want: io.ErrUnexpectedEOF},
+		"inside the payload":         {wire: []byte{0x00, 0x02, 'a'}, want: io.ErrUnexpectedEOF},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			for _, r := range []io.Reader{bytes.NewReader(tt.wire), struct{ io.Reader }{bytes.NewReader(tt.wire)}} {
+				err := NewFrame(0).decode(r, 0)
+
+				assert.ErrorIs(t, err, tt.want)
+			}
+		})
+	}
+}
+
+// TestFrame_decode_NegativeTimestamp ensures a delta that takes a timestamp
+// below zero is refused rather than wrapped.
+func TestFrame_decode_NegativeTimestamp(t *testing.T) {
+	tests := map[string]struct {
+		wire []byte
+		prev uint64
+	}{
+		"a first frame before zero": {wire: []byte{0x01, 0x00}},                   // zigzag 1 = -1
+		"a later frame before zero": {wire: []byte{0x4b, 0xb9, 0x00}, prev: 1000}, // zigzag 3001 = -1501
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			err := NewFrame(0).decode(bytes.NewReader(tt.wire), tt.prev)
+
+			assert.ErrorIs(t, err, ErrTimestampOutOfRange)
+		})
+	}
+}
